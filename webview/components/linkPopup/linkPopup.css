@@ -82,11 +82,11 @@
     flex-shrink: 0;
     opacity: 0.6;
     transition: opacity 0.1s, background 0.1s, color 0.1s;
-}
 
-.lp-btn:hover {
-    opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+    &:hover {
+        opacity: 1;
+        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+    }
 }
 
 /* 编辑按钮激活态（编辑模式中） */
@@ -116,11 +116,11 @@
     gap: 5px;
     padding: 0 10px 8px;
     overflow: hidden;
-}
 
-.lp-body.expanded {
-    display: flex;
-    animation: lp-fadein 100ms ease;
+    &.expanded {
+        display: flex;
+        animation: lp-fadein 100ms ease;
+    }
 }
 
 .lp-divider {
@@ -143,10 +143,10 @@
     font-family: inherit;
     outline: none;
     transition: border-color 0.1s;
-}
 
-.lp-input:focus {
-    border-color: var(--vscode-focusBorder, #007acc);
+    &:focus {
+        border-color: var(--vscode-focusBorder, #007acc);
+    }
 }
 
 /* 按钮行 */

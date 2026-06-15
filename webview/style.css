@@ -24,12 +24,12 @@ body {
     line-height: 1.6;
 }
 
-/* 编辑器容器 */
 /* ─── Frontmatter 面板 ─── */
 .frontmatter-panel {
-    max-width: var(--editor-max-width, min(1400px, 92vw));
+    max-width: var(--editor-max-width, none);
     margin: 0 auto;
     padding: 56px 48px 0;
+    --editor-content-left-padding: 48px;
 }
 
 .frontmatter-table {
@@ -39,360 +39,594 @@ body {
     border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
     border-radius: 4px;
     overflow: hidden;
+
+    td {
+        padding: 5px 10px;
+        border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
+        vertical-align: top;
+        line-height: 1.5;
+    }
+
+    tr:last-child td {
+        border-bottom: none;
+    }
+
+    .fm-key {
+        white-space: nowrap;
+        color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-descriptionForeground));
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-weight: bold;
+        width: 1%;
+        padding-right: 16px;
+    }
+
+    .fm-val {
+        color: var(--vscode-editor-foreground);
+        word-break: break-word;
+    }
 }
 
-.frontmatter-table td {
-    padding: 5px 10px;
-    border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
-    vertical-align: top;
-    line-height: 1.5;
-}
-
-.frontmatter-table tr:last-child td {
-    border-bottom: none;
-}
-
-.frontmatter-table .fm-key {
-    white-space: nowrap;
-    color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-descriptionForeground));
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-weight: bold;
-    width: 1%;
-    padding-right: 16px;
-}
-
-.frontmatter-table .fm-val {
-    color: var(--vscode-editor-foreground);
-    word-break: break-word;
-}
-
+/* ─── 编辑器容器 ─── */
 #editor {
-    /* 用户未设置 editorMaxWidth 时：自适应视口宽度
-       - 小屏：92vw 先收窄，永不超出
-       - 大屏（2K/4K）：1400px 封顶，保持舒适阅读列宽
-       用户在设置中显式设定宽度时，--editor-max-width 生效，覆盖默认 */
-    max-width: var(--editor-max-width, min(1400px, 92vw));
+    max-width: var(--editor-max-width, none);
     margin: 0 auto;
     padding: 56px 48px 80px;
+    padding-left: 76px;
     min-height: 100vh;
     outline: none;
+    --editor-content-left-padding: 76px;
 }
 
-/* Milkdown 根容器 */
+body.editor-width-auto {
+    #editor,
+    .frontmatter-panel {
+        width: 100%;
+        max-width: none;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    &.toc-docked:not(.toc-open),
+    &.toc-overlay:not(.toc-overlay-open) {
+        #editor,
+        .frontmatter-panel {
+            --toc-editor-offset: max(
+                0px,
+                calc(var(--toc-tab-width, 20px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+            );
+            width: calc(100% - var(--toc-editor-offset));
+            margin-left: var(--toc-editor-offset);
+        }
+    }
+
+    &.toc-open {
+        #editor,
+        .frontmatter-panel {
+            --toc-editor-offset: max(
+                0px,
+                calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+            );
+            width: calc(100% - var(--toc-editor-offset));
+            margin-left: var(--toc-editor-offset);
+        }
+
+        #editor {
+            padding-left: 48px;
+            --editor-content-left-padding: 48px;
+        }
+    }
+}
+
+@media (max-width: 720px) {
+    #editor {
+        padding-left: 60px;
+        --editor-content-left-padding: 60px;
+    }
+}
+
+/* ─── Milkdown 根容器 ─── */
 .milkdown {
     outline: none;
+
+    .editor {
+        outline: none;
+        background: transparent;
+        color: inherit;
+        white-space: pre-wrap; /* ProseMirror 要求 */
+        word-wrap: break-word;
+
+        /* 内联 HTML 渲染容器（DOMPurify 净化后只读显示） */
+        .html-inline {
+            display: contents;
+
+            [align="center"] {
+                text-align: center;
+            }
+        }
+
+        /* 段落：用 padding 替代 margin，确保点击区域包含视觉间距 */
+        p {
+            margin: 0;
+            padding-bottom: 0.4em;
+        }
+
+        /* 标题：用 padding 替代 margin，确保点击区域包含视觉间距 */
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            position: relative;
+            color: var(--vscode-editor-foreground);
+            font-weight: 600;
+            line-height: 1.3;
+            margin: 0;
+            padding: 1em 0 1em;
+            scroll-margin-top: calc(var(--editor-topbar-height, 40px) + 8px);
+        }
+
+        h1 {
+            font-size: 2em;
+            border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+            padding-bottom: 0.5em;
+            margin-bottom: 0.5em;
+        }
+
+        h2 {
+            font-size: 1.4em;
+            /* border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35)); */
+        }
+
+        h3 {
+            font-size: 1.25em;
+        }
+
+        /* H4~H6 仍逐级递减，但不小于正文（1em），避免标题比正文还小 */
+        h4 {
+            font-size: 1.15em;
+        }
+
+        h5 {
+            font-size: 1.05em;
+        }
+
+        h6 {
+            font-size: 1em;
+        }
+
+        .heading-fold-gutter {
+            position: absolute;
+            left: -10px;
+            top: 1em;
+            transform: translateX(-100%);
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            width: 58px;
+            height: 1.3em;
+            color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.72));
+            font-weight: 600;
+            line-height: 1;
+            user-select: none;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        .heading-fold-gutter--foldable {
+            pointer-events: auto;
+        }
+
+        .heading-fold-marker {
+            font-size: 1rem;
+            line-height: 1;
+            opacity: 0.55;
+        }
+
+        .heading-fold-toggle {
+            box-sizing: border-box;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            padding: 0;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.72));
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+        }
+
+        .heading-fold-toggle svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .heading-fold-toggle:hover {
+            background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.16));
+            color: var(--vscode-foreground);
+        }
+
+        .heading-fold-heading--foldable:hover > .heading-fold-gutter .heading-fold-toggle,
+        .heading-fold-gutter--section-hover .heading-fold-toggle,
+        .heading-fold-gutter--foldable:hover .heading-fold-toggle,
+        .heading-fold-heading--collapsed > .heading-fold-gutter .heading-fold-toggle {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .heading-fold-heading--collapsed {
+            margin-bottom: 0.5em;
+        }
+
+        .heading-fold-heading--collapsed > .heading-fold-gutter .heading-fold-marker {
+            opacity: 0.75;
+        }
+
+        .heading-fold-hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 720px) {
+            .heading-fold-gutter {
+                left: -6px;
+                width: 46px;
+                gap: 2px;
+            }
+        }
+
+        /* 粗体、斜体 */
+        strong {
+            color: var(--vscode-editor-foreground);
+            font-weight: 700;
+        }
+
+        em {
+            color: var(--vscode-editor-foreground);
+        }
+
+        /* 行内代码 */
+        code {
+            background: var(
+                --vscode-textCodeBlock-background,
+                rgba(128, 128, 128, 0.15)
+            );
+            color: var(
+                --vscode-textPreformat-foreground,
+                var(--vscode-editor-foreground)
+            );
+            border-radius: 3px;
+            padding: 0.15em 0.4em;
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.9em;
+        }
+
+        /* 代码块 */
+        pre {
+            background: var(
+                --vscode-textCodeBlock-background,
+                rgba(128, 128, 128, 0.1)
+            );
+            border-radius: 6px;
+            padding: 1em;
+            overflow-x: auto;
+            margin: 0 0 1em;
+
+            code {
+                background: none;
+                padding: 0;
+                font-size: 0.9em;
+            }
+        }
+
+        /* 引用块 */
+        blockquote {
+            border-left: 3px solid var(--vscode-textBlockQuote-border, #007acc);
+            background: var(
+                --vscode-textBlockQuote-background,
+                rgba(0, 122, 204, 0.05)
+            );
+            margin: 0 0 1em;
+            padding: 0.5em 1em;
+            color: var(--vscode-editor-foreground);
+            opacity: 0.85;
+        }
+
+        /* 列表 */
+        ul,
+        ol {
+            padding-left: 1.8em;
+        }
+
+        li {
+            margin: 0.2em 0;
+        }
+
+        /* 有序列表多层级数字样式 */
+        ol {
+            list-style-type: decimal;
+
+            ol {
+                list-style-type: lower-alpha;
+
+                ol {
+                    list-style-type: lower-roman;
+
+                    ol {
+                        list-style-type: decimal;
+                    }
+                }
+            }
+        }
+
+        /* ── 任务列表（Milkdown v7 实际 DOM）───────────────────── */
+
+        /* 任务列表：减小 ul 左缩进，消除复选框左侧多余空间 */
+        ul:has(> li[data-item-type="task"]) {
+            padding-left: 4px;
+        }
+
+        /* 任务列表项：消除原始 bullet，用 position 定位伪元素 */
+        li[data-item-type="task"] {
+            list-style: none;
+            position: relative;
+            padding-left: 22px;
+            cursor: default;
+
+            &::marker {
+                content: "";
+            }
+
+            /* 伪元素模拟 checkbox（未勾选） */
+            &::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 0.2em;
+                width: 14px;
+                height: 14px;
+                border: 1.5px solid var(--vscode-checkbox-border, #6c6c6c);
+                border-radius: 2px;
+                background: var(--vscode-checkbox-background, transparent);
+                box-sizing: border-box;
+                cursor: pointer;
+            }
+
+            /* 已勾选状态：蓝色背景 */
+            &[data-checked="true"]::before {
+                background: var(--vscode-checkbox-selectBackground, #007acc);
+                border-color: var(--vscode-checkbox-selectBackground, #007acc);
+            }
+
+            /* 已勾选：纯 CSS 勾选标记（旋转 L 形边框） */
+            &[data-checked="true"]::after {
+                content: "";
+                position: absolute;
+                left: 3px;
+                top: calc(0.2em + 1px);
+                width: 5px;
+                height: 9px;
+                border-right: 2px solid #fff;
+                border-bottom: 2px solid #fff;
+                transform: rotate(45deg) translate(-1px, -2px);
+                transform-origin: center;
+                box-sizing: border-box;
+            }
+
+            /* 已勾选的文字加删除线（可选视觉提示） */
+            &[data-checked="true"] > p {
+                opacity: 0.6;
+                text-decoration: line-through;
+            }
+        }
+
+        /* 链接 */
+        a {
+            color: var(--vscode-textLink-foreground, #4ea6ea);
+            text-decoration: none;
+
+            &:hover {
+                text-decoration: underline;
+                color: var(--vscode-textLink-activeForeground, #4ea6ea);
+            }
+        }
+
+        /* 水平分割线 */
+        hr {
+            border: none;
+            border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+            margin: 1em 0;
+            cursor: pointer;
+            outline: 1px solid transparent;
+            outline-offset: 2px;
+
+            &.ProseMirror-selectednode {
+                border-top-color: var(--image-selection-color, rgba(52, 211, 153, 0.6));
+                outline-color: var(--image-selection-color, rgba(52, 211, 153, 0.6));
+                box-shadow: 0 0 0 1px var(--image-selection-color, rgba(52, 211, 153, 0.6));
+            }
+        }
+
+        /* 删除线 */
+        del {
+            opacity: 0.6;
+        }
+
+        /* 表格 */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 0 0 1em;
+            overflow-x: auto;
+            display: block;
+
+            th,
+            td {
+                border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+                padding: 6px 12px;
+                text-align: left;
+                position: relative; /* 供 .selectedCell::after 绝对定位 */
+                min-width: 60px;
+                overflow-wrap: anywhere; /* 连续长字符（URL、变量名等）自动换行，不撑宽列 */
+
+                /* 单元格内段落不留底部间距，并撑开行高确保空表格行高一致 */
+                > p {
+                    padding-bottom: 0;
+                    min-height: 1.2em;
+                }
+            }
+
+            th {
+                background: rgba(128, 128, 128, 0.08);
+                font-weight: 600;
+            }
+
+            tbody tr:nth-child(even) td {
+                background: var(
+                    --vscode-editor-lineHighlightBackground,
+                    rgba(128, 128, 128, 0.04)
+                );
+            }
+        }
+
+        /* 选中高亮 */
+        & ::selection {
+            background: var(
+                --vscode-editor-selectionBackground,
+                rgba(0, 122, 204, 0.3)
+            );
+        }
+
+        /* ─── 表格单元格范围选择（prosemirror-tables CellSelection）─── */
+        .selectedCell {
+            position: relative;
+            background: rgba(52, 211, 153, 0.15) !important;
+
+            &::after {
+                content: "";
+                position: absolute;
+                inset: -1px;
+                border: 2px solid rgba(52, 211, 153, 0.6);
+                pointer-events: none;
+                z-index: 1;
+            }
+        }
+
+        /* 列宽拖拽手柄 */
+        .column-resize-handle {
+            position: absolute;
+            right: -2px;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: var(--vscode-focusBorder, #007acc);
+            cursor: col-resize;
+            z-index: 20;
+        }
+
+        &.resize-cursor,
+        &.resize-cursor * {
+            cursor: col-resize !important;
+        }
+
+        /* 光标 */
+        .ProseMirror-focused {
+            outline: none;
+        }
+    }
 }
 
-.milkdown .editor {
-    outline: none;
-    background: transparent;
-    color: inherit;
-    white-space: pre-wrap; /* ProseMirror 要求 */
-    word-wrap: break-word;
-}
-
-/* 内联 HTML 渲染容器（DOMPurify 净化后只读显示） */
-.milkdown .editor .html-inline {
-    display: contents;
-}
-.milkdown .editor .html-inline [align="center"] {
-    text-align: center;
-}
-
-/* 段落：用 padding 替代 margin，确保点击区域包含视觉间距 */
-.milkdown .editor p {
-    margin: 0;
-    padding-bottom: 0.4em;
-}
-
-/* 表格单元格内段落不留底部间距 */
-.milkdown .editor td > p,
-.milkdown .editor th > p {
-    padding-bottom: 0;
-}
-
-/* 标题：用 padding 替代 margin，确保点击区域包含视觉间距 */
-.milkdown .editor h1,
-.milkdown .editor h2,
-.milkdown .editor h3,
-.milkdown .editor h4,
-.milkdown .editor h5,
-.milkdown .editor h6 {
+.heading-sticky-title {
+    position: fixed;
+    z-index: 1100;
+    display: block;
+    padding: 0.5em 0;
+    background: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);
     font-weight: 600;
     line-height: 1.3;
-    margin: 0;
-    margin-bottom: 0.25em;
-    padding: 1em 0 0.5em;
+    pointer-events: auto;
+    box-shadow: 0 1px 0 var(--vscode-panel-border, rgba(128, 128, 128, 0.28));
 }
 
-.milkdown .editor h1 {
-    font-size: 2em;
-    border-bottom: 1px solid
-        var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-    padding-bottom: 0.25em;
+.heading-sticky-title[hidden] {
+    display: none;
 }
 
-.milkdown .editor h2 {
-    font-size: 1.5em;
-    border-bottom: 1px solid
-        var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-    padding-bottom: 0.6em;
+.heading-sticky-gutter {
+    position: absolute;
+    left: -10px;
+    top: 0.5em;
+    transform: translateX(-100%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    width: 58px;
+    height: 1.3em;
+    color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.72));
+    line-height: 1;
+    user-select: none;
+    white-space: nowrap;
+    pointer-events: auto;
 }
 
-.milkdown .editor h3 {
-    font-size: 1.25em;
-}
-
-/* 粗体、斜体 */
-.milkdown .editor strong {
-    color: var(--vscode-editor-foreground);
-    font-weight: 700;
-}
-
-.milkdown .editor em {
-    color: var(--vscode-editor-foreground);
-}
-
-/* 行内代码 */
-.milkdown .editor code {
-    background: var(
-        --vscode-textCodeBlock-background,
-        rgba(128, 128, 128, 0.15)
-    );
-    color: var(
-        --vscode-textPreformat-foreground,
-        var(--vscode-editor-foreground)
-    );
-    border-radius: 3px;
-    padding: 0.15em 0.4em;
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 0.9em;
-}
-
-/* 代码块 */
-.milkdown .editor pre {
-    background: var(
-        --vscode-textCodeBlock-background,
-        rgba(128, 128, 128, 0.1)
-    );
-    border-radius: 6px;
-    padding: 1em;
-    overflow-x: auto;
-    margin: 0 0 1em;
-}
-
-.milkdown .editor pre code {
-    background: none;
-    padding: 0;
-    font-size: 0.9em;
-}
-
-/* 引用块 */
-.milkdown .editor blockquote {
-    border-left: 3px solid var(--vscode-textBlockQuote-border, #007acc);
-    background: var(
-        --vscode-textBlockQuote-background,
-        rgba(0, 122, 204, 0.05)
-    );
-    margin: 0 0 1em;
-    padding: 0.5em 1em;
-    color: var(--vscode-editor-foreground);
-    opacity: 0.85;
-}
-
-/* 列表 */
-.milkdown .editor ul,
-.milkdown .editor ol {
-    padding-left: 1.8em;
-    margin: 0 0 0.75em;
-}
-
-.milkdown .editor li {
-    margin: 0.2em 0;
-}
-
-/* 有序列表多层级数字样式 */
-.milkdown .editor ol {
-    list-style-type: decimal;
-}
-
-.milkdown .editor ol ol {
-    list-style-type: lower-alpha;
-}
-
-.milkdown .editor ol ol ol {
-    list-style-type: lower-roman;
-}
-
-.milkdown .editor ol ol ol ol {
-    list-style-type: decimal;
-}
-
-/* ── 任务列表（Milkdown v7 实际 DOM）───────────────────── */
-
-/* 任务列表：减小 ul 左缩进，消除复选框左侧多余空间 */
-.milkdown .editor ul:has(> li[data-item-type="task"]) {
-    padding-left: 4px;
-}
-
-/* 任务列表项：消除原始 bullet，用 position 定位伪元素 */
-.milkdown .editor li[data-item-type="task"] {
-    list-style: none;
-    position: relative;
-    padding-left: 22px;
-    cursor: default;
-}
-
-.milkdown .editor li[data-item-type="task"]::marker {
-    content: "";
-}
-
-/* 伪元素模拟 checkbox（未勾选） */
-.milkdown .editor li[data-item-type="task"]::before {
+.heading-sticky-gutter::before {
     content: "";
     position: absolute;
-    left: 0;
-    top: 0.2em;
-    width: 14px;
-    height: 14px;
-    border: 1.5px solid var(--vscode-checkbox-border, #6c6c6c);
-    border-radius: 2px;
-    background: var(--vscode-checkbox-background, transparent);
+    inset: -1em 0;
+    z-index: -1;
+    background: var(--vscode-editor-background);
+}
+
+.heading-sticky-toggle {
     box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.72));
     cursor: pointer;
 }
 
-/* 已勾选状态：蓝色背景 */
-.milkdown .editor li[data-item-type="task"][data-checked="true"]::before {
-    background: var(--vscode-checkbox-selectBackground, #007acc);
-    border-color: var(--vscode-checkbox-selectBackground, #007acc);
+.heading-sticky-toggle svg {
+    width: 14px;
+    height: 14px;
 }
 
-/* 已勾选：纯 CSS 勾选标记（旋转 L 形边框） */
-.milkdown .editor li[data-item-type="task"][data-checked="true"]::after {
-    content: "";
-    position: absolute;
-    left: 3px;
-    top: calc(0.2em + 1px);
-    width: 5px;
-    height: 9px;
-    border-right: 2px solid #fff;
-    border-bottom: 2px solid #fff;
-    transform: rotate(45deg) translate(-1px, -2px);
-    transform-origin: center;
-    box-sizing: border-box;
+.heading-sticky-toggle:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.16));
+    color: var(--vscode-foreground);
 }
 
-/* 已勾选的文字加删除线（可选视觉提示） */
-.milkdown .editor li[data-item-type="task"][data-checked="true"] > p {
-    opacity: 0.6;
-    text-decoration: line-through;
+.heading-sticky-marker {
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.75;
 }
 
-/* 链接 */
-.milkdown .editor a {
-    color: var(--vscode-textLink-foreground, #4ea6ea);
-    text-decoration: none;
+.heading-sticky-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.milkdown .editor a:hover {
-    text-decoration: underline;
-    color: var(--vscode-textLink-activeForeground, #4ea6ea);
-}
-
-/* 水平分割线 */
-.milkdown .editor hr {
-    border: none;
-    border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-    margin: 1.5em 0;
-}
-
-/* 删除线 */
-.milkdown .editor del {
-    opacity: 0.6;
-}
-
-/* 表格 */
-.milkdown .editor table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 0 0 1em;
-    overflow-x: auto;
-    display: block;
-}
-
-.milkdown .editor th,
-.milkdown .editor td {
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-    padding: 6px 12px;
-    text-align: left;
-    position: relative; /* 供 .selectedCell::after 绝对定位 */
-    min-width: 60px;
-    overflow-wrap: anywhere; /* 连续长字符（URL、变量名等）自动换行，不撑宽列 */
-}
-
-/* 空单元格内的段落撑开行高，确保空表格行高一致 */
-.milkdown .editor td > p,
-.milkdown .editor th > p {
-    min-height: 1.2em;
-}
-
-.milkdown .editor th {
-    background: rgba(128, 128, 128, 0.08);
-    font-weight: 600;
-}
-
-.milkdown .editor tbody tr:nth-child(even) td {
-    background: var(
-        --vscode-editor-lineHighlightBackground,
-        rgba(128, 128, 128, 0.04)
-    );
-}
-
-/* 选中高亮 */
-.milkdown .editor ::selection {
-    background: var(
-        --vscode-editor-selectionBackground,
-        rgba(0, 122, 204, 0.3)
-    );
-}
-
-/* ─── 表格单元格范围选择（prosemirror-tables CellSelection）─── */
-.milkdown .editor .selectedCell {
-    position: relative;
-    background: rgba(52, 211, 153, 0.15) !important;
-}
-
-.milkdown .editor .selectedCell::after {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    border: 2px solid rgba(52, 211, 153, 0.6);
-    pointer-events: none;
-    z-index: 1;
-}
-
-/* 列宽拖拽手柄 */
-.milkdown .editor .column-resize-handle {
-    position: absolute;
-    right: -2px;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: var(--vscode-focusBorder, #007acc);
-    cursor: col-resize;
-    z-index: 20;
-}
-
-.milkdown .editor.resize-cursor,
-.milkdown .editor.resize-cursor * {
-    cursor: col-resize !important;
-}
-
-/* 光标 */
-.milkdown .editor .ProseMirror-focused {
-    outline: none;
+@media (max-width: 720px) {
+    .heading-sticky-gutter {
+        left: -6px;
+        width: 46px;
+    }
 }
 
 /* ─── 顶部工具栏 ─── */
@@ -401,7 +635,7 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    z-index: 100;
+    z-index: 1200;
     display: flex;
     align-items: center;
     padding: 5px 48px;

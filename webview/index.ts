@@ -325,6 +325,17 @@ const topbarTb = topbar
       )
     : null;
 
+if (topbar) {
+    const updateTopbarHeight = () => {
+        document.documentElement.style.setProperty(
+            "--editor-topbar-height",
+            `${topbar.getBoundingClientRect().height || 40}px`,
+        );
+    };
+    updateTopbarHeight();
+    new ResizeObserver(updateTopbarHeight).observe(topbar);
+}
+
 // 链接 Hover 弹框 + 表格行列添加按钮（在 #editor 容器上监听）
 const editorContainer = document.getElementById("editor");
 if (editorContainer) {

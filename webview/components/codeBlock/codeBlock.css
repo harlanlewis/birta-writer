@@ -84,6 +84,7 @@
     padding: 4px 0;
     max-height: 200px;
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 /* 覆盖 .milkdown .editor ul { padding-left: 1.8em } 的高优先级规则 */
@@ -125,7 +126,8 @@
 }
 
 /* 复制按钮（SVG 图标） */
-.copy-btn {
+.copy-btn,
+.code-wrap-toggle-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -142,12 +144,25 @@
         background 0.1s,
         color 0.15s;
     flex-shrink: 0;
+    padding: 0;
 }
 
-.copy-btn:hover {
+.copy-btn:hover,
+.code-wrap-toggle-btn:hover {
     opacity: 1;
     background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
     border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+}
+
+.code-wrap-toggle-btn--active {
+    opacity: 1;
+    background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.25));
+    border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.4));
+}
+
+.code-wrap-toggle-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
 .copy-btn--done {
@@ -191,6 +206,7 @@
 .line-numbers-gutter span {
     display: block;
     line-height: 1.5;
+    box-sizing: border-box;
 }
 
 /* 更高特异性（覆盖 .milkdown .editor pre code），确保 padding:1em 和 flex:1 生效 */
@@ -202,6 +218,28 @@
     font-size: 0.9em;
     line-height: 1.5; /* 与 .line-numbers-gutter 保持一致，避免行号错位 */
     border-radius: 0;
+}
+
+body.code-block-word-wrap .milkdown .editor .code-block-wrapper:not(.code-block-wrapper--no-word-wrap) pre,
+.milkdown .editor .code-block-wrapper.code-block-wrapper--word-wrap pre {
+    overflow-x: hidden;
+}
+
+body.code-block-word-wrap .milkdown .editor .code-block-wrapper:not(.code-block-wrapper--no-word-wrap) pre code,
+.milkdown .editor .code-block-wrapper.code-block-wrapper--word-wrap pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapper--no-word-wrap pre {
+    overflow-x: auto;
+}
+
+body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapper--no-word-wrap pre code {
+    white-space: pre;
+    overflow-wrap: normal;
+    word-break: normal;
 }
 
 /* ─── Prism 语法高亮 Token 颜色 ─── */
@@ -615,6 +653,7 @@
 .code-lightbox-gutter span {
     display: block;
     line-height: 1.5;
+    box-sizing: border-box;
 }
 
 /* 代码区外层容器（flex: 1，相对定位，承载 pre 和 textarea） */
@@ -641,6 +680,24 @@
     tab-size: 4;
     overflow: auto;
     box-sizing: border-box;
+}
+
+body.code-block-word-wrap .mermaid-lightbox:not(.code-lightbox-no-word-wrap) .code-lightbox-pre,
+body.code-block-word-wrap .mermaid-lightbox:not(.code-lightbox-no-word-wrap) .code-lightbox-textarea,
+.mermaid-lightbox.code-lightbox-word-wrap .code-lightbox-pre,
+.mermaid-lightbox.code-lightbox-word-wrap .code-lightbox-textarea {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    overflow-x: hidden;
+}
+
+body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lightbox-pre,
+body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lightbox-textarea {
+    white-space: pre;
+    word-wrap: normal;
+    overflow-wrap: normal;
+    overflow-x: auto;
 }
 
 /* 高亮层：不响应事件，仅显示颜色 */

@@ -4,6 +4,9 @@ declare global {
             translations: Record<string, string>;
             isMac: boolean;
             debugMode?: boolean;
+            codeBlockAutoConvert?: boolean;
+            codeBlockWordWrap?: boolean;
+            tocAutoHideThreshold?: number;
         };
     }
 }

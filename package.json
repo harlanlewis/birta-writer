@@ -1,249 +1,315 @@
 {
-  "name": "md-wysiwyg-editor",
-  "displayName": "WYSIWYG Markdown Editor",
-  "description": "WYSIWYG Markdown editor with live table editing",
-  "version": "0.1.6",
-  "publisher": "chance-liu",
-  "engines": {
-    "vscode": "^1.80.0"
-  },
-  "packageManager": "pnpm@10.6.1",
-  "extensionKind": [
-    "ui"
-  ],
-  "icon": "images/icon.jpg",
-  "categories": [
-    "Formatters",
-    "Other"
-  ],
-  "keywords": [
-    "markdown",
-    "wysiwyg",
-    "editor",
-    "table",
-    "milkdown"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/git-xing/md-wysiwyg-editor.git"
-  },
-  "bugs": {
-    "url": "https://github.com/git-xing/md-wysiwyg-editor/issues"
-  },
-  "homepage": "https://github.com/git-xing/md-wysiwyg-editor#readme",
-  "activationEvents": [],
-  "main": "./dist/extension.js",
-  "l10n": "./l10n",
-  "contributes": {
-    "customEditors": [
-      {
-        "viewType": "markdownWysiwyg.editor",
-        "displayName": "WYSIWYG Markdown Editor",
-        "selector": [
-          {
-            "filenamePattern": "*.md"
-          },
-          {
-            "filenamePattern": "*.markdown"
-          }
-        ],
-        "priority": "option"
-      }
-    ],
-    "commands": [
-      {
-        "command": "markdownWysiwyg.switchToTextEditor",
-        "title": "%command.switchToTextEditor.title%",
-        "icon": "$(eye-closed)"
-      },
-      {
-        "command": "markdownWysiwyg.switchToPreview",
-        "title": "%command.switchToPreview.title%",
-        "icon": "$(eye)"
-      },
-      {
-        "command": "markdownWysiwyg.debugModeEnable",
-        "title": "%command.debugModeEnable.title%"
-      },
-      {
-        "command": "markdownWysiwyg.debugModeDisable",
-        "title": "%command.debugModeDisable.title%"
-      }
-    ],
-    "keybindings": [
-      {
-        "command": "markdownWysiwyg.switchToTextEditor",
-        "key": "ctrl+shift+m",
-        "mac": "cmd+shift+m",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.switchToPreview",
-        "key": "ctrl+shift+m",
-        "mac": "cmd+shift+m",
-        "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWysiwyg.editor'"
-      }
-    ],
-    "menus": {
-      "editor/title": [
-        {
-          "command": "markdownWysiwyg.switchToTextEditor",
-          "group": "navigation",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.switchToPreview",
-          "group": "navigation",
-          "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.debugModeEnable",
-          "group": "9_debug",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && !markdownWysiwyg.debugModeActive"
-        },
-        {
-          "command": "markdownWysiwyg.debugModeDisable",
-          "group": "9_debug",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && markdownWysiwyg.debugModeActive"
-        }
-      ]
+    "name": "md-wysiwyg-editor",
+    "displayName": "WYSIWYG Markdown Editor",
+    "description": "WYSIWYG Markdown editor with live table editing",
+    "version": "0.1.6",
+    "publisher": "chance-liu",
+    "engines": {
+        "vscode": "^1.80.0"
     },
-    "configuration": {
-      "title": "Markdown WYSIWYG Editor",
-      "properties": {
-        "markdownWysiwyg.autoSave": {
-          "type": "boolean",
-          "default": true,
-          "description": "%config.autoSave.description%"
+    "packageManager": "pnpm@10.6.1",
+    "extensionKind": [
+        "ui"
+    ],
+    "icon": "images/icon.jpg",
+    "categories": [
+        "Formatters",
+        "Other"
+    ],
+    "keywords": [
+        "markdown",
+        "wysiwyg",
+        "editor",
+        "table",
+        "milkdown"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/git-xing/md-wysiwyg-editor.git"
+    },
+    "bugs": {
+        "url": "https://github.com/git-xing/md-wysiwyg-editor/issues"
+    },
+    "homepage": "https://github.com/git-xing/md-wysiwyg-editor#readme",
+    "activationEvents": [],
+    "main": "./dist/extension.js",
+    "l10n": "./l10n",
+    "contributes": {
+        "customEditors": [
+            {
+                "viewType": "markdownWysiwyg.editor",
+                "displayName": "WYSIWYG Markdown Editor",
+                "selector": [
+                    {
+                        "filenamePattern": "*.md"
+                    },
+                    {
+                        "filenamePattern": "*.markdown"
+                    }
+                ],
+                "priority": "option"
+            }
+        ],
+        "commands": [
+            {
+                "command": "markdownWysiwyg.switchToTextEditor",
+                "title": "%command.switchToTextEditor.title%",
+                "icon": "$(eye-closed)"
+            },
+            {
+                "command": "markdownWysiwyg.switchToPreview",
+                "title": "%command.switchToPreview.title%",
+                "icon": "$(eye)"
+            },
+            {
+                "command": "markdownWysiwyg.debugModeEnable",
+                "title": "%command.debugModeEnable.title%"
+            },
+            {
+                "command": "markdownWysiwyg.debugModeDisable",
+                "title": "%command.debugModeDisable.title%"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "markdownWysiwyg.switchToTextEditor",
+                "key": "ctrl+shift+m",
+                "mac": "cmd+shift+m",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.switchToPreview",
+                "key": "ctrl+shift+m",
+                "mac": "cmd+shift+m",
+                "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWysiwyg.editor'"
+            }
+        ],
+        "menus": {
+            "editor/title": [
+                {
+                    "command": "markdownWysiwyg.switchToTextEditor",
+                    "group": "navigation",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.switchToPreview",
+                    "group": "navigation",
+                    "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.debugModeEnable",
+                    "group": "9_debug",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && !markdownWysiwyg.debugModeActive"
+                },
+                {
+                    "command": "markdownWysiwyg.debugModeDisable",
+                    "group": "9_debug",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && markdownWysiwyg.debugModeActive"
+                }
+            ]
         },
-        "markdownWysiwyg.autoSaveDelay": {
-          "type": "number",
-          "default": 1000,
-          "minimum": 100,
-          "maximum": 10000,
-          "description": "%config.autoSaveDelay.description%"
-        },
-        "markdownWysiwyg.codeBlockMaxHeight": {
-          "type": "number",
-          "default": 600,
-          "minimum": 100,
-          "description": "%config.codeBlockMaxHeight.description%"
-        },
-        "markdownWysiwyg.defaultMode": {
-          "type": "string",
-          "enum": [
-            "preview",
-            "markdown"
-          ],
-          "enumDescriptions": [
-            "%config.defaultMode.preview%",
-            "%config.defaultMode.markdown%"
-          ],
-          "default": "preview",
-          "description": "%config.defaultMode.description%"
-        },
-        "markdownWysiwyg.editorMaxWidth": {
-          "type": "number",
-          "default": 900,
-          "minimum": 400,
-          "description": "%config.editorMaxWidth.description%"
-        },
-        "markdownWysiwyg.fontFamily": {
-          "type": "string",
-          "default": "",
-          "description": "%config.fontFamily.description%"
-        },
-        "markdownWysiwyg.debugMode": {
-          "type": "boolean",
-          "default": false,
-          "description": "%config.debugMode.description%"
-        },
-        "markdownWysiwyg.imageStorage": {
-          "order": 10,
-          "type": "string",
-          "enum": [
-            "local",
-            "server"
-          ],
-          "enumDescriptions": [
-            "%config.imageStorage.local%",
-            "%config.imageStorage.server%"
-          ],
-          "default": "local",
-          "description": "%config.imageStorage.description%"
-        },
-        "markdownWysiwyg.imageLocalPath": {
-          "order": 11,
-          "type": "string",
-          "default": "",
-          "description": "%config.imageLocalPath.description%"
-        },
-        "markdownWysiwyg.imageServerUrl": {
-          "order": 12,
-          "type": "string",
-          "default": "",
-          "description": "%config.imageServerUrl.description%"
-        },
-        "markdownWysiwyg.imageServerFieldName": {
-          "order": 13,
-          "type": "string",
-          "default": "file",
-          "description": "%config.imageServerFieldName.description%"
-        },
-        "markdownWysiwyg.imageServerExtraParams": {
-          "order": 14,
-          "type": "string",
-          "default": "",
-          "description": "%config.imageServerExtraParams.description%"
-        },
-        "markdownWysiwyg.imageServerResponsePath": {
-          "order": 15,
-          "type": "string",
-          "default": "url",
-          "description": "%config.imageServerResponsePath.description%"
-        },
-        "markdownWysiwyg.imageSelectionColor": {
-          "order": 16,
-          "type": "string",
-          "default": "rgba(52, 211, 153, 0.6)",
-          "description": "%config.imageSelectionColor.description%"
+        "configuration": {
+            "title": "Markdown WYSIWYG Editor",
+            "properties": {
+                "markdownWysiwyg.autoSave": {
+                    "order": 2,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.autoSave.description%"
+                },
+                "markdownWysiwyg.autoSaveDelay": {
+                    "order": 3,
+                    "type": "number",
+                    "default": 1000,
+                    "minimum": 100,
+                    "maximum": 10000,
+                    "description": "%config.autoSaveDelay.description%"
+                },
+                "markdownWysiwyg.codeBlockMaxHeight": {
+                    "order": 8,
+                    "type": "number",
+                    "default": 600,
+                    "minimum": 100,
+                    "description": "%config.codeBlockMaxHeight.description%"
+                },
+                "markdownWysiwyg.codeBlockAutoConvert": {
+                    "order": 7,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.codeBlockAutoConvert.description%"
+                },
+                "markdownWysiwyg.codeBlockWordWrap": {
+                    "order": 9,
+                    "type": "string",
+                    "enum": [
+                        "inherit",
+                        "on",
+                        "off"
+                    ],
+                    "enumDescriptions": [
+                        "%config.codeBlockWordWrap.inherit%",
+                        "%config.codeBlockWordWrap.on%",
+                        "%config.codeBlockWordWrap.off%"
+                    ],
+                    "default": "inherit",
+                    "description": "%config.codeBlockWordWrap.description%"
+                },
+                "markdownWysiwyg.defaultMode": {
+                    "order": 1,
+                    "type": "string",
+                    "enum": [
+                        "preview",
+                        "markdown"
+                    ],
+                    "enumDescriptions": [
+                        "%config.defaultMode.preview%",
+                        "%config.defaultMode.markdown%"
+                    ],
+                    "default": "preview",
+                    "description": "%config.defaultMode.description%"
+                },
+                "markdownWysiwyg.editorMaxWidth": {
+                    "order": 4,
+                    "type": [
+                        "number",
+                        "string"
+                    ],
+                    "default": "auto",
+                    "minimum": 400,
+                    "description": "%config.editorMaxWidth.description%"
+                },
+                "markdownWysiwyg.tocContentGap": {
+                    "order": 5,
+                    "type": "number",
+                    "default": 100,
+                    "minimum": 16,
+                    "maximum": 240,
+                    "description": "%config.tocContentGap.description%"
+                },
+                "markdownWysiwyg.customCss": {
+                    "order": 12,
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "%config.customCss.description%"
+                },
+                "markdownWysiwyg.customJs": {
+                    "order": 13,
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "%config.customJs.description%"
+                },
+                "markdownWysiwyg.fontFamily": {
+                    "order": 6,
+                    "type": "string",
+                    "default": "",
+                    "description": "%config.fontFamily.description%"
+                },
+                "markdownWysiwyg.tocAutoHideThreshold": {
+                    "order": 11,
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 0,
+                    "maximum": 20,
+                    "description": "%config.tocAutoHideThreshold.description%"
+                },
+                "markdownWysiwyg.debugMode": {
+                    "order": 90,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.debugMode.description%"
+                },
+                "markdownWysiwyg.imageStorage": {
+                    "order": 100,
+                    "type": "string",
+                    "enum": [
+                        "local",
+                        "server"
+                    ],
+                    "enumDescriptions": [
+                        "%config.imageStorage.local%",
+                        "%config.imageStorage.server%"
+                    ],
+                    "default": "local",
+                    "description": "%config.imageStorage.description%"
+                },
+                "markdownWysiwyg.imageLocalPath": {
+                    "order": 101,
+                    "type": "string",
+                    "default": "",
+                    "description": "%config.imageLocalPath.description%"
+                },
+                "markdownWysiwyg.imageServerUrl": {
+                    "order": 102,
+                    "type": "string",
+                    "default": "",
+                    "description": "%config.imageServerUrl.description%"
+                },
+                "markdownWysiwyg.imageServerFieldName": {
+                    "order": 103,
+                    "type": "string",
+                    "default": "file",
+                    "description": "%config.imageServerFieldName.description%"
+                },
+                "markdownWysiwyg.imageServerExtraParams": {
+                    "order": 104,
+                    "type": "string",
+                    "default": "",
+                    "description": "%config.imageServerExtraParams.description%"
+                },
+                "markdownWysiwyg.imageServerResponsePath": {
+                    "order": 105,
+                    "type": "string",
+                    "default": "url",
+                    "description": "%config.imageServerResponsePath.description%"
+                },
+                "markdownWysiwyg.imageSelectionColor": {
+                    "order": 14,
+                    "type": "string",
+                    "default": "rgba(52, 211, 153, 0.6)",
+                    "description": "%config.imageSelectionColor.description%"
+                }
+            }
         }
-      }
+    },
+    "scripts": {
+        "vscode:prepublish": "node esbuild.mjs --production",
+        "build": "node esbuild.mjs",
+        "watch": "node esbuild.mjs --watch",
+        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/git-xing/md-wysiwyg-editor/blob/main --baseImagesUrl https://github.com/git-xing/md-wysiwyg-editor/raw/main",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
+    },
+    "devDependencies": {
+        "@types/dompurify": "^3.2.0",
+        "@types/jsdom": "^21.1.0",
+        "@types/node": "^18.0.0",
+        "@types/vscode": "^1.80.0",
+        "@vitest/coverage-v8": "^2.1.0",
+        "@vscode/vsce": "^2.32.0",
+        "esbuild": "^0.24.0",
+        "jsdom": "24.1.3",
+        "typescript": "^5.7.0",
+        "vitest": "^2.1.0"
+    },
+    "dependencies": {
+        "@milkdown/core": "^7.5.0",
+        "@milkdown/plugin-listener": "^7.5.0",
+        "@milkdown/plugin-prism": "^7.19.0",
+        "@milkdown/preset-commonmark": "^7.5.0",
+        "@milkdown/preset-gfm": "^7.5.0",
+        "@milkdown/prose": "^7.19.0",
+        "@milkdown/transformer": "^7.5.0",
+        "@milkdown/utils": "^7.19.0",
+        "dompurify": "^3.3.3",
+        "mermaid": "^11.0.0",
+        "prosemirror-tables": "^1.8.5",
+        "refractor": "^5.0.0"
     }
-  },
-  "scripts": {
-    "vscode:prepublish": "node esbuild.mjs --production",
-    "build": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch",
-    "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/git-xing/md-wysiwyg-editor/blob/main --baseImagesUrl https://github.com/git-xing/md-wysiwyg-editor/raw/main",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-  },
-  "devDependencies": {
-    "@types/dompurify": "^3.2.0",
-    "@types/jsdom": "^21.1.0",
-    "@types/node": "^18.0.0",
-    "@types/vscode": "^1.80.0",
-    "@vitest/coverage-v8": "^2.1.0",
-    "@vscode/vsce": "^2.32.0",
-    "esbuild": "^0.24.0",
-    "jsdom": "24.1.3",
-    "typescript": "^5.7.0",
-    "vitest": "^2.1.0"
-  },
-  "dependencies": {
-    "@milkdown/core": "^7.5.0",
-    "@milkdown/plugin-listener": "^7.5.0",
-    "@milkdown/plugin-prism": "^7.19.0",
-    "@milkdown/preset-commonmark": "^7.5.0",
-    "@milkdown/preset-gfm": "^7.5.0",
-    "@milkdown/prose": "^7.19.0",
-    "@milkdown/transformer": "^7.5.0",
-    "@milkdown/utils": "^7.19.0",
-    "dompurify": "^3.3.3",
-    "mermaid": "^11.0.0",
-    "prosemirror-tables": "^1.8.5",
-    "refractor": "^5.0.0"
-  }
 }

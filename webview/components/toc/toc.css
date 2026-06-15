@@ -9,7 +9,8 @@
         --vscode-sideBar-background,
         var(--vscode-editor-background)
     );
-    border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    border-width: 0 1px;
     z-index: 99;
     display: flex;
     flex-direction: column;
@@ -63,6 +64,13 @@
     background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
 }
 
+.toc-item--active,
+.toc-item--active:hover {
+    opacity: 1;
+    color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+    background: var(--vscode-list-activeSelectionBackground, rgba(0, 127, 212, 0.26));
+}
+
 .toc-item--h1 {
     font-weight: 600;
 }
@@ -91,7 +99,7 @@
 .toc-toggle-tab {
     position: fixed;
     /* left / top 由 JS 动态设置 */
-    width: 20px;
+    width: var(--toc-tab-width, 20px);
     height: 48px;
     background: var(
         --vscode-sideBar-background,
@@ -114,4 +122,8 @@
 
 .toc-toggle-tab:hover {
     background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+}
+
+body.toc-overlay-open .toc-toggle-tab {
+    display: none;
 }

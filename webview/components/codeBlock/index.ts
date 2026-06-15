@@ -11,47 +11,75 @@ import {
     IconChevronUp, IconChevronLeft, IconChevronRight,
     IconCode, IconEye,
     IconZoomIn, IconZoomOut, IconMaximize2, IconResetZoom,
-    IconAlertCircle, IconX,
+    IconAlertCircle, IconX, IconWrapText,
 } from "@/ui/icons";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import mermaid from "mermaid";
+import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
 import { highlight } from "@/highlighter";
 import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
 import { createButton } from "@/ui/dom";
 import './codeBlock.css';
 
-// ─── 语言列表 ───────────────────────────────────────────
-const LANGUAGES: [string, string][] = [
-    ["", t("Plain Text")],
-    ["bash", "Bash / Shell"],
-    ["c", "C"],
-    ["cpp", "C++"],
-    ["csharp", "C#"],
-    ["css", "CSS"],
-    ["go", "Go"],
-    ["html", "HTML"],
-    ["java", "Java"],
-    ["javascript", "JavaScript"],
-    ["json", "JSON"],
-    ["markdown", "Markdown"],
-    ["mermaid", "Mermaid"],
-    ["php", "PHP"],
-    ["python", "Python"],
-    ["ruby", "Ruby"],
-    ["rust", "Rust"],
-    ["sql", "SQL"],
-    ["swift", "Swift"],
-    ["typescript", "TypeScript"],
-    ["yaml", "YAML"],
-];
+const shouldAutoConvertCodeBlock = (): boolean =>
+    window.__i18n?.codeBlockAutoConvert ?? true;
+
+const shouldWordWrapCodeBlock = (): boolean =>
+    window.__i18n?.codeBlockWordWrap ?? false;
 
 function getLangLabel(val: string): string {
-    return (LANGUAGES.find(([v]) => v === val)?.[1] ?? val) || t("Plain Text");
+    const normalized = normalizeCodeLanguage(val);
+    const label = CODE_LANGUAGES.find(([v]) => v === normalized)?.[1] ?? val;
+    return label === "Plain Text" ? t("Plain Text") : label;
+}
+
+function isSameLanguage(a: string, b: string): boolean {
+    return normalizeCodeLanguage(a) === normalizeCodeLanguage(b);
 }
 
 // ─── 行号更新 ────────────────────────────────────────────
-function updateLineNumbers(gutter: HTMLElement, text: string): void {
+function getLineHeightPx(target: HTMLElement): number {
+    const style = getComputedStyle(target);
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    if (Number.isFinite(lineHeight)) {
+        return lineHeight;
+    }
+
+    const fontSize = Number.parseFloat(style.fontSize);
+    return Number.isFinite(fontSize) ? fontSize * 1.5 : 21;
+}
+
+function getWrapColumnCount(target: HTMLElement): number {
+    const style = getComputedStyle(target);
+    const paddingX =
+        Number.parseFloat(style.paddingLeft || "0") +
+        Number.parseFloat(style.paddingRight || "0");
+    const width = Math.max(1, target.clientWidth - paddingX);
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+        return 80;
+    }
+    ctx.font = style.font;
+    const charWidth = Math.max(1, ctx.measureText("M").width);
+    return Math.max(1, Math.floor(width / charWidth));
+}
+
+function getVisualLineCounts(target: HTMLElement, text: string, wordWrap: boolean): number[] | undefined {
+    if (!wordWrap || target.clientWidth <= 0) {
+        return undefined;
+    }
+
+    const columns = getWrapColumnCount(target);
+    return text.split("\n").map((line) => {
+        const expanded = line.replace(/\t/g, "    ");
+        return Math.max(1, Math.ceil(expanded.length / columns));
+    });
+}
+
+function updateLineNumbers(gutter: HTMLElement, text: string, visualLineCounts?: number[]): void {
     const lines = text.split("\n");
     const count = Math.max(1, lines.length);
     while (gutter.childElementCount < count) {
@@ -61,7 +89,13 @@ function updateLineNumbers(gutter: HTMLElement, text: string): void {
         gutter.removeChild(gutter.lastChild!);
     }
     Array.from(gutter.children).forEach((el, i) => {
-        (el as HTMLElement).textContent = String(i + 1);
+        const span = el as HTMLElement;
+        span.textContent = String(i + 1);
+        if (visualLineCounts) {
+            span.style.height = `${visualLineCounts[i] * getLineHeightPx(gutter)}px`;
+        } else {
+            span.style.height = "";
+        }
     });
 }
 
@@ -128,12 +162,41 @@ function createLangPicker(
     let isOpen = false;
     let activeIndex = -1;
 
+    function scrollListItemIntoView(item: HTMLElement): void {
+        const itemTop = item.offsetTop;
+        const itemBottom = itemTop + item.offsetHeight;
+        const visibleTop = listEl.scrollTop;
+        const visibleBottom = visibleTop + listEl.clientHeight;
+
+        if (itemTop < visibleTop) {
+            listEl.scrollTop = itemTop;
+        } else if (itemBottom > visibleBottom) {
+            listEl.scrollTop = itemBottom - listEl.clientHeight;
+        }
+    }
+
+    function setActiveIdx(idx: number): void {
+        const items = listEl.querySelectorAll<HTMLElement>(".lang-picker-item");
+        if (items.length === 0) {
+            activeIndex = -1;
+            return;
+        }
+
+        const nextIdx = Math.max(0, Math.min(idx, items.length - 1));
+        items.forEach((el, i) =>
+            el.classList.toggle("lang-picker-item--focused", i === nextIdx),
+        );
+        scrollListItemIntoView(items[nextIdx]);
+        activeIndex = nextIdx;
+    }
+
     function renderList(filter = ""): void {
-        const q = filter.toLowerCase();
-        const filtered = LANGUAGES.filter(
-            ([val, label]) =>
+        const q = filter.trim().toLowerCase();
+        const filtered = CODE_LANGUAGES.filter(
+            ([val, label, aliases]) =>
                 label.toLowerCase().includes(q) ||
-                val.toLowerCase().includes(q),
+                val.toLowerCase().includes(q) ||
+                (aliases?.some((alias) => alias.toLowerCase().includes(q)) ?? false),
         );
         listEl.innerHTML = "";
         activeIndex = -1;
@@ -141,25 +204,19 @@ function createLangPicker(
             const item = document.createElement("li");
             item.className = "lang-picker-item";
             item.dataset["value"] = val;
-            item.textContent = label;
-            if (val === currentLang) item.classList.add("lang-picker-item--active");
+            item.textContent = label === "Plain Text" ? t("Plain Text") : label;
+            if (isSameLanguage(val, currentLang)) item.classList.add("lang-picker-item--active");
             item.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 selectLang(val);
             });
             listEl.appendChild(item);
-            if (val === currentLang) activeIndex = i;
+            if (isSameLanguage(val, currentLang)) activeIndex = i;
         });
-    }
-
-    function setActiveIdx(idx: number): void {
-        const items = listEl.querySelectorAll<HTMLElement>(".lang-picker-item");
-        items.forEach((el, i) =>
-            el.classList.toggle("lang-picker-item--focused", i === idx),
-        );
-        if (items[idx]) items[idx].scrollIntoView({ block: "nearest" });
-        activeIndex = idx;
+        if (filtered.length > 0) {
+            setActiveIdx(activeIndex >= 0 ? activeIndex : 0);
+        }
     }
 
     function outsideClickHandler(e: MouseEvent): void {
@@ -309,6 +366,7 @@ export function createCodeBlockView(
     let lbActiveLightbox: HTMLElement | null = null;
     // 当前缩放百分比显示元素（overlay 中间）
     let zoomValueDisplay: HTMLButtonElement | null = null;
+    let isWordWrap = shouldWordWrapCodeBlock();
 
     function makeMermaidBtn(icon: string, tipText: string, extraClass = ""): HTMLButtonElement {
         return createButton({
@@ -331,6 +389,13 @@ export function createCodeBlockView(
     toggleBtn.innerHTML = IconEye;
     toggleBtn.style.display = isMermaid ? "inline-flex" : "none";
     const toggleTooltip = applyTooltip(toggleBtn, t("Preview Diagram"), { placement: "above" });
+
+    // 当前代码块自动换行开关（局部覆盖，不写入 Markdown）
+    const wordWrapBtn = document.createElement("button");
+    wordWrapBtn.className = "code-wrap-toggle-btn";
+    wordWrapBtn.tabIndex = -1;
+    wordWrapBtn.innerHTML = IconWrapText;
+    const wordWrapTooltip = applyTooltip(wordWrapBtn, t("Toggle Word Wrap"), { placement: "above" });
 
     // 全屏按钮（常驻）
     const fullscreenBtn = document.createElement("button");
@@ -373,17 +438,37 @@ export function createCodeBlockView(
         });
     });
 
-    // header: [picker][spacer][toggleBtn][fullscreenBtn][copyBtn]
+    function applyWordWrapState(): void {
+        wrapper.classList.toggle("code-block-wrapper--word-wrap", isWordWrap);
+        wrapper.classList.toggle("code-block-wrapper--no-word-wrap", !isWordWrap);
+        wordWrapBtn.classList.toggle("code-wrap-toggle-btn--active", isWordWrap);
+        wordWrapTooltip.setText(isWordWrap ? t("Disable Word Wrap") : t("Enable Word Wrap"));
+    }
+
+    wordWrapBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isWordWrap = !isWordWrap;
+        applyWordWrapState();
+        scheduleLineNumberRefresh();
+        hideTooltip();
+    });
+
+    applyWordWrapState();
+
+    // header: [picker][spacer][toggleBtn][wordWrapBtn][fullscreenBtn][copyBtn]
     header.appendChild(picker.el);
     header.appendChild(spacer);
     header.appendChild(toggleBtn);
+    header.appendChild(wordWrapBtn);
     header.appendChild(fullscreenBtn);
     header.appendChild(copyBtn);
 
     // ── 代码区 ────────────────────────────────────────────
     const pre = document.createElement("pre");
     const codeEl = document.createElement("code");
-    if (currentLang) codeEl.className = `language-${currentLang}`;
+    const currentClassLang = normalizeCodeLanguage(currentLang);
+    if (currentClassLang) codeEl.className = `language-${currentClassLang}`;
 
     const lineGutter = document.createElement("div");
     lineGutter.className = "line-numbers-gutter";
@@ -392,6 +477,24 @@ export function createCodeBlockView(
 
     pre.appendChild(lineGutter);
     pre.appendChild(codeEl);
+
+    let lineNumberRaf: number | null = null;
+    const refreshLineNumbers = (): void => {
+        updateLineNumbers(
+            lineGutter,
+            node.textContent,
+            getVisualLineCounts(codeEl, node.textContent, isWordWrap),
+        );
+    };
+    const scheduleLineNumberRefresh = (): void => {
+        if (lineNumberRaf !== null) {
+            cancelAnimationFrame(lineNumberRaf);
+        }
+        lineNumberRaf = requestAnimationFrame(() => {
+            lineNumberRaf = null;
+            refreshLineNumbers();
+        });
+    };
 
     // ── Mermaid 预览区域 ───────────────────────────────────
     const mermaidPreview = document.createElement("div");
@@ -506,21 +609,16 @@ export function createCodeBlockView(
         document.addEventListener("mouseup", onUp);
     });
 
-    codeEl.addEventListener("keydown", (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === "a") {
-            e.preventDefault(); e.stopPropagation();
-            const sel = window.getSelection();
-            const range = document.createRange();
-            range.selectNodeContents(codeEl);
-            sel?.removeAllRanges();
-            sel?.addRange(range);
-        }
-    });
-
     wrapper.appendChild(header);
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
     wrapper.appendChild(resizeHandle);
+    scheduleLineNumberRefresh();
+
+    const lineNumberResizeObserver = typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => scheduleLineNumberRefresh())
+        : null;
+    lineNumberResizeObserver?.observe(codeEl);
 
     // ── Transform 工具函数 ─────────────────────────────────
     function applyTransform(): void {
@@ -651,6 +749,7 @@ export function createCodeBlockView(
         toggleTooltip.setText(t("Edit Code"));
         pre.style.display = "none";
         mermaidPreview.style.display = "flex";
+        wordWrapBtn.style.display = "none";
     }
 
     // 退出预览模式（内部复用）
@@ -661,6 +760,7 @@ export function createCodeBlockView(
         toggleTooltip.setText(t("Preview Diagram"));
         pre.style.display = "";
         mermaidPreview.style.display = "none";
+        wordWrapBtn.style.display = "inline-flex";
     }
 
     // ── 切换代码/预览 ──────────────────────────────────────
@@ -675,7 +775,7 @@ export function createCodeBlockView(
     });
 
     // ── Mermaid 默认进入预览模式 ──────────────────────────
-    if (isMermaid) {
+    if (isMermaid && shouldAutoConvertCodeBlock()) {
         enterPreviewMode();
         setTimeout(() => renderMermaid(node.textContent), 0);
     }
@@ -751,6 +851,8 @@ export function createCodeBlockView(
         if (lbActiveLightbox) return;
         const overlay = document.createElement("div");
         overlay.className = "mermaid-lightbox code-editor-lightbox";
+        overlay.classList.toggle("code-lightbox-word-wrap", isWordWrap);
+        overlay.classList.toggle("code-lightbox-no-word-wrap", !isWordWrap);
 
         const lbHeader = document.createElement("div");
         lbHeader.className = "mermaid-lightbox-header";
@@ -783,7 +885,8 @@ export function createCodeBlockView(
         pre.className = "code-lightbox-pre";
         pre.setAttribute("aria-hidden", "true");
         const codeClone = document.createElement("code");
-        if (lang) codeClone.className = `language-${lang}`;
+        const classLang = normalizeCodeLanguage(lang);
+        if (classLang) codeClone.className = `language-${classLang}`;
         pre.appendChild(codeClone);
 
         const textarea = document.createElement("textarea");
@@ -806,18 +909,23 @@ export function createCodeBlockView(
 
         // ── 行号更新
         const updateGutter = (): void => {
-            const lines = textarea.value.split("\n");
-            const count = Math.max(1, lines.length);
-            while (gutter.childElementCount < count) gutter.appendChild(document.createElement("span"));
-            while (gutter.childElementCount > count) gutter.removeChild(gutter.lastChild!);
-            Array.from(gutter.children).forEach((el, i) => {
-                (el as HTMLElement).textContent = String(i + 1);
-            });
+            updateLineNumbers(
+                gutter,
+                textarea.value,
+                getVisualLineCounts(textarea, textarea.value, isWordWrap),
+            );
         };
         updateGutter();
+        const gutterResizeObserver = typeof ResizeObserver !== "undefined"
+            ? new ResizeObserver(updateGutter)
+            : null;
+        gutterResizeObserver?.observe(textarea);
 
         // 自动聚焦
-        requestAnimationFrame(() => textarea.focus());
+        requestAnimationFrame(() => {
+            textarea.focus();
+            updateGutter();
+        });
 
         // ── 实时高亮 + 行号 + 滚动同步
         const updateHighlight = (): void => {
@@ -874,6 +982,7 @@ export function createCodeBlockView(
                 }
             }
             unlockBodyScroll();
+            gutterResizeObserver?.disconnect();
             animateCloseLightbox(overlay, () => {
                 lbActiveLightbox = null;
                 removeKeyListener();
@@ -895,6 +1004,8 @@ export function createCodeBlockView(
         // ── Overlay ───────────────────────────────────────────
         const overlay = document.createElement("div");
         overlay.className = "mermaid-lightbox";
+        overlay.classList.toggle("code-lightbox-word-wrap", isWordWrap);
+        overlay.classList.toggle("code-lightbox-no-word-wrap", !isWordWrap);
 
         // ── Header ────────────────────────────────────────────
         const lbHeader = document.createElement("div");
@@ -974,15 +1085,17 @@ export function createCodeBlockView(
 
         // ── 行号 ──────────────────────────────────────────────
         const updateGutter = (): void => {
-            const lines = textarea.value.split("\n");
-            const count = Math.max(1, lines.length);
-            while (gutter.childElementCount < count) gutter.appendChild(document.createElement("span"));
-            while (gutter.childElementCount > count) gutter.removeChild(gutter.lastChild!);
-            Array.from(gutter.children).forEach((el, i) => {
-                (el as HTMLElement).textContent = String(i + 1);
-            });
+            updateLineNumbers(
+                gutter,
+                textarea.value,
+                getVisualLineCounts(textarea, textarea.value, isWordWrap),
+            );
         };
         updateGutter();
+        const gutterResizeObserver = typeof ResizeObserver !== "undefined"
+            ? new ResizeObserver(updateGutter)
+            : null;
+        gutterResizeObserver?.observe(textarea);
 
         // ── 实时高亮 + 滚动同步 ──────────────────────────────
         const updateHighlight = (): void => {
@@ -1142,6 +1255,7 @@ export function createCodeBlockView(
                 }
             }
             unlockBodyScroll();
+            gutterResizeObserver?.disconnect();
             animateCloseLightbox(overlay, () => {
                 lbActiveLightbox = null;
                 removeKeyListener();
@@ -1163,15 +1277,17 @@ export function createCodeBlockView(
             isMermaid = newLang === "mermaid";
 
             picker.update(newLang);
-            codeEl.className = newLang ? `language-${newLang}` : "";
+            const classLang = normalizeCodeLanguage(newLang);
+            codeEl.className = classLang ? `language-${classLang}` : "";
             node = updatedNode;
-            updateLineNumbers(lineGutter, updatedNode.textContent);
+            scheduleLineNumberRefresh();
 
             if (!wasM && isMermaid) {
                 toggleBtn.style.display = "inline-flex";
-                // 切换到 mermaid 语言时默认进入预览模式
-                enterPreviewMode();
-                setTimeout(() => renderMermaid(updatedNode.textContent), 0);
+                if (shouldAutoConvertCodeBlock()) {
+                    enterPreviewMode();
+                    setTimeout(() => renderMermaid(updatedNode.textContent), 0);
+                }
             }
             if (wasM && !isMermaid) {
                 toggleBtn.style.display = "none";
@@ -1201,6 +1317,8 @@ export function createCodeBlockView(
             picker.destroy();
             if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
             if (renderTimer) clearTimeout(renderTimer);
+            if (lineNumberRaf !== null) cancelAnimationFrame(lineNumberRaf);
+            lineNumberResizeObserver?.disconnect();
             mermaidPreview.removeEventListener("wheel", onPreviewWheel);
             if (lbActiveLightbox && document.body.contains(lbActiveLightbox)) {
                 document.body.removeChild(lbActiveLightbox);
