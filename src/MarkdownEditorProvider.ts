@@ -288,6 +288,25 @@ export class MarkdownEditorProvider
                             this._scheduleAutoSaveOrMarkDirty(document);
                         }
                         break;
+                    case "frontmatterUpdate": {
+                        // WebView 侧编辑了 frontmatter 面板，同步到 Extension 并触发保存
+                        const oldFm = this._frontmatterMap.get(uriKey) ?? "";
+                        const newFm = message.frontmatter;
+                        if (oldFm === newFm) { break; }
+                        this._frontmatterMap.set(uriKey, newFm);
+                        // 从当前文档内容中提取 body（去掉旧 frontmatter），拼接新 frontmatter
+                        const currentText = document.getText();
+                        const { body } = extractFrontmatter(currentText);
+                        const fullContent = newFm + body;
+                        if (fullContent === currentText) { break; }
+                        document.update(fullContent);
+                        if (!this._pinnedDocuments.has(uriKey)) {
+                            this._pinnedDocuments.add(uriKey);
+                            vscode.commands.executeCommand('workbench.action.keepEditor');
+                        }
+                        this._scheduleAutoSaveOrMarkDirty(document);
+                        break;
+                    }
                     case "openUrl":
                         if (message.url) {
                             vscode.env.openExternal(vscode.Uri.parse(message.url));

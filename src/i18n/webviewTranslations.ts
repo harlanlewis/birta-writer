@@ -47,6 +47,7 @@ export const ZH_CN_WEBVIEW: Record<string, string> = {
     'Enable Word Wrap': '开启自动换行',
     'Disable Word Wrap': '关闭自动换行',
     'Drag to resize': '拖拽调整高度',
+    'Add field': '添加字段',
     'Remove Link': '移除链接',
     'Settings': '设置',
     'Upload Image': '上传图片',

@@ -45,6 +45,18 @@ body {
         border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
         vertical-align: top;
         line-height: 1.5;
+        outline: none;
+        word-break: break-word;
+        white-space: pre-wrap;
+        min-width: 30px;
+
+        /* 空单元格占位符 */
+        &:empty::before {
+            content: attr(data-placeholder);
+            color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+            opacity: 0.5;
+            pointer-events: none;
+        }
     }
 
     tr:last-child td {
@@ -53,16 +65,83 @@ body {
 
     .fm-key {
         white-space: nowrap;
+        width: 1%;
+        padding-right: 16px;
         color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-descriptionForeground));
         font-family: var(--vscode-editor-font-family, monospace);
         font-weight: bold;
-        width: 1%;
-        padding-right: 16px;
     }
 
     .fm-val {
         color: var(--vscode-editor-foreground);
-        word-break: break-word;
+    }
+
+    .fm-action {
+        width: 1%;
+        padding: 4px 4px;
+        text-align: center;
+        vertical-align: middle;
+    }
+}
+
+/* 行删除按钮 */
+.fm-delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s, color 0.1s, background 0.1s;
+
+    svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    &:hover {
+        color: var(--vscode-errorForeground, #f44747);
+        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+    }
+}
+
+/* hover 行时显示删除按钮 */
+.frontmatter-table tr:hover .fm-delete-btn {
+    opacity: 1;
+}
+
+/* 底部添加行 */
+.fm-add-row {
+    margin-top: 4px;
+}
+
+.fm-add-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: color 0.1s, border-color 0.1s, background 0.1s;
+
+    svg {
+        width: 13px;
+        height: 13px;
+    }
+
+    &:hover {
+        color: var(--vscode-editor-foreground);
+        border-color: var(--vscode-focusBorder, #007acc);
+        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
     }
 }
 

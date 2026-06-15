@@ -35,7 +35,8 @@ export type ToExtensionMessage =
     | { type: "getProjectImages"; id: string }
     | { type: "renameImage"; id: string; webviewUri: string; newBasename: string }
     | { type: "getPathSuggestions"; id: string; query: string }
-    | { type: "resolveImagePath"; id: string; relPath: string };
+    | { type: "resolveImagePath"; id: string; relPath: string }
+    | { type: "frontmatterUpdate"; frontmatter: string };
 
 /**
  * Extension → WebView 方向的消息。

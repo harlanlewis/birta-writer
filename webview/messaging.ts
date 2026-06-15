@@ -75,6 +75,10 @@ export function notifyRenameImage(
     vscode.postMessage({ type: "renameImage", id, webviewUri, newBasename });
 }
 
+export function notifyFrontmatterUpdate(frontmatter: string): void {
+    vscode.postMessage({ type: "frontmatterUpdate", frontmatter });
+}
+
 export function onMessage(handler: (msg: IncomingMessage) => void): void {
     window.addEventListener("message", (event: MessageEvent) => {
         handler(event.data as IncomingMessage);
