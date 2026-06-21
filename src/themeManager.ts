@@ -13,6 +13,18 @@ export interface ThemeColors {
     [key: string]: string;
 }
 
+/** 自定义主题接口 */
+export interface CustomTheme {
+    name: string;
+    colors: Record<string, string>;
+}
+
+/** 获取用户自定义主题 */
+export function getCustomThemes(): CustomTheme[] {
+    const config = vscode.workspace.getConfiguration("markdownWysiwyg");
+    return config.get<CustomTheme[]>("customThemes", []);
+}
+
 // 解析颜色字符串为 RGB 值
 function parseColor(color: string): { r: number; g: number; b: number; a: number } | null {
     if (!color) return null;

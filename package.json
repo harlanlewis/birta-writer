@@ -303,6 +303,29 @@
                     "type": "string",
                     "default": "auto",
                     "description": "%config.colorTheme.description%"
+                },
+                "markdownWysiwyg.customThemes": {
+                    "order": 16,
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Theme display name"
+                            },
+                            "colors": {
+                                "type": "object",
+                                "description": "Theme color definitions (VS Code color IDs as keys)",
+                                "additionalProperties": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "required": ["name", "colors"]
+                    },
+                    "default": [],
+                    "description": "%config.customThemes.description%"
                 }
             }
         }

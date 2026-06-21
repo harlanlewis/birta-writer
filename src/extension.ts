@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
-import { getAllThemes, getThemeColors, type ThemeInfo } from "./themeManager";
+import { getAllThemes, getThemeColors, getCustomThemes, type ThemeInfo } from "./themeManager";
 import type { TableWrapMode } from "../shared/messages";
 
 /**
@@ -196,6 +196,7 @@ export function activate(context: vscode.ExtensionContext) {
             "markdownWysiwyg.selectTheme",
             async () => {
                 const themes = getAllThemes();
+                const customThemes = getCustomThemes();
                 const currentTheme = vscode.workspace
                     .getConfiguration("markdownWysiwyg")
                     .get<string>("colorTheme", "auto");
@@ -210,11 +211,19 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const items: (vscode.QuickPickItem & { value: string })[] = [
                     { label: "$(color-mode) Auto", description: "Follow VS Code Theme", value: "auto" },
+                    // 自定义主题
+                    ...customThemes.map(t => ({
+                        label: `$(paintbrush) ${t.name}`,
+                        description: "Custom",
+                        value: `custom:${t.name}`,
+                    })),
+                    // 深色主题
                     ...darkThemes.map(t => ({
                         label: t.label,
                         description: "Dark",
                         value: t.id,
                     })),
+                    // 浅色主题
                     ...lightThemes.map(t => ({
                         label: t.label,
                         description: "Light",

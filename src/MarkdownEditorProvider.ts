@@ -7,7 +7,7 @@ import { ZH_CN_WEBVIEW } from "./i18n/webviewTranslations";
 import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
-import { getAllThemes, getThemeColors, getAutoThemeColors } from "./themeManager";
+import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode } from "../shared/messages";
 
 
@@ -161,6 +161,22 @@ export class MarkdownEditorProvider
     }
 
     private async _getThemeColors(themeId: string): Promise<Record<string, string>> {
+        // 检查是否是自定义主题（格式：custom:主题名称）
+        if (themeId.startsWith("custom:")) {
+            const customThemeName = themeId.slice(7);
+            const customThemes = getCustomThemes();
+            const customTheme = customThemes.find(t => t.name === customThemeName);
+            if (customTheme) {
+                // 转换自定义主题颜色格式
+                const colors: Record<string, string> = {};
+                for (const [key, value] of Object.entries(customTheme.colors)) {
+                    colors[`--vscode-${key.replace(/\./g, "-")}`] = value;
+                }
+                return colors;
+            }
+        }
+
+        // 原有逻辑：查找 VSCode 内置主题
         let currentThemeLabel: string | undefined;
         if (themeId === "auto") {
             const config = vscode.workspace.getConfiguration();
