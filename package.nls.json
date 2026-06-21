@@ -29,5 +29,8 @@
   "config.imageServerFieldName.description": "Form field name for the image file in the multipart upload request. Default: file.",
   "config.imageServerExtraParams.description": "Extra parameters to include in the upload request body, as a JSON object string. Example: {\"token\":\"xxx\"}",
   "config.imageServerResponsePath.description": "Dot-notation path to extract the image URL from the upload response JSON. Example: data.url",
-  "config.imageSelectionColor.description": "Border color when an image is selected in the editor (CSS color value). Default matches the table cell selection color."
+  "config.imageSelectionColor.description": "Border color when an image is selected in the editor (CSS color value). Default matches the table cell selection color.",
+  "config.colorTheme.description": "Color theme for the Markdown editor. 'auto' follows VS Code's current theme. Set a theme ID to override (use the 'Select Color Theme' command to browse available themes).",
+  "command.selectTheme.title": "Select Color Theme",
+  "command.showCurrentTheme.title": "Show Current Theme"
 }

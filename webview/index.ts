@@ -49,6 +49,8 @@ import { editorViewCtx } from "@milkdown/core";
 
 let currentEditor: Editor | null = null;
 let currentLineMap: number[] = [];
+// 记录我们自己设置过的主题 CSS 变量（用于清除时区分 VSCode 自动注入的变量）
+const _themeOverrides = new Set<string>();
 export function getLineMap(): number[] {
     return currentLineMap;
 }
@@ -977,5 +979,21 @@ onMessage(async (msg) => {
         dispatchImgPathSuggestions(msg.id, msg.items);
     } else if (msg.type === "imagePathResolved") {
         dispatchImagePathResolved(msg.id, msg.webviewUri);
+    } else if (msg.type === "setTheme") {
+        const root = document.documentElement;
+        // 清除我们之前设置的自定义属性
+        for (const prop of _themeOverrides) {
+            root.style.removeProperty(prop);
+        }
+        _themeOverrides.clear();
+        // 应用新的颜色
+        for (const [key, value] of Object.entries(msg.colors)) {
+            if (value) {
+                root.style.setProperty(key, value);
+                _themeOverrides.add(key);
+            }
+        }
+        // 触发主题切换事件
+        window.dispatchEvent(new CustomEvent('theme-changed'));
     }
 });

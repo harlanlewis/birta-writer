@@ -7,6 +7,7 @@ import { ZH_CN_WEBVIEW } from "./i18n/webviewTranslations";
 import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
+import { getAllThemes, getThemeColors, getAutoThemeColors } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage } from "../shared/messages";
 
 
@@ -141,6 +142,42 @@ export class MarkdownEditorProvider
         }
     }
 
+    public async applyThemeToAll(): Promise<void> {
+        const themeId = vscode.workspace
+            .getConfiguration("markdownWysiwyg")
+            .get<string>("colorTheme", "auto");
+
+        const colors = await this._getThemeColors(themeId);
+        this.postToAll({ type: "setTheme", colors });
+    }
+
+    private async _applyThemeToPanel(panel: vscode.WebviewPanel): Promise<void> {
+        const themeId = vscode.workspace
+            .getConfiguration("markdownWysiwyg")
+            .get<string>("colorTheme", "auto");
+
+        const colors = await this._getThemeColors(themeId);
+        panel.webview.postMessage({ type: "setTheme", colors });
+    }
+
+    private async _getThemeColors(themeId: string): Promise<Record<string, string>> {
+        let currentThemeLabel: string | undefined;
+        if (themeId === "auto") {
+            const config = vscode.workspace.getConfiguration();
+            currentThemeLabel = config.get<string>(
+                "workbench.colorTheme",
+            );
+        }
+
+        const themes = getAllThemes();
+        const theme = themes.find((t) => t.id === themeId || currentThemeLabel === t.label);
+        if (theme) {
+            return await getThemeColors(theme.path);
+        }
+
+        return getAutoThemeColors();
+    }
+
     public static register(
         context: vscode.ExtensionContext,
         claudeTerminals: Set<vscode.Terminal>,
@@ -271,6 +308,8 @@ export class MarkdownEditorProvider
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
+                        // 应用主题
+                        this._applyThemeToPanel(webviewPanel);
                         break;
                     }
                     case "update":
@@ -314,6 +353,24 @@ export class MarkdownEditorProvider
                         break;
                     case "openFile": {
                         if (!message.path) break;
+
+                        // 如果当前 tab 是预览状态（斜体），先固定当前文件
+                        let currentIsPreview = false;
+                        for (const group of vscode.window.tabGroups.all) {
+                            for (const tab of group.tabs) {
+                                if (
+                                    tab.input instanceof vscode.TabInputCustom &&
+                                    (tab.input as vscode.TabInputCustom).uri.toString() === document.uri.toString()
+                                ) {
+                                    currentIsPreview = tab.isPreview;
+                                    break;
+                                }
+                            }
+                        }
+                        if (currentIsPreview) {
+                            this._pinnedDocuments.add(uriKey);
+                            vscode.commands.executeCommand('workbench.action.keepEditor');
+                        }
 
                         // 分离路径和行号 fragment（如 ./file.md#27-30）
                         const hashIdx = message.path.indexOf("#");

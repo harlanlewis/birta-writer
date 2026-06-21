@@ -101,21 +101,50 @@ function updateLineNumbers(gutter: HTMLElement, text: string, visualLineCounts?:
 
 // ─── Mermaid 模块级初始化 ────────────────────────────────
 let mermaidInitialized = false;
+let lastMermaidTheme = "";
 function ensureMermaid(): void {
-    if (mermaidInitialized) return;
-    mermaidInitialized = true;
     const bg = getComputedStyle(document.documentElement)
         .getPropertyValue("--vscode-editor-background")
         .trim();
     const isDark = !bg.includes("255") && !bg.includes("fff") && !bg.includes("FFF");
+    const currentTheme = isDark ? "dark" : "default";
+    
+    // 如果主题没变且已初始化，直接返回
+    if (mermaidInitialized && lastMermaidTheme === currentTheme) return;
+    
+    mermaidInitialized = true;
+    lastMermaidTheme = currentTheme;
     mermaid.initialize({
         startOnLoad: false,
-        theme: isDark ? "dark" : "default",
+        theme: currentTheme,
         securityLevel: "loose",
         // 禁用 Mermaid 为 SVG 设置 max-width:100%，避免与我们写回的固定 width/height 属性冲突
         flowchart: { useMaxWidth: false },
         sequence: { useMaxWidth: false },
         gantt: { useMaxWidth: false },
+    });
+}
+
+// ─── Mermaid 实例注册表（用于主题切换时重新渲染）──────────
+type MermaidInstance = {
+    isMermaid: boolean;
+    isPreviewMode: boolean;
+    lastRenderedCode: string;
+    renderMermaid: (code: string) => Promise<void>;
+};
+const mermaidInstances = new Set<MermaidInstance>();
+
+// 监听主题切换事件，重新渲染所有 Mermaid 图表
+if (typeof window !== 'undefined') {
+    window.addEventListener('theme-changed', () => {
+        // 强制重新初始化 Mermaid（主题可能已变化）
+        mermaidInitialized = false;
+        // 重新渲染所有可见的 Mermaid 图表
+        for (const instance of mermaidInstances) {
+            if (instance.isMermaid && instance.isPreviewMode && instance.lastRenderedCode) {
+                instance.renderMermaid(instance.lastRenderedCode);
+            }
+        }
     });
 }
 
@@ -741,6 +770,15 @@ export function createCodeBlockView(
         }
     }
 
+    // 注册 Mermaid 实例（用于主题切换时重新渲染）
+    const mermaidInstance: MermaidInstance = {
+        get isMermaid() { return isMermaid; },
+        get isPreviewMode() { return isPreviewMode; },
+        get lastRenderedCode() { return lastRenderedCode; },
+        renderMermaid,
+    };
+    mermaidInstances.add(mermaidInstance);
+
     // 进入预览模式（内部复用）
     function enterPreviewMode(): void {
         isPreviewMode = true;
@@ -1314,6 +1352,7 @@ export function createCodeBlockView(
         },
 
         destroy(): void {
+            mermaidInstances.delete(mermaidInstance);
             picker.destroy();
             if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
             if (renderTimer) clearTimeout(renderTimer);

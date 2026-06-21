@@ -68,6 +68,14 @@
             {
                 "command": "markdownWysiwyg.debugModeDisable",
                 "title": "%command.debugModeDisable.title%"
+            },
+            {
+                "command": "markdownWysiwyg.selectTheme",
+                "title": "%command.selectTheme.title%"
+            },
+            {
+                "command": "markdownWysiwyg.showCurrentTheme",
+                "title": "%command.showCurrentTheme.title%"
             }
         ],
         "keybindings": [
@@ -273,6 +281,12 @@
                     "type": "string",
                     "default": "rgba(52, 211, 153, 0.6)",
                     "description": "%config.imageSelectionColor.description%"
+                },
+                "markdownWysiwyg.colorTheme": {
+                    "order": 15,
+                    "type": "string",
+                    "default": "auto",
+                    "description": "%config.colorTheme.description%"
                 }
             }
         }

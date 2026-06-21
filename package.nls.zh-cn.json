@@ -29,5 +29,8 @@
   "config.imageServerFieldName.description": "上传请求中图片文件的字段名，默认为 file。",
   "config.imageServerExtraParams.description": "上传请求中附加的参数，JSON 对象字符串格式。示例：{\"token\":\"xxx\"}",
   "config.imageServerResponsePath.description": "从上传响应 JSON 中提取图片 URL 的点分路径。示例：data.url",
-  "config.imageSelectionColor.description": "编辑器中选中图片时的边框颜色（CSS 颜色值）。默认与表格单元格选中颜色保持一致。"
+  "config.imageSelectionColor.description": "编辑器中选中图片时的边框颜色（CSS 颜色值）。默认与表格单元格选中颜色保持一致。",
+  "config.colorTheme.description": "Markdown 编辑器的颜色主题。'auto' 跟随 VSCode 当前主题，也可设置为特定主题 ID（使用「选择颜色主题」命令浏览可用主题）。",
+  "command.selectTheme.title": "选择颜色主题",
+  "command.showCurrentTheme.title": "显示当前主题"
 }
