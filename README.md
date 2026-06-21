@@ -43,6 +43,13 @@ A VSCode WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdow
 - Click an image to select it; click again to open a lightbox preview
 - Toolbar for editing alt text, renaming the file, or deleting the image
 
+### Custom Themes
+
+- Support for custom color themes via `markdownWysiwyg.customThemes` configuration
+- Define themes in `.vscode/settings.json` with custom name and VS Code color IDs
+- Select custom themes from the Command Palette: "Select Color Theme"
+- See [Custom Theme Configuration](docs/en/custom-themes.md) for details
+
 ### Table of Contents (TOC)
 
 - Auto-generated from document headings
@@ -105,6 +112,9 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | `markdownWysiwyg.fontFamily`         | string  | `""`        | Editor font family; leave empty to inherit VS Code editor font. Example: `Georgia, serif` |
 | `markdownWysiwyg.imageStorage`       | string  | `"local"`   | Image storage mode: `local` (save to disk) or `server` (upload to custom URL)             |
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
+| `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | Color theme: `auto` follows VS Code, or set a theme ID                                   |
+| `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
+| `markdownWysiwyg.customThemes`       | array   | `[]`        | Custom color themes array. See [Custom Theme Configuration](docs/en/custom-themes.md)    |
 
 ***
 

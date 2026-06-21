@@ -43,6 +43,13 @@
 - 点击图片选中，再次点击放大到 lightbox 预览
 - 工具栏支持编辑 alt 文本、重命名文件、删除图片
 
+### 自定义主题
+
+- 支持通过 `markdownWysiwyg.customThemes` 配置项自定义主题颜色
+- 在 `.vscode/settings.json` 中定义自定义主题名称和 VS Code 颜色 ID
+- 通过命令面板选择自定义主题："选择颜色主题"
+- 详见 [自定义主题配置](docs/custom-themes.md)
+
 ### 目录（TOC）
 
 - 自动从文档标题生成目录面板
@@ -105,6 +112,9 @@
 | `markdownWysiwyg.fontFamily`         | string  | `""`        | 编辑器字体，留空继承 VSCode 编辑器字体，示例：`Georgia, serif`          |
 | `markdownWysiwyg.imageStorage`       | string  | `"local"`   | 图片存储模式：`local`（本地保存）或 `server`（上传至自定义 URL）           |
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | 本地图片存储路径（相对于 workspace 根目录）                          |
+| `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | 颜色主题：`auto` 跟随 VSCode，或设置为特定主题 ID                    |
+| `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | 表格单元格文本换行：`normal`、`aggressive` 或 `none`                   |
+| `markdownWysiwyg.customThemes`       | array   | `[]`        | 自定义颜色主题数组。详见 [自定义主题配置](docs/custom-themes.md)          |
 
 ***
 
