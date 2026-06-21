@@ -2,6 +2,13 @@ import './toc.css';
 import type { EditorView } from "@milkdown/prose/view";
 import { applyTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
+import type { EventManager } from "@/eventManager";
+import {
+    getTopbarBottom,
+    getAllHeadings,
+    findHeadingPos,
+    findActiveHeading,
+} from "@/utils/headingUtils";
 
 interface HeadingEntry {
     level: number;
@@ -10,8 +17,12 @@ interface HeadingEntry {
 }
 
 const TOC_WIDTH = 220;
+const DOCKED_MIN_CONTENT_WIDTH = 720;
+const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
+const tocAutoHideThreshold = window.__i18n?.tocAutoHideThreshold ?? 3;
+type TocMode = "docked" | "overlay";
 
-export function initToc(getEditorView: () => EditorView | null): {
+export function initToc(eventManager: EventManager, getEditorView: () => EditorView | null): {
     panel: HTMLElement;
     toggle: () => void;
     refresh: () => void;
@@ -35,14 +46,62 @@ export function initToc(getEditorView: () => EditorView | null): {
     tabEl.tabIndex = -1;
     document.body.appendChild(tabEl);
 
+    let tocMode: TocMode = "overlay";
     let isOpen = false;
-    let isAutoShown = false;
+    let dockedUserCollapsed = false;
+    let userToggled = false;
+    let activeHeadingPos: number | null = null;
+    let scrollRafId: number | null = null;
+
+    function setActiveHeadingPos(pos: number | null): void {
+        activeHeadingPos = pos;
+        let activeItem: HTMLElement | null = null;
+        list.querySelectorAll<HTMLElement>(".toc-item").forEach((item) => {
+            const isActive = pos !== null && item.dataset["headingPos"] === String(pos);
+            item.classList.toggle("toc-item--active", isActive);
+            if (isActive) {
+                activeItem = item;
+            }
+        });
+        if (activeItem) {
+            (activeItem as HTMLElement).scrollIntoView({ block: "nearest" });
+        }
+    }
 
     function updateTab(): void {
         tabEl.textContent = isOpen ? "‹" : "›";
         tabEl.style.left = isOpen ? `${TOC_WIDTH}px` : "0px";
     }
-    updateTab();
+
+    function updateBodyClasses(): void {
+        document.body.classList.toggle("toc-docked", tocMode === "docked");
+        document.body.classList.toggle("toc-overlay", tocMode === "overlay");
+        document.body.classList.toggle("toc-open", isOpen && tocMode === "docked");
+        document.body.classList.toggle("toc-overlay-open", isOpen && tocMode === "overlay");
+    }
+
+    function syncOutsideClickHandler(): void {
+        document.removeEventListener("mousedown", outsideClickHandler);
+        if (isOpen && tocMode === "overlay") {
+            setTimeout(() => {
+                if (isOpen && tocMode === "overlay") {
+                    document.addEventListener("mousedown", outsideClickHandler);
+                }
+            }, 0);
+        }
+    }
+
+    function syncTocState(): void {
+        panel.classList.toggle("toc-panel--open", isOpen);
+        panel.classList.toggle("toc-panel--docked", tocMode === "docked");
+        panel.classList.toggle("toc-panel--overlay", tocMode === "overlay");
+        updateBodyClasses();
+        updateTab();
+        syncOutsideClickHandler();
+        if (isOpen) {
+            renderHeadings(getHeadings());
+        }
+    }
 
     // ── 从 ProseMirror 文档中提取所有 heading 节点 ────────
     function getHeadings(): HeadingEntry[] {
@@ -56,22 +115,31 @@ export function initToc(getEditorView: () => EditorView | null): {
             view.state.doc.content.size,
             (node, pos) => {
                 if (node.type.name === "heading") {
-                    headings.push({
-                        level: node.attrs["level"] as number,
-                        text: node.textContent,
-                        pos,
-                    });
+                    const text = node.textContent.trim();
+                    if (text) {
+                        headings.push({
+                            level: node.attrs["level"] as number,
+                            text,
+                            pos,
+                        });
+                    }
                 }
             },
         );
         return headings;
     }
 
-    function refresh(): void {
-        if (!isOpen) {
-            return;
+    function shouldAutoOpen(headings: HeadingEntry[]): boolean {
+        return tocMode === "docked" && headings.length > tocAutoHideThreshold;
+    }
+
+    function syncAutoOpenState(headings: HeadingEntry[]): void {
+        if (!userToggled) {
+            isOpen = shouldAutoOpen(headings);
         }
-        const headings = getHeadings();
+    }
+
+    function renderHeadings(headings: HeadingEntry[]): void {
         list.innerHTML = "";
         if (headings.length === 0) {
             const empty = document.createElement("div");
@@ -83,8 +151,10 @@ export function initToc(getEditorView: () => EditorView | null): {
         headings.forEach(({ level, text, pos }) => {
             const item = document.createElement("div");
             item.className = `toc-item toc-item--h${level}`;
+            item.dataset["headingPos"] = String(pos);
             item.style.paddingLeft = `${(level - 1) * 12 + 8}px`;
             item.textContent = text || `${t("Heading")} ${level}`;
+            item.classList.toggle("toc-item--active", activeHeadingPos === pos);
             applyTooltip(item, text, {
                 placement: "above",
                 truncatedOnly: true,
@@ -102,7 +172,7 @@ export function initToc(getEditorView: () => EditorView | null): {
                         node.nodeType === Node.TEXT_NODE
                             ? node.parentElement
                             : (node as HTMLElement);
-                    while (el && !el.matches("h1,h2,h3,h4,h5,h6")) {
+                    while (el && !el.matches(HEADING_SELECTOR)) {
                         el = el.parentElement;
                     }
                     if (el) {
@@ -116,6 +186,8 @@ export function initToc(getEditorView: () => EditorView | null): {
                             window.scrollY -
                             topbarH -
                             8;
+                        // 立即更新 TOC 选中状态
+                        setActiveHeadingPos(pos);
                         window.scrollTo({ top, behavior: "smooth" });
                     }
                 } catch {
@@ -124,6 +196,13 @@ export function initToc(getEditorView: () => EditorView | null): {
             });
             list.appendChild(item);
         });
+        setActiveHeadingPos(activeHeadingPos);
+    }
+
+    function refresh(): void {
+        const headings = getHeadings();
+        syncAutoOpenState(headings);
+        syncTocState();
     }
 
     function outsideClickHandler(e: MouseEvent): void {
@@ -134,31 +213,26 @@ export function initToc(getEditorView: () => EditorView | null): {
 
     function close(): void {
         isOpen = false;
-        isAutoShown = false;
-        panel.classList.remove("toc-panel--open");
-        document.removeEventListener("mousedown", outsideClickHandler);
-        updateTab();
+        syncTocState();
     }
 
-    function openPanel(auto: boolean): void {
+    function openPanel(): void {
         isOpen = true;
-        isAutoShown = auto;
-        panel.classList.add("toc-panel--open");
-        refresh();
-        updateTab();
-        if (!auto) {
-            // 手动打开才注册外部点击关闭（自动展开时 TOC 持久显示，不因外部点击关闭）
-            setTimeout(() => {
-                document.addEventListener("mousedown", outsideClickHandler);
-            }, 0);
-        }
+        syncTocState();
     }
 
     function toggle(): void {
-        if (isOpen) {
-            close();
+        userToggled = true;
+        if (tocMode === "docked") {
+            dockedUserCollapsed = isOpen;
+            isOpen = !isOpen;
+            syncTocState();
         } else {
-            openPanel(false);
+            if (isOpen) {
+                close();
+            } else {
+                openPanel();
+            }
         }
     }
 
@@ -171,19 +245,35 @@ export function initToc(getEditorView: () => EditorView | null): {
 
     // ── 自动展开检测 ──────────────────────────────────────
     function hasEnoughSpace(): boolean {
+        if (document.body.classList.contains("editor-width-auto")) {
+            return window.innerWidth >= TOC_WIDTH + DOCKED_MIN_CONTENT_WIDTH;
+        }
         const editorEl = document.getElementById("editor");
         if (!editorEl) {
             return false;
         }
-        return editorEl.getBoundingClientRect().left >= TOC_WIDTH;
+        const rect = editorEl.getBoundingClientRect();
+        return rect.left >= TOC_WIDTH && rect.width >= DOCKED_MIN_CONTENT_WIDTH;
     }
 
-    function checkAutoShow(): void {
-        if (hasEnoughSpace() && !isOpen) {
-            openPanel(true);
-        } else if (!hasEnoughSpace() && isAutoShown) {
-            close();
+    function resolveMode(): TocMode {
+        return hasEnoughSpace() ? "docked" : "overlay";
+    }
+
+    function checkResponsiveMode(): void {
+        const nextMode = resolveMode();
+        if (nextMode === tocMode) {
+            return;
         }
+
+        tocMode = nextMode;
+        if (tocMode === "docked") {
+            const headings = getHeadings();
+            isOpen = userToggled ? !dockedUserCollapsed : shouldAutoOpen(headings);
+        } else {
+            isOpen = false;
+        }
+        syncTocState();
     }
 
     // ── 动态对齐到 topbar 底部，同步 tab 垂直位置 ──────────
@@ -200,15 +290,45 @@ export function initToc(getEditorView: () => EditorView | null): {
         tabEl.style.top = `${tabTop}px`;
     }
 
+    // ── TOC 独立的滚动检测：更新当前可见标题的选中状态 ──────
+    function updateActiveHeadingOnScroll(): void {
+        scrollRafId = null;
+        const view = getEditorView();
+        if (!view) {
+            return;
+        }
+
+        const top = getTopbarBottom();
+        // 检测点往下偏移 50px，避免滚动完成前误判为上一个标题
+        const threshold = top + 50;
+        // TOC 不排除折叠隐藏的标题
+        const result = findActiveHeading(view, threshold, false);
+        setActiveHeadingPos(result?.pos ?? null);
+    }
+
+    function scheduleScrollUpdate(): void {
+        if (scrollRafId !== null) {
+            return;
+        }
+        scrollRafId = requestAnimationFrame(updateActiveHeadingOnScroll);
+    }
+
     requestAnimationFrame(() => {
+        tocMode = resolveMode();
+        const headings = getHeadings();
+        isOpen = userToggled ? tocMode === "docked" && !dockedUserCollapsed : shouldAutoOpen(headings);
         updatePanelPosition();
-        checkAutoShow();
+        syncTocState();
+        // 初始化时检测一次当前可见标题
+        updateActiveHeadingOnScroll();
     });
 
-    window.addEventListener("resize", () => {
+    eventManager.onWindow("resize", () => {
         updatePanelPosition();
-        checkAutoShow();
+        checkResponsiveMode();
     });
+    // 监听滚动事件，独立更新 TOC 选中状态
+    eventManager.onWindow("scroll", scheduleScrollUpdate, { passive: true });
 
     return { panel, toggle, refresh };
 }

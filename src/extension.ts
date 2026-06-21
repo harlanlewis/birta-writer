@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
+import { getAllThemes, getThemeColors, type ThemeInfo } from "./themeManager";
 
 /**
  * 根据 defaultMode 同步 workbench.editorAssociations：
@@ -188,6 +189,98 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
+    // 选择颜色主题命令
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "markdownWysiwyg.selectTheme",
+            async () => {
+                const themes = getAllThemes();
+                const currentTheme = vscode.workspace
+                    .getConfiguration("markdownWysiwyg")
+                    .get<string>("colorTheme", "auto");
+
+                // 按类型分组：深色主题在前，浅色主题在后，每组内按字母排序
+                const darkThemes = themes
+                    .filter(t => t.uiTheme === "vs-dark" || t.uiTheme === "hc-black")
+                    .sort((a, b) => a.label.localeCompare(b.label));
+                const lightThemes = themes
+                    .filter(t => t.uiTheme === "vs" || t.uiTheme === "hc-light")
+                    .sort((a, b) => a.label.localeCompare(b.label));
+
+                const items: (vscode.QuickPickItem & { value: string })[] = [
+                    { label: "$(color-mode) Auto", description: "Follow VS Code Theme", value: "auto" },
+                    ...darkThemes.map(t => ({
+                        label: t.label,
+                        description: "Dark",
+                        value: t.id,
+                    })),
+                    ...lightThemes.map(t => ({
+                        label: t.label,
+                        description: "Light",
+                        value: t.id,
+                    })),
+                ];
+
+                // 找到当前选中主题的索引，用于定位
+                const activeIndex = items.findIndex((item: any) => item.value === currentTheme);
+
+                const quickPick = vscode.window.createQuickPick();
+                quickPick.title = "Markdown Editor Color Theme";
+                quickPick.placeholder = "Select a color theme for Markdown editor";
+                quickPick.items = items;
+                if (activeIndex >= 0) {
+                    quickPick.activeItems = [items[activeIndex]];
+                }
+
+                quickPick.onDidAccept(async () => {
+                    const selected = quickPick.selectedItems[0];
+                    if (selected) {
+                        const themeId = (selected as any).value;
+                        await vscode.workspace
+                            .getConfiguration("markdownWysiwyg")
+                            .update("colorTheme", themeId, vscode.ConfigurationTarget.Global);
+                    }
+                    quickPick.dispose();
+                });
+
+                quickPick.show();
+            },
+        ),
+    );
+
+    // 显示当前主题命令
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "markdownWysiwyg.showCurrentTheme",
+            () => {
+                const configTheme = vscode.workspace
+                    .getConfiguration("markdownWysiwyg")
+                    .get<string>("colorTheme", "auto");
+
+                const vscodeTheme = vscode.workspace
+                    .getConfiguration("workbench")
+                    .get<string>("colorTheme", "Unknown");
+
+                const themeKind = vscode.window.activeColorTheme.kind;
+                const themeType = themeKind === vscode.ColorThemeKind.Light ? "Light"
+                    : themeKind === vscode.ColorThemeKind.Dark ? "Dark"
+                    : themeKind === vscode.ColorThemeKind.HighContrast ? "High Contrast"
+                    : "High Contrast Light";
+
+                let message: string;
+                if (configTheme === "auto") {
+                    message = `Theme: Auto (follows VS Code)\nVS Code Theme: ${vscodeTheme}\nType: ${themeType}`;
+                } else {
+                    const themes = getAllThemes();
+                    const theme = themes.find(t => t.id === configTheme);
+                    message = `Theme: ${theme?.label ?? configTheme}\nType: ${theme?.uiTheme ?? themeType}`;
+                }
+
+                vscode.window.showInformationMessage(message, { modal: false });
+            },
+        ),
+    );
+
     // 监听设置手动变更（从 VSCode 设置 UI 修改时同步）
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
@@ -210,6 +303,21 @@ export function activate(context: vscode.ExtensionContext) {
                     type: "setDebugMode",
                     enabled: v,
                 });
+            }
+            if (e.affectsConfiguration("markdownWysiwyg.colorTheme")) {
+                MarkdownEditorProvider.current?.applyThemeToAll();
+            }
+        }),
+    );
+
+    // 监听 VSCode 主题变化（auto 模式下自动更新）
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveColorTheme(() => {
+            const themeId = vscode.workspace
+                .getConfiguration("markdownWysiwyg")
+                .get<string>("colorTheme", "auto");
+            if (themeId === "auto") {
+                MarkdownEditorProvider.current?.applyThemeToAll();
             }
         }),
     );

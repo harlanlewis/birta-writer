@@ -1,4 +1,5 @@
 import * as path from "path";
+import * as os from "os";
 import * as vscode from "vscode";
 import { MarkdownDocument } from "./MarkdownDocument";
 import { getNonce } from "./utils/getNonce";
@@ -6,6 +7,7 @@ import { ZH_CN_WEBVIEW } from "./i18n/webviewTranslations";
 import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
+import { getAllThemes, getThemeColors, getAutoThemeColors } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage } from "../shared/messages";
 
 
@@ -140,6 +142,42 @@ export class MarkdownEditorProvider
         }
     }
 
+    public async applyThemeToAll(): Promise<void> {
+        const themeId = vscode.workspace
+            .getConfiguration("markdownWysiwyg")
+            .get<string>("colorTheme", "auto");
+
+        const colors = await this._getThemeColors(themeId);
+        this.postToAll({ type: "setTheme", colors });
+    }
+
+    private async _applyThemeToPanel(panel: vscode.WebviewPanel): Promise<void> {
+        const themeId = vscode.workspace
+            .getConfiguration("markdownWysiwyg")
+            .get<string>("colorTheme", "auto");
+
+        const colors = await this._getThemeColors(themeId);
+        panel.webview.postMessage({ type: "setTheme", colors });
+    }
+
+    private async _getThemeColors(themeId: string): Promise<Record<string, string>> {
+        let currentThemeLabel: string | undefined;
+        if (themeId === "auto") {
+            const config = vscode.workspace.getConfiguration();
+            currentThemeLabel = config.get<string>(
+                "workbench.colorTheme",
+            );
+        }
+
+        const themes = getAllThemes();
+        const theme = themes.find((t) => t.id === themeId || currentThemeLabel === t.label);
+        if (theme) {
+            return await getThemeColors(theme.path);
+        }
+
+        return getAutoThemeColors();
+    }
+
     public static register(
         context: vscode.ExtensionContext,
         claudeTerminals: Set<vscode.Terminal>,
@@ -211,10 +249,12 @@ export class MarkdownEditorProvider
                 ...(vscode.workspace.workspaceFolders?.map(f => f.uri) ?? []),
                 // 允许访问 .md 文件所在目录（workspace 外或 untitled）
                 vscode.Uri.joinPath(document.uri, '..'),
+                ...this._getCustomResourceRoots(document.uri),
             ],
         };
         webviewPanel.webview.html = this._getHtmlForWebview(
             webviewPanel.webview,
+            document,
         );
 
         // 面板激活时（如全局搜索点击已打开的文件），检查并发送待跳转行号
@@ -268,6 +308,8 @@ export class MarkdownEditorProvider
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
+                        // 应用主题
+                        this._applyThemeToPanel(webviewPanel);
                         break;
                     }
                     case "update":
@@ -285,6 +327,25 @@ export class MarkdownEditorProvider
                             this._scheduleAutoSaveOrMarkDirty(document);
                         }
                         break;
+                    case "frontmatterUpdate": {
+                        // WebView 侧编辑了 frontmatter 面板，同步到 Extension 并触发保存
+                        const oldFm = this._frontmatterMap.get(uriKey) ?? "";
+                        const newFm = message.frontmatter;
+                        if (oldFm === newFm) { break; }
+                        this._frontmatterMap.set(uriKey, newFm);
+                        // 从当前文档内容中提取 body（去掉旧 frontmatter），拼接新 frontmatter
+                        const currentText = document.getText();
+                        const { body } = extractFrontmatter(currentText);
+                        const fullContent = newFm + body;
+                        if (fullContent === currentText) { break; }
+                        document.update(fullContent);
+                        if (!this._pinnedDocuments.has(uriKey)) {
+                            this._pinnedDocuments.add(uriKey);
+                            vscode.commands.executeCommand('workbench.action.keepEditor');
+                        }
+                        this._scheduleAutoSaveOrMarkDirty(document);
+                        break;
+                    }
                     case "openUrl":
                         if (message.url) {
                             vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -292,6 +353,24 @@ export class MarkdownEditorProvider
                         break;
                     case "openFile": {
                         if (!message.path) break;
+
+                        // 如果当前 tab 是预览状态（斜体），先固定当前文件
+                        let currentIsPreview = false;
+                        for (const group of vscode.window.tabGroups.all) {
+                            for (const tab of group.tabs) {
+                                if (
+                                    tab.input instanceof vscode.TabInputCustom &&
+                                    (tab.input as vscode.TabInputCustom).uri.toString() === document.uri.toString()
+                                ) {
+                                    currentIsPreview = tab.isPreview;
+                                    break;
+                                }
+                            }
+                        }
+                        if (currentIsPreview) {
+                            this._pinnedDocuments.add(uriKey);
+                            vscode.commands.executeCommand('workbench.action.keepEditor');
+                        }
 
                         // 分离路径和行号 fragment（如 ./file.md#27-30）
                         const hashIdx = message.path.indexOf("#");
@@ -672,12 +751,16 @@ export class MarkdownEditorProvider
         return document.backup(context.destination, cancellation);
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview): string {
+    private _getHtmlForWebview(webview: vscode.Webview, document: MarkdownDocument): string {
         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
         const maxHeight = cfg.get<number>("codeBlockMaxHeight", 500);
-        const editorMaxWidth = cfg.get<number>("editorMaxWidth", 900);
+        const editorMaxWidth = this._getEditorMaxWidthCssValue(cfg.get<number | string>("editorMaxWidth", "auto"));
+        const tocContentGap = this._getPixelSettingCssValue(cfg.get<number>("tocContentGap", 100), 100, 16, 240);
+        const isAutoWidth = editorMaxWidth === "none";
         const fontFamily = cfg.get<string>("fontFamily", "");
         const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
+        const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
+        const customJsUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customJs", []));
         const scriptUri = webview.asWebviewUri(
             vscode.Uri.joinPath(
                 this.context.extensionUri,
@@ -698,7 +781,14 @@ export class MarkdownEditorProvider
         const isMac = process.platform === 'darwin';
         const translations = lang.startsWith('zh') ? ZH_CN_WEBVIEW : {};
         const debugMode = cfg.get<boolean>("debugMode", false);
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode })};`;
+        const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
+        const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
+        const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold })};`;
+        const bodyClasses = [
+            isAutoWidth ? "editor-width-auto" : "",
+            codeBlockWordWrap ? "code-block-word-wrap" : "",
+        ].filter(Boolean).join(" ");
 
         return `<!DOCTYPE html>
 <html lang="${vscode.env.language}">
@@ -709,18 +799,136 @@ export class MarkdownEditorProvider
              style-src ${webview.cspSource} 'unsafe-inline';
              script-src 'nonce-${nonce}' ${webview.cspSource};
              img-src ${webview.cspSource} https: data:;">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Markdown Editor</title>
-  <link rel="stylesheet" href="${styleUri}">
-  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}px;${fontFamily ? ` --custom-font-family: ${fontFamily};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
-</head>
-<body>
-  <div class="editor-topbar"></div>
-  <div id="editor"></div>
-  <script nonce="${nonce}">${i18nScript}</script>
-  <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+	  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	  <title>Markdown Editor</title>
+	  <link rel="stylesheet" href="${styleUri}">
+	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: 220px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${fontFamily ? ` --custom-font-family: ${fontFamily};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
+	</head>
+	<body class="${bodyClasses}">
+	  <div class="editor-topbar"></div>
+	  <div id="editor"></div>
+	  <script nonce="${nonce}">${i18nScript}</script>
+	  <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
+	  ${customJsUris.map(uri => `<script type="module" nonce="${nonce}" src="${uri}"></script>`).join("\n  ")}
+	</body>
+	</html>`;
+    }
+
+    private _getEditorMaxWidthCssValue(value: number | string | undefined): string {
+        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+            return `${Math.max(400, Math.round(value))}px`;
+        }
+        if (typeof value === "string") {
+            const trimmed = value.trim().toLowerCase();
+            if (trimmed === "auto" || trimmed === "") {
+                return "none";
+            }
+            const numeric = Number(trimmed);
+            if (Number.isFinite(numeric) && numeric > 0) {
+                return `${Math.max(400, Math.round(numeric))}px`;
+            }
+        }
+        return "none";
+    }
+
+    private _getPixelSettingCssValue(
+        value: number | undefined,
+        fallback: number,
+        min: number,
+        max: number,
+    ): string {
+        if (!Number.isFinite(value)) {
+            return `${fallback}px`;
+        }
+        return `${Math.min(max, Math.max(min, Math.round(value as number)))}px`;
+    }
+
+    private _getNumberSettingValue(
+        value: number | undefined,
+        fallback: number,
+        min: number,
+        max: number,
+    ): number {
+        if (!Number.isFinite(value)) {
+            return fallback;
+        }
+        return Math.min(max, Math.max(min, Math.round(value as number)));
+    }
+
+    private _getCodeBlockWordWrap(
+        documentUri: vscode.Uri,
+        cfg: vscode.WorkspaceConfiguration,
+    ): boolean {
+        const value = cfg.get<"inherit" | "on" | "off">("codeBlockWordWrap", "inherit");
+        if (value === "on") {
+            return true;
+        }
+        if (value === "off") {
+            return false;
+        }
+
+        const editorWordWrap = vscode.workspace
+            .getConfiguration("editor", documentUri)
+            .get<string>("wordWrap", "off");
+        return editorWordWrap !== "off";
+    }
+
+    private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
+        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const paths = [
+            ...cfg.get<string[]>("customCss", []),
+            ...cfg.get<string[]>("customJs", []),
+        ];
+        const roots: vscode.Uri[] = [];
+        const seen = new Set<string>();
+        for (const resourcePath of paths) {
+            const uri = this._resolveCustomResourceUri(resourcePath, documentUri);
+            if (!uri) { continue; }
+            const root = vscode.Uri.file(path.dirname(uri.fsPath));
+            const key = root.toString();
+            if (!seen.has(key)) {
+                seen.add(key);
+                roots.push(root);
+            }
+        }
+        return roots;
+    }
+
+    private _getCustomResourceUris(
+        webview: vscode.Webview,
+        documentUri: vscode.Uri,
+        resourcePaths: string[] | undefined,
+    ): string[] {
+        return (resourcePaths ?? [])
+            .map(resourcePath => this._resolveCustomResourceUri(resourcePath, documentUri))
+            .filter((uri): uri is vscode.Uri => Boolean(uri))
+            .map(uri => webview.asWebviewUri(uri).toString());
+    }
+
+    private _resolveCustomResourceUri(resourcePath: string, documentUri: vscode.Uri): vscode.Uri | undefined {
+        const trimmed = resourcePath.trim();
+        if (!trimmed) { return undefined; }
+
+        const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri.fsPath
+            ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        let resolved = workspaceRoot
+            ? trimmed
+                .replace(/\$\{workspaceFolder\}/g, workspaceRoot)
+                .replace(/\$\{workspaceRoot\}/g, workspaceRoot)
+            : trimmed;
+        if (resolved.startsWith("~/")) {
+            resolved = path.join(os.homedir(), resolved.slice(2));
+        } else if (resolved === "~") {
+            resolved = os.homedir();
+        } else if (!path.isAbsolute(resolved)) {
+            const baseDir = workspaceRoot
+                ?? (documentUri.scheme === "file" ? path.dirname(documentUri.fsPath) : undefined);
+            if (!baseDir) { return undefined; }
+            resolved = path.join(baseDir, resolved);
+        }
+
+        return vscode.Uri.file(resolved);
     }
 
     private _prepareContentForDisplay(

@@ -1142,7 +1142,7 @@ export function initToolbar(
         const dbgBtn = document.createElement("button");
         dbgBtn.className = "tb-btn tb-fmt-btn";
         dbgBtn.innerHTML = IconList + IconChevronDown;
-        applyTooltip(dbgBtn, "调试工具");
+        applyTooltip(dbgBtn, t("Debug tools"));
         dbgBtn.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1154,7 +1154,7 @@ export function initToolbar(
 
         const testLineItem = document.createElement("button");
         testLineItem.className = "tb-fmt-item";
-        testLineItem.textContent = "测试获取行号";
+        testLineItem.textContent = t("Test get line number");
         testLineItem.addEventListener("click", async () => {
             dbgMenu.style.display = "none";
             const editor = getEditor();
