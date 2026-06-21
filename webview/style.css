@@ -551,7 +551,8 @@ body.editor-width-auto {
                 text-align: left;
                 position: relative; /* 供 .selectedCell::after 绝对定位 */
                 min-width: 60px;
-                overflow-wrap: anywhere; /* 连续长字符（URL、变量名等）自动换行，不撑宽列 */
+                overflow-wrap: var(--tbl-ow, break-word); /* 由 messageHandlers.applyTableWrap 动态控制 */
+                word-break: keep-all; /* 避免中文字符中间换行 */
 
                 /* 单元格内段落不留底部间距，并撑开行高确保空表格行高一致 */
                 > p {

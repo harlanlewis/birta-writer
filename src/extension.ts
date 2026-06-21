@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import { getAllThemes, getThemeColors, type ThemeInfo } from "./themeManager";
+import type { TableWrapMode } from "../shared/messages";
 
 /**
  * 根据 defaultMode 同步 workbench.editorAssociations：
@@ -306,6 +307,11 @@ export function activate(context: vscode.ExtensionContext) {
             }
             if (e.affectsConfiguration("markdownWysiwyg.colorTheme")) {
                 MarkdownEditorProvider.current?.applyThemeToAll();
+            }
+            if (e.affectsConfiguration("markdownWysiwyg.tableWrap")) {
+                const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+                const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
+                MarkdownEditorProvider.current?.postToAll({ type: "setTableWrap", wrap: tableWrap });
             }
         }),
     );

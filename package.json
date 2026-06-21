@@ -162,6 +162,22 @@
                     "default": "inherit",
                     "description": "%config.codeBlockWordWrap.description%"
                 },
+                "markdownWysiwyg.tableWrap": {
+                    "order": 10,
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "normal",
+                        "aggressive"
+                    ],
+                    "default": "normal",
+                    "description": "%config.tableWrap.description%",
+                    "enumDescriptions": [
+                        "%config.tableWrap.none%",
+                        "%config.tableWrap.normal%",
+                        "%config.tableWrap.aggressive%"
+                    ]
+                },
                 "markdownWysiwyg.defaultMode": {
                     "order": 1,
                     "type": "string",

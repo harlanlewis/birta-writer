@@ -10,7 +10,7 @@
 import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
 import { editorViewCtx } from "@milkdown/core";
-import type { ToWebviewMessage } from "../shared/messages";
+import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
@@ -25,6 +25,26 @@ import {
     handleImageRenamed,
     handleImageRenameError,
 } from "./imageUpload";
+
+// ── 全局表格换行模式 ─────────────────────────────────────────
+let currentTableWrap: TableWrapMode = "normal";
+
+/** 根据当前 tableWrap 配置动态更新表格单元格的 overflow-wrap 属性 */
+export function applyTableWrap(wrap: TableWrapMode): void {
+    currentTableWrap = wrap;
+    const root = document.documentElement;
+    switch (wrap) {
+        case "aggressive":
+            root.style.setProperty("--tbl-ow", "anywhere");
+            break;
+        case "normal":
+            root.style.setProperty("--tbl-ow", "break-word");
+            break;
+        case "none":
+            root.style.setProperty("--tbl-ow", "normal");
+            break;
+    }
+}
 
 // ── 类型定义 ──────────────────────────────────────────────
 
@@ -87,6 +107,9 @@ export function createMessageHandlers(
             if (msg.imageUriMap) {
                 setImageUriMap(msg.imageUriMap);
             }
+            if (msg.tableWrap) {
+                applyTableWrap(msg.tableWrap);
+            }
             await initEditor(container, msg.content);
             window.focus();
             if (msg.scrollToLine) {
@@ -112,6 +135,9 @@ export function createMessageHandlers(
             renderFrontmatterPanel(msg.frontmatter);
             if (msg.imageUriMap) {
                 setImageUriMap(msg.imageUriMap);
+            }
+            if (msg.tableWrap) {
+                applyTableWrap(msg.tableWrap);
             }
             await initEditor(container, msg.content);
         },
@@ -203,6 +229,9 @@ export function createMessageHandlers(
                 }
             }
             window.dispatchEvent(new CustomEvent("theme-changed"));
+        },
+        setTableWrap(msg) {
+            applyTableWrap(msg.wrap);
         },
     };
 }

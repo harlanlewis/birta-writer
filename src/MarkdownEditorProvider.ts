@@ -8,7 +8,7 @@ import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
 import { getAllThemes, getThemeColors, getAutoThemeColors } from "./themeManager";
-import type { ToExtensionMessage, ToWebviewMessage } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode } from "../shared/messages";
 
 
 export class MarkdownEditorProvider
@@ -299,6 +299,8 @@ export class MarkdownEditorProvider
                         const scrollToLine = this._consumePendingNavigation(document.uri.fsPath)
                             ?? this._consumeGlobalRevealLine();
                         console.log('[ready] scrollToLine:', scrollToLine);
+                        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+                        const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
                         // 重置稳定化基准（新的 init 意味着内容将重新从磁盘加载）
                         webviewPanel.webview.postMessage({
                             type: "init",
@@ -306,6 +308,7 @@ export class MarkdownEditorProvider
                             lineMap: computeLineMap(initContent),
                             frontmatter: this._frontmatterMap.get(uriKey) || undefined,
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
+                            tableWrap,
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
                         // 应用主题
@@ -536,7 +539,8 @@ export class MarkdownEditorProvider
                         if (panel) {
                             const revertContent = document.getText();
                             const displayContent = this._prepareContentForDisplay(revertContent, document, panel, uriKey);
-                            panel.webview.postMessage({ type: "revert", content: displayContent, lineMap: computeLineMap(revertContent), frontmatter: this._frontmatterMap.get(uriKey) || undefined, imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []) });
+                            const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
+                            panel.webview.postMessage({ type: "revert", content: displayContent, lineMap: computeLineMap(revertContent), frontmatter: this._frontmatterMap.get(uriKey) || undefined, imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []), tableWrap });
                         }
                     } finally {
                         cts.dispose();
