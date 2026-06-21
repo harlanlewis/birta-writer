@@ -55,7 +55,9 @@ export const tabKeymapPlugin = $prose((ctx) =>
                 const listItemType = schema.nodes["list_item"];
                 if (listItemType) {
                     const doSink = sinkListItem(listItemType);
-                    return doSink(state, dispatch);
+                    const result = doSink(state, dispatch);
+                    // 无法再缩进时（已经是深层列表），阻止默认行为
+                    return true;
                 }
             }
 
