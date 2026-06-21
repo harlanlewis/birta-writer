@@ -32,5 +32,9 @@
   "config.imageSelectionColor.description": "编辑器中选中图片时的边框颜色（CSS 颜色值）。默认与表格单元格选中颜色保持一致。",
   "config.colorTheme.description": "Markdown 编辑器的颜色主题。'auto' 跟随 VSCode 当前主题，也可设置为特定主题 ID（使用「选择颜色主题」命令浏览可用主题）。",
   "command.selectTheme.title": "选择颜色主题",
-  "command.showCurrentTheme.title": "显示当前主题"
+  "command.showCurrentTheme.title": "显示当前主题",
+  "Expand content": "展开内容",
+  "Collapse content": "折叠内容",
+  "Debug tools": "调试工具",
+  "Test get line number": "测试获取行号"
 }

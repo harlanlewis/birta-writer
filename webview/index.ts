@@ -1,3 +1,23 @@
+/**
+ * webview/index.ts
+ *
+ * 职责：WebView 主入口，负责初始化和组合各模块
+ *
+ * 本模块是 WebView 的核心入口文件，负责：
+ * - 初始化 Milkdown 编辑器实例
+ * - 组合和初始化各 UI 组件（工具栏、目录、查找栏等）
+ * - 注册全局事件监听（拖放图片、粘贴图片、Checkbox 切换）
+ * - 协调消息处理器、键盘快捷键、滚动持久化等模块
+ * - 管理模块级状态（当前编辑器、行号映射、主题覆盖等）
+ *
+ * 模块划分：
+ * - components/frontmatter: Frontmatter 面板
+ * - imageUpload: 图片上传管理
+ * - keyboardShortcuts: 键盘快捷键
+ * - messageHandlers: 消息分发
+ * - scrollPersistence: 滚动位置持久化
+ */
+
 import "./style.css";
 import {
     createEditor,
@@ -8,464 +28,165 @@ import {
 import type { EditorView } from "@milkdown/prose/view";
 import { TextSelection } from "@milkdown/prose/state";
 import { t } from "./i18n";
-import {
-    notifyReady,
-    notifyUpdate,
-    onMessage,
-    notifySendToClaudeChat,
-    notifySwitchToTextEditor,
-    notifyUploadImage,
-    notifyGetProjectImages,
-    notifyRenameImage,
-    notifyFrontmatterUpdate,
-    getWebviewState,
-    setWebviewState,
-} from "./messaging";
+import { notifyReady, notifyUpdate, onMessage } from "./messaging";
+import type { ToWebviewMessage } from "../shared/messages";
 
 import { setupLinkPopup } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
-import { initPathComplete, dispatchPathSuggestions } from "./components/pathLink/pathComplete";
-import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
-import { setImageUriMap } from "./components/imageView";
+import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { initHeadingIds } from "./headingIds";
-import {
-    setupTableAddButtons,
-    setDebugMode,
-} from "./components/table/addButtons";
+import { setupTableAddButtons } from "./components/table/addButtons";
 import { setupTableHandles } from "./components/table/handles";
 import { initToolbar } from "./components/toolbar";
 import { initToc } from "./components/toc";
-import {
-    setupSelectionToolbar,
-    getBlockContainerText,
-    findLineInOriginalSource,
-    getCellRowSourceLine,
-} from "./components/selectionToolbar";
-import { CellSelection } from "@milkdown/prose/tables";
+import { setupSelectionToolbar } from "./components/selectionToolbar";
 import { setupTableToolbar } from "./components/table/toolbar";
 import type { Editor } from "@milkdown/core";
-import { editorViewCtx } from "@milkdown/core";
 
+import { renderFrontmatterPanel } from "./components/frontmatter";
+import {
+    handleRenameImage,
+    handleGetProjectImages,
+    handleImageFile,
+    insertImageNode,
+} from "./imageUpload";
+import { initScrollPersistence } from "./scrollPersistence";
+import { initKeyboardShortcuts } from "./keyboardShortcuts";
+import { createMessageHandlers, type Handler } from "./messageHandlers";
+import { createEventManager } from "./eventManager";
+
+// ── 模块级状态 ─────────────────────────────────────────────
 let currentEditor: Editor | null = null;
 let currentLineMap: number[] = [];
-// 记录我们自己设置过的主题 CSS 变量（用于清除时区分 VSCode 自动注入的变量）
 const _themeOverrides = new Set<string>();
+
 export function getLineMap(): number[] {
     return currentLineMap;
 }
 
-// 存储原始 markdown 内容（来自 init/revert 消息，未经 Milkdown 序列化）
 let markdownSource = "";
 export function getMarkdownSource(): string {
     return markdownSource;
 }
 
-/** 将 lineMap 中的源码行号（1-indexed）对应的块滚动到视口顶部 */
-function scrollToSourceLine(view: EditorView, lineMap: number[], targetLine: number): void {
-    if (!lineMap.length) { return; }
+// ── 滚动相关工具函数 ────────────────────────────────────────
+
+/** 将 lineMap 中的源码行号（1-indexed）对应的块滚动到视口中间 */
+function scrollToSourceLine(
+    view: EditorView,
+    lineMap: number[],
+    targetLine: number,
+): void {
+    if (!lineMap.length) {
+        return;
+    }
     let blockIdx = 0;
     for (let i = 0; i < lineMap.length; i++) {
-        if (lineMap[i] <= targetLine) { blockIdx = i; }
-        else { break; }
+        if (lineMap[i] <= targetLine) {
+            blockIdx = i;
+        } else {
+            break;
+        }
     }
     const children = view.dom.children;
-    if (blockIdx >= children.length) { return; }
+    if (blockIdx >= children.length) {
+        return;
+    }
     const el = children[blockIdx] as HTMLElement;
-    if (!el) { return; }
-    const topbarH = document.querySelector(".editor-topbar")?.getBoundingClientRect().height ?? 40;
-    console.log('[scrollToLine] targetLine:', targetLine, 'blockIdx:', blockIdx, 'lineMap[blockIdx]:', lineMap[blockIdx]);
-    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - topbarH - 16 });
+    if (!el) {
+        return;
+    }
+
+    const blockStartLine = lineMap[blockIdx];
+    const nextBlockLine =
+        blockIdx + 1 < lineMap.length ? lineMap[blockIdx + 1] : undefined;
+    const blockLineCount = nextBlockLine ? nextBlockLine - blockStartLine : 1;
+    const lineOffsetInBlock = targetLine - blockStartLine;
+    const offsetRatio =
+        blockLineCount > 1 ? lineOffsetInBlock / (blockLineCount - 1) : 0;
+
+    const elRect = el.getBoundingClientRect();
+    const blockTop = elRect.top + window.scrollY;
+    const blockHeight = elRect.height;
+    const targetLineTop = blockTop + blockHeight * offsetRatio;
+    const viewportHeight = window.innerHeight;
+    const targetScrollTop = targetLineTop - viewportHeight / 2;
+
+    window.scrollTo({ top: Math.max(0, targetScrollTop) });
 }
 
-/** 检测视口顶部对应的源码行号（1-indexed），供切换到文本编辑器时定位用 */
-function getFirstVisibleSourceLine(view: EditorView, lineMap: number[]): number {
-    if (!lineMap.length) { return 1; }
-    const topbarH = document.querySelector(".editor-topbar")?.getBoundingClientRect().height ?? 40;
+/** 检测视口中间对应的源码行号（1-indexed） */
+function getFirstVisibleSourceLine(
+    view: EditorView,
+    lineMap: number[],
+): number {
+    if (!lineMap.length) {
+        return 1;
+    }
+    const topbarH =
+        document.querySelector(".editor-topbar")?.getBoundingClientRect()
+            .height ?? 40;
     const children = view.dom.children;
+    const viewportHeight = window.innerHeight;
+    const viewportCenter = topbarH + (viewportHeight - topbarH) / 2;
+
     for (let i = 0; i < children.length && i < lineMap.length; i++) {
         const rect = (children[i] as HTMLElement).getBoundingClientRect();
-        if (rect.bottom > topbarH + 8) {
-            const result = lineMap[i] ?? 1;
-            console.log('[getFirstVisible] result:', result, 'blockIdx:', i, 'rect.bottom:', rect.bottom.toFixed(0));
-            return result;
+        if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
+            const blockStartLine = lineMap[i] ?? 1;
+            const nextBlockLine =
+                i + 1 < lineMap.length ? lineMap[i + 1] : undefined;
+            const blockLineCount = nextBlockLine
+                ? nextBlockLine - blockStartLine
+                : 1;
+            const blockTop = rect.top;
+            const blockHeight = rect.height;
+            const offsetInBlock = viewportCenter - blockTop;
+            const offsetRatio =
+                blockHeight > 0 ? offsetInBlock / blockHeight : 0;
+            const lineOffset = Math.round(offsetRatio * (blockLineCount - 1));
+            return blockStartLine + lineOffset;
         }
     }
-    // 全部块都在视口上方（理论上不会发生）→ 返回最后一块
-    const fallback = lineMap[Math.min(lineMap.length - 1, children.length - 1)] ?? 1;
-    console.log('[getFirstVisible] fallback result:', fallback, 'lineMap.length:', lineMap.length);
-    return fallback;
-}
 
-// ── 图片上传：pending promise map ────────────────────
-type UploadCallbacks = {
-    resolve: (url: string) => void;
-    reject: (e: Error) => void;
-};
-const _pendingUploads = new Map<string, UploadCallbacks>();
-
-// ── 获取项目图片列表：pending promise map ────────────
-type GetImagesCallbacks = {
-    resolve: (
-        images: Array<{
-            relPath: string;
-            webviewUri: string;
-            name: string;
-        }> | null,
-    ) => void;
-    reject: (e: Error) => void;
-};
-const _pendingGetImages = new Map<string, GetImagesCallbacks>();
-
-// ── 图片重命名：pending promise map ──────────────────
-type RenameCallbacks = { resolve: () => void; reject: (e: Error) => void };
-const _pendingRenames = new Map<string, RenameCallbacks>();
-
-async function handleRenameImage(
-    webviewUri: string,
-    newBasename: string,
-): Promise<void> {
-    const id = `rename_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        const timeoutId = setTimeout(() => {
-            if (!settled) {
-                settled = true;
-                _pendingRenames.delete(id);
-                reject(new Error("Rename timed out"));
-            }
-        }, 15000);
-        _pendingRenames.set(id, {
-            resolve: () => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timeoutId);
-                    resolve();
-                }
-            },
-            reject: (e) => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timeoutId);
-                    reject(e);
-                }
-            },
-        });
-        notifyRenameImage(id, webviewUri, newBasename);
-    });
-}
-
-async function handleGetProjectImages(
-    _unusedId: string,
-): Promise<Array<{
-    relPath: string;
-    webviewUri: string;
-    name: string;
-}> | null> {
-    const id = `gimgs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        const timeoutId = setTimeout(() => {
-            if (!settled) {
-                settled = true;
-                _pendingGetImages.delete(id);
-                resolve(null);
-            }
-        }, 10000);
-        _pendingGetImages.set(id, {
-            resolve: (r) => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timeoutId);
-                    resolve(r);
-                }
-            },
-            reject: (e) => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timeoutId);
-                    reject(e);
-                }
-            },
-        });
-        notifyGetProjectImages(id);
-    });
-}
-
-async function handleImageFile(file: File, altText: string): Promise<string> {
-    const id = `img_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    return new Promise<string>((resolve, reject) => {
-        _pendingUploads.set(id, { resolve, reject });
-        const timeoutId = setTimeout(() => {
-            if (_pendingUploads.has(id)) {
-                _pendingUploads.delete(id);
-                reject(new Error("Upload timed out"));
-            }
-        }, 30000);
-        // 读取文件为 Uint8Array 后发送给 Extension
-        const reader = new FileReader();
-        reader.onload = () => {
-            const data = new Uint8Array(reader.result as ArrayBuffer);
-            notifyUploadImage(id, data, file.type, altText);
-        };
-        reader.onerror = () => {
-            clearTimeout(timeoutId);
-            _pendingUploads.delete(id);
-            reject(new Error("Failed to read file"));
-        };
-        reader.readAsArrayBuffer(file);
-    });
-}
-
-function insertImageNode(src: string, alt: string): void {
-    const editor = currentEditor;
-    if (!editor) {
-        return;
+    let closestIdx = 0;
+    let closestDistance = Infinity;
+    for (let i = 0; i < children.length && i < lineMap.length; i++) {
+        const rect = (children[i] as HTMLElement).getBoundingClientRect();
+        const blockCenter = rect.top + rect.height / 2;
+        const distance = Math.abs(blockCenter - viewportCenter);
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIdx = i;
+        }
     }
-    editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
-        const { state } = view;
-        const imageType = state.schema.nodes["image"];
-        if (!imageType) {
+    return lineMap[closestIdx] ?? 1;
+}
+
+// ── 重试滚动 ────────────────────────────────────────────────
+function retryScroll(fn: () => void): void {
+    let done = false;
+    const tryFn = () => {
+        if (done) return;
+        const view = getEditorView();
+        if (!view) return;
+        const firstChild = view.dom.children[0] as HTMLElement | undefined;
+        if (!firstChild || firstChild.getBoundingClientRect().height === 0)
             return;
-        }
-        const node = imageType.create({ src, alt, title: "" });
-        view.dispatch(state.tr.replaceSelectionWith(node));
-        view.focus();
-    });
-}
-
-// 初始化目录面板
-const toc = initToc(() => getEditorView());
-document.body.appendChild(toc.panel);
-
-// 初始化查找栏
-const findBar = initFindBar(() => document.getElementById("editor"));
-
-// ─── Frontmatter 可编辑面板 ─────────────────────────────────
-
-import { IconPlus, IconX } from "./ui/icons";
-
-type FmEntry = { key: string; value: string };
-
-/** 解析 YAML frontmatter 字符串为 key-value 数组 */
-function parseFrontmatter(raw: string): FmEntry[] {
-    return raw
-        .split('\n')
-        .filter(line => !line.match(/^---/) && line.includes(':'))
-        .map(line => {
-            const colonIdx = line.indexOf(':');
-            return {
-                key: line.slice(0, colonIdx).trim(),
-                value: line.slice(colonIdx + 1).trim(),
-            };
-        })
-        .filter(({ key }) => key.length > 0);
-}
-
-/** 将 key-value 数组序列化为 YAML frontmatter 字符串 */
-function serializeFrontmatter(entries: FmEntry[]): string {
-    if (entries.length === 0) { return ""; }
-    const lines = entries
-        .filter(e => e.key.length > 0)
-        .map(e => `${e.key}: ${e.value}`);
-    if (lines.length === 0) { return ""; }
-    return `---\n${lines.join("\n")}\n---\n`;
-}
-
-/** 当前面板数据（模块级状态） */
-let currentFmEntries: FmEntry[] = [];
-
-/** 将编辑结果同步到 Extension */
-function commitFrontmatterChange(): void {
-    const raw = serializeFrontmatter(currentFmEntries);
-    notifyFrontmatterUpdate(raw);
-    // 若全部删除，移除面板
-    if (currentFmEntries.length === 0) {
-        const existing = document.getElementById('frontmatter-panel');
-        existing?.remove();
-        const editorEl = document.getElementById('editor');
-        if (editorEl) { editorEl.style.paddingTop = ''; }
+        fn();
+        done = true;
+    };
+    for (const delay of [300, 600, 1100, 2000]) {
+        setTimeout(tryFn, delay);
     }
 }
 
-/** 为 contenteditable td 绑定编辑行为 */
-function bindFmCell(
-    td: HTMLElement,
-    entry: FmEntry,
-    field: 'key' | 'value',
-    tbody: HTMLElement,
-    panel: HTMLElement,
-): void {
-    td.contentEditable = 'true';
-    td.textContent = entry[field];
-    td.dataset['orig'] = entry[field];
-    td.dataset['placeholder'] = field === 'key' ? 'key' : 'value';
-
-    // Enter 提交（Shift+Enter 允许换行）
-    td.addEventListener('keydown', (e) => {
-        if (e.isComposing) { return; }
-        e.stopPropagation();
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            td.blur();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            td.textContent = td.dataset['orig'] ?? '';
-            td.blur();
-        } else if (e.key === 'Tab') {
-            e.preventDefault();
-            td.blur();
-            const idx = currentFmEntries.indexOf(entry);
-            if (field === 'key') {
-                // 切换到同行 value
-                const valTd = td.nextElementSibling as HTMLElement | null;
-                if (valTd?.contentEditable === 'true') { valTd.focus(); }
-            } else {
-                // 切换到下一行 key 或新增行
-                const nextRow = tbody.children[idx + 1] as HTMLElement | undefined;
-                if (nextRow) {
-                    const nextKeyTd = nextRow.querySelector('.fm-key') as HTMLElement | null;
-                    nextKeyTd?.focus();
-                } else {
-                    addNewRow(tbody, panel);
-                }
-            }
-        }
-    });
-
-    td.addEventListener('blur', () => {
-        const newVal = (td.textContent ?? '').trim();
-        if (field === 'key' && newVal.length === 0) {
-            // key 不能为空，恢复原值
-            td.textContent = td.dataset['orig'] ?? '';
-            return;
-        }
-        if (newVal !== entry[field]) {
-            entry[field] = newVal;
-            commitFrontmatterChange();
-        }
-        td.dataset['orig'] = entry[field];
-    });
-}
-
-/** 创建单行可编辑表格行（contenteditable td，直接输入） */
-function createFmRow(entry: FmEntry, index: number, tbody: HTMLElement, panel: HTMLElement): HTMLTableRowElement {
-    const tr = document.createElement('tr');
-
-    // key 单元格
-    const tdKey = document.createElement('td');
-    tdKey.className = 'fm-key';
-    bindFmCell(tdKey, entry, 'key', tbody, panel);
-
-    // value 单元格
-    const tdVal = document.createElement('td');
-    tdVal.className = 'fm-val';
-    bindFmCell(tdVal, entry, 'value', tbody, panel);
-
-    // 删除按钮
-    const tdDel = document.createElement('td');
-    tdDel.className = 'fm-action';
-    const delBtn = document.createElement('button');
-    delBtn.className = 'fm-delete-btn';
-    delBtn.innerHTML = IconX;
-    delBtn.title = t('Delete');
-    delBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        currentFmEntries.splice(index, 1);
-        commitFrontmatterChange();
-        rebuildFmTable(tbody, panel);
-    });
-    tdDel.appendChild(delBtn);
-
-    tr.appendChild(tdKey);
-    tr.appendChild(tdVal);
-    tr.appendChild(tdDel);
-    return tr;
-}
-
-/** 重建表格 tbody 内容 */
-function rebuildFmTable(tbody: HTMLElement, panel: HTMLElement): void {
-    tbody.innerHTML = '';
-    currentFmEntries.forEach((entry, i) => {
-        tbody.appendChild(createFmRow(entry, i, tbody, panel));
-    });
-}
-
-/** 新增一行 */
-function addNewRow(tbody: HTMLElement, panel: HTMLElement): void {
-    const newEntry: FmEntry = { key: '', value: '' };
-    currentFmEntries.push(newEntry);
-    const tr = createFmRow(newEntry, currentFmEntries.length - 1, tbody, panel);
-    tbody.appendChild(tr);
-    // 自动聚焦 key 单元格
-    const keyTd = tr.querySelector('.fm-key') as HTMLElement | null;
-    keyTd?.focus();
-}
-
-/** 在 #editor 前渲染 frontmatter 表格面板；无 frontmatter 时移除面板 */
-function renderFrontmatterPanel(frontmatter: string | undefined): void {
-    const existing = document.getElementById('frontmatter-panel');
-    const editorEl = document.getElementById('editor');
-
-    // 无 frontmatter → 清空状态、移除面板
-    if (!frontmatter) {
-        currentFmEntries = [];
-        existing?.remove();
-        if (editorEl) { editorEl.style.paddingTop = ''; }
-        return;
-    }
-
-    const entries = parseFrontmatter(frontmatter);
-    // 即使 entries 为空也保留面板（允许用户后续添加行）
-    currentFmEntries = entries;
-
-    const panel = existing ?? document.createElement('div');
-    panel.id = 'frontmatter-panel';
-    panel.className = 'frontmatter-panel';
-
-    // 构建表格
-    const table = document.createElement('table');
-    table.className = 'frontmatter-table';
-    const tbody = document.createElement('tbody');
-    entries.forEach((entry, i) => {
-        tbody.appendChild(createFmRow(entry, i, tbody, panel));
-    });
-    table.appendChild(tbody);
-    panel.innerHTML = '';
-    panel.appendChild(table);
-
-    // 底部添加按钮
-    const addRow = document.createElement('div');
-    addRow.className = 'fm-add-row';
-    const addBtn = document.createElement('button');
-    addBtn.className = 'fm-add-btn';
-    addBtn.innerHTML = `${IconPlus} <span>${t('Add field')}</span>`;
-    addBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        addNewRow(tbody, panel);
-    });
-    addRow.appendChild(addBtn);
-    panel.appendChild(addRow);
-
-    if (!existing) {
-        editorEl?.parentNode?.insertBefore(panel, editorEl);
-    }
-    if (editorEl) { editorEl.style.paddingTop = '16px'; }
-}
-
-
-function escapeHtml(s: string): string {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
+// ── 编辑器初始化 ─────────────────────────────────────────────
 async function initEditor(
     container: HTMLElement,
     markdown: string,
 ): Promise<void> {
-    // 销毁旧编辑器（revert 时使用）
     if (currentEditor) {
         currentEditor.destroy();
         currentEditor = null;
@@ -477,24 +198,32 @@ async function initEditor(
         markdown,
         (updated) => {
             notifyUpdate(updated);
-            toc.refresh(); // 内容变化时刷新目录（面板关闭时是 no-op）
+            toc.refresh();
         },
         handleRenameImage,
     );
-    toc.refresh(); // 编辑器初始化完成后刷新一次
+    toc.refresh();
 }
 
-// 工具栏（传入 TOC 切换回调 + 图片上传回调）
+// ── 初始化事件管理器 ──────────────────────────────────────────
+const eventManager = createEventManager();
+
+// ── 初始化 UI 组件 ───────────────────────────────────────────
+const toc = initToc(eventManager, () => getEditorView());
+document.body.appendChild(toc.panel);
+
+const findBar = initFindBar(() => document.getElementById("editor"));
+
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 const topbarTb = topbar
     ? initToolbar(
-          topbar,
-          () => currentEditor,
-          () => toc.toggle(),
-          { getLineMap, getMarkdownSource },
-          async (file: File, altText: string) => handleImageFile(file, altText),
-          async (id: string) => handleGetProjectImages(id),
-      )
+        topbar,
+        () => currentEditor,
+        () => toc.toggle(),
+        { getLineMap, getMarkdownSource },
+        async (file: File, altText: string) => handleImageFile(file, altText),
+        async (id: string) => handleGetProjectImages(id),
+    )
     : null;
 
 if (topbar) {
@@ -508,7 +237,7 @@ if (topbar) {
     new ResizeObserver(updateTopbarHeight).observe(topbar);
 }
 
-// 链接 Hover 弹框 + 表格行列添加按钮（在 #editor 容器上监听）
+// ── 编辑器容器事件绑定 ───────────────────────────────────────
 const editorContainer = document.getElementById("editor");
 if (editorContainer) {
     setupLinkPopup(editorContainer, () => getEditorView());
@@ -518,17 +247,23 @@ if (editorContainer) {
     setupTableAddButtons(editorContainer, () => getEditorView());
     setupTableHandles(editorContainer, () => getEditorView());
 
-    // 点击 #editor 容器底部空白区域（内容最后一行以下）→ 光标移到文档末尾并聚焦
-    editorContainer.addEventListener("mousedown", (e) => {
+    // 点击底部空白区域 → 光标移到文档末尾
+    eventManager.onElement(editorContainer, "mousedown", (e) => {
         const view = getEditorView();
-        if (!view) { return; }
-        // 点到 ProseMirror 内容区域内则不干预，让编辑器自己处理
-        if (view.dom.contains(e.target as Node)) { return; }
-        // 只响应内容最后一个块底部以下的点击（排除左/右/顶部 padding 区域）
+        if (!view) {
+            return;
+        }
+        if (view.dom.contains(e.target as Node)) {
+            return;
+        }
         const lastChild = view.dom.lastElementChild;
-        if (!lastChild) { return; }
+        if (!lastChild) {
+            return;
+        }
         const lastRect = lastChild.getBoundingClientRect();
-        if (e.clientY <= lastRect.bottom) { return; }
+        if (e.clientY <= lastRect.bottom) {
+            return;
+        }
         e.preventDefault();
         const { state } = view;
         const sel = TextSelection.atEnd(state.doc);
@@ -536,8 +271,8 @@ if (editorContainer) {
         view.focus();
     });
 
-    // 拖放图片文件到编辑器
-    editorContainer.addEventListener("dragover", (e) => {
+    // 拖放图片
+    eventManager.onElement(editorContainer, "dragover", (e) => {
         const items = e.dataTransfer?.items;
         if (
             items &&
@@ -550,7 +285,7 @@ if (editorContainer) {
         }
     });
 
-    editorContainer.addEventListener("drop", (e) => {
+    eventManager.onElement(editorContainer, "drop", (e) => {
         const files = e.dataTransfer?.files;
         if (!files?.length) {
             return;
@@ -564,17 +299,15 @@ if (editorContainer) {
         e.preventDefault();
         e.stopPropagation();
         handleImageFile(imageFile, "")
-            .then((url) => {
-                insertImageNode(url, "");
-            })
+            .then((url) => insertImageNode(currentEditor, url, ""))
             .catch((err: Error) =>
                 console.error("[ImageUpload] drop failed:", err),
             );
     });
 }
 
-// 粘贴图片（全局监听，优先处理图片，其他内容交给编辑器自身处理）
-document.addEventListener("paste", (e) => {
+// 粘贴图片
+eventManager.onDocument("paste", (e) => {
     const items = e.clipboardData?.items;
     if (!items) {
         return;
@@ -591,15 +324,13 @@ document.addEventListener("paste", (e) => {
     }
     e.preventDefault();
     handleImageFile(file, "")
-        .then((url) => {
-            insertImageNode(url, "");
-        })
+        .then((url) => insertImageNode(currentEditor, url, ""))
         .catch((err: Error) =>
             console.error("[ImageUpload] paste failed:", err),
         );
 });
 
-// 选中文字浮动工具栏 + 表格工具栏（共享同一个 selectionChange 事件）
+// ── 选中文字浮动工具栏 ───────────────────────────────────────
 const selTb = setupSelectionToolbar(
     () => getEditorView(),
     () => currentEditor,
@@ -613,8 +344,8 @@ registerSelectionChangeHandler((view) => {
     topbarTb?.onSelectionChange(view);
 });
 
-// Checkbox toggle：点击任务列表项左侧的伪元素复选框区域
-document.addEventListener(
+// Checkbox toggle
+eventManager.onDocument(
     "click",
     (e) => {
         const target = e.target as Element;
@@ -624,32 +355,24 @@ document.addEventListener(
         if (!taskItem) {
             return;
         }
-
-        // 只响应点击最左边 24px（checkbox 伪元素区域）
         const rect = taskItem.getBoundingClientRect();
         if ((e as MouseEvent).clientX - rect.left > 24) {
             return;
         }
-
         const view = getEditorView();
         if (!view) {
             return;
         }
-
-        // 用 posAtDOM 从 DOM 节点直接反查 ProseMirror 位置（比 posAtCoords 精确）
         let domPos: number;
         try {
             domPos = view.posAtDOM(taskItem, 0);
         } catch {
             return;
         }
-
         const { state } = view;
         const $pos = state.doc.resolve(
             Math.min(domPos, state.doc.content.size),
         );
-
-        // 沿 $pos 的祖先链找到 task_list_item 节点
         for (let d = $pos.depth; d >= 0; d--) {
             const node = $pos.node(d);
             if (
@@ -671,329 +394,55 @@ document.addEventListener(
     true,
 );
 
-// Cmd/Ctrl+F：打开查找栏（预填当前选区文字）
-window.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.code === "KeyF" && !e.shiftKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        const view = getEditorView();
-        let initialQuery: string | undefined;
-        if (view) {
-            const { selection, doc } = view.state;
-            if (!selection.empty) {
-                const text = doc.textBetween(selection.from, selection.to);
-                if (text.trim()) { initialQuery = text; }
-            }
-        }
-        findBar.open(initialQuery);
-    }
+// ── 初始化键盘快捷键和滚动持久化 ──────────────────────────────
+initKeyboardShortcuts(
+    eventManager,
+    getEditorView,
+    getLineMap,
+    getMarkdownSource,
+    getFirstVisibleSourceLine,
+    findBar,
+);
+initScrollPersistence(eventManager);
+
+// ── 消息处理器 ───────────────────────────────────────────────
+const handlers = createMessageHandlers({
+    state: {
+        getEditor: () => currentEditor,
+        setEditor: (editor) => {
+            currentEditor = editor;
+        },
+        getLineMap,
+        setLineMap: (lineMap) => {
+            currentLineMap = lineMap;
+        },
+        getMarkdownSource,
+        setMarkdownSource: (source) => {
+            markdownSource = source;
+        },
+    },
+    actions: {
+        scrollToSourceLine,
+        getFirstVisibleSourceLine,
+        initEditor,
+        retryScroll,
+        getEditorView,
+    },
+    topbarTb,
+    themeOverrides: _themeOverrides,
 });
 
-// Cmd/Ctrl+Shift+M：切换到文本编辑器（附带当前视口顶部行号，供文本编辑器定位）
-window.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.code === "KeyM") {
-        e.preventDefault();
-        const view = getEditorView();
-        const line = view ? getFirstVisibleSourceLine(view, currentLineMap) : undefined;
-        notifySwitchToTextEditor(line);
-    }
-});
-
-// Option+K 快捷键：把光标所在顶层块发送给 Claude
-// 有文字选区时发送选中文字 + 精确行号；无选区时发送整个顶层块
-window.addEventListener("keydown", (e) => {
-    if (e.altKey && e.code === "KeyK") {
-        e.preventDefault();
-        const view = getEditorView();
-        if (!view) {
-            return;
-        }
-        const { selection } = view.state;
-        const $from = view.state.doc.resolve(selection.from);
-        const topBlockIdx = $from.index(0);
-        const topBlock = view.state.doc.child(topBlockIdx);
-        const map = currentLineMap;
-        const textBefore = view.state.doc.textBetween(0, $from.before(1), "\n");
-        const fallbackStart = (textBefore.match(/\n/g) ?? []).length + 1;
-        const blockStartLine = map[topBlockIdx] ?? fallbackStart;
-
-        if (!selection.empty) {
-            // 有文字选区：发送选中文字 + 精确行号
-            const text = view.state.doc.textBetween(
-                selection.from,
-                selection.to,
-                "\n",
-            );
-            if (!text.trim()) {
-                return;
-            }
-
-            const source = markdownSource;
-            let startLine: number;
-            let endLine: number;
-
-            if (selection instanceof CellSelection) {
-                // 用 $anchorCell.pos / $headCell.pos 保证在单元格内部
-                // （selection.to-1 可能落在行间位置而非格内，导致 getCellRowSourceLine 返回 null）
-                const anchorLine = getCellRowSourceLine(
-                    view.state.doc,
-                    selection.$anchorCell.pos,
-                    () => source,
-                );
-                const headLine = getCellRowSourceLine(
-                    view.state.doc,
-                    selection.$headCell.pos,
-                    () => source,
-                );
-                if (anchorLine !== null && headLine !== null) {
-                    startLine = Math.min(anchorLine, headLine);
-                    endLine = Math.max(anchorLine, headLine);
-                } else {
-                    startLine = anchorLine ?? headLine ?? blockStartLine;
-                    endLine = startLine;
-                }
-            } else {
-                // 普通文本选区：优先用文本搜索，失败时降级 lineMap+偏移
-                const $fromPos = view.state.doc.resolve(selection.from);
-                const $toPos = view.state.doc.resolve(selection.to);
-                const startBlockText = getBlockContainerText($fromPos);
-                const endBlockText = getBlockContainerText($toPos);
-                startLine = findLineInOriginalSource(source, startBlockText);
-                endLine = findLineInOriginalSource(source, endBlockText);
-
-                if (startLine === -1) {
-                    // 逐字搜索选中文本首行（适用于代码块内容等 normalizeForSearch 会破坏的场景）
-                    const firstLine = text.trim().split("\n")[0].trim();
-                    if (firstLine.length >= 2) {
-                        const idx = source
-                            .split("\n")
-                            .findIndex((l) => l.includes(firstLine));
-                        if (idx >= 0) {
-                            startLine = idx + 1;
-                        }
-                    }
-                }
-                if (startLine === -1) {
-                    const isFenced = topBlock.type.name === "code_block";
-                    const blockContentStart = $from.before(1) + 1;
-                    const textBeforeInBlock = view.state.doc.textBetween(
-                        blockContentStart,
-                        selection.from,
-                        "\n",
-                    );
-                    const linesIntoBlock = (
-                        textBeforeInBlock.match(/\n/g) ?? []
-                    ).length;
-                    startLine =
-                        blockStartLine + (isFenced ? 1 : 0) + linesIntoBlock;
-                }
-                if (endLine === -1) {
-                    endLine = startLine + (text.match(/\n/g) ?? []).length;
-                }
-            }
-
-            notifySendToClaudeChat(text, startLine, endLine);
-        } else {
-            // 无选区：发送整个顶层块（原有行为）
-            const text = topBlock.textContent;
-            if (!text.trim()) {
-                return;
-            }
-            const endLine = blockStartLine + text.split("\n").length - 1;
-            notifySendToClaudeChat(text, blockStartLine, endLine);
-        }
-    }
-});
-
-// WebView 加载完成，通知 Extension 侧发送初始内容
-notifyReady();
-
-// ── 滚动位置持久化 ────────────────────────────────────────────
-// 保存：滚动时防抖写入 VSCode WebView 状态（跨会话可恢复）
-let _scrollSaveTimer: ReturnType<typeof setTimeout> | null = null;
-window.addEventListener('scroll', () => {
-    if (_scrollSaveTimer) clearTimeout(_scrollSaveTimer);
-    _scrollSaveTimer = setTimeout(() => {
-        const cur = getWebviewState() ?? {};
-        setWebviewState({ ...cur, scrollY: window.scrollY });
-    }, 200);
-}, { passive: true });
-
-// 恢复（主路径）：tab 切换时 iframe 被隐藏再显示，浏览器会重置 scrollY
-// visibilitychange 触发时读取已保存位置并还原
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
-    const state = getWebviewState();
-    if (state?.scrollY !== undefined) {
-        requestAnimationFrame(() => {
-            window.scrollTo({ top: state.scrollY as number });
-        });
-    }
-});
-// ─────────────────────────────────────────────────────────────
-
-// 监听来自 Extension 侧的消息
 onMessage(async (msg) => {
     const container = document.getElementById("editor");
     if (!container) {
         return;
     }
-
-    if (msg.type === "init" || msg.type === "revert") {
-        markdownSource = msg.content; // 保存原始内容，供行号搜索使用
-        currentLineMap = msg.lineMap ?? [];
-        renderFrontmatterPanel(msg.frontmatter);
-        if (msg.imageUriMap) { setImageUriMap(msg.imageUriMap); }
-        await initEditor(container, msg.content);
-        // 新 WebView 打开时主动获取 DOM 焦点。
-        // 若不调用：旧 WebView（path-link-test.md）在 Cmd+Click 后 blur() 释放了焦点，
-        // 但新 WebView（README.md）的 iframe 未必自动获得焦点；
-        // VS Code 可能仍将 Cmd+W 路由到旧 iframe，导致两个 .md 标签都被关闭。
-        // init 仅在首次打开时触发（revert 是内容变更），此处只对首次打开生效。
-        if (msg.type === "init") {
-            window.focus();
-        }
-        // 全局搜索导航或切换回预览时，滚动到指定源码行
-        // Milkdown 渲染 + 浏览器布局需要时间，多次重试确保 DOM 就绪后才滚动
-        if (msg.type === "init" && msg.scrollToLine) {
-            const targetLine = msg.scrollToLine;
-            let scrollDone = false;
-            const tryScroll = () => {
-                if (scrollDone) { return; }
-                const view = getEditorView();
-                if (!view) { return; }
-                // 检查第一个块的 DOM 高度：若为 0 说明布局尚未完成
-                const firstChild = view.dom.children[0] as HTMLElement | undefined;
-                if (!firstChild || firstChild.getBoundingClientRect().height === 0) { return; }
-                scrollToSourceLine(view, currentLineMap, targetLine);
-                scrollDone = true;
-            };
-            // 300ms 首试（Milkdown 渲染需要时间），若失败则在 600ms / 1100ms / 2000ms 继续重试
-            for (const delay of [300, 600, 1100, 2000]) {
-                setTimeout(tryScroll, delay);
-            }
-        } else if (msg.type === "init") {
-            // WebView 重建场景（VSCode 重启恢复标签页等）：从持久状态恢复滚动位置
-            const saved = getWebviewState();
-            if (saved?.scrollY) {
-                const targetY = saved.scrollY as number;
-                let restoreDone = false;
-                const tryRestore = () => {
-                    if (restoreDone) return;
-                    const view = getEditorView();
-                    if (!view) return;
-                    const firstChild = view.dom.children[0] as HTMLElement | undefined;
-                    if (!firstChild || firstChild.getBoundingClientRect().height === 0) return;
-                    window.scrollTo({ top: targetY });
-                    restoreDone = true;
-                };
-                for (const delay of [300, 600, 1100, 2000]) {
-                    setTimeout(tryRestore, delay);
-                }
-            }
-        }
-    } else if (msg.type === "requestSwitchToTextEditor") {
-        // 来自菜单按钮/命令面板的"切换到文本编辑器"请求
-        // 与 Cmd+Shift+M 快捷键逻辑相同：先获取当前可见行再通知 Extension
-        const view = getEditorView();
-        const line = view ? getFirstVisibleSourceLine(view, currentLineMap) : undefined;
-        notifySwitchToTextEditor(line);
-    } else if (msg.type === "scrollToLine") {
-        // 面板已打开时（如全局搜索点击已打开文件）直接滚动
-        // 若 initEditor 正在重建（getEditorView 返回 null），最多重试 8 次
-        const scrollLine = msg.line;
-        let scrollAttempts = 0;
-        const tryScrollNow = () => {
-            const view = getEditorView();
-            if (view) {
-                scrollToSourceLine(view, currentLineMap, scrollLine);
-            } else if (scrollAttempts < 8) {
-                scrollAttempts++;
-                setTimeout(tryScrollNow, 250);
-            }
-        };
-        tryScrollNow();
-    } else if (msg.type === "lineMapUpdate") {
-        currentLineMap = msg.lineMap;
-    } else if (msg.type === "setDebugMode") {
-        setDebugMode(msg.enabled);
-        setLogTableSel(msg.enabled);
-        topbarTb?.setDebugMode(msg.enabled);
-    } else if (msg.type === "imageUploaded") {
-        const cb = _pendingUploads.get(msg.id);
-        if (cb) {
-            _pendingUploads.delete(msg.id);
-            cb.resolve(msg.url);
-        }
-    } else if (msg.type === "imageUploadError") {
-        const cb = _pendingUploads.get(msg.id);
-        if (cb) {
-            _pendingUploads.delete(msg.id);
-            cb.reject(new Error(msg.error));
-        }
-    } else if (msg.type === "projectImagesList") {
-        const cb = _pendingGetImages.get(msg.id);
-        if (cb) {
-            _pendingGetImages.delete(msg.id);
-            cb.resolve(msg.images);
-        }
-    } else if (msg.type === "imageRenamed") {
-        const cb = _pendingRenames.get(msg.id);
-        if (cb) {
-            _pendingRenames.delete(msg.id);
-            cb.resolve();
-        }
-        // 更新 ProseMirror 文档中对应图片节点的 src
-        const editor = currentEditor;
-        if (editor) {
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                const { state } = view;
-                const tr = state.tr;
-                let changed = false;
-                state.doc.descendants((node, pos) => {
-                    if (
-                        node.type.name === "image" &&
-                        node.attrs["src"] === msg.oldWebviewUri
-                    ) {
-                        tr.setNodeMarkup(pos, null, {
-                            ...node.attrs,
-                            src: msg.newWebviewUri,
-                        });
-                        changed = true;
-                    }
-                });
-                if (changed) {
-                    view.dispatch(tr);
-                }
-            });
-        }
-    } else if (msg.type === "imageRenameError") {
-        const cb = _pendingRenames.get(msg.id);
-        if (cb) {
-            _pendingRenames.delete(msg.id);
-            cb.reject(new Error(msg.error));
-        }
-    } else if (msg.type === "pathSuggestions") {
-        dispatchPathSuggestions(msg.id, msg.items);
-        dispatchImgPathSuggestions(msg.id, msg.items);
-    } else if (msg.type === "imagePathResolved") {
-        dispatchImagePathResolved(msg.id, msg.webviewUri);
-    } else if (msg.type === "setTheme") {
-        const root = document.documentElement;
-        // 清除我们之前设置的自定义属性
-        for (const prop of _themeOverrides) {
-            root.style.removeProperty(prop);
-        }
-        _themeOverrides.clear();
-        // 应用新的颜色
-        for (const [key, value] of Object.entries(msg.colors)) {
-            if (value) {
-                root.style.setProperty(key, value);
-                _themeOverrides.add(key);
-            }
-        }
-        // 触发主题切换事件
-        window.dispatchEvent(new CustomEvent('theme-changed'));
+    const handler = handlers[msg.type as ToWebviewMessage["type"]];
+    if (handler) {
+        // 类型安全的调用：msg 的类型已经是 ToWebviewMessage，handler 接受对应类型的 msg
+        await (handler as Handler)(msg, container);
     }
 });
+
+// WebView 加载完成
+notifyReady();

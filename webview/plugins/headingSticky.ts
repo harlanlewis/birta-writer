@@ -4,43 +4,16 @@ import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
 import { headingFoldPluginKey, type HeadingFoldMeta } from "./headingFold";
+import { t } from "../i18n";
+import {
+    getTopbarBottom,
+    getHeadingLevel,
+    getVisibleHeadings,
+    getHeadingText,
+    findHeadingPos,
+} from "../utils/headingUtils";
 
-const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
 const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
-
-function getTopbarBottom(): number {
-    return document.querySelector(".editor-topbar")?.getBoundingClientRect().bottom ?? 40;
-}
-
-function getHeadingLevel(heading: HTMLElement): number {
-    const level = Number(heading.tagName.slice(1));
-    return Number.isFinite(level) ? level : 1;
-}
-
-function getVisibleHeadings(view: EditorView): HTMLElement[] {
-    return Array.from(view.dom.querySelectorAll<HTMLElement>(HEADING_SELECTOR)).filter((heading) => {
-        const rect = heading.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && !heading.classList.contains("heading-fold-hidden");
-    });
-}
-
-function getHeadingText(heading: HTMLElement): string {
-    const clone = heading.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll(".heading-fold-gutter").forEach((node) => node.remove());
-    return clone.textContent?.trim() ?? "";
-}
-
-function findHeadingPos(view: EditorView, heading: HTMLElement): number | null {
-    let result: number | null = null;
-    view.state.doc.descendants((node, pos) => {
-        if (node.type.name === "heading" && view.nodeDOM(pos) === heading) {
-            result = pos;
-            return false;
-        }
-        return true;
-    });
-    return result;
-}
 
 function findHeadingFoldRange(view: EditorView, headingPos: number): { from: number; to: number } | null {
     const headingNode = view.state.doc.nodeAt(headingPos);
@@ -104,7 +77,7 @@ function setStickyContent(
         button.type = "button";
         button.className = "heading-sticky-toggle";
         button.innerHTML = collapsed ? IconChevronRight : IconChevronDown;
-        const tipText = collapsed ? "展开内容" : "折叠内容";
+        const tipText = collapsed ? t("Expand content") : t("Collapse content");
         button.setAttribute("aria-label", tipText);
         button.setAttribute("aria-expanded", collapsed ? "false" : "true");
         applyTooltip(button, tipText, { placement: "above" });
@@ -183,12 +156,23 @@ export const headingStickyPlugin = $prose(() =>
             const updateSticky = () => {
                 rafId = null;
 
-                const headings = getVisibleHeadings(view);
                 const top = getTopbarBottom();
+                const headings = getVisibleHeadings(view);
+
+                // 动态计算偏移：标题 padding-top（1em）与 sticky padding（0.5em）的差值
+                let paddingOffset = 0;
+                if (headings.length > 0) {
+                    const headingStyle = window.getComputedStyle(headings[0]);
+                    const headingPaddingTop = parseFloat(headingStyle.paddingTop) || 0;
+                    // sticky 的 padding 是 0.5em，这里用标题 padding 的一半作为近似
+                    paddingOffset = headingPaddingTop / 2 - 1;
+                }
+                const threshold = top - paddingOffset;
+
                 let activeIndex = -1;
 
                 for (let i = 0; i < headings.length; i++) {
-                    if (headings[i].getBoundingClientRect().top <= top) {
+                    if (headings[i].getBoundingClientRect().top <= threshold) {
                         activeIndex = i;
                     } else {
                         break;
@@ -212,6 +196,7 @@ export const headingStickyPlugin = $prose(() =>
                     hideSticky();
                     return;
                 }
+
                 if (activeHeadingPos !== headingPos) {
                     activeHeadingPos = headingPos;
                     dispatchStickyActiveChange(headingPos);

@@ -106,15 +106,18 @@ function escapeHtml(str: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function hastToHtml(node: any): string {
-    if (node.type === 'text') return escapeHtml(node.value as string);
-    if (node.type === 'element') {
-        const cls = (node.properties?.className as string[] | undefined)?.join(' ') || '';
-        const inner = (node.children as any[])?.map(hastToHtml).join('') ?? '';
+type HastNode = { type: string; value?: string; properties?: { className?: string[] }; children?: HastNode[] };
+
+function hastToHtml(node: HastNode): string {
+    if (node.type === "text") return escapeHtml(node.value ?? "");
+    if (node.type === "element") {
+        const cls = (node.properties?.className)?.join(" ") || "";
+        const inner = node.children?.map(hastToHtml).join("") ?? "";
         return cls ? `<span class="${cls}">${inner}</span>` : inner;
     }
-    if (node.type === 'root') return (node.children as any[])?.map(hastToHtml).join('') ?? '';
-    return '';
+    if (node.type === "root")
+        return node.children?.map(hastToHtml).join("") ?? "";
+    return "";
 }
 
 /**

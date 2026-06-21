@@ -32,5 +32,9 @@
   "config.imageSelectionColor.description": "Border color when an image is selected in the editor (CSS color value). Default matches the table cell selection color.",
   "config.colorTheme.description": "Color theme for the Markdown editor. 'auto' follows VS Code's current theme. Set a theme ID to override (use the 'Select Color Theme' command to browse available themes).",
   "command.selectTheme.title": "Select Color Theme",
-  "command.showCurrentTheme.title": "Show Current Theme"
+  "command.showCurrentTheme.title": "Show Current Theme",
+  "Expand content": "Expand content",
+  "Collapse content": "Collapse content",
+  "Debug tools": "Debug tools",
+  "Test get line number": "Test get line number"
 }

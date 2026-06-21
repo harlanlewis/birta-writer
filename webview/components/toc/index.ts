@@ -2,6 +2,13 @@ import './toc.css';
 import type { EditorView } from "@milkdown/prose/view";
 import { applyTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
+import type { EventManager } from "@/eventManager";
+import {
+    getTopbarBottom,
+    getAllHeadings,
+    findHeadingPos,
+    findActiveHeading,
+} from "@/utils/headingUtils";
 
 interface HeadingEntry {
     level: number;
@@ -11,11 +18,11 @@ interface HeadingEntry {
 
 const TOC_WIDTH = 220;
 const DOCKED_MIN_CONTENT_WIDTH = 720;
-const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
+const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
 const tocAutoHideThreshold = window.__i18n?.tocAutoHideThreshold ?? 3;
 type TocMode = "docked" | "overlay";
 
-export function initToc(getEditorView: () => EditorView | null): {
+export function initToc(eventManager: EventManager, getEditorView: () => EditorView | null): {
     panel: HTMLElement;
     toggle: () => void;
     refresh: () => void;
@@ -44,6 +51,7 @@ export function initToc(getEditorView: () => EditorView | null): {
     let dockedUserCollapsed = false;
     let userToggled = false;
     let activeHeadingPos: number | null = null;
+    let scrollRafId: number | null = null;
 
     function setActiveHeadingPos(pos: number | null): void {
         activeHeadingPos = pos;
@@ -164,7 +172,7 @@ export function initToc(getEditorView: () => EditorView | null): {
                         node.nodeType === Node.TEXT_NODE
                             ? node.parentElement
                             : (node as HTMLElement);
-                    while (el && !el.matches("h1,h2,h3,h4,h5,h6")) {
+                    while (el && !el.matches(HEADING_SELECTOR)) {
                         el = el.parentElement;
                     }
                     if (el) {
@@ -178,6 +186,8 @@ export function initToc(getEditorView: () => EditorView | null): {
                             window.scrollY -
                             topbarH -
                             8;
+                        // 立即更新 TOC 选中状态
+                        setActiveHeadingPos(pos);
                         window.scrollTo({ top, behavior: "smooth" });
                     }
                 } catch {
@@ -193,11 +203,6 @@ export function initToc(getEditorView: () => EditorView | null): {
         const headings = getHeadings();
         syncAutoOpenState(headings);
         syncTocState();
-    }
-
-    function handleStickyActiveChange(event: Event): void {
-        const detail = (event as CustomEvent<{ headingPos: number | null }>).detail;
-        setActiveHeadingPos(typeof detail?.headingPos === "number" ? detail.headingPos : null);
     }
 
     function outsideClickHandler(e: MouseEvent): void {
@@ -285,19 +290,45 @@ export function initToc(getEditorView: () => EditorView | null): {
         tabEl.style.top = `${tabTop}px`;
     }
 
+    // ── TOC 独立的滚动检测：更新当前可见标题的选中状态 ──────
+    function updateActiveHeadingOnScroll(): void {
+        scrollRafId = null;
+        const view = getEditorView();
+        if (!view) {
+            return;
+        }
+
+        const top = getTopbarBottom();
+        // 检测点往下偏移 50px，避免滚动完成前误判为上一个标题
+        const threshold = top + 50;
+        // TOC 不排除折叠隐藏的标题
+        const result = findActiveHeading(view, threshold, false);
+        setActiveHeadingPos(result?.pos ?? null);
+    }
+
+    function scheduleScrollUpdate(): void {
+        if (scrollRafId !== null) {
+            return;
+        }
+        scrollRafId = requestAnimationFrame(updateActiveHeadingOnScroll);
+    }
+
     requestAnimationFrame(() => {
         tocMode = resolveMode();
         const headings = getHeadings();
         isOpen = userToggled ? tocMode === "docked" && !dockedUserCollapsed : shouldAutoOpen(headings);
         updatePanelPosition();
         syncTocState();
+        // 初始化时检测一次当前可见标题
+        updateActiveHeadingOnScroll();
     });
 
-    window.addEventListener("resize", () => {
+    eventManager.onWindow("resize", () => {
         updatePanelPosition();
         checkResponsiveMode();
     });
-    window.addEventListener(HEADING_STICKY_ACTIVE_CHANGE_EVENT, handleStickyActiveChange);
+    // 监听滚动事件，独立更新 TOC 选中状态
+    eventManager.onWindow("scroll", scheduleScrollUpdate, { passive: true });
 
     return { panel, toggle, refresh };
 }

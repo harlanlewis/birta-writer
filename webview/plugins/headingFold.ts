@@ -4,6 +4,7 @@ import { Plugin, PluginKey, TextSelection } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
+import { t } from "../i18n";
 
 export type HeadingFoldMeta = { type: "toggle"; pos: number };
 type HeadingFoldRange = { from: number; to: number };
@@ -79,7 +80,7 @@ function createHeadingFoldGutter(
     button.type = "button";
     button.className = "heading-fold-toggle";
     button.innerHTML = collapsed ? IconChevronRight : IconChevronDown;
-    const tipText = collapsed ? "展开内容" : "折叠内容";
+    const tipText = collapsed ? t("Expand content") : t("Collapse content");
     button.setAttribute("aria-label", tipText);
     button.setAttribute("aria-expanded", collapsed ? "false" : "true");
     applyTooltip(button, tipText, { placement: "above" });
