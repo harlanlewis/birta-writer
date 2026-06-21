@@ -30,6 +30,7 @@ import {
     listLiftPlugin,
     listSpreadNormalizePlugin,
     selectionPlugin,
+    tabKeymapPlugin,
     trailingHrParagraphPlugin,
 } from "./plugins";
 
@@ -383,6 +384,7 @@ export async function createEditor(
         .use(headingFoldPlugin)
         .use(headingStickyPlugin)
         .use(formatKeymapPlugin)
+        .use(tabKeymapPlugin)
         .use(cellClickFixPlugin)
         .use(listSpreadNormalizePlugin)
         .use(trailingHrParagraphPlugin)

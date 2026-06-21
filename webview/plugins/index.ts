@@ -14,3 +14,4 @@ export { listLiftPlugin, listSpreadNormalizePlugin } from "./list";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";
 export { cellClickFixPlugin } from "./tableCellClickFix";
 export { setLogTableSel } from "./tableDebug";
+export { tabKeymapPlugin } from "./tabKeymap";
