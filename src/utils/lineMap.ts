@@ -1,7 +1,7 @@
 /**
- * 将 Markdown 内容映射为段落行号数组（用于编辑器行高亮、全局搜索跳转）。
- * 每个元素是一个"段落"（非空行组）的起始行号（1-indexed）。
- * 代码块作为整体处理，不拆分内部行。
+ * Maps Markdown content into an array of paragraph line numbers (used for editor line highlighting and global search jumps).
+ * Each element is the starting line number (1-indexed) of a "paragraph" (a group of non-empty lines).
+ * Code blocks are treated as a single unit and their inner lines are not split.
  */
 export function computeLineMap(content: string): number[] {
     const lines = content.split("\n");

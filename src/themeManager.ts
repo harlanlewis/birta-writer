@@ -13,24 +13,24 @@ export interface ThemeColors {
     [key: string]: string;
 }
 
-/** 自定义主题接口 */
+/** Custom theme interface */
 export interface CustomTheme {
     name: string;
     colors: Record<string, string>;
 }
 
-/** 获取用户自定义主题 */
+/** Get user-defined custom themes */
 export function getCustomThemes(): CustomTheme[] {
     const config = vscode.workspace.getConfiguration("markdownWysiwyg");
     return config.get<CustomTheme[]>("customThemes", []);
 }
 
-// 解析颜色字符串为 RGB 值
+// Parse a color string into RGB values
 function parseColor(color: string): { r: number; g: number; b: number; a: number } | null {
     if (!color) return null;
     color = color.trim();
     
-    // 处理 rgba(r, g, b, a) 格式
+    // Handle rgba(r, g, b, a) format
     const rgbaMatch = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)/);
     if (rgbaMatch) {
         return {
@@ -41,7 +41,7 @@ function parseColor(color: string): { r: number; g: number; b: number; a: number
         };
     }
     
-    // 处理 #RRGGBB 格式
+    // Handle #RRGGBB format
     const hexMatch = color.match(/^#([0-9a-f]{6})$/i);
     if (hexMatch) {
         const hex = hexMatch[1];
@@ -53,7 +53,7 @@ function parseColor(color: string): { r: number; g: number; b: number; a: number
         };
     }
     
-    // 处理 #RGB 格式
+    // Handle #RGB format
     const hexShortMatch = color.match(/^#([0-9a-f]{3})$/i);
     if (hexShortMatch) {
         const hex = hexShortMatch[1];
@@ -68,20 +68,20 @@ function parseColor(color: string): { r: number; g: number; b: number; a: number
     return null;
 }
 
-// 检测两个颜色是否相似（差异太小）
+// Detect whether two colors are similar (difference too small)
 function colorsAreSimilar(color1: string, color2: string): boolean {
     const c1 = parseColor(color1);
     const c2 = parseColor(color2);
     
     if (!c1 || !c2) return false;
     
-    // 计算颜色差异（加权欧氏距离）
+    // Compute the color difference (weighted Euclidean distance)
     const dr = c1.r - c2.r;
     const dg = c1.g - c2.g;
     const db = c1.b - c2.b;
     const distance = Math.sqrt(dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11);
     
-    // 如果差异小于 30，认为颜色太接近
+    // If the difference is less than 30, consider the colors too close
     return distance < 30;
 }
 
@@ -307,7 +307,7 @@ export async function getThemeColors(themePath: string): Promise<ThemeColors> {
 
         const colors: ThemeColors = {};
 
-        // 先提取主题文件中定义的所有颜色
+        // First extract all colors defined in the theme file
         if (themeJson.colors) {
             for (const [key, value] of Object.entries(themeJson.colors)) {
                 if (typeof value === "string") {
@@ -316,8 +316,8 @@ export async function getThemeColors(themePath: string): Promise<ThemeColors> {
             }
         }
 
-        // 确保 THEME_COLOR_KEYS 中的所有颜色都被包含
-        // 如果主题文件中没有定义，使用默认值
+        // Ensure all colors in THEME_COLOR_KEYS are included
+        // If not defined in the theme file, use the default value
         const isLight = themeJson.type === "light" || themeJson.type === "vs";
         const defaults: Record<string, string> = {
             "editor.background": isLight ? "#ffffff" : "#1e1e1e",
@@ -402,14 +402,14 @@ export async function getThemeColors(themePath: string): Promise<ThemeColors> {
             }
         }
 
-        // 检测选中背景色是否与背景色太接近，如果是则使用备用颜色
+        // Detect whether the selection background color is too close to the background color; if so, use a fallback color
         const bgVar = "--vscode-editor-background";
         const selVar = "--vscode-editor-selectionBackground";
         const inactiveSelVar = "--vscode-editor-inactiveSelectionBackground";
         
         if (colors[bgVar] && colors[selVar]) {
             if (colorsAreSimilar(colors[bgVar], colors[selVar])) {
-                // 使用明显的蓝色作为备用选中颜色
+                // Use a distinct blue as the fallback selection color
                 colors[selVar] = isLight ? "rgba(0, 120, 215, 0.3)" : "rgba(38, 79, 120, 0.6)";
                 if (colors[inactiveSelVar]) {
                     colors[inactiveSelVar] = isLight ? "rgba(0, 120, 215, 0.15)" : "rgba(38, 79, 120, 0.4)";
@@ -425,7 +425,7 @@ export async function getThemeColors(themePath: string): Promise<ThemeColors> {
 }
 
 export function getAutoThemeColors(): ThemeColors {
-    // 返回空对象，让 webview 从 getComputedStyle 获取 VSCode 当前注入的变量值
+    // Return an empty object, letting the webview obtain VSCode's currently injected variable values via getComputedStyle
     return {};
 }
 

@@ -3,7 +3,6 @@ import * as os from "os";
 import * as vscode from "vscode";
 import { MarkdownDocument } from "./MarkdownDocument";
 import { getNonce } from "./utils/getNonce";
-import { ZH_CN_WEBVIEW } from "./i18n/webviewTranslations";
 import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
@@ -36,45 +35,45 @@ export class MarkdownEditorProvider
     public readonly onDidChangeCustomDocument =
         this._onDidChangeCustomDocument.event;
 
-    // 自动保存防抖定时器（key: document uri string）
+    // Auto-save debounce timers (key: document uri string)
     private readonly _autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-    // 记录每个 document 对应的 webviewPanel（用于 revert 时推送新内容）
+    // Tracks the webviewPanel for each document (used to push new content on revert)
     private readonly _webviewPanels = new Map<string, vscode.WebviewPanel>();
 
-    // 已执行过 keepEditor（pin tab）的 uri，避免重复执行
+    // URIs that have already run keepEditor (pin tab), to avoid running it again
     private readonly _pinnedDocuments = new Set<string>();
 
-    // 记录最近一次我们自己写盘的时间，用于避免自身保存触发文件监听 revert
+    // Records the time of our own last write to disk, to avoid our own save triggering a file-watcher revert
     private readonly _lastSaveTimes = new Map<string, number>();
 
-    // 图片 webviewUri → relPath 映射（key: docUri.toString()）
+    // Image webviewUri → relPath mapping (key: docUri.toString())
     private readonly _imageUriMaps = new Map<string, Map<string, string>>();
     private readonly _frontmatterMap = new Map<string, string>(); // uriKey → raw frontmatter string
-    /** switchToTextEditor 进行中时，抑制 onDidChangeTabs 把文本 tab 再切回 WYSIWYG */
+    /** While switchToTextEditor is in progress, suppress onDidChangeTabs from switching the text tab back to WYSIWYG */
     public static readonly suppressAutoSwitch = new Set<string>();
 
-    // 待跳转行号（全局搜索点击 / 切换编辑器时临时存储）key: fsPath
+    // Pending navigation line number (temporarily stored on global-search click / editor switch) key: fsPath
     private readonly _pendingNavigations = new Map<string, { line: number; ts: number }>();
 
-    // 全局兜底跳转行号（revealLine 触发但 active tab 未切换时存储）
+    // Global fallback navigation line number (stored when revealLine fires but the active tab hasn't switched)
     private _pendingRevealLine: { line: number; ts: number } | undefined;
 
-    // 已完成 WebView 初始化（发送过 ready 消息）的面板 key: uriKey
+    // Panels that have finished WebView initialization (sent a ready message) key: uriKey
     private readonly _initializedPanels = new Set<string>();
 
-    // 切换到文本编辑器期间，抑制 onDidChangeActiveTextEditor 的行号回传
-    // 避免文本编辑器打开后，行号被错误地反馈给 WebView 触发多余的 scrollToLine
+    // While switching to the text editor, suppress the line-number callback from onDidChangeActiveTextEditor
+    // Prevents the line number from being wrongly fed back to the WebView after the text editor opens, triggering a redundant scrollToLine
     private _suppressNavFromTextEditor = false;
 
     public static current: MarkdownEditorProvider | null = null;
 
-    /** 从 extension.ts 调用：revealLine 触发但 active tab 未切换时，存全局兜底 */
+    /** Called from extension.ts: when revealLine fires but the active tab hasn't switched, store the global fallback */
     public setGlobalRevealLine(line: number): void {
         this._pendingRevealLine = { line, ts: Date.now() };
     }
 
-    /** 消费全局兜底跳转行号（10 秒内有效，大文件 Milkdown 初始化较慢） */
+    /** Consume the global fallback navigation line number (valid within 10 seconds; large files init Milkdown more slowly) */
     private _consumeGlobalRevealLine(): number | undefined {
         const p = this._pendingRevealLine;
         if (!p) { return undefined; }
@@ -83,7 +82,7 @@ export class MarkdownEditorProvider
         return p.line;
     }
 
-    /** 返回当前所有已注册（open）的 .md 面板的 fsPath 列表 */
+    /** Returns the list of fsPaths for all currently registered (open) .md panels */
     public getAllMdFsPaths(): string[] {
         const paths: string[] = [];
         for (const uriKey of this._webviewPanels.keys()) {
@@ -93,47 +92,47 @@ export class MarkdownEditorProvider
                     paths.push(uri.fsPath);
                 }
             } catch {
-                // 忽略无效 URI
+                // Ignore invalid URIs
             }
         }
         return paths;
     }
 
-    /** 切换到文本编辑器时调用：1.5 秒内屏蔽来自文本编辑器的行号回传 */
+    /** Called when switching to the text editor: block line-number callbacks from the text editor for 1.5 seconds */
     public suppressNavFromTextEditor(): void {
         this._suppressNavFromTextEditor = true;
         setTimeout(() => { this._suppressNavFromTextEditor = false; }, 1500);
     }
 
-    /** extension.ts 检查是否需要跳过 onDidChangeActiveTextEditor 的行号回传 */
+    /** extension.ts checks whether it should skip the onDidChangeActiveTextEditor line-number callback */
     public get isNavFromTextEditorSuppressed(): boolean {
         return this._suppressNavFromTextEditor;
     }
 
-    /** 从 extension.ts 调用：暂存待跳转行号；如果面板可见且已就绪则直接发送 */
+    /** Called from extension.ts: stash a pending navigation line; if the panel is visible and ready, send it immediately */
     public setPendingNavigation(fsPath: string, line: number): void {
         this._pendingNavigations.set(fsPath, { line, ts: Date.now() });
-        // 面板已存在且已初始化 → 直接发送，无需等待 onDidChangeViewState
+        // Panel already exists and is initialized → send directly, no need to wait for onDidChangeViewState
         const uriKey = vscode.Uri.file(fsPath).toString();
         const initialized = this._initializedPanels.has(uriKey);
         console.log('[setPendingNav] fsPath:', fsPath, 'line:', line, '| initialized:', initialized);
         if (initialized) {
             const panel = this._webviewPanels.get(uriKey);
-            // 只在面板当前可见时立即发送（面板已隐藏说明用户刚切换走，不应回传行号）
+            // Only send immediately when the panel is currently visible (a hidden panel means the user just switched away, so don't send the line number back)
             if (panel && panel.visible) {
                 panel.webview.postMessage({ type: 'scrollToLine', line });
-                // 不删除 _pendingNavigations，作为面板重建时 ready 的备用（TTL 5s 内有效）
+                // Don't delete _pendingNavigations; keep it as a fallback for ready on panel rebuild (valid within TTL 5s)
             }
         }
     }
 
-    /** 向指定 URI 的面板发送任意消息（供 extension.ts 调用） */
+    /** Send an arbitrary message to the panel for the given URI (for extension.ts to call) */
     public postToPanel(uri: vscode.Uri, msg: ToWebviewMessage): void {
         const panel = this._webviewPanels.get(uri.toString());
         if (panel) { panel.webview.postMessage(msg); }
     }
 
-    /** 从 extension.ts（revealLine 命令）调用：直接向面板发送滚动消息 */
+    /** Called from extension.ts (revealLine command): send a scroll message directly to the panel */
     public scrollPanelToLine(uri: vscode.Uri, line: number): void {
         const uriKey = uri.toString();
         const panel = this._webviewPanels.get(uriKey);
@@ -146,7 +145,7 @@ export class MarkdownEditorProvider
         const pending = this._pendingNavigations.get(fsPath);
         if (!pending) { return undefined; }
         this._pendingNavigations.delete(fsPath);
-        // 超过 5 秒视为过期，不应用
+        // Treat anything older than 5 seconds as expired; do not apply
         if (Date.now() - pending.ts > 5000) { return undefined; }
         return pending.line;
     }
@@ -176,13 +175,13 @@ export class MarkdownEditorProvider
     }
 
     private async _getThemeColors(themeId: string): Promise<Record<string, string>> {
-        // 检查是否是自定义主题（格式：custom:主题名称）
+        // Check whether it's a custom theme (format: custom:themeName)
         if (themeId.startsWith("custom:")) {
             const customThemeName = themeId.slice(7);
             const customThemes = getCustomThemes();
             const customTheme = customThemes.find(t => t.name === customThemeName);
             if (customTheme) {
-                // 转换自定义主题颜色格式
+                // Convert the custom theme color format
                 const colors: Record<string, string> = {};
                 for (const [key, value] of Object.entries(customTheme.colors)) {
                     colors[`--vscode-${key.replace(/\./g, "-")}`] = value;
@@ -191,7 +190,7 @@ export class MarkdownEditorProvider
             }
         }
 
-        // 原有逻辑：查找 VSCode 内置主题
+        // Original logic: look up the built-in VSCode theme
         let currentThemeLabel: string | undefined;
         if (themeId === "auto") {
             const config = vscode.workspace.getConfiguration();
@@ -237,7 +236,7 @@ export class MarkdownEditorProvider
         _openContext: vscode.CustomDocumentOpenContext,
         _token: vscode.CancellationToken,
     ): Promise<MarkdownDocument> {
-        // 调试：记录 URI fragment/query，排查全局搜索是否传递行号
+        // Debug: log the URI fragment/query to check whether global search passes a line number
         console.log('[openCustomDocument] uri:', uri.toString(), '| fragment:', uri.fragment, '| query:', uri.query);
         return MarkdownDocument.create(uri);
     }
@@ -247,14 +246,14 @@ export class MarkdownEditorProvider
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken,
     ): Promise<void> {
-        // 非本地文件（git diff、虚拟 URI 等）：渲染空白页，不 dispose
-        // dispose 会导致 diff 引擎的 claimWebview 崩溃（OverlayWebview has been disposed）
+        // Non-local files (git diff, virtual URIs, etc.): render a blank page, do not dispose
+        // dispose would crash the diff engine's claimWebview (OverlayWebview has been disposed)
         if (document.uri.scheme !== 'file') {
             webviewPanel.webview.html = '<!DOCTYPE html><html><body></body></html>';
             return;
         }
 
-        // 保存 panel 引用（revert 时推送内容用）
+        // Save the panel reference (used to push content on revert)
         const uriKey = document.uri.toString();
         this._webviewPanels.set(uriKey, webviewPanel);
 
@@ -263,7 +262,7 @@ export class MarkdownEditorProvider
             this._pinnedDocuments.delete(uriKey);
             this._imageUriMaps.delete(uriKey);
             this._initializedPanels.delete(uriKey);
-            // 清理残余定时器
+            // Clean up any leftover timer
             const timer = this._autoSaveTimers.get(uriKey);
             if (timer !== undefined) {
                 clearTimeout(timer);
@@ -276,9 +275,9 @@ export class MarkdownEditorProvider
             enableScripts: true,
             localResourceRoots: [
                 vscode.Uri.joinPath(this.context.extensionUri, "dist"),
-                // 允许访问 workspace 文件夹（本地图片显示）
+                // Allow access to workspace folders (for displaying local images)
                 ...(vscode.workspace.workspaceFolders?.map(f => f.uri) ?? []),
-                // 允许访问 .md 文件所在目录（workspace 外或 untitled）
+                // Allow access to the directory containing the .md file (outside the workspace or untitled)
                 vscode.Uri.joinPath(document.uri, '..'),
                 ...this._getCustomResourceRoots(document.uri),
             ],
@@ -288,8 +287,8 @@ export class MarkdownEditorProvider
             document,
         );
 
-        // 面板激活时（如全局搜索点击已打开的文件），检查并发送待跳转行号
-        // 只处理已初始化（已 ready）的面板，避免新建面板时提前消耗 pending navigation
+        // When the panel is activated (e.g. clicking an already-open file from global search), check and send the pending navigation line
+        // Only handle panels that are already initialized (ready), to avoid prematurely consuming the pending navigation when a new panel is created
         webviewPanel.onDidChangeViewState(({ webviewPanel: p }) => {
             if (!p.active) { return; }
             if (!this._initializedPanels.has(uriKey)) { return; }
@@ -300,13 +299,13 @@ export class MarkdownEditorProvider
                 p.webview.postMessage({ type: "scrollToLine", line });
                 return;
             }
-            // revealLine 可能在 viewState 变化之后才触发（全局搜索时序不确定）
-            // 延迟 1000ms 再检查一次全局兜底行号或 pending navigation
+            // revealLine may fire after the viewState change (global search timing is unpredictable)
+            // Delay 1000ms and check the global fallback line or pending navigation again
             setTimeout(() => {
                 try {
                     if (!p.active) { return; }
                 } catch {
-                    return; // 面板已销毁（如 preview tab 被替换），忽略
+                    return; // Panel already destroyed (e.g. the preview tab was replaced); ignore
                 }
                 const delayedLine = this._consumePendingNavigation(document.uri.fsPath)
                     ?? this._consumeGlobalRevealLine();
@@ -322,17 +321,17 @@ export class MarkdownEditorProvider
                 const panel = webviewPanel;
                 switch (message.type) {
                     case "ready": {
-                        // 标记面板已初始化，onDidChangeViewState 此后才会处理 pending navigation
+                        // Mark the panel as initialized; only after this will onDidChangeViewState handle pending navigation
                         this._initializedPanels.add(uriKey);
                         const initContent = document.getText();
                         const displayContent = this._prepareContentForDisplay(initContent, document, webviewPanel, uriKey);
-                        // 消费 pending navigation（切换预览 / 全局搜索首次打开时设置）
+                        // Consume the pending navigation (set when switching preview / first opening from global search)
                         const scrollToLine = this._consumePendingNavigation(document.uri.fsPath)
                             ?? this._consumeGlobalRevealLine();
                         console.log('[ready] scrollToLine:', scrollToLine);
                         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
                         const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
-                        // 重置稳定化基准（新的 init 意味着内容将重新从磁盘加载）
+                        // Reset the stabilization baseline (a new init means the content will be reloaded from disk)
                         webviewPanel.webview.postMessage({
                             type: "init",
                             content: displayContent,
@@ -342,18 +341,18 @@ export class MarkdownEditorProvider
                             tableWrap,
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
-                        // 应用主题
+                        // Apply the theme
                         this._applyThemeToPanel(webviewPanel);
                         break;
                     }
                     case "update":
                         if (message.content !== undefined) {
                             const newContent = this._prepareContentForSave(message.content, uriKey);
-                            // 若内容与当前内存版本完全相同，跳过 auto-save：
-                            // WebView 侧 isSettled 标志已阻断初始化触发；此处作为最后防线防止死循环
+                            // If the content is identical to the current in-memory version, skip auto-save:
+                            // the WebView-side isSettled flag already blocks init-triggered updates; this is the last line of defense against infinite loops
                             if (newContent === document.getText()) { break; }
                             document.update(newContent);
-                            // 首次编辑时 pin tab（移除斜体预览状态）
+                            // Pin the tab on first edit (remove the italic preview state)
                             if (!this._pinnedDocuments.has(uriKey)) {
                                 this._pinnedDocuments.add(uriKey);
                                 vscode.commands.executeCommand('workbench.action.keepEditor');
@@ -362,12 +361,12 @@ export class MarkdownEditorProvider
                         }
                         break;
                     case "frontmatterUpdate": {
-                        // WebView 侧编辑了 frontmatter 面板，同步到 Extension 并触发保存
+                        // The WebView edited the frontmatter panel; sync it to the Extension and trigger a save
                         const oldFm = this._frontmatterMap.get(uriKey) ?? "";
                         const newFm = message.frontmatter;
                         if (oldFm === newFm) { break; }
                         this._frontmatterMap.set(uriKey, newFm);
-                        // 从当前文档内容中提取 body（去掉旧 frontmatter），拼接新 frontmatter
+                        // Extract the body from the current document content (dropping the old frontmatter) and prepend the new frontmatter
                         const currentText = document.getText();
                         const { body } = extractFrontmatter(currentText);
                         const fullContent = newFm + body;
@@ -388,7 +387,7 @@ export class MarkdownEditorProvider
                     case "openFile": {
                         if (!message.path) break;
 
-                        // 如果当前 tab 是预览状态（斜体），先固定当前文件
+                        // If the current tab is in preview state (italic), pin the current file first
                         let currentIsPreview = false;
                         for (const group of vscode.window.tabGroups.all) {
                             for (const tab of group.tabs) {
@@ -406,7 +405,7 @@ export class MarkdownEditorProvider
                             vscode.commands.executeCommand('workbench.action.keepEditor');
                         }
 
-                        // 分离路径和行号 fragment（如 ./file.md#27-30）
+                        // Separate the path from the line-number fragment (e.g. ./file.md#27-30)
                         const hashIdx = message.path.indexOf("#");
                         const filePath = hashIdx >= 0 ? message.path.slice(0, hashIdx) : message.path;
                         const fragment = hashIdx >= 0 ? message.path.slice(hashIdx + 1) : undefined;
@@ -415,7 +414,7 @@ export class MarkdownEditorProvider
 
                         let absPath: string;
                         if (filePath.startsWith("@/")) {
-                            // @/ 表示 workspace 根目录：找包含当前文档的 workspace folder
+                            // @/ denotes the workspace root: find the workspace folder containing the current document
                             const docFsPath = document.uri.fsPath;
                             const sep = path.sep;
                             const containingFolder = vscode.workspace.workspaceFolders?.find(
@@ -434,7 +433,7 @@ export class MarkdownEditorProvider
 
                         const targetUri = vscode.Uri.file(absPath);
                         if (/\.(md|markdown)$/i.test(absPath)) {
-                            // .md 文件：用 WYSIWYG 预览打开，行号通过 setPendingNavigation 传递
+                            // .md file: open with WYSIWYG preview; the line number is passed via setPendingNavigation
                             if (lineNumber !== undefined) {
                                 this.setPendingNavigation(absPath, lineNumber);
                             }
@@ -445,7 +444,7 @@ export class MarkdownEditorProvider
                                 { preview: true },
                             );
                         } else if (lineNumber !== undefined) {
-                            // 非 .md 有行号：用 showTextDocument 定位到指定行
+                            // Non-.md with a line number: use showTextDocument to jump to the given line
                             const doc = await vscode.workspace.openTextDocument(targetUri);
                             await vscode.window.showTextDocument(doc, {
                                 selection: new vscode.Range(lineNumber - 1, 0, lineNumber - 1, 0),
@@ -457,15 +456,15 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "switchToTextEditor": {
-                        // 抑制接下来 onDidChangeActiveTextEditor 的行号回传（1.5s 内）
+                        // Suppress the upcoming onDidChangeActiveTextEditor line-number callback (within 1.5s)
                         this.suppressNavFromTextEditor();
-                        // 抑制 onDidChangeTabs 的自动 WYSIWYG 切换（防止切回去）
+                        // Suppress the automatic WYSIWYG switch from onDidChangeTabs (to prevent switching back)
                         MarkdownEditorProvider.suppressAutoSwitch.add(document.uri.toString());
                         setTimeout(() => MarkdownEditorProvider.suppressAutoSwitch.delete(document.uri.toString()), 2000);
                         const textDoc = await vscode.workspace.openTextDocument(document.uri);
                         const viewCol = webviewPanel.viewColumn;
 
-                        // 读取当前 WYSIWYG tab 的 preview 状态（斜体 = isPreview: true）
+                        // Read the current WYSIWYG tab's preview state (italic = isPreview: true)
                         let isPreview = false;
                         for (const group of vscode.window.tabGroups.all) {
                             for (const tab of group.tabs) {
@@ -481,7 +480,7 @@ export class MarkdownEditorProvider
 
                         const opts: vscode.TextDocumentShowOptions = {
                             viewColumn: viewCol,
-                            preview: isPreview,   // 保持原 tab 的斜体/正体状态
+                            preview: isPreview,   // Preserve the original tab's italic/non-italic state
                             preserveFocus: false,
                         };
                         if (message.line && message.line > 0) {
@@ -489,7 +488,7 @@ export class MarkdownEditorProvider
                             opts.selection = new vscode.Range(pos, pos);
                         }
 
-                        // 先关 WYSIWYG tab，再开文本编辑器，避免两个 tab 并存的闪烁
+                        // Close the WYSIWYG tab first, then open the text editor, to avoid flicker from both tabs coexisting
                         webviewPanel.dispose();
                         await vscode.window.showTextDocument(textDoc, opts);
                         break;
@@ -548,19 +547,19 @@ export class MarkdownEditorProvider
         );
 
 
-        // 监听外部文件变化（含 AI 工具写入），自动同步到 WebView
-        // 注意：vscode.workspace.createFileSystemWatcher 不会感知同一 Extension Host 写入的文件
-        // 因此改用 Node.js fs.watch，直接监听 OS 级别事件
+        // Watch for external file changes (including writes by AI tools) and auto-sync them to the WebView
+        // Note: vscode.workspace.createFileSystemWatcher does not detect files written by the same Extension Host
+        // so we use Node.js fs.watch instead, listening to OS-level events directly
         import("fs").then(({ watch: fsWatch }) => {
             let debounceTimer: ReturnType<typeof setTimeout> | undefined;
             const targetFile = path.basename(document.uri.fsPath);
             const fsWatcher = fsWatch(path.dirname(document.uri.fsPath), async (_event, filename) => {
                 if (filename !== targetFile) { return; }
-                // 防抖：短时间内多次触发只处理最后一次
+                // Debounce: with multiple triggers in a short window, only handle the last one
                 if (debounceTimer !== undefined) { clearTimeout(debounceTimer); }
                 debounceTimer = setTimeout(async () => {
                     debounceTimer = undefined;
-                    // 如果是我们自己的自动保存导致的变化（1.5 秒内），跳过
+                    // If the change was caused by our own auto-save (within 1.5 seconds), skip it
                     const lastSave = this._lastSaveTimes.get(uriKey) ?? 0;
                     if (Date.now() - lastSave < 1500) { return; }
                     const cts = new vscode.CancellationTokenSource();
@@ -578,7 +577,7 @@ export class MarkdownEditorProvider
                     }
                 }, 200);
             });
-            // panel 关闭时同步销毁 watcher
+            // Dispose the watcher when the panel closes
             webviewPanel.onDidDispose(() => { fsWatcher.close(); });
         });
     }
@@ -590,7 +589,7 @@ export class MarkdownEditorProvider
         const uriKey = document.uri.toString();
 
         if (autoSave) {
-            // 防抖自动保存：停止编辑 delay ms 后写盘，不显示 ● 标记
+            // Debounced auto-save: write to disk delay ms after editing stops, without showing the ● marker
             const existing = this._autoSaveTimers.get(uriKey);
             if (existing !== undefined) {
                 clearTimeout(existing);
@@ -602,8 +601,8 @@ export class MarkdownEditorProvider
                     const cts = new vscode.CancellationTokenSource();
                     try {
                         await document.save(cts.token);
-                        // 写盘完成后再记录时间，确保 FileWatcher 触发时时间戳是准确的
-                        // （如果在 save 之前记录，FileWatcher 延迟 > 1500ms 时保护会失效）
+                        // Record the time only after the write completes, so the timestamp is accurate when FileWatcher fires
+                        // (If recorded before save, the protection fails when FileWatcher is delayed by > 1500ms)
                         this._lastSaveTimes.set(uriKey, Date.now());
                         const panel = this._webviewPanels.get(uriKey);
                         if (panel) {
@@ -615,7 +614,7 @@ export class MarkdownEditorProvider
                 }, delay),
             );
         } else {
-            // 手动保存模式：标记 dirty，等待 Cmd+S
+            // Manual save mode: mark as dirty and wait for Cmd+S
             this._onDidChangeCustomDocument.fire({
                 document,
                 label: "Edit",
@@ -637,31 +636,31 @@ export class MarkdownEditorProvider
             ? `@${relPath}#${startLine}`
             : `@${relPath}#${startLine}-${endLine}`;
         let success = false;
-        console.log('[sendToClaudeChat] 触发，文件:', relPath, '行:', startLine, '-', endLine);
+        console.log('[sendToClaudeChat] triggered, file:', relPath, 'lines:', startLine, '-', endLine);
 
         try {
-            // 路径 A：终端 Claude
-            // 判断依据：state.shell 缺失 → VSCode 无法识别为标准 shell → 可能是 claude CLI
+            // Path A: terminal Claude
+            // Heuristic: state.shell is missing → VSCode can't recognize it as a standard shell → likely the claude CLI
             const isClaudeLikeTerminal = (t: vscode.Terminal) =>
                 !(t.state as { shell?: string }).shell;
 
             const claudeTerminal =
-                [...this.claudeTerminals].at(-1)                          // ① Shell Integration 检测
-                ?? vscode.window.terminals.find(isClaudeLikeTerminal)     // ② state.shell 缺失
-                ?? undefined;  // 不兜底到 activeTerminal，避免误发到普通 shell
-            console.log(claudeTerminal,"终端:", vscode.window.terminals);
+                [...this.claudeTerminals].at(-1)                          // ① Shell Integration detection
+                ?? vscode.window.terminals.find(isClaudeLikeTerminal)     // ② state.shell missing
+                ?? undefined;  // Don't fall back to activeTerminal, to avoid mistakenly sending to a plain shell
+            console.log(claudeTerminal,"terminal:", vscode.window.terminals);
 
             if (claudeTerminal) {
                 claudeTerminal.sendText(mentionStr, false);
                 await vscode.commands.executeCommand('workbench.action.terminal.focus');
                 success = true;
-                console.log('[sendToClaudeChat] 发送到终端完成');
+                console.log('[sendToClaudeChat] sent to terminal');
             }
 
-            // 路径 B：VSCode Claude 扩展
+            // Path B: VSCode Claude extension
             if (!success) {
-                // Fix 3：临时文本编辑器在同列打开（避免新建列导致布局闪烁）
-                // 使用 preview: false 避免替换处于预览状态的 custom editor tab
+                // Fix 3: open the temporary text editor in the same column (avoids layout flicker from creating a new column)
+                // Use preview: false to avoid replacing the custom editor tab that's in preview state
                 const textDoc    = await vscode.workspace.openTextDocument(document.uri);
                 const textEditor = await vscode.window.showTextDocument(textDoc, {
                     viewColumn:    webviewPanel.viewColumn,
@@ -676,7 +675,7 @@ export class MarkdownEditorProvider
                 };
                 setSelection();
 
-                // Fix 2：检查 Claude 是否已打开，分两条路径避免 activeTextEditor 丢失
+                // Fix 2: check whether Claude is already open, splitting into two paths to avoid losing activeTextEditor
                 const claudeOpen = vscode.window.tabGroups.all.some(g =>
                     g.tabs.some(t =>
                         t.input instanceof vscode.TabInputWebview &&
@@ -700,7 +699,7 @@ export class MarkdownEditorProvider
                 }
                 success = true;
 
-                // 关闭临时文本编辑器
+                // Close the temporary text editor
                 for (const group of vscode.window.tabGroups.all) {
                     for (const tab of group.tabs) {
                         if (tab.input instanceof vscode.TabInputText &&
@@ -710,18 +709,18 @@ export class MarkdownEditorProvider
                         }
                     }
                 }
-                // 将 custom editor 带回前台（避免临时文本编辑器关闭后 custom editor 不可见）
+                // Bring the custom editor back to the foreground (so it isn't hidden after the temporary text editor closes)
                 webviewPanel.reveal(webviewPanel.viewColumn, false);
-                console.log('[sendToClaudeChat] 完成');
+                console.log('[sendToClaudeChat] done');
             }
         } catch (_e) {
-            console.log('[sendToClaudeChat] 失败:', _e);
+            console.log('[sendToClaudeChat] failed:', _e);
         }
 
         if (!success) {
-            // 路径 C：兜底 VSCode 内置 chat
+            // Path C: fall back to VSCode's built-in chat
             const query = `@${relPath}\n\n${text}`;
-            console.log('[sendToClaudeChat] 兜底 chat.open');
+            console.log('[sendToClaudeChat] fallback chat.open');
             try {
                 await vscode.commands.executeCommand('workbench.action.chat.open', { query });
             } catch (_e) {
@@ -734,7 +733,7 @@ export class MarkdownEditorProvider
         document: MarkdownDocument,
         cancellation: vscode.CancellationToken,
     ): Promise<void> {
-        // 清理自动保存定时器（Cmd+S 直接保存，不需要再等定时器）
+        // Clear the auto-save timer (Cmd+S saves immediately, no need to wait for the timer)
         const uriKey = document.uri.toString();
         const timer = this._autoSaveTimers.get(uriKey);
         if (timer !== undefined) {
@@ -762,7 +761,7 @@ export class MarkdownEditorProvider
         cancellation: vscode.CancellationToken,
     ): Promise<void> {
         await document.revert(cancellation);
-        // 推送新内容给 WebView，触发编辑器重建
+        // Push the new content to the WebView to trigger an editor rebuild
         const uriKey = document.uri.toString();
         const panel = this._webviewPanels.get(uriKey);
         if (panel) {
@@ -812,9 +811,8 @@ export class MarkdownEditorProvider
         );
         const nonce = getNonce();
 
-        const lang = vscode.env.language.toLowerCase();
         const isMac = process.platform === 'darwin';
-        const translations = lang.startsWith('zh') ? ZH_CN_WEBVIEW : {};
+        const translations = {};
         const debugMode = cfg.get<boolean>("debugMode", false);
         const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
@@ -987,7 +985,7 @@ export class MarkdownEditorProvider
             try {
                 let absPath: string;
                 if (src.startsWith('@/')) {
-                    // @/ 是 workspace root 别名，解析到工作区根目录
+                    // @/ is the workspace-root alias, resolved to the workspace root directory
                     const root = workspaceRoot ?? mdDir;
                     absPath = path.join(root, src.slice(2));
                 } else {
@@ -1027,7 +1025,7 @@ export class MarkdownEditorProvider
                 const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
                 const webviewUri = panel.webview.asWebviewUri(absUri);
                 url = webviewUri.toString();
-                // 存储映射，供保存时将 webviewUri 替换回 relPath
+                // Store the mapping so that on save, webviewUri is replaced back with relPath
                 const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
                 this._imageUriMaps.set(uriKey, uriMap);
                 uriMap.set(url, relPath);
@@ -1133,10 +1131,10 @@ export class MarkdownEditorProvider
             const oldAbsPath = path.resolve(mdDir, oldRelPath);
             const oldUri = vscode.Uri.file(oldAbsPath);
 
-            // 验证文件存在
+            // Verify the file exists
             await vscode.workspace.fs.stat(oldUri);
 
-            // 安全化新文件名：去除非法字符，保留原扩展名
+            // Sanitize the new filename: strip illegal characters, keep the original extension
             const oldExt = path.extname(oldAbsPath);
             const safeBasename = newBasename
                 .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
@@ -1150,19 +1148,19 @@ export class MarkdownEditorProvider
             const dir = path.dirname(oldAbsPath);
             let targetUri = vscode.Uri.file(path.join(dir, safeBasename + oldExt));
 
-            // 检查目标文件是否已存在，若存在则提示用户，不自动覆盖
+            // Check whether the target file already exists; if so, warn the user and don't overwrite automatically
             try {
                 await vscode.workspace.fs.stat(targetUri);
-                // stat 成功说明文件已存在
+                // A successful stat means the file already exists
                 const errMsg = vscode.l10n.t('A file named "{0}" already exists.', safeBasename + oldExt);
                 panel.webview.postMessage({ type: 'imageRenameError', id, error: errMsg });
                 vscode.window.showErrorMessage(errMsg);
                 return;
-            } catch { /* 文件不存在，正常继续 */ }
+            } catch { /* File doesn't exist, continue normally */ }
 
             await vscode.workspace.fs.rename(oldUri, targetUri);
 
-            // 更新 URI 映射
+            // Update the URI mapping
             const rel = path.relative(mdDir, targetUri.fsPath).replace(/\\/g, '/');
             const newRelPath = rel.startsWith('.') ? rel : './' + rel;
             const newWebviewUri = panel.webview.asWebviewUri(targetUri).toString();
@@ -1198,12 +1196,12 @@ export class MarkdownEditorProvider
         ) ?? vscode.workspace.workspaceFolders?.[0];
         const workspaceRoot = workspaceFolder?.uri.fsPath;
 
-        // 按最后一个 "/" 分割为目录部分和名称前缀
+        // Split at the last "/" into a directory part and a name prefix
         const lastSlash = q.lastIndexOf('/');
         const dirPart = lastSlash >= 0 ? q.slice(0, lastSlash + 1) : '';
         const namePart = lastSlash >= 0 ? q.slice(lastSlash + 1) : q;
 
-        // 解析 dirPart 为绝对路径
+        // Resolve dirPart to an absolute path
         let absDir: string;
         if (dirPart.startsWith('@/')) {
             absDir = workspaceRoot
@@ -1215,7 +1213,7 @@ export class MarkdownEditorProvider
             absDir = path.resolve(docDir, dirPart);
         }
 
-        // readDirectory 列出直接子项（含文件类型）
+        // readDirectory lists the direct children (with file types)
         let entries: [string, vscode.FileType][];
         try {
             entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(absDir));
@@ -1234,10 +1232,10 @@ export class MarkdownEditorProvider
                 !IGNORE.has(name) &&
                 name.toLowerCase().startsWith(namePart.toLowerCase()) &&
                 (type === vscode.FileType.File || type === vscode.FileType.Directory) &&
-                // 排除与 namePart 完全匹配的文件（路径已完整，无需提示）
+                // Exclude files that exactly match namePart (the path is already complete, no need to suggest)
                 !(type === vscode.FileType.File && name.toLowerCase() === namePart.toLowerCase()),
             )
-            // 目录排在文件前面，同类型按字母排序
+            // Directories come before files; within the same type, sort alphabetically
             .sort(([an, at], [bn, bt]) => {
                 if (at !== bt) { return bt === vscode.FileType.Directory ? 1 : -1; }
                 return an.localeCompare(bn);
@@ -1251,7 +1249,7 @@ export class MarkdownEditorProvider
                     if (IMAGE_EXTS.has(ext)) {
                         const absFilePath = path.join(absDir, name);
                         webviewUri = panel.webview.asWebviewUri(vscode.Uri.file(absFilePath)).toString();
-                        // 登记映射，供 _prepareContentForSave 在保存时转换回相对路径
+                        // Register the mapping so _prepareContentForSave can convert it back to a relative path on save
                         uriMap.set(webviewUri, fullPath);
                     }
                 }
@@ -1281,11 +1279,11 @@ export class MarkdownEditorProvider
                 absPath = path.resolve(mdDir, relPath);
             }
             const webviewUri = panel.webview.asWebviewUri(vscode.Uri.file(absPath)).toString();
-            // 登记映射供保存时还原
+            // Register the mapping so it can be restored on save
             const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
             this._imageUriMaps.set(uriKey, uriMap);
             uriMap.set(webviewUri, relPath);
             panel.webview.postMessage({ type: 'imagePathResolved', id, webviewUri });
-        } catch { /* 路径非法，不响应 */ }
+        } catch { /* Invalid path, no response */ }
     }
 }

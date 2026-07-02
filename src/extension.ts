@@ -4,9 +4,9 @@ import { getAllThemes, getThemeColors, getCustomThemes, type ThemeInfo } from ".
 import type { TableWrapMode } from "../shared/messages";
 
 /**
- * 根据 defaultMode 同步 workbench.editorAssociations：
- * - "markdown" → 注入 "*.md"/"*.markdown": "default"，让文本编辑器直接打开，不触发自定义编辑器
- * - "preview"  → 删除上述条目，恢复 package.json 中 priority:default 生效
+ * Sync workbench.editorAssociations based on defaultMode:
+ * - "markdown" → inject "*.md"/"*.markdown": "default" so the text editor opens directly without triggering the custom editor
+ * - "preview"  → remove the above entries, restoring the priority:default in package.json
  */
 function syncEditorAssociation(mode: string): void {
     const wbConfig = vscode.workspace.getConfiguration("workbench");
@@ -17,7 +17,7 @@ function syncEditorAssociation(mode: string): void {
         current["*.md"] = "default";
         current["*.markdown"] = "default";
     } else {
-        // preview 模式：删除 association，依赖 package.json 的 priority:default 自动生效
+        // preview mode: remove the association, relying on package.json's priority:default to take effect automatically
         delete current["*.md"];
         delete current["*.markdown"];
     }
@@ -25,7 +25,7 @@ function syncEditorAssociation(mode: string): void {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-    // 追踪终端中运行的 claude 进程（Shell Integration）
+    // Track claude processes running in terminals (Shell Integration)
     const claudeTerminals = new Set<vscode.Terminal>();
     context.subscriptions.push(
         vscode.window.onDidStartTerminalShellExecution((e) => {
@@ -42,14 +42,14 @@ export function activate(context: vscode.ExtensionContext) {
         MarkdownEditorProvider.register(context, claudeTerminals),
     );
 
-    // 激活时同步一次 editorAssociations
+    // Sync editorAssociations once on activation
     const initialMode = vscode.workspace
         .getConfiguration("markdownWysiwyg")
         .get<string>("defaultMode", "preview");
     syncEditorAssociation(initialMode);
 
-    // priority:option 下不自动接管文件打开，用 onDidChangeTabs 监听文本 tab 并切换到 WYSIWYG
-    // diff 视图只产生 TabInputTextDiff，不会触发此逻辑
+    // Under priority:option, file opening is not taken over automatically; use onDidChangeTabs to watch text tabs and switch to WYSIWYG
+    // Diff views only produce TabInputTextDiff and won't trigger this logic
     context.subscriptions.push(
         vscode.window.tabGroups.onDidChangeTabs(async (event) => {
             const mode = vscode.workspace
@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
                 const uriStr = uri.toString();
                 if (MarkdownEditorProvider.suppressAutoSwitch.has(uriStr)) { continue; }
 
-                // 若 URI fragment 包含行号（全局搜索传入 #L10 格式），提前存储以便 WYSIWYG 初始化后跳转
+                // If the URI fragment contains a line number (global search passes #L10 format), store it in advance so WYSIWYG can jump after initialization
                 const fragMatch = uri.fragment?.match(/^L?(\d+)/);
                 if (fragMatch) {
                     const fragLine = parseInt(fragMatch[1], 10);
@@ -76,7 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                 }
 
-                // 先关文本 tab，再开 WYSIWYG（与 switchToPreview 命令保持一致）
+                // Close the text tab first, then open WYSIWYG (consistent with the switchToPreview command)
                 const isPreview = tab.isPreview;
                 const viewCol = tab.group.viewColumn;
                 await vscode.window.tabGroups.close(tab);
@@ -90,57 +90,57 @@ export function activate(context: vscode.ExtensionContext) {
         }),
     );
 
-    // 监听文本编辑器激活事件：捕获全局搜索导航时短暂出现的 .md 文本编辑器光标位置
+    // Listen for text editor activation events: capture the cursor position of the .md text editor that briefly appears during global search navigation
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor((editor) => {
             if (!editor) { return; }
             const { uri } = editor.document;
             if (!uri.fsPath.endsWith('.md')) { return; }
-            // 切换到文本编辑器期间（suppressNavFromTextEditor 已设置），跳过行号回传
-            // 避免主动切走时行号被反馈给 WebView 触发多余的 scrollToLine
+            // While switching to the text editor (suppressNavFromTextEditor is set), skip reporting the line number
+            // to avoid the line number being fed back to the WebView and triggering an unnecessary scrollToLine when actively switching away
             if (MarkdownEditorProvider.current?.isNavFromTextEditorSuppressed) { return; }
-            const line = editor.selection.active.line + 1; // 转为 1-indexed
+            const line = editor.selection.active.line + 1; // convert to 1-indexed
             if (line >= 1) {
                 MarkdownEditorProvider.current?.setPendingNavigation(uri.fsPath, line);
             }
         }),
     );
 
-    // 拦截 revealLine 命令：全局搜索点击结果时 VS Code 会调此命令导航到指定行。
-    // 若当前有 .md 自定义编辑器 tab（遍历所有 group），则转发给 WebView；否则回退到文本编辑器行为。
+    // Intercept the revealLine command: VS Code calls this command to navigate to a specific line when a global search result is clicked.
+    // If there is currently a .md custom editor tab (iterate over all groups), forward it to the WebView; otherwise fall back to the text editor behavior.
     context.subscriptions.push(
         vscode.commands.registerCommand(
             'revealLine',
             (args: { lineNumber: number; at?: string }) => {
-                console.log('[revealLine] 触发，lineNumber:', args.lineNumber, 'at:', args.at);
-                const targetLine = args.lineNumber + 1; // 转为 1-indexed
-                // 始终写入全局兜底：确保 onDidChangeViewState（含延迟检查）能消费到
+                console.log('[revealLine] triggered, lineNumber:', args.lineNumber, 'at:', args.at);
+                const targetLine = args.lineNumber + 1; // convert to 1-indexed
+                // Always write to the global fallback: ensure onDidChangeViewState (including the delayed check) can consume it
                 MarkdownEditorProvider.current?.setGlobalRevealLine(targetLine);
-                // 对所有已注册的 .md 面板设置 pending navigation
-                // 避免仅靠 tab.isActive 判断（tab 切换和 revealLine 触发顺序不确定）
+                // Set pending navigation for all registered .md panels
+                // to avoid relying solely on tab.isActive (the order of tab switching and revealLine triggering is uncertain)
                 const mdPaths = MarkdownEditorProvider.current?.getAllMdFsPaths() ?? [];
                 if (mdPaths.length > 0) {
-                    console.log('[revealLine] 已注册 .md 面板数:', mdPaths.length, '行号:', targetLine);
+                    console.log('[revealLine] number of registered .md panels:', mdPaths.length, 'line:', targetLine);
                     for (const fsPath of mdPaths) {
                         MarkdownEditorProvider.current?.setPendingNavigation(fsPath, targetLine);
                     }
                     return;
                 }
-                // 兜底：遍历 tab groups 查找 active .md 自定义 tab
+                // Fallback: iterate over tab groups to find the active .md custom tab
                 for (const group of vscode.window.tabGroups.all) {
                     for (const tab of group.tabs) {
                         if (tab.input instanceof vscode.TabInputCustom) {
                             const uri = (tab.input as vscode.TabInputCustom).uri;
                             if (uri.fsPath.endsWith('.md') && tab.isActive) {
-                                console.log('[revealLine] 找到 active .md 自定义 tab，fsPath:', uri.fsPath);
+                                console.log('[revealLine] found active .md custom tab, fsPath:', uri.fsPath);
                                 MarkdownEditorProvider.current?.setPendingNavigation(uri.fsPath, targetLine);
                                 return;
                             }
                         }
                     }
                 }
-                console.log('[revealLine] 未找到 .md 面板，等待 viewState 延迟消费');
-                // 回退：文本编辑器使用 revealRange
+                console.log('[revealLine] no .md panel found, waiting for delayed viewState consumption');
+                // Fallback: text editor uses revealRange
                 const editor = vscode.window.activeTextEditor;
                 if (editor) {
                     const pos = new vscode.Position(args.lineNumber, 0);
@@ -154,7 +154,7 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
-    // 调试模式：初始化 context 变量
+    // Debug mode: initialize the context variable
     const initialDebug = vscode.workspace
         .getConfiguration("markdownWysiwyg")
         .get<boolean>("debugMode", false);
@@ -164,7 +164,7 @@ export function activate(context: vscode.ExtensionContext) {
         initialDebug,
     );
 
-    // 调试模式开关命令（两个互斥命令，通过 when 条件切换显示，实现 ✓ 前缀效果）
+    // Debug mode toggle command (two mutually exclusive commands, whose display is switched via when conditions to achieve the ✓ prefix effect)
     const toggleDebugMode = () => {
         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
         const next = !cfg.get<boolean>("debugMode", false);
@@ -190,7 +190,7 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
-    // 选择颜色主题命令
+    // Select color theme command
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "markdownWysiwyg.selectTheme",
@@ -201,7 +201,7 @@ export function activate(context: vscode.ExtensionContext) {
                     .getConfiguration("markdownWysiwyg")
                     .get<string>("colorTheme", "auto");
 
-                // 按类型分组：深色主题在前，浅色主题在后，每组内按字母排序
+                // Group by type: dark themes first, light themes after, sorted alphabetically within each group
                 const darkThemes = themes
                     .filter(t => t.uiTheme === "vs-dark" || t.uiTheme === "hc-black")
                     .sort((a, b) => a.label.localeCompare(b.label));
@@ -211,19 +211,19 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const items: (vscode.QuickPickItem & { value: string })[] = [
                     { label: "$(color-mode) Auto", description: "Follow VS Code Theme", value: "auto" },
-                    // 自定义主题
+                    // Custom themes
                     ...customThemes.map(t => ({
                         label: `$(paintbrush) ${t.name}`,
                         description: "Custom",
                         value: `custom:${t.name}`,
                     })),
-                    // 深色主题
+                    // Dark themes
                     ...darkThemes.map(t => ({
                         label: t.label,
                         description: "Dark",
                         value: t.id,
                     })),
-                    // 浅色主题
+                    // Light themes
                     ...lightThemes.map(t => ({
                         label: t.label,
                         description: "Light",
@@ -231,7 +231,7 @@ export function activate(context: vscode.ExtensionContext) {
                     })),
                 ];
 
-                // 找到当前选中主题的索引，用于定位
+                // Find the index of the currently selected theme, used for positioning
                 const activeIndex = items.findIndex((item: any) => item.value === currentTheme);
 
                 const quickPick = vscode.window.createQuickPick();
@@ -258,7 +258,7 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
-    // 显示当前主题命令
+    // Show current theme command
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "markdownWysiwyg.showCurrentTheme",
@@ -291,7 +291,7 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
-    // 监听设置手动变更（从 VSCode 设置 UI 修改时同步）
+    // Listen for manual setting changes (sync when modified from the VSCode settings UI)
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration("markdownWysiwyg.defaultMode")) {
@@ -325,7 +325,7 @@ export function activate(context: vscode.ExtensionContext) {
         }),
     );
 
-    // 监听 VSCode 主题变化（auto 模式下自动更新）
+    // Listen for VSCode theme changes (auto-update in auto mode)
     context.subscriptions.push(
         vscode.window.onDidChangeActiveColorTheme(() => {
             const themeId = vscode.workspace
@@ -337,7 +337,7 @@ export function activate(context: vscode.ExtensionContext) {
         }),
     );
 
-    // 关闭预览：WYSIWYG → 文本编辑器
+    // Close preview: WYSIWYG → text editor
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "markdownWysiwyg.switchToTextEditor",
@@ -345,7 +345,7 @@ export function activate(context: vscode.ExtensionContext) {
                 let target =
                     uri ?? vscode.window.activeTextEditor?.document.uri;
                 if (!target) {
-                    // Custom Editor 激活时 activeTextEditor 为 undefined，从 tab 组找活跃的 CustomEditor tab
+                    // When the Custom Editor is active, activeTextEditor is undefined; find the active CustomEditor tab from the tab groups
                     for (const group of vscode.window.tabGroups.all) {
                         const activeTab = group.activeTab;
                         if (activeTab?.input instanceof vscode.TabInputCustom) {
@@ -357,20 +357,20 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!target) { return; }
 
                 const provider = MarkdownEditorProvider.current;
-                // 优先方案：向 WebView 请求当前滚动行号，WebView 会上报位置后自行触发切换
-                // 这样菜单按钮和 Cmd+Shift+M 快捷键行为一致（均携带行号，不主动关闭自定义编辑器 tab）
+                // Preferred approach: request the current scroll line number from the WebView; the WebView reports the position and then triggers the switch itself
+                // This keeps the menu button and Cmd+Shift+M shortcut behavior consistent (both carry the line number and do not actively close the custom editor tab)
                 if (provider) {
                     provider.postToPanel(target, { type: "requestSwitchToTextEditor" });
                     return;
                 }
 
-                // 兜底：面板不存在时，直接打开文本编辑器（不携带行号）
+                // Fallback: when the panel does not exist, open the text editor directly (without a line number)
                 await vscode.commands.executeCommand("vscode.openWith", target, "default");
             },
         ),
     );
 
-    // 打开预览：文本编辑器 → WYSIWYG
+    // Open preview: text editor → WYSIWYG
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "markdownWysiwyg.switchToPreview",
@@ -380,12 +380,12 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!target) {
                     return;
                 }
-                // 切换前保存当前光标行号，供 WYSIWYG 面板激活时定位
+                // Save the current cursor line number before switching, for positioning when the WYSIWYG panel is activated
                 const currentLine = activeEditor?.selection.active.line ?? -1;
                 if (currentLine >= 0) {
                     MarkdownEditorProvider.current?.setPendingNavigation(target.fsPath, currentLine + 1);
                 }
-                // 读取文本编辑器 tab 的 preview 状态和所在列，关闭前保存
+                // Read the text editor tab's preview state and column, saving before closing
                 let isPreview = false;
                 let viewCol: vscode.ViewColumn = vscode.ViewColumn.Active;
                 let textTab: vscode.Tab | undefined;
@@ -402,7 +402,7 @@ export function activate(context: vscode.ExtensionContext) {
                         }
                     }
                 }
-                // 先关文本编辑器 tab，再开 WYSIWYG，避免两个 tab 并存的闪烁
+                // Close the text editor tab first, then open WYSIWYG, to avoid the flicker of two tabs coexisting
                 if (textTab) {
                     await vscode.window.tabGroups.close(textTab);
                 }

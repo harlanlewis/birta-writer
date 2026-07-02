@@ -1,11 +1,11 @@
 /**
- * Markdown 内容的纯函数转换工具，供 MarkdownEditorProvider 和单元测试共用。
- * 这些函数不依赖 VSCode API（无 webview.asWebviewUri），可在 Node 环境下直接测试。
+ * Pure-function transformation utilities for Markdown content, shared by MarkdownEditorProvider and unit tests.
+ * These functions do not depend on the VSCode API (no webview.asWebviewUri), so they can be tested directly in a Node environment.
  */
 
 /**
- * 从 Markdown 内容中提取 YAML Frontmatter。
- * 仅识别文件开头的标准格式（--- ... ---）。
+ * Extracts the YAML frontmatter from Markdown content.
+ * Only recognizes the standard format at the very start of the file (--- ... ---).
  */
 export function extractFrontmatter(content: string): { frontmatter: string; body: string } {
     const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
@@ -16,8 +16,8 @@ export function extractFrontmatter(content: string): { frontmatter: string; body
 }
 
 /**
- * 将 webviewUri 还原为相对路径，并在最前面拼接 frontmatter。
- * 对应 _prepareContentForSave 的纯函数提取版本。
+ * Restores webviewUri values back to relative paths and prepends the frontmatter.
+ * The pure-function extracted version corresponding to _prepareContentForSave.
  */
 export function restoreContentForSave(
     content: string,

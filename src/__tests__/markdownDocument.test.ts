@@ -19,21 +19,21 @@ describe("MarkdownDocument", () => {
     });
 
     describe("create()", () => {
-        it("从文件读取内容并返回 MarkdownDocument", async () => {
+        it("reads content from a file and returns a MarkdownDocument", async () => {
             const content = "# Hello\n\nWorld";
             mockFs.readFile.mockResolvedValue(Buffer.from(content, "utf-8"));
             const doc = await MarkdownDocument.create(makeUri("/project/note.md"));
             expect(doc.getText()).toBe(content);
         });
 
-        it("正确处理 UTF-8 中文内容", async () => {
-            const content = "# 标题\n\n正文内容，包含中文字符。";
+        it("correctly handles UTF-8 CJK content", async () => {
+            const content = "# Title\n\nBody content containing CJK characters.";
             mockFs.readFile.mockResolvedValue(Buffer.from(content, "utf-8"));
             const doc = await MarkdownDocument.create(makeUri("/project/note.md"));
             expect(doc.getText()).toBe(content);
         });
 
-        it("空文件返回空字符串", async () => {
+        it("returns an empty string for an empty file", async () => {
             mockFs.readFile.mockResolvedValue(new Uint8Array());
             const doc = await MarkdownDocument.create(makeUri("/project/empty.md"));
             expect(doc.getText()).toBe("");
@@ -41,7 +41,7 @@ describe("MarkdownDocument", () => {
     });
 
     describe("update()", () => {
-        it("update() 后 getText() 返回新内容", async () => {
+        it("getText() returns the new content after update()", async () => {
             mockFs.readFile.mockResolvedValue(Buffer.from("old content", "utf-8"));
             const doc = await MarkdownDocument.create(makeUri("/project/note.md"));
             doc.update("new content");
@@ -50,7 +50,7 @@ describe("MarkdownDocument", () => {
     });
 
     describe("save()", () => {
-        it("将当前内容写入磁盘", async () => {
+        it("writes the current content to disk", async () => {
             mockFs.readFile.mockResolvedValue(Buffer.from("initial", "utf-8"));
             mockFs.writeFile.mockResolvedValue(undefined);
             const doc = await MarkdownDocument.create(makeUri("/project/note.md"));
@@ -61,7 +61,7 @@ describe("MarkdownDocument", () => {
             expect(data.toString("utf-8")).toBe("updated content");
         });
 
-        it("CancellationToken 已取消时跳过写盘", async () => {
+        it("skips writing to disk when the CancellationToken is already cancelled", async () => {
             mockFs.readFile.mockResolvedValue(Buffer.from("initial", "utf-8"));
             const doc = await MarkdownDocument.create(makeUri("/project/note.md"));
             await doc.save(makeCancellation(true));
@@ -70,7 +70,7 @@ describe("MarkdownDocument", () => {
     });
 
     describe("revert()", () => {
-        it("revert() 后 getText() 返回磁盘最新内容", async () => {
+        it("getText() returns the latest content from disk after revert()", async () => {
             mockFs.readFile
                 .mockResolvedValueOnce(Buffer.from("original", "utf-8"))
                 .mockResolvedValueOnce(Buffer.from("reverted from disk", "utf-8"));
@@ -82,7 +82,7 @@ describe("MarkdownDocument", () => {
     });
 
     describe("backup()", () => {
-        it("将内容写入 destination 并返回 backup 对象", async () => {
+        it("writes the content to destination and returns a backup object", async () => {
             mockFs.readFile.mockResolvedValue(Buffer.from("content", "utf-8"));
             mockFs.writeFile.mockResolvedValue(undefined);
             const doc = await MarkdownDocument.create(makeUri("/project/note.md"));
@@ -92,7 +92,7 @@ describe("MarkdownDocument", () => {
             expect(mockFs.writeFile).toHaveBeenCalledOnce();
         });
 
-        it("backup.delete() 删除备份文件", async () => {
+        it("backup.delete() deletes the backup file", async () => {
             mockFs.readFile.mockResolvedValue(Buffer.from("content", "utf-8"));
             mockFs.writeFile.mockResolvedValue(undefined);
             mockFs.delete.mockResolvedValue(undefined);
@@ -102,7 +102,7 @@ describe("MarkdownDocument", () => {
             expect(mockFs.delete).toHaveBeenCalledOnce();
         });
 
-        it("backup.delete() 文件不存在时不抛出错误", async () => {
+        it("backup.delete() does not throw when the file does not exist", async () => {
             mockFs.readFile.mockResolvedValue(Buffer.from("content", "utf-8"));
             mockFs.writeFile.mockResolvedValue(undefined);
             mockFs.delete.mockRejectedValue(new Error("ENOENT"));
@@ -112,8 +112,8 @@ describe("MarkdownDocument", () => {
         });
     });
 
-    describe("uri 属性", () => {
-        it("uri 与创建时传入的 uri 一致", async () => {
+    describe("uri property", () => {
+        it("uri matches the uri passed in at creation time", async () => {
             const uri = makeUri("/project/note.md");
             mockFs.readFile.mockResolvedValue(Buffer.from("", "utf-8"));
             const doc = await MarkdownDocument.create(uri);

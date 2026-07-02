@@ -5,7 +5,7 @@ import * as http from "http";
 import * as crypto from "crypto";
 import * as vscode from "vscode";
 
-// 按点分路径从对象中提取值
+// Extract a value from an object using a dot-separated path
 export function getByPath(obj: unknown, dotPath: string): unknown {
     return dotPath.split(".").reduce<unknown>((acc, key) => {
         if (acc != null && typeof acc === "object") {
@@ -15,7 +15,7 @@ export function getByPath(obj: unknown, dotPath: string): unknown {
     }, obj);
 }
 
-// 从 MIME type 推导扩展名
+// Derive a file extension from a MIME type
 export function mimeToExt(mimeType: string): string {
     const map: Record<string, string> = {
         "image/png": "png",
@@ -30,7 +30,7 @@ export function mimeToExt(mimeType: string): string {
     return map[mimeType] ?? "png";
 }
 
-// 生成不冲突的文件名
+// Generate a non-conflicting file name
 export function generateFilename(altText: string, mimeType: string): string {
     const sanitized =
         (altText || "image")
@@ -44,10 +44,10 @@ export function generateFilename(altText: string, mimeType: string): string {
     return `${sanitized}_${ts}_${rand}.${ext}`;
 }
 
-// 候选图片目录列表（按优先级）
+// List of candidate image directories (in priority order)
 const CANDIDATE_DIRS = ["images", "imgs", "assets/images", "assets"];
 
-// 检测目录是否存在
+// Check whether a directory exists
 async function dirExists(uri: vscode.Uri): Promise<boolean> {
     try {
         const stat = await vscode.workspace.fs.stat(uri);
@@ -63,7 +63,7 @@ export interface SaveImageResult {
 }
 
 /**
- * 将图片保存到本地磁盘，返回相对于 .md 文件的路径和绝对 Uri
+ * Save the image to local disk and return the path relative to the .md file along with the absolute Uri
  */
 export async function saveImageLocally(
     docUri: vscode.Uri,
@@ -78,7 +78,7 @@ export async function saveImageLocally(
     const customPath = cfg.get<string>("imageLocalPath", "").trim();
 
     if (customPath) {
-        // 自定义路径：绝对路径直接用，相对路径优先 workspace root 再退回 .md 目录
+        // Custom path: use absolute paths directly; for relative paths prefer the workspace root, then fall back to the .md directory
         if (path.isAbsolute(customPath)) {
             targetDir = vscode.Uri.file(customPath);
         } else {
@@ -89,19 +89,19 @@ export async function saveImageLocally(
                 targetDir = vscode.Uri.joinPath(docUri, "..", customPath);
             }
         }
-        // 确保目录存在
+        // Make sure the directory exists
         await vscode.workspace.fs.createDirectory(targetDir);
     } else if (docUri.scheme !== "file") {
-        // untitled 文件降级保存到 home/images/
+        // Untitled files fall back to saving under home/images/
         targetDir = vscode.Uri.file(path.join(os.homedir(), "images"));
         await vscode.workspace.fs.createDirectory(targetDir);
     } else {
-        // 自动检测：先在 workspace root 下找，再在 .md 同级目录找
+        // Auto-detect: first look under the workspace root, then in the directory next to the .md file
         const mdDir = vscode.Uri.joinPath(docUri, "..");
         const wsFolder = vscode.workspace.getWorkspaceFolder(docUri);
         const searchRoots = wsFolder ? [wsFolder.uri, mdDir] : [mdDir];
 
-        targetDir = vscode.Uri.joinPath(mdDir, "images"); // 默认兜底
+        targetDir = vscode.Uri.joinPath(mdDir, "images"); // default fallback
         let found = false;
 
         outer: for (const root of searchRoots) {
@@ -116,13 +116,13 @@ export async function saveImageLocally(
         }
 
         if (!found) {
-            // 在 .md 文件同级目录创建 images/
+            // Create images/ in the directory next to the .md file
             targetDir = vscode.Uri.joinPath(mdDir, "images");
             await vscode.workspace.fs.createDirectory(targetDir);
         }
     }
 
-    // ── 去重：MD5 比对目录内同扩展名文件 ────────────────
+    // ── Deduplication: compare MD5 against same-extension files in the directory ────────────────
     const newHash = crypto.createHash("md5").update(data).digest("hex");
     let entries: [string, vscode.FileType][] = [];
     try {
@@ -152,7 +152,7 @@ export async function saveImageLocally(
             .update(existingData)
             .digest("hex");
         if (existingHash === newHash) {
-            // 复用已有文件
+            // Reuse the existing file
             const relPath = buildRelPath(docUri, existingUri);
             return { relPath, absUri: existingUri };
         }
@@ -168,7 +168,7 @@ export async function saveImageLocally(
 
 export function buildRelPath(docUri: vscode.Uri, fileUri: vscode.Uri): string {
     if (docUri.scheme !== "file") {
-        return fileUri.fsPath; // untitled：返回绝对路径
+        return fileUri.fsPath; // untitled: return the absolute path
     }
     const mdDir = path.dirname(docUri.fsPath);
     let rel = path.relative(mdDir, fileUri.fsPath).replace(/\\/g, "/");
@@ -179,7 +179,7 @@ export function buildRelPath(docUri: vscode.Uri, fileUri: vscode.Uri): string {
 }
 
 /**
- * 上传图片到远程服务器，返回图片 URL
+ * Upload the image to a remote server and return the image URL
  */
 export async function uploadImageToServer(
     cfg: vscode.WorkspaceConfiguration,
@@ -189,7 +189,7 @@ export async function uploadImageToServer(
 ): Promise<string> {
     const serverUrl = cfg.get<string>("imageServerUrl", "").trim();
     if (!serverUrl) {
-        throw new Error("请先在设置中配置 markdownWysiwyg.imageServerUrl");
+        throw new Error("Please configure markdownWysiwyg.imageServerUrl in settings first");
     }
 
     const fieldName =
@@ -197,25 +197,25 @@ export async function uploadImageToServer(
     const responsePath =
         cfg.get<string>("imageServerResponsePath", "url").trim() || "url";
 
-    // 解析额外参数
+    // Parse extra parameters
     let extraParams: Record<string, string> = {};
     const extraParamsStr = cfg.get<string>("imageServerExtraParams", "").trim();
     if (extraParamsStr) {
         try {
             extraParams = JSON.parse(extraParamsStr);
         } catch {
-            // 非法 JSON 忽略，继续上传
+            // Ignore invalid JSON and continue uploading
         }
     }
 
-    // 构建 multipart/form-data
+    // Build multipart/form-data
     const boundary = `----FormBoundary${Date.now().toString(16)}`;
     const filename = generateFilename(altText, mimeType);
     const CRLF = "\r\n";
 
     const parts: Buffer[] = [];
 
-    // 额外参数
+    // Extra parameters
     for (const [key, value] of Object.entries(extraParams)) {
         parts.push(
             Buffer.from(
@@ -226,7 +226,7 @@ export async function uploadImageToServer(
         );
     }
 
-    // 图片文件
+    // Image file
     parts.push(
         Buffer.from(
             `--${boundary}${CRLF}` +
@@ -265,7 +265,7 @@ export async function uploadImageToServer(
 
         req.on("error", reject);
 
-        // 30 秒超时
+        // 30 second timeout
         req.setTimeout(30000, () => {
             req.destroy(new Error("Upload request timed out after 30s"));
         });
