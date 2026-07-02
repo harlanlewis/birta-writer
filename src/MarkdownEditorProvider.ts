@@ -10,6 +10,21 @@ import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransf
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode } from "../shared/messages";
 
+/**
+ * Allowlist of URL schemes permitted to open in the user's default browser.
+ * Blocks schemes a malicious document could abuse (file:/vscode:/command:/javascript:),
+ * which trigger local file access or command execution rather than harmless external navigation.
+ */
+const SAFE_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
+
+export function isSafeExternalUrl(rawUrl: string): boolean {
+    try {
+        const scheme = vscode.Uri.parse(rawUrl, true).scheme.toLowerCase() + ":";
+        return SAFE_URL_SCHEMES.has(scheme);
+    } catch {
+        return false;
+    }
+}
 
 export class MarkdownEditorProvider
     implements vscode.CustomEditorProvider<MarkdownDocument> {
@@ -366,7 +381,7 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "openUrl":
-                        if (message.url) {
+                        if (message.url && isSafeExternalUrl(message.url)) {
                             vscode.env.openExternal(vscode.Uri.parse(message.url));
                         }
                         break;
@@ -818,7 +833,7 @@ export class MarkdownEditorProvider
     content="default-src 'none';
              style-src ${webview.cspSource} 'unsafe-inline';
              script-src 'nonce-${nonce}' ${webview.cspSource};
-             img-src ${webview.cspSource} https: data:;">
+             img-src ${webview.cspSource} data:;">
 	  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
