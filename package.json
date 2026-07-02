@@ -322,7 +322,10 @@
                                 }
                             }
                         },
-                        "required": ["name", "colors"]
+                        "required": [
+                            "name",
+                            "colors"
+                        ]
                     },
                     "default": [],
                     "description": "%config.customThemes.description%"
@@ -360,7 +363,7 @@
         "@milkdown/prose": "^7.19.0",
         "@milkdown/transformer": "^7.5.0",
         "@milkdown/utils": "^7.19.0",
-        "dompurify": "^3.3.3",
+        "dompurify": "^3.4.11",
         "mermaid": "^11.0.0",
         "prosemirror-tables": "^1.8.5",
         "refractor": "^5.0.0"
