@@ -117,7 +117,7 @@ function ensureMermaid(): void {
     mermaid.initialize({
         startOnLoad: false,
         theme: currentTheme,
-        securityLevel: "loose",
+        securityLevel: "strict",
         // 禁用 Mermaid 为 SVG 设置 max-width:100%，避免与我们写回的固定 width/height 属性冲突
         flowchart: { useMaxWidth: false },
         sequence: { useMaxWidth: false },
@@ -167,7 +167,7 @@ function createLangPicker(
     const triggerBtn = document.createElement("button");
     triggerBtn.className = "lang-picker-btn";
     triggerBtn.tabIndex = -1;
-    triggerBtn.innerHTML = `<span class="lang-picker-label">${getLangLabel(currentLang)}</span>${IconChevronDown}`;
+    triggerBtn.innerHTML = `<span class="lang-picker-label">${escapeHtml(getLangLabel(currentLang))}</span>${IconChevronDown}`;
 
     const dropdown = document.createElement("div");
     dropdown.className = "lang-picker-dropdown";
