@@ -156,7 +156,15 @@ function escapeHtml(str: string): string {
         .replace(/"/g, "&quot;");
 }
 
-// ─── 搜索下拉组件 ────────────────────────────────────────
+// Builds the language-picker button's inner HTML. The language token comes from the
+// fenced-code-block info string (document-controlled), so getLangLabel's raw fallback
+// MUST be escaped before it reaches innerHTML — otherwise a crafted fence such as
+// ```<img/src=x/onerror=...> would execute on render. Exported so tests drive the real render.
+export function langLabelHtml(lang: string): string {
+    return `<span class="lang-picker-label">${escapeHtml(getLangLabel(lang))}</span>${IconChevronDown}`;
+}
+
+// ─── Language-picker dropdown component ────────────────────────────────────────
 function createLangPicker(
     currentLang: string,
     onSelect: (lang: string) => void,
@@ -167,7 +175,7 @@ function createLangPicker(
     const triggerBtn = document.createElement("button");
     triggerBtn.className = "lang-picker-btn";
     triggerBtn.tabIndex = -1;
-    triggerBtn.innerHTML = `<span class="lang-picker-label">${escapeHtml(getLangLabel(currentLang))}</span>${IconChevronDown}`;
+    triggerBtn.innerHTML = langLabelHtml(currentLang);
 
     const dropdown = document.createElement("div");
     dropdown.className = "lang-picker-dropdown";
