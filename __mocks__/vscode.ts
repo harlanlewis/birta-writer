@@ -18,9 +18,12 @@ export const Uri = {
     file: (p: string) => makeUri(p, "file"),
     joinPath: (base: { fsPath: string; scheme?: string }, ...parts: string[]) =>
         makeUri(nodePath.join(base.fsPath, ...parts), base.scheme ?? "file"),
-    parse: (s: string) => {
+    parse: (s: string, strict?: boolean) => {
         if (s.startsWith("file://")) return makeUri(decodeURIComponent(s.slice(7)), "file");
-        return { fsPath: s, scheme: "unknown", path: s, toString: () => s };
+        const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(s);
+        if (!m && strict) { throw new Error(`URI malformed: ${s}`); }
+        const scheme = m ? m[1].toLowerCase() : "unknown";
+        return { fsPath: s, scheme, path: s, toString: () => s };
     },
 };
 

@@ -237,7 +237,7 @@ function createHtmlView(node: { attrs: Record<string, string> }) {
     const raw = node.attrs["value"] ?? "";
     dom.innerHTML = DOMPurify.sanitize(raw, {
         USE_PROFILES: { html: true },
-        ADD_ATTR: ["align", "style", "width", "height"],
+        ADD_ATTR: ["align", "width", "height"],
     });
     return {
         dom,

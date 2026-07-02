@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## Language Policy
+
+The maintainer reads and writes **English only**. This project is being migrated from Chinese to English; every change should move it further in that direction and never add new non-English content. Reply to the user in English. Write all new comments, identifiers, commit messages, docs, and test descriptions in English, and translate any Chinese you touch into English as you go. This supersedes any older instruction in this repo that mandates Chinese.
+
 ## Project Structure & Module Organization
 
 This is a VS Code extension for a WYSIWYG Markdown editor. Extension-host code lives in `src/`, including `extension.ts`, `MarkdownDocument.ts`, and utilities under `src/utils/`. Webview/browser code lives in `webview/`, with reusable UI modules in `webview/components/`, shared browser helpers in `webview/ui/`, and i18n helpers in `webview/i18n/`. Cross-boundary message types belong in `shared/`. Tests are colocated in `src/__tests__/` and `webview/__tests__/`; VS Code API mocks are in `__mocks__/`. Localized strings are in `package.nls*.json` and `l10n/`, while static extension assets are in `images/`.
@@ -28,7 +32,7 @@ Vitest is the test runner. Extension tests run in Node; webview tests run in jsd
 
 ## Commit & Pull Request Guidelines
 
-Git history uses English type prefixes, often with Chinese descriptions, for example `fix: 修复 workflow pnpm 版本冲突`, `chore: 版本升级到 0.1.0`, and `release: v0.1.6`. Prefer concise conventional prefixes such as `feat:`, `fix:`, `chore:`, `test:`, and `release:`. Create branches from `dev` when contributing. Pull requests should target `dev`, describe the user-facing change, list verification commands such as `pnpm build` and `pnpm test`, link issues when relevant, and include screenshots or GIFs for webview UI changes.
+Git history uses English type prefixes; older commits have Chinese descriptions, but **new commits must use English descriptions** (see the Language Policy). Prefer concise conventional prefixes such as `feat:`, `fix:`, `chore:`, `test:`, and `release:`, e.g. `fix: resolve workflow pnpm version conflict`, `chore: bump version to 0.1.0`, `release: v0.1.6`. Create branches from `dev` when contributing. Pull requests should target `dev`, describe the user-facing change, list verification commands such as `pnpm build` and `pnpm test`, link issues when relevant, and include screenshots or GIFs for webview UI changes.
 
 ## Security & Configuration Tips
 
