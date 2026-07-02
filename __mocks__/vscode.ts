@@ -1,30 +1,18 @@
 /**
- * VSCode API 最小可用 mock，供 Vitest 单元测试使用。
- * 通过 vitest.config.ts 的 resolve.alias 将 "vscode" 重定向到此文件。
+ * Minimal usable mock of the VS Code API for Vitest unit tests.
+ * Wired in via vitest.config.ts's resolve.alias, which redirects "vscode" to this file.
+ * Note: `Uri` delegates to the real `vscode-uri` package (the same implementation the VS Code
+ * API exposes), so URI parsing/joining is exercised for real rather than faked.
  */
-import * as nodePath from "path";
 import { vi } from "vitest";
+import { URI, Utils } from "vscode-uri";
 
-function makeUri(fsPath: string, scheme = "file") {
-    return {
-        fsPath,
-        scheme,
-        path: fsPath,
-        toString: () => (scheme === "file" ? `file://${fsPath}` : `${scheme}://${fsPath}`),
-    };
-}
-
+// vscode-uri IS the exact URI implementation the VS Code API exposes as `vscode.Uri`,
+// so tests exercise real parsing/joining/fsPath semantics instead of a hand-rolled fake.
 export const Uri = {
-    file: (p: string) => makeUri(p, "file"),
-    joinPath: (base: { fsPath: string; scheme?: string }, ...parts: string[]) =>
-        makeUri(nodePath.join(base.fsPath, ...parts), base.scheme ?? "file"),
-    parse: (s: string, strict?: boolean) => {
-        if (s.startsWith("file://")) return makeUri(decodeURIComponent(s.slice(7)), "file");
-        const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(s);
-        if (!m && strict) { throw new Error(`URI malformed: ${s}`); }
-        const scheme = m ? m[1].toLowerCase() : "unknown";
-        return { fsPath: s, scheme, path: s, toString: () => s };
-    },
+    file: (p: string) => URI.file(p),
+    parse: (s: string, strict?: boolean) => URI.parse(s, strict),
+    joinPath: (base: URI, ...parts: string[]) => Utils.joinPath(base, ...parts),
 };
 
 export const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 } as const;
@@ -41,8 +29,8 @@ export const workspace = {
     getConfiguration: vi.fn(() => ({
         get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
     })),
-    getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: ReturnType<typeof makeUri> }),
-    workspaceFolders: undefined as undefined | Array<{ uri: ReturnType<typeof makeUri> }>,
+    getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: URI }),
+    workspaceFolders: undefined as undefined | Array<{ uri: URI }>,
 };
 
 export const window = {
