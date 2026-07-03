@@ -34,6 +34,8 @@ src/utils/imageService.ts                     — Local image save (MD5 dedup) +
 src/i18n/webviewTranslations.ts               — WebView translation data
 webview/index.ts                              — WebView entry
 webview/editor.ts                             — Milkdown editor init (incl. keymap plugins)
+webview/serialization.ts                      — Serializer config (stringify options, table handler, pure-markdown preset)
+webview/utils/minimalDiff.ts                  — Minimal-diff merge of serializer output into the saved file
 webview/messaging.ts                          — WebView ↔ Extension message protocol (the only comms layer)
 webview/style.css                             — VS Code theming (--vscode-* CSS variables)
 webview/i18n/index.ts                         — t() / kbd() translation functions

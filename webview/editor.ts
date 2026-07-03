@@ -3,18 +3,18 @@ import {
     Editor,
     editorViewCtx,
     nodeViewCtx,
-    remarkStringifyOptionsCtx,
     rootCtx,
 } from "@milkdown/core";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import { prism, prismConfig } from "@milkdown/plugin-prism";
-import { commonmark } from "@milkdown/preset-commonmark";
 import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import DOMPurify from "dompurify";
 import { createCodeBlockView } from "./components/codeBlock";
 import { createImageView } from "./components/imageView";
 import { refractor } from "./highlighter";
+import { configureSerialization, pureCommonmark } from "./serialization";
+import { applyMinimalChanges } from "./utils/minimalDiff";
 import {
     cellClickFixPlugin,
     codeBlockBackspacePlugin,
@@ -35,197 +35,6 @@ import {
 } from "./plugins";
 
 export { registerSelectionChangeHandler, setLogTableSel } from "./plugins";
-
-// ─── 比较规范化辅助函数 ─────────────────────────────────────────────────────
-
-const SEP_ROW_RE  = /^\|[\s\-:|]+\|$/;
-const TABLE_ROW_RE = /^\|.*\|$/;
-
-// 规范化分隔行：折叠 dash、规范化单元格空格，只保留对齐冒号
-// | :----- | :----: | → |:-|:-:|   两侧格式不同时视为等价
-function normalizeSepRow(line: string): string {
-    const t = line.trim();
-    const cells = t.split('|').slice(1, -1).map(c => {
-        return c.trim().replace(/(:?)-+(:?)/g, (_: string, a: string, b: string) => (a ?? '') + '-' + (b ?? ''));
-    });
-    return '|' + cells.join('|') + '|';
-}
-
-// 规范化相邻 strong 拆分：**a** **b** → **a b**（内容语义相同视为等价）
-// remark-stringify 在 strong 节点含 link 子节点时会输出两段 **...**
-function normalizeSplitStrong(line: string): string {
-    let prev: string;
-    do {
-        prev = line;
-        line = line.replace(
-            /\*\*((?:[^*]|\*(?!\*))*)\*\* \*\*((?:[^*]|\*(?!\*))*)\*\*/g,
-            '**$1 $2**',
-        );
-    } while (line !== prev);
-    return line;
-}
-
-// 规范化表格数据行：去除单元格内多余空格，<br /> 等价于空单元格
-// | 水果     |   价格   | → |水果|价格|
-function normalizeTableDataRow(line: string): string {
-    const t = line.trim();
-    const cells = t.split('|').slice(1, -1).map(c => {
-        const v = c.trim();
-        return v === '<br />' ? '' : v;
-    });
-    return '|' + cells.join('|') + '|';
-}
-
-// 规范化围栏代码块开始行：``` javascript → ```javascript（去除语言前的空格）
-function normalizeFenceOpen(line: string): string {
-    return line.replace(/^(\s*`{3,})\s+/, '$1');
-}
-
-function normLineForCompare(line: string): string {
-    const t = line.trim();
-    if (SEP_ROW_RE.test(t))   return normalizeSepRow(line);
-    if (TABLE_ROW_RE.test(t)) return normalizeTableDataRow(line);
-    if (/^`{3,}/.test(t))     return normalizeFenceOpen(line);
-    return normalizeSplitStrong(line);
-}
-
-// ─── 最小化差异合并 ──────────────────────────────────────────────────────────
-//
-// 将 remark-stringify 的全量序列化结果与原始文件做 LCS 差量合并：
-// - 空行不参与比较，直接保留原文件中的空行
-// - 表格分隔行纳入比较，但用 normalizeSepRow 忽略 dash 宽度；
-//   对齐标记（:---:）改变时照常应用（表格对齐操作生效）
-// - adjacent strong 拆分（**a** **b** ↔ **a b**）视为等价，不应用
-// - 真正的内容变化（文字增删改）通过 LCS 精确定位并应用
-function applyMinimalChanges(saved: string, serialized: string): string {
-    interface SigLine { text: string; lineIdx: number }
-
-    function sigLines(md: string): SigLine[] {
-        return md.split('\n').reduce<SigLine[]>((acc, line, i) => {
-            if (line.trim() !== '') acc.push({ text: line, lineIdx: i });
-            return acc;
-        }, []);
-    }
-
-    const savedSig  = sigLines(saved);
-    const serialSig = sigLines(serialized);
-    const n = savedSig.length, m = serialSig.length;
-
-    // LCS dp（Uint16Array 控制内存，典型 md 文件不超过 65535 非空行）
-    const dp: Uint16Array[] = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
-    for (let i = 1; i <= n; i++)
-        for (let j = 1; j <= m; j++)
-            dp[i][j] = normLineForCompare(savedSig[i - 1].text) === normLineForCompare(serialSig[j - 1].text)
-                ? dp[i - 1][j - 1] + 1
-                : Math.max(dp[i - 1][j], dp[i][j - 1]);
-
-    // 回溯 → 编辑序列
-    type Edit =
-        | { op: 'keep'; saved: SigLine; serial: SigLine }
-        | { op: 'del';  saved: SigLine }
-        | { op: 'ins';  serial: SigLine };
-    const edits: Edit[] = [];
-    {
-        let i = n, j = m;
-        while (i > 0 || j > 0) {
-            if (i > 0 && j > 0 &&
-                normLineForCompare(savedSig[i - 1].text) === normLineForCompare(serialSig[j - 1].text)) {
-                edits.unshift({ op: 'keep', saved: savedSig[i - 1], serial: serialSig[j - 1] });
-                i--; j--;
-            } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-                edits.unshift({ op: 'ins', serial: serialSig[j - 1] });
-                j--;
-            } else {
-                edits.unshift({ op: 'del', saved: savedSig[i - 1] });
-                i--;
-            }
-        }
-    }
-
-    // 编辑序列 → 文件级修改指令
-    const replacements = new Map<number, string>();   // lineIdx → newText
-    const toDelete      = new Set<number>();
-    const insertAfter   = new Map<number, string[]>(); // lineIdx (-1=头部) → lines
-
-    let lastSavedLineIdx = -1;
-    let e = 0;
-    while (e < edits.length) {
-        const edit = edits[e];
-        const next = edits[e + 1];
-        if (edit.op === 'del' && next?.op === 'ins') {
-            // del + ins = 替换
-            replacements.set(edit.saved.lineIdx, next.serial.text);
-            lastSavedLineIdx = edit.saved.lineIdx;
-            e += 2;
-        } else if (edit.op === 'del') {
-            toDelete.add(edit.saved.lineIdx);
-            lastSavedLineIdx = edit.saved.lineIdx;
-            e++;
-        } else if (edit.op === 'ins') {
-            const bucket = insertAfter.get(lastSavedLineIdx) ?? [];
-            bucket.push(edit.serial.text);
-            insertAfter.set(lastSavedLineIdx, bucket);
-            e++;
-        } else { // keep
-            lastSavedLineIdx = edit.saved.lineIdx;
-            e++;
-        }
-    }
-
-    if (toDelete.size === 0 && replacements.size === 0 && insertAfter.size === 0) return saved;
-
-    // 重建文件
-    const savedLines = saved.split('\n');
-    const result: string[] = [...(insertAfter.get(-1) ?? [])];
-    for (let lineIdx = 0; lineIdx < savedLines.length; lineIdx++) {
-        if (toDelete.has(lineIdx)) continue;
-        result.push(replacements.has(lineIdx) ? replacements.get(lineIdx)! : savedLines[lineIdx]);
-        for (const ins of (insertAfter.get(lineIdx) ?? [])) result.push(ins);
-    }
-    return result.join('\n');
-}
-
-// 自定义表格序列化：每列保持自然宽度，不对齐列宽
-// 覆盖 remark-gfm 默认的 table handler（后者会对所有列做等宽重排，
-// 导致编辑单个单元格时整张表格格式全部改变）
-// state.enter/exit 维护 mdast-util-to-markdown 的上下文栈，影响特殊字符的转义规则
-function serializeTableNoAlign(node: any, _parent: any, state: any): string {
-    const tableExit = state.enter('table');
-    const lines: string[] = [];
-
-    for (let rowIdx = 0; rowIdx < node.children.length; rowIdx++) {
-        const row = node.children[rowIdx];
-        const rowExit = state.enter('tableRow');
-
-        const cellValues: string[] = row.children.map((cell: any) => {
-            const cellExit = state.enter('tableCell');
-            const phrasingExit = state.enter('phrasing');
-            const value = state.containerPhrasing(cell, { before: '|', after: '|' });
-            phrasingExit();
-            cellExit();
-            return value;
-        });
-
-        rowExit();
-        lines.push('| ' + cellValues.join(' | ') + ' |');
-
-        // 表头行后插入分隔行，保留原始对齐标记（:---:、---:、:---、---）
-        if (rowIdx === 0) {
-            const aligns: (string | null)[] = node.align ?? [];
-            const seps = row.children.map((_: any, j: number) => {
-                const a = aligns[j] ?? null;
-                if (a === 'center') return ':---:';
-                if (a === 'right') return '---:';
-                if (a === 'left') return ':---';
-                return '---';
-            });
-            lines.push('|' + seps.join('|') + '|');
-        }
-    }
-
-    tableExit();
-    return lines.join('\n');
-}
 
 // ── HTML inline NodeView ───────────────────────────────────────────────────
 // Milkdown 的 html 节点（atom, inline）默认以 textContent 显示原始标签。
@@ -325,18 +134,9 @@ export async function createEditor(
         .config((ctx) => {
             ctx.set(rootCtx, container);
             ctx.set(defaultValueCtx, initialMarkdown);
-            // 配置序列化选项，尽量保留原始格式
-            ctx.update(remarkStringifyOptionsCtx, (prev) => ({
-                ...prev,
-                bullet: '-' as const,
-                rule: '-' as const,   // 保留 --- 分割线，防止序列化为 ***
-                handlers: {
-                    ...(prev.handlers ?? {}),
-                    // 覆盖 remark-gfm 的 table handler：每列保持自然宽度，
-                    // 不重排列宽，避免编辑单个单元格时整表格式全部改变
-                    table: serializeTableNoAlign,
-                },
-            }));
+            // Stringify options that keep serializer output close to the
+            // original file formatting (bullets, rules, table widths)
+            configureSerialization(ctx);
             _savedMarkdown = initialMarkdown;
             ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
                 if (!isSettled) return;          // 跳过初始化同步触发
@@ -368,7 +168,7 @@ export async function createEditor(
                 ],
             ]);
         })
-        .use(commonmark)
+        .use(pureCommonmark)
         .use(gfm)
         .use(listener)
         .use(prism)
