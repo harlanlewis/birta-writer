@@ -12,9 +12,14 @@ import type { EditorView } from "@milkdown/prose/view";
 import DOMPurify from "dompurify";
 import { createCodeBlockView } from "./components/codeBlock";
 import { createImageView } from "./components/imageView";
+import { getMarkdown } from "@milkdown/utils";
 import { refractor } from "./highlighter";
 import { configureSerialization, pureCommonmark } from "./serialization";
-import { applyMinimalChanges } from "./utils/minimalDiff";
+import {
+    applyMinimalChanges,
+    computeRoundTripProtection,
+    type RoundTripProtection,
+} from "./utils/minimalDiff";
 import {
     cellClickFixPlugin,
     codeBlockBackspacePlugin,
@@ -57,9 +62,19 @@ function createHtmlView(node: { attrs: Record<string, string> }) {
 
 let _editor: Editor | null = null;
 
-// 上次保存/加载的 Markdown 原文（含用户原始格式：空行、分隔线宽度等）
-// 用于在自动保存时做最小化差异合并，避免全量序列化改变未编辑区域的格式
+// The Markdown text as last saved/loaded (with the user's original
+// formatting: blank lines, rule widths, ...). Used for the minimal-diff merge
+// on autosave so a full re-serialization never reformats untouched regions.
 let _savedMarkdown = '';
+
+// Round-trip protection for the current file: change regions a ZERO-EDIT
+// parse→serialize cycle produces on its own (dropped reference-link
+// definitions, setext→ATX rewrites, escaping churn, ...). Computed once per
+// createEditor() from the freshly loaded document; applyMinimalChanges pins
+// these regions to their saved bytes so an edit elsewhere in the file can
+// never silently destroy them. Constructs pasted AFTER load are not covered
+// until the next reload — by then they are part of the saved baseline.
+let _protection: RoundTripProtection | null = null;
 
 // 用户是否已与编辑器产生交互（键盘/鼠标/粘贴等）
 // 每次 createEditor() 重置为 false，避免"仅打开文件即触发自动保存"
@@ -141,7 +156,7 @@ export async function createEditor(
             ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
                 if (!isSettled) return;          // 跳过初始化同步触发
                 if (!_hasUserInteracted) return; // 跳过初始化异步触发（RAF/microtask 延迟交付）
-                const toSave = applyMinimalChanges(_savedMarkdown, markdown);
+                const toSave = applyMinimalChanges(_savedMarkdown, markdown, _protection);
                 if (toSave === _savedMarkdown) return; // 内容无实质变化，不触发保存
                 _savedMarkdown = toSave;
                 debouncedUpdate(toSave);
@@ -189,6 +204,14 @@ export async function createEditor(
         .use(listSpreadNormalizePlugin)
         .use(trailingHrParagraphPlugin)
         .create();
+
+    // Compare the loaded file against its own zero-edit serialization to
+    // learn which regions the round trip cannot reproduce; those get pinned
+    // to their saved bytes on every future save.
+    _protection = computeRoundTripProtection(
+        initialMarkdown,
+        _editor.action(getMarkdown()),
+    );
 
     isSettled = true;
     return _editor;
