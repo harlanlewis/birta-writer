@@ -79,6 +79,10 @@ export function notifyFrontmatterUpdate(frontmatter: string): void {
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter });
 }
 
+export function notifyTocWidth(width: number): void {
+    vscode.postMessage({ type: "tocWidth", width });
+}
+
 export function onMessage(handler: (msg: IncomingMessage) => void): void {
     window.addEventListener("message", (event: MessageEvent) => {
         handler(event.data as IncomingMessage);

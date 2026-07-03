@@ -2,6 +2,7 @@ import './toc.css';
 import type { EditorView } from "@milkdown/prose/view";
 import { applyTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
+import { notifyTocWidth } from "@/messaging";
 import type { EventManager } from "@/eventManager";
 import {
     getTopbarBottom,
@@ -16,7 +17,9 @@ interface HeadingEntry {
     pos: number;
 }
 
-const TOC_WIDTH = 220;
+const TOC_DEFAULT_WIDTH = 220;
+const TOC_MIN_WIDTH = 150;
+const TOC_MAX_WIDTH = 600;
 const DOCKED_MIN_CONTENT_WIDTH = 720;
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
 const tocAutoHideThreshold = window.__i18n?.tocAutoHideThreshold ?? 3;
@@ -43,6 +46,69 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     panel.appendChild(header);
     panel.appendChild(list);
+
+    // ── Drag-to-resize handle on the panel's inner edge (VS Code sash style) ──
+    const resizeCursor = (window.__i18n?.isMac ?? false) ? "col-resize" : "ew-resize";
+    const resizeHandle = document.createElement("div");
+    resizeHandle.className = "toc-resize-handle";
+    resizeHandle.style.cursor = resizeCursor;
+    panel.appendChild(resizeHandle);
+
+    function clampWidth(width: number): number {
+        return Math.min(TOC_MAX_WIDTH, Math.max(TOC_MIN_WIDTH, Math.round(width)));
+    }
+
+    function readInitialWidth(): number {
+        // Injected by the extension as --toc-width on :root (persisted value or the 220px default)
+        const raw = getComputedStyle(document.documentElement).getPropertyValue("--toc-width");
+        const parsed = parseInt(raw, 10);
+        return Number.isFinite(parsed) ? clampWidth(parsed) : TOC_DEFAULT_WIDTH;
+    }
+
+    let tocWidth = readInitialWidth();
+
+    function setTocWidth(width: number): void {
+        tocWidth = clampWidth(width);
+        document.documentElement.style.setProperty("--toc-width", `${tocWidth}px`);
+        updateTab();
+    }
+
+    resizeHandle.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startWidth = tocWidth;
+        resizeHandle.classList.add("toc-resize-handle--active");
+        document.body.classList.add("toc-resizing");
+        document.body.style.cursor = resizeCursor;
+        const onMove = (ev: MouseEvent): void => {
+            const delta = tocRight ? startX - ev.clientX : ev.clientX - startX;
+            setTocWidth(startWidth + delta);
+        };
+        const onUp = (): void => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            resizeHandle.classList.remove("toc-resize-handle--active");
+            document.body.classList.remove("toc-resizing");
+            document.body.style.cursor = "";
+            if (tocWidth !== startWidth) {
+                notifyTocWidth(tocWidth);
+            }
+            checkResponsiveMode();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+    });
+
+    // Double-click resets to the default width
+    resizeHandle.addEventListener("dblclick", () => {
+        setTocWidth(TOC_DEFAULT_WIDTH);
+        notifyTocWidth(TOC_DEFAULT_WIDTH);
+        checkResponsiveMode();
+    });
 
     // ── Collapse/expand tab on the panel's inner edge (standalone fixed element, unaffected by the panel's overflow:hidden) ──
     const tabEl = document.createElement("button");
@@ -77,11 +143,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         if (tocRight) {
             tabEl.textContent = isOpen ? "›" : "‹";
             tabEl.style.left = "auto";
-            tabEl.style.right = isOpen ? `${TOC_WIDTH}px` : "0px";
+            tabEl.style.right = isOpen ? `${tocWidth}px` : "0px";
         } else {
             tabEl.textContent = isOpen ? "‹" : "›";
             tabEl.style.right = "auto";
-            tabEl.style.left = isOpen ? `${TOC_WIDTH}px` : "0px";
+            tabEl.style.left = isOpen ? `${tocWidth}px` : "0px";
         }
     }
 
@@ -258,7 +324,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // ── 自动展开检测 ──────────────────────────────────────
     function hasEnoughSpace(): boolean {
         if (document.body.classList.contains("editor-width-auto")) {
-            return window.innerWidth >= TOC_WIDTH + DOCKED_MIN_CONTENT_WIDTH;
+            return window.innerWidth >= tocWidth + DOCKED_MIN_CONTENT_WIDTH;
         }
         const editorEl = document.getElementById("editor");
         if (!editorEl) {
@@ -266,7 +332,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
         const rect = editorEl.getBoundingClientRect();
         const sideSpace = tocRight ? window.innerWidth - rect.right : rect.left;
-        return sideSpace >= TOC_WIDTH && rect.width >= DOCKED_MIN_CONTENT_WIDTH;
+        return sideSpace >= tocWidth && rect.width >= DOCKED_MIN_CONTENT_WIDTH;
     }
 
     function resolveMode(): TocMode {

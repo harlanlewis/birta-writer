@@ -1,9 +1,9 @@
-/* ─── TOC 目录面板 ───────────────────────────────────── */
+/* ─── TOC panel ──────────────────────────────────────── */
 .toc-panel {
     position: fixed;
     top: 40px;
     left: 0;
-    width: 220px;
+    width: var(--toc-width, 220px);
     height: calc(100vh - 40px);
     background: var(
         --vscode-sideBar-background,
@@ -28,6 +28,44 @@
 
 .toc-panel--open {
     transform: translateX(0);
+}
+
+/* ─── Drag-to-resize handle (VS Code sash style) ─────── */
+.toc-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 4px;
+    z-index: 1;
+    background: transparent;
+    transition: background-color 0.1s ease;
+
+    /* Highlight after a short delay, matching VS Code's sash hover behavior */
+    &:hover {
+        background: var(--vscode-sash-hoverBorder, rgba(128, 128, 128, 0.35));
+        transition-delay: 0.3s;
+    }
+}
+
+.toc-panel--right .toc-resize-handle {
+    right: auto;
+    left: 0;
+}
+
+.toc-resize-handle--active,
+.toc-resize-handle--active:hover {
+    background: var(--vscode-sash-hoverBorder, rgba(128, 128, 128, 0.35));
+    transition-delay: 0s;
+}
+
+/* While dragging: no text selection, and no tab animation lag */
+body.toc-resizing {
+    user-select: none;
+
+    & .toc-toggle-tab {
+        transition: none;
+    }
 }
 
 .toc-header {

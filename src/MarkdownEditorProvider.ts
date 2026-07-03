@@ -542,6 +542,12 @@ export class MarkdownEditorProvider
                             this._handleResolveImagePath(document, panel, uriKey, message.id, message.relPath);
                         }
                         break;
+                    case "tocWidth":
+                        void this.context.globalState.update(
+                            "tocWidth",
+                            this._getNumberSettingValue(message.width, 220, 150, 600),
+                        );
+                        break;
                 }
             },
         );
@@ -790,6 +796,8 @@ export class MarkdownEditorProvider
         const maxHeight = cfg.get<number>("codeBlockMaxHeight", 500);
         const editorMaxWidth = this._getEditorMaxWidthCssValue(cfg.get<number | string>("editorMaxWidth", "auto"));
         const tocContentGap = this._getPixelSettingCssValue(cfg.get<number>("tocContentGap", 100), 100, 16, 240);
+        // User-dragged TOC panel width, persisted across documents and sessions
+        const tocWidth = this._getNumberSettingValue(this.context.globalState.get<number>("tocWidth"), 220, 150, 600);
         const tocRight = cfg.get<string>("tocPosition", "left") === "right";
         const isAutoWidth = editorMaxWidth === "none";
         const fontFamily = cfg.get<string>("fontFamily", "");
@@ -838,7 +846,7 @@ export class MarkdownEditorProvider
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
 	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: 220px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${fontFamily ? ` --custom-font-family: ${fontFamily};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${fontFamily ? ` --custom-font-family: ${fontFamily};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
 	</head>
 	<body class="${bodyClasses}">
 	  <div class="editor-topbar"></div>
