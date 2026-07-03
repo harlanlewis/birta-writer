@@ -55,11 +55,12 @@ function setFmCollapsed(collapsed: boolean): void {
     setWebviewState({ ...(getWebviewState() ?? {}), fmCollapsed: collapsed });
 }
 
-/** Applies the collapsed state to the panel and updates the toggle button icon/tooltip. */
+/** Applies the collapsed state to the panel and updates the toggle button icon/label. */
 function applyFmCollapsed(panel: HTMLElement, toggleBtn: HTMLElement, collapsed: boolean): void {
     panel.classList.toggle('collapsed', collapsed);
-    toggleBtn.innerHTML = collapsed ? IconChevronDown : IconChevronUp;
-    toggleBtn.title = collapsed ? t('Expand frontmatter') : t('Collapse frontmatter');
+    toggleBtn.innerHTML = collapsed
+        ? `${IconChevronDown} <span>${t('Show metadata')}</span>`
+        : `${IconChevronUp} <span>${t('Hide metadata')}</span>`;
 }
 
 /** 将编辑结果同步到 Extension */
@@ -222,18 +223,9 @@ export function renderFrontmatterPanel(frontmatter: string | undefined): void {
     panel.innerHTML = '';
     panel.appendChild(table);
 
-    // Bottom row: "Add field" button + collapse toggle
+    // Bottom row: collapse toggle + "Add field" button, left-aligned together
     const addRow = document.createElement('div');
     addRow.className = 'fm-add-row';
-    const addBtn = document.createElement('button');
-    addBtn.className = 'fm-add-btn';
-    addBtn.innerHTML = `${IconPlus} <span>${t('Add field')}</span>`;
-    addBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        addNewRow(tbody, panel);
-    });
-    addRow.appendChild(addBtn);
 
     const toggleBtn = document.createElement('button');
     toggleBtn.className = 'fm-toggle-btn';
@@ -245,6 +237,16 @@ export function renderFrontmatterPanel(frontmatter: string | undefined): void {
         applyFmCollapsed(panel, toggleBtn, collapsed);
     });
     addRow.appendChild(toggleBtn);
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'fm-add-btn';
+    addBtn.innerHTML = `${IconPlus} <span>${t('Add field')}</span>`;
+    addBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        addNewRow(tbody, panel);
+    });
+    addRow.appendChild(addBtn);
     panel.appendChild(addRow);
     applyFmCollapsed(panel, toggleBtn, isFmCollapsed());
 

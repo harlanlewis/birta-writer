@@ -115,14 +115,16 @@ body {
     opacity: 1;
 }
 
-/* Bottom row: "Add field" button + collapse toggle */
+/* Bottom row: collapse toggle + "Add field" button */
 .fm-add-row {
     margin-top: 4px;
     display: flex;
     align-items: center;
+    gap: 8px;
 }
 
-.fm-add-btn {
+.fm-add-btn,
+.fm-toggle-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -147,31 +149,9 @@ body {
     }
 }
 
-/* Collapse/expand toggle for the frontmatter panel */
+/* Collapse/expand toggle uses a solid border to read as a mode switch, not an action */
 .fm-toggle-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: auto;
-    width: 24px;
-    height: 24px;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--vscode-descriptionForeground);
-    cursor: pointer;
-    opacity: 0.6;
-    transition: opacity 0.1s, background 0.1s;
-
-    svg {
-        width: 14px;
-        height: 14px;
-    }
-
-    &:hover {
-        opacity: 1;
-        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
-    }
+    border-style: solid;
 }
 
 /* Collapsed: hide the table and Add-field button, keep only the toggle */

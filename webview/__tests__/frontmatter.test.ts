@@ -67,7 +67,10 @@ describe("renderFrontmatterPanel collapse toggle", () => {
         expect(panel).toBeTruthy();
         expect(panel!.classList.contains("collapsed")).toBe(false);
         expect(panel!.querySelectorAll(".frontmatter-table tr")).toHaveLength(3);
-        expect(panel!.querySelector(".fm-toggle-btn")).toBeTruthy();
+        const toggle = panel!.querySelector(".fm-toggle-btn");
+        expect(toggle?.textContent).toContain("Hide metadata");
+        // The toggle sits immediately to the left of the Add-field button
+        expect(toggle?.nextElementSibling?.className).toBe("fm-add-btn");
     });
 
     it("clicking the toggle should collapse the panel and persist the state", () => {
@@ -78,6 +81,7 @@ describe("renderFrontmatterPanel collapse toggle", () => {
         btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 
         expect(panel.classList.contains("collapsed")).toBe(true);
+        expect(btn.textContent).toContain("Show metadata");
         expect(mockVscodeApi.setState).toHaveBeenCalledWith(
             expect.objectContaining({ fmCollapsed: true }),
         );
