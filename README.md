@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md) | [GitHub](https://github.com/harlanlewis/md-wysiwyg-editor)
 
-> A personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) by Chance Liu (MIT). Not affiliated with or endorsed by the upstream project.
+> A personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) (MIT). Not affiliated with or endorsed by the upstream project.
 
 A VSCode WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdown.dev/) (ProseMirror). Edit `.md` / `.markdown` files as rich text and save as standard Markdown — fully compatible with any text editor.
 
