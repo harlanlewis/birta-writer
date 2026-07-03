@@ -114,27 +114,33 @@ export class EventManager {
     }
 
     /**
-     * 绑定键盘快捷键
-     * @param options - 快捷键配置
-     * @param handler - 事件处理函数
-     * @returns 解绑函数
-     * 
+     * Bind a keyboard shortcut.
+     *
+     * Modifier semantics: requesting both `meta` and `ctrl` means the
+     * platform primary modifier ("Mod": Cmd on macOS, Ctrl elsewhere) —
+     * either one matches. Otherwise each modifier must match exactly, so
+     * e.g. Cmd+Shift+F does not trigger a plain Cmd+F shortcut.
+     *
+     * @param options - shortcut configuration
+     * @param handler - event handler
+     * @returns unbind function
+     *
      * @example
      * // Cmd/Ctrl+F
      * eventManager.onShortcut(
      *     { code: "KeyF", meta: true, ctrl: true },
      *     () => openFindBar()
      * );
-     * 
+     *
      * @example
      * // Cmd/Ctrl+Shift+M
      * eventManager.onShortcut(
      *     { code: "KeyM", meta: true, ctrl: true, shift: true },
      *     () => switchToTextEditor()
      * );
-     * 
+     *
      * @example
-     * // Alt+K（不阻止冒泡）
+     * // Alt+K (without stopping propagation)
      * eventManager.onShortcut(
      *     { code: "KeyK", alt: true, stopPropagation: false },
      *     () => sendToClaude()
@@ -155,16 +161,18 @@ export class EventManager {
         } = options;
 
         return this.onWindow("keydown", (e) => {
-            // 检查组合键
-            if (meta && !e.metaKey) { return; }
-            if (ctrl && !e.ctrlKey) { return; }
-            if (shift && !e.shiftKey) { return; }
-            if (alt && !e.altKey) { return; }
-            
-            // 检查按键码
             if (e.code !== code) { return; }
 
-            // 阻止默认行为和冒泡
+            // Check modifiers ("Mod" when both meta and ctrl are requested)
+            if (meta && ctrl) {
+                if (!e.metaKey && !e.ctrlKey) { return; }
+            } else if (meta !== e.metaKey || ctrl !== e.ctrlKey) {
+                return;
+            }
+            if (shift !== e.shiftKey) { return; }
+            if (alt !== e.altKey) { return; }
+
+            // Suppress default behavior and propagation
             if (preventDefault) { e.preventDefault(); }
             if (stopPropagation) { e.stopPropagation(); }
 
