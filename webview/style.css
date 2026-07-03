@@ -154,9 +154,35 @@ body {
     border-style: solid;
 }
 
-/* Collapsed: hide the table and Add-field button, keep only the toggle */
+/* Raw YAML editor for non-flat frontmatter (nested maps, lists, comments, ...) */
+.fm-raw-editor {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    border-radius: 4px;
+    background: var(--vscode-input-background, transparent);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.85em;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+    resize: vertical;
+    field-sizing: content;
+    min-height: 3em;
+
+    &:focus {
+        outline: 1px solid var(--vscode-focusBorder, #007acc);
+        outline-offset: -1px;
+    }
+}
+
+/* Collapsed: hide the table/raw editor and Add-field button, keep only the toggle */
 .frontmatter-panel.collapsed {
     .frontmatter-table,
+    .fm-raw-editor,
     .fm-add-btn {
         display: none;
     }
