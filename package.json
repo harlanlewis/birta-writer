@@ -351,7 +351,7 @@
         "vscode:prepublish": "node esbuild.mjs --production",
         "build": "node esbuild.mjs",
         "watch": "node esbuild.mjs --watch",
-        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/git-xing/md-wysiwyg-editor/blob/main --baseImagesUrl https://github.com/git-xing/md-wysiwyg-editor/raw/main",
+        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/md-wysiwyg-editor/blob/dev --baseImagesUrl https://github.com/harlanlewis/md-wysiwyg-editor/raw/dev",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage"
