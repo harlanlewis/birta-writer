@@ -1,12 +1,11 @@
 /**
  * keyboardShortcuts.ts
- * 
- * 职责：注册和处理编辑器的键盘快捷键
- * 
- * 本模块处理以下快捷键：
- * - Cmd/Ctrl+F：打开查找栏（预填当前选区文字）
- * - Cmd/Ctrl+Shift+M：切换到文本编辑器（附带当前视口行号）
- * - Option+Alt+K：将选中内容或当前块发送给 Claude（带精确行号）
+ *
+ * Registers and handles the editor's keyboard shortcuts:
+ * - Cmd/Ctrl+F: open the find bar (pre-filled with the current selection)
+ * - Cmd/Ctrl+Alt+F and Ctrl+H: open the find bar with the replace row shown
+ * - Cmd/Ctrl+Shift+M: switch to the text editor (with the current viewport line)
+ * - Option/Alt+K: send the selection or current block to Claude (with exact line numbers)
  */
 
 import type { EditorView } from "@milkdown/prose/view";
@@ -32,22 +31,36 @@ export function initKeyboardShortcuts(
     getFirstVisibleSourceLine: (view: EditorView, lineMap: number[]) => number,
     findBar: FindBarController,
 ): void {
-    // Cmd/Ctrl+F：打开查找栏（预填当前选区文字）
+    // Pre-fill the find bar with the current selection text (if any)
+    const getSelectionQuery = (): string | undefined => {
+        const view = getEditorView();
+        if (!view) { return undefined; }
+        const { selection, doc } = view.state;
+        if (selection.empty) { return undefined; }
+        const text = doc.textBetween(selection.from, selection.to);
+        return text.trim() ? text : undefined;
+    };
+
+    // Cmd/Ctrl+F: open the find bar
     eventManager.onShortcut(
         { code: "KeyF", meta: true, ctrl: true, stopPropagation: true },
-        () => {
-            const view = getEditorView();
-            let initialQuery: string | undefined;
-            if (view) {
-                const { selection, doc } = view.state;
-                if (!selection.empty) {
-                    const text = doc.textBetween(selection.from, selection.to);
-                    if (text.trim()) { initialQuery = text; }
-                }
-            }
-            findBar.open(initialQuery);
-        },
+        () => findBar.open(getSelectionQuery()),
     );
+
+    // Cmd/Ctrl+Alt+F: open the find bar with the replace row shown
+    eventManager.onShortcut(
+        { code: "KeyF", meta: true, ctrl: true, alt: true, stopPropagation: true },
+        () => findBar.open(getSelectionQuery(), { showReplace: true }),
+    );
+
+    // Ctrl+H (Windows/Linux convention; on macOS Ctrl+H is delete-backward)
+    const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
+    if (!isMac) {
+        eventManager.onShortcut(
+            { code: "KeyH", ctrl: true, stopPropagation: true },
+            () => findBar.open(getSelectionQuery(), { showReplace: true }),
+        );
+    }
 
     // Cmd/Ctrl+Shift+M：切换到文本编辑器（附带当前视口顶部行号，供文本编辑器定位）
     eventManager.onShortcut(

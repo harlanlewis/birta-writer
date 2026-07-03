@@ -1,15 +1,15 @@
-/* ── Find Bar — 与 VSCode 编辑器内置搜索框风格保持一致 ──── */
+/* ── Find Bar — styled to match VS Code's built-in editor find widget ── */
 
-/* 容器 */
+/* Container: replace-toggle chevron on the left, find/replace rows on the right */
 .find-bar {
     position: fixed;
     top: calc(var(--editor-topbar-height, 40px) + 6px);
     right: 16px;
     z-index: 200;
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 0;
-    padding: 3px 2px 3px 6px;
+    padding: 3px 2px 3px 2px;
     background: var(--vscode-editorWidget-background, #252526);
     border: 1px solid var(--vscode-editorWidget-border, #454545);
     border-radius: 2px;
@@ -31,7 +31,42 @@
     pointer-events: auto;
 }
 
-/* 输入框 */
+/* Rows wrapper (find row + replace row) */
+.find-bar__rows {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+}
+
+.find-bar__row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.find-bar__row--replace {
+    display: none;
+    /* keep the replace input aligned with the find input despite the
+       count/prev/next controls only existing on the find row */
+    gap: 2px;
+    padding-right: 2px;
+}
+
+.find-bar--replace-visible .find-bar__row--replace {
+    display: flex;
+}
+
+/* Replace-toggle chevron spans both rows */
+.find-bar__toggle {
+    align-self: stretch;
+    height: auto;
+    width: 16px;
+    margin-right: 2px;
+}
+
+/* Inputs */
 .find-bar__input {
     flex: 1;
     min-width: 0;

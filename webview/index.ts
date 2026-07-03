@@ -212,7 +212,10 @@ const eventManager = createEventManager();
 const toc = initToc(eventManager, () => getEditorView());
 document.body.appendChild(toc.panel);
 
-const findBar = initFindBar(() => document.getElementById("editor"));
+const findBar = initFindBar(
+    () => document.getElementById("editor"),
+    () => getEditorView(),
+);
 
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 const topbarTb = topbar
