@@ -17,6 +17,37 @@ export const Uri = {
 
 export const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 } as const;
 
+/**
+ * Mirrors vscode.RelativePattern: accepts a base Uri, WorkspaceFolder, or path string
+ * plus a glob pattern relative to that base.
+ */
+export class RelativePattern {
+    readonly baseUri: URI | undefined;
+    readonly base: string;
+    readonly pattern: string;
+
+    constructor(base: URI | { uri: URI } | string, pattern: string) {
+        if (typeof base === "string") {
+            this.base = base;
+        } else if ("uri" in base) {
+            this.baseUri = base.uri;
+            this.base = base.uri.fsPath;
+        } else {
+            this.baseUri = base;
+            this.base = base.fsPath;
+        }
+        this.pattern = pattern;
+    }
+}
+
+/** Creates a fake FileSystemWatcher; tests can override via mockImplementation to capture handlers */
+const makeFakeFileSystemWatcher = () => ({
+    onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidCreate: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidDelete: vi.fn(() => ({ dispose: vi.fn() })),
+    dispose: vi.fn(),
+});
+
 export const workspace = {
     fs: {
         readFile: vi.fn<() => Promise<Uint8Array>>(),
@@ -31,6 +62,12 @@ export const workspace = {
     })),
     getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: URI }),
     workspaceFolders: undefined as undefined | Array<{ uri: URI }>,
+    createFileSystemWatcher: vi.fn(makeFakeFileSystemWatcher),
+};
+
+export const env = {
+    language: "en",
+    openExternal: vi.fn(),
 };
 
 export const window = {

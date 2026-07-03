@@ -553,38 +553,48 @@ export class MarkdownEditorProvider
         );
 
 
-        // Watch for external file changes (including writes by AI tools) and auto-sync them to the WebView
-        // Note: vscode.workspace.createFileSystemWatcher does not detect files written by the same Extension Host
-        // so we use Node.js fs.watch instead, listening to OS-level events directly
-        import("fs").then(({ watch: fsWatch }) => {
-            let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-            const targetFile = path.basename(document.uri.fsPath);
-            const fsWatcher = fsWatch(path.dirname(document.uri.fsPath), async (_event, filename) => {
-                if (filename !== targetFile) { return; }
-                // Debounce: with multiple triggers in a short window, only handle the last one
-                if (debounceTimer !== undefined) { clearTimeout(debounceTimer); }
-                debounceTimer = setTimeout(async () => {
-                    debounceTimer = undefined;
-                    // If the change was caused by our own auto-save (within 1.5 seconds), skip it
-                    const lastSave = this._lastSaveTimes.get(uriKey) ?? 0;
-                    if (Date.now() - lastSave < 1500) { return; }
-                    const cts = new vscode.CancellationTokenSource();
-                    try {
-                        await document.revert(cts.token);
-                        const panel = this._webviewPanels.get(uriKey);
-                        if (panel) {
-                            const revertContent = document.getText();
-                            const displayContent = this._prepareContentForDisplay(revertContent, document, panel, uriKey);
-                            const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
-                            panel.webview.postMessage({ type: "revert", content: displayContent, lineMap: computeLineMap(revertContent), frontmatter: this._frontmatterMap.get(uriKey) || undefined, imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []), tableWrap });
-                        }
-                    } finally {
-                        cts.dispose();
+        // Watch for external file changes (including writes by AI tools) and auto-sync them to the WebView.
+        // Uses vscode.workspace.createFileSystemWatcher (not Node's fs.watch) so it also works on remote
+        // workspaces (Remote-SSH / WSL / Dev Containers / Codespaces), where the file lives on the remote host.
+        // A RelativePattern based on the file's own directory also covers files outside the workspace folders.
+        // The watcher fires for our own auto-saves too; the _lastSaveTimes guard below suppresses those.
+        let watcherDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+        const fileWatcher = vscode.workspace.createFileSystemWatcher(
+            new vscode.RelativePattern(
+                vscode.Uri.joinPath(document.uri, ".."),
+                path.basename(document.uri.fsPath),
+            ),
+        );
+        const onWatchedFileEvent = () => {
+            // Debounce: with multiple triggers in a short window, only handle the last one
+            if (watcherDebounceTimer !== undefined) { clearTimeout(watcherDebounceTimer); }
+            watcherDebounceTimer = setTimeout(async () => {
+                watcherDebounceTimer = undefined;
+                // If the change was caused by our own auto-save (within 1.5 seconds), skip it
+                const lastSave = this._lastSaveTimes.get(uriKey) ?? 0;
+                if (Date.now() - lastSave < 1500) { return; }
+                const cts = new vscode.CancellationTokenSource();
+                try {
+                    await document.revert(cts.token);
+                    const panel = this._webviewPanels.get(uriKey);
+                    if (panel) {
+                        const revertContent = document.getText();
+                        const displayContent = this._prepareContentForDisplay(revertContent, document, panel, uriKey);
+                        const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
+                        panel.webview.postMessage({ type: "revert", content: displayContent, lineMap: computeLineMap(revertContent), frontmatter: this._frontmatterMap.get(uriKey) || undefined, imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []), tableWrap });
                     }
-                }, 200);
-            });
-            // Dispose the watcher when the panel closes
-            webviewPanel.onDidDispose(() => { fsWatcher.close(); });
+                } finally {
+                    cts.dispose();
+                }
+            }, 200);
+        };
+        fileWatcher.onDidChange(onWatchedFileEvent);
+        // Atomic writes (delete + create) surface as onDidCreate; treat them like changes
+        fileWatcher.onDidCreate(onWatchedFileEvent);
+        // Dispose the watcher when the panel closes
+        webviewPanel.onDidDispose(() => {
+            if (watcherDebounceTimer !== undefined) { clearTimeout(watcherDebounceTimer); }
+            fileWatcher.dispose();
         });
     }
 
