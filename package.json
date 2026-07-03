@@ -3,7 +3,7 @@
     "displayName": "WYSIWYG Markdown Editor",
     "description": "WYSIWYG Markdown editor with live table editing",
     "version": "0.1.6",
-    "publisher": "chance-liu",
+    "publisher": "harlanlewis",
     "engines": {
         "vscode": "^1.80.0"
     },
@@ -25,12 +25,12 @@
     ],
     "repository": {
         "type": "git",
-        "url": "https://github.com/git-xing/md-wysiwyg-editor.git"
+        "url": "https://github.com/harlanlewis/md-wysiwyg-editor.git"
     },
     "bugs": {
-        "url": "https://github.com/git-xing/md-wysiwyg-editor/issues"
+        "url": "https://github.com/harlanlewis/md-wysiwyg-editor/issues"
     },
-    "homepage": "https://github.com/git-xing/md-wysiwyg-editor#readme",
+    "homepage": "https://github.com/harlanlewis/md-wysiwyg-editor#readme",
     "activationEvents": [],
     "main": "./dist/extension.js",
     "l10n": "./l10n",
