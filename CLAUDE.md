@@ -22,6 +22,17 @@ The maintainer reads and writes **English only**. This project is being migrated
 - **Packaging/release**: the VSIX must be written to `releases/`. Command: `pnpm run package`.
 - **Git commit convention**: keep the English type prefix (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, `release:`) and write the description in **English**. e.g. `feat: add image upload`, `fix: correct table drag offset`.
 
+### Trying changes in the user's editor (Cursor)
+
+`pnpm build` only rebuilds `dist/`; the user's editor runs an **installed copy** of the extension, so a window reload alone never picks up source changes. When the user wants to try changes in their own Cursor window (rather than F5 debugging):
+
+1. `pnpm test` — must pass first.
+2. `pnpm run package` — writes `releases/md-wysiwyg-editor-<version>.vsix`.
+3. `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force` (`--force` allows reinstalling the same version).
+4. Tell the user to reload: Cmd+Shift+P → "Developer: Reload Window".
+
+For iterative debugging, F5 (Extension Development Host) is still faster — no packaging step.
+
 ---
 
 ## Key file map
