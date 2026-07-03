@@ -6,7 +6,8 @@ import { vi } from "vitest";
 
 const mockVscodeApi = {
     postMessage: vi.fn(),
-    getState: vi.fn(() => null),
+    // Matches the real VsCodeApi.getState(): unknown, so tests can mock any state shape
+    getState: vi.fn((): unknown => null),
     setState: vi.fn(),
 };
 

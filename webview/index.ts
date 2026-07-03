@@ -219,7 +219,6 @@ const topbarTb = topbar
     ? initToolbar(
         topbar,
         () => currentEditor,
-        () => toc.toggle(),
         { getLineMap, getMarkdownSource },
         async (file: File, altText: string) => handleImageFile(file, altText),
         async (id: string) => handleGetProjectImages(id),

@@ -15,7 +15,6 @@ import {
     insertTableCommand,
     toggleStrikethroughCommand,
 } from "@milkdown/preset-gfm";
-import { undo, redo } from "@milkdown/prose/history";
 import { lift } from "@milkdown/prose/commands";
 import { TextSelection } from "@milkdown/prose/state";
 import type { Editor } from "@milkdown/core";
@@ -34,11 +33,8 @@ import {
     IconList,
     IconListOrdered,
     IconCheckSquare,
-    IconUndo,
-    IconRedo,
     IconCheck,
     IconX,
-    IconToc,
     IconChevronDown,
     IconEraser,
     IconSettings,
@@ -677,7 +673,6 @@ function showImageInsertPanel(
 export function initToolbar(
     topbar: HTMLElement,
     getEditor: GetEditor,
-    onTocToggle?: () => void,
     debugOpts?: {
         getLineMap: () => number[];
         getMarkdownSource: () => string;
@@ -697,39 +692,8 @@ export function initToolbar(
     const toolbar = document.createElement("div");
     toolbar.className = "toolbar";
 
-    // ── 目录导航（可选，位于工具栏最左侧）─────────────
-    if (onTocToggle) {
-        toolbar.appendChild(btn(IconToc, t("Table of Contents"), onTocToggle));
-        toolbar.appendChild(sep());
-    }
-
-    // ── 撤销 / 重做（直接调 ProseMirror history）────────
-    toolbar.appendChild(
-        btn(IconUndo, t("Undo") + " " + kbd("Mod-z"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                undo(view.state, view.dispatch);
-            });
-        }),
-    );
-    toolbar.appendChild(
-        btn(IconRedo, t("Redo") + " " + kbd("Mod-Shift-z"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                redo(view.state, view.dispatch);
-            });
-        }),
-    );
-
-    toolbar.appendChild(sep());
+    // TOC toggling lives on the panel's edge tab; undo/redo stay on their
+    // keyboard shortcuts — neither needs a toolbar button.
 
     // ── 块类型下拉（hover 展开，与浮动工具栏风格一致）──
     const fmtWrap = document.createElement("div");
