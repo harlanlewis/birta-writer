@@ -8,6 +8,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createEventManager, type EventManager } from "../eventManager";
 
+// Dispatch on document.body: real key events target the focused element and
+// bubble through document up to window (onShortcut listens on document, below
+// the window-level listener the VS Code webview host uses to forward keys to
+// the workbench).
 function pressKey(code: string, modifiers: Partial<KeyboardEvent> = {}): KeyboardEvent {
     const event = new KeyboardEvent("keydown", {
         code,
@@ -15,7 +19,7 @@ function pressKey(code: string, modifiers: Partial<KeyboardEvent> = {}): Keyboar
         cancelable: true,
         ...modifiers,
     });
-    window.dispatchEvent(event);
+    document.body.dispatchEvent(event);
     return event;
 }
 
@@ -128,6 +132,40 @@ describe("EventManager.onShortcut", () => {
             pressKey("KeyF", { metaKey: true, altKey: true });
             expect(handler).toHaveBeenCalledTimes(1);
             expect(altHandler).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe("propagation to window (VS Code webview key forwarding)", () => {
+        it("stopPropagation: true should keep a matching event from reaching window listeners", () => {
+            const windowListener = vi.fn();
+            window.addEventListener("keydown", windowListener);
+            try {
+                manager.onShortcut(
+                    { code: "KeyF", meta: true, ctrl: true, stopPropagation: true },
+                    handler,
+                );
+                pressKey("KeyF", { metaKey: true });
+                expect(handler).toHaveBeenCalledTimes(1);
+                expect(windowListener).not.toHaveBeenCalled();
+            } finally {
+                window.removeEventListener("keydown", windowListener);
+            }
+        });
+
+        it("a non-matching event should still reach window listeners", () => {
+            const windowListener = vi.fn();
+            window.addEventListener("keydown", windowListener);
+            try {
+                manager.onShortcut(
+                    { code: "KeyF", meta: true, ctrl: true, stopPropagation: true },
+                    handler,
+                );
+                pressKey("KeyP", { metaKey: true });
+                expect(handler).not.toHaveBeenCalled();
+                expect(windowListener).toHaveBeenCalledTimes(1);
+            } finally {
+                window.removeEventListener("keydown", windowListener);
+            }
         });
     });
 

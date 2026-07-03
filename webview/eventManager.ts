@@ -26,21 +26,21 @@ interface CustomEventEntry {
     handlers: Set<EventHandler>;
 }
 
-/** 键盘快捷键配置 */
+/** Keyboard shortcut configuration */
 export interface ShortcutOptions {
-    /** 按键码，如 "KeyF"、"KeyM"、"KeyK" */
+    /** Key code, e.g. "KeyF", "KeyM", "KeyK" */
     code: string;
-    /** 是否需要 Meta/Cmd 键 */
+    /** Require the Meta/Cmd key */
     meta?: boolean;
-    /** 是否需要 Ctrl 键 */
+    /** Require the Ctrl key */
     ctrl?: boolean;
-    /** 是否需要 Shift 键 */
+    /** Require the Shift key */
     shift?: boolean;
-    /** 是否需要 Alt/Option 键 */
+    /** Require the Alt/Option key */
     alt?: boolean;
-    /** 是否阻止默认行为（默认 true） */
+    /** Prevent the default action (default true) */
     preventDefault?: boolean;
-    /** 是否阻止事件冒泡（默认 false） */
+    /** Stop the event from propagating further (default false) */
     stopPropagation?: boolean;
 }
 
@@ -160,7 +160,16 @@ export class EventManager {
             stopPropagation = false,
         } = options;
 
-        return this.onWindow("keydown", (e) => {
+        // Bind on `document`, NOT `window`. The VS Code webview host installs
+        // its own bubble-phase keydown listener on `window` (before this
+        // bundle runs) and forwards every key it sees to the workbench so
+        // workbench keybindings keep working while a webview is focused.
+        // Because that listener is registered first on the same node, a
+        // window-level stopPropagation() of ours can never beat it. Listening
+        // one node lower means our stopPropagation() (and the claimed-key
+        // guard in keyboardShortcuts.ts, also on `document`) actually keeps
+        // handled shortcuts from leaking to the workbench.
+        return this.onDocument("keydown", (e) => {
             if (e.code !== code) { return; }
 
             // Check modifiers ("Mod" when both meta and ctrl are requested)

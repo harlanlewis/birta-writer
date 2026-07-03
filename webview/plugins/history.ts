@@ -2,10 +2,13 @@ import { history, redo, undo } from "@milkdown/prose/history";
 import { keymap } from "@milkdown/prose/keymap";
 import { $prose } from "@milkdown/utils";
 
-// 注册 ProseMirror history 插件（支持 undo/redo）
+// Register the ProseMirror history plugin (undo/redo support)
 export const historyPlugin = $prose(() => history());
 
-// 注册快捷键：Mod-z = undo，Mod-Shift-z / Mod-y = redo
+// Shortcuts: Mod-z = undo, Mod-Shift-z / Mod-y = redo.
+// ProseMirror preventDefaults these but they still bubble to the VS Code
+// webview key forwarder; the key-leak guard in webview/keyboardShortcuts.ts
+// stops their propagation so the workbench never double-handles undo/redo.
 export const historyKeymapPlugin = $prose(() =>
     keymap({
         "Mod-z": undo,
