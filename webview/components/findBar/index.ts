@@ -10,6 +10,7 @@ import {
     IconX,
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
+import { attachInputUndo } from "@/utils/inputUndo";
 
 // TypeScript declarations: CSS Custom Highlight API (Chromium 105+ / Electron 22+)
 declare class Highlight {
@@ -295,6 +296,11 @@ export function initFindBar(
     }
 
     // ── Event bindings ───────────────────────────────────
+    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it.
+    // The bar is long-lived (never torn down), so attaching once is fine.
+    attachInputUndo(input);
+    attachInputUndo(replaceInput);
+
     input.addEventListener("input", () => {
         clearTimeout(debounceTimer);
         debounceTimer = window.setTimeout(() => search(input.value), 150);

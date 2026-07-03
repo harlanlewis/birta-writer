@@ -16,6 +16,7 @@ import {
 import { t } from "@/i18n";
 import { createButton, createSeparator, setupInputKeyboard } from "@/ui/dom";
 import { attachImgPathComplete, resolveToWebviewUri } from './imgPathComplete';
+import { attachInputUndo } from "@/utils/inputUndo";
 import './imageView.css';
 
 // ─── webviewUri ↔ relPath 双向映射（由 index.ts 在收到 init/revert 消息时写入）─────
@@ -235,6 +236,8 @@ export function createImageView(
     infoInput.type = "text";
     infoInput.className = "img-tb-info img-tb-info--input";
     isolateInput(infoInput);
+    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
+    const detachInfoUndo = attachInputUndo(infoInput);
 
     let currentInfoEl: HTMLElement = infoSpan;
 
@@ -334,6 +337,7 @@ export function createImageView(
         input.placeholder = t("Alt text");
         input.style.width = "160px";
         isolateInput(input);
+        const detachAltUndo = attachInputUndo(input);
 
         const confirmBtn = createButton({ className: "img-tb-btn", tabIndex: -1, icon: IconCheck, onClick: confirm });
         confirmBtn.style.color = "var(--vscode-charts-green, #4caf50)";
@@ -382,6 +386,7 @@ export function createImageView(
         }
 
         function cleanupAlt(): void {
+            detachAltUndo();
             toolbar.removeChild(input);
             toolbar.removeChild(confirmBtn);
             toolbar.removeChild(cancelBtn);
@@ -407,6 +412,7 @@ export function createImageView(
         input.placeholder = t("Image path or URL");
         input.style.width = "240px";
         isolateInput(input);
+        const detachSrcUndo = attachInputUndo(input);
 
         const confirmBtn = createButton({ className: "img-tb-btn", tabIndex: -1, icon: IconCheck, onClick: confirm });
         confirmBtn.style.color = "var(--vscode-charts-green, #4caf50)";
@@ -470,6 +476,7 @@ export function createImageView(
 
         function cleanup(): void {
             detachComplete();
+            detachSrcUndo();
             if (toolbar.contains(input)) toolbar.removeChild(input);
             if (toolbar.contains(confirmBtn)) toolbar.removeChild(confirmBtn);
             if (toolbar.contains(cancelBtn)) toolbar.removeChild(cancelBtn);
@@ -537,7 +544,8 @@ export function createImageView(
         },
 
         destroy(): void {
-            // 清理 lightbox（若此图片触发的 lightbox 仍在显示）
+            detachInfoUndo();
+            // Clean up the lightbox (if the one triggered by this image is still showing)
             if (activeLightbox && document.body.contains(activeLightbox)) {
                 const lbImg = activeLightbox.querySelector("img");
                 if (lbImg && lbImg.src === img.src) {

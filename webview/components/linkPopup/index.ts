@@ -13,6 +13,7 @@ import {
 import { t } from "@/i18n";
 import { applyTooltip } from "@/ui/tooltip";
 import { slugify } from "@/utils/slug";
+import { attachInputUndo } from "@/utils/inputUndo";
 
 // ── 类型 ──────────────────────────────────────────────────────────────
 
@@ -486,9 +487,11 @@ export function setupLinkPopup(
         hidePopup();
     });
 
-    // ── 输入框辅助 ────────────────────────────────────────────────
+    // ── Input helpers ─────────────────────────────────────────────
 
     [inputText, inputUrl].forEach((inp) => {
+        // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
+        attachInputUndo(inp);
         inp.addEventListener("mousedown", (e) => e.stopPropagation());
         inp.addEventListener("keydown", (e) => {
             if (e.isComposing) return;

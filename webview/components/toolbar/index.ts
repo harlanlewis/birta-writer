@@ -46,6 +46,7 @@ import { sampleDocPosition } from "../selectionToolbar";
 import { notifyOpenSettings, notifyGetProjectImages } from "@/messaging";
 import { createButton, createSeparator } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
+import { attachInputUndo } from "@/utils/inputUndo";
 import './toolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -135,6 +136,9 @@ function showInlineLinkPrompt(
     overlay.appendChild(cancelBtn);
     document.body.appendChild(overlay);
 
+    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
+    const detachUndoFns = [attachInputUndo(textInput), attachInputUndo(urlInput)];
+
     // 定位到按钮下方
     const rect = near.getBoundingClientRect();
     overlay.style.top = `${rect.bottom + 4}px`;
@@ -156,6 +160,7 @@ function showInlineLinkPrompt(
     }
 
     function cleanup(): void {
+        detachUndoFns.forEach((detach) => detach());
         if (document.body.contains(overlay)) {
             document.body.removeChild(overlay);
         }
@@ -294,6 +299,8 @@ function showImageInsertPanel(
     urlSection.appendChild(srcInput);
     panel.appendChild(urlSection);
     const detachSrcComplete = attachImgPathComplete(srcInput);
+    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
+    const detachPanelUndoFns = [attachInputUndo(altInput), attachInputUndo(srcInput)];
 
     // ── 上传本地 tab ──────────────────────────────────
     const uploadSection = document.createElement("div");
@@ -602,6 +609,7 @@ function showImageInsertPanel(
 
     function cleanup(): void {
         detachSrcComplete();
+        detachPanelUndoFns.forEach((detach) => detach());
         if (document.body.contains(panel)) {
             document.body.removeChild(panel);
         }
