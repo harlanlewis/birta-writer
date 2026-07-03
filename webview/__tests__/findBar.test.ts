@@ -116,6 +116,60 @@ describe("initFindBar search", () => {
         expect(count.textContent).toBe("2/2");
     });
 
+    it("Enter and Shift+Enter in the find input should navigate matches", () => {
+        const { findBar, findInput, count } = setup("foo bar foo");
+        findBar.open("foo");
+        findInput.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+        );
+        expect(count.textContent).toBe("2/2");
+        findInput.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Enter", shiftKey: true, bubbles: true, cancelable: true }),
+        );
+        expect(count.textContent).toBe("1/2");
+    });
+
+    it("Escape in the find input should close the bar", () => {
+        const { findBar, findInput } = setup("foo bar foo");
+        findBar.open("foo");
+        findInput.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+        );
+        expect(findBar.isOpen()).toBe(false);
+    });
+
+    it("typing in the find input should search after the debounce delay", () => {
+        vi.useFakeTimers();
+        try {
+            const { findBar, findInput, count } = setup("foo bar foo");
+            findBar.open();
+            findInput.value = "foo";
+            findInput.dispatchEvent(new Event("input", { bubbles: true }));
+            expect(count.textContent).toBe("");
+            vi.advanceTimersByTime(150);
+            expect(count.textContent).toBe("1/2");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("the case toggle should switch between insensitive and exact matching", () => {
+        const { findBar, bar, count } = setup("Foo bar foo");
+        const btnCase = bar.querySelector('button[aria-label="Match Case"]') as HTMLButtonElement;
+        findBar.open("foo");
+        expect(count.textContent).toBe("1/2");
+        btnCase.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        expect(count.textContent).toBe("1/1");
+        expect(btnCase.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("matches split across multiple elements should all be found", () => {
+        const { editor, findBar, count } = setup("");
+        editor.innerHTML = "<p>foo bar</p><h2>foo</h2><pre><code>foo()</code></pre>";
+        findBar.open("foo");
+        expect(count.textContent).toBe("1/3");
+    });
+
     it("open without a query should pre-fill from the editor selection", () => {
         const { findBar, findInput, count } = setup("foo bar foo", undefined, "bar");
         findBar.open();
@@ -192,6 +246,25 @@ describe("initFindBar replace", () => {
             new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
         );
         expect(editor.textContent).toBe("qux bar foo");
+    });
+
+    it("Mod+Enter in the replace input should replace all matches", () => {
+        const { editor, findBar, replaceInput } = setup("foo bar foo");
+        findBar.open("foo", { showReplace: true });
+        replaceInput.value = "baz";
+        replaceInput.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true, cancelable: true }),
+        );
+        expect(editor.textContent).toBe("baz bar baz");
+    });
+
+    it("Escape in the replace input should close the bar", () => {
+        const { findBar, replaceInput } = setup("foo bar foo");
+        findBar.open("foo", { showReplace: true });
+        replaceInput.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+        );
+        expect(findBar.isOpen()).toBe(false);
     });
 
     it("replace all should substitute every match in one pass", () => {
