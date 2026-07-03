@@ -105,7 +105,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     // Double-click resets to the default width
     resizeHandle.addEventListener("dblclick", () => {
+        // Suppress the tab's slide transition so it snaps with the panel; the forced
+        // style flush commits the new position while the suppression is still active
+        document.body.classList.add("toc-resizing");
         setTocWidth(TOC_DEFAULT_WIDTH);
+        void tabEl.offsetWidth;
+        document.body.classList.remove("toc-resizing");
         notifyTocWidth(TOC_DEFAULT_WIDTH);
         checkResponsiveMode();
     });
