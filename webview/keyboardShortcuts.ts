@@ -31,26 +31,16 @@ export function initKeyboardShortcuts(
     getFirstVisibleSourceLine: (view: EditorView, lineMap: number[]) => number,
     findBar: FindBarController,
 ): void {
-    // Pre-fill the find bar with the current selection text (if any)
-    const getSelectionQuery = (): string | undefined => {
-        const view = getEditorView();
-        if (!view) { return undefined; }
-        const { selection, doc } = view.state;
-        if (selection.empty) { return undefined; }
-        const text = doc.textBetween(selection.from, selection.to);
-        return text.trim() ? text : undefined;
-    };
-
-    // Cmd/Ctrl+F: open the find bar
+    // Cmd/Ctrl+F: open the find bar (pre-fills from the selection itself)
     eventManager.onShortcut(
         { code: "KeyF", meta: true, ctrl: true, stopPropagation: true },
-        () => findBar.open(getSelectionQuery()),
+        () => findBar.open(),
     );
 
     // Cmd/Ctrl+Alt+F: open the find bar with the replace row shown
     eventManager.onShortcut(
         { code: "KeyF", meta: true, ctrl: true, alt: true, stopPropagation: true },
-        () => findBar.open(getSelectionQuery(), { showReplace: true }),
+        () => findBar.open(undefined, { showReplace: true }),
     );
 
     // Ctrl+H (Windows/Linux convention; on macOS Ctrl+H is delete-backward)
@@ -58,7 +48,7 @@ export function initKeyboardShortcuts(
     if (!isMac) {
         eventManager.onShortcut(
             { code: "KeyH", ctrl: true, stopPropagation: true },
-            () => findBar.open(getSelectionQuery(), { showReplace: true }),
+            () => findBar.open(undefined, { showReplace: true }),
         );
     }
 

@@ -37,6 +37,7 @@ import {
     IconX,
     IconChevronDown,
     IconEraser,
+    IconSearch,
     IconSettings,
 } from "@/ui/icons";
 import { applyTooltip } from "@/ui/tooltip";
@@ -685,6 +686,7 @@ export function initToolbar(
         webviewUri: string;
         name: string;
     }> | null>,
+    onOpenFind?: () => void,
 ): {
     onSelectionChange: (view: EditorView) => void;
     setDebugMode: (enabled: boolean) => void;
@@ -1190,7 +1192,13 @@ export function initToolbar(
         toolbar.appendChild(dbgWrap);
     }
 
-    // ── 设置按钮 ────────────────────────────────────────
+    // ── Find & settings ─────────────────────────────────
+    toolbar.appendChild(sep());
+    if (onOpenFind) {
+        toolbar.appendChild(
+            btn(IconSearch, `${t("Find")} (${kbd("Mod-f")})`, onOpenFind),
+        );
+    }
     toolbar.appendChild(
         btn(IconSettings, t("Settings"), () => notifyOpenSettings()),
     );

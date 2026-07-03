@@ -225,6 +225,7 @@ const topbarTb = topbar
         { getLineMap, getMarkdownSource },
         async (file: File, altText: string) => handleImageFile(file, altText),
         async (id: string) => handleGetProjectImages(id),
+        () => findBar.open(),
     )
     : null;
 

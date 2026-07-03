@@ -344,12 +344,25 @@ export function initFindBar(
     // Stop mousedown inside the bar from bubbling into the editor
     bar.addEventListener("mousedown", (e) => e.stopPropagation());
 
+    /** Current editor selection text, used to pre-fill the find input. */
+    function selectionQuery(): string | undefined {
+        const view = getEditorView();
+        if (!view) { return undefined; }
+        const { selection, doc } = view.state;
+        if (selection.empty) { return undefined; }
+        const text = doc.textBetween(selection.from, selection.to);
+        return text.trim() ? text : undefined;
+    }
+
     // ── Public API ───────────────────────────────────────
     function open(initialQuery?: string, opts?: { showReplace?: boolean }) {
         visible = true;
         bar.classList.add("find-bar--visible");
         if (opts?.showReplace !== undefined) {
             setReplaceVisible(opts.showReplace);
+        }
+        if (initialQuery === undefined) {
+            initialQuery = selectionQuery();
         }
         if (initialQuery !== undefined && initialQuery !== input.value) {
             input.value = initialQuery;

@@ -16,7 +16,7 @@ interface InsertTextOp {
     to: number;
 }
 
-function createFakeView(getTextNode: () => Text) {
+function createFakeView(getTextNode: () => Text, selectionText = "") {
     const ops: InsertTextOp[] = [];
     const makeTr = () => {
         const tr = {
@@ -30,7 +30,15 @@ function createFakeView(getTextNode: () => Text) {
     const view = {
         posAtDOM: (_node: Node, offset: number) => offset + 1,
         get state() {
-            return { tr: makeTr() };
+            return {
+                tr: makeTr(),
+                selection: {
+                    empty: selectionText === "",
+                    from: 1,
+                    to: 1 + selectionText.length,
+                },
+                doc: { textBetween: () => selectionText },
+            };
         },
         dispatch: () => {
             // Ops arrive in reverse document order, so sequential application
@@ -44,7 +52,7 @@ function createFakeView(getTextNode: () => Text) {
     return { view: view as unknown as EditorView, ops };
 }
 
-function setup(text: string, viewOverride?: EditorView | null) {
+function setup(text: string, viewOverride?: EditorView | null, selectionText = "") {
     document.body.innerHTML = "";
     const editor = document.createElement("div");
     editor.id = "editor";
@@ -52,7 +60,7 @@ function setup(text: string, viewOverride?: EditorView | null) {
     document.body.appendChild(editor);
 
     const textNode = () => editor.firstChild as Text;
-    const { view } = createFakeView(textNode);
+    const { view } = createFakeView(textNode, selectionText);
     const findBar = initFindBar(
         () => editor,
         () => (viewOverride === undefined ? view : viewOverride),
@@ -106,6 +114,22 @@ describe("initFindBar search", () => {
         expect(count.textContent).toBe("1/2");
         btnPrev.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         expect(count.textContent).toBe("2/2");
+    });
+
+    it("open without a query should pre-fill from the editor selection", () => {
+        const { findBar, findInput, count } = setup("foo bar foo", undefined, "bar");
+        findBar.open();
+        expect(findInput.value).toBe("bar");
+        expect(count.textContent).toBe("1/1");
+    });
+
+    it("open without a query or selection should keep the previous query", () => {
+        const { findBar, findInput, count } = setup("foo bar foo");
+        findBar.open("foo");
+        findBar.close();
+        findBar.open();
+        expect(findInput.value).toBe("foo");
+        expect(count.textContent).toBe("1/2");
     });
 
     it("close should hide the bar and clear state", () => {
