@@ -286,12 +286,63 @@ body.editor-width-auto {
         white-space: pre-wrap; /* ProseMirror 要求 */
         word-wrap: break-word;
 
-        /* 内联 HTML 渲染容器（DOMPurify 净化后只读显示） */
+        /* Inline HTML container (read-only preview after DOMPurify) */
         .html-inline {
             display: contents;
 
             [align="center"] {
                 text-align: center;
+            }
+        }
+
+        /* HTML comments: visible as a dimmed chip instead of vanishing.
+           Overrides .html-inline's display: contents so the chip has a box. */
+        .html-comment {
+            display: inline-block;
+            max-width: 100%;
+            padding: 0 0.35em;
+            border-radius: 3px;
+            background: var(--vscode-textBlockQuote-background);
+            color: var(--vscode-descriptionForeground);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.85em;
+            white-space: pre-wrap;
+            opacity: 0.85;
+        }
+
+        /* Reference-link definitions ([label]: url) — read-only block line */
+        .link-definition {
+            padding: 0.1em 0.35em;
+            border-left: 2px solid var(--vscode-editorLineNumber-foreground);
+            color: var(--vscode-descriptionForeground);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.9em;
+            opacity: 0.85;
+
+            &.ProseMirror-selectednode {
+                outline: 2px solid var(--vscode-focusBorder);
+            }
+        }
+
+        /* Reference-style links keep link styling without an href */
+        a.link-ref {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: underline;
+            cursor: text;
+        }
+
+        /* Image references (![alt][ref]) — inline chip */
+        .image-ref {
+            display: inline-block;
+            padding: 0 0.35em;
+            border-radius: 3px;
+            background: var(--vscode-textBlockQuote-background);
+            color: var(--vscode-descriptionForeground);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.85em;
+
+            &.ProseMirror-selectednode {
+                outline: 2px solid var(--vscode-focusBorder);
             }
         }
 

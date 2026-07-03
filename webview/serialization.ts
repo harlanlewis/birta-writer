@@ -4,25 +4,44 @@
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
+import { referenceLinksPlugin } from "./plugins/referenceLinks";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
 
 /**
- * The commonmark preset minus Milkdown's `remark-preserve-empty-line` plugin.
+ * The commonmark preset minus two of Milkdown's remark transforms, plus our
+ * reference-link schemas.
  *
- * That plugin round-trips empty paragraphs (and empty table cells) as literal
- * `<br />` HTML, which pollutes a file that should stay pure Markdown. With
- * it removed, empty paragraphs degrade to blank lines — the closest Markdown
- * has to an empty paragraph — and empty table cells serialize as genuinely
- * empty cells. Standalone `<br />` lines already present in a file are no
- * longer swallowed on parse either; they stay as inert HTML nodes and
- * round-trip unchanged.
+ * `remark-preserve-empty-line` round-trips empty paragraphs (and empty table
+ * cells) as literal `<br />` HTML, which pollutes a file that should stay
+ * pure Markdown. With it removed, empty paragraphs degrade to blank lines —
+ * the closest Markdown has to an empty paragraph — and empty table cells
+ * serialize as genuinely empty cells. Standalone `<br />` lines already
+ * present in a file are no longer swallowed on parse either; they stay as
+ * inert HTML nodes and round-trip unchanged.
+ *
+ * `remark-inline-links` rewrites `[text][ref]` into inline links and DELETES
+ * the `[ref]: url` definitions before the ProseMirror transformer runs, so
+ * reference-style documents were silently restructured. With it removed, the
+ * `definition` / `linkReference` / `imageReference` mdast nodes reach the
+ * transformer and are modeled by `referenceLinksPlugin`
+ * (plugins/referenceLinks.ts), keeping the reference form intact. The plugin
+ * is absent from the preset's .d.ts, so it is filtered by its withMeta
+ * displayName rather than by identity.
  */
-export const pureCommonmark = commonmark.filter(
-    (plugin) =>
-        plugin !== remarkPreserveEmptyLinePlugin.plugin &&
-        plugin !== remarkPreserveEmptyLinePlugin.options,
-);
+export const pureCommonmark = [
+    ...commonmark.filter((plugin) => {
+        if (
+            plugin === remarkPreserveEmptyLinePlugin.plugin ||
+            plugin === remarkPreserveEmptyLinePlugin.options
+        ) {
+            return false;
+        }
+        const displayName = (plugin as { meta?: { displayName?: string } }).meta?.displayName;
+        return !(displayName?.includes("remarkInlineLinkPlugin"));
+    }),
+    ...referenceLinksPlugin,
+];
 
 // Custom table serializer: every column keeps its natural width, with no
 // column-width alignment. Overrides the remark-gfm default table handler,

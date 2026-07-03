@@ -42,17 +42,26 @@ import {
 export { registerSelectionChangeHandler, setLogTableSel } from "./plugins";
 
 // ── HTML inline NodeView ───────────────────────────────────────────────────
-// Milkdown 的 html 节点（atom, inline）默认以 textContent 显示原始标签。
-// 此 NodeView 用 DOMPurify 净化后渲染真实 HTML，实现只读预览。
-function createHtmlView(node: { attrs: Record<string, string> }) {
+// Milkdown's html node (atom, inline) displays the raw tag as textContent by
+// default. This NodeView renders real HTML after DOMPurify sanitization for a
+// read-only preview. HTML comments would be sanitized away entirely — making
+// them invisible and impossible to reason about in the editor — so they are
+// rendered as a dimmed chip showing the raw comment text instead.
+export function createHtmlView(node: { attrs: Record<string, string> }) {
     const dom = document.createElement("span");
-    dom.className = "html-inline";
     dom.dataset["type"] = "html";
     const raw = node.attrs["value"] ?? "";
-    dom.innerHTML = DOMPurify.sanitize(raw, {
-        USE_PROFILES: { html: true },
-        ADD_ATTR: ["align", "width", "height"],
-    });
+    if (/^<!--[\s\S]*?-->$/.test(raw.trim())) {
+        dom.className = "html-inline html-comment";
+        dom.textContent = raw.trim();
+        dom.title = "HTML comment — preserved in the file, hidden in rendered output";
+    } else {
+        dom.className = "html-inline";
+        dom.innerHTML = DOMPurify.sanitize(raw, {
+            USE_PROFILES: { html: true },
+            ADD_ATTR: ["align", "width", "height"],
+        });
+    }
     return {
         dom,
         ignoreMutation: () => true,
