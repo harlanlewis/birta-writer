@@ -27,8 +27,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     toggle: () => void;
     refresh: () => void;
 } {
+    // Set by the markdownWysiwyg.tocPosition setting via a server-rendered body class
+    const tocRight = document.body.classList.contains("toc-right");
+
     const panel = document.createElement("div");
     panel.className = "toc-panel";
+    panel.classList.toggle("toc-panel--right", tocRight);
 
     const header = document.createElement("div");
     header.className = "toc-header";
@@ -40,7 +44,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     panel.appendChild(header);
     panel.appendChild(list);
 
-    // ── 右侧收起/展开 Tab（独立 fixed 元素，不受 panel overflow:hidden 影响）──
+    // ── Collapse/expand tab on the panel's inner edge (standalone fixed element, unaffected by the panel's overflow:hidden) ──
     const tabEl = document.createElement("button");
     tabEl.className = "toc-toggle-tab";
     tabEl.tabIndex = -1;
@@ -69,8 +73,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     function updateTab(): void {
-        tabEl.textContent = isOpen ? "‹" : "›";
-        tabEl.style.left = isOpen ? `${TOC_WIDTH}px` : "0px";
+        // The chevron always points toward where the panel will move on click
+        if (tocRight) {
+            tabEl.textContent = isOpen ? "›" : "‹";
+            tabEl.style.left = "auto";
+            tabEl.style.right = isOpen ? `${TOC_WIDTH}px` : "0px";
+        } else {
+            tabEl.textContent = isOpen ? "‹" : "›";
+            tabEl.style.right = "auto";
+            tabEl.style.left = isOpen ? `${TOC_WIDTH}px` : "0px";
+        }
     }
 
     function updateBodyClasses(): void {
@@ -253,7 +265,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             return false;
         }
         const rect = editorEl.getBoundingClientRect();
-        return rect.left >= TOC_WIDTH && rect.width >= DOCKED_MIN_CONTENT_WIDTH;
+        const sideSpace = tocRight ? window.innerWidth - rect.right : rect.left;
+        return sideSpace >= TOC_WIDTH && rect.width >= DOCKED_MIN_CONTENT_WIDTH;
     }
 
     function resolveMode(): TocMode {

@@ -790,6 +790,7 @@ export class MarkdownEditorProvider
         const maxHeight = cfg.get<number>("codeBlockMaxHeight", 500);
         const editorMaxWidth = this._getEditorMaxWidthCssValue(cfg.get<number | string>("editorMaxWidth", "auto"));
         const tocContentGap = this._getPixelSettingCssValue(cfg.get<number>("tocContentGap", 100), 100, 16, 240);
+        const tocRight = cfg.get<string>("tocPosition", "left") === "right";
         const isAutoWidth = editorMaxWidth === "none";
         const fontFamily = cfg.get<string>("fontFamily", "");
         const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
@@ -821,6 +822,7 @@ export class MarkdownEditorProvider
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
+            tocRight ? "toc-right" : "",
         ].filter(Boolean).join(" ");
 
         return `<!DOCTYPE html>

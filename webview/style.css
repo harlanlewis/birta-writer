@@ -171,6 +171,7 @@ body {
     min-height: 100vh;
     outline: none;
     --editor-content-left-padding: 76px;
+    --editor-content-right-padding: 48px;
 }
 
 body.editor-width-auto {
@@ -182,8 +183,8 @@ body.editor-width-auto {
         margin-right: 0;
     }
 
-    &.toc-docked:not(.toc-open),
-    &.toc-overlay:not(.toc-overlay-open) {
+    &.toc-docked:not(.toc-open):not(.toc-right),
+    &.toc-overlay:not(.toc-overlay-open):not(.toc-right) {
         #editor,
         .frontmatter-panel {
             --toc-editor-offset: max(
@@ -195,7 +196,7 @@ body.editor-width-auto {
         }
     }
 
-    &.toc-open {
+    &.toc-open:not(.toc-right) {
         #editor,
         .frontmatter-panel {
             --toc-editor-offset: max(
@@ -209,6 +210,34 @@ body.editor-width-auto {
         #editor {
             padding-left: 48px;
             --editor-content-left-padding: 48px;
+        }
+    }
+
+    /* Right-docked TOC: mirror the offsets onto the right side */
+    &.toc-right {
+        &.toc-docked:not(.toc-open),
+        &.toc-overlay:not(.toc-overlay-open) {
+            #editor,
+            .frontmatter-panel {
+                --toc-editor-offset: max(
+                    0px,
+                    calc(var(--toc-tab-width, 20px) + var(--toc-content-gap, 100px) - var(--editor-content-right-padding, 48px))
+                );
+                width: calc(100% - var(--toc-editor-offset));
+                margin-right: var(--toc-editor-offset);
+            }
+        }
+
+        &.toc-open {
+            #editor,
+            .frontmatter-panel {
+                --toc-editor-offset: max(
+                    0px,
+                    calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-right-padding, 48px))
+                );
+                width: calc(100% - var(--toc-editor-offset));
+                margin-right: var(--toc-editor-offset);
+            }
         }
     }
 }

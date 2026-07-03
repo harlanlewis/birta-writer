@@ -210,6 +210,20 @@
                     "maximum": 240,
                     "description": "%config.tocContentGap.description%"
                 },
+                "markdownWysiwyg.tocPosition": {
+                    "order": 5,
+                    "type": "string",
+                    "enum": [
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "%config.tocPosition.description%",
+                    "enumDescriptions": [
+                        "%config.tocPosition.left%",
+                        "%config.tocPosition.right%"
+                    ]
+                },
                 "markdownWysiwyg.customCss": {
                     "order": 12,
                     "type": "array",

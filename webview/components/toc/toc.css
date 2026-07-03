@@ -19,6 +19,13 @@
     overflow: hidden;
 }
 
+/* Right-docked variant (markdownWysiwyg.tocPosition = right) */
+.toc-panel--right {
+    left: auto;
+    right: 0;
+    transform: translateX(100%);
+}
+
 .toc-panel--open {
     transform: translateX(0);
 }
@@ -118,6 +125,14 @@
     z-index: 100;
     padding: 0;
     transition: left 0.2s ease; /* 与 panel transform 动画同步 */
+}
+
+/* Right-docked variant: mirror the tab onto the right edge */
+body.toc-right .toc-toggle-tab {
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+    transition: right 0.2s ease;
 }
 
 .toc-toggle-tab:hover {
