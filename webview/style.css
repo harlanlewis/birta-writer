@@ -115,9 +115,11 @@ body {
     opacity: 1;
 }
 
-/* 底部添加行 */
+/* Bottom row: "Add field" button + collapse toggle */
 .fm-add-row {
     margin-top: 4px;
+    display: flex;
+    align-items: center;
 }
 
 .fm-add-btn {
@@ -142,6 +144,41 @@ body {
         color: var(--vscode-editor-foreground);
         border-color: var(--vscode-focusBorder, #007acc);
         background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
+    }
+}
+
+/* Collapse/expand toggle for the frontmatter panel */
+.fm-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.1s, background 0.1s;
+
+    svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    &:hover {
+        opacity: 1;
+        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+    }
+}
+
+/* Collapsed: hide the table and Add-field button, keep only the toggle */
+.frontmatter-panel.collapsed {
+    .frontmatter-table,
+    .fm-add-btn {
+        display: none;
     }
 }
 

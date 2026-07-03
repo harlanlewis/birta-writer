@@ -11,9 +11,9 @@
  * - 实时同步编辑结果到 Extension
  */
 
-import { IconPlus, IconX } from "../../ui/icons";
+import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "../../ui/icons";
 import { t } from "../../i18n";
-import { notifyFrontmatterUpdate } from "../../messaging";
+import { getWebviewState, notifyFrontmatterUpdate, setWebviewState } from "../../messaging";
 
 export type FmEntry = { key: string; value: string };
 
@@ -42,8 +42,25 @@ export function serializeFrontmatter(entries: FmEntry[]): string {
     return `---\n${lines.join("\n")}\n---\n`;
 }
 
-/** 当前面板数据（模块级状态） */
+/** Current panel data (module-level state) */
 let currentFmEntries: FmEntry[] = [];
+
+/** Reads the persisted collapsed state of the frontmatter panel. */
+function isFmCollapsed(): boolean {
+    return getWebviewState()?.['fmCollapsed'] === true;
+}
+
+/** Persists the collapsed state so it survives tab switches and reloads. */
+function setFmCollapsed(collapsed: boolean): void {
+    setWebviewState({ ...(getWebviewState() ?? {}), fmCollapsed: collapsed });
+}
+
+/** Applies the collapsed state to the panel and updates the toggle button icon/tooltip. */
+function applyFmCollapsed(panel: HTMLElement, toggleBtn: HTMLElement, collapsed: boolean): void {
+    panel.classList.toggle('collapsed', collapsed);
+    toggleBtn.innerHTML = collapsed ? IconChevronDown : IconChevronUp;
+    toggleBtn.title = collapsed ? t('Expand frontmatter') : t('Collapse frontmatter');
+}
 
 /** 将编辑结果同步到 Extension */
 function commitFrontmatterChange(): void {
@@ -205,7 +222,7 @@ export function renderFrontmatterPanel(frontmatter: string | undefined): void {
     panel.innerHTML = '';
     panel.appendChild(table);
 
-    // 底部添加按钮
+    // Bottom row: "Add field" button + collapse toggle
     const addRow = document.createElement('div');
     addRow.className = 'fm-add-row';
     const addBtn = document.createElement('button');
@@ -217,7 +234,19 @@ export function renderFrontmatterPanel(frontmatter: string | undefined): void {
         addNewRow(tbody, panel);
     });
     addRow.appendChild(addBtn);
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'fm-toggle-btn';
+    toggleBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const collapsed = !panel.classList.contains('collapsed');
+        setFmCollapsed(collapsed);
+        applyFmCollapsed(panel, toggleBtn, collapsed);
+    });
+    addRow.appendChild(toggleBtn);
     panel.appendChild(addRow);
+    applyFmCollapsed(panel, toggleBtn, isFmCollapsed());
 
     if (!existing) {
         editorEl?.parentNode?.insertBefore(panel, editorEl);
