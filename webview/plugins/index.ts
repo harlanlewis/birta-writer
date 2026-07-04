@@ -1,6 +1,11 @@
 export { caretScrollMarginPlugin } from "./caretScrollMargin";
 export { codeBlockBackspacePlugin } from "./codeBlockBackspace";
 export { codeBlockSelectAllPlugin } from "./codeBlockSelectAll";
+export {
+    footnoteNumberingPlugin,
+    footnoteReferenceInputRule,
+    insertFootnoteCommand,
+} from "./footnotes";
 export { formatKeymapPlugin } from "./formatKeymap";
 export { headingEmptyDeletePlugin } from "./headingEmptyDelete";
 export { headingFoldPlugin } from "./headingFold";

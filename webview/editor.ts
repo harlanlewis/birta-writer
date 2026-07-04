@@ -12,6 +12,10 @@ import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import DOMPurify from "dompurify";
 import { createCodeBlockView } from "./components/codeBlock";
+import {
+    createFootnoteDefinitionView,
+    createFootnoteReferenceView,
+} from "./components/footnote";
 import { createImageView } from "./components/imageView";
 import { getMarkdown } from "@milkdown/utils";
 import { refractor } from "./highlighter";
@@ -26,6 +30,8 @@ import {
     cellClickFixPlugin,
     codeBlockBackspacePlugin,
     codeBlockSelectAllPlugin,
+    footnoteNumberingPlugin,
+    footnoteReferenceInputRule,
     formatKeymapPlugin,
     headingEmptyDeletePlugin,
     headingFoldPlugin,
@@ -34,6 +40,7 @@ import {
     historyPlugin,
     horizontalRuleKeymapPlugin,
     horizontalRulePlugin,
+    insertFootnoteCommand,
     linkInputRule,
     linkUrlCompletePlugin,
     listEnterPlugin,
@@ -192,6 +199,8 @@ export async function createEditor(
             // 注册 code_block NodeView（顶部语言选择 + 复制按钮）
             ctx.set(nodeViewCtx, [
                 ["code_block", createCodeBlockView],
+                ["footnote_reference", createFootnoteReferenceView],
+                ["footnote_definition", createFootnoteDefinitionView],
                 ["html", (node: { attrs: Record<string, string> }) => createHtmlView(node)],
                 [
                     "image",
@@ -225,6 +234,9 @@ export async function createEditor(
         .use(headingStickyPlugin)
         .use(caretScrollMarginPlugin)
         .use(formatKeymapPlugin)
+        .use(insertFootnoteCommand)
+        .use(footnoteReferenceInputRule)
+        .use(footnoteNumberingPlugin)
         .use(linkInputRule)
         .use(linkUrlCompletePlugin)
         .use(tabKeymapPlugin)

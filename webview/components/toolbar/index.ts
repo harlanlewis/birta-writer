@@ -15,6 +15,7 @@ import {
     insertTableCommand,
     toggleStrikethroughCommand,
 } from "@milkdown/preset-gfm";
+import { insertFootnoteCommand } from "@/plugins";
 import { lift } from "@milkdown/prose/commands";
 import { TextSelection } from "@milkdown/prose/state";
 import type { Editor } from "@milkdown/core";
@@ -27,6 +28,7 @@ import {
     IconLink,
     IconImage,
     IconTable,
+    IconFootnote,
     IconQuote,
     IconTerminal,
     IconMinus,
@@ -1026,6 +1028,13 @@ export function initToolbar(
         btn(IconTable, t("Insert Table"), () =>
             callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
         ),
+    );
+
+    insertGroup.appendChild(
+        btn(IconFootnote, t("Insert Footnote"), () => {
+            callCmd(getEditor, insertFootnoteCommand);
+            getEditorView()?.focus();
+        }),
     );
 
     addSep();
