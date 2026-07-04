@@ -52,6 +52,8 @@ import { createButton, createSeparator } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
 import { attachLinkTargetComplete } from '../pathLink/linkTargetComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
+import { createOverflowController } from './overflow';
+import type { OverflowGroup } from './overflow';
 import './toolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -716,7 +718,30 @@ export function initToolbar(
     // TOC toggling lives on the panel's edge tab; undo/redo stay on their
     // keyboard shortcuts — neither needs a toolbar button.
 
-    // ── 块类型下拉（hover 展开，与浮动工具栏风格一致）──
+    // ── Priority groups (for the narrow-pane overflow menu) ──
+    // Buttons are appended into `.tb-group` wrappers instead of directly
+    // into the toolbar, so whole groups can be reparented into the ⋯ panel.
+    const overflowGroups: OverflowGroup[] = [];
+    let pendingSep: HTMLElement | null = null;
+
+    function addSep(): HTMLElement {
+        const s = sep();
+        toolbar.appendChild(s);
+        pendingSep = s;
+        return s;
+    }
+
+    function addGroup(name: string): HTMLElement {
+        const el = document.createElement("div");
+        el.className = "tb-group";
+        el.dataset["group"] = name;
+        toolbar.appendChild(el);
+        overflowGroups.push({ name, el, sepBefore: pendingSep });
+        pendingSep = null;
+        return el;
+    }
+
+    // ── Block-type dropdown (opens on hover, same style as the floating toolbar) ──
     const fmtWrap = document.createElement("div");
     fmtWrap.className = "tb-fmt-wrap";
 
@@ -794,29 +819,31 @@ export function initToolbar(
 
     fmtWrap.appendChild(fmtBtn);
     fmtWrap.appendChild(fmtMenu);
-    toolbar.appendChild(fmtWrap);
+    addGroup("fmt").appendChild(fmtWrap);
 
-    toolbar.appendChild(sep());
+    addSep();
 
-    // ── 内联格式 ──────────────────────────────────────
-    toolbar.appendChild(
+    // ── Inline formatting ─────────────────────────────
+    const inlineCoreGroup = addGroup("inline-core");
+    inlineCoreGroup.appendChild(
         btn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
             callCmd(getEditor, toggleStrongCommand),
         ),
     );
-    toolbar.appendChild(
+    inlineCoreGroup.appendChild(
         btn(IconItalic, t("Italic") + " " + kbd("Mod-i"), () =>
             callCmd(getEditor, toggleEmphasisCommand),
         ),
     );
-    toolbar.appendChild(
+    const inlineExtraGroup = addGroup("inline-extra");
+    inlineExtraGroup.appendChild(
         btn(
             IconStrikethrough,
             t("Strikethrough") + " " + kbd("Mod-Shift-x"),
             () => callCmd(getEditor, toggleStrikethroughCommand),
         ),
     );
-    toolbar.appendChild(
+    inlineExtraGroup.appendChild(
         btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () => {
             const editor = getEditor();
             if (!editor) { return; }
@@ -839,7 +866,7 @@ export function initToolbar(
             });
         }),
     );
-    toolbar.appendChild(
+    inlineExtraGroup.appendChild(
         btn(IconEraser, t("Clear Formatting"), () => {
             const editor = getEditor();
             if (!editor) {
@@ -862,7 +889,7 @@ export function initToolbar(
         }),
     );
 
-    toolbar.appendChild(sep());
+    addSep();
 
     // ── Insert ────────────────────────────────────────
     // Link: capture the current selection text and any existing link first,
@@ -965,9 +992,10 @@ export function initToolbar(
         t("Insert/Edit Link") + " " + kbd("Mod-k"),
         openLinkPrompt,
     );
-    toolbar.appendChild(linkBtnEl);
+    addGroup("link").appendChild(linkBtnEl);
 
-    // 图片：弹出插入面板后插入 image 节点
+    // Image: open the insert panel, then insert an image node
+    const insertGroup = addGroup("insert");
     let imgBtnEl: HTMLButtonElement;
     imgBtnEl = btn(IconImage, t("Insert Image"), () => {
         showImageInsertPanel(
@@ -992,18 +1020,19 @@ export function initToolbar(
             onGetProjectImages,
         );
     });
-    toolbar.appendChild(imgBtnEl);
+    insertGroup.appendChild(imgBtnEl);
 
-    toolbar.appendChild(
+    insertGroup.appendChild(
         btn(IconTable, t("Insert Table"), () =>
             callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
         ),
     );
 
-    toolbar.appendChild(sep());
+    addSep();
 
-    // ── 列表（支持切换：再次点击取消） ──────────────────
-    toolbar.appendChild(
+    // ── Lists (toggle: clicking again lifts out) ──────
+    const listsGroup = addGroup("lists");
+    listsGroup.appendChild(
         btn(IconList, t("Bullet List"), () => {
             const editor = getEditor();
             if (!editor) {
@@ -1023,7 +1052,7 @@ export function initToolbar(
         }),
     );
 
-    toolbar.appendChild(
+    listsGroup.appendChild(
         btn(IconListOrdered, t("Ordered List"), () => {
             const editor = getEditor();
             if (!editor) {
@@ -1042,8 +1071,8 @@ export function initToolbar(
         }),
     );
 
-    // 任务列表：检测是否已是任务项，若是则 lift 取消
-    toolbar.appendChild(
+    // Task list: if already a task item, lift out to cancel
+    listsGroup.appendChild(
         btn(IconCheckSquare, t("Task List"), () => {
             const editor = getEditor();
             if (!editor) {
@@ -1098,10 +1127,11 @@ export function initToolbar(
         }),
     );
 
-    toolbar.appendChild(sep());
+    addSep();
 
-    // ── 块（支持切换） ──────────────────────────────────
-    toolbar.appendChild(
+    // ── Blocks (toggle) ───────────────────────────────
+    const blocksGroup = addGroup("blocks");
+    blocksGroup.appendChild(
         btn(IconQuote, t("Blockquote"), () => {
             const editor = getEditor();
             if (!editor) {
@@ -1119,30 +1149,29 @@ export function initToolbar(
             });
         }),
     );
-    toolbar.appendChild(
+    blocksGroup.appendChild(
         btn(IconTerminal, t("Code Block"), () =>
             callCmd(getEditor, createCodeBlockCommand),
         ),
     );
-    toolbar.appendChild(
+    blocksGroup.appendChild(
         btn(IconMinus, t("Horizontal Rule"), () =>
             callCmd(getEditor, insertHrCommand),
         ),
     );
 
-    // ── 调试工具按钮（始终创建，由 setDebugMode 控制显隐）─────────────────
+    // ── Debug tools (always created; setDebugMode controls visibility) ──
     let dbgSep: HTMLElement | null = null;
-    let dbgWrap: HTMLElement | null = null;
+    let dbgGroup: HTMLElement | null = null;
 
     if (debugOpts) {
         const { getLineMap, getMarkdownSource } = debugOpts;
 
-        dbgSep = sep();
+        dbgSep = addSep();
         dbgSep.style.display = "none";
 
-        dbgWrap = document.createElement("div");
+        const dbgWrap = document.createElement("div");
         dbgWrap.className = "tb-fmt-wrap";
-        dbgWrap.style.display = "none";
 
         const dbgBtn = document.createElement("button");
         dbgBtn.className = "tb-btn tb-fmt-btn";
@@ -1227,12 +1256,14 @@ export function initToolbar(
             dbgMenu.style.display = "none";
         });
 
-        toolbar.appendChild(dbgSep);
-        toolbar.appendChild(dbgWrap);
+        dbgGroup = addGroup("debug");
+        dbgGroup.style.display = "none";
+        dbgGroup.appendChild(dbgWrap);
     }
 
     // ── Proofread toggles, find & settings ───────────────
-    toolbar.appendChild(sep());
+    addSep();
+    const proofreadGroup = addGroup("proofread");
     const styleCheckBtn = btn(IconStyleCheck, `${t("Style check")} (${kbd("Mod-Alt-Shift-d")})`, () => {
         const view = getEditorView();
         if (!view) { return; }
@@ -1254,23 +1285,114 @@ export function initToolbar(
         styleCheckBtn.classList.toggle("tb-btn--active", config.styleCheck);
         spellCheckBtn.classList.toggle("tb-btn--active", config.spellCheck);
     });
-    toolbar.appendChild(styleCheckBtn);
-    toolbar.appendChild(spellCheckBtn);
+    proofreadGroup.appendChild(styleCheckBtn);
+    proofreadGroup.appendChild(spellCheckBtn);
+    const utilityGroup = addGroup("utility");
     if (onOpenFind) {
-        toolbar.appendChild(
+        utilityGroup.appendChild(
             btn(IconSearch, `${t("Find")} (${kbd("Mod-f")})`, onOpenFind),
         );
     }
-    toolbar.appendChild(
+    utilityGroup.appendChild(
         btn(IconSettings, t("Settings"), () => notifyOpenSettings()),
     );
 
+    // ── Overflow (⋯) menu for narrow panes ─────────────
+    // Reuses the tb-fmt-wrap hover/positioning pattern; collapsed groups
+    // are physically reparented into the panel so listeners survive.
+    const moreWrap = document.createElement("div");
+    moreWrap.className = "tb-fmt-wrap tb-more-wrap";
+    moreWrap.style.display = "none";
+
+    const moreBtn = document.createElement("button");
+    moreBtn.className = "tb-btn tb-more-btn";
+    moreBtn.textContent = "⋯";
+    applyTooltip(moreBtn, t("More…"));
+    moreBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    const moreMenu = document.createElement("div");
+    moreMenu.className = "tb-more-menu";
+    moreMenu.style.display = "none";
+
+    let moreHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function positionMoreMenu(): void {
+        const rect = moreBtn.getBoundingClientRect();
+        // Vertical flip when there is no room below (same as the fmt menu).
+        const approxMenuH = moreMenu.childElementCount * 34 + 12;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceBelow < approxMenuH + 8 && rect.top > approxMenuH + 8) {
+            moreMenu.style.top = "auto";
+            moreMenu.style.bottom = "calc(100% + 6px)";
+        } else {
+            moreMenu.style.bottom = "auto";
+            moreMenu.style.top = "calc(100% + 6px)";
+        }
+        // Horizontal flip: right-align when the panel would clip at the
+        // right edge (the ⋯ button sits near the end of the toolbar).
+        moreMenu.style.left = "0";
+        moreMenu.style.right = "auto";
+        const menuW = moreMenu.offsetWidth || 160;
+        if (rect.left + menuW > window.innerWidth - 8) {
+            moreMenu.style.left = "auto";
+            moreMenu.style.right = "0";
+        }
+    }
+
+    moreWrap.addEventListener("mouseenter", () => {
+        if (moreHideTimer) {
+            clearTimeout(moreHideTimer);
+            moreHideTimer = null;
+        }
+        moreMenu.style.display = "flex";
+        positionMoreMenu();
+    });
+    moreWrap.addEventListener("mouseleave", () => {
+        moreHideTimer = setTimeout(() => {
+            moreMenu.style.display = "none";
+        }, 100);
+    });
+    moreMenu.addEventListener("mouseenter", () => {
+        if (moreHideTimer) {
+            clearTimeout(moreHideTimer);
+            moreHideTimer = null;
+        }
+    });
+
+    moreWrap.appendChild(moreBtn);
+    moreWrap.appendChild(moreMenu);
+    toolbar.appendChild(moreWrap);
+
     topbar.appendChild(toolbar);
 
-    // 若页面加载时 debugMode 已为 true，立即显示
-    if (window.__i18n?.debugMode && dbgSep && dbgWrap) {
+    // Collapse order: first to overflow → last. fmt, inline-core and link
+    // never collapse ("debug" only participates while it is visible).
+    const collapseOrder = ["insert", "blocks", "lists", "inline-extra", "proofread", "utility", "debug"]
+        .map((name) => overflowGroups.findIndex((g) => g.name === name))
+        .filter((i) => i >= 0);
+
+    const overflowController = createOverflowController({
+        toolbar,
+        groups: overflowGroups,
+        collapseOrder,
+        moreWrap,
+        panel: moreMenu,
+    });
+
+    if (typeof ResizeObserver !== "undefined") {
+        const resizeObserver = new ResizeObserver(() => {
+            overflowController.update(toolbar.clientWidth);
+        });
+        resizeObserver.observe(toolbar);
+    }
+
+    // If debugMode is already true at page load, show the tools immediately
+    if (window.__i18n?.debugMode && dbgSep && dbgGroup) {
         dbgSep.style.display = "";
-        dbgWrap.style.display = "";
+        dbgGroup.style.display = "";
     }
 
     return {
@@ -1303,11 +1425,14 @@ export function initToolbar(
             });
         },
         setDebugMode(enabled: boolean): void {
-            if (!dbgSep || !dbgWrap) {
+            if (!dbgSep || !dbgGroup) {
                 return;
             }
             dbgSep.style.display = enabled ? "" : "none";
-            dbgWrap.style.display = enabled ? "" : "none";
+            dbgGroup.style.display = enabled ? "" : "none";
+            // The debug group changes the toolbar's content width; re-run
+            // the overflow computation with the last known available width.
+            overflowController.refresh();
         },
         openLinkPrompt,
     };

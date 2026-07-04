@@ -1,4 +1,4 @@
-/* ─── 工具栏扩展 ─── */
+/* ─── Toolbar ─── */
 .toolbar {
     display: flex;
     align-items: center;
@@ -6,6 +6,19 @@
     gap: 2px;
     flex-wrap: nowrap;
     flex: 1;
+    /* Narrow panes: clip instead of spilling; the overflow controller
+       moves whole groups into the ⋯ menu before clipping matters. */
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Priority group wrapper; same gap as the toolbar so grouping is
+   invisible at full width. */
+.tb-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: none;
 }
 
 .tb-sep {
@@ -140,6 +153,32 @@
 .tb-fmt-item--active::after {
     content: " ✓";
     font-size: 10px;
+}
+
+/* ─── Overflow (⋯) menu for narrow panes ─── */
+.tb-more-btn {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.tb-more-menu {
+    position: absolute;
+    left: 0;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 4px;
+    background: var(--vscode-editorHoverWidget-background, #252526);
+    border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+    border-radius: 5px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 200;
+
+    /* Each collapsed group becomes one horizontal row. */
+    .tb-group {
+        justify-content: flex-start;
+    }
 }
 
 /* ─── 工具栏内联 URL 输入框（替代沙箱禁止的 window.prompt） ─── */
