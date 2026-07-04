@@ -102,7 +102,7 @@ Keep `docs/roadmap.md` in sync when phase progress changes.
 ### Stack
 | Layer | Framework | Scope |
 |-------|-----------|-------|
-| Extension unit tests | **Vitest 2.x** (Node env) | `src/utils/`, `src/MarkdownDocument.ts` |
+| Extension unit tests | **Vitest 2.x** (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
 | WebView unit tests | **Vitest 2.x + jsdom 24.x** | `webview/utils/`, `webview/messaging.ts` |
 | Integration tests (planned) | **@vscode/test-electron + Mocha** | needs a real VS Code Extension Host |
 
@@ -136,7 +136,7 @@ __mocks__/vscode.ts         — Central vscode API mock
 |--------|-------------------|
 | `src/utils/imageService.ts` | ≥ 85% |
 | `src/utils/getNonce.ts` | 100% |
-| `src/MarkdownDocument.ts` | ≥ 80% |
+| `src/utils/textEdit.ts` | ≥ 90% |
 | `src/utils/contentTransform.ts` | ≥ 90% |
 | `src/utils/lineMap.ts` | ≥ 90% |
 | `webview/utils/slug.ts` | ≥ 90% |
