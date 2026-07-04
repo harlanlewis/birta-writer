@@ -7,6 +7,11 @@ import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-comm
 import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { mathPlugin } from "./plugins/math";
+import {
+    sourceStyleHandlers,
+    sourceStylePlugin,
+    sourceStyleReplacedPlugins,
+} from "./plugins/sourceStyle";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
 
@@ -43,6 +48,15 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * extension that serializes LaTeX-language blocks back to `$$`. It is placed
  * after the base preset so the `code_block` extendSchema overrides the stock
  * commonmark definition.
+ *
+ * `sourceStylePlugin` (plugins/sourceStyle.ts) preserves cosmetic Markdown
+ * style (MAR-16): the stock `hr` / `heading` schemas are filtered out and
+ * replaced with extended copies that carry the original thematic-break marker
+ * and setext form; paired with the custom stringify handlers in
+ * `sourceStyleHandlers`, `***`/`___` rules and setext headings round-trip
+ * instead of being canonicalized. (Emphasis/strong markers already survive as
+ * PM attrs via the preset's `remarkMarker`; only the stringify handler is
+ * new.)
  */
 export const pureCommonmark = [
     ...commonmark.filter((plugin) => {
@@ -52,11 +66,13 @@ export const pureCommonmark = [
         ) {
             return false;
         }
+        if (sourceStyleReplacedPlugins.has(plugin)) return false;
         const displayName = (plugin as { meta?: { displayName?: string } }).meta?.displayName;
         return !(displayName?.includes("remarkInlineLinkPlugin"));
     }),
     ...referenceLinksPlugin,
     ...mathPlugin,
+    ...sourceStylePlugin,
     fidelitySerializerPlugin,
 ];
 
@@ -117,6 +133,7 @@ export function configureSerialization(ctx: EditorCtx): void {
         rule: "-" as const,
         handlers: {
             ...(prev.handlers ?? {}),
+            ...sourceStyleHandlers,
             table: serializeTableNoAlign,
         },
     }));

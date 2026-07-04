@@ -129,6 +129,29 @@ describe("applyMinimalChanges — untouched formatting is preserved", () => {
         expect(applyMinimalChanges(saved, serialized)).toBe(saved);
     });
 
+    it("thematic breaks differing only in marker char should compare as unchanged", () => {
+        // A legacy `---` save vs a freshly preserved `***` (MAR-16): the rule
+        // normalizer collapses both to a canonical form so no churn is applied.
+        const saved = "para1\n\n***\n\npara2\n";
+        const serialized = "para1\n\n---\n\npara2\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+
+    it("thematic breaks differing only in repetition or spacing should compare as unchanged", () => {
+        const saved = "para1\n\n- - -\n\npara2\n";
+        const serialized = "para1\n\n-----\n\npara2\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+
+    it("editing text next to a rule should not rewrite the rule marker", () => {
+        const saved = "intro\n\n___\n\noutro old\n";
+        const serialized = "intro\n\n---\n\noutro new\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe("intro\n\n___\n\noutro new\n");
+    });
+
     it("table cells differing only in padding or <br /> placeholders should compare as unchanged", () => {
         const saved = "| fruit | price |\n| --- | --- |\n| apple |  |\n";
         const serialized = "| fruit | price |\n| --- | --- |\n| apple | <br /> |\n";

@@ -32,6 +32,14 @@
 
 const SEP_ROW_RE = /^\|[\s\-:|]+\|$/;
 const TABLE_ROW_RE = /^\|.*\|$/;
+// A line that is nothing but a thematic break: three or more of a single
+// `*`/`_`/`-` marker, optionally separated by spaces (`***`, `___`, `- - -`,
+// `-----`). Source-style preservation (MAR-16) keeps the original marker, but
+// this normalizer still collapses breaks that differ only in marker char,
+// repetition count, or spacing so a legacy `---` save compares equal to a
+// freshly preserved `***` and never churns. Setext underlines are NOT matched
+// here (a two-line construct that must stay attached to its heading text).
+const THEMATIC_BREAK_RE = /^\s{0,3}([*_-])[ \t]*(\1[ \t]*){2,}$/;
 
 // Normalize a table separator row: collapse dashes and cell padding, keeping
 // only the alignment colons. `| :----- | :----: |` → `|:-|:-:|` so that two
@@ -106,6 +114,7 @@ function normLineForCompare(line: string): string {
     const t = line.trim();
     if (SEP_ROW_RE.test(t)) return normalizeSepRow(line);
     if (TABLE_ROW_RE.test(t)) return normalizeTableDataRow(line);
+    if (THEMATIC_BREAK_RE.test(line)) return "---";
     if (/^`{3,}/.test(t)) return normalizeFenceOpen(line);
     return normalizeWrappedLinkEmphasis(normalizeSplitStrong(line));
 }
