@@ -177,6 +177,12 @@ body {
         outline: 1px solid var(--vscode-focusBorder, #007acc);
         outline-offset: -1px;
     }
+
+    /* Rejected commit (e.g. an inner `---` line would corrupt the document) */
+    &[aria-invalid="true"] {
+        outline: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+        outline-offset: -1px;
+    }
 }
 
 /* Collapsed: hide the table/raw editor and Add-field button, keep only the toggle */

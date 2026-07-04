@@ -298,6 +298,13 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
     const suffix = fences?.suffix ?? '';
     // Last committed text; Escape reverts to it, blur commits when it differs.
     let committed = fences ? fences.inner : raw;
+    // Browsers normalize textarea newlines to LF (the "API value"), so a CRLF inner
+    // block would look edited on blur even when untouched, and a real edit would mix
+    // LF lines with CRLF fences. Compare LF-normalized text and restore the original
+    // EOL style when committing.
+    const usesCrlf = committed.includes('\r\n');
+    const toLf = (text: string) => text.replace(/\r\n?/g, '\n');
+    const restoreEol = (text: string) => (usesCrlf ? toLf(text).replace(/\n/g, '\r\n') : text);
 
     const textarea = document.createElement('textarea');
     textarea.className = 'fm-raw-editor';
@@ -306,21 +313,44 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
     textarea.setAttribute('aria-label', t('Edit metadata as YAML'));
     textarea.rows = Math.max(committed.split('\n').length, 2);
 
+    const setInvalid = (message: string | null): void => {
+        if (message !== null) {
+            textarea.setAttribute('aria-invalid', 'true');
+            textarea.title = message;
+        } else {
+            textarea.removeAttribute('aria-invalid');
+            textarea.removeAttribute('title');
+        }
+    };
+
     textarea.addEventListener('keydown', (e) => {
         if (e.isComposing) { return; }
         e.stopPropagation(); // keep editor-level shortcuts out of the textarea
         if (e.key === 'Escape') {
             e.preventDefault();
             textarea.value = committed;
+            setInvalid(null);
             textarea.blur();
         }
     });
     textarea.addEventListener('blur', () => {
-        if (textarea.value !== committed) {
-            committed = textarea.value;
-            textarea.rows = Math.max(committed.split('\n').length, 2);
-            notifyFrontmatterUpdate(prefix + committed + suffix);
+        // LF-normalized comparison: an untouched CRLF block must not phantom-commit.
+        if (toLf(textarea.value) === toLf(committed)) {
+            setInvalid(null);
+            return;
         }
+        // The extension re-extracts frontmatter with a first-`---` regex
+        // (src/utils/contentTransform.ts), so an inner line of only `---` (or the YAML
+        // document-end marker `...`) would truncate the block and corrupt the document
+        // on the next edit cycle. Refuse the commit and flag the textarea instead.
+        if (toLf(textarea.value).split('\n').some((line) => /^(---|\.\.\.)\s*$/.test(line))) {
+            setInvalid(t('Metadata cannot contain a line consisting only of "---" or "..."'));
+            return;
+        }
+        setInvalid(null);
+        committed = restoreEol(textarea.value);
+        textarea.rows = Math.max(toLf(committed).split('\n').length, 2);
+        notifyFrontmatterUpdate(prefix + committed + suffix);
     });
     return textarea;
 }

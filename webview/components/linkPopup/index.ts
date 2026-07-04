@@ -72,11 +72,10 @@ function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
         ) to++;
     }
 
-    if (from === to) {
-        const $p = state.doc.resolve(pos);
-        from = $p.start();
-        to = $p.end();
-    }
+    // No `link` mark bounds found (e.g. a `link_ref` mark or a stale DOM anchor).
+    // Never fall back to paragraph bounds: Confirm/Remove would then rewrite the
+    // ENTIRE paragraph as one link, destroying every other link in it.
+    if (from === to) { return null; }
 
     return { href, text, from, to };
 }
@@ -325,6 +324,10 @@ export function setupLinkPopup(
     container.addEventListener("mouseover", (e) => {
         const anchor = (e.target as Element).closest("a");
         if (!anchor) return;
+        // Reference links ([text][ref], rendered as <a data-type="link-ref"> by the
+        // link_ref mark) have no href and no `link` mark; the edit popup would apply a
+        // `link` mark and destroy the reference form, so never open it for them.
+        if (anchor.getAttribute("data-type") === "link-ref") return;
 
         clearHoverTimer();
         clearHideTimer();
@@ -366,6 +369,8 @@ export function setupLinkPopup(
             if (!me.metaKey && !me.ctrlKey) return;
             const anchor = (me.target as Element).closest("a");
             if (!anchor) return;
+            // link_ref anchors have no href to open
+            if (anchor.getAttribute("data-type") === "link-ref") return;
             const href = anchor.getAttribute("href") ?? "";
             if (href.startsWith("#")) return; // 锚点由 click 处理
             e.stopPropagation();

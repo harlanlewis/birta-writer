@@ -236,6 +236,116 @@ describe("renderFrontmatterPanel raw mode", () => {
     });
 });
 
+describe("renderFrontmatterPanel raw mode CRLF handling", () => {
+    const FM_CRLF = "---\r\nauthor:\r\n  name: Jane\r\n---\r\n";
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    function getRawEditor(): HTMLTextAreaElement {
+        const ta = document.querySelector<HTMLTextAreaElement>(".fm-raw-editor");
+        expect(ta).toBeTruthy();
+        return ta!;
+    }
+
+    it("blurring a CRLF block without edits should not post a phantom commit", () => {
+        renderFrontmatterPanel(FM_CRLF);
+        const ta = getRawEditor();
+        // Browsers normalize the textarea API value to LF; simulate that explicitly
+        // so the test holds regardless of jsdom's normalization behavior.
+        ta.value = ta.value.replace(/\r\n/g, "\n");
+
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+    });
+
+    it("a real edit to a CRLF block should commit with CRLF restored throughout", () => {
+        renderFrontmatterPanel(FM_CRLF);
+        const ta = getRawEditor();
+        // The browser hands back LF-normalized content after the user edits.
+        ta.value = "author:\n  name: Jane\n  url: https://example.com";
+
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([
+            "---\r\nauthor:\r\n  name: Jane\r\n  url: https://example.com\r\n---\r\n",
+        ]);
+    });
+
+    it("Escape should revert a CRLF block without producing a phantom commit", () => {
+        renderFrontmatterPanel(FM_CRLF);
+        const ta = getRawEditor();
+        ta.value = "author:\n  name: Someone Else";
+
+        ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(ta.value.replace(/\r\n/g, "\n")).toBe("author:\n  name: Jane");
+    });
+});
+
+describe("renderFrontmatterPanel raw mode fence-line rejection", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    function getRawEditor(): HTMLTextAreaElement {
+        const ta = document.querySelector<HTMLTextAreaElement>(".fm-raw-editor");
+        expect(ta).toBeTruthy();
+        return ta!;
+    }
+
+    // The extension re-extracts frontmatter with a first-`---` regex, so an inner
+    // fence-like line would truncate the block and corrupt the document later.
+    it("an inner line of only --- should refuse the commit and mark the textarea invalid", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        const ta = getRawEditor();
+        const bad = "author:\n  name: Jane\n---\nextra: line";
+        ta.value = bad;
+
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(ta.getAttribute("aria-invalid")).toBe("true");
+        expect(ta.title).not.toBe("");
+        expect(ta.value).toBe(bad); // user content is kept, not reverted
+    });
+
+    it("an inner YAML document-end line (...) should also refuse the commit", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        const ta = getRawEditor();
+        ta.value = "author:\n  name: Jane\n...";
+
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(ta.getAttribute("aria-invalid")).toBe("true");
+    });
+
+    it("fixing the offending line should clear the invalid state and commit", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        const ta = getRawEditor();
+        ta.value = "author:\n  name: Jane\n---";
+        ta.dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters()).toEqual([]);
+
+        ta.value = "author:\n  name: Jane\nextra: line";
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(ta.getAttribute("aria-invalid")).toBeNull();
+        expect(postedFrontmatters()).toEqual([
+            "---\nauthor:\n  name: Jane\nextra: line\n---\n",
+        ]);
+    });
+});
+
 describe("renderFrontmatterPanel flat mode editing", () => {
     beforeEach(() => {
         vi.clearAllMocks();

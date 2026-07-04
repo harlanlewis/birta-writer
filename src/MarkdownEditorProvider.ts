@@ -559,13 +559,16 @@ export class MarkdownEditorProvider
         // A RelativePattern based on the file's own directory also covers files outside the workspace folders.
         // The watcher fires for our own auto-saves too; the _lastSaveTimes guard below suppresses those.
         let watcherDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+        // Watch the whole directory ("*") and filter by fsPath in the handler: the pattern
+        // argument is a glob, so using the file's own basename breaks for names containing
+        // glob metacharacters (e.g. "notes [draft].md" would never match itself).
         const fileWatcher = vscode.workspace.createFileSystemWatcher(
-            new vscode.RelativePattern(
-                vscode.Uri.joinPath(document.uri, ".."),
-                path.basename(document.uri.fsPath),
-            ),
+            new vscode.RelativePattern(vscode.Uri.joinPath(document.uri, ".."), "*"),
         );
-        const onWatchedFileEvent = () => {
+        const watchedFsPath = document.uri.fsPath;
+        const onWatchedFileEvent = (eventUri: vscode.Uri) => {
+            // Only react to events for this document; the "*" pattern fires for siblings too.
+            if (eventUri.fsPath !== watchedFsPath) { return; }
             // Debounce: with multiple triggers in a short window, only handle the last one
             if (watcherDebounceTimer !== undefined) { clearTimeout(watcherDebounceTimer); }
             watcherDebounceTimer = setTimeout(async () => {
@@ -756,8 +759,11 @@ export class MarkdownEditorProvider
             clearTimeout(timer);
             this._autoSaveTimers.delete(uriKey);
         }
-        this._lastSaveTimes.set(uriKey, Date.now());
         await document.save(cancellation);
+        // Stamp only after the write completes (same as the autosave path): stamping before
+        // the await lets a slow write (e.g. remote FS) outlive the 1.5s suppression window,
+        // making our own save look like an external change and triggering a spurious revert.
+        this._lastSaveTimes.set(uriKey, Date.now());
         const panel = this._webviewPanels.get(uriKey);
         if (panel) {
             panel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
@@ -770,6 +776,11 @@ export class MarkdownEditorProvider
         cancellation: vscode.CancellationToken,
     ): Promise<void> {
         await document.saveAs(destination, cancellation);
+        // When "Save As" writes over the currently-watched file (destination === source),
+        // stamp after the write so the watcher's self-write suppression applies to it too.
+        if (destination.toString() === document.uri.toString()) {
+            this._lastSaveTimes.set(destination.toString(), Date.now());
+        }
     }
 
     async revertCustomDocument(

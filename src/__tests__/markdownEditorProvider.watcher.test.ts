@@ -77,12 +77,10 @@ describe("MarkdownEditorProvider file watcher", () => {
         vi.useRealTimers();
     });
 
-    async function setup(content = "initial content") {
+    async function setup(content = "initial content", filePath = "/project/note.md") {
         mockFs.readFile.mockResolvedValue(Buffer.from(content, "utf-8"));
         const provider = new MarkdownEditorProvider(makeContext(), new Set());
-        const document = await MarkdownDocument.create(
-            vscode.Uri.file("/project/note.md"),
-        );
+        const document = await MarkdownDocument.create(vscode.Uri.file(filePath));
         const panel = makePanel();
         await provider.resolveCustomEditor(
             document,
@@ -93,9 +91,9 @@ describe("MarkdownEditorProvider file watcher", () => {
     }
 
     /** Fires the watcher's registered onDidChange handler (as VS Code would on a file event) */
-    const fireChange = (watcher: FakeWatcher) => {
-        const handler = watcher.onDidChange.mock.calls[0][0] as () => void;
-        handler();
+    const fireChange = (watcher: FakeWatcher, filePath = "/project/note.md") => {
+        const handler = watcher.onDidChange.mock.calls[0][0] as (uri: vscode.Uri) => void;
+        handler(vscode.Uri.file(filePath));
     };
 
     /** Extracts revert messages from all postMessage calls */
@@ -105,13 +103,16 @@ describe("MarkdownEditorProvider file watcher", () => {
             .filter((msg) => msg.type === "revert");
 
     describe("watcher creation", () => {
-        it("resolving a file-scheme editor should create a watcher scoped to that file via RelativePattern", async () => {
+        it("resolving a file-scheme editor should create a directory-wide watcher via RelativePattern", async () => {
             const { watcher } = await setup();
 
             expect(mockCreateWatcher).toHaveBeenCalledOnce();
             const pattern = mockCreateWatcher.mock.calls[0][0] as vscode.RelativePattern;
             expect(pattern).toBeInstanceOf(vscode.RelativePattern);
-            expect(pattern.pattern).toBe("note.md");
+            // "*" rather than the file's basename: the pattern is a glob, so a basename
+            // containing glob metacharacters (e.g. "notes [draft].md") would never match
+            // itself. The handlers filter events down to this document by fsPath instead.
+            expect(pattern.pattern).toBe("*");
             expect(pattern.baseUri?.fsPath).toBe(vscode.Uri.file("/project").fsPath);
             // Both plain changes and atomic-write recreations must be handled
             expect(watcher.onDidChange).toHaveBeenCalledOnce();
@@ -160,6 +161,37 @@ describe("MarkdownEditorProvider file watcher", () => {
             expect(reverts[0].content).toBe("changed externally");
         });
 
+        it("a change event for a different file in the same directory should be ignored", async () => {
+            const { panel, watcher } = await setup("old content");
+            mockFs.readFile.mockClear();
+            mockFs.readFile.mockResolvedValue(Buffer.from("sibling", "utf-8"));
+
+            fireChange(watcher, "/project/other.md");
+            await vi.advanceTimersByTimeAsync(200);
+
+            expect(mockFs.readFile).not.toHaveBeenCalled();
+            expect(revertMessages(panel)).toHaveLength(0);
+        });
+
+        it("a file whose name contains glob metacharacters should still receive change events", async () => {
+            // Regression: a RelativePattern of the basename itself is a glob, so
+            // "notes [draft].md" never matched its own watcher pattern and external
+            // changes were silently dropped. The "*" pattern + fsPath filter fixes this.
+            const { document, panel, watcher } = await setup(
+                "old content",
+                "/project/notes [draft].md",
+            );
+            mockFs.readFile.mockResolvedValue(Buffer.from("changed externally", "utf-8"));
+
+            fireChange(watcher, "/project/notes [draft].md");
+            await vi.advanceTimersByTimeAsync(200);
+
+            expect(document.getText()).toBe("changed externally");
+            const reverts = revertMessages(panel);
+            expect(reverts).toHaveLength(1);
+            expect(reverts[0].content).toBe("changed externally");
+        });
+
         it("multiple rapid change events should be debounced into a single revert", async () => {
             const { panel, watcher } = await setup("old content");
             mockFs.readFile.mockClear();
@@ -180,6 +212,30 @@ describe("MarkdownEditorProvider file watcher", () => {
             const { provider, document, panel, watcher } = await setup("content");
             mockFs.writeFile.mockResolvedValue(undefined);
             await provider.saveCustomDocument(document, makeCancellation());
+            mockFs.readFile.mockClear();
+            panel.webview.postMessage.mockClear();
+
+            fireChange(watcher);
+            await vi.advanceTimersByTimeAsync(200);
+
+            expect(mockFs.readFile).not.toHaveBeenCalled();
+            expect(revertMessages(panel)).toHaveLength(0);
+        });
+
+        it("a manual save whose write outlives the suppression window should still suppress the following event", async () => {
+            // Regression: _lastSaveTimes used to be stamped BEFORE `await document.save()`,
+            // so a slow write (e.g. remote FS) could finish outside the 1.5s window and the
+            // watcher event for our own save triggered a spurious self-revert.
+            const { provider, document, panel, watcher } = await setup("content");
+            let resolveWrite!: () => void;
+            mockFs.writeFile.mockImplementation(
+                () => new Promise<void>((resolve) => { resolveWrite = resolve; }),
+            );
+            const savePromise = provider.saveCustomDocument(document, makeCancellation());
+            // The write itself takes longer than the 1.5s suppression window
+            await vi.advanceTimersByTimeAsync(2000);
+            resolveWrite();
+            await savePromise;
             mockFs.readFile.mockClear();
             panel.webview.postMessage.mockClear();
 
