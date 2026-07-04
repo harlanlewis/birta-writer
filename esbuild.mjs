@@ -49,6 +49,10 @@ const webviewBuild = {
     chunkNames: 'chunks/[name]-[hash]',
     loader: {
         '.ttf': 'dataurl',
+        // KaTeX's stylesheet references its glyph fonts; inline them as data:
+        // URIs so no extra webview resource fetch (or CSP host) is needed.
+        '.woff2': 'dataurl',
+        '.woff': 'dataurl',
     },
     alias: {
         '@': path.resolve('./webview'),

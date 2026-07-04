@@ -6,6 +6,7 @@ import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
 import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
+import { mathPlugin } from "./plugins/math";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
 
@@ -35,6 +36,13 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * containing bold/italic/code children serialized as ONE link instead of
  * several adjacent same-URL links, and defers emphasis edge-space trimming
  * until after adjacent mark segments have merged.
+ *
+ * `mathPlugin` (plugins/math.ts) adds KaTeX inline/block math: `remark-math`
+ * for parsing/serializing `$...$` and `$$...$$`, a visitor that routes block
+ * math through the fenced-code-block machinery, and a `code_block` schema
+ * extension that serializes LaTeX-language blocks back to `$$`. It is placed
+ * after the base preset so the `code_block` extendSchema overrides the stock
+ * commonmark definition.
  */
 export const pureCommonmark = [
     ...commonmark.filter((plugin) => {
@@ -48,6 +56,7 @@ export const pureCommonmark = [
         return !(displayName?.includes("remarkInlineLinkPlugin"));
     }),
     ...referenceLinksPlugin,
+    ...mathPlugin,
     fidelitySerializerPlugin,
 ];
 

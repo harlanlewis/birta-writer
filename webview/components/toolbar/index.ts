@@ -29,6 +29,7 @@ import {
     IconImage,
     IconTable,
     IconFootnote,
+    IconMath,
     IconQuote,
     IconTerminal,
     IconMinus,
@@ -50,6 +51,7 @@ import { sampleDocPosition } from "../selectionToolbar";
 import { notifyOpenSettings, notifyGetProjectImages, notifySetStyleCheckEnabled, notifySetSpellCheckEnabled } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
+import { insertInlineMathCommand } from "@/plugins/math";
 import { createButton, createSeparator } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
 import { attachLinkTargetComplete } from '../pathLink/linkTargetComplete';
@@ -1035,6 +1037,9 @@ export function initToolbar(
             callCmd(getEditor, insertFootnoteCommand);
             getEditorView()?.focus();
         }),
+        btn(IconMath, t("Insert Math"), () =>
+            callCmd(getEditor, insertInlineMathCommand),
+        ),
     );
 
     addSep();

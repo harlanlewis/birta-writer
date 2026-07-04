@@ -1,0 +1,71 @@
+/* ─── Inline math node ─── */
+.math-inline {
+    display: inline-block;
+    cursor: pointer;
+    padding: 0 2px;
+    border-radius: 4px;
+    line-height: normal;
+    transition: background 100ms ease;
+}
+
+.math-inline:hover {
+    background: var(--vscode-editor-hoverHighlightBackground, rgba(128, 128, 128, 0.18));
+}
+
+.math-inline--selected {
+    background: var(--vscode-editor-selectionBackground, rgba(64, 128, 255, 0.35));
+}
+
+/* Empty formula placeholder */
+.math-inline--empty {
+    min-width: 1.4em;
+    min-height: 1em;
+    background: var(--vscode-editor-hoverHighlightBackground, rgba(128, 128, 128, 0.18));
+    border: 1px dashed var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.5));
+}
+
+.math-inline--empty::after {
+    content: "∑";
+    opacity: 0.5;
+    font-size: 0.9em;
+}
+
+/* KaTeX inherits the editor's text color */
+.math-inline .katex {
+    color: var(--vscode-editor-foreground);
+}
+
+/* ─── Edit popover ─── */
+@keyframes math-pop-fadein {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.math-popover {
+    position: absolute;
+    z-index: 9999;
+    display: flex;
+    padding: 6px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.28);
+    animation: math-pop-fadein 120ms ease;
+}
+
+.math-popover-input {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 8px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 5px;
+    outline: none;
+}
+
+.math-popover-input:focus {
+    border-color: var(--vscode-focusBorder, #007fd4);
+}

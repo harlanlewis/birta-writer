@@ -418,6 +418,7 @@
     "devDependencies": {
         "@types/dompurify": "^3.2.0",
         "@types/jsdom": "^21.1.0",
+        "@types/katex": "^0.16.8",
         "@types/node": "^18.0.0",
         "@types/vscode": "^1.80.0",
         "@vitest/coverage-v8": "^2.1.0",
@@ -440,8 +441,11 @@
         "@milkdown/utils": "7.21.2",
         "dompurify": "^3.4.11",
         "harper.js": "^2.4.0",
+        "katex": "^0.16.44",
         "mermaid": "^11.0.0",
         "prosemirror-tables": "^1.8.5",
-        "refractor": "^5.0.0"
+        "refractor": "^5.0.0",
+        "remark-math": "6",
+        "unist-util-visit": "^5.1.0"
     }
 }

@@ -17,6 +17,7 @@ import {
     createFootnoteReferenceView,
 } from "./components/footnote";
 import { createImageView } from "./components/imageView";
+import { createMathInlineView } from "./components/math";
 import { getMarkdown } from "@milkdown/utils";
 import { refractor } from "./highlighter";
 import { configureSerialization, pureCommonmark } from "./serialization";
@@ -201,6 +202,7 @@ export async function createEditor(
                 ["code_block", createCodeBlockView],
                 ["footnote_reference", createFootnoteReferenceView],
                 ["footnote_definition", createFootnoteDefinitionView],
+                ["math_inline", createMathInlineView],
                 ["html", (node: { attrs: Record<string, string> }) => createHtmlView(node)],
                 [
                     "image",
