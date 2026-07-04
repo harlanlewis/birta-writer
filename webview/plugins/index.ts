@@ -1,3 +1,4 @@
+export { caretScrollMarginPlugin } from "./caretScrollMargin";
 export { codeBlockBackspacePlugin } from "./codeBlockBackspace";
 export { codeBlockSelectAllPlugin } from "./codeBlockSelectAll";
 export { formatKeymapPlugin } from "./formatKeymap";

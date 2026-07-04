@@ -21,6 +21,7 @@ import {
     type RoundTripProtection,
 } from "./utils/minimalDiff";
 import {
+    caretScrollMarginPlugin,
     cellClickFixPlugin,
     codeBlockBackspacePlugin,
     codeBlockSelectAllPlugin,
@@ -209,6 +210,7 @@ export async function createEditor(
         .use(selectionPlugin)
         .use(headingFoldPlugin)
         .use(headingStickyPlugin)
+        .use(caretScrollMarginPlugin)
         .use(formatKeymapPlugin)
         .use(tabKeymapPlugin)
         .use(cellClickFixPlugin)

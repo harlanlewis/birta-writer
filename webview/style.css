@@ -24,6 +24,15 @@ body {
     line-height: 1.6;
 }
 
+/* Browser-native scroll-into-view (initial focus, find-in-page, …) must not
+   park the caret under the fixed topbar/sticky heading. ProseMirror-driven
+   scrolls are handled by plugins/caretScrollMargin.ts, which also keeps
+   these vars in sync with the measured header stack. */
+html {
+    scroll-padding-top: var(--caret-scroll-top-inset, 104px);
+    scroll-padding-bottom: var(--caret-scroll-bottom-inset, 56px);
+}
+
 /* ─── Frontmatter 面板 ─── */
 .frontmatter-panel {
     max-width: var(--editor-max-width, none);
