@@ -63,6 +63,7 @@ export const workspace = {
     getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: URI }),
     workspaceFolders: undefined as undefined | Array<{ uri: URI }>,
     createFileSystemWatcher: vi.fn(makeFakeFileSystemWatcher),
+    findFiles: vi.fn(async (): Promise<URI[]> => []),
 };
 
 export const env = {

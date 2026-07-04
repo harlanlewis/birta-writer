@@ -79,6 +79,10 @@ export function notifyFrontmatterUpdate(frontmatter: string): void {
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter });
 }
 
+export function notifyRequestFmSuggestions(key: string): void {
+    vscode.postMessage({ type: "requestFmSuggestions", key });
+}
+
 export function notifyTocWidth(width: number): void {
     vscode.postMessage({ type: "tocWidth", width });
 }

@@ -18,6 +18,7 @@ import { setDebugMode } from "./components/table/addButtons";
 import { setLogTableSel } from "./editor";
 import { notifySwitchToTextEditor, getWebviewState } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
+import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import {
     handleImageUploaded,
     handleImageUploadError,
@@ -232,6 +233,9 @@ export function createMessageHandlers(
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
+        },
+        fmSuggestions(msg) {
+            dispatchFmSuggestions(msg.key, msg.values);
         },
     };
 }

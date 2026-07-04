@@ -40,6 +40,7 @@ export type ToExtensionMessage =
     | { type: "getPathSuggestions"; id: string; query: string }
     | { type: "resolveImagePath"; id: string; relPath: string }
     | { type: "frontmatterUpdate"; frontmatter: string }
+    | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number };
 
 /**
@@ -61,4 +62,5 @@ export type ToWebviewMessage =
     | { type: "pathSuggestions"; id: string; items: PathSuggestionItem[] }
     | { type: "imagePathResolved"; id: string; webviewUri: string }
     | { type: "setTheme"; colors: Record<string, string> }
-    | { type: "setTableWrap"; wrap: TableWrapMode };
+    | { type: "setTableWrap"; wrap: TableWrapMode }
+    | { type: "fmSuggestions"; key: string; values: string[] };

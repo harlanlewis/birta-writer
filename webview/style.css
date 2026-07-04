@@ -949,3 +949,73 @@ body.editor-width-auto {
         border-color: var(--vscode-focusBorder, #007acc);
     }
 }
+
+/* Suggestion dropdown for the "+" chip button: workspace-wide values used
+   under the same frontmatter key (filter input on top, create row at the end) */
+.fm-suggest-menu {
+    position: fixed;
+    z-index: 1000;
+    min-width: 180px;
+    max-width: 320px;
+    background: var(
+        --vscode-editorSuggestWidget-background,
+        var(--vscode-dropdown-background, var(--vscode-editor-background))
+    );
+    border: 1px solid
+        var(--vscode-editorSuggestWidget-border, var(--vscode-focusBorder, #007acc));
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.fm-suggest-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: none;
+    border-bottom: 1px solid
+        var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+    background: transparent;
+    color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+}
+
+.fm-suggest-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+    max-height: 200px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+
+    &:empty {
+        padding: 0;
+    }
+}
+
+.fm-suggest-item {
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(
+        --vscode-editorSuggestWidget-foreground,
+        var(--vscode-dropdown-foreground, var(--vscode-editor-foreground))
+    );
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:hover,
+    &.fm-suggest-item--focused {
+        background: var(
+            --vscode-editorSuggestWidget-selectedBackground,
+            var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15))
+        );
+    }
+
+    &.fm-suggest-create {
+        font-style: italic;
+        color: var(--vscode-descriptionForeground);
+    }
+}

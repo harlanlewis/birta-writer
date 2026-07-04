@@ -6,6 +6,7 @@ import { getNonce } from "./utils/getNonce";
 import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
+import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode } from "../shared/messages";
 
@@ -50,6 +51,11 @@ export class MarkdownEditorProvider
     // Image webviewUri → relPath mapping (key: docUri.toString())
     private readonly _imageUriMaps = new Map<string, Map<string, string>>();
     private readonly _frontmatterMap = new Map<string, string>(); // uriKey → raw frontmatter string
+
+    // Workspace-wide frontmatter list-value scan, cached for a short TTL so
+    // repeated "+" menu opens stay snappy (fsPath → key → list values).
+    private _fmScanCache: { perFile: Map<string, ReadonlyMap<string, string[]>>; expires: number } | undefined;
+    private static readonly _FM_SCAN_TTL_MS = 30_000;
     /** While switchToTextEditor is in progress, suppress onDidChangeTabs from switching the text tab back to WYSIWYG */
     public static readonly suppressAutoSwitch = new Set<string>();
 
@@ -540,6 +546,11 @@ export class MarkdownEditorProvider
                     case "resolveImagePath":
                         if (message.id && message.relPath) {
                             this._handleResolveImagePath(document, panel, uriKey, message.id, message.relPath);
+                        }
+                        break;
+                    case "requestFmSuggestions":
+                        if (message.key !== undefined) {
+                            this._handleRequestFmSuggestions(document, panel, message.key).catch(() => {});
                         }
                         break;
                     case "tocWidth":
@@ -1205,6 +1216,39 @@ export class MarkdownEditorProvider
             panel.webview.postMessage({ type: 'imageRenameError', id, error: errMsg });
             vscode.window.showErrorMessage(vscode.l10n.t('Image rename failed: {0}', errMsg));
         }
+    }
+
+    /**
+     * Answers a requestFmSuggestions message: scans the workspace's markdown
+     * files (once per TTL window, indexing every list-valued key), then replies
+     * with the values used for `key` in files OTHER than the current document,
+     * ranked by frequency (descending) then alphabetically.
+     */
+    private async _handleRequestFmSuggestions(
+        document: MarkdownDocument,
+        panel: vscode.WebviewPanel,
+        key: string,
+    ): Promise<void> {
+        const now = Date.now();
+        if (!this._fmScanCache || now >= this._fmScanCache.expires) {
+            const uris = await vscode.workspace.findFiles("**/*.md", "**/node_modules/**", 500);
+            const perFile = new Map<string, ReadonlyMap<string, string[]>>();
+            await Promise.all(uris.map(async (uri) => {
+                try {
+                    const bytes = await vscode.workspace.fs.readFile(uri);
+                    perFile.set(uri.fsPath, extractListValuesByKey(Buffer.from(bytes).toString("utf8")));
+                } catch { /* unreadable file: skip it */ }
+            }));
+            this._fmScanCache = { perFile, expires: now + MarkdownEditorProvider._FM_SCAN_TTL_MS };
+        }
+        // Suggestions come from OTHER files only; the current document's own
+        // values are already visible as chips (and excluded WebView-side too).
+        const docFsPath = document.uri.fsPath;
+        const otherFiles = [...this._fmScanCache.perFile.entries()]
+            .filter(([fsPath]) => fsPath !== docFsPath)
+            .map(([, keyValues]) => keyValues);
+        const values = rankListValues(otherFiles, key);
+        panel.webview.postMessage({ type: "fmSuggestions", key, values });
     }
 
     private async _handleGetPathSuggestions(

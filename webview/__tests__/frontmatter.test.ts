@@ -695,14 +695,21 @@ describe("tabular list editing — chip UI", () => {
         expect(posted).toContain('    "/write/anthropic",');
     });
 
-    it("blurring a new empty chip should discard it without committing", () => {
+    it("the add button should open the suggestion menu for its key without committing", () => {
+        // Detailed menu behavior is covered in suggestMenu.test.ts; this only
+        // checks the chip-row wiring (menu opens, right key, no new chip yet).
         renderFrontmatterPanel(FM_RICH);
         const addBtn = document.querySelectorAll(".fm-chip-add")[1] as HTMLElement; // related row
 
-        addBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-        const newChip = document.querySelectorAll(".fm-chip-text")[6] as HTMLElement;
-        newChip.dispatchEvent(new FocusEvent("blur"));
+        addBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
 
-        expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+        expect(document.querySelector(".fm-suggest-menu")).not.toBeNull();
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledTimes(1);
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "requestFmSuggestions",
+            key: "related",
+        });
+        // No chip is added until a value is chosen from the menu (3 tags + 3 related + 2 keywords)
+        expect(document.querySelectorAll(".fm-chip-text")).toHaveLength(8);
     });
 });
