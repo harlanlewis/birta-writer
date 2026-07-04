@@ -44,6 +44,15 @@ type MenuRow = { value: string; isCreate: boolean };
 /** Close handler of the currently open menu (at most one at a time). */
 let closeOpenMenu: (() => void) | null = null;
 
+/**
+ * Closes the currently open suggest menu, if any. Called when the panel is
+ * re-rendered (e.g. an external revert) so no zombie menu stays anchored to a
+ * detached element and no late pick can act on stale entries.
+ */
+export function closeActiveFmSuggestMenu(): void {
+    closeOpenMenu?.();
+}
+
 /** Handle the chip-edit caller uses to drive an open suggestion menu. */
 export type FmSuggestController = {
     /** Re-filters the option list (case-insensitive substring). */

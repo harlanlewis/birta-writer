@@ -253,6 +253,29 @@ describe("link target autocompletion — keyboard and closing", () => {
         expect(menuEl()).toBeNull();
     });
 
+    it("a reply arriving after blur should not re-open the menu", async () => {
+        // Regression: an in-flight reply checked only isDestroyed, so it
+        // rebuilt the menu the user had just dismissed by leaving the input.
+        await type(input, "notion"); // request in flight, no reply yet
+        input.dispatchEvent(new FocusEvent("blur"));
+
+        reply();
+
+        expect(menuEl()).toBeNull();
+    });
+
+    it("a reply arriving after Escape closed the menu should not re-open it", async () => {
+        await type(input, "index");
+        reply();
+        expect(menuEl()).not.toBeNull();
+        await type(input, "inde"); // newer request goes out while the menu is open
+        press(input, "Escape"); // dismissed before that reply lands
+
+        reply(); // answers the post-close request
+
+        expect(menuEl()).toBeNull();
+    });
+
     it("option mousedown should prevent default and fill the input", async () => {
         await type(input, "index");
         reply();

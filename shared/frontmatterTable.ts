@@ -49,7 +49,12 @@ export function splitFences(raw: string): { prefix: string; inner: string; suffi
 
 /** Is `value` safe to keep as an unquoted plain YAML scalar? */
 function isSafePlain(value: string): boolean {
-    return /^[A-Za-z0-9_./-][A-Za-z0-9_./ +-]*$/.test(value) && !value.endsWith(" ");
+    // The first character must not be a YAML indicator: `-` would turn a block
+    // list item into a nested sequence (`- - x`) and is invalid at the start of
+    // a plain scalar in flow context; `?` and `:` are mapping indicators (they
+    // are excluded here by omission from the leading character class, exactly
+    // like `-`). Such values are force-quoted by quoteItem instead.
+    return /^[A-Za-z0-9_./][A-Za-z0-9_./ +-]*$/.test(value) && !value.endsWith(" ");
 }
 
 /** Quote `value` in the given style (falling back to double quotes when the
@@ -194,12 +199,21 @@ export function parseTabularFrontmatter(raw: string): FmEntry[] | null {
                     if (quote === null && !isSafeScalarValue(v)) { return null; }
                     items.push({ value: v, origLine: l, quote });
                 }
-                if (closeLine === null || items.length === 0) { return null; }
-                const itemIndent = items[0]!.origLine!.match(/^\s*/)![0];
-                const trailingCommaAll = items.every((it) => /,\s*$/.test(it.origLine!));
-                const commasExceptLast = items.slice(0, -1).every((it) => /,\s*$/.test(it.origLine!))
-                    && !/,\s*$/.test(items[items.length - 1]!.origLine!);
-                if (!trailingCommaAll && !commasExceptLast) { return null; } // inconsistent commas
+                if (closeLine === null) { return null; }
+                // Empty flow-multi (`key:` / `[` / `]`) is what the panel
+                // serializes after the last item is deleted; keep it tabular
+                // (items: []) so the list stays editable instead of dropping
+                // the whole panel to raw mode. New items get the conventional
+                // two-space indent past the `[` and a trailing comma.
+                let itemIndent = openMatch[1]! + "  ";
+                let trailingCommaAll = true;
+                if (items.length > 0) {
+                    itemIndent = items[0]!.origLine!.match(/^\s*/)![0];
+                    trailingCommaAll = items.every((it) => /,\s*$/.test(it.origLine!));
+                    const commasExceptLast = items.slice(0, -1).every((it) => /,\s*$/.test(it.origLine!))
+                        && !/,\s*$/.test(items[items.length - 1]!.origLine!);
+                    if (!trailingCommaAll && !commasExceptLast) { return null; } // inconsistent commas
+                }
                 entries.push({
                     key: key.trim(), value: "", origLine: line,
                     list: {

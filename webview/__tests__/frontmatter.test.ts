@@ -555,6 +555,91 @@ describe("parseTabularFrontmatter", () => {
     it("a nested flow sequence should not be tabular", () => {
         expect(parseTabularFrontmatter("---\nmatrix: [[1, 2], [3, 4]]\n---\n")).toBeNull();
     });
+
+    // Regression: the panel serializes `key:\n  [\n  ]` after the last item of
+    // a flow-multi list is deleted; rejecting it here dropped the whole panel
+    // to raw mode on the next render.
+    it("an empty multi-line flow list should parse tabular and round-trip byte-exact", () => {
+        const raw = "---\nk:\n  [\n  ]\n---\n";
+
+        const entries = parseTabularFrontmatter(raw);
+
+        expect(entries).not.toBeNull();
+        expect(entries![0]!.list!.kind).toBe("flow-multi");
+        expect(entries![0]!.list!.items).toEqual([]);
+        expect(serializeFrontmatter(entries!, raw)).toBe(raw);
+    });
+
+    it("deleting the last flow-multi item should serialize a block that re-parses as tabular", () => {
+        const raw = '---\nk:\n  [\n    "a",\n  ]\n---\n';
+        const entries = parseTabularFrontmatter(raw)!;
+
+        entries[0]!.list!.items = [];
+        const out = serializeFrontmatter(entries, raw);
+
+        expect(out).toBe("---\nk:\n  [\n  ]\n---\n");
+        expect(parseTabularFrontmatter(out)).not.toBeNull();
+    });
+
+    it("adding an item to an empty flow-multi list should use the conventional indent and trailing comma", () => {
+        const raw = "---\nk:\n  [\n  ]\n---\n";
+        const entries = parseTabularFrontmatter(raw)!;
+
+        entries[0]!.list!.items.push({ value: "b" });
+        const out = serializeFrontmatter(entries, raw);
+
+        expect(out).toBe('---\nk:\n  [\n    "b",\n  ]\n---\n');
+    });
+});
+
+describe("list item serialization — YAML indicator first characters", () => {
+    // Regression: a value starting with `-` was emitted unquoted, so a block
+    // list item serialized as `- - x` — a nested sequence to real YAML parsers
+    // and rejected by parseTabularFrontmatter (panel dropped to raw mode).
+    const RISKY_VALUES = ["- x", "-", "? y"];
+
+    it("adding indicator-first values to a block list should emit quoted items that re-parse to the same value", () => {
+        const raw = "---\ntags:\n  - one\n---\n";
+        const entries = parseTabularFrontmatter(raw)!;
+
+        for (const value of RISKY_VALUES) { entries[0]!.list!.items.push({ value }); }
+        const out = serializeFrontmatter(entries, raw);
+
+        expect(out).toContain('  - "- x"');
+        expect(out).toContain('  - "-"');
+        expect(out).toContain('  - "? y"');
+        const reparsed = parseTabularFrontmatter(out);
+        expect(reparsed).not.toBeNull();
+        expect(reparsed![0]!.list!.items.map((i) => i.value)).toEqual(["one", ...RISKY_VALUES]);
+    });
+
+    it("adding indicator-first values to an inline flow list should emit quoted items that re-parse to the same value", () => {
+        const raw = "---\ntags: [one]\n---\n";
+        const entries = parseTabularFrontmatter(raw)!;
+
+        for (const value of RISKY_VALUES) { entries[0]!.list!.items.push({ value }); }
+        const out = serializeFrontmatter(entries, raw);
+
+        expect(out).toBe('---\ntags: [one, "- x", "-", "? y"]\n---\n');
+        const reparsed = parseTabularFrontmatter(out);
+        expect(reparsed).not.toBeNull();
+        expect(reparsed![0]!.list!.items.map((i) => i.value)).toEqual(["one", ...RISKY_VALUES]);
+    });
+
+    it("adding indicator-first values to a multi-line flow list should emit quoted items that re-parse to the same value", () => {
+        const raw = "---\ntags:\n  [\n    one,\n  ]\n---\n";
+        const entries = parseTabularFrontmatter(raw)!;
+
+        for (const value of RISKY_VALUES) { entries[0]!.list!.items.push({ value }); }
+        const out = serializeFrontmatter(entries, raw);
+
+        expect(out).toContain('    "- x",');
+        expect(out).toContain('    "-",');
+        expect(out).toContain('    "? y",');
+        const reparsed = parseTabularFrontmatter(out);
+        expect(reparsed).not.toBeNull();
+        expect(reparsed![0]!.list!.items.map((i) => i.value)).toEqual(["one", ...RISKY_VALUES]);
+    });
 });
 
 describe("tabular list editing — lossless serialization", () => {

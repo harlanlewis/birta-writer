@@ -60,14 +60,25 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
     // Applying a suggestion re-fires "input" (for inputUndo); skip that one
     // so the accepted value does not immediately re-open the menu.
     let skipNextInput = false;
+    // Bumped on every deliberate close (blur, Escape, outside click, pick):
+    // replies to requests issued before the last close are stale and must not
+    // re-open a menu the user already dismissed.
+    let closeGeneration = 0;
 
-    function closeMenu(): void {
+    /** Tears the menu DOM down without invalidating in-flight requests. */
+    function removeMenu(): void {
         if (menu) {
             menu.remove();
             menu = null;
         }
         rows = [];
         activeIndex = -1;
+    }
+
+    /** Closes the menu AND marks any in-flight suggestion request as stale. */
+    function closeMenu(): void {
+        closeGeneration++;
+        removeMenu();
     }
 
     function updateActive(): void {
@@ -91,7 +102,10 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
     }
 
     function showMenu(items: LinkTargetSuggestionItem[]): void {
-        closeMenu();
+        // Replace any previous menu without bumping closeGeneration: rendering
+        // a reply is not a user-initiated close, and it must not invalidate a
+        // newer request that is still in flight.
+        removeMenu();
         const query = input.value.trim();
         if (!isLocalPathQuery(query)) { return; }
         // Re-rank against the CURRENT input value: replies are async and the
@@ -145,8 +159,11 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
             return;
         }
         const id = `lts_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+        const requestGeneration = closeGeneration;
         _pendingSuggestions.set(id, (items) => {
-            if (!isDestroyed) { showMenu(items); }
+            // Ignore replies to requests issued before the last close: the
+            // user dismissed the menu (blur/Escape) while this was in flight.
+            if (!isDestroyed && requestGeneration === closeGeneration) { showMenu(items); }
         });
         notifyGetLinkTargetSuggestions(id, query);
         // Drop the callback if no reply ever arrives

@@ -480,6 +480,47 @@ describe("fm chip edit suggestions — mouse and blur", () => {
     });
 });
 
+describe("fm suggest menu across panel re-renders", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    it("re-rendering the panel should close the menu and a late pick should commit nothing", () => {
+        // Regression: a revert (webview/messageHandlers.ts) re-renders the
+        // panel while the "+" menu is open; the menu stayed anchored to a
+        // detached button and a pick pushed into a stale entry.
+        openMenu();
+
+        renderFrontmatterPanel(FM_LIST); // external revert path
+
+        expect(menuEl()).toBeNull();
+
+        // A late fmSuggestions reply must not resurrect any options...
+        dispatchFmSuggestions("tags", ["alpha"]);
+        // ...and any row that somehow survived must not commit on pick.
+        const row = document.querySelector(".fm-suggest-item") as HTMLElement | null;
+        row?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(document.querySelector(".fm-suggest-menu")).toBeNull();
+    });
+
+    it("re-rendering the panel should close an open chip-edit menu", () => {
+        renderFrontmatterPanel(FM_LIST);
+        const chip = document.querySelector(".fm-chip-text") as HTMLElement;
+        chip.dispatchEvent(new FocusEvent("focus"));
+        expect(menuEl()).not.toBeNull();
+
+        renderFrontmatterPanel(FM_LIST);
+
+        expect(menuEl()).toBeNull();
+        dispatchFmSuggestions("tags", ["late"]);
+        expect(document.querySelectorAll(".fm-suggest-item")).toHaveLength(0);
+    });
+});
+
 describe("chip-edit suggestions — the edited chip's own value stays suggestible", () => {
     beforeEach(() => {
         vi.clearAllMocks();
