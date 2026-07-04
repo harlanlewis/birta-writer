@@ -405,6 +405,7 @@ initKeyboardShortcuts(
     getMarkdownSource,
     getFirstVisibleSourceLine,
     findBar,
+    () => topbarTb?.openLinkPrompt(),
 );
 initScrollPersistence(eventManager);
 

@@ -703,6 +703,8 @@ export function initToolbar(
 ): {
     onSelectionChange: (view: EditorView) => void;
     setDebugMode: (enabled: boolean) => void;
+    /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
+    openLinkPrompt: () => void;
 } {
     const toolbar = document.createElement("div");
     toolbar.className = "toolbar";
@@ -858,10 +860,13 @@ export function initToolbar(
 
     toolbar.appendChild(sep());
 
-    // ── 插入 ──────────────────────────────────────────
-    // 链接：先捕获当前选区文字和已有链接，再通过双输入框获取文本和 URL
+    // ── Insert ────────────────────────────────────────
+    // Link: capture the current selection text and any existing link first,
+    // then collect text and URL through the two-input prompt. Also invoked
+    // by the Cmd/Ctrl+K shortcut (webview/keyboardShortcuts.ts), so it is
+    // exposed on the returned controller as openLinkPrompt.
     let linkBtnEl: HTMLButtonElement;
-    linkBtnEl = btn(IconLink, t("Insert/Edit Link"), () => {
+    const openLinkPrompt = (): void => {
         const editor = getEditor();
         if (!editor) {
             return;
@@ -907,7 +912,7 @@ export function initToolbar(
                     }
                     let tr = state.tr;
                     if (capturedFrom === capturedTo) {
-                        // 无选区：插入新文字并加链接
+                        // No selection: insert new text and link it
                         const insertText = text || href;
                         if (!insertText) {
                             return;
@@ -921,7 +926,7 @@ export function initToolbar(
                             );
                         }
                     } else {
-                        // 有选区：替换文字并更新链接
+                        // Selection: replace the text and update the link
                         const newText = text || selectedText;
                         tr = tr.removeMark(capturedFrom, capturedTo, lType);
                         tr = tr.insertText(newText, capturedFrom, capturedTo);
@@ -938,7 +943,12 @@ export function initToolbar(
                 });
             },
         );
-    });
+    };
+    linkBtnEl = btn(
+        IconLink,
+        t("Insert/Edit Link") + " " + kbd("Mod-k"),
+        openLinkPrompt,
+    );
     toolbar.appendChild(linkBtnEl);
 
     // 图片：弹出插入面板后插入 image 节点
@@ -1260,5 +1270,6 @@ export function initToolbar(
             dbgSep.style.display = enabled ? "" : "none";
             dbgWrap.style.display = enabled ? "" : "none";
         },
+        openLinkPrompt,
     };
 }

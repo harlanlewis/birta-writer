@@ -13,8 +13,13 @@
  *
  * Flow mirrors imgPathComplete.ts: input (debounced 200ms) →
  * getLinkTargetSuggestions → linkTargetSuggestions reply → dropdown. The
- * reply is re-ranked against the input's LATEST value so a stale reply can
- * never show outdated options.
+ * reply is re-ranked against the input's LATEST value so a stale (debounced)
+ * reply can never show outdated options.
+ *
+ * The request/reply machinery (requestLinkTargetSuggestions) and the menu
+ * builder (createLinkSuggestMenu) are exported for reuse by the caret URL
+ * autocomplete plugin (webview/plugins/linkUrlComplete.ts), which shows the
+ * same dropdown anchored at the editor caret instead of under an <input>.
  */
 import { notifyGetLinkTargetSuggestions } from "@/messaging";
 import type { LinkTargetSuggestionItem } from "../../../shared/messages";
@@ -42,6 +47,123 @@ export function dispatchLinkTargetSuggestions(
 }
 
 /**
+ * Posts a getLinkTargetSuggestions request and registers `cb` for its reply.
+ * The callback is dropped after 5s if no reply ever arrives. Staleness
+ * handling (the user closed the menu / kept typing) stays the caller's job.
+ */
+export function requestLinkTargetSuggestions(
+    query: string,
+    cb: SuggestCallback,
+): void {
+    const id = `lts_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    _pendingSuggestions.set(id, cb);
+    notifyGetLinkTargetSuggestions(id, query);
+    // Drop the callback if no reply ever arrives
+    setTimeout(() => { _pendingSuggestions.delete(id); }, 5000);
+}
+
+/** A rendered suggestion dropdown (see createLinkSuggestMenu). */
+export interface LinkSuggestMenu {
+    /** The menu root, appended to document.body. */
+    el: HTMLDivElement;
+    /** Display texts of the rendered rows (the exact strings picked). */
+    rows: string[];
+    /** Moves the keyboard highlight down (+1) or up (-1), wrapping. */
+    moveActive(delta: 1 | -1): void;
+    /** Applies onPick to the highlighted row; false when none is highlighted. */
+    pickActive(): boolean;
+    /** Removes the menu DOM. */
+    destroy(): void;
+}
+
+/**
+ * Renders the anchored workspace-file dropdown shared by the link URL
+ * inputs and the caret autocomplete: ranks `items` against `query`
+ * (re-ranking a possibly stale reply against the CURRENT query), renders
+ * them in the form the user is reaching for, and wires mouse pick/hover.
+ * Returns null when there is nothing to suggest. Rows start with no
+ * highlight so plain Enter keeps its normal meaning until an arrow key or
+ * hover selects a row.
+ */
+export function createLinkSuggestMenu(
+    items: readonly LinkTargetSuggestionItem[],
+    query: string,
+    anchor: { left: number; top: number; minWidth?: number },
+    onPick: (text: string) => void,
+): LinkSuggestMenu | null {
+    const trimmed = query.trim();
+    if (!isLocalPathQuery(trimmed)) { return null; }
+    const ranked = rankLinkTargets(items, trimmed);
+    const rows = ranked.map((item) => preferredLinkForm(item, trimmed));
+    if (rows.length === 0) { return null; }
+
+    let activeIndex = -1;
+
+    const div = document.createElement("div");
+    div.className = "fm-suggest-menu link-target-menu";
+    div.addEventListener("mousedown", (e) => {
+        // preventDefault keeps focus where it is (a blur would close the
+        // menu before the pick applies); stopPropagation keeps the hosting
+        // popup/prompt's outside-click handlers from closing themselves.
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    const list = document.createElement("ul");
+    list.className = "fm-suggest-list";
+    div.appendChild(list);
+
+    div.style.top = `${anchor.top}px`;
+    div.style.left = `${anchor.left}px`;
+    if (anchor.minWidth !== undefined) {
+        div.style.minWidth = `${anchor.minWidth}px`;
+    }
+
+    function updateActive(): void {
+        list.querySelectorAll("li").forEach((li, i) => {
+            const isActive = i === activeIndex;
+            li.classList.toggle("fm-suggest-item--focused", isActive);
+            // Optional call: jsdom (unit tests) does not implement scrollIntoView.
+            if (isActive) { li.scrollIntoView?.({ block: "nearest" }); }
+        });
+    }
+
+    rows.forEach((text, i) => {
+        const li = document.createElement("li");
+        li.className = "fm-suggest-item";
+        li.textContent = text;
+        li.title = ranked[i].rootRelative;
+        li.addEventListener("mousedown", () => onPick(text));
+        li.addEventListener("mouseover", () => {
+            activeIndex = i;
+            updateActive();
+        });
+        list.appendChild(li);
+    });
+
+    document.body.appendChild(div);
+
+    return {
+        el: div,
+        rows,
+        moveActive(delta: 1 | -1): void {
+            activeIndex = delta > 0
+                ? (activeIndex >= rows.length - 1 ? 0 : activeIndex + 1)
+                : (activeIndex <= 0 ? rows.length - 1 : activeIndex - 1);
+            updateActive();
+        },
+        pickActive(): boolean {
+            if (activeIndex < 0 || activeIndex >= rows.length) { return false; }
+            onPick(rows[activeIndex]);
+            return true;
+        },
+        destroy(): void {
+            div.remove();
+        },
+    };
+}
+
+/**
  * Attaches workspace file autocompletion to a link URL <input>.
  *
  * Keyboard/blur behavior is strictly additive: keys are only intercepted
@@ -51,10 +173,7 @@ export function dispatchLinkTargetSuggestions(
  * Returns a detach function.
  */
 export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
-    let menu: HTMLDivElement | null = null;
-    /** Display texts of the rendered rows (the exact strings inserted on pick). */
-    let rows: string[] = [];
-    let activeIndex = -1;
+    let menu: LinkSuggestMenu | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let isDestroyed = false;
     // Applying a suggestion re-fires "input" (for inputUndo); skip that one
@@ -67,28 +186,14 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
 
     /** Tears the menu DOM down without invalidating in-flight requests. */
     function removeMenu(): void {
-        if (menu) {
-            menu.remove();
-            menu = null;
-        }
-        rows = [];
-        activeIndex = -1;
+        menu?.destroy();
+        menu = null;
     }
 
     /** Closes the menu AND marks any in-flight suggestion request as stale. */
     function closeMenu(): void {
         closeGeneration++;
         removeMenu();
-    }
-
-    function updateActive(): void {
-        if (!menu) { return; }
-        menu.querySelectorAll("li").forEach((li, i) => {
-            const isActive = i === activeIndex;
-            li.classList.toggle("fm-suggest-item--focused", isActive);
-            // Optional call: jsdom (unit tests) does not implement scrollIntoView.
-            if (isActive) { li.scrollIntoView?.({ block: "nearest" }); }
-        });
     }
 
     function applySelection(text: string): void {
@@ -104,52 +209,17 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
     function showMenu(items: LinkTargetSuggestionItem[]): void {
         // Replace any previous menu without bumping closeGeneration: rendering
         // a reply is not a user-initiated close, and it must not invalidate a
-        // newer request that is still in flight.
+        // newer request that is still in flight. The menu builder re-ranks
+        // against the input's CURRENT value: replies are async and the user
+        // may have kept typing since the request was sent.
         removeMenu();
-        const query = input.value.trim();
-        if (!isLocalPathQuery(query)) { return; }
-        // Re-rank against the CURRENT input value: replies are async and the
-        // user may have kept typing since the request was sent.
-        const ranked = rankLinkTargets(items, query);
-        rows = ranked.map((item) => preferredLinkForm(item, query));
-        if (rows.length === 0) { return; }
-
-        const div = document.createElement("div");
-        div.className = "fm-suggest-menu link-target-menu";
-        div.addEventListener("mousedown", (e) => {
-            // preventDefault keeps focus in the input (a blur would close the
-            // menu before the pick applies); stopPropagation keeps the hosting
-            // popup/prompt's outside-click handlers from closing themselves.
-            e.preventDefault();
-            e.stopPropagation();
-        });
-
-        const list = document.createElement("ul");
-        list.className = "fm-suggest-list";
-        div.appendChild(list);
-
         const rect = input.getBoundingClientRect();
-        div.style.top = `${rect.bottom + 2}px`;
-        div.style.left = `${rect.left}px`;
-        div.style.minWidth = `${rect.width}px`;
-
-        rows.forEach((text, i) => {
-            const li = document.createElement("li");
-            li.className = "fm-suggest-item";
-            li.textContent = text;
-            li.title = ranked[i].rootRelative;
-            li.addEventListener("mousedown", () => applySelection(text));
-            li.addEventListener("mouseover", () => {
-                activeIndex = i;
-                updateActive();
-            });
-            list.appendChild(li);
-        });
-
-        document.body.appendChild(div);
-        menu = div;
-        // No default highlight: plain Enter keeps the input's normal confirm.
-        activeIndex = -1;
+        menu = createLinkSuggestMenu(
+            items,
+            input.value,
+            { left: rect.left, top: rect.bottom + 2, minWidth: rect.width },
+            applySelection,
+        );
     }
 
     function triggerSuggest(): void {
@@ -158,16 +228,12 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
             closeMenu();
             return;
         }
-        const id = `lts_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
         const requestGeneration = closeGeneration;
-        _pendingSuggestions.set(id, (items) => {
+        requestLinkTargetSuggestions(query, (items) => {
             // Ignore replies to requests issued before the last close: the
             // user dismissed the menu (blur/Escape) while this was in flight.
             if (!isDestroyed && requestGeneration === closeGeneration) { showMenu(items); }
         });
-        notifyGetLinkTargetSuggestions(id, query);
-        // Drop the callback if no reply ever arrives
-        setTimeout(() => { _pendingSuggestions.delete(id); }, 5000);
     }
 
     function onInput(): void {
@@ -192,21 +258,15 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
-            if (e.key === "ArrowDown") {
-                activeIndex = activeIndex >= rows.length - 1 ? 0 : activeIndex + 1;
-            } else {
-                activeIndex = activeIndex <= 0 ? rows.length - 1 : activeIndex - 1;
-            }
-            updateActive();
+            menu.moveActive(e.key === "ArrowDown" ? 1 : -1);
             return;
         }
 
         if (e.key === "Enter") {
-            if (activeIndex >= 0 && activeIndex < rows.length) {
+            if (menu.pickActive()) {
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-                applySelection(rows[activeIndex]);
             } else {
                 // No highlight: let the input's normal confirm run, but the
                 // menu must not outlive the confirmed value.
@@ -233,7 +293,7 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
 
     function onDocMousedown(e: MouseEvent): void {
         const target = e.target as Node;
-        if (menu && !menu.contains(target) && target !== input) {
+        if (menu && !menu.el.contains(target) && target !== input) {
             closeMenu();
         }
     }

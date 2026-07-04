@@ -11,6 +11,8 @@ export {
     horizontalRulePlugin,
     trailingHrParagraphPlugin,
 } from "./horizontalRule";
+export { linkInputRule } from "./linkInputRule";
+export { linkUrlCompletePlugin } from "./linkUrlComplete";
 export { listEnterPlugin, listLiftPlugin, listSpreadNormalizePlugin } from "./list";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";
 export { cellClickFixPlugin } from "./tableCellClickFix";

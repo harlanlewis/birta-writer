@@ -4,6 +4,7 @@
  * Registers and handles the editor's keyboard shortcuts:
  * - Cmd/Ctrl+F: open the find bar (pre-filled with the current selection)
  * - Cmd/Ctrl+Alt+F and Ctrl+H: open the find bar with the replace row shown
+ * - Cmd/Ctrl+K: open the Insert/Edit Link prompt (same as the toolbar button)
  * - Cmd/Ctrl+Shift+M: switch to the text editor (with the current viewport line)
  * - Option/Alt+K: send the selection or current block to Claude (with exact line numbers)
  */
@@ -97,6 +98,10 @@ const CLAIMED_SHORTCUTS: ClaimedShortcut[] = [
     { key: "f", mod: true },                // find
     { code: "KeyF", mod: true, alt: true }, // find & replace (Alt combo)
     { key: "h", ctrl: true, nonMacOnly: true }, // replace (Win/Linux)
+    // Insert/Edit Link prompt (registered below). Claimed document-wide so
+    // the chord never starts a workbench Cmd+K key sequence while the
+    // webview is focused; the handler itself skips overlay inputs.
+    { key: "k", mod: true },
     // Switch to text editor (registered below). Safe to swallow even though
     // package.json contributes the same keybinding: while the webview is
     // focused our handler posts the switch message itself; when the webview
@@ -160,6 +165,7 @@ export function initKeyboardShortcuts(
     getMarkdownSource: () => string,
     getFirstVisibleSourceLine: (view: EditorView, lineMap: number[]) => number,
     findBar: FindBarController,
+    openLinkPrompt: () => void,
 ): void {
     const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
 
@@ -201,6 +207,33 @@ export function initKeyboardShortcuts(
             () => findBar.open(undefined, { showReplace: true }),
         );
     }
+
+    // Cmd/Ctrl+K: open the Insert/Edit Link prompt — the exact prompt behind
+    // the toolbar's link button, so selection handling (pre-filled text,
+    // existing href, no-selection insert) matches the button 1:1.
+    eventManager.onShortcut(
+        // preventDefault is done in the handler, after the overlay-input
+        // check below, so overlay inputs keep the key's default action
+        { key: "k", ...mod, stopPropagation: true, preventDefault: false },
+        (e) => {
+            // Ignore Cmd/Ctrl+K while typing in overlay inputs (find bar,
+            // link popup, language picker, ...): the prompt edits editor
+            // content only. The ProseMirror root is itself contenteditable,
+            // so editable targets inside it stay allowed.
+            const target = e.target;
+            if (
+                target instanceof HTMLElement &&
+                target.closest(".ProseMirror") === null &&
+                (target instanceof HTMLInputElement ||
+                    target instanceof HTMLTextAreaElement ||
+                    target.isContentEditable)
+            ) {
+                return;
+            }
+            e.preventDefault();
+            openLinkPrompt();
+        },
+    );
 
     // Cmd/Ctrl+Shift+M: switch to the text editor (with the first visible
     // source line so the text editor can restore the viewport position)

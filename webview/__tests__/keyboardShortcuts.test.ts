@@ -38,6 +38,7 @@ function pressKey(
 describe("initKeyboardShortcuts find/replace bindings", () => {
     let manager: EventManager;
     let findBar: { open: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; isOpen: ReturnType<typeof vi.fn> };
+    let openLinkPrompt: ReturnType<typeof vi.fn>;
 
     function init(isMac: boolean): void {
         window.__i18n = { translations: {}, isMac };
@@ -49,12 +50,14 @@ describe("initKeyboardShortcuts find/replace bindings", () => {
             () => "",
             () => 1,
             findBar as unknown as FindBarController,
+            openLinkPrompt,
         );
     }
 
     beforeEach(() => {
         vi.clearAllMocks();
         findBar = { open: vi.fn(), close: vi.fn(), isOpen: vi.fn(() => false) };
+        openLinkPrompt = vi.fn();
     });
 
     afterEach(() => {
@@ -120,6 +123,43 @@ describe("initKeyboardShortcuts find/replace bindings", () => {
         pressKey("KeyM", { key: "M", metaKey: true, shiftKey: true });
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "switchToTextEditor" });
     });
+
+    it("Cmd+K (macOS) should open the insert/edit link prompt", () => {
+        init(true);
+        const event = pressKey("KeyK", { key: "k", metaKey: true });
+        expect(openLinkPrompt).toHaveBeenCalledTimes(1);
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it("Ctrl+K (Windows/Linux) should open the insert/edit link prompt", () => {
+        init(false);
+        pressKey("KeyK", { key: "k", ctrlKey: true });
+        expect(openLinkPrompt).toHaveBeenCalledTimes(1);
+    });
+
+    it("Ctrl+K on macOS should not open the link prompt (Mod is Cmd-only there)", () => {
+        init(true);
+        pressKey("KeyK", { key: "k", ctrlKey: true });
+        expect(openLinkPrompt).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+Shift+K should not open the link prompt (exact modifier match)", () => {
+        init(true);
+        pressKey("KeyK", { key: "K", metaKey: true, shiftKey: true });
+        expect(openLinkPrompt).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+K in an overlay input should not open the prompt nor block typing", () => {
+        init(true);
+        const overlayInput = document.createElement("input");
+        document.body.appendChild(overlayInput);
+
+        const event = pressKey("KeyK", { key: "k", metaKey: true }, overlayInput);
+
+        expect(openLinkPrompt).not.toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(false);
+        overlayInput.remove();
+    });
 });
 
 describe("initKeyboardShortcuts workbench key-leak guard", () => {
@@ -133,6 +173,7 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
     let workbenchForwarder: ReturnType<typeof vi.fn>;
     let editorEl: HTMLElement;
     let proseMirrorEl: HTMLElement;
+    let openLinkPrompt: ReturnType<typeof vi.fn>;
 
     function init(isMac: boolean): void {
         window.__i18n = { translations: {}, isMac };
@@ -144,12 +185,14 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
             () => "",
             () => 1,
             findBar as unknown as FindBarController,
+            openLinkPrompt,
         );
     }
 
     beforeEach(() => {
         vi.clearAllMocks();
         findBar = { open: vi.fn(), close: vi.fn(), isOpen: vi.fn(() => false) };
+        openLinkPrompt = vi.fn();
         workbenchForwarder = vi.fn();
         window.addEventListener("keydown", workbenchForwarder);
 
@@ -271,6 +314,27 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         pressKey("KeyF", { key: "f", metaKey: true }, proseMirrorEl);
         expect(findBar.open).toHaveBeenCalledTimes(1);
         expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+K inside the editor content should open the link prompt and not leak", () => {
+        init(true);
+        pressKey("KeyK", { key: "k", metaKey: true }, proseMirrorEl);
+        expect(openLinkPrompt).toHaveBeenCalledTimes(1);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+K in an overlay input should still be claimed but not open the prompt", () => {
+        init(true);
+        const overlayInput = document.createElement("input");
+        document.body.appendChild(overlayInput);
+
+        // Claimed document-wide (the chord must never start a workbench
+        // Cmd+K key sequence), but the handler bails in overlay inputs.
+        pressKey("KeyK", { key: "k", metaKey: true }, overlayInput);
+
+        expect(openLinkPrompt).not.toHaveBeenCalled();
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+        overlayInput.remove();
     });
 
     it("Cmd+Shift+M should still post the switch message while being swallowed", () => {

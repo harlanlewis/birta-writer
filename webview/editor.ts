@@ -33,6 +33,8 @@ import {
     historyPlugin,
     horizontalRuleKeymapPlugin,
     horizontalRulePlugin,
+    linkInputRule,
+    linkUrlCompletePlugin,
     listEnterPlugin,
     listLiftPlugin,
     listSpreadNormalizePlugin,
@@ -212,6 +214,8 @@ export async function createEditor(
         .use(headingStickyPlugin)
         .use(caretScrollMarginPlugin)
         .use(formatKeymapPlugin)
+        .use(linkInputRule)
+        .use(linkUrlCompletePlugin)
         .use(tabKeymapPlugin)
         .use(cellClickFixPlugin)
         .use(listSpreadNormalizePlugin)
