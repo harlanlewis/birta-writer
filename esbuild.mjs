@@ -34,6 +34,9 @@ const webviewBuild = {
     chunkNames: 'chunks/[name]-[hash]',
     loader: {
         '.ttf': 'dataurl',
+        // Hunspell dictionary files for the bundled spell check (lazy chunk)
+        '.aff': 'text',
+        '.dic': 'text',
     },
     alias: {
         '@': path.resolve('./webview'),

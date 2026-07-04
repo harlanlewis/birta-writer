@@ -44,5 +44,11 @@
   "Expand content": "Expand content",
   "Collapse content": "Collapse content",
   "Debug tools": "Debug tools",
-  "Test get line number": "Test get line number"
+  "Test get line number": "Test get line number",
+  "config.styleCheck.enabled.description": "Style check: strike through fillers, redundancies, and cliches inline as you write (iA-Writer-style). Also toggleable from the toolbar.",
+  "config.styleCheck.fillers.description": "Style check: flag filler words (basically, really, very...).",
+  "config.styleCheck.redundancies.description": "Style check: flag redundant phrases (end result, revert back...).",
+  "config.styleCheck.cliches.description": "Style check: flag cliches (low-hanging fruit, moving forward...).",
+  "config.spellCheck.enabled.description": "Underline unknown English words using the bundled dictionary (offline, English only). Code, URLs, and identifiers are skipped.",
+  "config.spellCheck.ignoredWords.description": "Words the spell check should never flag. Managed via the 'Ignore' action in the editor's suggestion popup."
 }

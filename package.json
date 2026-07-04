@@ -2,7 +2,7 @@
     "name": "md-wysiwyg-editor",
     "displayName": "WYSIWYG Markdown Editor",
     "description": "WYSIWYG Markdown editor with live table editing",
-    "version": "0.1.15",
+    "version": "0.1.16",
     "publisher": "harlanlewis",
     "engines": {
         "vscode": "^1.80.0"
@@ -125,6 +125,45 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.autoSave.description%"
+                },
+                "markdownWysiwyg.styleCheck.enabled": {
+                    "order": 110,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.styleCheck.enabled.description%"
+                },
+                "markdownWysiwyg.styleCheck.fillers": {
+                    "order": 111,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.fillers.description%"
+                },
+                "markdownWysiwyg.styleCheck.redundancies": {
+                    "order": 112,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.redundancies.description%"
+                },
+                "markdownWysiwyg.styleCheck.cliches": {
+                    "order": 113,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.cliches.description%"
+                },
+                "markdownWysiwyg.spellCheck.enabled": {
+                    "order": 114,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.spellCheck.enabled.description%"
+                },
+                "markdownWysiwyg.spellCheck.ignoredWords": {
+                    "order": 115,
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "%config.spellCheck.ignoredWords.description%"
                 },
                 "markdownWysiwyg.autoSaveDelay": {
                     "order": 3,
@@ -381,6 +420,7 @@
         "@milkdown/utils": "^7.19.0",
         "dompurify": "^3.4.11",
         "mermaid": "^11.0.0",
+        "nspell": "^2.1.5",
         "prosemirror-tables": "^1.8.5",
         "refractor": "^5.0.0"
     }

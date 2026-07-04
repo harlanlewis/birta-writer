@@ -38,6 +38,7 @@ import {
     listEnterPlugin,
     listLiftPlugin,
     listSpreadNormalizePlugin,
+    proofreadPlugin,
     selectionPlugin,
     tabKeymapPlugin,
     trailingHrParagraphPlugin,
@@ -220,6 +221,7 @@ export async function createEditor(
         .use(cellClickFixPlugin)
         .use(listSpreadNormalizePlugin)
         .use(trailingHrParagraphPlugin)
+        .use(proofreadPlugin)
         .create();
 
     // Compare the loaded file against its own zero-edit serialization to

@@ -37,13 +37,16 @@ import {
     IconX,
     IconChevronDown,
     IconEraser,
+    IconProofread,
     IconSearch,
     IconSettings,
 } from "@/ui/icons";
 import { applyTooltip } from "@/ui/tooltip";
 import { t, kbd } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
-import { notifyOpenSettings, notifyGetProjectImages } from "@/messaging";
+import { notifyOpenSettings, notifyGetProjectImages, notifySetStyleCheckEnabled } from "@/messaging";
+import { getEditorView } from "@/editor";
+import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton, createSeparator } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
 import { attachLinkTargetComplete } from '../pathLink/linkTargetComplete';
@@ -1215,8 +1218,21 @@ export function initToolbar(
         toolbar.appendChild(dbgWrap);
     }
 
-    // ── Find & settings ─────────────────────────────────
+    // ── Style check, find & settings ─────────────────────
     toolbar.appendChild(sep());
+    const styleCheckBtn = btn(IconProofread, t("Style check"), () => {
+        const view = getEditorView();
+        if (!view) { return; }
+        const cfg = getProofreadConfig(view);
+        const next = { ...cfg, styleCheck: !cfg.styleCheck };
+        setProofreadConfig(view, next);
+        notifySetStyleCheckEnabled(next.styleCheck);
+    });
+    window.addEventListener("proofread-config-changed", (e) => {
+        const config = (e as CustomEvent<{ styleCheck: boolean }>).detail;
+        styleCheckBtn.classList.toggle("tb-btn--active", config.styleCheck);
+    });
+    toolbar.appendChild(styleCheckBtn);
     if (onOpenFind) {
         toolbar.appendChild(
             btn(IconSearch, `${t("Find")} (${kbd("Mod-f")})`, onOpenFind),

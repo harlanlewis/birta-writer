@@ -10,7 +10,7 @@ import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSugge
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
-import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig } from "../shared/messages";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -559,6 +559,16 @@ export class MarkdownEditorProvider
                             this._getNumberSettingValue(message.width, 220, 150, 600),
                         );
                         break;
+                    case "setStyleCheckEnabled":
+                        // Persisting triggers onDidChangeConfiguration in extension.ts,
+                        // which re-broadcasts the config to every open editor.
+                        void vscode.workspace
+                            .getConfiguration("markdownWysiwyg")
+                            .update("styleCheck.enabled", message.enabled, vscode.ConfigurationTarget.Global);
+                        break;
+                    case "spellIgnoreWord":
+                        this._handleSpellIgnoreWord(message.word);
+                        break;
                 }
             },
         );
@@ -753,7 +763,8 @@ export class MarkdownEditorProvider
         const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold })};`;
+        const proofread = MarkdownEditorProvider.getProofreadConfig();
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -842,6 +853,32 @@ export class MarkdownEditorProvider
             .getConfiguration("editor", documentUri)
             .get<string>("wordWrap", "off");
         return editorWordWrap !== "off";
+    }
+
+    /** Snapshot of the proofread (style check + spell check) settings. */
+    public static getProofreadConfig(): ProofreadConfig {
+        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        return {
+            styleCheck: cfg.get<boolean>("styleCheck.enabled", false),
+            fillers: cfg.get<boolean>("styleCheck.fillers", true),
+            redundancies: cfg.get<boolean>("styleCheck.redundancies", true),
+            cliches: cfg.get<boolean>("styleCheck.cliches", true),
+            spellCheck: cfg.get<boolean>("spellCheck.enabled", true),
+            ignoredWords: cfg.get<string[]>("spellCheck.ignoredWords", []),
+        };
+    }
+
+    private _handleSpellIgnoreWord(word: string): void {
+        const trimmed = word?.trim();
+        if (!trimmed) { return; }
+        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const words = cfg.get<string[]>("spellCheck.ignoredWords", []);
+        if (words.includes(trimmed)) { return; }
+        // Prefer the workspace list (project jargon); fall back to user settings
+        const target = vscode.workspace.workspaceFolders?.length
+            ? vscode.ConfigurationTarget.Workspace
+            : vscode.ConfigurationTarget.Global;
+        void cfg.update("spellCheck.ignoredWords", [...words, trimmed], target);
     }
 
     private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {

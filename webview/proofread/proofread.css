@@ -1,0 +1,78 @@
+/* Proofread: style-check + spell-check decorations and suggestion popup */
+
+/* Style-check hits: dimmed + struck through ("read the sentence without it").
+   Deliberately distinct from real ~~strikethrough~~ content, which keeps
+   normal text color — hits are also dimmed. */
+.pf-style-hit {
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.65;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    transition: opacity 0.1s ease;
+
+    &:hover {
+        opacity: 0.9;
+    }
+}
+
+/* Spell-check hits: dotted underline, native-spellcheck look */
+.pf-spell-err {
+    text-decoration: underline dotted var(--vscode-editorWarning-foreground, #cca700);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
+/* Suggestion popup */
+.pf-popup {
+    position: fixed;
+    z-index: 1000;
+    min-width: 140px;
+    max-width: 260px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    font-size: 13px;
+}
+
+.pf-popup-item {
+    display: block;
+    width: 100%;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+
+    &:hover {
+        background: var(--vscode-list-hoverBackground);
+    }
+}
+
+.pf-popup-ignore {
+    color: var(--vscode-descriptionForeground);
+    border-top: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 0 0 3px 3px;
+    margin-top: 2px;
+    padding-top: 6px;
+}
+
+.pf-popup-empty {
+    padding: 4px 8px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Toolbar toggle active state */
+.tb-btn--active {
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-list-activeSelectionBackground));
+    color: var(--vscode-textLink-foreground);
+}

@@ -14,6 +14,7 @@ export {
 export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
 export { listEnterPlugin, listLiftPlugin, listSpreadNormalizePlugin } from "./list";
+export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";
 export { cellClickFixPlugin } from "./tableCellClickFix";
 export { setLogTableSel } from "./tableDebug";

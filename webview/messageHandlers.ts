@@ -17,6 +17,7 @@ import { dispatchLinkTargetSuggestions } from "./components/pathLink/linkTargetC
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setDebugMode } from "./components/table/addButtons";
 import { setLogTableSel } from "./editor";
+import { setProofreadConfig } from "./plugins";
 import { notifySwitchToTextEditor, getWebviewState } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
@@ -240,6 +241,12 @@ export function createMessageHandlers(
         },
         fmSuggestions(msg) {
             dispatchFmSuggestions(msg.key, msg.values);
+        },
+        proofreadConfig(msg) {
+            const view = getEditorView();
+            if (view) {
+                setProofreadConfig(view, msg.config);
+            }
         },
     };
 }

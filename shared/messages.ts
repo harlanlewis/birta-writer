@@ -29,6 +29,19 @@ export type LinkTargetSuggestionItem = {
 /** 表格换行模式 */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
+/** Proofread (style check + spell check) configuration snapshot */
+export type ProofreadConfig = {
+    /** Style check master switch (fillers/redundancies/clichés strikethrough) */
+    styleCheck: boolean;
+    fillers: boolean;
+    redundancies: boolean;
+    cliches: boolean;
+    /** Spell check master switch (bundled English dictionary) */
+    spellCheck: boolean;
+    /** Words the user chose to ignore, persisted in settings */
+    ignoredWords: string[];
+};
+
 /**
  * WebView → Extension 方向的消息。
  * 所有字段反映发送方的实际约束：发送方必须提供的字段不得写成可选。
@@ -49,7 +62,9 @@ export type ToExtensionMessage =
     | { type: "resolveImagePath"; id: string; relPath: string }
     | { type: "frontmatterUpdate"; frontmatter: string }
     | { type: "requestFmSuggestions"; key: string }
-    | { type: "tocWidth"; width: number };
+    | { type: "tocWidth"; width: number }
+    | { type: "setStyleCheckEnabled"; enabled: boolean }
+    | { type: "spellIgnoreWord"; word: string };
 
 /**
  * Extension → WebView 方向的消息。
@@ -72,4 +87,5 @@ export type ToWebviewMessage =
     | { type: "imagePathResolved"; id: string; webviewUri: string }
     | { type: "setTheme"; colors: Record<string, string> }
     | { type: "setTableWrap"; wrap: TableWrapMode }
-    | { type: "fmSuggestions"; key: string; values: string[] };
+    | { type: "fmSuggestions"; key: string; values: string[] }
+    | { type: "proofreadConfig"; config: ProofreadConfig };

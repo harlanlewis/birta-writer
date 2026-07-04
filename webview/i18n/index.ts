@@ -1,3 +1,5 @@
+import type { ProofreadConfig } from "../../shared/messages";
+
 declare global {
     interface Window {
         __i18n?: {
@@ -7,6 +9,7 @@ declare global {
             codeBlockAutoConvert?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
+            proofread?: ProofreadConfig;
         };
     }
 }

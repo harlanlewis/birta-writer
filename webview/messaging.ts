@@ -83,6 +83,14 @@ export function notifyTocWidth(width: number): void {
     vscode.postMessage({ type: "tocWidth", width });
 }
 
+export function notifySetStyleCheckEnabled(enabled: boolean): void {
+    vscode.postMessage({ type: "setStyleCheckEnabled", enabled });
+}
+
+export function notifySpellIgnoreWord(word: string): void {
+    vscode.postMessage({ type: "spellIgnoreWord", word });
+}
+
 export function onMessage(handler: (msg: IncomingMessage) => void): void {
     window.addEventListener("message", (event: MessageEvent) => {
         handler(event.data as IncomingMessage);

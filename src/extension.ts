@@ -309,6 +309,13 @@ export function activate(context: vscode.ExtensionContext) {
                 const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
                 MarkdownEditorProvider.current?.postToAll({ type: "setTableWrap", wrap: tableWrap });
             }
+            if (e.affectsConfiguration("markdownWysiwyg.styleCheck")
+                || e.affectsConfiguration("markdownWysiwyg.spellCheck")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "proofreadConfig",
+                    config: MarkdownEditorProvider.getProofreadConfig(),
+                });
+            }
         }),
     );
 
