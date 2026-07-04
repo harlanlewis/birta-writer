@@ -25,7 +25,7 @@ import {
     onSpellReady,
     setIgnoredWords,
 } from "../proofread/engine";
-import { showSpellPopup } from "../proofread/popup";
+import { hideSpellPopup, showSpellPopup } from "../proofread/popup";
 
 const SCAN_DEBOUNCE_MS = 350;
 
@@ -105,7 +105,8 @@ export function blockPlainText(block: ProseNode): string {
     return text;
 }
 
-function computeDecorations(doc: ProseNode, config: ProofreadConfig): DecorationSet {
+/** Exported for unit testing. */
+export function computeDecorations(doc: ProseNode, config: ProofreadConfig): DecorationSet {
     const styleEnabled = config.styleCheck && (config.fillers || config.redundancies || config.cliches);
     const spellEnabled = config.spellCheck && isSpellReady();
     if (!styleEnabled && !spellEnabled) { return DecorationSet.empty; }
@@ -213,20 +214,27 @@ export const proofreadPlugin = $prose(() => {
                 lastDoc = view.state.doc;
                 lastConfig = state.config;
                 const decorations = computeDecorations(view.state.doc, state.config);
+                // Skip the no-op transaction when there is (still) nothing to decorate
+                if (decorations === DecorationSet.empty && state.decorations === DecorationSet.empty) { return; }
                 const meta: ProofreadMeta = { type: "decorations", decorations };
                 view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
             };
 
-            const schedule = () => {
+            const schedule = (delay = SCAN_DEBOUNCE_MS) => {
                 if (scanTimer !== null) { clearTimeout(scanTimer); }
-                scanTimer = setTimeout(scan, SCAN_DEBOUNCE_MS);
+                scanTimer = setTimeout(scan, delay);
             };
 
             const maybeSchedule = () => {
                 const state = proofreadPluginKey.getState(view.state);
                 if (!state) { return; }
                 if (state.config.spellCheck && !isSpellReady()) { ensureSpellLoaded(); }
-                if (view.state.doc !== lastDoc || state.config !== lastConfig) { schedule(); }
+                if (state.config !== lastConfig) {
+                    schedule(0); // config toggles should feel instant
+                } else if (view.state.doc !== lastDoc) {
+                    hideSpellPopup(); // edits invalidate the popup's captured range
+                    schedule();
+                }
             };
 
             onSpellReady(() => {
@@ -241,6 +249,7 @@ export const proofreadPlugin = $prose(() => {
                 update: maybeSchedule,
                 destroy() {
                     destroyed = true;
+                    hideSpellPopup();
                     if (scanTimer !== null) { clearTimeout(scanTimer); }
                 },
             };

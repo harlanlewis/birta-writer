@@ -559,13 +559,18 @@ export class MarkdownEditorProvider
                             this._getNumberSettingValue(message.width, 220, 150, 600),
                         );
                         break;
-                    case "setStyleCheckEnabled":
+                    case "setStyleCheckEnabled": {
                         // Persisting triggers onDidChangeConfiguration in extension.ts,
                         // which re-broadcasts the config to every open editor.
-                        void vscode.workspace
-                            .getConfiguration("markdownWysiwyg")
-                            .update("styleCheck.enabled", message.enabled, vscode.ConfigurationTarget.Global);
+                        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+                        // Write to the scope that currently wins, or the toggle would
+                        // be silently overridden by an existing workspace value.
+                        const target = cfg.inspect("styleCheck.enabled")?.workspaceValue !== undefined
+                            ? vscode.ConfigurationTarget.Workspace
+                            : vscode.ConfigurationTarget.Global;
+                        void cfg.update("styleCheck.enabled", message.enabled, target);
                         break;
+                    }
                     case "spellIgnoreWord":
                         this._handleSpellIgnoreWord(message.word);
                         break;
