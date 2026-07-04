@@ -134,7 +134,8 @@
                     "order": 2,
                     "type": "boolean",
                     "default": true,
-                    "description": "%config.autoSave.description%"
+                    "description": "%config.autoSave.description%",
+                    "deprecationMessage": "Deprecated: the editor is now backed by a native text document. Use the built-in `files.autoSave` setting instead — it governs saving for this editor too."
                 },
                 "markdownWysiwyg.styleCheck.enabled": {
                     "order": 110,
@@ -190,7 +191,8 @@
                     "default": 1000,
                     "minimum": 100,
                     "maximum": 10000,
-                    "description": "%config.autoSaveDelay.description%"
+                    "description": "%config.autoSaveDelay.description%",
+                    "deprecationMessage": "Deprecated: the editor is now backed by a native text document. Use the built-in `files.autoSaveDelay` setting instead."
                 },
                 "markdownWysiwyg.codeBlockMaxHeight": {
                     "order": 8,

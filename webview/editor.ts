@@ -20,6 +20,7 @@ import { createImageView } from "./components/imageView";
 import { createMathInlineView } from "./components/math";
 import { getMarkdown } from "@milkdown/utils";
 import { refractor } from "./highlighter";
+import { applyExternalSync } from "./externalSync";
 import { configureSerialization, pureCommonmark } from "./serialization";
 import {
     applyMinimalChanges,
@@ -104,6 +105,15 @@ let _protection: RoundTripProtection | null = null;
 let _hasUserInteracted = false;
 let _interactionListenerAdded = false;
 
+// IME composition state, hoisted to module scope so inbound external syncs can
+// defer while the user is mid-composition (see syncExternalContent). The
+// outbound save pipeline reads it too, so a pinyin/kana candidate is never sent
+// to the file half-formed.
+let _isComposing = false;
+// Latest external content that arrived DURING composition, applied on
+// compositionend. Only the most recent push matters — older ones are stale.
+let _pendingExternalMarkdown: string | null = null;
+
 function setupInteractionTracking(): void {
     if (_interactionListenerAdded) return;
     _interactionListenerAdded = true;
@@ -122,6 +132,48 @@ export function getEditorView(): EditorView | null {
     return _editor.action((ctx) => ctx.get(editorViewCtx));
 }
 
+/**
+ * Applies an inbound external document change as a cursor-preserving minimal
+ * diff. Returns false when the caller must fall back to a full rebuild
+ * (revert). While the user is mid-IME-composition the content is deferred and
+ * applied on compositionend; a deferred call still returns true (handled, no
+ * fallback).
+ *
+ * `newMarkdown` is DISPLAY-space content (image src already mapped to webview
+ * URIs by the extension), matching the editor's own doc.
+ */
+export function syncExternalContent(newMarkdown: string): boolean {
+    if (!_editor) {
+        return false;
+    }
+    if (_isComposing) {
+        _pendingExternalMarkdown = newMarkdown;
+        return true;
+    }
+    return _applyExternalNow(newMarkdown);
+}
+
+/** Applies the external content now and re-baselines the save state. */
+function _applyExternalNow(newMarkdown: string): boolean {
+    if (!_editor) {
+        return false;
+    }
+    if (!applyExternalSync(_editor, newMarkdown)) {
+        return false;
+    }
+    // Re-baseline against the freshly applied content so the NEXT genuine user
+    // edit diffs against the right bytes (and the debounced listener never
+    // echoes the external change back to the extension as a save). Protection
+    // is recomputed because a different file may have different round-trip
+    // trouble spots (reference links, setext headings, ...).
+    _savedMarkdown = newMarkdown;
+    _protection = computeRoundTripProtection(
+        newMarkdown,
+        _editor.action(getMarkdown()),
+    );
+    return true;
+}
+
 export async function createEditor(
     container: HTMLElement,
     initialMarkdown: string,
@@ -136,9 +188,10 @@ export async function createEditor(
     setupInteractionTracking();
 
     let debounceTimer: ReturnType<typeof setTimeout>;
-    // IME 合成期间（compositionstart → compositionend）暂存最新 markdown，
-    // 防止拼音中间态被保存到文件
-    let isComposing = false;
+    // During IME composition (compositionstart → compositionend) stash the
+    // latest markdown so a half-typed pinyin/kana candidate is never saved.
+    _isComposing = false;
+    _pendingExternalMarkdown = null;
     let pendingMd: string | null = null;
 
     const fireUpdate = (md: string) => {
@@ -146,22 +199,30 @@ export async function createEditor(
         debounceTimer = setTimeout(() => onUpdate(md), 300);
     };
     const debouncedUpdate = (md: string) => {
-        if (isComposing) {
-            pendingMd = md; // 合成中：暂存，等 compositionend 再发
+        if (_isComposing) {
+            pendingMd = md; // composing: stash and send on compositionend
             return;
         }
         fireUpdate(md);
     };
 
     container.addEventListener('compositionstart', () => {
-        isComposing = true;
+        _isComposing = true;
     });
     container.addEventListener('compositionend', () => {
-        isComposing = false;
+        _isComposing = false;
+        // Apply any inbound external sync that arrived mid-composition first, so
+        // the file's authoritative state wins; a now-stale outbound save below
+        // is harmless (the extension's version check drops and re-pushes it).
+        if (_pendingExternalMarkdown !== null) {
+            const md = _pendingExternalMarkdown;
+            _pendingExternalMarkdown = null;
+            _applyExternalNow(md);
+        }
         if (pendingMd !== null) {
             const md = pendingMd;
             pendingMd = null;
-            fireUpdate(md); // 合成完成后立即触发（仍经 300ms 防抖，合并快速连续提交）
+            fireUpdate(md); // fire immediately after composition (still 300ms debounced)
         }
     });
 

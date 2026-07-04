@@ -30,11 +30,12 @@ describe("messaging — postMessage 格式验证", () => {
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "ready" });
     });
 
-    it("notifyUpdate 携带 content 字段", () => {
+    it("notifyUpdate should carry the content and the current baseSyncVersion", () => {
         notifyUpdate("# Hello");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "update",
             content: "# Hello",
+            baseSyncVersion: 0,
         });
     });
 

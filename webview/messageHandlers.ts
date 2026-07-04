@@ -16,10 +16,10 @@ import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setDebugMode } from "./components/table/addButtons";
-import { setLogTableSel } from "./editor";
+import { setLogTableSel, syncExternalContent } from "./editor";
 import { setProofreadConfig } from "./plugins";
 import { applyLintResults } from "./plugins/proofread";
-import { notifySwitchToTextEditor, getWebviewState } from "./messaging";
+import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import {
@@ -83,6 +83,8 @@ export interface EditorActions {
     initEditor: (container: HTMLElement, markdown: string) => Promise<void>;
     retryScroll: (fn: () => void) => void;
     getEditorView: () => EditorView | null;
+    /** Refreshes the table-of-contents panel after an inbound diff sync. */
+    refreshToc: () => void;
 }
 
 /** 消息处理器依赖项 */
@@ -101,10 +103,11 @@ export function createMessageHandlers(
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb, themeOverrides } = deps;
     const { getEditor, setEditor, getLineMap, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView } = actions;
-    
+    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc } = actions;
+
     return {
         async init(msg, container) {
+            setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
             setLineMap(msg.lineMap ?? []);
             renderFrontmatterPanel(msg.frontmatter);
@@ -144,6 +147,29 @@ export function createMessageHandlers(
                 applyTableWrap(msg.tableWrap);
             }
             await initEditor(container, msg.content);
+        },
+        async externalUpdate(msg, container) {
+            // Record the version we're syncing to so subsequent outbound edits
+            // carry it as baseSyncVersion (stale-update rejection on the
+            // extension side).
+            setBaseSyncVersion(msg.syncVersion);
+            setMarkdownSource(msg.content);
+            setLineMap(msg.lineMap ?? []);
+            renderFrontmatterPanel(msg.frontmatter);
+            if (msg.imageUriMap) {
+                setImageUriMap(msg.imageUriMap);
+            }
+            if (msg.tableWrap) {
+                applyTableWrap(msg.tableWrap);
+            }
+            // Cursor-preserving diff apply; on any failure fall back to a full
+            // rebuild exactly like revert (which loses the selection but is
+            // guaranteed correct).
+            if (syncExternalContent(msg.content)) {
+                refreshToc();
+            } else {
+                await initEditor(container, msg.content);
+            }
         },
         requestSwitchToTextEditor() {
             const view = getEditorView();

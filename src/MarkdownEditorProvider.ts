@@ -48,6 +48,14 @@ export class MarkdownEditorProvider
     // edits (echoes of our own applyEdit) from genuine external changes.
     private readonly _lastSyncedText = new Map<string, string>();
 
+    // Authoritative sync version per document (key: uriKey). Bumped on every
+    // externalUpdate push (external text-editor edit, undo/redo, git, hot-exit
+    // restore). The webview echoes the version it last applied back as
+    // `baseSyncVersion`; a content update whose base doesn't match the current
+    // version was serialized against content we've since replaced, so it is
+    // dropped and the current state is re-pushed.
+    private readonly _syncVersion = new Map<string, number>();
+
     // Per-document promise chain serializing webview-originated WorkspaceEdits,
     // so a second update can never race the applyEdit (and its change event)
     // of the first.
@@ -267,6 +275,7 @@ export class MarkdownEditorProvider
             this._imageUriMaps.delete(uriKey);
             this._initializedPanels.delete(uriKey);
             this._lastSyncedText.delete(uriKey);
+            this._syncVersion.delete(uriKey);
             this._editQueues.delete(uriKey);
             // Clean up any leftover timer
             const timer = this._autoSaveTimers.get(uriKey);
@@ -339,6 +348,9 @@ export class MarkdownEditorProvider
                         const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
                         // Reset the echo baseline: init hands this exact text to the webview
                         this._lastSyncedText.set(uriKey, initContent);
+                        // Reset the sync version so the webview's baseSyncVersion
+                        // starts aligned with the extension.
+                        this._syncVersion.set(uriKey, 0);
                         webviewPanel.webview.postMessage({
                             type: "init",
                             content: displayContent,
@@ -346,6 +358,7 @@ export class MarkdownEditorProvider
                             frontmatter: this._frontmatterMap.get(uriKey) || undefined,
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
                             tableWrap,
+                            syncVersion: 0,
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
                         // Apply the theme
@@ -354,6 +367,16 @@ export class MarkdownEditorProvider
                     }
                     case "update":
                         if (message.content !== undefined) {
+                            // Stale-update rejection: the webview serialized this
+                            // against content we've since replaced (an
+                            // externalUpdate landed after it read the document).
+                            // Drop it and re-push the current authoritative state
+                            // so the webview re-bases.
+                            const currentVersion = this._syncVersion.get(uriKey) ?? 0;
+                            if (message.baseSyncVersion !== currentVersion) {
+                                this._pushExternalUpdate(document, webviewPanel, uriKey);
+                                break;
+                            }
                             const newContent = this._prepareContentForSave(message.content, uriKey);
                             void this._enqueueEdit(uriKey, async () => {
                                 // Identical to the current document (e.g. serializer no-op echo): nothing to do
@@ -366,6 +389,14 @@ export class MarkdownEditorProvider
                         }
                         break;
                     case "frontmatterUpdate": {
+                        // Stale-update rejection (same rule as "update"): a
+                        // frontmatter edit serialized against replaced content is
+                        // dropped and the current state re-pushed.
+                        const fmVersion = this._syncVersion.get(uriKey) ?? 0;
+                        if (message.baseSyncVersion !== fmVersion) {
+                            this._pushExternalUpdate(document, webviewPanel, uriKey);
+                            break;
+                        }
                         // The WebView edited the frontmatter panel; replace just the frontmatter block
                         const oldFm = this._frontmatterMap.get(uriKey) ?? "";
                         const newFm = message.frontmatter;
@@ -610,23 +641,43 @@ export class MarkdownEditorProvider
                 const text = document.getText();
                 // The document settled back to the webview's state within the debounce window
                 if (text === this._lastSyncedText.get(uriKey)) { return; }
-                this._lastSyncedText.set(uriKey, text);
-                const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
-                const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
-                panel.webview.postMessage({
-                    type: "revert",
-                    content: displayContent,
-                    lineMap: computeLineMap(text),
-                    frontmatter: this._frontmatterMap.get(uriKey) || undefined,
-                    imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
-                    tableWrap,
-                });
+                this._pushExternalUpdate(document, panel, uriKey);
             }, 200);
         });
         // Dispose the subscription when the panel closes
         webviewPanel.onDidDispose(() => {
             if (externalChangeTimer !== undefined) { clearTimeout(externalChangeTimer); }
             changeSubscription.dispose();
+        });
+    }
+
+    /**
+     * Pushes the current document state to the webview as a cursor-preserving
+     * externalUpdate, bumping the sync version. Used both for genuine external
+     * changes (side-by-side text edits, undo/redo, git, hot-exit restore) and
+     * to re-base the webview after a stale update is rejected. The webview
+     * applies this as a minimal diff so the caret survives; it falls back to a
+     * full rebuild only when the diff can't be applied.
+     */
+    private _pushExternalUpdate(
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        uriKey: string,
+    ): void {
+        const text = document.getText();
+        this._lastSyncedText.set(uriKey, text);
+        const version = (this._syncVersion.get(uriKey) ?? 0) + 1;
+        this._syncVersion.set(uriKey, version);
+        const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
+        const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
+        panel.webview.postMessage({
+            type: "externalUpdate",
+            content: displayContent,
+            lineMap: computeLineMap(text),
+            frontmatter: this._frontmatterMap.get(uriKey) || undefined,
+            imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
+            tableWrap,
+            syncVersion: version,
         });
     }
 

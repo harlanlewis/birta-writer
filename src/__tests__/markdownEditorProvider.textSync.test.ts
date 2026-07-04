@@ -50,11 +50,11 @@ type FakePanel = ReturnType<typeof makePanel>;
 const makeCancellation = () =>
     ({ isCancellationRequested: false }) as vscode.CancellationToken;
 
-/** All revert (external content push) messages posted to the panel so far. */
-function revertMessages(panel: FakePanel): Array<{ type: string; content?: string }> {
+/** All externalUpdate (external content push) messages posted to the panel so far. */
+function externalUpdates(panel: FakePanel): Array<{ type: string; content?: string; syncVersion?: number }> {
     return panel.webview.postMessage.mock.calls
-        .map(([msg]) => msg as { type: string; content?: string })
-        .filter((msg) => msg.type === "revert");
+        .map(([msg]) => msg as { type: string; content?: string; syncVersion?: number })
+        .filter((msg) => msg.type === "externalUpdate");
 }
 
 describe("MarkdownEditorProvider text document sync", () => {
@@ -94,9 +94,9 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(200);
 
             // Assert
-            const reverts = revertMessages(panel);
-            expect(reverts).toHaveLength(1);
-            expect(reverts[0].content).toBe("changed externally\n");
+            const pushes = externalUpdates(panel);
+            expect(pushes).toHaveLength(1);
+            expect(pushes[0].content).toBe("changed externally\n");
         });
 
         it("multiple rapid external changes should be debounced into a single push of the LAST content", async () => {
@@ -110,9 +110,9 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(200);
 
             // Assert
-            const reverts = revertMessages(panel);
-            expect(reverts).toHaveLength(1);
-            expect(reverts[0].content).toBe("old abc\n");
+            const pushes = externalUpdates(panel);
+            expect(pushes).toHaveLength(1);
+            expect(pushes[0].content).toBe("old abc\n");
         });
 
         it("a change event with empty contentChanges should be ignored", async () => {
@@ -128,7 +128,7 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(500);
 
             // Assert
-            expect(revertMessages(panel)).toHaveLength(0);
+            expect(externalUpdates(panel)).toHaveLength(0);
         });
 
         it("a change event for a different document should be ignored", async () => {
@@ -141,7 +141,7 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(500);
 
             // Assert
-            expect(revertMessages(panel)).toHaveLength(0);
+            expect(externalUpdates(panel)).toHaveLength(0);
         });
 
         it("an external change reverted back to the synced text within the debounce should not push", async () => {
@@ -154,7 +154,7 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(500);
 
             // Assert — the webview already shows this exact text
-            expect(revertMessages(panel)).toHaveLength(0);
+            expect(externalUpdates(panel)).toHaveLength(0);
         });
     });
 
@@ -165,18 +165,18 @@ describe("MarkdownEditorProvider text document sync", () => {
 
             // Act — the webview edit flows through applyEdit, which fires
             // onDidChangeTextDocument with the exact text the webview sent
-            await handler({ type: "update", content: "edited by webview\n" });
+            await handler({ type: "update", content: "edited by webview\n", baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(500);
 
             // Assert — the edit landed but no revert bounced back
             expect(document.getText()).toBe("edited by webview\n");
-            expect(revertMessages(panel)).toHaveLength(0);
+            expect(externalUpdates(panel)).toHaveLength(0);
         });
 
         it("an external change AFTER a webview edit should still be pushed", async () => {
             // Arrange — a webview edit first (baseline moves with it)
             const { handler, document, panel } = await setup("original\n");
-            await handler({ type: "update", content: "webview text\n" });
+            await handler({ type: "update", content: "webview text\n", baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(500);
 
             // Act
@@ -184,9 +184,51 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(200);
 
             // Assert
-            const reverts = revertMessages(panel);
-            expect(reverts).toHaveLength(1);
-            expect(reverts[0].content).toBe("external after webview\n");
+            const pushes = externalUpdates(panel);
+            expect(pushes).toHaveLength(1);
+            expect(pushes[0].content).toBe("external after webview\n");
+        });
+    });
+
+    describe("stale-update rejection", () => {
+        it("an update whose baseSyncVersion is behind the current version should be dropped and the current state re-pushed", async () => {
+            // Arrange — an external change bumps the sync version to 1
+            const { handler, document, panel } = await setup("original\n");
+            document.setTextExternally("external edit\n");
+            await vi.advanceTimersByTimeAsync(200);
+            const afterExternal = externalUpdates(panel);
+            expect(afterExternal).toHaveLength(1);
+            expect(afterExternal[0].syncVersion).toBe(1);
+            panel.webview.postMessage.mockClear();
+
+            // Act — the webview posts an edit serialized against the STALE base (0)
+            await handler({ type: "update", content: "stale webview text\n", baseSyncVersion: 0 });
+            await vi.advanceTimersByTimeAsync(500);
+
+            // Assert — the stale edit was NOT applied, and the current document
+            // state was re-pushed with a bumped version so the webview re-bases
+            expect(document.getText()).toBe("external edit\n");
+            const rePush = externalUpdates(panel);
+            expect(rePush).toHaveLength(1);
+            expect(rePush[0].content).toBe("external edit\n");
+            expect(rePush[0].syncVersion).toBe(2);
+        });
+
+        it("an update whose baseSyncVersion matches the current version should be applied", async () => {
+            // Arrange — an external change moves the version to 1
+            const { handler, document, panel } = await setup("original\n");
+            document.setTextExternally("external edit\n");
+            await vi.advanceTimersByTimeAsync(200);
+            panel.webview.postMessage.mockClear();
+
+            // Act — the webview posts an edit on the CURRENT base (1)
+            await handler({ type: "update", content: "fresh webview text\n", baseSyncVersion: 1 });
+            await vi.advanceTimersByTimeAsync(500);
+
+            // Assert — applied to the document, and its own applyEdit echo is
+            // suppressed (no re-push)
+            expect(document.getText()).toBe("fresh webview text\n");
+            expect(externalUpdates(panel)).toHaveLength(0);
         });
     });
 
@@ -201,7 +243,7 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(500);
 
             // Assert
-            expect(revertMessages(panel)).toHaveLength(0);
+            expect(externalUpdates(panel)).toHaveLength(0);
         });
 
         it("a pending debounced push should not fire after the panel is disposed", async () => {
@@ -214,7 +256,7 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(500);
 
             // Assert
-            expect(revertMessages(panel)).toHaveLength(0);
+            expect(externalUpdates(panel)).toHaveLength(0);
         });
     });
 });

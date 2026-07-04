@@ -1,7 +1,7 @@
 /**
  * shared/messages.ts
- * WebView ↔ Extension 双向消息类型的唯一权威来源。
- * 两侧均从此处导入，禁止各自内联重复定义。
+ * The single authoritative source for WebView ↔ Extension message types.
+ * Both sides import from here; inline duplicate definitions are forbidden.
  */
 
 /** 图片元数据：磁盘相对路径 + WebView 可访问 URI + 文件名 */
@@ -60,12 +60,18 @@ export type ProofreadConfig = {
 };
 
 /**
- * WebView → Extension 方向的消息。
- * 所有字段反映发送方的实际约束：发送方必须提供的字段不得写成可选。
+ * WebView → Extension messages.
+ * Every field reflects the sender's real constraints: fields the sender must
+ * provide are never optional.
+ *
+ * `baseSyncVersion` is the syncVersion of the last init/externalUpdate the
+ * webview applied; the extension drops content updates whose base doesn't
+ * match its current version (the webview serialized against stale content)
+ * and re-pushes the current state instead.
  */
 export type ToExtensionMessage =
     | { type: "ready" }
-    | { type: "update"; content: string }
+    | { type: "update"; content: string; baseSyncVersion: number }
     | { type: "openUrl"; url: string }
     | { type: "openFile"; path: string }
     | { type: "debug"; message: string }
@@ -77,7 +83,7 @@ export type ToExtensionMessage =
     | { type: "getPathSuggestions"; id: string; query: string }
     | { type: "getLinkTargetSuggestions"; id: string; query: string }
     | { type: "resolveImagePath"; id: string; relPath: string }
-    | { type: "frontmatterUpdate"; frontmatter: string }
+    | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }
     | { type: "setStyleCheckEnabled"; enabled: boolean }
@@ -86,12 +92,26 @@ export type ToExtensionMessage =
     | { type: "lintBlocks"; id: number; blocks: LintBlock[] };
 
 /**
- * Extension → WebView 方向的消息。
- * lineMap 在 init/revert 中为可选：Extension 始终发送，但 WebView 侧用 `?? []` 兜底以防万一。
+ * Extension → WebView messages.
+ *
+ * `lineMap` is optional on init/revert/externalUpdate: the extension always
+ * sends it, but the webview guards with `?? []` just in case.
+ *
+ * `syncVersion` is the extension's authoritative version counter. It is bumped
+ * on every externalUpdate push (external text-editor edit, undo/redo, git,
+ * hot-exit restore) and echoed back by the webview as `baseSyncVersion` on
+ * update/frontmatterUpdate, so the extension can drop content the webview
+ * serialized against a state it has since replaced.
+ *
+ * `externalUpdate` is a cursor-preserving inbound sync: unlike `revert` (a full
+ * editor rebuild that loses the selection), the webview applies it as a minimal
+ * ProseMirror diff so the caret and selection survive edits made elsewhere in
+ * the document. The webview falls back to a full rebuild on any diff failure.
  */
 export type ToWebviewMessage =
-    | { type: "init"; content: string; lineMap?: number[]; scrollToLine?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode }
+    | { type: "init"; content: string; lineMap?: number[]; scrollToLine?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
     | { type: "revert"; content: string; lineMap?: number[]; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode }
+    | { type: "externalUpdate"; content: string; lineMap?: number[]; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
     | { type: "scrollToLine"; line: number }
     | { type: "lineMapUpdate"; lineMap: number[] }
     | { type: "setDebugMode"; enabled: boolean }

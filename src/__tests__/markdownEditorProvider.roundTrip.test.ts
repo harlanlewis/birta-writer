@@ -141,7 +141,7 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             const newBody = "# Heading\n\nedited text here\n";
 
             // Act — webview posts the edited BODY
-            await handler({ type: "update", content: newBody });
+            await handler({ type: "update", content: newBody, baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(0); // flush the edit queue
 
             // Assert — the document is frontmatter + edited body, via a
@@ -169,7 +169,7 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             await handler({ type: "ready" });
 
             // Act — echo of the current body (e.g. serializer no-op)
-            await handler({ type: "update", content: BODY });
+            await handler({ type: "update", content: BODY, baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(2000);
 
             // Assert
@@ -183,11 +183,11 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             await handler({ type: "ready" });
 
             // Act — three updates inside one autosave debounce window
-            await handler({ type: "update", content: "one\n" });
+            await handler({ type: "update", content: "one\n", baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(300);
-            await handler({ type: "update", content: "two\n" });
+            await handler({ type: "update", content: "two\n", baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(300);
-            await handler({ type: "update", content: "three\n" });
+            await handler({ type: "update", content: "three\n", baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(1100);
 
             // Assert
@@ -204,7 +204,7 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             const webviewUri = vscode.Uri.file("/project/images/pic.png").toString();
 
             // Act — the webview serializes the display-space URI
-            await handler({ type: "update", content: `start\n\n![alt](${webviewUri})\n` });
+            await handler({ type: "update", content: `start\n\n![alt](${webviewUri})\n`, baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(0);
 
             // Assert — the file-space document never contains the webview URI
@@ -221,7 +221,7 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             const newFm = "---\ntitle: Renamed\ntags: [a, b]\n---\n";
 
             // Act
-            await handler({ type: "frontmatterUpdate", frontmatter: newFm });
+            await handler({ type: "frontmatterUpdate", frontmatter: newFm, baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(0);
 
             // Assert — the replace range starts at the top of the file and
@@ -244,7 +244,7 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             await handler({ type: "ready" });
 
             // Act
-            await handler({ type: "frontmatterUpdate", frontmatter: FM });
+            await handler({ type: "frontmatterUpdate", frontmatter: FM, baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(2000);
 
             // Assert

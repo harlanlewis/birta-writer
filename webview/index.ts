@@ -433,6 +433,7 @@ const handlers = createMessageHandlers({
         initEditor,
         retryScroll,
         getEditorView,
+        refreshToc: () => toc.refresh(),
     },
     topbarTb,
     themeOverrides: _themeOverrides,

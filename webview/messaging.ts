@@ -14,12 +14,22 @@ declare function acquireVsCodeApi(): {
 // acquireVsCodeApi 只能调用一次
 const vscode = acquireVsCodeApi();
 
+// The syncVersion of the last init/externalUpdate the webview applied. Echoed
+// back to the extension on every content update so it can drop edits the
+// webview serialized against a document state it has since replaced.
+let baseSyncVersion = 0;
+
+/** Records the version of the latest authoritative content the webview applied. */
+export function setBaseSyncVersion(version: number): void {
+    baseSyncVersion = version;
+}
+
 export function notifyReady(): void {
     vscode.postMessage({ type: "ready" });
 }
 
 export function notifyUpdate(markdown: string): void {
-    vscode.postMessage({ type: "update", content: markdown });
+    vscode.postMessage({ type: "update", content: markdown, baseSyncVersion });
 }
 
 export function notifyOpenUrl(url: string): void {
@@ -72,7 +82,7 @@ export function notifyRenameImage(
 }
 
 export function notifyFrontmatterUpdate(frontmatter: string): void {
-    vscode.postMessage({ type: "frontmatterUpdate", frontmatter });
+    vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
 }
 
 export function notifyRequestFmSuggestions(key: string): void {
