@@ -29,6 +29,21 @@ export type LinkTargetSuggestionItem = {
 /** 表格换行模式 */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
+/** One text block sent for grammar/spell linting (key = block position). */
+export type LintBlock = { key: number; text: string };
+
+/** A Harper finding mapped to plain data: char span within the block text. */
+export type HarperLint = {
+    start: number;
+    end: number;
+    /** Harper's pretty kind, e.g. "Spelling", "Grammar", "Redundancy" */
+    kind: string;
+    message: string;
+    suggestions: string[];
+};
+
+export type LintBlockResult = { key: number; lints: HarperLint[] };
+
 /** Proofread (style check + spell check) configuration snapshot */
 export type ProofreadConfig = {
     /** Style check master switch (fillers/redundancies/clichés/repeated-word strikethrough) */
@@ -67,7 +82,8 @@ export type ToExtensionMessage =
     | { type: "tocWidth"; width: number }
     | { type: "setStyleCheckEnabled"; enabled: boolean }
     | { type: "setSpellCheckEnabled"; enabled: boolean }
-    | { type: "spellAddWord"; word: string };
+    | { type: "spellAddWord"; word: string }
+    | { type: "lintBlocks"; id: number; blocks: LintBlock[] };
 
 /**
  * Extension → WebView 方向的消息。
@@ -91,4 +107,5 @@ export type ToWebviewMessage =
     | { type: "setTheme"; colors: Record<string, string> }
     | { type: "setTableWrap"; wrap: TableWrapMode }
     | { type: "fmSuggestions"; key: string; values: string[] }
-    | { type: "proofreadConfig"; config: ProofreadConfig };
+    | { type: "proofreadConfig"; config: ProofreadConfig }
+    | { type: "lintResults"; id: number; results: LintBlockResult[] };

@@ -15,9 +15,17 @@
     }
 }
 
-/* Spell-check hits: dotted underline, native-spellcheck look */
+/* Spelling hits: dotted underline, native-spellcheck look */
 .pf-spell-err {
     text-decoration: underline dotted var(--vscode-editorWarning-foreground, #cca700);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
+/* Grammar/style findings from Harper: quieter dotted underline */
+.pf-lint-err {
+    text-decoration: underline dotted var(--vscode-editorInfo-foreground, #3794ff);
     text-decoration-skip-ink: none;
     text-underline-offset: 3px;
     cursor: pointer;
@@ -65,10 +73,12 @@
     padding-top: 6px;
 }
 
-.pf-popup-empty {
-    padding: 4px 8px;
+.pf-popup-message {
+    padding: 4px 8px 6px;
     color: var(--vscode-descriptionForeground);
-    font-style: italic;
+    border-bottom: 1px solid var(--vscode-editorWidget-border);
+    margin-bottom: 2px;
+    max-width: 240px;
 }
 
 /* Toolbar toggle "on" state — the inputOption vars are VS Code's own

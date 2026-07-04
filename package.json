@@ -2,7 +2,7 @@
     "name": "md-wysiwyg-editor",
     "displayName": "WYSIWYG Markdown Editor",
     "description": "WYSIWYG Markdown editor with live table editing",
-    "version": "0.1.18",
+    "version": "0.2.0",
     "publisher": "harlanlewis",
     "engines": {
         "vscode": "^1.80.0"
@@ -438,8 +438,8 @@
         "@milkdown/transformer": "^7.5.0",
         "@milkdown/utils": "^7.19.0",
         "dompurify": "^3.4.11",
+        "harper.js": "^2.4.0",
         "mermaid": "^11.0.0",
-        "nspell": "^2.1.5",
         "prosemirror-tables": "^1.8.5",
         "refractor": "^5.0.0"
     }

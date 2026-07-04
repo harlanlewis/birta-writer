@@ -18,6 +18,7 @@ import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./compone
 import { setDebugMode } from "./components/table/addButtons";
 import { setLogTableSel } from "./editor";
 import { setProofreadConfig } from "./plugins";
+import { applyLintResults } from "./plugins/proofread";
 import { notifySwitchToTextEditor, getWebviewState } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
@@ -247,6 +248,9 @@ export function createMessageHandlers(
             if (view) {
                 setProofreadConfig(view, msg.config);
             }
+        },
+        lintResults(msg) {
+            applyLintResults(msg.id, msg.results);
         },
     };
 }

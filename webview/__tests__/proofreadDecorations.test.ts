@@ -54,7 +54,8 @@ describe("computeDecorations", () => {
             schema.node("paragraph", null, [schema.text("The end result was fine.")]),
         ]);
 
-        expect(decoratedTexts(doc)).toEqual(["end result"]);
+        // iA-style sub-span strike: only the deletable "end" is flagged
+        expect(decoratedTexts(doc)).toEqual(["end"]);
     });
 
     it("a filler inside a code block should not be decorated", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { compileStyleMatcher, findRepeatedWords, type StyleCategory } from "../utils/styleMatcher";
+import { compileStyleMatcher, findRepeatedWords, parseEntry, type StyleCategory } from "../utils/styleMatcher";
 import { CLICHES, FILLERS, REDUNDANCIES } from "../proofread/wordlists";
 
 const LISTS = { fillers: FILLERS, redundancies: REDUNDANCIES, cliches: CLICHES };
@@ -49,7 +49,7 @@ describe("compileStyleMatcher", () => {
         expect(text.slice(cliche!.start, cliche!.end)).toBe("think outside   the box");
     });
 
-    it("a redundancy phrase should be matched and categorized", () => {
+    it("a redundancy should strike only the deletable sub-span (iA-style)", () => {
         const matcher = makeMatcher();
         const text = "The end result was fine.";
 
@@ -57,7 +57,48 @@ describe("compileStyleMatcher", () => {
 
         expect(matches).toHaveLength(1);
         expect(matches[0].category).toBe("redundancies");
-        expect(text.slice(matches[0].start, matches[0].end)).toBe("end result");
+        // Entry is "~~end~~ result": only "end" is struck
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("end");
+    });
+
+    it("a trailing deletable sub-span should be struck ('combine together' → 'together')", () => {
+        const matcher = makeMatcher();
+        const text = "We combine together the parts.";
+
+        const matches = matcher(text);
+
+        expect(matches).toHaveLength(1);
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("together");
+    });
+
+    it("an inflected redundancy variant should be matched", () => {
+        const matcher = makeMatcher();
+        const text = "It combines together the parts.";
+
+        const matches = matcher(text);
+
+        expect(matches).toHaveLength(1);
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("together");
+    });
+
+    it("a filler (no markers) should strike the whole match", () => {
+        const matcher = makeMatcher();
+        const text = "This is pretty much done.";
+
+        const matches = matcher(text);
+
+        expect(matches).toHaveLength(1);
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("pretty much");
+    });
+
+    it("sub-span offsets should survive widened whitespace in the match", () => {
+        const matcher = makeMatcher();
+        const text = "We combine   together the parts.";
+
+        const matches = matcher(text);
+
+        expect(matches).toHaveLength(1);
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("together");
     });
 
     it("a disabled category should produce no matches", () => {
@@ -77,6 +118,12 @@ describe("compileStyleMatcher", () => {
         expect(matches.length).toBeGreaterThanOrEqual(3);
         const starts = matches.map((m) => m.start);
         expect(starts).toEqual([...starts].sort((a, b) => a - b));
+    });
+
+    it("an exception should also suppress an entry written with markers", () => {
+        const matcher = makeMatcher(ALL_ON, ["end result"]);
+
+        expect(matcher("The end result was fine.")).toHaveLength(0);
     });
 
     it("empty text should produce no matches", () => {
@@ -167,17 +214,25 @@ describe("findRepeatedWords", () => {
 });
 
 describe("wordlists", () => {
-    it("no phrase should appear in more than one category", () => {
+    it("no phrase should appear in more than one category (markers ignored)", () => {
         const seen = new Map<string, StyleCategory>();
         const duplicates: string[] = [];
         for (const [category, list] of Object.entries(LISTS) as Array<[StyleCategory, readonly string[]]>) {
-            for (const phrase of list) {
+            for (const entry of list) {
+                const phrase = parseEntry(entry).phrase;
                 if (seen.has(phrase)) { duplicates.push(phrase); }
                 seen.set(phrase, category);
             }
         }
 
         expect(duplicates).toEqual([]);
+    });
+
+    it("marker syntax should parse into the expected strike ranges", () => {
+        expect(parseEntry("combine ~~together~~")).toEqual({ phrase: "combine together", strikes: [[1, 1]] });
+        expect(parseEntry("~~basic~~ fundamentals")).toEqual({ phrase: "basic fundamentals", strikes: [[0, 0]] });
+        expect(parseEntry("~~each and~~ every")).toEqual({ phrase: "each and every", strikes: [[0, 1]] });
+        expect(parseEntry("plain phrase")).toEqual({ phrase: "plain phrase", strikes: null });
     });
 
     it("every phrase should be lowercase and trimmed", () => {

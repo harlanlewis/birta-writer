@@ -2,18 +2,11 @@
 
 This extension bundles data and code from the following open-source projects.
 
-## nspell
+## Harper
 
-Hunspell-compatible spell checker, bundled into the webview script.
-https://github.com/wooorm/nspell — MIT License, © Titus Wormer.
-
-## dictionary-en
-
-English Hunspell dictionary (`en.aff`/`en.dic`, vendored under
-`webview/proofread/dict/` and bundled into the webview script).
-https://github.com/wooorm/dictionaries — MIT License, © Titus Wormer;
-dictionary files themselves via http://wordlist.aspell.net/ — BSD-style
-licenses, © Kevin Atkinson et al. (full text in `webview/proofread/dict/LICENSE`).
+Offline grammar and spell checker (`harper.js` + `harper_wasm_bg.wasm`,
+bundled into the extension host).
+https://github.com/Automattic/harper — Apache License 2.0, © Automattic.
 
 ## no-cliches
 

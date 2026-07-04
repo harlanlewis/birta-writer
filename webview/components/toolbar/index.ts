@@ -1229,7 +1229,7 @@ export function initToolbar(
         setProofreadConfig(view, next);
         notifySetStyleCheckEnabled(next.styleCheck);
     });
-    const spellCheckBtn = btn(IconSpellCheck, t("Spell check"), () => {
+    const spellCheckBtn = btn(IconSpellCheck, t("Spelling & grammar"), () => {
         const view = getEditorView();
         if (!view) { return; }
         const cfg = getProofreadConfig(view);

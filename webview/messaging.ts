@@ -95,6 +95,10 @@ export function notifySpellAddWord(word: string): void {
     vscode.postMessage({ type: "spellAddWord", word });
 }
 
+export function notifyLintBlocks(id: number, blocks: import("../shared/messages").LintBlock[]): void {
+    vscode.postMessage({ type: "lintBlocks", id, blocks });
+}
+
 export function onMessage(handler: (msg: IncomingMessage) => void): void {
     window.addEventListener("message", (event: MessageEvent) => {
         handler(event.data as IncomingMessage);

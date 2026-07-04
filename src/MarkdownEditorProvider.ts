@@ -9,6 +9,7 @@ import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransf
 import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
+import { lintBlocks } from "./utils/harperService";
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig } from "../shared/messages";
 
@@ -569,6 +570,19 @@ export class MarkdownEditorProvider
                         break;
                     case "spellAddWord":
                         this._handleSpellAddWord(message.word);
+                        break;
+                    case "lintBlocks":
+                        lintBlocks(message.blocks)
+                            .then((results) => {
+                                void webviewPanel.webview.postMessage({
+                                    type: "lintResults",
+                                    id: message.id,
+                                    results,
+                                } satisfies ToWebviewMessage);
+                            })
+                            .catch((err) => {
+                                console.error("[markdownWysiwyg] harper lint failed", err);
+                            });
                         break;
                 }
             },

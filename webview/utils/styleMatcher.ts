@@ -5,6 +5,9 @@
  *   case-insensitive alternation regex per category. Deliberately
  *   regex-simple (no lookaround), following iA Writer's documented choice
  *   for keystroke-time matching performance.
+ * - Entries may carry iA-style `~~ ~~` markers around the deletable
+ *   sub-span; matches then strike only that sub-span ("combine ~~together~~"
+ *   matches "combine together" but flags just "together").
  * - Repeated-word detection ("the the") is a small logic check with the
  *   usual exception list (had had, that that…).
  */
@@ -12,9 +15,9 @@
 export type StyleCategory = "fillers" | "redundancies" | "cliches" | "repeated";
 
 export type StyleMatch = {
-    /** 0-indexed character offset of the match start (inclusive) */
+    /** 0-indexed character offset of the flagged span start (inclusive) */
     start: number;
-    /** 0-indexed character offset of the match end (exclusive) */
+    /** 0-indexed character offset of the flagged span end (exclusive) */
     end: number;
     category: StyleCategory;
 };
@@ -23,8 +26,45 @@ function escapeRegExp(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function normalizePhrase(s: string): string {
+    return s.toLowerCase().replace(/’/g, "'").replace(/\s+/g, " ").trim();
+}
+
+/** Word-index ranges (inclusive) of the `~~ ~~`-marked words in an entry. */
+type StrikeRanges = Array<[number, number]> | null;
+
+type ParsedEntry = {
+    /** The entry with markers stripped: the full phrase to match */
+    phrase: string;
+    /** Which words of the phrase get struck; null = the whole match */
+    strikes: StrikeRanges;
+};
+
+/** Parse an entry's `~~ ~~` markers into word-index strike ranges. */
+export function parseEntry(entry: string): ParsedEntry {
+    if (!entry.includes("~~")) { return { phrase: entry, strikes: null }; }
+    const ranges: Array<[number, number]> = [];
+    let wordIndex = 0;
+    let inStrike = false;
+    let strikeStart = 0;
+    for (const token of entry.split(/\s+/)) {
+        let word = token;
+        if (word.startsWith("~~")) { inStrike = true; strikeStart = wordIndex; word = word.slice(2); }
+        const closes = word.endsWith("~~");
+        if (closes) { word = word.slice(0, -2); }
+        if (word.length > 0) {
+            if (closes && inStrike) { ranges.push([strikeStart, wordIndex]); inStrike = false; }
+            wordIndex++;
+        } else if (closes) {
+            inStrike = false;
+        }
+    }
+    if (inStrike) { ranges.push([strikeStart, wordIndex - 1]); }
+    return { phrase: entry.replace(/~~/g, ""), strikes: ranges.length > 0 ? ranges : null };
+}
+
 /**
- * Build one word-bounded alternation regex from a phrase list.
+ * Build one word-bounded alternation regex from parsed phrases.
  * Longer phrases are listed first so "pretty much" wins over "pretty";
  * literal spaces match any whitespace run; ASCII apostrophes in a phrase
  * also match typographic ones in the document. Word boundaries are only
@@ -70,21 +110,61 @@ function isVetoed(text: string, start: number, end: number): boolean {
 }
 
 /**
+ * Map a match's strike word-ranges to character spans within the matched
+ * text. The matched text's words correspond 1:1 to the phrase's words
+ * (the regex only widens whitespace and apostrophes, never word count).
+ */
+function strikeSpans(
+    matched: string,
+    matchStart: number,
+    strikes: Array<[number, number]>,
+    category: StyleCategory,
+): StyleMatch[] {
+    const words: Array<{ start: number; end: number }> = [];
+    const re = /\S+/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(matched)) !== null) {
+        words.push({ start: m.index, end: m.index + m[0].length });
+    }
+    const spans: StyleMatch[] = [];
+    for (const [from, to] of strikes) {
+        if (from >= words.length) { continue; }
+        const last = Math.min(to, words.length - 1);
+        spans.push({
+            start: matchStart + words[from].start,
+            end: matchStart + words[last].end,
+            category,
+        });
+    }
+    return spans;
+}
+
+/**
  * Compile enabled category lists into a single matcher function.
- * Phrases in `exceptions` (user's escape valve, compared lowercase) are
- * removed before compiling. The matcher returns matches sorted by start
- * offset; overlapping matches from different categories are all reported.
+ * Phrases in `exceptions` (user's escape valve, compared lowercase,
+ * markers ignored) are removed before compiling. The matcher returns
+ * flagged spans sorted by start offset.
  */
 export function compileStyleMatcher(
     lists: Record<Exclude<StyleCategory, "repeated">, readonly string[]>,
     enabled: Record<Exclude<StyleCategory, "repeated">, boolean>,
     exceptions: readonly string[] = [],
 ): StyleMatcher {
-    const excluded = new Set(exceptions.map((p) => p.toLowerCase().replace(/’/g, "'").trim()));
+    const excluded = new Set(exceptions.map((p) => normalizePhrase(p.replace(/~~/g, ""))));
     const compiled: Array<{ category: StyleCategory; regex: RegExp }> = [];
+    // Strike ranges per normalized phrase, shared across categories
+    const strikesByPhrase = new Map<string, StrikeRanges>();
+
     for (const category of ["fillers", "redundancies", "cliches"] as const) {
         if (!enabled[category]) { continue; }
-        const regex = compileList(lists[category].filter((p) => !excluded.has(p)));
+        const phrases: string[] = [];
+        for (const entry of lists[category]) {
+            const parsed = parseEntry(entry);
+            if (excluded.has(normalizePhrase(parsed.phrase))) { continue; }
+            phrases.push(parsed.phrase);
+            strikesByPhrase.set(normalizePhrase(parsed.phrase), parsed.strikes);
+        }
+        const regex = compileList(phrases);
         if (regex) { compiled.push({ category, regex }); }
     }
 
@@ -97,7 +177,12 @@ export function compileStyleMatcher(
                 const start = m.index;
                 const end = m.index + m[0].length;
                 if (!isVetoed(text, start, end)) {
-                    matches.push({ start, end, category });
+                    const strikes = strikesByPhrase.get(normalizePhrase(m[0]));
+                    if (strikes) {
+                        matches.push(...strikeSpans(m[0], start, strikes, category));
+                    } else {
+                        matches.push({ start, end, category });
+                    }
                 }
                 // Guard against zero-length matches looping forever
                 if (m[0].length === 0) { regex.lastIndex++; }

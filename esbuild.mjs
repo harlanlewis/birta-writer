@@ -1,4 +1,5 @@
 import * as esbuild from 'esbuild';
+import fs from 'fs';
 import path from 'path';
 
 const isProduction = process.argv.includes('--production');
@@ -11,7 +12,7 @@ const commonOptions = {
     logLevel: 'info',
 };
 
-// Extension 主进程（Node.js）
+// Extension host (Node.js)
 const extensionBuild = {
     ...commonOptions,
     entryPoints: ['src/extension.ts'],
@@ -20,7 +21,21 @@ const extensionBuild = {
     target: 'node18',
     format: 'cjs',
     external: ['vscode'],
+    alias: {
+        // harper.js publishes ESM-only exports; point at its entry so the
+        // CJS extension bundle can inline it.
+        'harper.js': path.resolve('./node_modules/harper.js/dist/index.js'),
+    },
 };
+
+// Harper's WASM binary is loaded from dist/ at runtime (see harperService.ts)
+function copyHarperWasm() {
+    fs.mkdirSync('dist', { recursive: true });
+    fs.copyFileSync(
+        path.resolve('./node_modules/harper.js/dist/harper_wasm_bg.wasm'),
+        path.resolve('./dist/harper_wasm_bg.wasm'),
+    );
+}
 
 // WebView 前端（Browser）- ESM + code splitting，Mermaid 等懒加载
 const webviewBuild = {
@@ -34,14 +49,13 @@ const webviewBuild = {
     chunkNames: 'chunks/[name]-[hash]',
     loader: {
         '.ttf': 'dataurl',
-        // Hunspell dictionary files for the bundled spell check (lazy chunk)
-        '.aff': 'text',
-        '.dic': 'text',
     },
     alias: {
         '@': path.resolve('./webview'),
     },
 };
+
+copyHarperWasm();
 
 if (isWatch) {
     const [ctx1, ctx2] = await Promise.all([

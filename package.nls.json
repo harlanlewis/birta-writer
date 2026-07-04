@@ -49,7 +49,7 @@
   "config.styleCheck.fillers.description": "Style check: flag filler words (basically, really, very...).",
   "config.styleCheck.redundancies.description": "Style check: flag redundant phrases (end result, revert back...).",
   "config.styleCheck.cliches.description": "Style check: flag cliches (low-hanging fruit, moving forward...).",
-  "config.spellCheck.enabled.description": "Underline unknown English words using the bundled dictionary (offline, English only). Code, URLs, and identifiers are skipped.",
+  "config.spellCheck.enabled.description": "Spelling & grammar: check English text with Harper (offline, on-device). Findings show as dotted underlines; click one for suggestions. Code, URLs, and identifiers are skipped.",
   "config.spellCheck.userWords.description": "Your personal dictionary: words the spell check treats as correct. Managed via 'Add to dictionary' in the editor's suggestion popup.",
   "config.styleCheck.exceptions.description": "Phrases the style check must never flag, e.g. a filler word you use deliberately. Case-insensitive.",
   "command.toggleStyleCheck.title": "Toggle Style Check"

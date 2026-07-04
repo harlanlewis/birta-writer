@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { blockPlainText } from "../plugins/proofread";
-import { INLINE_PLACEHOLDER } from "../utils/spellTokenizer";
+import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";
 
 /** Minimal structural stand-in for a ProseMirror textblock node. */
 type FakeChild = {
