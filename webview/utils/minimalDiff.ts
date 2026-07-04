@@ -217,6 +217,33 @@ export function computeRoundTripProtection(
     baselineSerialized: string,
 ): RoundTripProtection | null {
     const { edits, savedLines } = computeEditScript(saved, baselineSerialized);
+    if (!edits.some((e) => e.op !== "keep")) return null;
+
+    // Self-check: protection must reproduce the saved bytes exactly when the
+    // serializer output is the baseline itself. The per-construct split
+    // pairs del/ins adjacency groups positionally, which can mis-pair exotic
+    // runs (e.g. a dropped construct sharing a run with a construct whose
+    // canonical form has a different line count) — repairing with wrong
+    // bytes is worse than canonicalization, so fall back to the fused
+    // region, and if even that cannot reproduce the baseline, ship no
+    // protection at all.
+    for (const allowSplit of [true, false]) {
+        const regions = buildProtectedRegions(edits, savedLines, allowSplit);
+        if (regions.length === 0) return null;
+        const protection = { regions };
+        if (applyMinimalChanges(saved, baselineSerialized, protection) === saved) {
+            return protection;
+        }
+    }
+    return null;
+}
+
+/** Build protected regions from a baseline edit script. */
+function buildProtectedRegions(
+    edits: Edit[],
+    savedLines: string[],
+    allowSplit: boolean,
+): ProtectedRegion[] {
     const regions: ProtectedRegion[] = [];
 
     // Collect contiguous non-keep runs together with their surrounding keeps.
@@ -241,7 +268,7 @@ export function computeRoundTripProtection(
         // become an all-or-nothing region: editing one would unprotect both.
         const delGroups = groupByAdjacency(dels.map((d) => d.saved));
         const insGroups = inses.length > 0 ? groupByAdjacency(inses.map((i) => i.serial)) : [];
-        const pairable = insGroups.length > 0 && delGroups.length === insGroups.length;
+        const pairable = allowSplit && insGroups.length > 0 && delGroups.length === insGroups.length;
         const subRegions = pairable
             ? delGroups.map((dg, gi) => ({ delSpan: dg, insSpan: insGroups[gi] }))
             : [{ delSpan: dels.map((d) => d.saved), insSpan: inses.map((i) => i.serial) }];
@@ -257,7 +284,7 @@ export function computeRoundTripProtection(
             });
         }
     }
-    return regions.length > 0 ? { regions } : null;
+    return regions;
 }
 
 /** Group significant lines into runs of consecutive lineIdx values. */
@@ -287,10 +314,33 @@ function repairSerialized(serialized: string, protection: RoundTripProtection): 
         const norms = sig.map((l) => normLineForCompare(l.text));
 
         if (region.insNorms.length > 0) {
-            const at = findContiguous(norms, region.insNorms, cursorSigIndex(sig, cursor));
-            if (at === -1) continue; // construct edited/removed by the user
-            const firstRaw = sig[at].lineIdx;
-            const lastRaw = sig[at + region.insNorms.length - 1].lineIdx;
+            // Score every candidate occurrence by how well its neighborhood
+            // matches the construct's recorded anchors, and require at least
+            // one anchor hit. This keeps a canonical-form TWIN elsewhere in
+            // the document (e.g. a genuine `# Title` next to a protected
+            // setext `Title/====`) from being mistaken for the construct
+            // when the construct itself was edited or removed.
+            const len = region.insNorms.length;
+            let best = -1;
+            let bestScore = 0;
+            for (
+                let at = findContiguous(norms, region.insNorms, cursorSigIndex(sig, cursor));
+                at !== -1;
+                at = findContiguous(norms, region.insNorms, at + 1)
+            ) {
+                const prevOk = region.anchorPrevNorm === null
+                    ? at === 0
+                    : norms[at - 1] === region.anchorPrevNorm;
+                const nextOk = region.anchorNextNorm === null
+                    ? at + len === norms.length
+                    : norms[at + len] === region.anchorNextNorm;
+                const score = (prevOk ? 1 : 0) + (nextOk ? 1 : 0);
+                if (score > bestScore) { best = at; bestScore = score; }
+                if (score === 2) break; // cannot be beaten; first wins ties
+            }
+            if (best === -1) continue; // construct edited/removed by the user
+            const firstRaw = sig[best].lineIdx;
+            const lastRaw = sig[best + len - 1].lineIdx;
             lines = [
                 ...lines.slice(0, firstRaw),
                 ...region.savedSpanLines,
@@ -298,13 +348,32 @@ function repairSerialized(serialized: string, protection: RoundTripProtection): 
             ];
             cursor = firstRaw + region.savedSpanLines.length;
         } else {
-            // Dropped construct: re-insert next to its anchor.
+            // Dropped construct: re-insert next to its anchor. Prefer the
+            // anchorPrev occurrence that is directly followed by anchorNext
+            // (they were adjacent at baseline), so a duplicate of the anchor
+            // line elsewhere cannot attract the construct.
             let rawAt = -1;
             if (region.anchorPrevNorm !== null) {
-                const i = norms.indexOf(region.anchorPrevNorm, cursorSigIndex(sig, cursor));
-                if (i !== -1) rawAt = sig[i].lineIdx + 1;
+                let fallback = -1;
+                for (
+                    let i = norms.indexOf(region.anchorPrevNorm, cursorSigIndex(sig, cursor));
+                    i !== -1;
+                    i = norms.indexOf(region.anchorPrevNorm, i + 1)
+                ) {
+                    if (fallback === -1) fallback = i;
+                    const nextOk = region.anchorNextNorm === null
+                        ? i === norms.length - 1
+                        : norms[i + 1] === region.anchorNextNorm;
+                    if (nextOk) { fallback = i; break; }
+                }
+                if (fallback !== -1) rawAt = sig[fallback].lineIdx + 1;
+            } else if (region.anchorNextNorm === null) {
+                rawAt = 0; // construct was the whole document
             } else {
-                rawAt = 0; // construct opened the document
+                // Construct opened the document: insert before anchorNext if
+                // it survives (a new first paragraph must stay first).
+                const i = norms.indexOf(region.anchorNextNorm, cursorSigIndex(sig, cursor));
+                rawAt = i !== -1 ? sig[i].lineIdx : 0;
             }
             if (rawAt === -1 && region.anchorNextNorm !== null) {
                 const i = norms.indexOf(region.anchorNextNorm, cursorSigIndex(sig, cursor));

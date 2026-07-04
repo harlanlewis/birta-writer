@@ -217,3 +217,62 @@ describe("applyMinimalChanges — performance", () => {
         expect(elapsed).toBeLessThan(100);
     });
 });
+
+describe("applyMinimalChanges with protection — anchor disambiguation (round-2 regressions)", () => {
+    it("deleting a protected setext heading should not steal its ATX twin's bytes", () => {
+        // The doc contains a protected setext heading AND a genuine ATX twin
+        // with the same text. Deleting the setext heading must delete it —
+        // not rewrite the twin back to setext form.
+        const saved = "Title\n=====\n\nmid para\n\n# Title\n";
+        const baseline = "# Title\n\nmid para\n\n# Title\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+        expect(applyMinimalChanges(saved, baseline, protection)).toBe(saved);
+
+        const serializedAfterDelete = "mid para\n\n# Title\n";
+        const merged = applyMinimalChanges(saved, serializedAfterDelete, protection);
+
+        expect(merged).toBe("mid para\n\n# Title\n");
+    });
+
+    it("a duplicate anchor line should not relocate a dropped construct on a zero-edit save", () => {
+        // The construct's preceding line ("dup") also appears earlier in the
+        // document; the re-insertion must use the occurrence that is
+        // followed by the construct's other anchor ("end").
+        const saved = "dup\n\nother\n\ndup\n\nDROPPED CONSTRUCT\n\nend\n";
+        const baseline = "dup\n\nother\n\ndup\n\nend\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+
+        expect(applyMinimalChanges(saved, baseline, protection)).toBe(saved);
+    });
+
+    it("a new paragraph typed above a dropped doc-opening construct should stay first", () => {
+        const saved = "DROPPED CONSTRUCT\n\nfirst para\n";
+        const baseline = "first para\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+        expect(applyMinimalChanges(saved, baseline, protection)).toBe(saved);
+
+        const serializedAfterEdit = "NEW first\n\nfirst para\n";
+        const merged = applyMinimalChanges(saved, serializedAfterEdit, protection);
+
+        const lines = merged.split("\n").filter((l) => l.trim() !== "");
+        expect(lines[0]).toBe("NEW first");
+        expect(merged).toContain("DROPPED CONSTRUCT");
+        expect(merged).toContain("first para");
+    });
+
+    it("protection that cannot reproduce the baseline byte-exactly should never ship", () => {
+        // Fuzz-style safety property: for any (saved, baseline) pair,
+        // computeRoundTripProtection must be identity-safe on its own input.
+        const cases: Array<[string, string]> = [
+            ["A\n=\n\nB\n=\n\nC\n", "# A\n\n# B\n\nC\n"],
+            ["x [a]\n\nDROP1\n\ny\n\nDROP2\n\nz\n", "x \\[a]\n\ny\n\nz\n"],
+            ["one\ntwo\nthree\n", "one\n\nthree\n"],
+        ];
+        for (const [saved, baseline] of cases) {
+            const protection = computeRoundTripProtection(saved, baseline);
+            if (protection) {
+                expect(applyMinimalChanges(saved, baseline, protection)).toBe(saved);
+            }
+        }
+    });
+});
