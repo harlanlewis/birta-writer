@@ -1019,3 +1019,9 @@ body.editor-width-auto {
         color: var(--vscode-descriptionForeground);
     }
 }
+
+/* Link URL autocompletion dropdown (link popup / insert-link prompt): shares
+   the fm-suggest look; only the width cap differs, file paths run long */
+.fm-suggest-menu.link-target-menu {
+    max-width: 480px;
+}

@@ -18,6 +18,14 @@ export type PathSuggestionItem = {
     webviewUri?: string;  // 仅图片文件时返回，供缩略图预览
 };
 
+/** Link target suggestion: one workspace file in both of its addressable forms */
+export type LinkTargetSuggestionItem = {
+    /** Path relative to the current document (e.g. "../notion/index.md") */
+    relative: string;
+    /** Workspace-root-based path with a leading slash (e.g. "/write/notion/index.md") */
+    rootRelative: string;
+};
+
 /** 表格换行模式 */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
@@ -38,6 +46,7 @@ export type ToExtensionMessage =
     | { type: "getProjectImages"; id: string }
     | { type: "renameImage"; id: string; webviewUri: string; newBasename: string }
     | { type: "getPathSuggestions"; id: string; query: string }
+    | { type: "getLinkTargetSuggestions"; id: string; query: string }
     | { type: "resolveImagePath"; id: string; relPath: string }
     | { type: "frontmatterUpdate"; frontmatter: string }
     | { type: "requestFmSuggestions"; key: string }
@@ -60,6 +69,7 @@ export type ToWebviewMessage =
     | { type: "imageRenameError"; id: string; error: string }
     | { type: "requestSwitchToTextEditor" }
     | { type: "pathSuggestions"; id: string; items: PathSuggestionItem[] }
+    | { type: "linkTargetSuggestions"; id: string; items: LinkTargetSuggestionItem[] }
     | { type: "imagePathResolved"; id: string; webviewUri: string }
     | { type: "setTheme"; colors: Record<string, string> }
     | { type: "setTableWrap"; wrap: TableWrapMode }

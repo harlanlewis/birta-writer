@@ -46,6 +46,7 @@ import { sampleDocPosition } from "../selectionToolbar";
 import { notifyOpenSettings, notifyGetProjectImages } from "@/messaging";
 import { createButton, createSeparator } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
+import { attachLinkTargetComplete } from '../pathLink/linkTargetComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
 import './toolbar.css';
 
@@ -139,7 +140,10 @@ function showInlineLinkPrompt(
     // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
     const detachUndoFns = [attachInputUndo(textInput), attachInputUndo(urlInput)];
 
-    // 定位到按钮下方
+    // Workspace file autocompletion on the URL field (local link targets)
+    const detachLinkComplete = attachLinkTargetComplete(urlInput);
+
+    // Position the overlay below the toolbar button
     const rect = near.getBoundingClientRect();
     overlay.style.top = `${rect.bottom + 4}px`;
     overlay.style.left = `${rect.left}px`;
@@ -161,6 +165,7 @@ function showInlineLinkPrompt(
 
     function cleanup(): void {
         detachUndoFns.forEach((detach) => detach());
+        detachLinkComplete();
         if (document.body.contains(overlay)) {
             document.body.removeChild(overlay);
         }

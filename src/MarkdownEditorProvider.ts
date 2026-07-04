@@ -7,6 +7,8 @@ import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
 import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
+import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
+import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode } from "../shared/messages";
 
@@ -56,6 +58,11 @@ export class MarkdownEditorProvider
     // repeated "+" menu opens stay snappy (fsPath → key → list values).
     private _fmScanCache: { perFile: Map<string, ReadonlyMap<string, string[]>>; expires: number } | undefined;
     private static readonly _FM_SCAN_TTL_MS = 30_000;
+
+    // Workspace file list cache for link target suggestions — avoids re-running
+    // findFiles on every debounced keystroke in a link URL input.
+    private _linkFileCache: { uris: vscode.Uri[]; expires: number } | undefined;
+    private static readonly _LINK_FILE_TTL_MS = 10_000;
     /** While switchToTextEditor is in progress, suppress onDidChangeTabs from switching the text tab back to WYSIWYG */
     public static readonly suppressAutoSwitch = new Set<string>();
 
@@ -541,6 +548,11 @@ export class MarkdownEditorProvider
                     case "getPathSuggestions":
                         if (message.id && message.query !== undefined) {
                             this._handleGetPathSuggestions(document, panel, message.id, message.query).catch(() => {});
+                        }
+                        break;
+                    case "getLinkTargetSuggestions":
+                        if (message.id && message.query !== undefined) {
+                            this._handleGetLinkTargetSuggestions(document, panel, message.id, message.query).catch(() => {});
                         }
                         break;
                     case "resolveImagePath":
@@ -1332,6 +1344,51 @@ export class MarkdownEditorProvider
             });
 
         panel.webview.postMessage({ type: 'pathSuggestions', id, items });
+    }
+
+    /**
+     * Workspace-wide file suggestions for link URL inputs (link popup /
+     * insert-link prompt): case-insensitive substring match on the path,
+     * markdown files first. Each match is replied in BOTH document-relative
+     * and root-relative form; the WebView picks the form matching what the
+     * user typed. External queries (http/https/mailto/#) get no suggestions.
+     */
+    private async _handleGetLinkTargetSuggestions(
+        document: MarkdownDocument,
+        panel: vscode.WebviewPanel,
+        id: string,
+        query: string,
+    ): Promise<void> {
+        const post = (items: ReturnType<typeof rankLinkTargets>) =>
+            panel.webview.postMessage({ type: 'linkTargetSuggestions', id, items });
+
+        if (!isLocalPathQuery(query) || document.uri.scheme !== 'file') {
+            post([]);
+            return;
+        }
+        const workspaceRoot = (vscode.workspace.getWorkspaceFolder(document.uri)
+            ?? vscode.workspace.workspaceFolders?.[0])?.uri.fsPath;
+        if (!workspaceRoot) {
+            post([]);
+            return;
+        }
+
+        const now = Date.now();
+        if (!this._linkFileCache || now >= this._linkFileCache.expires) {
+            const uris = await vscode.workspace.findFiles(
+                '**/*',
+                '{**/node_modules/**,**/.git/**,**/dist/**,**/releases/**}',
+                2000,
+            );
+            this._linkFileCache = { uris, expires: now + MarkdownEditorProvider._LINK_FILE_TTL_MS };
+        }
+
+        const candidates = buildLinkTargetItems(
+            this._linkFileCache.uris.map((u) => u.fsPath),
+            document.uri.fsPath,
+            workspaceRoot,
+        );
+        post(rankLinkTargets(candidates, query));
     }
 
     private _handleResolveImagePath(

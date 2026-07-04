@@ -13,6 +13,7 @@ import { editorViewCtx } from "@milkdown/core";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
+import { dispatchLinkTargetSuggestions } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setDebugMode } from "./components/table/addButtons";
 import { setLogTableSel } from "./editor";
@@ -213,6 +214,9 @@ export function createMessageHandlers(
         pathSuggestions(msg) {
             dispatchPathSuggestions(msg.id, msg.items);
             dispatchImgPathSuggestions(msg.id, msg.items);
+        },
+        linkTargetSuggestions(msg) {
+            dispatchLinkTargetSuggestions(msg.id, msg.items);
         },
         imagePathResolved(msg) {
             dispatchImagePathResolved(msg.id, msg.webviewUri);

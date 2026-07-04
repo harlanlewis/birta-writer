@@ -14,6 +14,7 @@ import { t } from "@/i18n";
 import { applyTooltip } from "@/ui/tooltip";
 import { slugify } from "@/utils/slug";
 import { attachInputUndo } from "@/utils/inputUndo";
+import { attachLinkTargetComplete } from "@/components/pathLink/linkTargetComplete";
 
 // ── 类型 ──────────────────────────────────────────────────────────────
 
@@ -493,6 +494,12 @@ export function setupLinkPopup(
     });
 
     // ── Input helpers ─────────────────────────────────────────────
+
+    // Workspace file autocompletion on the URL field (local link targets).
+    // Attached before the keydown handler below, but order does not matter:
+    // it listens in the capture phase and only intercepts keys while its
+    // dropdown is open.
+    attachLinkTargetComplete(inputUrl);
 
     [inputText, inputUrl].forEach((inp) => {
         // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
