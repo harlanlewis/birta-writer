@@ -3,6 +3,7 @@ import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import { getAllThemes, getThemeColors, getCustomThemes, type ThemeInfo } from "./themeManager";
 import type { TableWrapMode } from "../shared/messages";
 import { scanHeadings } from "./utils/headingScan";
+import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
 /**
  * Sync workbench.editorAssociations based on defaultMode:
@@ -373,6 +374,28 @@ export function activate(context: vscode.ExtensionContext) {
             },
         ),
     );
+
+    // MAR-9: editor action commands (command palette + right-click context
+    // menu). Every entry in the shared table registers one command that posts a
+    // single `editorCommand` message to the target webview, which dispatches it
+    // into the shared editor-command registry. A webview/context menu passes its
+    // `data-vscode-context` object as the first argument; we read `documentUri`
+    // from it as a belt-and-braces routing hint (falling back to the active
+    // panel). Palette visibility is gated in package.json.
+    for (const meta of EDITOR_COMMANDS) {
+        context.subscriptions.push(
+            vscode.commands.registerCommand(editorCommandName(meta.id), (arg?: unknown) => {
+                const documentUri =
+                    arg && typeof arg === "object" && "documentUri" in arg
+                        ? (arg as { documentUri?: unknown }).documentUri
+                        : undefined;
+                MarkdownEditorProvider.current?.postEditorCommand(
+                    meta.id,
+                    typeof documentUri === "string" ? documentUri : undefined,
+                );
+            }),
+        );
+    }
 
     // Open preview: text editor → WYSIWYG
     context.subscriptions.push(

@@ -1,25 +1,7 @@
-import { commandsCtx, editorViewCtx } from "@milkdown/core";
-import {
-    createCodeBlockCommand,
-    insertHrCommand,
-    toggleEmphasisCommand,
-    toggleInlineCodeCommand,
-    toggleStrongCommand,
-    turnIntoTextCommand,
-    wrapInBlockquoteCommand,
-    wrapInBulletListCommand,
-    wrapInHeadingCommand,
-    wrapInOrderedListCommand,
-} from "@milkdown/preset-commonmark";
-import {
-    insertTableCommand,
-    toggleStrikethroughCommand,
-} from "@milkdown/preset-gfm";
-import { insertFootnoteCommand } from "@/plugins";
-import { lift } from "@milkdown/prose/commands";
-import { TextSelection } from "@milkdown/prose/state";
+import { editorViewCtx } from "@milkdown/core";
 import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
+import { runEditorCommand, setEditorCommandHost } from "@/editorCommands";
 import {
     IconBold,
     IconItalic,
@@ -51,7 +33,6 @@ import { sampleDocPosition } from "../selectionToolbar";
 import { notifyOpenSettings, notifyGetProjectImages, notifySetStyleCheckEnabled, notifySetSpellCheckEnabled } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
-import { insertInlineMathCommand } from "@/plugins/math";
 import { createButton, createSeparator } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
 import { attachLinkTargetComplete } from '../pathLink/linkTargetComplete';
@@ -80,35 +61,7 @@ function btn(
     });
 }
 
-// 调用 Milkdown 命令：传 command.key（CmdKey），而非 command 本身
-function callCmd<T>(
-    getEditor: GetEditor,
-    command: { key: unknown },
-    payload?: T,
-): void {
-    const editor = getEditor();
-    if (!editor) {
-        return;
-    }
-    editor.action((ctx) => {
-        const mgr = ctx.get(commandsCtx);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        mgr.call(command.key as any, payload as any);
-    });
-}
-
-// 检查光标是否在指定节点类型内
-function isInNode(view: EditorView, typeName: string): boolean {
-    const { $from } = view.state.selection;
-    for (let depth = $from.depth; depth >= 0; depth--) {
-        if ($from.node(depth).type.name === typeName) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// 自定义内联链接输入框（文本 + URL 两个输入框）
+// Custom inline link prompt (two inputs: link text + URL)
 function showInlineLinkPrompt(
     near: HTMLElement,
     defaultText: string,
@@ -762,13 +715,13 @@ export function initToolbar(
     fmtMenu.style.display = "none";
 
     const formats: [string, () => void][] = [
-        ["P", () => callCmd(getEditor, turnIntoTextCommand)],
-        ["H1", () => callCmd(getEditor, wrapInHeadingCommand, 1)],
-        ["H2", () => callCmd(getEditor, wrapInHeadingCommand, 2)],
-        ["H3", () => callCmd(getEditor, wrapInHeadingCommand, 3)],
-        ["H4", () => callCmd(getEditor, wrapInHeadingCommand, 4)],
-        ["H5", () => callCmd(getEditor, wrapInHeadingCommand, 5)],
-        ["H6", () => callCmd(getEditor, wrapInHeadingCommand, 6)],
+        ["P", () => runEditorCommand("setParagraph", getEditor)],
+        ["H1", () => runEditorCommand("setHeading1", getEditor)],
+        ["H2", () => runEditorCommand("setHeading2", getEditor)],
+        ["H3", () => runEditorCommand("setHeading3", getEditor)],
+        ["H4", () => runEditorCommand("setHeading4", getEditor)],
+        ["H5", () => runEditorCommand("setHeading5", getEditor)],
+        ["H6", () => runEditorCommand("setHeading6", getEditor)],
     ];
 
     const fmtItems: HTMLElement[] = [];
@@ -831,12 +784,12 @@ export function initToolbar(
     const inlineCoreGroup = addGroup("inline-core");
     inlineCoreGroup.appendChild(
         btn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
-            callCmd(getEditor, toggleStrongCommand),
+            runEditorCommand("toggleBold", getEditor),
         ),
     );
     inlineCoreGroup.appendChild(
         btn(IconItalic, t("Italic") + " " + kbd("Mod-i"), () =>
-            callCmd(getEditor, toggleEmphasisCommand),
+            runEditorCommand("toggleItalic", getEditor),
         ),
     );
     const inlineExtraGroup = addGroup("inline-extra");
@@ -844,53 +797,18 @@ export function initToolbar(
         btn(
             IconStrikethrough,
             t("Strikethrough") + " " + kbd("Mod-Shift-x"),
-            () => callCmd(getEditor, toggleStrikethroughCommand),
+            () => runEditorCommand("toggleStrikethrough", getEditor),
         ),
     );
     inlineExtraGroup.appendChild(
-        btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () => {
-            const editor = getEditor();
-            if (!editor) { return; }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                const { state } = view;
-                if (!state.selection.empty) {
-                    ctx.get(commandsCtx).call(toggleInlineCodeCommand.key as any);
-                    return;
-                }
-                // 无选区：插入零宽空格占位文本 + inlineCode mark，光标置入其中
-                const codeMark = state.schema.marks["inlineCode"];
-                if (!codeMark) { return; }
-                const { from } = state.selection;
-                const textNode = state.schema.text("\u200b", [codeMark.create()]);
-                const tr = state.tr.insert(from, textNode);
-                tr.setSelection(TextSelection.create(tr.doc, from + 1));
-                view.dispatch(tr);
-                view.focus();
-            });
-        }),
+        btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () =>
+            runEditorCommand("toggleInlineCode", getEditor),
+        ),
     );
     inlineExtraGroup.appendChild(
-        btn(IconEraser, t("Clear Formatting"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                const { state } = view;
-                const { from, to, empty } = state.selection;
-                if (empty) {
-                    return;
-                }
-                let tr = state.tr;
-                Object.values(state.schema.marks).forEach((markType) => {
-                    tr = tr.removeMark(from, to, markType);
-                });
-                view.dispatch(tr);
-                view.focus();
-            });
-        }),
+        btn(IconEraser, t("Clear Formatting"), () =>
+            runEditorCommand("clearFormatting", getEditor),
+        ),
     );
 
     addSep();
@@ -1000,8 +918,7 @@ export function initToolbar(
 
     // Image: open the insert panel, then insert an image node
     const insertGroup = addGroup("insert");
-    let imgBtnEl: HTMLButtonElement;
-    imgBtnEl = btn(IconImage, t("Insert Image"), () => {
+    const openImagePanel = (): void => {
         showImageInsertPanel(
             (alt, src) => {
                 const editor = getEditor();
@@ -1023,154 +940,65 @@ export function initToolbar(
             onUploadImage,
             onGetProjectImages,
         );
-    });
+    };
+    const imgBtnEl = btn(IconImage, t("Insert Image"), openImagePanel);
     insertGroup.appendChild(imgBtnEl);
 
     insertGroup.appendChild(
         btn(IconTable, t("Insert Table"), () =>
-            callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
+            runEditorCommand("insertTable", getEditor),
         ),
     );
 
+    // Append both nodes at once (append accepts multiple children;
+    // appendChild takes only one, which previously silently dropped the Math
+    // button — see the 18b0fb8 fix on dev).
     insertGroup.append(
-        btn(IconFootnote, t("Insert Footnote"), () => {
-            callCmd(getEditor, insertFootnoteCommand);
-            getEditorView()?.focus();
-        }),
+        btn(IconFootnote, t("Insert Footnote"), () =>
+            runEditorCommand("insertFootnote", getEditor),
+        ),
         btn(IconMath, t("Insert Math"), () =>
-            callCmd(getEditor, insertInlineMathCommand),
+            runEditorCommand("insertMath", getEditor),
         ),
     );
 
     addSep();
 
-    // ── Lists (toggle: clicking again lifts out) ──────
+    // Lists (toggle: clicking the active one again lifts out)
     const listsGroup = addGroup("lists");
     listsGroup.appendChild(
-        btn(IconList, t("Bullet List"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                if (isInNode(view, "bullet_list")) {
-                    // 已在无序列表中：lift 取消
-                    lift(view.state, view.dispatch);
-                } else {
-                    ctx.get(commandsCtx).call(
-                        wrapInBulletListCommand.key as any,
-                    );
-                }
-            });
-        }),
+        btn(IconList, t("Bullet List"), () =>
+            runEditorCommand("toggleBulletList", getEditor),
+        ),
     );
-
     listsGroup.appendChild(
-        btn(IconListOrdered, t("Ordered List"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                if (isInNode(view, "ordered_list")) {
-                    lift(view.state, view.dispatch);
-                } else {
-                    ctx.get(commandsCtx).call(
-                        wrapInOrderedListCommand.key as any,
-                    );
-                }
-            });
-        }),
+        btn(IconListOrdered, t("Ordered List"), () =>
+            runEditorCommand("toggleOrderedList", getEditor),
+        ),
     );
-
-    // Task list: if already a task item, lift out to cancel
     listsGroup.appendChild(
-        btn(IconCheckSquare, t("Task List"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                const { state } = view;
-
-                // 检查是否已在 bullet_list 且有 checked 属性（任务列表）
-                const { $from } = state.selection;
-                let isTaskList = false;
-                for (let depth = $from.depth; depth >= 0; depth--) {
-                    const node = $from.node(depth);
-                    if (
-                        node.type.name === "list_item" &&
-                        node.attrs["checked"] != null
-                    ) {
-                        isTaskList = true;
-                        break;
-                    }
-                }
-
-                if (isTaskList) {
-                    lift(state, view.dispatch);
-                } else {
-                    // 先包裹为 bullet_list，再将 list_item 设为任务项
-                    const mgr = ctx.get(commandsCtx);
-                    mgr.call(wrapInBulletListCommand.key as any);
-
-                    const { state: newState, dispatch } = view;
-                    const { from, to } = newState.selection;
-                    let tr = newState.tr;
-                    let changed = false;
-                    newState.doc.nodesBetween(from, to, (node, pos) => {
-                        if (
-                            node.type.name === "list_item" &&
-                            node.attrs["checked"] == null
-                        ) {
-                            tr = tr.setNodeMarkup(pos, null, {
-                                ...node.attrs,
-                                checked: false,
-                            });
-                            changed = true;
-                        }
-                    });
-                    if (changed) {
-                        dispatch(tr);
-                    }
-                }
-            });
-        }),
+        btn(IconCheckSquare, t("Task List"), () =>
+            runEditorCommand("toggleTaskList", getEditor),
+        ),
     );
 
     addSep();
 
-    // ── Blocks (toggle) ───────────────────────────────
+    // Blocks (toggle)
     const blocksGroup = addGroup("blocks");
     blocksGroup.appendChild(
-        btn(IconQuote, t("Blockquote"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                if (isInNode(view, "blockquote")) {
-                    lift(view.state, view.dispatch);
-                } else {
-                    ctx.get(commandsCtx).call(
-                        wrapInBlockquoteCommand.key as any,
-                    );
-                }
-            });
-        }),
+        btn(IconQuote, t("Blockquote"), () =>
+            runEditorCommand("toggleBlockquote", getEditor),
+        ),
     );
     blocksGroup.appendChild(
         btn(IconTerminal, t("Code Block"), () =>
-            callCmd(getEditor, createCodeBlockCommand),
+            runEditorCommand("insertCodeBlock", getEditor),
         ),
     );
     blocksGroup.appendChild(
         btn(IconMinus, t("Horizontal Rule"), () =>
-            callCmd(getEditor, insertHrCommand),
+            runEditorCommand("insertHorizontalRule", getEditor),
         ),
     );
 
@@ -1408,6 +1236,15 @@ export function initToolbar(
         dbgSep.style.display = "";
         dbgGroup.style.display = "";
     }
+
+    // Expose the toolbar-owned actions to the shared editor-command registry so
+    // the command palette / context menu reach the exact same code paths.
+    // (openFindReplace, toggleToc and editFrontmatter are wired in index.ts.)
+    setEditorCommandHost({
+        openLinkPrompt,
+        openImagePanel,
+        ...(onOpenFind ? { openFind: onOpenFind } : {}),
+    });
 
     return {
         onSelectionChange(view: EditorView): void {

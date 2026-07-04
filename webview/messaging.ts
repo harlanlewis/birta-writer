@@ -109,6 +109,11 @@ export function notifyLintBlocks(id: number, blocks: import("../shared/messages"
     vscode.postMessage({ type: "lintBlocks", id, blocks });
 }
 
+/** Asks the extension to write serialized selection text to the system clipboard. */
+export function notifyClipboardWrite(format: "html" | "markdown", data: string): void {
+    vscode.postMessage({ type: "clipboardWrite", format, data });
+}
+
 export function onMessage(handler: (msg: IncomingMessage) => void): void {
     window.addEventListener("message", (event: MessageEvent) => {
         handler(event.data as IncomingMessage);

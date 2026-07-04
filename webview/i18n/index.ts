@@ -10,6 +10,8 @@ declare global {
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
             proofread?: ProofreadConfig;
+            /** Serialized document URI, used for context-menu command routing (MAR-9). */
+            documentUri?: string;
         };
     }
 }

@@ -1,8 +1,35 @@
 /**
- * messageHandlers.ts 测试：验证表格换行模式配置的应用逻辑。
+ * messageHandlers.ts tests: table-wrap CSS application, plus the editorCommand
+ * dispatch path (MAR-9).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { applyTableWrap } from "../messageHandlers";
+import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
+import { setEditorCommandHost } from "../editorCommands";
+import type { ToWebviewMessage } from "../../shared/messages";
+
+/** Minimal deps: the editorCommand handler only reaches state.getEditor. */
+function stubDeps(): MessageHandlerDeps {
+    return {
+        state: {
+            getEditor: () => null,
+            setEditor: () => {},
+            getLineMap: () => [],
+            setLineMap: () => {},
+            getMarkdownSource: () => "",
+            setMarkdownSource: () => {},
+        },
+        actions: {
+            scrollToSourceLine: () => {},
+            getFirstVisibleSourceLine: () => 1,
+            initEditor: async () => {},
+            retryScroll: () => {},
+            getEditorView: () => null,
+            refreshToc: () => {},
+        },
+        topbarTb: null,
+        themeOverrides: new Set<string>(),
+    };
+}
 
 describe("applyTableWrap", () => {
     beforeEach(() => {
@@ -39,5 +66,39 @@ describe("applyTableWrap", () => {
 
         applyTableWrap("none");
         expect(document.documentElement.style.getPropertyValue("--tbl-ow").trim()).toBe("normal");
+    });
+});
+
+describe("editorCommand handler", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("a known command should dispatch into the editor-command registry", () => {
+        // Arrange — a host-delegating command lets us observe the dispatch
+        // without a live Milkdown editor.
+        const toggleToc = vi.fn();
+        setEditorCommandHost({ toggleToc });
+        const handlers = createMessageHandlers(stubDeps());
+        const container = document.createElement("div");
+
+        // Act
+        handlers.editorCommand?.(
+            { type: "editorCommand", command: "toggleToc" } as Extract<ToWebviewMessage, { type: "editorCommand" }>,
+            container,
+        );
+
+        // Assert
+        expect(toggleToc).toHaveBeenCalledTimes(1);
+    });
+
+    it("an unknown command id should be a no-op", () => {
+        const handlers = createMessageHandlers(stubDeps());
+        const container = document.createElement("div");
+        expect(() =>
+            handlers.editorCommand?.(
+                // Deliberately invalid id: the registry ignores it.
+                { type: "editorCommand", command: "nope" } as unknown as Extract<ToWebviewMessage, { type: "editorCommand" }>,
+                container,
+            ),
+        ).not.toThrow();
     });
 });

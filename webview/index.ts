@@ -45,7 +45,9 @@ import { setupSelectionToolbar } from "./components/selectionToolbar";
 import { setupTableToolbar } from "./components/table/toolbar";
 import type { Editor } from "@milkdown/core";
 
-import { renderFrontmatterPanel } from "./components/frontmatter";
+import { renderFrontmatterPanel, focusFrontmatterPanel } from "./components/frontmatter";
+import { setEditorCommandHost } from "./editorCommands";
+import { initContextMenu } from "./components/contextMenu";
 import {
     handleRenameImage,
     handleGetProjectImages,
@@ -232,6 +234,15 @@ const topbarTb = topbar
     )
     : null;
 
+// Register the editor-command hooks the toolbar does not own (find-with-
+// replace, TOC toggle, frontmatter focus). The toolbar itself registers
+// openLinkPrompt / openImagePanel / openFind (MAR-9).
+setEditorCommandHost({
+    openFindReplace: () => findBar.open(undefined, { showReplace: true }),
+    toggleToc: () => toc.toggle(),
+    editFrontmatter: () => focusFrontmatterPanel(),
+});
+
 if (topbar) {
     const updateTopbarHeight = () => {
         document.documentElement.style.setProperty(
@@ -246,6 +257,7 @@ if (topbar) {
 // ── 编辑器容器事件绑定 ───────────────────────────────────────
 const editorContainer = document.getElementById("editor");
 if (editorContainer) {
+    initContextMenu(editorContainer);
     setupLinkPopup(editorContainer, () => getEditorView());
     setupPathLink(editorContainer);
     initHeadingIds(editorContainer);

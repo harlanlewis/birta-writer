@@ -22,6 +22,7 @@ import { applyLintResults } from "./plugins/proofread";
 import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
+import { runEditorCommand } from "./editorCommands";
 import {
     handleImageUploaded,
     handleImageUploadError,
@@ -277,6 +278,11 @@ export function createMessageHandlers(
         },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);
+        },
+        editorCommand(msg) {
+            // Command palette / right-click menu action routed to this editor.
+            // An unknown id is a safe no-op inside runEditorCommand.
+            runEditorCommand(msg.command, getEditor);
         },
     };
 }

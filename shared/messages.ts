@@ -4,7 +4,9 @@
  * Both sides import from here; inline duplicate definitions are forbidden.
  */
 
-/** 图片元数据：磁盘相对路径 + WebView 可访问 URI + 文件名 */
+import type { EditorCommandId } from "./editorCommands";
+
+/** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
     relPath: string;
     webviewUri: string;
@@ -89,7 +91,10 @@ export type ToExtensionMessage =
     | { type: "setStyleCheckEnabled"; enabled: boolean }
     | { type: "setSpellCheckEnabled"; enabled: boolean }
     | { type: "spellAddWord"; word: string }
-    | { type: "lintBlocks"; id: number; blocks: LintBlock[] };
+    | { type: "lintBlocks"; id: number; blocks: LintBlock[] }
+    // Selection serialized in the webview (copy-as-HTML / copy-as-Markdown from
+    // the right-click menu); the extension writes `data` to the system clipboard.
+    | { type: "clipboardWrite"; format: "html" | "markdown"; data: string };
 
 /**
  * Extension → WebView messages.
@@ -128,4 +133,7 @@ export type ToWebviewMessage =
     | { type: "setTableWrap"; wrap: TableWrapMode }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
-    | { type: "lintResults"; id: number; results: LintBlockResult[] };
+    | { type: "lintResults"; id: number; results: LintBlockResult[] }
+    // Command-palette / context-menu action forwarded to the active editor; the
+    // webview dispatches `command` into the editor-command registry (MAR-9).
+    | { type: "editorCommand"; command: EditorCommandId; args?: unknown };

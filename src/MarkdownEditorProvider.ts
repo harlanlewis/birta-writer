@@ -13,6 +13,7 @@ import { lintBlocks } from "./utils/harperService";
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
 import { zhCn } from "./i18n/webviewTranslations";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig } from "../shared/messages";
+import type { EditorCommandId } from "../shared/editorCommands";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -39,6 +40,11 @@ export class MarkdownEditorProvider
 
     // Tracks the webviewPanel for each document (used to push new content on external changes)
     private readonly _webviewPanels = new Map<string, vscode.WebviewPanel>();
+
+    // The panel that is currently the active editor. Command-palette and
+    // right-click commands (MAR-9) target it. Set on resolve and whenever a
+    // panel becomes active; cleared when the active panel is disposed.
+    private _activePanel: vscode.WebviewPanel | null = null;
 
     // URIs that have already run keepEditor (pin tab), to avoid running it again
     private readonly _pinnedDocuments = new Set<string>();
@@ -180,6 +186,27 @@ export class MarkdownEditorProvider
         }
     }
 
+    /** Sends a message to the active editor panel (no-op when none is active). */
+    public postToActivePanel(msg: ToWebviewMessage): void {
+        this._activePanel?.webview.postMessage(msg);
+    }
+
+    /**
+     * Routes an editor command (command palette / context menu) to the webview.
+     * Prefers the panel named by `documentUriStr` — the context object carries
+     * it as a belt-and-braces routing hint — and otherwise targets the active
+     * panel.
+     */
+    public postEditorCommand(command: EditorCommandId, documentUriStr?: string): void {
+        const msg: ToWebviewMessage = { type: "editorCommand", command };
+        const panel = documentUriStr ? this._webviewPanels.get(documentUriStr) : undefined;
+        if (panel) {
+            panel.webview.postMessage(msg);
+            return;
+        }
+        this.postToActivePanel(msg);
+    }
+
     public async applyThemeToAll(): Promise<void> {
         const themeId = vscode.workspace
             .getConfiguration("markdownWysiwyg")
@@ -268,9 +295,12 @@ export class MarkdownEditorProvider
         // Save the panel reference (used to push content on revert)
         const uriKey = document.uri.toString();
         this._webviewPanels.set(uriKey, webviewPanel);
+        // A freshly resolved editor is the active one.
+        this._activePanel = webviewPanel;
 
         webviewPanel.onDidDispose(() => {
             this._webviewPanels.delete(uriKey);
+            if (this._activePanel === webviewPanel) { this._activePanel = null; }
             this._pinnedDocuments.delete(uriKey);
             this._imageUriMaps.delete(uriKey);
             this._initializedPanels.delete(uriKey);
@@ -306,6 +336,8 @@ export class MarkdownEditorProvider
         // Only handle panels that are already initialized (ready), to avoid prematurely consuming the pending navigation when a new panel is created
         webviewPanel.onDidChangeViewState(({ webviewPanel: p }) => {
             if (!p.active) { return; }
+            // Track the active panel for command-palette / context-menu routing.
+            this._activePanel = p;
             if (!this._initializedPanels.has(uriKey)) { return; }
             const line = this._consumePendingNavigation(document.uri.fsPath)
                 ?? this._consumeGlobalRevealLine();
@@ -615,6 +647,14 @@ export class MarkdownEditorProvider
                                 console.error("[markdownWysiwyg] harper lint failed", err);
                             });
                         break;
+                    case "clipboardWrite":
+                        // Copy-as-HTML / copy-as-Markdown from the right-click menu.
+                        // The webview already serialized the selection; VS Code's
+                        // clipboard API is text-only, so both formats write text.
+                        if (message.data) {
+                            void vscode.env.clipboard.writeText(message.data);
+                        }
+                        break;
                 }
             },
         );
@@ -785,7 +825,8 @@ export class MarkdownEditorProvider
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread })};`;
+        const documentUri = document.uri.toString();
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, documentUri })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
