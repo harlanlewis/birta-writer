@@ -1210,7 +1210,7 @@ export function initToolbar(
                 await navigator.clipboard.writeText(json);
             } catch {
                 console.log(
-                    "[Debug] 测试行号结果（剪切板写入失败，改用 console）:",
+                    "[Debug] line-number test result (clipboard write failed, falling back to console):",
                     json,
                 );
             }

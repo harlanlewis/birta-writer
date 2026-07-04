@@ -111,7 +111,7 @@ export const cellClickFixPlugin = $prose(() => {
                                     cellCount++;
                                 });
                                 console.log(
-                                    `[TableSel] 拖拽结束 ${headCoords ? `${headCoords.row}行${headCoords.col}列` : "?行?列"} 共选中${cellCount}个表格内容`,
+                                    `[TableSel] drag ended at ${headCoords ? `row ${headCoords.row}, col ${headCoords.col}` : "row ?, col ?"} — ${cellCount} cells selected`,
                                 );
                             }
                             const savedCellSel = lastGoodCellSelection;
@@ -142,7 +142,7 @@ export const cellClickFixPlugin = $prose(() => {
             ) {
                 if (isLogTableSelEnabled()) {
                     console.log(
-                        "[TableSel] filterTransaction: 已阻止覆盖CellSelection",
+                        "[TableSel] filterTransaction: blocked overwrite of CellSelection",
                     );
                 }
                 return false;
@@ -166,9 +166,9 @@ export const cellClickFixPlugin = $prose(() => {
                         pendingClickPos !== null
                             ? getCellCoords(newState.doc, pendingClickPos)
                             : null;
-                    console.log(`[TableSel] 第${multiSelectCount}次多选表格`);
+                    console.log(`[TableSel] table multi-select #${multiSelectCount}`);
                     console.log(
-                        `[TableSel] 开始拖拽 ${startCoords ? `${startCoords.row}行${startCoords.col}列` : "?行?列"}`,
+                        `[TableSel] drag started at ${startCoords ? `row ${startCoords.row}, col ${startCoords.col}` : "row ?, col ?"}`,
                     );
                 }
                 wasCrossCell = true;

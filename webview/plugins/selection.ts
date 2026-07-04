@@ -30,7 +30,7 @@ export const selectionPlugin = $prose(
                         prevState.selection instanceof CellSelection &&
                         !(view.state.selection instanceof CellSelection)
                     ) {
-                        console.trace("[TableSel] 取消表格选中");
+                        console.trace("[TableSel] table selection cleared");
                     }
                 },
             }),

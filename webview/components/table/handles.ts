@@ -2,6 +2,7 @@ import { TableMap, CellSelection } from "@milkdown/prose/tables";
 import type { Node as PMNode } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
+import { t } from "@/i18n";
 import { setPendingToolbarPos } from "../selectionToolbar";
 
 type GetView = () => EditorView | null;
@@ -10,19 +11,19 @@ export function setupTableHandles(
     container: HTMLElement,
     getView: GetView,
 ): void {
-    // ── 行 handle（悬停行时显示在行的左侧外部）────────────────
+    // ── Row handle (shown outside the row's left edge on hover) ────────────
     const rowHandle = document.createElement("div");
     rowHandle.className = "table-handle table-handle--row";
     rowHandle.textContent = "⠿";
     document.body.appendChild(rowHandle);
-    applyTooltip(rowHandle, "点击选中整行 · 拖拽重排", { placement: "above" });
+    applyTooltip(rowHandle, t("Click to select row · drag to reorder"), { placement: "above" });
 
-    // ── 列 handle（悬停列时显示在列的顶部外部）────────────────
+    // ── Column handle (shown outside the column's top edge on hover) ───────
     const colHandle = document.createElement("div");
     colHandle.className = "table-handle table-handle--col";
     colHandle.textContent = "⠿";
     document.body.appendChild(colHandle);
-    applyTooltip(colHandle, "点击选中整列 · 拖拽重排", { placement: "above" });
+    applyTooltip(colHandle, t("Click to select column · drag to reorder"), { placement: "above" });
 
     // ── 拖拽指示线 ───────────────────────────────────────────
     const dragLineH = document.createElement("div");

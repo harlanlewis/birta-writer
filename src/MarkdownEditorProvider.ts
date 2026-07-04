@@ -11,6 +11,7 @@ import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
+import { zhCn } from "./i18n/webviewTranslations";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig } from "../shared/messages";
 
 /**
@@ -773,7 +774,8 @@ export class MarkdownEditorProvider
         const nonce = getNonce();
 
         const isMac = process.platform === 'darwin';
-        const translations = {};
+        // English strings are the t() keys themselves; only non-English locales need a map.
+        const translations = vscode.env.language.toLowerCase().startsWith("zh") ? zhCn : {};
         const debugMode = cfg.get<boolean>("debugMode", false);
         const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
