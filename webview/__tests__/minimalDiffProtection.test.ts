@@ -126,3 +126,94 @@ describe("applyMinimalChanges with protection — insertions that collide with c
         expect(merged.match(/^# Title$/gm)?.length).toBe(1);
     });
 });
+
+describe("applyMinimalChanges with protection — ordering (adversarial regressions)", () => {
+    // These scenarios were found by adversarial review of the first
+    // implementation, where pinned lines were emitted at raw del-position and
+    // could reorder the document.
+
+    it("editing the paragraph above a setext heading should keep it above", () => {
+        const saved = "U paragraph\n\nTitle\n=====\n";
+        const baseline = "U paragraph\n\n# Title\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+        const serializedAfterEdit = "U paragraph edited\n\n# Title\n";
+
+        const merged = applyMinimalChanges(saved, serializedAfterEdit, protection);
+
+        expect(merged).toBe("U paragraph edited\n\nTitle\n=====\n");
+    });
+
+    it("inserting a paragraph at the top should land above the setext heading", () => {
+        const saved = "Title\n=====\n\nbody\n";
+        const baseline = "# Title\n\nbody\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+        const serializedAfterEdit = "NEW top paragraph\n\n# Title\n\nbody\n";
+
+        const merged = applyMinimalChanges(saved, serializedAfterEdit, protection);
+
+        expect(merged).toBe("NEW top paragraph\n\nTitle\n=====\n\nbody\n");
+    });
+
+    it("a second save after an adjacent edit should still protect the construct", () => {
+        const saved0 = "alpha\n\nkeep1\n\nTitle\n=====\n\nkeep2\n\nomega\n";
+        const baseline = "alpha\n\nkeep1\n\n# Title\n\nkeep2\n\nomega\n";
+        const protection = computeRoundTripProtection(saved0, baseline);
+
+        // Save 1: edit the line directly above the heading.
+        const ser1 = "alpha\n\nkeep1 EDITED\n\n# Title\n\nkeep2\n\nomega\n";
+        const merged1 = applyMinimalChanges(saved0, ser1, protection);
+        expect(merged1).toBe("alpha\n\nkeep1 EDITED\n\nTitle\n=====\n\nkeep2\n\nomega\n");
+
+        // Save 2: edit elsewhere; merged1 is now the saved text.
+        const ser2 = "alpha\n\nkeep1 EDITED\n\n# Title\n\nkeep2\n\nomega EDITED\n";
+        const merged2 = applyMinimalChanges(merged1, ser2, protection);
+        expect(merged2).toBe("alpha\n\nkeep1 EDITED\n\nTitle\n=====\n\nkeep2\n\nomega EDITED\n");
+    });
+
+    it("editing one of two adjacent setext headings should keep the other protected", () => {
+        const saved = "Title A\n=======\n\nTitle B\n=======\n";
+        const baseline = "# Title A\n\n# Title B\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+        const serializedAfterEdit = "# Title A EDITED\n\n# Title B\n";
+
+        const merged = applyMinimalChanges(saved, serializedAfterEdit, protection);
+
+        expect(merged).toContain("# Title A EDITED");
+        expect(merged).toContain("Title B\n=======");
+    });
+
+    it("deleting the paragraph before a dropped construct should not corrupt blank lines", () => {
+        // The construct vanishes from every serialization (del-only region).
+        const saved = "A para\n\nINVISIBLE CONSTRUCT\n\nB para\n";
+        const baseline = "A para\n\nB para\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+        const serializedAfterEdit = "B para\n";
+
+        const merged = applyMinimalChanges(saved, serializedAfterEdit, protection);
+
+        expect(merged).toContain("INVISIBLE CONSTRUCT");
+        expect(merged).toContain("B para");
+        expect(merged.startsWith("\n")).toBe(false);
+        expect(merged).not.toContain("\n\n\n");
+        expect(merged).not.toContain("A para");
+    });
+});
+
+describe("applyMinimalChanges — performance", () => {
+    it("a single edit in a 5000-line document should merge in a few milliseconds", () => {
+        const lines = Array.from({ length: 5000 }, (_, i) => `paragraph number ${i}`);
+        const saved = lines.join("\n\n") + "\n";
+        const edited = [...lines];
+        edited[2500] = "paragraph number 2500 EDITED";
+        const serialized = edited.join("\n\n") + "\n";
+
+        const t0 = performance.now();
+        const merged = applyMinimalChanges(saved, serialized);
+        const elapsed = performance.now() - t0;
+
+        expect(merged).toContain("paragraph number 2500 EDITED");
+        // Pre-trimming this took ~380ms (full 5000x5000 LCS). Generous CI
+        // bound; typical local time is ~2ms.
+        expect(elapsed).toBeLessThan(100);
+    });
+});

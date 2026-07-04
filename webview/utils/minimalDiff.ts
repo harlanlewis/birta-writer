@@ -9,12 +9,23 @@
  * lines against the saved file and apply only the real content changes.
  *
  * On top of the line diff sits round-trip protection (see
- * `computeRoundTripProtection`): constructs the parser cannot represent are
- * dropped or rewritten by a zero-edit round trip (reference-link definitions
- * vanish, setext headings become ATX, `* _ [` get escaped, ...). Those
- * changes appear in every diff even though the user never touched the lines,
- * so without protection a single keystroke elsewhere in the file would
- * silently destroy them on save.
+ * `computeRoundTripProtection`): constructs the parser cannot reproduce are
+ * dropped or rewritten by a zero-edit round trip (setext headings become
+ * ATX, `* _ [` get escaped, quoted-title link definitions change quote
+ * style, ...). Those changes appear in every serialization even though the
+ * user never touched the lines, so without protection a keystroke elsewhere
+ * in the file would silently apply them on save.
+ *
+ * Protection is applied by REPAIRING the serializer output before the diff:
+ * each region's canonical replacement lines are swapped back for the
+ * original saved bytes (and dropped constructs are re-inserted next to
+ * their anchors). The repaired text then diffs against the saved file with
+ * the plain merge — protected lines become ordinary `keep`s, so ordering
+ * and blank-line handling need no special cases. If the user edits the
+ * construct itself, its serialized form no longer matches the recorded
+ * canonical lines, no repair happens, and the edit applies normally: the
+ * canonical form wins on touched lines — the existing minimal-diff
+ * philosophy, extended from formatting to parsability.
  */
 
 // ─── Comparison normalizers ─────────────────────────────────────────────────
@@ -84,12 +95,7 @@ interface SigLine {
 type Edit =
     | { op: "keep"; saved: SigLine; serial: SigLine }
     | { op: "del"; saved: SigLine }
-    | { op: "ins"; serial: SigLine }
-    // A protected del: the saved line is emitted verbatim instead of deleted.
-    | { op: "pin"; saved: SigLine }
-    // A protected ins: the serializer's replacement line is swallowed (its
-    // saved original was pinned). Consumes the serial line without emitting.
-    | { op: "skip"; serial: SigLine };
+    | { op: "ins"; serial: SigLine };
 
 function sigLines(lines: string[]): SigLine[] {
     return lines.reduce<SigLine[]>((acc, line, i) => {
@@ -98,7 +104,14 @@ function sigLines(lines: string[]): SigLine[] {
     }, []);
 }
 
-/** LCS edit script over significant lines (normalized comparison). */
+/**
+ * LCS edit script over significant lines (normalized comparison).
+ *
+ * The common prefix and suffix are peeled off before the DP: a typical edit
+ * touches one small region of the document, so this turns the quadratic LCS
+ * into a scan plus a DP over just the changed window (a 5000-line document
+ * costs milliseconds per keystroke instead of hundreds of them).
+ */
 function computeEditScript(saved: string, serialized: string): {
     edits: Edit[];
     savedLines: string[];
@@ -114,54 +127,88 @@ function computeEditScript(saved: string, serialized: string): {
     const savedNorm = savedSig.map((l) => normLineForCompare(l.text));
     const serialNorm = serialSig.map((l) => normLineForCompare(l.text));
 
-    // LCS dp (Uint16Array bounds memory; typical md files stay far below
-    // 65535 significant lines)
-    const dp: Uint16Array[] = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
-    for (let i = 1; i <= n; i++)
-        for (let j = 1; j <= m; j++)
-            dp[i][j] = savedNorm[i - 1] === serialNorm[j - 1]
-                ? dp[i - 1][j - 1] + 1
-                : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    // Peel the common prefix / suffix (greedy keep-pairing of equal lines is
+    // always LCS-optimal).
+    let lo = 0;
+    while (lo < n && lo < m && savedNorm[lo] === serialNorm[lo]) lo++;
+    let hiS = n - 1;
+    let hiT = m - 1;
+    while (hiS >= lo && hiT >= lo && savedNorm[hiS] === serialNorm[hiT]) {
+        hiS--;
+        hiT--;
+    }
 
     const edits: Edit[] = [];
-    let i = n, j = m;
-    while (i > 0 || j > 0) {
-        if (i > 0 && j > 0 && savedNorm[i - 1] === serialNorm[j - 1]) {
-            edits.unshift({ op: "keep", saved: savedSig[i - 1], serial: serialSig[j - 1] });
-            i--; j--;
-        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-            edits.unshift({ op: "ins", serial: serialSig[j - 1] });
-            j--;
-        } else {
-            edits.unshift({ op: "del", saved: savedSig[i - 1] });
-            i--;
-        }
+    for (let k = 0; k < lo; k++) {
+        edits.push({ op: "keep", saved: savedSig[k], serial: serialSig[k] });
     }
+
+    // LCS dp over the middle window only (Uint16Array bounds memory; typical
+    // windows are tiny after trimming)
+    const wn = hiS - lo + 1;
+    const wm = hiT - lo + 1;
+    if (wn > 0 || wm > 0) {
+        const dp: Uint16Array[] = Array.from({ length: wn + 1 }, () => new Uint16Array(wm + 1));
+        for (let i = 1; i <= wn; i++)
+            for (let j = 1; j <= wm; j++)
+                dp[i][j] = savedNorm[lo + i - 1] === serialNorm[lo + j - 1]
+                    ? dp[i - 1][j - 1] + 1
+                    : Math.max(dp[i - 1][j], dp[i][j - 1]);
+
+        const middle: Edit[] = [];
+        let i = wn, j = wm;
+        while (i > 0 || j > 0) {
+            if (i > 0 && j > 0 && savedNorm[lo + i - 1] === serialNorm[lo + j - 1]) {
+                middle.unshift({ op: "keep", saved: savedSig[lo + i - 1], serial: serialSig[lo + j - 1] });
+                i--; j--;
+            } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+                middle.unshift({ op: "ins", serial: serialSig[lo + j - 1] });
+                j--;
+            } else {
+                middle.unshift({ op: "del", saved: savedSig[lo + i - 1] });
+                i--;
+            }
+        }
+        edits.push(...middle);
+    }
+
+    for (let k = hiS + 1; k < n; k++) {
+        const tK = hiT + 1 + (k - hiS - 1);
+        edits.push({ op: "keep", saved: savedSig[k], serial: serialSig[tK] });
+    }
+
     return { edits, savedLines, serialLines };
 }
 
 // ─── Round-trip protection ──────────────────────────────────────────────────
 
 /**
- * One contiguous run of changes produced by a ZERO-EDIT round trip: the
- * parser/serializer pair rewrote `delNorms` (saved lines) into `insNorms`
- * (serializer lines) — or dropped them outright when `insNorms` is empty —
- * without any user involvement.
+ * One construct a ZERO-EDIT round trip cannot reproduce.
+ *
+ * `savedSpanLines` are the construct's original raw lines (from the first to
+ * the last changed saved line, internal blanks included). `insNorms` are the
+ * normalized canonical lines the serializer emits in its place — the repair
+ * pass finds them in later serializations and swaps the original bytes back
+ * in. When `insNorms` is empty the construct is dropped outright, and the
+ * anchors (normalized nearest kept lines at baseline) position the
+ * re-insertion instead.
  */
-interface BaselineRegion {
-    delNorms: string[];
+interface ProtectedRegion {
+    savedSpanLines: string[];
     insNorms: string[];
+    anchorPrevNorm: string | null;
+    anchorNextNorm: string | null;
 }
 
 export interface RoundTripProtection {
-    regions: BaselineRegion[];
+    regions: ProtectedRegion[];
 }
 
 /**
  * Compare the saved file against its own zero-edit serialization and record
  * every change region. Each region is a construct the editor cannot
- * round-trip faithfully; `applyMinimalChanges` uses the result to pin those
- * regions to their saved bytes on every save.
+ * round-trip faithfully; `applyMinimalChanges` uses the result to repair
+ * later serializations back to the saved bytes.
  *
  * Returns null when the file round-trips cleanly (nothing to protect).
  */
@@ -169,104 +216,138 @@ export function computeRoundTripProtection(
     saved: string,
     baselineSerialized: string,
 ): RoundTripProtection | null {
-    const { edits } = computeEditScript(saved, baselineSerialized);
-    const regions: BaselineRegion[] = [];
-    let current: BaselineRegion | null = null;
+    const { edits, savedLines } = computeEditScript(saved, baselineSerialized);
+    const regions: ProtectedRegion[] = [];
 
-    for (const edit of edits) {
-        if (edit.op === "keep") {
-            current = null;
-        } else if (edit.op === "del" || edit.op === "ins") {
-            if (!current) {
-                current = { delNorms: [], insNorms: [] };
-                regions.push(current);
-            }
-            if (edit.op === "del") current.delNorms.push(normLineForCompare(edit.saved.text));
-            else current.insNorms.push(normLineForCompare(edit.serial.text));
+    // Collect contiguous non-keep runs together with their surrounding keeps.
+    let k = 0;
+    while (k < edits.length) {
+        if (edits[k].op === "keep") { k++; continue; }
+        const start = k;
+        while (k < edits.length && edits[k].op !== "keep") k++;
+        const run = edits.slice(start, k);
+        const dels = run.filter((e): e is Extract<Edit, { op: "del" }> => e.op === "del");
+        const inses = run.filter((e): e is Extract<Edit, { op: "ins" }> => e.op === "ins");
+        if (dels.length === 0) continue; // pure insertion at baseline: nothing to preserve
+
+        const prevKeep = start > 0 ? (edits[start - 1] as Extract<Edit, { op: "keep" }>) : null;
+        const nextKeep = k < edits.length ? (edits[k] as Extract<Edit, { op: "keep" }>) : null;
+        const anchorPrevNorm = prevKeep ? normLineForCompare(prevKeep.saved.text) : null;
+        const anchorNextNorm = nextKeep ? normLineForCompare(nextKeep.saved.text) : null;
+
+        // Split the run into per-construct sub-regions when both sides break
+        // into the same number of adjacency groups (consecutive line numbers
+        // = one construct). Two setext headings changed in one run otherwise
+        // become an all-or-nothing region: editing one would unprotect both.
+        const delGroups = groupByAdjacency(dels.map((d) => d.saved));
+        const insGroups = inses.length > 0 ? groupByAdjacency(inses.map((i) => i.serial)) : [];
+        const pairable = insGroups.length > 0 && delGroups.length === insGroups.length;
+        const subRegions = pairable
+            ? delGroups.map((dg, gi) => ({ delSpan: dg, insSpan: insGroups[gi] }))
+            : [{ delSpan: dels.map((d) => d.saved), insSpan: inses.map((i) => i.serial) }];
+
+        for (const sub of subRegions) {
+            const first = sub.delSpan[0].lineIdx;
+            const last = sub.delSpan[sub.delSpan.length - 1].lineIdx;
+            regions.push({
+                savedSpanLines: savedLines.slice(first, last + 1),
+                insNorms: sub.insSpan.map((s) => normLineForCompare(s.text)),
+                anchorPrevNorm,
+                anchorNextNorm,
+            });
         }
     }
     return regions.length > 0 ? { regions } : null;
 }
 
-/** Remove one occurrence of each `wanted` value from `pool` (by index into
- * pool; entries already consumed are null). Returns the matched indices, or
- * null if any value is missing. */
-function matchSubMultiset(pool: (string | null)[], wanted: string[]): number[] | null {
-    const used = new Set<number>();
-    const picked: number[] = [];
-    for (const w of wanted) {
-        let found = -1;
-        for (let k = 0; k < pool.length; k++) {
-            if (!used.has(k) && pool[k] === w) { found = k; break; }
-        }
-        if (found === -1) return null;
-        used.add(found);
-        picked.push(found);
+/** Group significant lines into runs of consecutive lineIdx values. */
+function groupByAdjacency(lines: SigLine[]): SigLine[][] {
+    const groups: SigLine[][] = [];
+    for (const line of lines) {
+        const last = groups[groups.length - 1];
+        if (last && line.lineIdx === last[last.length - 1].lineIdx + 1) last.push(line);
+        else groups.push([line]);
     }
-    return picked;
+    return groups;
 }
 
 /**
- * Rewrite the edit script so that baseline (parser-artifact) changes never
- * reach the file: within each contiguous run of non-keep edits, any baseline
- * region whose dels AND inses are all present is neutralized — its dels
- * become pins (saved text kept verbatim) and its inses become skips
- * (serializer replacement swallowed).
- *
- * A construct the user actually edited no longer matches its baseline region
- * (the serializer output differs), so the edit applies normally and adopts
- * the canonical form — exactly the existing minimal-diff philosophy, extended
- * from formatting to parsability.
+ * Swap each protected region's canonical serializer output back for the
+ * original saved bytes. Regions whose canonical lines are absent (the user
+ * edited or removed the construct) are left alone — the edit applies.
  */
-function applyProtection(edits: Edit[], protection: RoundTripProtection): Edit[] {
-    const out: Edit[] = [];
-    const consumed = new Set<BaselineRegion>();
+function repairSerialized(serialized: string, protection: RoundTripProtection): string {
+    let lines = serialized.split("\n");
 
-    let runStart = -1;
-    const flushRun = (end: number) => {
-        if (runStart === -1) return;
-        const run = edits.slice(runStart, end);
-        const delIdx: number[] = [];
-        const insIdx: number[] = [];
-        run.forEach((e, k) => {
-            if (e.op === "del") delIdx.push(k);
-            else if (e.op === "ins") insIdx.push(k);
-        });
-        const delNorms: (string | null)[] = delIdx.map((k) => normLineForCompare((run[k] as Extract<Edit, { op: "del" }>).saved.text));
-        const insNorms: (string | null)[] = insIdx.map((k) => normLineForCompare((run[k] as Extract<Edit, { op: "ins" }>).serial.text));
+    // Matching walks left to right so repeated identical constructs map to
+    // their occurrences in document order.
+    let cursor = 0;
+    for (const region of protection.regions) {
+        const sig = sigLines(lines);
+        const norms = sig.map((l) => normLineForCompare(l.text));
 
-        for (const region of protection.regions) {
-            if (consumed.has(region)) continue;
-            const delPick = matchSubMultiset(delNorms, region.delNorms);
-            if (!delPick) continue;
-            const insPick = matchSubMultiset(insNorms, region.insNorms);
-            if (!insPick) continue;
-            consumed.add(region);
-            for (const p of delPick) {
-                const e = run[delIdx[p]] as Extract<Edit, { op: "del" }>;
-                run[delIdx[p]] = { op: "pin", saved: e.saved };
-                delNorms[p] = null; // consumed - never matches again
+        if (region.insNorms.length > 0) {
+            const at = findContiguous(norms, region.insNorms, cursorSigIndex(sig, cursor));
+            if (at === -1) continue; // construct edited/removed by the user
+            const firstRaw = sig[at].lineIdx;
+            const lastRaw = sig[at + region.insNorms.length - 1].lineIdx;
+            lines = [
+                ...lines.slice(0, firstRaw),
+                ...region.savedSpanLines,
+                ...lines.slice(lastRaw + 1),
+            ];
+            cursor = firstRaw + region.savedSpanLines.length;
+        } else {
+            // Dropped construct: re-insert next to its anchor.
+            let rawAt = -1;
+            if (region.anchorPrevNorm !== null) {
+                const i = norms.indexOf(region.anchorPrevNorm, cursorSigIndex(sig, cursor));
+                if (i !== -1) rawAt = sig[i].lineIdx + 1;
+            } else {
+                rawAt = 0; // construct opened the document
             }
-            for (const p of insPick) {
-                const e = run[insIdx[p]] as Extract<Edit, { op: "ins" }>;
-                run[insIdx[p]] = { op: "skip", serial: e.serial };
-                insNorms[p] = null;
+            if (rawAt === -1 && region.anchorNextNorm !== null) {
+                const i = norms.indexOf(region.anchorNextNorm, cursorSigIndex(sig, cursor));
+                if (i !== -1) rawAt = sig[i].lineIdx;
             }
-        }
-        out.push(...run);
-        runStart = -1;
-    };
-
-    for (let k = 0; k < edits.length; k++) {
-        if (edits[k].op === "keep") {
-            flushRun(k);
-            out.push(edits[k]);
-        } else if (runStart === -1) {
-            runStart = k;
+            // Both anchors gone (surrounding content rewritten): keep the
+            // construct anyway, at the end — data loss is never acceptable.
+            if (rawAt === -1) {
+                rawAt = lines.length - countTrailingBlanks(lines);
+            }
+            // Blank-separate the construct from significant neighbors on
+            // either side (never at the document edge, never doubled).
+            const insertion = [...region.savedSpanLines];
+            if (rawAt > 0 && lines[rawAt - 1].trim() !== "") insertion.unshift("");
+            if (rawAt < lines.length && lines[rawAt].trim() !== "") insertion.push("");
+            lines = [...lines.slice(0, rawAt), ...insertion, ...lines.slice(rawAt)];
+            cursor = rawAt + insertion.length;
         }
     }
-    flushRun(edits.length);
-    return out;
+    return lines.join("\n");
+}
+
+/** Index of the first significant line at or after raw line `cursor`. */
+function cursorSigIndex(sig: SigLine[], cursor: number): number {
+    for (let i = 0; i < sig.length; i++) if (sig[i].lineIdx >= cursor) return i;
+    return sig.length;
+}
+
+/** First index at or after `from` where `needle` matches contiguously. */
+function findContiguous(haystack: string[], needle: string[], from: number): number {
+    outer: for (let i = Math.max(0, from); i + needle.length <= haystack.length; i++) {
+        for (let j = 0; j < needle.length; j++) {
+            if (haystack[i + j] !== needle[j]) continue outer;
+        }
+        return i;
+    }
+    return -1;
+}
+
+function countTrailingBlanks(lines: string[]): number {
+    let c = 0;
+    for (let i = lines.length - 1; i >= 0 && lines[i].trim() === ""; i--) c++;
+    return c;
 }
 
 // ─── Minimal-diff merge ─────────────────────────────────────────────────────
@@ -286,9 +367,9 @@ function applyProtection(edits: Edit[], protection: RoundTripProtection): Edit[]
  *   strong runs, fence-language spacing) compare as equal and are never
  *   applied.
  * - With `protection` (from `computeRoundTripProtection`), changes the
- *   round trip produces on its own — dropped reference definitions, setext →
- *   ATX rewrites, escaping churn — are pinned to their saved bytes instead of
- *   being applied.
+ *   round trip produces on its own — rewritten setext headings, escaping
+ *   churn, dropped constructs — are repaired back to their saved bytes
+ *   before the diff, so they merge as ordinary unchanged lines.
  *
  * Returns `saved` (same reference) when nothing changed.
  */
@@ -297,10 +378,10 @@ export function applyMinimalChanges(
     serialized: string,
     protection?: RoundTripProtection | null,
 ): string {
-    const { edits: rawEdits, savedLines, serialLines } = computeEditScript(saved, serialized);
-    const edits = protection ? applyProtection(rawEdits, protection) : rawEdits;
+    const effective = protection ? repairSerialized(serialized, protection) : serialized;
+    const { edits, savedLines, serialLines } = computeEditScript(saved, effective);
 
-    if (!edits.some((e) => e.op === "del" || e.op === "ins")) return saved;
+    if (!edits.some((e) => e.op !== "keep")) return saved;
 
     // Rebuild the file. Walk the edit script emitting one significant line at
     // a time, choosing where the blank lines before it come from:
@@ -309,14 +390,13 @@ export function applyMinimalChanges(
     // - `dirty` true (an insertion or deletion happened here): copy the
     //   serializer's blank run — canonical spacing for the edited region.
     const out: string[] = [];
-    let prevSavedIdx = -1; // saved lineIdx of the last consumed saved line
-    let prevSerialIdx = -1; // serialized lineIdx of the last consumed serial line
+    let prevSavedIdx = -1; // saved lineIdx of the last emitted keep/replacement
+    let prevSerialIdx = -1; // serialized lineIdx of the last emitted line
     let dirty = false;
 
     // Both gap slices only ever span blank lines: significant lines are
-    // consumed strictly in order on each side (dels and pins included), so
-    // the region between two consecutively consumed ones contains no
-    // significant line.
+    // consumed strictly in order on each side, so the region between two
+    // consecutively consumed ones contains no significant line.
     const savedGap = (to: number) => savedLines.slice(prevSavedIdx + 1, to);
     const serialGap = (to: number) => serialLines.slice(prevSerialIdx + 1, to);
 
@@ -331,18 +411,6 @@ export function applyMinimalChanges(
             prevSerialIdx = edit.serial.lineIdx;
             dirty = false;
             e++;
-        } else if (edit.op === "pin") {
-            // Protected line: emit the saved bytes with the saved file's own
-            // preceding blank run — the construct and its spacing survive
-            // exactly as written.
-            out.push(...savedGap(edit.saved.lineIdx));
-            out.push(edit.saved.text);
-            prevSavedIdx = edit.saved.lineIdx;
-            e++;
-        } else if (edit.op === "skip") {
-            // Swallow the serializer's replacement for a pinned construct.
-            prevSerialIdx = edit.serial.lineIdx;
-            e++;
         } else if (edit.op === "del" && next?.op === "ins") {
             // del immediately followed by ins = an in-place replacement: the
             // line changed but its surroundings did not, so the saved spacing
@@ -354,7 +422,6 @@ export function applyMinimalChanges(
             dirty = false;
             e += 2;
         } else if (edit.op === "del") {
-            prevSavedIdx = edit.saved.lineIdx;
             dirty = true;
             e++;
         } else {

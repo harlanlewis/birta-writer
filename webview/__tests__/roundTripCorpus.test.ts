@@ -79,16 +79,22 @@ describe("corpus invariant B — an edit keeps every original line intact", () =
             const merged = applyMinimalChanges(content, serialized, protection);
 
             expect(merged).toContain("Corpus edit marker paragraph.");
-            // Every original significant line must survive byte-for-byte.
-            const mergedSig = new Map<string, number>();
-            for (const line of sig(merged)) {
-                mergedSig.set(line, (mergedSig.get(line) ?? 0) + 1);
-            }
+            // Every original significant line must survive byte-for-byte AND
+            // in the original order (an adversarial review found a merge that
+            // preserved the line multiset while reordering the document).
+            const mergedSig = sig(merged);
+            let at = 0;
             for (const line of sig(content)) {
-                const left = mergedSig.get(line) ?? 0;
-                expect(left, `original line lost: ${JSON.stringify(line)}`).toBeGreaterThan(0);
-                mergedSig.set(line, left - 1);
+                let found = -1;
+                for (let i = at; i < mergedSig.length; i++) {
+                    if (mergedSig[i] === line) { found = i; break; }
+                }
+                expect(found, `original line lost or out of order: ${JSON.stringify(line)}`).toBeGreaterThanOrEqual(0);
+                at = found + 1;
             }
+            // The inserted paragraph must sit at the very top, above all
+            // original content.
+            expect(mergedSig[0]).toBe("Corpus edit marker paragraph.");
             await editor.destroy();
         });
     }
