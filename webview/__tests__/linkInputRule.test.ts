@@ -141,6 +141,47 @@ describe("typing [text](url) should create a real link", () => {
     });
 });
 
+describe("existing links must never be rewritten", () => {
+    it("typing ](url) after a link whose text contains [ should keep the link intact", async () => {
+        // Arrange — a link whose TEXT is "[a" (escaped bracket) with href "u"
+        const editor = await makeEditor("[\\[a](u)\n");
+        const v = view(editor);
+        expect(linkedTexts(v)).toEqual([{ text: "[a", href: "u" }]);
+        placeCursorAtEndOfBlock(v, 0);
+
+        // Act — the closing ")" makes the regex match `[a](c)` spanning the
+        // existing link's text; converting would rewrite its text and href
+        typeWithInputRules(v, "](c)");
+
+        // Assert — the href is NEVER rewritten to "c" and the doc text is a
+        // plain literal insert. (The typed chars joining the link's text is
+        // the inclusive link mark's normal typing behavior, not this rule.)
+        const links = linkedTexts(v);
+        expect(links).toHaveLength(1);
+        expect(links[0].href).toBe("u");
+        expect(v.state.doc.textContent).toBe("[a](c)");
+        await editor.destroy();
+    });
+
+    it("typing a new link near an existing one should still convert", async () => {
+        // Arrange — the guard must only fire on OVERLAP with linked text;
+        // the caret starts after unlinked trailing text
+        const editor = await makeEditor("[x](u) and\n");
+        const v = view(editor);
+        placeCursorAtEndOfBlock(v, 0);
+
+        // Act
+        typeWithInputRules(v, " [y](v)");
+
+        // Assert — both links exist, each with its own href
+        expect(linkedTexts(v)).toEqual([
+            { text: "x", href: "u" },
+            { text: "y", href: "v" },
+        ]);
+        await editor.destroy();
+    });
+});
+
 describe("code contexts must keep the syntax literal", () => {
     it("typing the closing paren inside inline code should not create a link", async () => {
         // Arrange — a paragraph that is one inline code span: `[text](url`

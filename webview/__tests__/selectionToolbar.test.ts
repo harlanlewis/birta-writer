@@ -22,6 +22,7 @@ import {
     setupSelectionToolbar,
     setPendingToolbarPos,
 } from "../components/selectionToolbar";
+import { initToolbar } from "../components/toolbar";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -141,6 +142,60 @@ describe("selection toolbar link button", () => {
         // The editor selection is untouched by the click
         expect(v.state.selection.from).toBe(1);
         expect(v.state.selection.to).toBe(6);
+    });
+
+    it("the link button wired to the REAL prompt should clamp a cross-paragraph selection", async () => {
+        // Arrange — real editor + real top toolbar; the selection toolbar's
+        // link button gets the SAME openLinkPrompt the Cmd/Ctrl+K shortcut
+        // uses. Select "two" (p1) through "three" (p2).
+        editor = await makeEditor("one two\n\nthree four\n");
+        const v = view(editor);
+        const topbar = document.createElement("div");
+        topbar.className = "editor-topbar";
+        document.body.appendChild(topbar);
+        const tb = initToolbar(topbar, () => editor);
+        const selTb = setupSelectionToolbar(
+            () => v,
+            () => editor,
+            tb.openLinkPrompt,
+        );
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 5, 15)),
+        );
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Act — click the link button, confirm the prompt
+        mousedown(linkButton());
+        const overlay = document.querySelector(".tb-prompt-overlay");
+        expect(overlay).not.toBeNull();
+        const inputs = overlay!.querySelectorAll("input");
+        expect(inputs).toHaveLength(2);
+        expect(inputs[0].value).toBe("two"); // clamped pre-fill
+        inputs[1].value = "x";
+        inputs[1].dispatchEvent(
+            new KeyboardEvent("keydown", {
+                key: "Enter",
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+
+        // Assert — paragraphs survive; the link applies only inside p1
+        expect(v.state.doc.childCount).toBe(2);
+        expect(v.state.doc.child(0).textContent).toBe("one two");
+        expect(v.state.doc.child(1).textContent).toBe("three four");
+        let linkedText = "";
+        let linkedHref = "";
+        v.state.doc.descendants((node) => {
+            const link = node.marks.find((m) => m.type.name === "link");
+            if (node.isText && link) {
+                linkedText = node.text ?? "";
+                linkedHref = link.attrs["href"] as string;
+            }
+        });
+        expect(linkedText).toBe("two");
+        expect(linkedHref).toBe("x");
     });
 
     it("with a table cell selection the button should be hidden while bold stays visible", async () => {

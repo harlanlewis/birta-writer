@@ -151,6 +151,35 @@ describe("caret link URL autocompletion", () => {
         expect(postedRequests()).toEqual([{ id: expect.any(String), query: "../not" }]);
     });
 
+    it("a caret near the viewport bottom should flip the menu above the caret", async () => {
+        // Arrange — a caret 745px down a 768px viewport; the rendered menu
+        // measures 200px (both stubbed: jsdom does no layout/measurement)
+        typeText(v, "[n](../not");
+        await vi.advanceTimersByTimeAsync(250);
+        const coords = vi.spyOn(v, "coordsAtPos").mockReturnValue({
+            left: 10, right: 10, top: 730, bottom: 745,
+        });
+        const gbcr = vi
+            .spyOn(Element.prototype, "getBoundingClientRect")
+            .mockReturnValue({
+                top: 0, bottom: 0, left: 0, right: 0,
+                width: 0, height: 200, x: 0, y: 0,
+                toJSON: () => ({}),
+            } as DOMRect);
+
+        // Act
+        reply();
+
+        // Assert — below would be 749..949 (> 768); flipped bottom edge at
+        // caret top − 4 → menu top = 726 − 200 = 526.
+        const menu = menuEl();
+        expect(menu).not.toBeNull();
+        expect(menu!.style.top).toBe("526px");
+
+        coords.mockRestore();
+        gbcr.mockRestore();
+    });
+
     it("ArrowDown + Enter should convert the construct into a real link", async () => {
         // Arrange
         typeText(v, "[n](../not");
@@ -169,6 +198,23 @@ describe("caret link URL autocompletion", () => {
             { text: "n", href: "../notion/index.md" },
         ]);
         expect(editor.action(getMarkdown())).toContain("[n](../notion/index.md)");
+    });
+
+    it("picking with an EMPTY label should complete the path in place instead of linking", async () => {
+        // Arrange — `[](partial`: no usable link text yet
+        typeText(v, "[](../not");
+        await vi.advanceTimersByTimeAsync(250);
+        reply();
+
+        // Act
+        press(v, "ArrowDown");
+        press(v, "Enter");
+
+        // Assert — the partial path was replaced with the picked one, still
+        // literal text (the user keeps editing; the ")" rule converts later)
+        expect(v.state.doc.textContent).toBe("x[](../notion/index.md");
+        expect(linkedTexts(v)).toEqual([]);
+        expect(menuEl()).toBeNull();
     });
 
     it("ArrowUp should wrap the highlight to the last option", async () => {

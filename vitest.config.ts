@@ -17,6 +17,16 @@ export default defineConfig({
                 "src/utils/**/*.ts",
                 "src/MarkdownDocument.ts",
                 "webview/utils/**/*.ts",
+                // Shared pure logic (messages.ts is type-only — nothing to cover)
+                "shared/frontmatterTable.ts",
+                "shared/linkTargetSuggest.ts",
+                "shared/proofreadFilter.ts",
+                // Editor plugins/components with dedicated test suites
+                "webview/plugins/linkInputRule.ts",
+                "webview/plugins/linkUrlComplete.ts",
+                "webview/plugins/list.ts",
+                "webview/components/pathLink/linkTargetComplete.ts",
+                "webview/components/frontmatter/**/*.ts",
             ],
             thresholds: {
                 lines: 70,

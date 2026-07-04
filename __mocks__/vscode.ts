@@ -81,6 +81,12 @@ export const commands = {
     executeCommand: vi.fn(),
 };
 
+// No extensions installed in tests: theme discovery (themeManager.getAllThemes)
+// iterates this and falls back to the auto theme when it finds nothing.
+export const extensions = {
+    all: [] as Array<{ id: string; extensionPath: string; packageJSON: unknown }>,
+};
+
 export const EventEmitter = vi.fn(() => ({
     event: vi.fn(),
     fire: vi.fn(),

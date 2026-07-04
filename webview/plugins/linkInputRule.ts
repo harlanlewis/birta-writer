@@ -33,11 +33,23 @@ function rangeHasCodeMark(state: EditorState, from: number, to: number): boolean
     return hasCode;
 }
 
+/** True when any text node in [from, to) already carries a link mark. */
+function rangeHasLinkMark(state: EditorState, from: number, to: number): boolean {
+    let hasLink = false;
+    state.doc.nodesBetween(from, to, (node) => {
+        if (node.isText && node.marks.some((m) => m.type.name === "link")) {
+            hasLink = true;
+        }
+    });
+    return hasLink;
+}
+
 /**
  * Builds the transaction that replaces the literal source range [start, end)
  * with `text` carrying a link mark (href = url; empty url allowed). Returns
- * null when the conversion must not happen (code context, no link mark in
- * the schema, empty label, atom placeholders in the match).
+ * null when the conversion must not happen (code context, overlap with an
+ * existing link, no link mark in the schema, empty label, atom placeholders
+ * in the match).
  *
  * Shared by the input rule below and by the caret URL autocomplete's pick
  * handler (webview/plugins/linkUrlComplete.ts), which applies the same
@@ -59,6 +71,10 @@ export function createLinkifyTr(
     const $start = state.doc.resolve(start);
     if ($start.parent.type.spec.code) { return null; } // code block
     if (rangeHasCodeMark(state, start, end)) { return null; } // inline code
+    // A match overlapping an EXISTING link (e.g. typing `](url)` right after
+    // a link whose text contains "[") must never rewrite that link's
+    // text/href — keep the typed characters literal instead.
+    if (rangeHasLinkMark(state, start, end)) { return null; }
     const { tr } = state;
     // Restore the pre-conversion stored marks afterwards so what the user
     // types NEXT does not extend the link (mirrors @milkdown/prose markRule).

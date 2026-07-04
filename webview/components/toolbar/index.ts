@@ -890,6 +890,18 @@ export function initToolbar(
             }
             capturedFrom = state.selection.from;
             capturedTo = state.selection.to;
+            // A selection spanning several textblocks (paragraphs, headings,
+            // list items, ...) cannot become ONE inline link without fusing
+            // the blocks' texts together. Clamp to the portion inside the
+            // first textblock: the prompt pre-fills and the confirm applies
+            // to that range only, leaving the other blocks untouched.
+            const $from = state.selection.$from;
+            if ($from.parent.isTextblock) {
+                const firstBlockEnd = $from.end();
+                if (capturedTo > firstBlockEnd) {
+                    capturedTo = firstBlockEnd;
+                }
+            }
             if (capturedFrom !== capturedTo) {
                 selectedText = state.doc.textBetween(capturedFrom, capturedTo);
             }

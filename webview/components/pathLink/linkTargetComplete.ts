@@ -88,7 +88,19 @@ export interface LinkSuggestMenu {
 export function createLinkSuggestMenu(
     items: readonly LinkTargetSuggestionItem[],
     query: string,
-    anchor: { left: number; top: number; minWidth?: number },
+    anchor: {
+        left: number;
+        /** Menu top (viewport y) when placed below the anchor. */
+        top: number;
+        /**
+         * Viewport y the menu's BOTTOM edge should sit at when flipped above
+         * the anchor (the anchor's top edge minus the gap). When provided,
+         * the menu flips above whenever it would overflow the viewport
+         * bottom and there is more room above the anchor than below it.
+         */
+        flipTop?: number;
+        minWidth?: number;
+    },
     onPick: (text: string) => void,
 ): LinkSuggestMenu | null {
     const trimmed = query.trim();
@@ -142,6 +154,18 @@ export function createLinkSuggestMenu(
     });
 
     document.body.appendChild(div);
+
+    // Viewport-bottom clamp: measured after appending (the height depends on
+    // the rendered rows). Flip above the anchor when the menu would overflow
+    // the bottom edge and the space above the anchor is larger than below.
+    if (anchor.flipTop !== undefined) {
+        const height = div.getBoundingClientRect().height;
+        const overflowsBottom = anchor.top + height > window.innerHeight;
+        const spaceBelow = window.innerHeight - anchor.top;
+        if (overflowsBottom && anchor.flipTop > spaceBelow) {
+            div.style.top = `${Math.max(0, anchor.flipTop - height)}px`;
+        }
+    }
 
     return {
         el: div,
@@ -217,7 +241,12 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
         menu = createLinkSuggestMenu(
             items,
             input.value,
-            { left: rect.left, top: rect.bottom + 2, minWidth: rect.width },
+            {
+                left: rect.left,
+                top: rect.bottom + 2,
+                flipTop: rect.top - 2,
+                minWidth: rect.width,
+            },
             applySelection,
         );
     }

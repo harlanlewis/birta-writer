@@ -10,6 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import {
     attachLinkTargetComplete,
+    createLinkSuggestMenu,
     dispatchLinkTargetSuggestions,
 } from "../components/pathLink/linkTargetComplete";
 import { setupLinkPopup } from "../components/linkPopup";
@@ -303,6 +304,133 @@ describe("link target autocompletion — keyboard and closing", () => {
         // accepted value must not trigger a new suggestion round.
         expect(postedRequests()).toHaveLength(1);
         expect(menuEl()).toBeNull();
+    });
+});
+
+describe("link suggest menu — viewport-bottom clamp", () => {
+    // jsdom defaults: window.innerHeight = 768. Menu heights are stubbed via
+    // getBoundingClientRect (jsdom does no layout, so real heights are 0).
+
+    function domRect(r: Partial<DOMRect>): DOMRect {
+        return {
+            top: 0, bottom: 0, left: 0, right: 0,
+            width: 0, height: 0, x: 0, y: 0,
+            toJSON: () => ({}),
+            ...r,
+        } as DOMRect;
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("with enough space below the menu should sit below the anchor", () => {
+        vi.spyOn(Element.prototype, "getBoundingClientRect")
+            .mockReturnValue(domRect({ height: 200 }));
+
+        const menu = createLinkSuggestMenu(
+            ITEMS, "index",
+            { left: 10, top: 100, flipTop: 80 },
+            () => {},
+        );
+
+        expect(menu!.el.style.top).toBe("100px");
+        menu!.destroy();
+    });
+
+    it("overflowing the viewport bottom with more room above should flip the menu above", () => {
+        vi.spyOn(Element.prototype, "getBoundingClientRect")
+            .mockReturnValue(domRect({ height: 200 }));
+
+        // Below placement would span 750..950 (> 768); space above is 730.
+        const menu = createLinkSuggestMenu(
+            ITEMS, "index",
+            { left: 10, top: 750, flipTop: 730 },
+            () => {},
+        );
+
+        // Flipped: the menu's bottom edge sits at flipTop → top = 730 − 200.
+        expect(menu!.el.style.top).toBe("530px");
+        menu!.destroy();
+    });
+
+    it("overflowing with LESS room above should stay below (no pointless flip)", () => {
+        vi.spyOn(Element.prototype, "getBoundingClientRect")
+            .mockReturnValue(domRect({ height: 200 }));
+
+        // Overflows below (600+200 > 768), but space above (100) is smaller
+        // than space below (168): flipping would hide even more of the menu.
+        const menu = createLinkSuggestMenu(
+            ITEMS, "index",
+            { left: 10, top: 600, flipTop: 100 },
+            () => {},
+        );
+
+        expect(menu!.el.style.top).toBe("600px");
+        menu!.destroy();
+    });
+
+    it("a flipped menu taller than the space above should clamp to the viewport top", () => {
+        vi.spyOn(Element.prototype, "getBoundingClientRect")
+            .mockReturnValue(domRect({ height: 900 }));
+
+        const menu = createLinkSuggestMenu(
+            ITEMS, "index",
+            { left: 10, top: 750, flipTop: 730 },
+            () => {},
+        );
+
+        expect(menu!.el.style.top).toBe("0px");
+        menu!.destroy();
+    });
+
+    it("without flipTop the menu should keep the legacy below placement", () => {
+        vi.spyOn(Element.prototype, "getBoundingClientRect")
+            .mockReturnValue(domRect({ height: 200 }));
+
+        const menu = createLinkSuggestMenu(
+            ITEMS, "index",
+            { left: 10, top: 750 },
+            () => {},
+        );
+
+        expect(menu!.el.style.top).toBe("750px");
+        menu!.destroy();
+    });
+
+    it("the input-field menu should flip above an input near the viewport bottom", async () => {
+        // Arrange — an attached input whose rect sits near the bottom edge
+        vi.useFakeTimers();
+        const input = document.createElement("input");
+        input.type = "text";
+        document.body.appendChild(input);
+        const gbcr = vi
+            .spyOn(Element.prototype, "getBoundingClientRect")
+            .mockImplementation(function (this: Element) {
+                return this === input
+                    ? domRect({ top: 730, bottom: 750, left: 10, width: 100 })
+                    : domRect({ height: 200 });
+            });
+        const detach = attachLinkTargetComplete(input);
+
+        // Act
+        await type(input, "index");
+        reply();
+
+        // Assert — below would be 752..952 (> 768); flipped bottom edge at
+        // input top − 2 → menu top = 728 − 200 = 528.
+        const menu = menuEl();
+        expect(menu).not.toBeNull();
+        expect(menu!.style.top).toBe("528px");
+
+        detach();
+        gbcr.mockRestore();
+        vi.useRealTimers();
     });
 });
 

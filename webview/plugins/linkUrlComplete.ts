@@ -178,19 +178,23 @@ class LinkUrlCompleteController {
         this.menu = createLinkSuggestMenu(
             items,
             match.url,
-            { left: coords.left, top: coords.bottom + 4 },
+            {
+                left: coords.left,
+                top: coords.bottom + 4,
+                flipTop: coords.top - 4,
+            },
             (picked) => this.pick(picked),
         );
     }
 
     /** Viewport coordinates of the caret (menu anchor). */
-    private caretCoords(): { left: number; bottom: number } {
+    private caretCoords(): { left: number; top: number; bottom: number } {
         try {
             const c = this.view.coordsAtPos(this.view.state.selection.from);
-            return { left: c.left, bottom: c.bottom };
+            return { left: c.left, top: c.top, bottom: c.bottom };
         } catch {
             // jsdom (unit tests) cannot measure text positions.
-            return { left: 0, bottom: 0 };
+            return { left: 0, top: 0, bottom: 0 };
         }
     }
 

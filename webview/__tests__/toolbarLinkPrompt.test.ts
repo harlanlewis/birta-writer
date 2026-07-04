@@ -14,6 +14,9 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { Mark } from "@milkdown/prose/model";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";
+import { createEventManager } from "../eventManager";
+import { initKeyboardShortcuts } from "../keyboardShortcuts";
+import type { FindBarController } from "../components/findBar";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -144,6 +147,93 @@ describe("toolbar openLinkPrompt", () => {
         expect(linkedTexts(v)).toEqual([
             { text: "world", href: "https://new.example" },
         ]);
+    });
+
+    it("a cross-paragraph selection should clamp to the first paragraph and not fuse blocks", async () => {
+        // Arrange — two paragraphs; select from "two" across the paragraph
+        // boundary into "three" (doc: p1 "one two" content 1..8, p2 "three
+        // four" content 10..20 → selection 5..15 covers "two" + "three")
+        await editor.destroy();
+        editor = await makeEditor("one two\n\nthree four\n");
+        v = view(editor);
+        expect(v.state.doc.childCount).toBe(2);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 5, 15)));
+
+        // Act — the prompt pre-fills only the first paragraph's portion
+        tb.openLinkPrompt();
+        const { text, url } = promptInputs();
+        expect(text.value).toBe("two");
+        url.value = "x";
+        pressEnter(url);
+
+        // Assert — both paragraphs survive, no "twothree" fusion, and the
+        // link applies only within the first paragraph
+        expect(v.state.doc.childCount).toBe(2);
+        expect(v.state.doc.child(0).textContent).toBe("one two");
+        expect(v.state.doc.child(1).textContent).toBe("three four");
+        expect(linkedTexts(v)).toEqual([{ text: "two", href: "x" }]);
+    });
+
+    it("a selection starting at a paragraph end should behave like a caret insert", async () => {
+        // Arrange — selection begins exactly at the end of p1 (pos 8) and
+        // spans into p2: the clamped first-block portion is empty
+        await editor.destroy();
+        editor = await makeEditor("one two\n\nthree four\n");
+        v = view(editor);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 8, 15)));
+
+        // Act
+        tb.openLinkPrompt();
+        const { text, url } = promptInputs();
+        expect(text.value).toBe("");
+        text.value = "new";
+        url.value = "y";
+        pressEnter(url);
+
+        // Assert — linked text inserted at the clamp point, blocks intact
+        expect(v.state.doc.childCount).toBe(2);
+        expect(v.state.doc.child(0).textContent).toBe("one twonew");
+        expect(v.state.doc.child(1).textContent).toBe("three four");
+        expect(linkedTexts(v)).toEqual([{ text: "new", href: "y" }]);
+    });
+
+    it("a REAL Cmd+K keydown should open the same prompt and apply the link end to end", () => {
+        // Arrange — wire the production shortcut router to the toolbar's
+        // openLinkPrompt (exactly as webview/index.ts does) and select "hello"
+        window.__i18n = { translations: {}, isMac: true };
+        const manager = createEventManager();
+        const findBar = {
+            open: vi.fn(),
+            close: vi.fn(),
+            isOpen: vi.fn(() => false),
+        } as unknown as FindBarController;
+        initKeyboardShortcuts(manager, () => v, () => [], () => 1, findBar, tb.openLinkPrompt);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)));
+
+        try {
+            // Act — a real Cmd+K keydown through document, then confirm
+            document.body.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                    code: "KeyK",
+                    key: "k",
+                    metaKey: true,
+                    bubbles: true,
+                    cancelable: true,
+                }),
+            );
+            const { text, url } = promptInputs();
+            expect(text.value).toBe("hello");
+            url.value = "https://kbd.example";
+            pressEnter(url);
+
+            // Assert — the shortcut path produced the same doc change as the button
+            expect(linkedTexts(v)).toEqual([
+                { text: "hello", href: "https://kbd.example" },
+            ]);
+        } finally {
+            manager.dispose();
+            delete window.__i18n;
+        }
     });
 
     it("Escape should close the prompt without touching the document", () => {
