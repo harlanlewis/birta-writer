@@ -1032,7 +1032,7 @@ export function initToolbar(
         ),
     );
 
-    insertGroup.appendChild(
+    insertGroup.append(
         btn(IconFootnote, t("Insert Footnote"), () => {
             callCmd(getEditor, insertFootnoteCommand);
             getEditorView()?.focus();
