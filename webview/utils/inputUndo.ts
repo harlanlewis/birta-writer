@@ -22,6 +22,14 @@ const COALESCE_MS = 300;
 
 type UndoableInput = HTMLInputElement | HTMLTextAreaElement;
 
+/**
+ * Inputs that already have an undo instance attached, mapped to that
+ * instance's detach function. Attaching twice would stack two histories
+ * that both react to every keystroke and fight over restores, so a second
+ * attach returns the existing detach instead.
+ */
+const attachedInputs = new WeakMap<UndoableInput, () => void>();
+
 function takeSnapshot(input: UndoableInput): Snapshot {
     return {
         value: input.value,
@@ -64,9 +72,15 @@ function chordOf(e: KeyboardEvent): "undo" | "redo" | null {
  * - Restoring dispatches a synthetic bubbling `input` event so live
  *   listeners (filtering, search) still react.
  *
- * @returns detach function that removes all listeners.
+ * @returns detach function that removes all listeners. Attaching to an
+ * already-attached input is a no-op that returns the existing detach.
  */
 export function attachInputUndo(input: UndoableInput): () => void {
+    const existing = attachedInputs.get(input);
+    if (existing) {
+        return existing;
+    }
+
     const undoStack: Snapshot[] = [];
     const redoStack: Snapshot[] = [];
     // The state the input is currently in (as far as history is concerned)
@@ -131,6 +145,13 @@ export function attachInputUndo(input: UndoableInput): () => void {
         if (e.isComposing) {
             return;
         }
+        // Resync FIRST, while input.value is still the pre-edit value: a
+        // programmatic `input.value = X` while focused fires no `input`
+        // event, so without this the next keystroke would push the stale
+        // pre-change snapshot onto the undo stack (by `input` event time the
+        // value has already mutated and staleness is undetectable).
+        resyncIfStale();
+
         const chord = chordOf(e);
         if (!chord) {
             return;
@@ -139,8 +160,6 @@ export function attachInputUndo(input: UndoableInput): () => void {
         // never leaks to the editor or VS Code
         e.preventDefault();
         e.stopPropagation();
-
-        resyncIfStale();
 
         if (chord === "undo") {
             const prev = undoStack.pop();
@@ -165,13 +184,26 @@ export function attachInputUndo(input: UndoableInput): () => void {
         resyncIfStale();
     }
 
+    // beforeinput also fires before the value mutates; it covers edits that
+    // have no keydown (paste/cut via context menu, drag & drop)
+    function onBeforeInput(): void {
+        if (!restoring) {
+            resyncIfStale();
+        }
+    }
+
     input.addEventListener("input", onInput);
+    input.addEventListener("beforeinput", onBeforeInput);
     input.addEventListener("keydown", onKeydown);
     input.addEventListener("focus", onFocus);
 
-    return () => {
+    const detach = (): void => {
         input.removeEventListener("input", onInput);
+        input.removeEventListener("beforeinput", onBeforeInput);
         input.removeEventListener("keydown", onKeydown);
         input.removeEventListener("focus", onFocus);
+        attachedInputs.delete(input);
     };
+    attachedInputs.set(input, detach);
+    return detach;
 }

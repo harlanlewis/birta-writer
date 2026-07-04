@@ -266,6 +266,83 @@ describe("attachInputUndo", () => {
             // Assert: history from the previous content was discarded
             expect(input.value).toBe("new link text");
         });
+
+        it("typing after a programmatic value change while focused should undo to the programmatic value", () => {
+            // Arrange: value replaced while focused (no focus/input events),
+            // then the user keeps typing. The keydown resync must run BEFORE
+            // the edit lands, otherwise the stale pre-change snapshot gets
+            // pushed and undo restores "hello" instead of "world".
+            const input = createInput();
+            attachInputUndo(input);
+            typeValue(input, "hello");
+            input.value = "world";
+            vi.advanceTimersByTime(BURST_GAP_MS);
+
+            // Act: real typing fires keydown first (value still "world"),
+            // then the input event with the edited value
+            pressKey(input, "s");
+            typeValue(input, "worlds");
+            pressKey(input, "z", { meta: true });
+
+            // Assert
+            expect(input.value).toBe("world");
+        });
+
+        it("undo right after a programmatic change plus typing should never resurrect pre-change history", () => {
+            // Arrange
+            const input = createInput();
+            attachInputUndo(input);
+            typeValue(input, "hello");
+            input.value = "world";
+            vi.advanceTimersByTime(BURST_GAP_MS);
+            pressKey(input, "s");
+            typeValue(input, "worlds");
+
+            // Act: undo twice — past the programmatic baseline
+            pressKey(input, "z", { meta: true });
+            pressKey(input, "z", { meta: true });
+
+            // Assert: pre-change history ("hello", "") was dropped
+            expect(input.value).toBe("world");
+        });
+    });
+
+    describe("double attach", () => {
+        it("attaching twice should return the same detach and keep undo working", () => {
+            // Arrange
+            const input = createInput();
+            const detach1 = attachInputUndo(input);
+            const detach2 = attachInputUndo(input);
+            typeValue(input, "abc");
+
+            // Act
+            pressKey(input, "z", { meta: true });
+
+            // Assert: a single instance handled the chord (two stacked
+            // instances would fight over restores and synthetic events)
+            expect(detach2).toBe(detach1);
+            expect(input.value).toBe("");
+
+            // Redo still works through the same single history
+            pressKey(input, "z", { meta: true, shift: true });
+            expect(input.value).toBe("abc");
+        });
+
+        it("detaching once after a double attach should fully remove handling", () => {
+            // Arrange
+            const input = createInput();
+            const detach = attachInputUndo(input);
+            attachInputUndo(input);
+            typeValue(input, "abc");
+
+            // Act
+            detach();
+            const event = pressKey(input, "z", { meta: true });
+
+            // Assert
+            expect(input.value).toBe("abc");
+            expect(event.defaultPrevented).toBe(false);
+        });
     });
 
     describe("detach", () => {

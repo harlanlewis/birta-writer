@@ -19,6 +19,7 @@ import mermaid from "mermaid";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
 import { highlight } from "@/highlighter";
 import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
+import { attachInputUndo } from "@/utils/inputUndo";
 import { createButton } from "@/ui/dom";
 import './codeBlock.css';
 
@@ -188,6 +189,9 @@ function createLangPicker(
     searchInput.placeholder = t("Search language...");
     searchInput.setAttribute("autocomplete", "off");
     searchInput.setAttribute("spellcheck", "false");
+    // Local undo/redo: VS Code's Electron layer swallows Cmd/Ctrl+Z before
+    // native inputs see it (same as the other overlay inputs)
+    const detachSearchUndo = attachInputUndo(searchInput);
 
     const listEl = document.createElement("ul");
     listEl.className = "lang-picker-list";
@@ -322,24 +326,38 @@ function createLangPicker(
     });
 
     searchInput.addEventListener("input", () => renderList(searchInput.value));
+    // Stop propagation only for keys the picker actually consumes (list
+    // navigation and plain filter typing). Modifier chords it does not
+    // handle (Cmd+Shift+M, other workbench keybindings, ...) must keep
+    // propagating; undo/redo chords are stopped by attachInputUndo itself.
     searchInput.addEventListener("keydown", (e) => {
-        e.stopPropagation();
         if (e.isComposing) return;
         const items = listEl.querySelectorAll<HTMLElement>(".lang-picker-item");
         if (e.key === "ArrowDown") {
             e.preventDefault();
+            e.stopPropagation();
             setActiveIdx(Math.min(activeIndex + 1, items.length - 1));
         } else if (e.key === "ArrowUp") {
             e.preventDefault();
+            e.stopPropagation();
             setActiveIdx(Math.max(activeIndex - 1, 0));
         } else if (e.key === "Enter") {
             e.preventDefault();
+            e.stopPropagation();
             const focused = listEl.querySelector<HTMLElement>(".lang-picker-item--focused");
             if (focused) selectLang(focused.dataset["value"] ?? "");
             else if (items[0]) selectLang(items[0].dataset["value"] ?? "");
         } else if (e.key === "Escape") {
             e.preventDefault();
+            e.stopPropagation();
             close();
+        } else if (
+            !e.metaKey && !e.ctrlKey && !e.altKey &&
+            (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete")
+        ) {
+            // Plain typing/editing that mutates the filter: keep it inside
+            // the picker so document-level shortcut handlers never see it
+            e.stopPropagation();
         }
     });
 
@@ -351,6 +369,7 @@ function createLangPicker(
         },
         destroy() {
             close();
+            detachSearchUndo();
             if (document.body.contains(dropdown)) document.body.removeChild(dropdown);
         },
     };
@@ -988,7 +1007,11 @@ export function createCodeBlockView(
             gutter.scrollTop = textarea.scrollTop;
         });
 
-        // Tab 键插入 4 空格（不跳焦）
+        // Local undo/redo: VS Code's Electron layer swallows Cmd/Ctrl+Z
+        // before the native textarea sees it
+        const detachTextareaUndo = attachInputUndo(textarea);
+
+        // Tab inserts 4 spaces (instead of moving focus)
         textarea.addEventListener("keydown", (e) => {
             if (e.key === "Tab") {
                 e.preventDefault();
@@ -996,7 +1019,9 @@ export function createCodeBlockView(
                 const end = textarea.selectionEnd;
                 textarea.value = textarea.value.slice(0, s) + "    " + textarea.value.slice(end);
                 textarea.selectionStart = textarea.selectionEnd = s + 4;
-                updateHighlight();
+                // Synthetic input event: refreshes the highlight layer AND
+                // records the insertion in the local undo history
+                textarea.dispatchEvent(new Event("input", { bubbles: true }));
             }
         });
 
@@ -1029,6 +1054,7 @@ export function createCodeBlockView(
             }
             unlockBodyScroll();
             gutterResizeObserver?.disconnect();
+            detachTextareaUndo();
             animateCloseLightbox(overlay, () => {
                 lbActiveLightbox = null;
                 removeKeyListener();

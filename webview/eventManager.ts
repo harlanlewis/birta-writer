@@ -28,8 +28,19 @@ interface CustomEventEntry {
 
 /** Keyboard shortcut configuration */
 export interface ShortcutOptions {
-    /** Key code, e.g. "KeyF", "KeyM", "KeyK" */
-    code: string;
+    /**
+     * Physical key code, e.g. "KeyF", "KeyM", "KeyK". Layout-independent;
+     * use for Alt combos, where macOS remaps the produced character
+     * (Option+K types "˚"). Ignored when `key` is set.
+     */
+    code?: string;
+    /**
+     * Produced character (KeyboardEvent.key), compared case-insensitively,
+     * e.g. "f". Layout-aware — prefer this for letter shortcuts so
+     * non-QWERTY layouts (Dvorak, QWERTZ, ...) match what the user typed,
+     * the same way ProseMirror keymaps resolve letter bindings.
+     */
+    key?: string;
     /** Require the Meta/Cmd key */
     meta?: boolean;
     /** Require the Ctrl key */
@@ -152,6 +163,7 @@ export class EventManager {
     ): () => void {
         const {
             code,
+            key,
             meta = false,
             ctrl = false,
             shift = false,
@@ -159,6 +171,7 @@ export class EventManager {
             preventDefault = true,
             stopPropagation = false,
         } = options;
+        const lowerKey = key?.toLowerCase();
 
         // Bind on `document`, NOT `window`. The VS Code webview host installs
         // its own bubble-phase keydown listener on `window` (before this
@@ -170,7 +183,11 @@ export class EventManager {
         // guard in keyboardShortcuts.ts, also on `document`) actually keeps
         // handled shortcuts from leaking to the workbench.
         return this.onDocument("keydown", (e) => {
-            if (e.code !== code) { return; }
+            if (lowerKey !== undefined) {
+                if (e.key.toLowerCase() !== lowerKey) { return; }
+            } else if (e.code !== code) {
+                return;
+            }
 
             // Check modifiers ("Mod" when both meta and ctrl are requested)
             if (meta && ctrl) {
