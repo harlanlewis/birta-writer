@@ -4,6 +4,7 @@ import {
     editorViewCtx,
     nodeViewCtx,
     rootCtx,
+    serializerCtx,
 } from "@milkdown/core";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import { prism, prismConfig } from "@milkdown/plugin-prism";
@@ -119,9 +120,10 @@ export async function createEditor(
     onUpdate: (markdown: string) => void,
     onRenameImage?: (webviewUri: string, newBasename: string) => Promise<void>,
 ): Promise<Editor> {
-    // Milkdown 的 markdownUpdated 监听器在 create() 完成后异步交付（RAF/microtask），
-    // 此时 isSettled 已为 true，会误触发保存。通过 _hasUserInteracted 确保
-    // 只有用户真正操作过才允许向 Extension 发送内容更新。
+    // Milkdown's listener delivers updates asynchronously after create()
+    // completes (RAF/microtask), by which point isSettled is already true and
+    // a save would fire spuriously. _hasUserInteracted ensures content
+    // updates are only sent to the Extension after real user input.
     _hasUserInteracted = false;
     setupInteractionTracking();
 
@@ -155,8 +157,9 @@ export async function createEditor(
         }
     });
 
-    // editor.create() 期间会因设置初始内容而触发 markdownUpdated，
-    // 用此标志阻断该初始触发，避免"打开即静默保存"的问题
+    // Setting the initial content during editor.create() fires the update
+    // listener; this flag blocks that initial trigger so opening a file never
+    // causes a silent save.
     let isSettled = false;
 
     _editor = await Editor.make()
@@ -167,11 +170,18 @@ export async function createEditor(
             // original file formatting (bullets, rules, table widths)
             configureSerialization(ctx);
             _savedMarkdown = initialMarkdown;
-            ctx.get(listenerCtx).markdownUpdated((_ctx, markdown) => {
-                if (!isSettled) return;          // 跳过初始化同步触发
-                if (!_hasUserInteracted) return; // 跳过初始化异步触发（RAF/microtask 延迟交付）
+            // The `updated` hook (doc-based) is used instead of
+            // `markdownUpdated`: plugin-listener captures the serializer from
+            // serializerCtx ONCE at SerializerReady, so markdownUpdated would
+            // race the fidelitySerializerPlugin swap and could serialize with
+            // the stock serializer. Reading serializerCtx at call time always
+            // uses the current (fidelity) serializer.
+            ctx.get(listenerCtx).updated((innerCtx, doc) => {
+                if (!isSettled) return;          // skip the synchronous trigger during init
+                if (!_hasUserInteracted) return; // skip async init triggers (RAF/microtask delivery)
+                const markdown = innerCtx.get(serializerCtx)(doc);
                 const toSave = applyMinimalChanges(_savedMarkdown, markdown, _protection);
-                if (toSave === _savedMarkdown) return; // 内容无实质变化，不触发保存
+                if (toSave === _savedMarkdown) return; // no substantive change — no save
                 _savedMarkdown = toSave;
                 debouncedUpdate(toSave);
             });

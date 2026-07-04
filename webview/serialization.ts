@@ -4,6 +4,7 @@
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
+import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
@@ -28,6 +29,12 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * (plugins/referenceLinks.ts), keeping the reference form intact. The plugin
  * is absent from the preset's .d.ts, so it is filtered by its withMeta
  * displayName rather than by identity.
+ *
+ * `fidelitySerializerPlugin` (plugins/fidelitySerializer.ts) swaps the stock
+ * `SerializerState` for a vendored, patched copy that keeps a link
+ * containing bold/italic/code children serialized as ONE link instead of
+ * several adjacent same-URL links, and defers emphasis edge-space trimming
+ * until after adjacent mark segments have merged.
  */
 export const pureCommonmark = [
     ...commonmark.filter((plugin) => {
@@ -41,6 +48,7 @@ export const pureCommonmark = [
         return !(displayName?.includes("remarkInlineLinkPlugin"));
     }),
     ...referenceLinksPlugin,
+    fidelitySerializerPlugin,
 ];
 
 // Custom table serializer: every column keeps its natural width, with no

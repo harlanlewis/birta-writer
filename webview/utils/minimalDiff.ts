@@ -44,9 +44,11 @@ function normalizeSepRow(line: string): string {
     return "|" + cells.join("|") + "|";
 }
 
-// Normalize adjacent strong runs: `**a** **b**` → `**a b**`. remark-stringify
-// splits a strong node into two `**...**` runs when it contains a link child,
-// which is semantically identical content.
+// Normalize adjacent strong runs: `**a** **b**` → `**a b**`. Milkdown's
+// stock serializer split a strong node into two `**...**` runs when it
+// contained a link child; the fidelity serializer
+// (plugins/fidelitySerializer.ts) no longer does, but files saved by older
+// builds still contain the split form, which is semantically identical.
 function normalizeSplitStrong(line: string): string {
     let prev: string;
     do {
@@ -54,6 +56,29 @@ function normalizeSplitStrong(line: string): string {
         line = line.replace(
             /\*\*((?:[^*]|\*(?!\*))*)\*\* \*\*((?:[^*]|\*(?!\*))*)\*\*/g,
             "**$1 $2**",
+        );
+    } while (line !== prev);
+    return line;
+}
+
+// Normalize whole-link emphasis to the emphasis-inside canonical form:
+// `**[x](u)**` → `[**x**](u)` (same for `*…*`, `~~…~~`, `***…***`). The
+// fidelity serializer opens link marks outermost, so a fully emphasized link
+// re-serializes with the emphasis INSIDE the link text — semantically
+// identical to the wrapped form saved by older builds or written by hand.
+// Applied AFTER normalizeSplitStrong so that legacy split runs like
+// `**a** **[l](u)** **b**` first merge into `**a [l](u) b**` (which this
+// rewrite then correctly leaves alone: the markers are not flush against
+// the link).
+function normalizeWrappedLinkEmphasis(line: string): string {
+    // Fixpoint: stacked wrappers (`**~~[x](u)~~**`) unwrap one layer per
+    // pass until the emphasis-inside form is reached.
+    let prev: string;
+    do {
+        prev = line;
+        line = line.replace(
+            /(\*{1,3}|~~)\[([^\]]*)\]\(([^)]*)\)\1/g,
+            "[$1$2$1]($3)",
         );
     } while (line !== prev);
     return line;
@@ -82,7 +107,7 @@ function normLineForCompare(line: string): string {
     if (SEP_ROW_RE.test(t)) return normalizeSepRow(line);
     if (TABLE_ROW_RE.test(t)) return normalizeTableDataRow(line);
     if (/^`{3,}/.test(t)) return normalizeFenceOpen(line);
-    return normalizeSplitStrong(line);
+    return normalizeWrappedLinkEmphasis(normalizeSplitStrong(line));
 }
 
 // ─── Line diff (shared by the merge and by protection computation) ─────────
@@ -432,9 +457,9 @@ function countTrailingBlanks(lines: string[]): number {
  *   serializer output — the serializer's canonical spacing wins. This is what
  *   makes a new paragraph arrive together with its blank separator, and a
  *   deleted paragraph take its separator away with it.
- * - Formatting-only differences (table dash widths / cell padding, split
- *   strong runs, fence-language spacing) compare as equal and are never
- *   applied.
+ * - Formatting-only differences (table dash widths / cell padding, legacy
+ *   split strong runs, whole-link emphasis vs emphasis-inside-link,
+ *   fence-language spacing) compare as equal and are never applied.
  * - With `protection` (from `computeRoundTripProtection`), changes the
  *   round trip produces on its own — rewritten setext headings, escaping
  *   churn, dropped constructs — are repaired back to their saved bytes
