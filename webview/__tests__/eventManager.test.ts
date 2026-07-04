@@ -119,6 +119,32 @@ describe("EventManager.onShortcut", () => {
         });
     });
 
+    describe("produced-character (key) matching with non-Latin layouts", () => {
+        // prosemirror-keymap resolves letter bindings via base[event.keyCode]
+        // when the produced character is non-ASCII; the `key` matcher must
+        // apply the same fallback so e.g. Cmd+F works on a Russian layout.
+        it("Russian Cmd+F (key 'а', keyCode 70) should trigger a { key: 'f' } shortcut", () => {
+            manager.onShortcut({ key: "f", meta: true }, handler);
+            pressKey("KeyF", { key: "а", keyCode: 70, metaKey: true });
+            expect(handler).toHaveBeenCalledTimes(1);
+        });
+
+        it("Russian Cmd+P (key 'з', keyCode 80) should not trigger a { key: 'f' } shortcut", () => {
+            manager.onShortcut({ key: "f", meta: true }, handler);
+            pressKey("KeyP", { key: "з", keyCode: 80, metaKey: true });
+            expect(handler).not.toHaveBeenCalled();
+        });
+
+        it("an ASCII produced character should not fall back to the keyCode", () => {
+            // Dvorak-style remap: physical KeyB produces "x"; a { key: "b" }
+            // shortcut must NOT fire (prosemirror-keymap only falls back for
+            // non-ASCII characters, and "x" names the binding directly).
+            manager.onShortcut({ key: "b", meta: true }, handler);
+            pressKey("KeyB", { key: "x", keyCode: 66, metaKey: true });
+            expect(handler).not.toHaveBeenCalled();
+        });
+    });
+
     describe("distinct shortcuts on the same key", () => {
         it("Mod+F and Mod+Alt+F should dispatch to their own handlers", () => {
             const altHandler = vi.fn();

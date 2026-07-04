@@ -301,8 +301,10 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
     // Browsers normalize textarea newlines to LF (the "API value"), so a CRLF inner
     // block would look edited on blur even when untouched, and a real edit would mix
     // LF lines with CRLF fences. Compare LF-normalized text and restore the original
-    // EOL style when committing.
-    const usesCrlf = committed.includes('\r\n');
+    // EOL style when committing. The EOL style is derived from the FULL raw block
+    // (fences included): a CRLF file whose inner text is a single line has no \r\n
+    // in the inner, and committing LF lines between CRLF fences would mix EOLs.
+    const usesCrlf = raw.includes('\r\n');
     const toLf = (text: string) => text.replace(/\r\n?/g, '\n');
     const restoreEol = (text: string) => (usesCrlf ? toLf(text).replace(/\n/g, '\r\n') : text);
 
@@ -340,11 +342,14 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
             return;
         }
         // The extension re-extracts frontmatter with a first-`---` regex
-        // (src/utils/contentTransform.ts), so an inner line of only `---` (or the YAML
+        // (src/utils/contentTransform.ts), so an inner line of `---` (or the YAML
         // document-end marker `...`) would truncate the block and corrupt the document
-        // on the next edit cycle. Refuse the commit and flag the textarea instead.
-        if (toLf(textarea.value).split('\n').some((line) => /^(---|\.\.\.)\s*$/.test(line))) {
-            setInvalid(t('Metadata cannot contain a line consisting only of "---" or "..."'));
+        // on the next edit cycle. Reject any line merely STARTING with either marker
+        // (`--- draft`, `----`, ...): older extraction regexes and third-party
+        // frontmatter parsers treat those as closing fences too, so prefix matching
+        // is the safe defense in depth. Refuse the commit and flag the textarea.
+        if (toLf(textarea.value).split('\n').some((line) => /^(---|\.\.\.)/.test(line))) {
+            setInvalid(t('Metadata cannot contain a line starting with "---" or "..."'));
             return;
         }
         setInvalid(null);

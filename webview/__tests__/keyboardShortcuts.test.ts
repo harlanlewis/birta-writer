@@ -235,6 +235,37 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         expect(workbenchForwarder).not.toHaveBeenCalled();
     });
 
+    // prosemirror-keymap has a second resolution path: when the produced
+    // character is non-ASCII (charCodeAt(0) > 127) it also tries
+    // base[event.keyCode] (w3c-keyname), so Ctrl+Z on a Russian layout
+    // (key "я", keyCode 90) IS handled as undo. The guard must mirror that
+    // fallback or the chord leaks and the workbench triggers a second undo.
+    it("Russian Ctrl+Z (key 'я', keyCode 90) should be claimed as undo on Windows/Linux", () => {
+        init(false);
+        pressKey("KeyZ", { key: "я", keyCode: 90, ctrlKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Russian Cmd+Z (key 'я', keyCode 90) should be claimed as undo on macOS", () => {
+        init(true);
+        pressKey("KeyZ", { key: "я", keyCode: 90, metaKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Russian Cmd+F (key 'а', keyCode 70) should open the find bar and not leak", () => {
+        init(true);
+        pressKey("KeyF", { key: "а", keyCode: 70, metaKey: true }, proseMirrorEl);
+        expect(findBar.open).toHaveBeenCalledTimes(1);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("a non-claimed Russian chord (Cmd+P, key 'з', keyCode 80) should still propagate", () => {
+        init(true);
+        pressKey("KeyP", { key: "з", keyCode: 80, metaKey: true }, proseMirrorEl);
+        expect(findBar.open).not.toHaveBeenCalled();
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+
     it("Cmd+F should open the find bar and not leak to the workbench", () => {
         init(true);
         pressKey("KeyF", { key: "f", metaKey: true }, proseMirrorEl);

@@ -328,6 +328,27 @@ describe("attachInputUndo", () => {
             expect(input.value).toBe("abc");
         });
 
+        it("a stale detach called after a re-attach should not unregister the fresh instance", () => {
+            // Arrange: attach → detach → re-attach, keeping the FIRST detach around
+            const input = createInput();
+            const detach1 = attachInputUndo(input);
+            detach1();
+            const detach2 = attachInputUndo(input);
+
+            // Act: calling the stale detach again must be a registry no-op
+            detach1();
+
+            // Assert: the second instance is still the registered one, so a
+            // further attach returns its detach instead of stacking a third
+            // live history next to it
+            expect(attachInputUndo(input)).toBe(detach2);
+
+            // ... and undo still works through that single instance
+            typeValue(input, "abc");
+            pressKey(input, "z", { meta: true });
+            expect(input.value).toBe("");
+        });
+
         it("detaching once after a double attach should fully remove handling", () => {
             // Arrange
             const input = createInput();

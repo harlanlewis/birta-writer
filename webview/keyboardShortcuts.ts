@@ -20,7 +20,7 @@ import {
     getCellRowSourceLine,
 } from "./components/selectionToolbar";
 import type { FindBarController } from "./components/findBar";
-import type { EventManager } from "./eventManager";
+import { fallbackKeyFromKeyCode, type EventManager } from "./eventManager";
 
 // ── Workbench key-leak guard ─────────────────────────────────────────────
 //
@@ -124,10 +124,15 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
     // is editor UI (content, topbar, TOC, find bar, ...), and these combos
     // must not trigger workbench actions no matter which part has focus.
     const eventKey = e.key.toLowerCase();
+    // prosemirror-keymap also resolves bindings via base[event.keyCode] when
+    // the produced char is non-ASCII (non-Latin layouts: Russian Ctrl+Z has
+    // key "я", keyCode 90 → PM handles Mod-z). The guard must claim those
+    // too, or the chord leaks to the workbench and the action fires twice.
+    const fallbackKey = fallbackKeyFromKeyCode(e);
     for (const s of CLAIMED_SHORTCUTS) {
         if (s.nonMacOnly && isMac) { continue; }
         if (s.key !== undefined) {
-            if (eventKey !== s.key) { continue; }
+            if (eventKey !== s.key && fallbackKey !== s.key) { continue; }
         } else if (e.code !== s.code) {
             continue;
         }

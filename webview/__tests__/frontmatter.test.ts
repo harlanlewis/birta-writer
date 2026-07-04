@@ -276,6 +276,22 @@ describe("renderFrontmatterPanel raw mode CRLF handling", () => {
         ]);
     });
 
+    it("a CRLF block with a single inner line should commit CRLF throughout after an edit", () => {
+        // The inner text of a one-line CRLF block contains no \r\n itself, so
+        // deriving the EOL style from the inner (instead of the full raw block
+        // with its CRLF fences) used to commit LF lines between CRLF fences.
+        renderFrontmatterPanel("---\r\ntitle: a\r\n---\r\n");
+        const ta = getRawEditor();
+        // The browser hands back LF-normalized content after the user edits.
+        ta.value = "title: a\nsubtitle: b";
+
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([
+            "---\r\ntitle: a\r\nsubtitle: b\r\n---\r\n",
+        ]);
+    });
+
     it("Escape should revert a CRLF block without producing a phantom commit", () => {
         renderFrontmatterPanel(FM_CRLF);
         const ta = getRawEditor();
@@ -327,6 +343,40 @@ describe("renderFrontmatterPanel raw mode fence-line rejection", () => {
 
         expect(postedFrontmatters()).toEqual([]);
         expect(ta.getAttribute("aria-invalid")).toBe("true");
+    });
+
+    // Fence-PREFIXED lines are rejected too: extraction regexes (current and
+    // historical) and third-party frontmatter parsers can treat a line that
+    // merely starts with the marker as a closing fence, truncating the file.
+    it.each([
+        ["--- draft"],
+        ["----"],
+        ["--- "],
+        ["... done"],
+    ])("an inner line starting with a fence marker (%j) should refuse the commit", (badLine) => {
+        renderFrontmatterPanel(FM_NESTED);
+        const ta = getRawEditor();
+        const bad = `author:\n  name: Jane\n${badLine}\nextra: line`;
+        ta.value = bad;
+
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toEqual([]);
+        expect(ta.getAttribute("aria-invalid")).toBe("true");
+        expect(ta.value).toBe(bad); // user content is kept, not reverted
+    });
+
+    it("a line merely containing --- after other text should still commit", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        const ta = getRawEditor();
+        ta.value = "author:\n  name: Jane\nnote: a --- b";
+
+        ta.dispatchEvent(new Event("blur"));
+
+        expect(ta.getAttribute("aria-invalid")).toBeNull();
+        expect(postedFrontmatters()).toEqual([
+            "---\nauthor:\n  name: Jane\nnote: a --- b\n---\n",
+        ]);
     });
 
     it("fixing the offending line should clear the invalid state and commit", () => {

@@ -202,7 +202,13 @@ export function attachInputUndo(input: UndoableInput): () => void {
         input.removeEventListener("beforeinput", onBeforeInput);
         input.removeEventListener("keydown", onKeydown);
         input.removeEventListener("focus", onFocus);
-        attachedInputs.delete(input);
+        // Only unregister if this attachment is still the active one: a stale
+        // detach called again after a re-attach must not delete the fresh
+        // instance's registration (the next attach would then stack a second
+        // live history on top of it).
+        if (attachedInputs.get(input) === detach) {
+            attachedInputs.delete(input);
+        }
     };
     attachedInputs.set(input, detach);
     return detach;

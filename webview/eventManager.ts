@@ -55,6 +55,27 @@ export interface ShortcutOptions {
     stopPropagation?: boolean;
 }
 
+/**
+ * Layout fallback mirroring prosemirror-keymap's keyCode path: when the
+ * produced character cannot name a "Mod-z"-style letter binding — a non-ASCII
+ * char from a non-Latin layout (Russian Ctrl+Z produces "я") or a named key
+ * like "Dead" — prosemirror-keymap additionally resolves the binding via
+ * `base[event.keyCode]` (w3c-keyname), where keyCodes 65-90 map to "a"-"z".
+ * Letter matchers must apply the same fallback or those layouts miss/leak.
+ *
+ * Returns the fallback letter, or null when `e.key` is a plain ASCII char
+ * (no fallback is attempted then, matching prosemirror-keymap: e.g. Dvorak
+ * Cmd+X produces "x" and must match as "x", not as its physical key).
+ */
+export function fallbackKeyFromKeyCode(e: KeyboardEvent): string | null {
+    const nonAsciiChar = e.key.length === 1 && e.key.charCodeAt(0) > 127;
+    const namedKey = e.key.length > 1;
+    if (!nonAsciiChar && !namedKey) { return null; }
+    return e.keyCode >= 65 && e.keyCode <= 90
+        ? String.fromCharCode(e.keyCode).toLowerCase()
+        : null;
+}
+
 // ── 事件管理器实现 ────────────────────────────────────────
 
 export class EventManager {
@@ -184,7 +205,13 @@ export class EventManager {
         // handled shortcuts from leaking to the workbench.
         return this.onDocument("keydown", (e) => {
             if (lowerKey !== undefined) {
-                if (e.key.toLowerCase() !== lowerKey) { return; }
+                // Match the produced character, with the same keyCode fallback
+                // prosemirror-keymap applies for non-Latin layouts (Cmd+F on a
+                // Russian layout produces "а" but must still open find).
+                if (
+                    e.key.toLowerCase() !== lowerKey &&
+                    fallbackKeyFromKeyCode(e) !== lowerKey
+                ) { return; }
             } else if (e.code !== code) {
                 return;
             }
