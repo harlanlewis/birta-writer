@@ -92,14 +92,19 @@ function normalizeWrappedLinkEmphasis(line: string): string {
     return line;
 }
 
-// Normalize a table data row: strip cell padding, and treat `<br />` as an
-// empty cell (older saves wrote empty cells as `<br />`).
-// `| fruit   |  price  |` → `|fruit|price|`
+// Normalize a table data row: strip cell padding, treat a lone `<br />` as an
+// empty cell (older saves wrote empty cells as `<br />`), and canonicalize the
+// `<br>` / `<br/>` / `<br />` line-break spellings within cell text (MAR-17) so
+// a lost or changed variant attr degrades to no churn instead of a spurious
+// diff. `| fruit   |  price  |` → `|fruit|price|`
 function normalizeTableDataRow(line: string): string {
     const t = line.trim();
     const cells = t.split("|").slice(1, -1).map((c) => {
         const v = c.trim();
-        return v === "<br />" ? "" : v;
+        // Legacy: an empty table cell used to be saved as the exact bytes
+        // `<br />`. Kept before canonicalization so it still collapses to "".
+        if (v === "<br />") return "";
+        return v.replace(/<br\s*\/?>/gi, "<br>");
     });
     return "|" + cells.join("|") + "|";
 }

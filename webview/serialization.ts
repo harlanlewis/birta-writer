@@ -12,6 +12,7 @@ import {
     sourceStylePlugin,
     sourceStyleReplacedPlugins,
 } from "./plugins/sourceStyle";
+import { tableBreakReplacedPlugins, tableBreaksPlugin } from "./plugins/tableBreaks";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
 
@@ -57,6 +58,13 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * instead of being canonicalized. (Emphasis/strong markers already survive as
  * PM attrs via the preset's `remarkMarker`; only the stringify handler is
  * new.)
+ *
+ * `tableBreaksPlugin` (plugins/tableBreaks.ts) preserves `<br>` line breaks
+ * inside table cells (MAR-17): the stock `hardbreak` schema is filtered out and
+ * replaced with an extended copy carrying a `variant` attr (the original `<br>`
+ * byte spelling), and a remark visitor rewrites `<br>` html atoms inside cells
+ * into real, editable break nodes. The serializer side lives in
+ * `serializeTableNoAlign` below.
  */
 export const pureCommonmark = [
     ...commonmark.filter((plugin) => {
@@ -67,14 +75,39 @@ export const pureCommonmark = [
             return false;
         }
         if (sourceStyleReplacedPlugins.has(plugin)) return false;
+        if (tableBreakReplacedPlugins.has(plugin)) return false;
         const displayName = (plugin as { meta?: { displayName?: string } }).meta?.displayName;
         return !(displayName?.includes("remarkInlineLinkPlugin"));
     }),
     ...referenceLinksPlugin,
     ...mathPlugin,
     ...sourceStylePlugin,
+    ...tableBreaksPlugin,
     fidelitySerializerPlugin,
 ];
+
+// Replace `break` nodes with `html` nodes carrying the recorded `<br>` bytes
+// (MAR-17). mdast-util-to-markdown's `hardBreak` handler cannot emit an
+// end-of-line inside a `tableCell` construct and falls back to a SPACE, so a
+// hard break inside a cell was silently lost. The `html` handler emits its
+// value verbatim, bypassing that fallback. Returns the SAME node reference when
+// a cell contains no break, so cells without line breaks serialize
+// byte-identically (no churn on untouched cells). Recurses through phrasing
+// wrappers (strong/emphasis/link) so a break nested inside a mark is caught too.
+function replaceBreaksWithHtml(node: any): any {
+    if (!node.children) return node;
+    let changed = false;
+    const children = node.children.map((child: any) => {
+        if (child.type === "break") {
+            changed = true;
+            return { type: "html", value: child.data?.htmlVariant || "<br>" };
+        }
+        const transformed = replaceBreaksWithHtml(child);
+        if (transformed !== child) changed = true;
+        return transformed;
+    });
+    return changed ? { ...node, children } : node;
+}
 
 // Custom table serializer: every column keeps its natural width, with no
 // column-width alignment. Overrides the remark-gfm default table handler,
@@ -93,7 +126,10 @@ function serializeTableNoAlign(node: any, _parent: any, state: any): string {
         const cellValues: string[] = row.children.map((cell: any) => {
             const cellExit = state.enter("tableCell");
             const phrasingExit = state.enter("phrasing");
-            const value = state.containerPhrasing(cell, { before: "|", after: "|" });
+            const value = state.containerPhrasing(replaceBreaksWithHtml(cell), {
+                before: "|",
+                after: "|",
+            });
             phrasingExit();
             cellExit();
             return value;
