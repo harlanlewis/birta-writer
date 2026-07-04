@@ -559,18 +559,14 @@ export class MarkdownEditorProvider
                             this._getNumberSettingValue(message.width, 220, 150, 600),
                         );
                         break;
-                    case "setStyleCheckEnabled": {
-                        // Persisting triggers onDidChangeConfiguration in extension.ts,
-                        // which re-broadcasts the config to every open editor.
-                        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
-                        // Write to the scope that currently wins, or the toggle would
-                        // be silently overridden by an existing workspace value.
-                        const target = cfg.inspect("styleCheck.enabled")?.workspaceValue !== undefined
-                            ? vscode.ConfigurationTarget.Workspace
-                            : vscode.ConfigurationTarget.Global;
-                        void cfg.update("styleCheck.enabled", message.enabled, target);
+                    // Persisting triggers onDidChangeConfiguration in extension.ts,
+                    // which re-broadcasts the config to every open editor.
+                    case "setStyleCheckEnabled":
+                        MarkdownEditorProvider.setProofreadEnabled("styleCheck.enabled", message.enabled);
                         break;
-                    }
+                    case "setSpellCheckEnabled":
+                        MarkdownEditorProvider.setProofreadEnabled("spellCheck.enabled", message.enabled);
+                        break;
                     case "spellAddWord":
                         this._handleSpellAddWord(message.word);
                         break;
@@ -874,13 +870,26 @@ export class MarkdownEditorProvider
         };
     }
 
-    /** Flip the style check, writing to the scope that currently wins. */
-    public static toggleStyleCheck(): void {
+    /**
+     * Persist a proofread on/off switch, writing to the scope that currently
+     * wins — a Global write would be silently overridden by an existing
+     * workspace value.
+     */
+    public static setProofreadEnabled(key: "styleCheck.enabled" | "spellCheck.enabled", enabled: boolean): void {
         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
-        const target = cfg.inspect("styleCheck.enabled")?.workspaceValue !== undefined
+        const target = cfg.inspect(key)?.workspaceValue !== undefined
             ? vscode.ConfigurationTarget.Workspace
             : vscode.ConfigurationTarget.Global;
-        void cfg.update("styleCheck.enabled", !cfg.get<boolean>("styleCheck.enabled", false), target);
+        void cfg.update(key, enabled, target);
+    }
+
+    /** Flip the style check (command palette / keyboard shortcut). */
+    public static toggleStyleCheck(): void {
+        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        MarkdownEditorProvider.setProofreadEnabled(
+            "styleCheck.enabled",
+            !cfg.get<boolean>("styleCheck.enabled", false),
+        );
     }
 
     private _handleSpellAddWord(word: string): void {

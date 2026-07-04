@@ -66,6 +66,7 @@ export type ToExtensionMessage =
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }
     | { type: "setStyleCheckEnabled"; enabled: boolean }
+    | { type: "setSpellCheckEnabled"; enabled: boolean }
     | { type: "spellAddWord"; word: string };
 
 /**

@@ -48,6 +48,28 @@ function compileList(phrases: readonly string[]): RegExp | null {
 export type StyleMatcher = (text: string) => StyleMatch[];
 
 /**
+ * Context vetoes: a listed phrase is NOT a style problem in these
+ * grammatical contexts. `after` is tested at the match end, `before`
+ * against the text leading up to the match start.
+ */
+const CONTEXT_VETOES: Record<string, Array<{ after?: RegExp; before?: RegExp }>> = {
+    // Comparative "rather than" and preferential "would rather" are
+    // legitimate grammar, not hedging ("They buy rather than build").
+    rather: [
+        { after: /^\s+than\b/i },
+        { before: /\bwould\s+$/i },
+    ],
+};
+
+function isVetoed(text: string, start: number, end: number): boolean {
+    const rules = CONTEXT_VETOES[text.slice(start, end).toLowerCase()];
+    if (!rules) { return false; }
+    return rules.some((rule) =>
+        (rule.after ? rule.after.test(text.slice(end)) : true)
+        && (rule.before ? rule.before.test(text.slice(0, start)) : true));
+}
+
+/**
  * Compile enabled category lists into a single matcher function.
  * Phrases in `exceptions` (user's escape valve, compared lowercase) are
  * removed before compiling. The matcher returns matches sorted by start
@@ -72,7 +94,11 @@ export function compileStyleMatcher(
             regex.lastIndex = 0;
             let m: RegExpExecArray | null;
             while ((m = regex.exec(text)) !== null) {
-                matches.push({ start: m.index, end: m.index + m[0].length, category });
+                const start = m.index;
+                const end = m.index + m[0].length;
+                if (!isVetoed(text, start, end)) {
+                    matches.push({ start, end, category });
+                }
                 // Guard against zero-length matches looping forever
                 if (m[0].length === 0) { regex.lastIndex++; }
             }

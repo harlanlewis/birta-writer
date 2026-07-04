@@ -71,8 +71,12 @@
     font-style: italic;
 }
 
-/* Toolbar toggle active state */
-.tb-btn--active {
-    background: var(--vscode-toolbar-activeBackground, var(--vscode-list-activeSelectionBackground));
-    color: var(--vscode-textLink-foreground);
+/* Toolbar toggle "on" state — the inputOption vars are VS Code's own
+   toggle-button colors (find-widget "match case"), unmistakable in both
+   themes and distinct from the transient hover background. */
+.tb-btn--active,
+.tb-btn--active:hover {
+    background: var(--vscode-inputOption-activeBackground, rgba(0, 120, 212, 0.25));
+    color: var(--vscode-inputOption-activeForeground, var(--vscode-editor-foreground));
+    border-color: var(--vscode-inputOption-activeBorder, transparent);
 }

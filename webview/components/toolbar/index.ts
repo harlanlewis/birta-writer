@@ -37,14 +37,15 @@ import {
     IconX,
     IconChevronDown,
     IconEraser,
-    IconProofread,
+    IconSpellCheck,
+    IconStyleCheck,
     IconSearch,
     IconSettings,
 } from "@/ui/icons";
 import { applyTooltip } from "@/ui/tooltip";
 import { t, kbd } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
-import { notifyOpenSettings, notifyGetProjectImages, notifySetStyleCheckEnabled } from "@/messaging";
+import { notifyOpenSettings, notifyGetProjectImages, notifySetStyleCheckEnabled, notifySetSpellCheckEnabled } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton, createSeparator } from "@/ui/dom";
@@ -1218,9 +1219,9 @@ export function initToolbar(
         toolbar.appendChild(dbgWrap);
     }
 
-    // ── Style check, find & settings ─────────────────────
+    // ── Proofread toggles, find & settings ───────────────
     toolbar.appendChild(sep());
-    const styleCheckBtn = btn(IconProofread, t("Style check"), () => {
+    const styleCheckBtn = btn(IconStyleCheck, `${t("Style check")} (${kbd("Mod-Alt-Shift-d")})`, () => {
         const view = getEditorView();
         if (!view) { return; }
         const cfg = getProofreadConfig(view);
@@ -1228,11 +1229,21 @@ export function initToolbar(
         setProofreadConfig(view, next);
         notifySetStyleCheckEnabled(next.styleCheck);
     });
+    const spellCheckBtn = btn(IconSpellCheck, t("Spell check"), () => {
+        const view = getEditorView();
+        if (!view) { return; }
+        const cfg = getProofreadConfig(view);
+        const next = { ...cfg, spellCheck: !cfg.spellCheck };
+        setProofreadConfig(view, next);
+        notifySetSpellCheckEnabled(next.spellCheck);
+    });
     window.addEventListener("proofread-config-changed", (e) => {
-        const config = (e as CustomEvent<{ styleCheck: boolean }>).detail;
+        const config = (e as CustomEvent<{ styleCheck: boolean; spellCheck: boolean }>).detail;
         styleCheckBtn.classList.toggle("tb-btn--active", config.styleCheck);
+        spellCheckBtn.classList.toggle("tb-btn--active", config.spellCheck);
     });
     toolbar.appendChild(styleCheckBtn);
+    toolbar.appendChild(spellCheckBtn);
     if (onOpenFind) {
         toolbar.appendChild(
             btn(IconSearch, `${t("Find")} (${kbd("Mod-f")})`, onOpenFind),

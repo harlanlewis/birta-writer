@@ -91,6 +91,28 @@ describe("compileStyleMatcher", () => {
         expect(matcher("This is really the end result.")).toHaveLength(0);
     });
 
+    it("comparative 'rather than' should not be flagged", () => {
+        const matcher = makeMatcher();
+
+        expect(matcher("They buy the tooling rather than build it.")).toHaveLength(0);
+    });
+
+    it("preferential 'would rather' should not be flagged", () => {
+        const matcher = makeMatcher();
+
+        expect(matcher("I would rather go home.")).toHaveLength(0);
+    });
+
+    it("hedging 'rather' should still be flagged", () => {
+        const matcher = makeMatcher();
+        const text = "The result was rather good.";
+
+        const matches = matcher(text);
+
+        expect(matches).toHaveLength(1);
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("rather");
+    });
+
     it("a phrase with an apostrophe should match its typographic form in text", () => {
         const matcher = makeMatcher();
 
