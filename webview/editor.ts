@@ -32,6 +32,7 @@ import {
     historyPlugin,
     horizontalRuleKeymapPlugin,
     horizontalRulePlugin,
+    listEnterPlugin,
     listLiftPlugin,
     listSpreadNormalizePlugin,
     selectionPlugin,
@@ -199,6 +200,7 @@ export async function createEditor(
         .use(historyPlugin)
         .use(historyKeymapPlugin)
         .use(listLiftPlugin)
+        .use(listEnterPlugin)
         .use(horizontalRulePlugin)
         .use(horizontalRuleKeymapPlugin)
         .use(codeBlockBackspacePlugin)
