@@ -81,6 +81,10 @@
             {
                 "command": "markdownWysiwyg.toggleStyleCheck",
                 "title": "%command.toggleStyleCheck.title%"
+            },
+            {
+                "command": "markdownWysiwyg.gotoSymbol",
+                "title": "%command.gotoSymbol.title%"
             }
         ],
         "keybindings": [
@@ -101,9 +105,21 @@
                 "key": "ctrl+shift+m",
                 "mac": "cmd+shift+m",
                 "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.gotoSymbol",
+                "key": "ctrl+shift+o",
+                "mac": "cmd+shift+o",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             }
         ],
         "menus": {
+            "commandPalette": [
+                {
+                    "command": "markdownWysiwyg.gotoSymbol",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                }
+            ],
             "editor/title": [
                 {
                     "command": "markdownWysiwyg.switchToTextEditor",

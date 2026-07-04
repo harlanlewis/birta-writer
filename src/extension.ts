@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import { getAllThemes, getThemeColors, getCustomThemes, type ThemeInfo } from "./themeManager";
 import type { TableWrapMode } from "../shared/messages";
+import { scanHeadings } from "./utils/headingScan";
 
 /**
  * Sync workbench.editorAssociations based on defaultMode:
@@ -415,6 +416,85 @@ export function activate(context: vscode.ExtensionContext) {
                     MarkdownEditorProvider.viewType,
                     { viewColumn: viewCol, preview: isPreview },
                 );
+            },
+        ),
+    );
+
+    // Go-to-Symbol quick pick (MAR-12): parity for Cmd+Shift+O while the WYSIWYG
+    // custom editor is focused. The built-in symbol picker binds to
+    // window.activeTextEditor, which is undefined for a webview custom editor,
+    // so the Outline / breadcrumbs / Cmd+Shift+O never populate in WYSIWYG mode.
+    // This QuickPick scans the backing TextDocument's headings and reveals the
+    // chosen one by posting the existing scrollToLine message to the panel.
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "markdownWysiwyg.gotoSymbol",
+            async () => {
+                // Resolve the active custom editor's document URI from the tab
+                // groups (activeTextEditor is undefined here).
+                let target: vscode.Uri | undefined;
+                for (const group of vscode.window.tabGroups.all) {
+                    const activeTab = group.activeTab;
+                    if (
+                        activeTab?.input instanceof vscode.TabInputCustom &&
+                        (activeTab.input as vscode.TabInputCustom).viewType === MarkdownEditorProvider.viewType
+                    ) {
+                        target = (activeTab.input as vscode.TabInputCustom).uri;
+                        break;
+                    }
+                }
+                if (!target) { return; }
+
+                const doc =
+                    vscode.workspace.textDocuments.find(
+                        (d) => d.uri.toString() === target!.toString(),
+                    ) ?? (await vscode.workspace.openTextDocument(target));
+                const headings = scanHeadings(doc.getText());
+                if (headings.length === 0) {
+                    vscode.window.showInformationMessage(
+                        vscode.l10n.t("No headings in this document."),
+                    );
+                    return;
+                }
+
+                const provider = MarkdownEditorProvider.current;
+
+                // Level → symbol icon (kind mirrors the built-in markdown outline:
+                // H1/H2 as string-like sections, deeper levels as fields).
+                const iconFor = (level: number): string =>
+                    level <= 1 ? "$(symbol-string)"
+                    : level === 2 ? "$(symbol-field)"
+                    : "$(symbol-key)";
+
+                type HeadingItem = vscode.QuickPickItem & { line: number };
+                const items: HeadingItem[] = headings.map((h) => ({
+                    // Indent by level so the hierarchy reads at a glance.
+                    label: `${"    ".repeat(Math.max(0, h.level - 1))}${iconFor(h.level)} ${h.text || "(untitled)"}`,
+                    description: `H${h.level}`,
+                    line: h.line,
+                }));
+
+                const quickPick = vscode.window.createQuickPick<HeadingItem>();
+                quickPick.title = vscode.l10n.t("Go to Heading");
+                quickPick.placeholder = vscode.l10n.t("Type to filter headings");
+                quickPick.matchOnDescription = true;
+                quickPick.items = items;
+
+                // Live preview: reveal the highlighted heading as the user moves.
+                quickPick.onDidChangeActive((active) => {
+                    const item = active[0];
+                    if (item && provider && target) {
+                        provider.postToPanel(target, { type: "scrollToLine", line: item.line });
+                    }
+                });
+                quickPick.onDidAccept(() => {
+                    const item = quickPick.selectedItems[0];
+                    if (item && provider && target) {
+                        provider.postToPanel(target, { type: "scrollToLine", line: item.line });
+                    }
+                    quickPick.dispose();
+                });
+                quickPick.show();
             },
         ),
     );
