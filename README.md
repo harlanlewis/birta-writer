@@ -121,5 +121,5 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 
 ## Known Limitations
 
-- Some advanced Markdown extensions (footnotes, math formulas) are not yet supported
+- **Editable inline/block HTML** is not yet supported — embedded HTML renders read-only, and editing it requires switching to the raw text editor
 - **Global search navigation**: clicking a search result for a `.md` file may not scroll to the matched line in WYSIWYG mode when multiple `.md` files are open simultaneously

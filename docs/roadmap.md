@@ -7,6 +7,18 @@
 > (d) capability diffing against Typora, Obsidian Live Preview, Notion, MarkText, and
 > milkdown/crepe.
 
+## Status (updated 2026-07-04, shipped in v0.2.3)
+
+Tracked as Linear issues MAR-1…MAR-33. **Landed:**
+
+- **Phase 0 — round-trip fidelity**: MAR-1 (regression corpus + destructive-diff guard), MAR-2 (preserve unknown syntax), MAR-3/4/5/6 (shortcut leak-through, Remote-SSH, overlay undo, lossless frontmatter), MAR-33 (formatted-link splitting).
+- **Phase 1 — VS Code parity**: MAR-7 (CustomTextEditorProvider migration), MAR-8 (source-based find/replace), MAR-9 (command palette + context menu), MAR-10 (toolbar overflow), MAR-11 (i18n sweep + CJK guard), MAR-12 (heading outline / Go-to-Symbol).
+- **Phase 2 — syntax breadth**: MAR-13 (KaTeX math), MAR-15 (footnotes), MAR-16 (source-style preservation), MAR-17 (table-cell line breaks).
+
+**Deferred:** MAR-14 (editable HTML) — the one remaining Phase 2 item; embedded HTML stays read-only for now, protected byte-for-byte by the round-trip layer.
+
+The per-phase detail below is the original plan; items above have shipped.
+
 ## North star
 
 A user opens a `.md` file in WYSIWYG mode and **never needs the raw text editor** unless

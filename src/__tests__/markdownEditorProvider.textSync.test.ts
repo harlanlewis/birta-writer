@@ -206,12 +206,38 @@ describe("MarkdownEditorProvider text document sync", () => {
             await vi.advanceTimersByTimeAsync(500);
 
             // Assert — the stale edit was NOT applied, and the current document
-            // state was re-pushed with a bumped version so the webview re-bases
+            // state was re-pushed so the webview re-bases. The version is a count
+            // of distinct external changes (one here), so the re-push carries 1.
             expect(document.getText()).toBe("external edit\n");
             const rePush = externalUpdates(panel);
             expect(rePush).toHaveLength(1);
             expect(rePush[0].content).toBe("external edit\n");
-            expect(rePush[0].syncVersion).toBe(2);
+            expect(rePush[0].syncVersion).toBe(1);
+        });
+
+        it("a webview update racing an external change INSIDE the debounce window should not clobber the external edit", async () => {
+            // Regression for the ~200ms stale-version hole: the sync version must
+            // bump the moment an external change is observed, not when the
+            // debounced push fires — otherwise an in-flight webview update slips
+            // through the stale check and silently overwrites the external edit.
+            const { handler, document, panel } = await setup("original\n");
+
+            // Arrange — an external process edits the file. The change is OBSERVED
+            // now, but the debounced push has NOT fired yet.
+            document.setTextExternally("external edit\n");
+
+            // Act — before the 200ms debounce elapses, the webview posts an edit it
+            // serialized against the pre-change text (stale base 0).
+            await handler({ type: "update", content: "webview text\n", baseSyncVersion: 0 });
+            await vi.advanceTimersByTimeAsync(500);
+
+            // Assert — the external edit survived; the racing webview update was
+            // rejected as stale and the external state pushed for the webview to
+            // re-base on (not silently lost).
+            expect(document.getText()).toBe("external edit\n");
+            const pushes = externalUpdates(panel);
+            expect(pushes.length).toBeGreaterThanOrEqual(1);
+            expect(pushes[pushes.length - 1].content).toBe("external edit\n");
         });
 
         it("an update whose baseSyncVersion matches the current version should be applied", async () => {

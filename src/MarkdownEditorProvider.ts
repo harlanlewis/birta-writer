@@ -672,6 +672,17 @@ export class MarkdownEditorProvider
             if (e.contentChanges.length === 0) { return; }
             // Echo of a webview-originated applyEdit: the webview already has this text
             if (e.document.getText() === this._lastSyncedText.get(uriKey)) { return; }
+            // A genuine external change is now pending. Bump the sync version
+            // SYNCHRONOUSLY — before the 200ms debounce — so a webview `update`
+            // that was already in flight (serialized against the pre-change text,
+            // carrying the old baseSyncVersion) is recognized as stale and
+            // rejected rather than silently overwriting the external edit inside
+            // the debounce window. Without this, the version only bumped when the
+            // debounced push fired, leaving a ~200ms hole where a concurrent
+            // external edit (git checkout, format-on-save, external tool) could be
+            // lost. _pushExternalUpdate reads (does not re-bump) this version, so
+            // it stays a monotonic count of distinct external changes.
+            this._syncVersion.set(uriKey, (this._syncVersion.get(uriKey) ?? 0) + 1);
             // Debounce: coalesce bursts (e.g. typing in a side-by-side text editor)
             if (externalChangeTimer !== undefined) { clearTimeout(externalChangeTimer); }
             externalChangeTimer = setTimeout(() => {
@@ -706,8 +717,11 @@ export class MarkdownEditorProvider
     ): void {
         const text = document.getText();
         this._lastSyncedText.set(uriKey, text);
-        const version = (this._syncVersion.get(uriKey) ?? 0) + 1;
-        this._syncVersion.set(uriKey, version);
+        // The version is bumped at observe-time in the onDidChangeTextDocument
+        // listener (and only there), so a concurrent in-flight webview update is
+        // rejected as stale before this debounced push runs. Read it here; do not
+        // re-bump, or the count would drift ahead of the webview's baseline.
+        const version = this._syncVersion.get(uriKey) ?? 0;
         const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
         const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
         panel.webview.postMessage({
@@ -770,6 +784,12 @@ export class MarkdownEditorProvider
     private _scheduleAutoSave(document: vscode.TextDocument): void {
         const config = vscode.workspace.getConfiguration("markdownWysiwyg");
         if (!config.get<boolean>("autoSave", true)) { return; }
+        // Respect the built-in `files.autoSave` preference: if the user has
+        // explicitly chosen manual saving ("off"), don't force a save from here.
+        // Now that the editor is TextDocument-backed, VS Code's own autosave
+        // governs the other modes natively, so honoring "off" makes the
+        // `markdownWysiwyg.autoSave` deprecation message truthful.
+        if (vscode.workspace.getConfiguration("files").get<string>("autoSave") === "off") { return; }
         const delay = config.get<number>("autoSaveDelay", 1000);
         const uriKey = document.uri.toString();
 
