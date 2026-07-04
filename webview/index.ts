@@ -339,6 +339,8 @@ const selTb = setupSelectionToolbar(
     () => currentEditor,
     getLineMap,
     getMarkdownSource,
+    // Same Insert/Edit Link prompt as the main toolbar button and Cmd/Ctrl+K
+    () => topbarTb?.openLinkPrompt(),
 );
 const tableTb = setupTableToolbar(() => getEditorView());
 registerSelectionChangeHandler((view) => {

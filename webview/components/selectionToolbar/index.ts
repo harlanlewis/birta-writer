@@ -23,6 +23,7 @@ import {
     IconItalic,
     IconStrikethrough,
     IconCode,
+    IconLink,
     IconChevronDown,
     IconSendChat,
     IconAlignLeft,
@@ -376,6 +377,7 @@ export function setupSelectionToolbar(
     getEditor: () => Editor | null,
     getLineMap: () => number[],
     getMarkdownSource: () => string,
+    openLinkPrompt: () => void,
 ): { onSelectionChange(view: EditorView): void } {
     let lastView: EditorView | null = null;
     let isDragging = false;
@@ -547,6 +549,21 @@ export function setupSelectionToolbar(
     toolbar.appendChild(italicBtn);
     toolbar.appendChild(strikeBtn);
     toolbar.appendChild(codeBtn);
+
+    // ── Link button (text mode only) ─────────────────
+    // Opens the same Insert/Edit Link prompt as the main toolbar button and
+    // Cmd/Ctrl+K. createButton's mousedown handler calls preventDefault so
+    // the editor selection survives the click (same as the other buttons).
+    const linkSep = sSep();
+    toolbar.appendChild(linkSep);
+    const linkBtn = createButton({
+        className: "sel-tb-btn sel-tb-link-btn",
+        icon: IconLink,
+        title: t("Insert/Edit Link") + " " + kbd("Mod-k"),
+        tooltipPlacement: "above",
+        onClick: openLinkPrompt,
+    });
+    toolbar.appendChild(linkBtn);
 
     const textInlineSep = sSep();
     toolbar.appendChild(textInlineSep);
@@ -928,12 +945,18 @@ export function setupSelectionToolbar(
             fmtWrap.style.display = "none";
             textFmtSep.style.display = "none";
 
-            // 内联格式按钮对所有 CellSelection 都显示
+            // Inline format buttons stay visible for every CellSelection
             boldBtn.style.display = "";
             italicBtn.style.display = "";
             strikeBtn.style.display = "";
             codeBtn.style.display = "";
             textInlineSep.style.display = "";
+
+            // Link: hidden in cell-selection mode — the link prompt replaces
+            // a flat text range, which would corrupt the table structure
+            // when the selection spans cells.
+            linkSep.style.display = "none";
+            linkBtn.style.display = "none";
 
             // 对齐：整列选中（且非整表格）时显示
             const isEntireTable = isEntireTableSelected(
@@ -982,11 +1005,13 @@ export function setupSelectionToolbar(
         fmtWrap.style.display = inTable ? "none" : "";
         textFmtSep.style.display = inTable ? "none" : "";
 
-        // 内联格式：始终显示
+        // Inline formats + link: always visible in text mode
         boldBtn.style.display = "";
         italicBtn.style.display = "";
         strikeBtn.style.display = "";
         codeBtn.style.display = "";
+        linkSep.style.display = "";
+        linkBtn.style.display = "";
         textInlineSep.style.display = "";
 
         // 表格专属元素：隐藏
