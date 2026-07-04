@@ -177,6 +177,15 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
+    // Toggle style check (keyboard shortcut / command palette); the config
+    // change listener below broadcasts the new state to every open editor.
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "markdownWysiwyg.toggleStyleCheck",
+            () => MarkdownEditorProvider.toggleStyleCheck(),
+        ),
+    );
+
     // Select color theme command
     context.subscriptions.push(
         vscode.commands.registerCommand(

@@ -29,8 +29,9 @@ const CONFIG: ProofreadConfig = {
     fillers: true,
     redundancies: true,
     cliches: true,
+    styleExceptions: [],
     spellCheck: false,
-    ignoredWords: [],
+    userWords: [],
 };
 
 function decoratedTexts(doc: import("@milkdown/prose/model").Node, config = CONFIG): string[] {
@@ -105,5 +106,22 @@ describe("computeDecorations", () => {
         ]);
 
         expect(decoratedTexts(doc, { ...CONFIG, styleCheck: false })).toEqual([]);
+    });
+
+    it("a repeated word should be decorated even with all phrase categories off", () => {
+        const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, [schema.text("We saw the the dog.")]),
+        ]);
+
+        const config = { ...CONFIG, fillers: false, redundancies: false, cliches: false };
+        expect(decoratedTexts(doc, config)).toEqual(["the"]);
+    });
+
+    it("a phrase in styleExceptions should not be decorated", () => {
+        const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, [schema.text("This is really good.")]),
+        ]);
+
+        expect(decoratedTexts(doc, { ...CONFIG, styleExceptions: ["really"] })).toEqual([]);
     });
 });

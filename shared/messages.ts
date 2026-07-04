@@ -31,15 +31,17 @@ export type TableWrapMode = "none" | "normal" | "aggressive";
 
 /** Proofread (style check + spell check) configuration snapshot */
 export type ProofreadConfig = {
-    /** Style check master switch (fillers/redundancies/clichés strikethrough) */
+    /** Style check master switch (fillers/redundancies/clichés/repeated-word strikethrough) */
     styleCheck: boolean;
     fillers: boolean;
     redundancies: boolean;
     cliches: boolean;
+    /** Phrases the style check must never flag (user's escape valve) */
+    styleExceptions: string[];
     /** Spell check master switch (bundled English dictionary) */
     spellCheck: boolean;
-    /** Words the user chose to ignore, persisted in settings */
-    ignoredWords: string[];
+    /** The user's personal dictionary, persisted in settings */
+    userWords: string[];
 };
 
 /**
@@ -64,7 +66,7 @@ export type ToExtensionMessage =
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }
     | { type: "setStyleCheckEnabled"; enabled: boolean }
-    | { type: "spellIgnoreWord"; word: string };
+    | { type: "spellAddWord"; word: string };
 
 /**
  * Extension → WebView 方向的消息。

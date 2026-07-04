@@ -4,7 +4,7 @@
  */
 import type { EditorView } from "@milkdown/prose/view";
 import { t } from "../i18n";
-import { ignoreWord, suggestions } from "./engine";
+import { ignoreWordSession, learnWord, suggestions } from "./engine";
 import "./proofread.css";
 
 let activePopup: HTMLElement | null = null;
@@ -46,19 +46,26 @@ export function showSpellPopup(view: EditorView, from: number, to: number): void
         popup.appendChild(item);
     }
 
-    const ignore = document.createElement("button");
-    ignore.type = "button";
-    ignore.className = "pf-popup-item pf-popup-ignore";
-    ignore.textContent = `${t("Ignore")} “${word}”`;
-    ignore.addEventListener("click", async () => {
-        ignoreWord(word);
-        hideSpellPopup();
-        // Rescan so every occurrence of the word is cleared immediately
-        const { refreshProofread } = await import("../plugins/proofread");
-        refreshProofread(view);
-        view.focus();
-    });
-    popup.appendChild(ignore);
+    // Writing-app convention: "Add to dictionary" persists, "Ignore" is session-only
+    const dismissActions: Array<[string, (w: string) => void]> = [
+        [t("Add to dictionary"), learnWord],
+        [t("Ignore"), ignoreWordSession],
+    ];
+    for (const [label, action] of dismissActions) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "pf-popup-item pf-popup-ignore";
+        item.textContent = label;
+        item.addEventListener("click", async () => {
+            action(word);
+            hideSpellPopup();
+            // Rescan so every occurrence of the word is cleared immediately
+            const { refreshProofread } = await import("../plugins/proofread");
+            refreshProofread(view);
+            view.focus();
+        });
+        popup.appendChild(item);
+    }
 
     document.body.appendChild(popup);
     activePopup = popup;

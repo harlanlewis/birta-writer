@@ -2,7 +2,7 @@
     "name": "md-wysiwyg-editor",
     "displayName": "WYSIWYG Markdown Editor",
     "description": "WYSIWYG Markdown editor with live table editing",
-    "version": "0.1.16",
+    "version": "0.1.17",
     "publisher": "harlanlewis",
     "engines": {
         "vscode": "^1.80.0"
@@ -77,6 +77,10 @@
             {
                 "command": "markdownWysiwyg.showCurrentTheme",
                 "title": "%command.showCurrentTheme.title%"
+            },
+            {
+                "command": "markdownWysiwyg.toggleStyleCheck",
+                "title": "%command.toggleStyleCheck.title%"
             }
         ],
         "keybindings": [
@@ -84,6 +88,12 @@
                 "command": "markdownWysiwyg.switchToTextEditor",
                 "key": "ctrl+shift+m",
                 "mac": "cmd+shift+m",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.toggleStyleCheck",
+                "key": "ctrl+alt+shift+d",
+                "mac": "cmd+alt+shift+d",
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             },
             {
@@ -156,14 +166,23 @@
                     "default": true,
                     "description": "%config.spellCheck.enabled.description%"
                 },
-                "markdownWysiwyg.spellCheck.ignoredWords": {
+                "markdownWysiwyg.spellCheck.userWords": {
                     "order": 115,
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
                     "default": [],
-                    "description": "%config.spellCheck.ignoredWords.description%"
+                    "description": "%config.spellCheck.userWords.description%"
+                },
+                "markdownWysiwyg.styleCheck.exceptions": {
+                    "order": 116,
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "%config.styleCheck.exceptions.description%"
                 },
                 "markdownWysiwyg.autoSaveDelay": {
                     "order": 3,

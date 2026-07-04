@@ -1,16 +1,20 @@
 /**
- * Spell-check engine facade: lazy dictionary loading + ignored-word handling.
+ * Spell-check engine facade: lazy dictionary loading, the user's personal
+ * dictionary (persisted), and session-scoped ignores.
  *
  * The dictionary chunk (~550 KB) is imported on first demand so documents
  * with spell check disabled never pay for it.
  */
 import type { NSpell } from "nspell";
-import { notifySpellIgnoreWord } from "../messaging";
+import { notifySpellAddWord } from "../messaging";
 
 let spell: NSpell | null = null;
 let loadPromise: Promise<void> | null = null;
 const readyCallbacks: Array<() => void> = [];
-const ignored = new Set<string>();
+/** Words in the user's dictionary (from settings, plus "Add to dictionary"). */
+const userWords = new Set<string>();
+/** Words ignored for this editor session only. */
+const sessionIgnores = new Set<string>();
 
 /** Kick off dictionary loading (idempotent); callbacks fire once it's ready. */
 export function ensureSpellLoaded(): void {
@@ -32,22 +36,28 @@ export function isSpellReady(): boolean {
     return spell !== null;
 }
 
-/** Replace the ignored-word set (from configuration). */
-export function setIgnoredWords(words: readonly string[]): void {
-    ignored.clear();
-    for (const w of words) { ignored.add(w.toLowerCase()); }
+/** Replace the user-dictionary set (from configuration). */
+export function setUserWords(words: readonly string[]): void {
+    userWords.clear();
+    for (const w of words) { userWords.add(w.toLowerCase()); }
 }
 
-/** Ignore a word locally and persist it to the user's settings. */
-export function ignoreWord(word: string): void {
-    ignored.add(word.toLowerCase());
-    notifySpellIgnoreWord(word);
+/** Add a word to the user's dictionary and persist it to settings. */
+export function learnWord(word: string): void {
+    userWords.add(word.toLowerCase());
+    notifySpellAddWord(word);
 }
 
-/** True when the word is acceptable (known, ignored, or dictionary not ready). */
+/** Ignore a word for this session only (not persisted). */
+export function ignoreWordSession(word: string): void {
+    sessionIgnores.add(word.toLowerCase());
+}
+
+/** True when the word is acceptable (known, learned, ignored, or dictionary not ready). */
 export function isWordCorrect(word: string): boolean {
     if (!spell) { return true; }
-    if (ignored.has(word.toLowerCase())) { return true; }
+    const lower = word.toLowerCase();
+    if (userWords.has(lower) || sessionIgnores.has(lower)) { return true; }
     return spell.correct(word);
 }
 

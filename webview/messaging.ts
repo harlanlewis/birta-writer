@@ -87,8 +87,8 @@ export function notifySetStyleCheckEnabled(enabled: boolean): void {
     vscode.postMessage({ type: "setStyleCheckEnabled", enabled });
 }
 
-export function notifySpellIgnoreWord(word: string): void {
-    vscode.postMessage({ type: "spellIgnoreWord", word });
+export function notifySpellAddWord(word: string): void {
+    vscode.postMessage({ type: "spellAddWord", word });
 }
 
 export function onMessage(handler: (msg: IncomingMessage) => void): void {

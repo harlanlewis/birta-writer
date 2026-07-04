@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { compileStyleMatcher, type StyleCategory } from "../utils/styleMatcher";
+import { compileStyleMatcher, findRepeatedWords, type StyleCategory } from "../utils/styleMatcher";
 import { CLICHES, FILLERS, REDUNDANCIES } from "../proofread/wordlists";
 
 const LISTS = { fillers: FILLERS, redundancies: REDUNDANCIES, cliches: CLICHES };
 const ALL_ON = { fillers: true, redundancies: true, cliches: true };
 
-function makeMatcher(enabled = ALL_ON) {
-    return compileStyleMatcher(LISTS, enabled);
+function makeMatcher(enabled = ALL_ON, exceptions: string[] = []) {
+    return compileStyleMatcher(LISTS, enabled, exceptions);
 }
 
 describe("compileStyleMatcher", () => {
@@ -83,6 +83,64 @@ describe("compileStyleMatcher", () => {
         const matcher = makeMatcher();
 
         expect(matcher("")).toHaveLength(0);
+    });
+
+    it("an excepted phrase should not be matched", () => {
+        const matcher = makeMatcher(ALL_ON, ["really", "End Result"]);
+
+        expect(matcher("This is really the end result.")).toHaveLength(0);
+    });
+
+    it("a phrase with an apostrophe should match its typographic form in text", () => {
+        const matcher = makeMatcher();
+
+        // List entry: "all in a day's work" (ASCII '), text uses U+2019
+        const text = "It was all in a day’s work.";
+        const matches = matcher(text);
+
+        expect(matches).toHaveLength(1);
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("all in a day’s work");
+    });
+});
+
+describe("findRepeatedWords", () => {
+    it("an accidentally repeated word should flag only the second occurrence", () => {
+        const text = "We saw the the dog.";
+
+        const matches = findRepeatedWords(text);
+
+        expect(matches).toHaveLength(1);
+        expect(matches[0].category).toBe("repeated");
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("the");
+        expect(matches[0].start).toBe(11); // the second "the"
+    });
+
+    it("a repetition across a case difference should be matched", () => {
+        const text = "The the dog barked.";
+
+        const matches = findRepeatedWords(text);
+
+        expect(matches).toHaveLength(1);
+        expect(text.slice(matches[0].start, matches[0].end)).toBe("the");
+    });
+
+    it("legitimate doubles like 'had had' should not be flagged", () => {
+        expect(findRepeatedWords("She had had enough.")).toHaveLength(0);
+        expect(findRepeatedWords("He knew that that was wrong.")).toHaveLength(0);
+    });
+
+    it("repeated numbers should not be flagged", () => {
+        expect(findRepeatedWords("rows 5 5 and 6")).toHaveLength(0);
+    });
+
+    it("a triple repetition should flag each extra occurrence", () => {
+        const matches = findRepeatedWords("the the the end");
+
+        expect(matches).toHaveLength(2);
+    });
+
+    it("different words should not be flagged", () => {
+        expect(findRepeatedWords("the theory holds")).toHaveLength(0);
     });
 });
 

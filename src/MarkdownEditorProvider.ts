@@ -571,8 +571,8 @@ export class MarkdownEditorProvider
                         void cfg.update("styleCheck.enabled", message.enabled, target);
                         break;
                     }
-                    case "spellIgnoreWord":
-                        this._handleSpellIgnoreWord(message.word);
+                    case "spellAddWord":
+                        this._handleSpellAddWord(message.word);
                         break;
                 }
             },
@@ -868,22 +868,32 @@ export class MarkdownEditorProvider
             fillers: cfg.get<boolean>("styleCheck.fillers", true),
             redundancies: cfg.get<boolean>("styleCheck.redundancies", true),
             cliches: cfg.get<boolean>("styleCheck.cliches", true),
+            styleExceptions: cfg.get<string[]>("styleCheck.exceptions", []),
             spellCheck: cfg.get<boolean>("spellCheck.enabled", true),
-            ignoredWords: cfg.get<string[]>("spellCheck.ignoredWords", []),
+            userWords: cfg.get<string[]>("spellCheck.userWords", []),
         };
     }
 
-    private _handleSpellIgnoreWord(word: string): void {
+    /** Flip the style check, writing to the scope that currently wins. */
+    public static toggleStyleCheck(): void {
+        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const target = cfg.inspect("styleCheck.enabled")?.workspaceValue !== undefined
+            ? vscode.ConfigurationTarget.Workspace
+            : vscode.ConfigurationTarget.Global;
+        void cfg.update("styleCheck.enabled", !cfg.get<boolean>("styleCheck.enabled", false), target);
+    }
+
+    private _handleSpellAddWord(word: string): void {
         const trimmed = word?.trim();
         if (!trimmed) { return; }
         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
-        const words = cfg.get<string[]>("spellCheck.ignoredWords", []);
+        const words = cfg.get<string[]>("spellCheck.userWords", []);
         if (words.includes(trimmed)) { return; }
         // Prefer the workspace list (project jargon); fall back to user settings
         const target = vscode.workspace.workspaceFolders?.length
             ? vscode.ConfigurationTarget.Workspace
             : vscode.ConfigurationTarget.Global;
-        void cfg.update("spellCheck.ignoredWords", [...words, trimmed], target);
+        void cfg.update("spellCheck.userWords", [...words, trimmed], target);
     }
 
     private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
