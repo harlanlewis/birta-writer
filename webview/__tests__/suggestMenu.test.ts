@@ -1,7 +1,8 @@
 /**
- * suggestMenu tests: the frontmatter "+" dropdown that offers workspace-wide
- * values for the same list key (filter input, async fmSuggestions reply,
- * keyboard selection, create row, and escape/close behavior).
+ * suggestMenu tests: the frontmatter suggestion dropdown in both modes —
+ * the "+" mode (filter input, async fmSuggestions reply, keyboard selection,
+ * create row, escape/close behavior) and the chip-edit mode (menu anchored
+ * under an existing chip, filtered by the chip's contenteditable text).
  * acquireVsCodeApi is injected globally by setup.ts.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -244,5 +245,236 @@ describe("fm suggest menu closing", () => {
 
         expect(menuEl()).toBeNull();
         expect(document.querySelectorAll(".fm-suggest-item")).toHaveLength(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Chip-edit mode: the same dropdown opened while an existing chip's
+// contenteditable text is focused, filtered by the chip's current text.
+// ---------------------------------------------------------------------------
+
+const FM_RELATED = `---
+title: Hello
+related:
+  [
+    "/write/notion",
+    "/write/anthropic",
+  ]
+---
+`;
+
+/** The chip-text span at `index` (document order across all list rows). */
+function chipText(index = 0): HTMLElement {
+    return document.querySelectorAll(".fm-chip-text")[index] as HTMLElement;
+}
+
+/** Focuses a chip's text span (jsdom cannot focus contenteditable natively). */
+function focusChip(index = 0): HTMLElement {
+    const el = chipText(index);
+    el.dispatchEvent(new FocusEvent("focus"));
+    return el;
+}
+
+/** Replaces the chip's text and fires the input event (simulates typing). */
+function typeInChip(el: HTMLElement, value: string): void {
+    el.textContent = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** Dispatches a keydown on the chip text and returns it (for defaultPrevented). */
+function pressChipKey(el: HTMLElement, key: string): KeyboardEvent {
+    const ev = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+    el.dispatchEvent(ev);
+    return ev;
+}
+
+describe("fm chip edit suggestions — opening", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setupDom();
+    });
+
+    it("focusing a chip should request suggestions for the entry's key", () => {
+        renderFrontmatterPanel(FM_LIST);
+
+        focusChip(0);
+
+        expect(requestedKeys()).toEqual(["tags"]);
+        expect(menuEl()).not.toBeNull();
+        // Chip mode has no filter input of its own: the chip text is the query.
+        expect(document.querySelector(".fm-suggest-input")).toBeNull();
+    });
+
+    it("a reply should render options filtered by the chip's current text", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        focusChip(0); // "/write/notion"
+
+        dispatchFmSuggestions("related", ["/write/notion-labs", "/write/skill-factory"]);
+
+        expect(optionTexts()).toEqual(["/write/notion-labs"]);
+    });
+
+    it("typing should narrow the options to substring matches", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        const chip = focusChip(0);
+        typeInChip(chip, "");
+        dispatchFmSuggestions("related", [
+            "/write/skill-factory", "/write/other", "/write/anthropic",
+        ]);
+        // Empty query: everything except values already in the list.
+        expect(optionTexts()).toEqual(["/write/skill-factory", "/write/other"]);
+
+        typeInChip(chip, "/write/skill-fac");
+
+        expect(optionTexts()).toEqual(["/write/skill-factory"]);
+    });
+
+    it("values already in the list and the exact current text should be excluded", () => {
+        renderFrontmatterPanel(FM_LIST);
+        const chip = focusChip(0); // "one"
+        typeInChip(chip, "");
+        dispatchFmSuggestions("tags", ["one", "two", "three"]);
+
+        // "one" and "two" are chips in this file (including the edited chip's
+        // own original value) → excluded.
+        expect(optionTexts()).toEqual(["three"]);
+
+        typeInChip(chip, "three");
+
+        // Exactly what is already typed is pointless to suggest.
+        expect(optionTexts()).toEqual([]);
+    });
+
+    it("no create row should render in chip mode", () => {
+        renderFrontmatterPanel(FM_LIST);
+        const chip = focusChip(0);
+        dispatchFmSuggestions("tags", []);
+
+        typeInChip(chip, "brand-new");
+
+        expect(createRowEl()).toBeNull();
+    });
+});
+
+describe("fm chip edit suggestions — keyboard", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setupDom();
+    });
+
+    it("ArrowDown + Enter should replace the chip value and commit only that item's line", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        const chip = focusChip(0); // "/write/notion"
+        typeInChip(chip, "/write/skill-fac");
+        dispatchFmSuggestions("related", ["/write/skill-factory"]);
+
+        const arrow = pressChipKey(chip, "ArrowDown");
+        pressChipKey(chip, "Enter");
+
+        expect(arrow.defaultPrevented).toBe(true); // caret hijacked while options exist
+        expect(menuEl()).toBeNull();
+        const committed = postedFrontmatters();
+        expect(committed).toHaveLength(1);
+        expect(committed[0]).toBe(
+            '---\ntitle: Hello\nrelated:\n  [\n    "/write/skill-factory",\n    "/write/anthropic",\n  ]\n---\n',
+        );
+    });
+
+    it("Enter with no highlight should commit the typed text", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        const chip = focusChip(0);
+        typeInChip(chip, "/write/custom");
+        dispatchFmSuggestions("related", ["/write/skill-factory"]);
+
+        pressChipKey(chip, "Enter");
+
+        expect(menuEl()).toBeNull();
+        const committed = postedFrontmatters();
+        expect(committed).toHaveLength(1);
+        expect(committed[0]).toContain('"/write/custom",');
+        expect(committed[0]).not.toContain("/write/skill-factory");
+    });
+
+    it("ArrowDown with no options should not hijack the caret", () => {
+        renderFrontmatterPanel(FM_LIST);
+        const chip = focusChip(0); // no reply yet → no options
+
+        const ev = pressChipKey(chip, "ArrowDown");
+
+        expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it("Escape with the menu open should close it without reverting the text", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        const chip = focusChip(0);
+        typeInChip(chip, "/write/cu");
+        dispatchFmSuggestions("related", ["/write/custom-thing"]);
+
+        pressChipKey(chip, "Escape");
+
+        expect(menuEl()).toBeNull();
+        expect(chip.textContent).toBe("/write/cu"); // still editing, text kept
+        expect(postedFrontmatters()).toEqual([]);
+    });
+
+    it("Escape with the menu closed should revert to the original value", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        const chip = focusChip(0);
+        typeInChip(chip, "/write/cu");
+        pressChipKey(chip, "Escape"); // closes the menu only
+
+        pressChipKey(chip, "Escape"); // existing behavior: revert
+
+        expect(chip.textContent).toBe("/write/notion");
+        expect(postedFrontmatters()).toEqual([]);
+    });
+});
+
+describe("fm chip edit suggestions — mouse and blur", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setupDom();
+    });
+
+    it("option mousedown should prevent default and apply the value", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        const chip = focusChip(0);
+        typeInChip(chip, "");
+        dispatchFmSuggestions("related", ["/write/picked"]);
+
+        const ev = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        (document.querySelector(".fm-suggest-item") as HTMLElement).dispatchEvent(ev);
+
+        expect(ev.defaultPrevented).toBe(true); // keeps the chip from blurring first
+        expect(menuEl()).toBeNull();
+        const committed = postedFrontmatters();
+        expect(committed).toHaveLength(1);
+        expect(committed[0]).toContain('"/write/picked",');
+        expect(committed[0]).not.toContain("/write/notion");
+    });
+
+    it("chip blur should close the menu without committing unchanged text", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        const chip = focusChip(0);
+        dispatchFmSuggestions("related", ["/write/skill-factory"]);
+        expect(menuEl()).not.toBeNull();
+
+        chip.dispatchEvent(new FocusEvent("blur"));
+
+        expect(menuEl()).toBeNull();
+        expect(postedFrontmatters()).toEqual([]);
+    });
+
+    it("chip blur with edited text should commit through the regular path", () => {
+        renderFrontmatterPanel(FM_RELATED);
+        const chip = focusChip(0);
+        typeInChip(chip, "/write/renamed");
+
+        chip.dispatchEvent(new FocusEvent("blur"));
+
+        expect(menuEl()).toBeNull();
+        const committed = postedFrontmatters();
+        expect(committed).toHaveLength(1);
+        expect(committed[0]).toContain('"/write/renamed",');
     });
 });
