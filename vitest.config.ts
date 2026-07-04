@@ -16,6 +16,7 @@ export default defineConfig({
             include: [
                 "src/utils/**/*.ts",
                 "src/MarkdownDocument.ts",
+                "shared/**/*.ts",
                 "webview/utils/**/*.ts",
                 // Shared pure logic (messages.ts is type-only — nothing to cover)
                 "shared/frontmatterTable.ts",

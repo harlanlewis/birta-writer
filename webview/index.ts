@@ -30,6 +30,7 @@ import { TextSelection } from "@milkdown/prose/state";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, onMessage } from "./messaging";
 import type { ToWebviewMessage } from "../shared/messages";
+import { computeLineMap } from "../shared/lineMap";
 
 import { setupLinkPopup } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
@@ -182,7 +183,7 @@ function retryScroll(fn: () => void): void {
     }
 }
 
-// ── 编辑器初始化 ─────────────────────────────────────────────
+// ── Editor initialization ──────────────────────────────────
 async function initEditor(
     container: HTMLElement,
     markdown: string,
@@ -197,6 +198,11 @@ async function initEditor(
         container,
         markdown,
         (updated) => {
+            // Keep the cached source (and its line map) in sync with every
+            // edit so source-based search stays accurate; the extension later
+            // echoes an authoritative lineMapUpdate after saving (MAR-8).
+            markdownSource = updated;
+            currentLineMap = computeLineMap(updated);
             notifyUpdate(updated);
             toc.refresh();
         },
@@ -208,14 +214,11 @@ async function initEditor(
 // ── 初始化事件管理器 ──────────────────────────────────────────
 const eventManager = createEventManager();
 
-// ── 初始化 UI 组件 ───────────────────────────────────────────
+// ── UI component initialization ────────────────────────────
 const toc = initToc(eventManager, () => getEditorView());
 document.body.appendChild(toc.panel);
 
-const findBar = initFindBar(
-    () => document.getElementById("editor"),
-    () => getEditorView(),
-);
+const findBar = initFindBar(() => getEditorView(), getMarkdownSource);
 
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 const topbarTb = topbar
