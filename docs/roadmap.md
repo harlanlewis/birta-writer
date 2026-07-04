@@ -126,8 +126,8 @@ The evidence is unambiguous about sequencing:
 
 ### 1.2 Real find & replace (search the *source*, not the rendered DOM)
 - **What**: Rebuild the find bar to search the markdown source text and map hits to
-  ProseMirror positions (the line map used by Send-to-Claude already does most of this
-  mapping), instead of `TreeWalker` over rendered text
+  ProseMirror positions (the line map used by scroll sync and reveal already does most of
+  this mapping), instead of `TreeWalker` over rendered text
   (`webview/components/findBar/index.ts:175-191`). Add regex and whole-word toggles; let
   matches land inside link URLs, image paths, alt text, and code fence info strings.
 - **Why**: Find/replace is upstream's only open enhancement (#12), and today any

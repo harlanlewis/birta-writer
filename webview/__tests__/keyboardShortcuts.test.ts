@@ -47,7 +47,6 @@ describe("initKeyboardShortcuts find/replace bindings", () => {
             manager,
             () => null,
             () => [],
-            () => "",
             () => 1,
             findBar as unknown as FindBarController,
             openLinkPrompt,
@@ -182,7 +181,6 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
             manager,
             () => null,
             () => [],
-            () => "",
             () => 1,
             findBar as unknown as FindBarController,
             openLinkPrompt,
@@ -234,8 +232,6 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         ["Cmd+Z (undo)", "KeyZ", { key: "z", metaKey: true }],
         ["Cmd+Shift+Z (redo)", "KeyZ", { key: "Z", metaKey: true, shiftKey: true }],
         ["Cmd+Y (redo)", "KeyY", { key: "y", metaKey: true }],
-        // macOS Option+K produces "˚" — Alt combos are matched on e.code
-        ["Alt+K (send to Claude)", "KeyK", { key: "˚", altKey: true }],
     ] as const)("%s should not reach window listeners", (_label, code, modifiers) => {
         init(true);
         pressKey(code, modifiers, proseMirrorEl);
@@ -375,23 +371,14 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         expect(event.defaultPrevented).toBe(false);
     });
 
-    it("Alt+K in an overlay input should not trigger the send-to-Claude handler", () => {
+    it("Alt+K (no longer bound) should keep propagating to window listeners", () => {
         init(true);
-        const overlayInput = document.createElement("input");
-        document.body.appendChild(overlayInput);
-
-        // Outside the ProseMirror root the handler bails before its
-        // preventDefault, so the character can still be typed.
-        const event = pressKey("KeyK", { key: "˚", altKey: true }, overlayInput);
+        // macOS Option+K produces "˚" — the editor claims nothing on Alt+K
+        // anymore, so the workbench must keep seeing the chord.
+        const event = pressKey("KeyK", { key: "˚", altKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
         expect(event.defaultPrevented).toBe(false);
         expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
-        overlayInput.remove();
-    });
-
-    it("Alt+K inside the editor content should be handled (default prevented)", () => {
-        init(true);
-        const event = pressKey("KeyK", { key: "˚", altKey: true }, proseMirrorEl);
-        expect(event.defaultPrevented).toBe(true);
     });
 
     it("Tab inside the ProseMirror content should be stopped", () => {

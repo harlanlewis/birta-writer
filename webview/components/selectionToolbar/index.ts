@@ -25,14 +25,12 @@ import {
     IconCode,
     IconLink,
     IconChevronDown,
-    IconSendChat,
     IconAlignLeft,
     IconAlignCenter,
     IconAlignRight,
     IconTrash2,
 } from "@/ui/icons";
 import { applyTooltip } from "@/ui/tooltip";
-import { notifySendToClaudeChat } from "@/messaging";
 import { t, kbd } from "@/i18n";
 import { createButton, createSeparator } from "@/ui/dom";
 import './selectionToolbar.css';
@@ -222,77 +220,7 @@ export function getBlockContainerText($pos: ResolvedPos): string {
     return "";
 }
 
-/** CellSelection 专用：直接从表格结构计算单元格所在的源码行号（1-indexed），失败返回 null */
-export function getCellRowSourceLine(
-    doc: any,
-    posInsideCell: number,
-    getMarkdownSource: () => string,
-): number | null {
-    try {
-        const $pos = doc.resolve(posInsideCell);
-        let tableDepth = -1,
-            cellDepth = -1;
-        for (let d = $pos.depth; d >= 0; d--) {
-            const name = $pos.node(d).type.name;
-            if (name === "table") {
-                tableDepth = d;
-                break;
-            }
-            if (name === "table_cell" || name === "table_header") {
-                cellDepth = d;
-            }
-        }
-        if (tableDepth < 0 || cellDepth < 0) {
-            return null;
-        }
-        const tableNode = $pos.node(tableDepth);
-        const tableStart = $pos.start(tableDepth);
-        const tableMap = TableMap.get(tableNode);
-        const cellRelPos = $pos.before(cellDepth) - tableStart;
-        const rect = tableMap.findCell(cellRelPos);
-        const rowIdx = rect.top; // 0-indexed: 0=header, 1=first data row...
-
-        // 从 header row 提取单元格文本，在源码中精确定位表格起始行（绕过 lineMap 索引错位）
-        const headerRow = tableNode.firstChild;
-        if (!headerRow) {
-            return null;
-        }
-        const headerTexts: string[] = [];
-        headerRow.forEach((cell: any) => {
-            const text = cell.textContent.trim();
-            if (text.length >= 2) {
-                headerTexts.push(text);
-            }
-        });
-        if (headerTexts.length === 0) {
-            return null;
-        }
-
-        const source = getMarkdownSource();
-        const srcLines = source.split("\n");
-        let tableStartLine = -1;
-        for (let i = 0; i < srcLines.length; i++) {
-            const line = srcLines[i];
-            if (!line.includes("|")) {
-                continue;
-            }
-            if (headerTexts.every((t) => line.includes(t))) {
-                tableStartLine = i + 1; // 1-indexed
-                break;
-            }
-        }
-        if (tableStartLine === -1) {
-            return null;
-        }
-
-        // GFM table: header(rowIdx=0)→tableStartLine, separator 占一行, data row N→tableStartLine+N+1
-        return tableStartLine + rowIdx + (rowIdx > 0 ? 1 : 0);
-    } catch {
-        return null;
-    }
-}
-
-/** 在原始 markdown 中搜索块文本所在行号（1-indexed），未找到返回 -1 */
+/** Search the original markdown for the line number (1-indexed) containing the block text; return -1 when not found */
 export function findLineInOriginalSource(
     source: string,
     blockText: string,
@@ -375,8 +303,6 @@ export function sampleDocPosition(
 export function setupSelectionToolbar(
     getView: () => EditorView | null,
     getEditor: () => Editor | null,
-    getLineMap: () => number[],
-    getMarkdownSource: () => string,
     openLinkPrompt: () => void,
 ): { onSelectionChange(view: EditorView): void } {
     let lastView: EditorView | null = null;
@@ -564,123 +490,6 @@ export function setupSelectionToolbar(
         onClick: openLinkPrompt,
     });
     toolbar.appendChild(linkBtn);
-
-    const textInlineSep = sSep();
-    toolbar.appendChild(textInlineSep);
-
-    // ── 发送到 Claude（始终存在）────────────────────
-    const sendBtn = sBtn(IconSendChat, t("Send to Claude"), () => {
-        const view = getView();
-        if (!view) {
-            return;
-        }
-        const { selection } = view.state;
-        let text = view.state.doc.textBetween(
-            selection.from,
-            selection.to,
-            "\n",
-        );
-
-        // CellSelection 内容为空（如选中空列）→ 回退到父表格内容
-        if (!text.trim() && selection instanceof CellSelection) {
-            const $anchor = (selection as CellSelection).$anchorCell;
-            for (let d = $anchor.depth; d >= 0; d--) {
-                if ($anchor.node(d).type.name === "table") {
-                    const tableStart = $anchor.before(d);
-                    const tableEnd = tableStart + $anchor.node(d).nodeSize;
-                    text = view.state.doc.textBetween(
-                        tableStart + 1,
-                        tableEnd - 1,
-                        "\n",
-                        "\t",
-                    );
-                    break;
-                }
-            }
-        }
-
-        if (!text.trim()) {
-            hideToolbar();
-            return;
-        }
-
-        // 行号计算：CellSelection 直接从表格结构算，其余用文本搜索
-        const $from = view.state.doc.resolve(selection.from);
-        const $to = view.state.doc.resolve(selection.to);
-        let startLine: number;
-        let endLine: number;
-        if (selection instanceof CellSelection) {
-            // 用 $anchorCell.pos / $headCell.pos 保证在单元格内部
-            // （selection.to-1 可能落在行间位置而非格内，导致 getCellRowSourceLine 返回 null）
-            const anchorLine = getCellRowSourceLine(
-                view.state.doc,
-                selection.$anchorCell.pos,
-                getMarkdownSource,
-            );
-            const headLine = getCellRowSourceLine(
-                view.state.doc,
-                selection.$headCell.pos,
-                getMarkdownSource,
-            );
-            if (anchorLine !== null && headLine !== null) {
-                startLine = Math.min(anchorLine, headLine);
-                endLine = Math.max(anchorLine, headLine);
-            } else {
-                startLine =
-                    anchorLine ?? headLine ?? getLineMap()[$from.index(0)] ?? 1;
-                endLine = startLine;
-            }
-        } else {
-            const source = getMarkdownSource();
-            const startBlockText = getBlockContainerText($from);
-            const endBlockText = getBlockContainerText($to);
-            startLine = findLineInOriginalSource(source, startBlockText);
-            endLine = findLineInOriginalSource(source, endBlockText);
-            if (startLine === -1) {
-                // 逐字搜索选中文本首行（适用于代码块内容等 normalizeForSearch 会破坏的场景）
-                const firstLine = text.trim().split("\n")[0].trim();
-                if (firstLine.length >= 2) {
-                    const srcLines = source.split("\n");
-                    const idx = srcLines.findIndex((l) =>
-                        l.includes(firstLine),
-                    );
-                    if (idx >= 0) {
-                        startLine = idx + 1;
-                    }
-                }
-            }
-            if (startLine === -1) {
-                const map = getLineMap();
-                const textBefore = view.state.doc.textBetween(
-                    0,
-                    selection.from,
-                    "\n",
-                );
-                const fallbackStart =
-                    (textBefore.match(/\n/g) ?? []).length + 1;
-                startLine = map[$from.index(0)] ?? fallbackStart;
-            }
-            if (endLine === -1) {
-                // 逐字搜索最后一行
-                const lastLine = text.trim().split("\n").slice(-1)[0].trim();
-                if (lastLine.length >= 2) {
-                    const srcLines = source.split("\n");
-                    const idx = srcLines.findIndex((l) => l.includes(lastLine));
-                    if (idx >= 0) {
-                        endLine = idx + 1;
-                    }
-                }
-            }
-            if (endLine === -1) {
-                const map = getLineMap();
-                endLine = map[$to.index(0)] ?? startLine;
-            }
-        }
-
-        notifySendToClaudeChat(text, startLine, endLine);
-        hideToolbar();
-    });
-    toolbar.appendChild(sendBtn);
 
     // ── 表格模式元素（对齐 + 删除，初始全部隐藏）──
     const tableSep = sSep();
@@ -950,7 +759,6 @@ export function setupSelectionToolbar(
             italicBtn.style.display = "";
             strikeBtn.style.display = "";
             codeBtn.style.display = "";
-            textInlineSep.style.display = "";
 
             // Link: hidden in cell-selection mode — the link prompt replaces
             // a flat text range, which would corrupt the table structure
@@ -958,11 +766,11 @@ export function setupSelectionToolbar(
             linkSep.style.display = "none";
             linkBtn.style.display = "none";
 
-            // 对齐：整列选中（且非整表格）时显示
+            // Alignment: shown when a whole column is selected (and not the whole table)
             const isEntireTable = isEntireTableSelected(
                 selection as CellSelection,
             );
-            tableSep.style.display = "none";
+            tableSep.style.display = isCol && !isEntireTable ? "" : "none";
             alignWrap.style.display = isCol && !isEntireTable ? "" : "none";
 
             // 删除按钮显示逻辑
@@ -1012,7 +820,6 @@ export function setupSelectionToolbar(
         codeBtn.style.display = "";
         linkSep.style.display = "";
         linkBtn.style.display = "";
-        textInlineSep.style.display = "";
 
         // 表格专属元素：隐藏
         tableSep.style.display = "none";

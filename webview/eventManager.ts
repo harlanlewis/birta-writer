@@ -172,10 +172,10 @@ export class EventManager {
      * );
      *
      * @example
-     * // Alt+K (without stopping propagation)
+     * // Alt combo (without stopping propagation)
      * eventManager.onShortcut(
-     *     { code: "KeyK", alt: true, stopPropagation: false },
-     *     () => sendToClaude()
+     *     { code: "KeyF", alt: true, stopPropagation: false },
+     *     () => openFindReplace()
      * );
      */
     onShortcut(

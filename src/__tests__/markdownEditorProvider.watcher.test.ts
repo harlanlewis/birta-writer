@@ -79,7 +79,7 @@ describe("MarkdownEditorProvider file watcher", () => {
 
     async function setup(content = "initial content", filePath = "/project/note.md") {
         mockFs.readFile.mockResolvedValue(Buffer.from(content, "utf-8"));
-        const provider = new MarkdownEditorProvider(makeContext(), new Set());
+        const provider = new MarkdownEditorProvider(makeContext());
         const document = await MarkdownDocument.create(vscode.Uri.file(filePath));
         const panel = makePanel();
         await provider.resolveCustomEditor(
@@ -130,7 +130,7 @@ describe("MarkdownEditorProvider file watcher", () => {
 
         it("a non-file scheme document should not create a watcher", async () => {
             mockFs.readFile.mockResolvedValue(Buffer.from("", "utf-8"));
-            const provider = new MarkdownEditorProvider(makeContext(), new Set());
+            const provider = new MarkdownEditorProvider(makeContext());
             const document = await MarkdownDocument.create(
                 vscode.Uri.parse("untitled:Untitled-1"),
             );

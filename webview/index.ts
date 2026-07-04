@@ -337,8 +337,6 @@ eventManager.onDocument("paste", (e) => {
 const selTb = setupSelectionToolbar(
     () => getEditorView(),
     () => currentEditor,
-    getLineMap,
-    getMarkdownSource,
     // Same Insert/Edit Link prompt as the main toolbar button and Cmd/Ctrl+K
     () => topbarTb?.openLinkPrompt(),
 );
@@ -404,7 +402,6 @@ initKeyboardShortcuts(
     eventManager,
     getEditorView,
     getLineMap,
-    getMarkdownSource,
     getFirstVisibleSourceLine,
     findBar,
     () => topbarTb?.openLinkPrompt(),

@@ -81,8 +81,6 @@ describe("selection toolbar link button", () => {
         setupSelectionToolbar(
             () => null,
             () => null,
-            () => [],
-            () => "",
             vi.fn(),
         );
 
@@ -102,8 +100,6 @@ describe("selection toolbar link button", () => {
         setupSelectionToolbar(
             () => null,
             () => null,
-            () => [],
-            () => "",
             openLinkPrompt,
         );
 
@@ -124,8 +120,6 @@ describe("selection toolbar link button", () => {
         const selTb = setupSelectionToolbar(
             () => v,
             () => editor,
-            () => [],
-            () => "",
             openLinkPrompt,
         );
         v.dispatch(
@@ -156,8 +150,6 @@ describe("selection toolbar link button", () => {
         const selTb = setupSelectionToolbar(
             () => v,
             () => editor,
-            () => [],
-            () => "",
             vi.fn(),
         );
         const cellPositions: number[] = [];

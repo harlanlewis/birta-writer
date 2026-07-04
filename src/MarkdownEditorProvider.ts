@@ -223,9 +223,8 @@ export class MarkdownEditorProvider
 
     public static register(
         context: vscode.ExtensionContext,
-        claudeTerminals: Set<vscode.Terminal>,
     ): vscode.Disposable {
-        const provider = new MarkdownEditorProvider(context, claudeTerminals);
+        const provider = new MarkdownEditorProvider(context);
         MarkdownEditorProvider.current = provider;
         return vscode.window.registerCustomEditorProvider(
             MarkdownEditorProvider.viewType,
@@ -241,7 +240,6 @@ export class MarkdownEditorProvider
 
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly claudeTerminals: Set<vscode.Terminal>,
     ) {}
 
     async openCustomDocument(
@@ -506,16 +504,6 @@ export class MarkdownEditorProvider
                         await vscode.window.showTextDocument(textDoc, opts);
                         break;
                     }
-                    case "sendToClaudeChat":
-                        if (message.text) {
-                            await this._handleSendToClaudeChat(
-                                document, webviewPanel,
-                                message.text,
-                                message.startLine ?? 1,
-                                message.endLine   ?? (message.startLine ?? 1),
-                            );
-                        }
-                        break;
                     case "openSettings":
                         vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWysiwyg');
                         break;
@@ -663,111 +651,6 @@ export class MarkdownEditorProvider
                 undo: () => { /* TODO */ },
                 redo: () => { /* TODO */ },
             });
-        }
-    }
-
-    private async _handleSendToClaudeChat(
-        document: MarkdownDocument,
-        webviewPanel: vscode.WebviewPanel,
-        text: string,
-        startLine: number,
-        endLine: number,
-    ): Promise<void> {
-        const relPath = vscode.workspace.asRelativePath(document.uri);
-        const mentionStr = startLine === endLine
-            ? `@${relPath}#${startLine}`
-            : `@${relPath}#${startLine}-${endLine}`;
-        let success = false;
-        console.log('[sendToClaudeChat] triggered, file:', relPath, 'lines:', startLine, '-', endLine);
-
-        try {
-            // Path A: terminal Claude
-            // Heuristic: state.shell is missing → VSCode can't recognize it as a standard shell → likely the claude CLI
-            const isClaudeLikeTerminal = (t: vscode.Terminal) =>
-                !(t.state as { shell?: string }).shell;
-
-            const claudeTerminal =
-                [...this.claudeTerminals].at(-1)                          // ① Shell Integration detection
-                ?? vscode.window.terminals.find(isClaudeLikeTerminal)     // ② state.shell missing
-                ?? undefined;  // Don't fall back to activeTerminal, to avoid mistakenly sending to a plain shell
-            console.log(claudeTerminal,"terminal:", vscode.window.terminals);
-
-            if (claudeTerminal) {
-                claudeTerminal.sendText(mentionStr, false);
-                await vscode.commands.executeCommand('workbench.action.terminal.focus');
-                success = true;
-                console.log('[sendToClaudeChat] sent to terminal');
-            }
-
-            // Path B: VSCode Claude extension
-            if (!success) {
-                // Fix 3: open the temporary text editor in the same column (avoids layout flicker from creating a new column)
-                // Use preview: false to avoid replacing the custom editor tab that's in preview state
-                const textDoc    = await vscode.workspace.openTextDocument(document.uri);
-                const textEditor = await vscode.window.showTextDocument(textDoc, {
-                    viewColumn:    webviewPanel.viewColumn,
-                    preview:       false,
-                    preserveFocus: false,
-                });
-                const setSelection = () => {
-                    textEditor.selection = new vscode.Selection(
-                        new vscode.Position(startLine - 1, 0),
-                        new vscode.Position(endLine   - 1, 9999),
-                    );
-                };
-                setSelection();
-
-                // Fix 2: check whether Claude is already open, splitting into two paths to avoid losing activeTextEditor
-                const claudeOpen = vscode.window.tabGroups.all.some(g =>
-                    g.tabs.some(t =>
-                        t.input instanceof vscode.TabInputWebview &&
-                        (t.input as vscode.TabInputWebview).viewType.includes('claudeVSCodePanel')
-                    )
-                );
-                console.log('[sendToClaudeChat] claudeOpen:', claudeOpen);
-
-                if (claudeOpen) {
-                    await vscode.commands.executeCommand('claude-vscode.focus');
-                } else {
-                    await vscode.commands.executeCommand('claude-vscode.editor.openLast');
-                    await new Promise(r => setTimeout(r, 700));
-                    await vscode.window.showTextDocument(textDoc, {
-                        viewColumn:    textEditor.viewColumn,
-                        preview:       false,
-                        preserveFocus: false,
-                    });
-                    setSelection();
-                    await vscode.commands.executeCommand('claude-vscode.insertAtMention');
-                }
-                success = true;
-
-                // Close the temporary text editor
-                for (const group of vscode.window.tabGroups.all) {
-                    for (const tab of group.tabs) {
-                        if (tab.input instanceof vscode.TabInputText &&
-                            (tab.input as vscode.TabInputText).uri.toString() === document.uri.toString()) {
-                            await vscode.window.tabGroups.close(tab);
-                            break;
-                        }
-                    }
-                }
-                // Bring the custom editor back to the foreground (so it isn't hidden after the temporary text editor closes)
-                webviewPanel.reveal(webviewPanel.viewColumn, false);
-                console.log('[sendToClaudeChat] done');
-            }
-        } catch (_e) {
-            console.log('[sendToClaudeChat] failed:', _e);
-        }
-
-        if (!success) {
-            // Path C: fall back to VSCode's built-in chat
-            const query = `@${relPath}\n\n${text}`;
-            console.log('[sendToClaudeChat] fallback chat.open');
-            try {
-                await vscode.commands.executeCommand('workbench.action.chat.open', { query });
-            } catch (_e) {
-                vscode.window.showErrorMessage(vscode.l10n.t('Cannot open chat: please install Claude extension or GitHub Copilot'));
-            }
         }
     }
 

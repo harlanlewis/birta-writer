@@ -61,14 +61,8 @@ A VSCode WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdow
 ### Toolbars
 
 - **Top toolbar**: heading level, bold, italic, strikethrough, ordered/unordered list, task list, blockquote, code block, table
-- **Floating selection toolbar**: appears on text selection; supports quick formatting and Send to Claude
+- **Floating selection toolbar**: appears on text selection; supports quick formatting
 - **Table toolbar**: appears on row/column selection; supports alignment and delete operations
-
-### Claude Integration
-
-- **`Option+K`** (macOS) / **`Alt+K`** (Windows): sends the paragraph under the cursor to Claude with precise file line numbers
-- Select text and click "Send to Claude" in the toolbar — also attaches line range
-- Automatically detects Claude terminal / Claude VSCode extension / VS Code built-in Chat with three-level fallback
 
 ### In-Editor Search
 
@@ -96,7 +90,6 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | Reorder rows/columns     | Hover the **⠿** handle, then drag                              |
 | Select entire row/column | Click the **⠿** handle                                         |
 | Path autocomplete        | Type `@/`, `./`, or `../` inside inline code                   |
-| Send paragraph to Claude | `Option+K` (macOS) / `Alt+K` (Windows)                         |
 | Search in document       | `Cmd+F` (macOS) / `Ctrl+F` (Windows)                           |
 | Manual save              | `Cmd+S` (macOS) / `Ctrl+S` (Windows)                           |
 
@@ -129,5 +122,4 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 ## Known Limitations
 
 - Some advanced Markdown extensions (footnotes, math formulas) are not yet supported
-- **Table cell line numbers** (Send to Claude): when a table cell is selected, the reported line range may be slightly off due to ProseMirror node index misalignment with the source line map
 - **Global search navigation**: clicking a search result for a `.md` file may not scroll to the matched line in WYSIWYG mode when multiple `.md` files are open simultaneously

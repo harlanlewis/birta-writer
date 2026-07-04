@@ -25,21 +25,8 @@ function syncEditorAssociation(mode: string): void {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-    // Track claude processes running in terminals (Shell Integration)
-    const claudeTerminals = new Set<vscode.Terminal>();
     context.subscriptions.push(
-        vscode.window.onDidStartTerminalShellExecution((e) => {
-            if (/\bclaude\b/i.test(e.execution.commandLine?.value ?? ""))
-                claudeTerminals.add(e.terminal);
-        }),
-        vscode.window.onDidEndTerminalShellExecution((e) =>
-            claudeTerminals.delete(e.terminal),
-        ),
-        vscode.window.onDidCloseTerminal((t) => claudeTerminals.delete(t)),
-    );
-
-    context.subscriptions.push(
-        MarkdownEditorProvider.register(context, claudeTerminals),
+        MarkdownEditorProvider.register(context),
     );
 
     // Sync editorAssociations once on activation
