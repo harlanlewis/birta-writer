@@ -870,3 +870,82 @@ body.editor-width-auto {
     pointer-events: none;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
 }
+
+/* Chip-list editing for list-valued frontmatter keys (tags, related, ...) */
+.fm-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.fm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    padding: 1px 4px 1px 8px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+    border-radius: 10px;
+    background: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.08));
+
+    .fm-chip-text {
+        outline: none;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-width: 1ch;
+
+        &:focus {
+            text-decoration: underline dotted var(--vscode-focusBorder, #007acc);
+        }
+    }
+
+    .fm-chip-remove {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        cursor: pointer;
+        opacity: 0.4;
+
+        svg {
+            width: 10px;
+            height: 10px;
+        }
+
+        &:hover {
+            opacity: 1;
+            color: var(--vscode-errorForeground, #f44747);
+        }
+    }
+}
+
+.fm-chip-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border-radius: 10px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+
+    svg {
+        width: 11px;
+        height: 11px;
+    }
+
+    &:hover {
+        color: var(--vscode-editor-foreground);
+        border-color: var(--vscode-focusBorder, #007acc);
+    }
+}

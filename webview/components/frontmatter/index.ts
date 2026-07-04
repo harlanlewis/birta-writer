@@ -17,11 +17,37 @@ import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "../../ui/icons"
 import { t } from "../../i18n";
 import { getWebviewState, notifyFrontmatterUpdate, setWebviewState } from "../../messaging";
 
+export type FmListItem = {
+    value: string;
+    /** Exact original line text; present for items parsed from the file. */
+    origLine?: string;
+    /** Original quote style of the item (null = unquoted). */
+    quote?: '"' | "'" | null;
+};
+
+export type FmList = {
+    /** `key: [a, b]` on one line, a multi-line `[ ... ]`, or block `- item` lines. */
+    kind: "flow-inline" | "flow-multi" | "block";
+    items: FmListItem[];
+    /** flow-multi only: the exact `[` / `]` lines. */
+    openLine?: string;
+    closeLine?: string;
+    /** Indentation for (new) item lines. */
+    itemIndent: string;
+    /** flow-multi: whether every item line (including the last) ends with a comma. */
+    trailingCommaAll?: boolean;
+    /** Quote style for newly added items (majority style of existing ones). */
+    newItemQuote: '"' | "'" | null;
+};
+
 export type FmEntry = {
     key: string;
     value: string;
-    /** Exact original line text (no trailing newline); present for entries parsed from the file. */
+    /** Exact original line text (no trailing newline); present for entries parsed from the file.
+     *  For list entries this is the `key:` (or full inline `key: [...]`) line. */
     origLine?: string;
+    /** Present when the value is a list; `value` is unused then. */
+    list?: FmList;
 };
 
 /** Splits a fenced frontmatter block into opening fence, inner text and closing fence. */
@@ -84,6 +110,291 @@ export function parseFrontmatter(raw: string): FmEntry[] {
         .filter(({ key }) => key.length > 0);
 }
 
+// ─── Tabular frontmatter (scalars + simple lists) ───────────────────────────
+
+/** Is `value` safe to keep as an unquoted plain YAML scalar? */
+function isSafePlain(value: string): boolean {
+    return /^[A-Za-z0-9_./-][A-Za-z0-9_./ +-]*$/.test(value) && !value.endsWith(" ");
+}
+
+/** Quote `value` in the given style (falling back to double quotes when the
+ *  style cannot represent it losslessly). */
+function quoteItem(value: string, quote: '"' | "'" | null): string {
+    if (quote === "'" && !value.includes("'")) { return `'${value}'`; }
+    if (quote === null && isSafePlain(value)) { return value; }
+    return '"' + value.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+}
+
+/** Does this scalar pass the same safety rules the flat classifier applies? */
+function isSafeScalarValue(value: string): boolean {
+    if (value === "") { return true; }
+    const v0 = value[0]!;
+    if ("|>&*[{#!%@`".includes(v0)) { return false; }
+    if (/\s#/.test(value)) { return false; }
+    if (v0 === '"' || v0 === "'") {
+        return value.length >= 2 && value.endsWith(v0);
+    }
+    return true;
+}
+
+// One flow-sequence item on its own line: indent, a quoted or plain token,
+// an optional trailing comma — nothing else.
+const FLOW_ITEM_RE = /^(\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[^\s,[\]{}#"'][^,[\]{}#]*?)\s*(,?)\s*$/;
+
+function parseQuotedToken(token: string): { value: string; quote: '"' | "'" | null } {
+    if (token.startsWith('"') && token.endsWith('"') && token.length >= 2) {
+        return { value: token.slice(1, -1).replace(/\\(.)/g, "$1"), quote: '"' };
+    }
+    if (token.startsWith("'") && token.endsWith("'") && token.length >= 2) {
+        return { value: token.slice(1, -1), quote: "'" };
+    }
+    return { value: token.trim(), quote: null };
+}
+
+/** Majority quote style among items (for newly added ones). */
+function majorityQuote(items: FmListItem[]): '"' | "'" | null {
+    const counts = new Map<string, number>();
+    for (const it of items) { counts.set(String(it.quote), (counts.get(String(it.quote)) ?? 0) + 1); }
+    let best: '"' | "'" | null = '"';
+    let bestCount = -1;
+    for (const [q, c] of counts) {
+        if (c > bestCount) { best = q === "null" ? null : (q as '"' | "'"); bestCount = c; }
+    }
+    return items.length === 0 ? '"' : best;
+}
+
+/** Split a single-line flow sequence body on top-level commas, respecting quotes. */
+function splitInlineFlow(body: string): string[] | null {
+    const parts: string[] = [];
+    let cur = "";
+    let quote: '"' | "'" | null = null;
+    for (let i = 0; i < body.length; i++) {
+        const ch = body[i]!;
+        if (quote) {
+            cur += ch;
+            if (quote === '"' && ch === "\\") { cur += body[++i] ?? ""; continue; }
+            if (ch === quote) { quote = null; }
+        } else if (ch === '"' || ch === "'") {
+            quote = ch; cur += ch;
+        } else if ("[]{}#".includes(ch)) {
+            return null; // nested flow / comment → not tabular
+        } else if (ch === ",") {
+            parts.push(cur); cur = "";
+        } else {
+            cur += ch;
+        }
+    }
+    if (quote) { return null; } // unterminated quote
+    parts.push(cur);
+    return parts;
+}
+
+/**
+ * Parses frontmatter into table entries when every construct is either a
+ * `key: scalar` line or a simple list (inline flow `key: [a, b]`, a
+ * multi-line flow sequence with one item per line, or block `- item` lines).
+ * Returns null for anything richer — nested maps, comments, block scalars,
+ * anchors, CRLF — which routes the panel to the raw editor instead.
+ */
+export function parseTabularFrontmatter(raw: string): FmEntry[] | null {
+    if (raw.includes("\r")) { return null; }
+    const fences = splitFences(raw);
+    if (!fences) { return null; }
+    const lines = fences.inner === "" ? [] : fences.inner.split("\n");
+    const entries: FmEntry[] = [];
+
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i]!;
+        if (line.trim() === "") { i++; continue; }
+        if (/^[ \t]/.test(line)) { return null; } // stray indentation
+        const first = line[0]!;
+        if (first === "#" || first === "?" || first === "%" || first === "!") { return null; }
+        if (line === "-" || line.startsWith("- ")) { return null; } // list item without a key
+        const colonIdx = line.indexOf(":");
+        if (colonIdx <= 0) { return null; }
+        const next = line[colonIdx + 1];
+        if (next !== undefined && next !== " " && next !== "\t") { return null; }
+        const key = line.slice(0, colonIdx);
+        if (key.trim() === "" || /["'#]/.test(key)) { return null; }
+        const value = line.slice(colonIdx + 1).trim();
+
+        // Inline flow sequence: `key: [a, "b"]`
+        if (value.startsWith("[")) {
+            if (!value.endsWith("]")) { return null; }
+            const body = value.slice(1, -1);
+            const rawParts = body.trim() === "" ? [] : splitInlineFlow(body);
+            if (rawParts === null) { return null; }
+            const items: FmListItem[] = [];
+            for (const part of rawParts) {
+                const token = part.trim();
+                if (token === "") { return null; } // empty/duplicate commas
+                const { value: v, quote } = parseQuotedToken(token);
+                if (quote === null && !isSafeScalarValue(v)) { return null; }
+                items.push({ value: v, quote });
+            }
+            entries.push({
+                key: key.trim(), value: "", origLine: line,
+                list: { kind: "flow-inline", items, itemIndent: "", newItemQuote: majorityQuote(items) },
+            });
+            i++;
+            continue;
+        }
+
+        if (value === "") {
+            const nextLine = lines[i + 1];
+
+            // Multi-line flow sequence: `key:` / `[` / one item per line / `]`
+            const openMatch = nextLine?.match(/^(\s*)\[\s*$/);
+            if (openMatch) {
+                const items: FmListItem[] = [];
+                let j = i + 2;
+                let closeLine: string | null = null;
+                for (; j < lines.length; j++) {
+                    const l = lines[j]!;
+                    if (/^\s*\]\s*$/.test(l)) { closeLine = l; break; }
+                    const m = l.match(FLOW_ITEM_RE);
+                    if (!m) { return null; }
+                    const { value: v, quote } = parseQuotedToken(m[2]!);
+                    if (quote === null && !isSafeScalarValue(v)) { return null; }
+                    items.push({ value: v, origLine: l, quote });
+                }
+                if (closeLine === null || items.length === 0) { return null; }
+                const itemIndent = items[0]!.origLine!.match(/^\s*/)![0];
+                const trailingCommaAll = items.every((it) => /,\s*$/.test(it.origLine!));
+                const commasExceptLast = items.slice(0, -1).every((it) => /,\s*$/.test(it.origLine!))
+                    && !/,\s*$/.test(items[items.length - 1]!.origLine!);
+                if (!trailingCommaAll && !commasExceptLast) { return null; } // inconsistent commas
+                entries.push({
+                    key: key.trim(), value: "", origLine: line,
+                    list: {
+                        kind: "flow-multi", items,
+                        openLine: nextLine!, closeLine,
+                        itemIndent, trailingCommaAll,
+                        newItemQuote: majorityQuote(items),
+                    },
+                });
+                i = j + 1;
+                continue;
+            }
+
+            // Block sequence: `key:` / `- item` lines (consistent indentation)
+            const blockMatch = nextLine?.match(/^(\s*)- (.*)$/);
+            if (blockMatch) {
+                const indent = blockMatch[1]!;
+                const items: FmListItem[] = [];
+                let j = i + 1;
+                for (; j < lines.length; j++) {
+                    const l = lines[j]!;
+                    const m = l.match(/^(\s*)- (.*)$/);
+                    if (!m) { break; }
+                    if (m[1] !== indent) { return null; } // ragged indentation
+                    const token = m[2]!.trim();
+                    if (token === "" || token.startsWith("- ")) { return null; }
+                    const { value: v, quote } = parseQuotedToken(token);
+                    if (quote === null && !isSafeScalarValue(v)) { return null; }
+                    if (quote === null && /\s#/.test(v)) { return null; }
+                    items.push({ value: v, origLine: l, quote });
+                }
+                entries.push({
+                    key: key.trim(), value: "", origLine: line,
+                    list: { kind: "block", items, itemIndent: indent, newItemQuote: majorityQuote(items) },
+                });
+                i = j;
+                continue;
+            }
+
+            // Plain empty scalar
+            entries.push({ key: key.trim(), value: "", origLine: line });
+            i++;
+            continue;
+        }
+
+        // Plain scalar (same safety rules as the flat classifier)
+        if (!isSafeScalarValue(value)) { return null; }
+        entries.push({ key: key.trim(), value, origLine: line });
+        i++;
+    }
+    return entries;
+}
+
+/** The exact original lines an entry occupies in the source block. */
+function entrySpan(entry: FmEntry): string[] | null {
+    if (entry.origLine === undefined) { return null; }
+    if (!entry.list) { return [entry.origLine]; }
+    const { list } = entry;
+    if (list.kind === "flow-inline") { return [entry.origLine]; }
+    const itemLines = list.items.map((it) => it.origLine);
+    if (itemLines.some((l) => l === undefined)) { return null; }
+    if (list.kind === "flow-multi") {
+        if (list.openLine === undefined || list.closeLine === undefined) { return null; }
+        return [entry.origLine, list.openLine, ...(itemLines as string[]), list.closeLine];
+    }
+    return [entry.origLine, ...(itemLines as string[])];
+}
+
+/** Rebuilds an entry's lines, emitting original bytes wherever nothing changed. */
+function reconstructEntryLines(entry: FmEntry): string[] {
+    if (!entry.list) { return [formatEntryLine(entry)]; }
+    const { list } = entry;
+    const keyLine = entry.origLine !== undefined
+        && entry.origLine.slice(0, entry.origLine.indexOf(":")).trim() === entry.key
+        && list.kind !== "flow-inline"
+        ? entry.origLine
+        : `${entry.key}:`;
+
+    if (list.kind === "flow-inline") {
+        // Single line: reuse the original when the key and every item survive
+        // unchanged, otherwise rebuild `key: [a, b]`.
+        const body = list.items.map((it) => quoteItem(it.value, it.quote ?? list.newItemQuote)).join(", ");
+        const rebuilt = `${entry.key}: [${body}]`;
+        if (entry.origLine !== undefined) {
+            const reparsed = parseTabularFrontmatter(`---\n${entry.origLine}\n---\n`);
+            const orig = reparsed?.[0];
+            if (orig?.list && orig.key === entry.key
+                && orig.list.items.length === list.items.length
+                && orig.list.items.every((it, k) => it.value === list.items[k]!.value)) {
+                return [entry.origLine];
+            }
+        }
+        return [rebuilt];
+    }
+
+    if (list.kind === "flow-multi") {
+        const openLine = list.openLine ?? `${list.itemIndent.slice(0, Math.max(0, list.itemIndent.length - 2))}[`;
+        const closeLine = list.closeLine ?? openLine.replace("[", "]");
+        const lines = [keyLine, openLine];
+        list.items.forEach((it, k) => {
+            const needsComma = list.trailingCommaAll === true || k < list.items.length - 1;
+            const rebuilt = list.itemIndent + quoteItem(it.value, it.quote ?? list.newItemQuote) + (needsComma ? "," : "");
+            // Keep the original bytes when they already say exactly this
+            // (preserves exotic-but-harmless spacing on untouched items).
+            lines.push(it.origLine !== undefined && normalizedFlowItem(it.origLine) === normalizedFlowItem(rebuilt)
+                ? it.origLine
+                : rebuilt);
+        });
+        lines.push(closeLine);
+        return lines;
+    }
+
+    // block list
+    const lines = [keyLine];
+    for (const it of list.items) {
+        const rebuilt = `${list.itemIndent}- ${quoteItem(it.value, it.quote ?? list.newItemQuote)}`;
+        lines.push(it.origLine !== undefined && it.origLine.trim() === rebuilt.trim() && parseQuotedToken(it.origLine.replace(/^\s*- /, "").trim()).value === it.value
+            ? it.origLine
+            : rebuilt);
+    }
+    return lines;
+}
+
+/** Comparable form of a flow item line: token + comma presence. */
+function normalizedFlowItem(line: string): string {
+    const m = line.match(FLOW_ITEM_RE);
+    if (!m) { return line; }
+    return `${parseQuotedToken(m[2]!).value} ${m[3] === "," ? 1 : 0}`;
+}
+
 /** Returns true when the entry's key/value still match what its original line parses to. */
 function isEntryUnchanged(entry: FmEntry): boolean {
     if (entry.origLine === undefined) { return false; }
@@ -121,19 +432,33 @@ export function serializeFrontmatter(entries: FmEntry[], originalRaw?: string): 
         const innerLines = fences.inner === "" ? [] : fences.inner.split("\n");
         const remaining = [...surviving];
         const out: string[] = [];
-        for (const line of innerLines) {
-            if (line.trim() === "") { out.push(line); continue; } // keep blank lines verbatim
-            const idx = remaining.findIndex(e => e.origLine === line);
-            if (idx === -1) { continue; } // the entry for this line was deleted
+        let i = 0;
+        while (i < innerLines.length) {
+            const line = innerLines[i]!;
+            if (line.trim() === "") { out.push(line); i++; continue; } // keep blank lines verbatim
+            // A surviving entry whose original span starts on this line?
+            const idx = remaining.findIndex((e) => {
+                const span = entrySpan(e);
+                return span !== null
+                    && span[0] === line
+                    && span.every((s, k) => innerLines[i + k] === s);
+            });
+            if (idx === -1) { i++; continue; } // line belonged to a deleted entry
             const entry = remaining.splice(idx, 1)[0]!;
-            out.push(isEntryUnchanged(entry) ? line : formatEntryLine(entry));
+            const span = entrySpan(entry)!;
+            if (!entry.list && isEntryUnchanged(entry)) {
+                out.push(line);
+            } else {
+                out.push(...reconstructEntryLines(entry));
+            }
+            i += span.length;
         }
-        // Newly added rows (and any entry that lost its original line) go at the end.
-        for (const entry of remaining) { out.push(formatEntryLine(entry)); }
+        // Newly added rows (and any entry that lost its original lines) go at the end.
+        for (const entry of remaining) { out.push(...reconstructEntryLines(entry)); }
         return fences.prefix + out.join("\n") + fences.suffix;
     }
 
-    return `---\n${surviving.map(formatEntryLine).join("\n")}\n---\n`;
+    return `---\n${surviving.flatMap(reconstructEntryLines).join("\n")}\n---\n`;
 }
 
 /** Current panel data (module-level state) */
@@ -232,6 +557,102 @@ function bindFmCell(
     });
 }
 
+/** Builds one editable list chip (click to edit, × to remove, empty commit removes). */
+function createFmChip(
+    item: FmListItem,
+    entry: FmEntry,
+    tbody: HTMLElement,
+    panel: HTMLElement,
+): HTMLElement {
+    const chip = document.createElement('span');
+    chip.className = 'fm-chip';
+
+    const text = document.createElement('span');
+    text.className = 'fm-chip-text';
+    text.textContent = item.value;
+    text.contentEditable = 'true';
+    text.spellcheck = false;
+    text.dataset['orig'] = item.value;
+
+    text.addEventListener('keydown', (e) => {
+        if (e.isComposing) { return; }
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            text.blur();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            text.textContent = text.dataset['orig'] ?? '';
+            text.blur();
+        }
+    });
+    text.addEventListener('blur', () => {
+        const newVal = (text.textContent ?? '').trim();
+        if (newVal === item.value) {
+            // A freshly added, still-empty chip is discarded on blur.
+            if (newVal === '' && item.origLine === undefined) {
+                entry.list!.items = entry.list!.items.filter((it) => it !== item);
+                rebuildFmTable(tbody, panel);
+            }
+            return;
+        }
+        if (newVal === '') {
+            entry.list!.items = entry.list!.items.filter((it) => it !== item);
+        } else {
+            item.value = newVal;
+        }
+        commitFrontmatterChange();
+        rebuildFmTable(tbody, panel);
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'fm-chip-remove';
+    removeBtn.innerHTML = IconX;
+    removeBtn.title = t('Delete');
+    removeBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        entry.list!.items = entry.list!.items.filter((it) => it !== item);
+        commitFrontmatterChange();
+        rebuildFmTable(tbody, panel);
+    });
+
+    chip.appendChild(text);
+    chip.appendChild(removeBtn);
+    return chip;
+}
+
+/** Fills a value cell with the chip-list UI for a list-valued entry. */
+function bindFmListCell(
+    td: HTMLElement,
+    entry: FmEntry,
+    tbody: HTMLElement,
+    panel: HTMLElement,
+): void {
+    td.classList.add('fm-list');
+    const chips = document.createElement('div');
+    chips.className = 'fm-chips';
+    for (const item of entry.list!.items) {
+        chips.appendChild(createFmChip(item, entry, tbody, panel));
+    }
+
+    const addBtn = document.createElement('button');
+    addBtn.className = 'fm-chip-add';
+    addBtn.innerHTML = IconPlus;
+    addBtn.title = t('Add item');
+    addBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item: FmListItem = { value: '' };
+        entry.list!.items.push(item);
+        const chip = createFmChip(item, entry, tbody, panel);
+        chips.appendChild(chip);
+        (chip.querySelector('.fm-chip-text') as HTMLElement | null)?.focus();
+    });
+    chips.appendChild(addBtn);
+    td.appendChild(chips);
+}
+
 /** Creates one editable table row (contenteditable td, direct typing). */
 function createFmRow(entry: FmEntry, index: number, tbody: HTMLElement, panel: HTMLElement): HTMLTableRowElement {
     const tr = document.createElement('tr');
@@ -241,10 +662,14 @@ function createFmRow(entry: FmEntry, index: number, tbody: HTMLElement, panel: H
     tdKey.className = 'fm-key';
     bindFmCell(tdKey, entry, 'key', tbody, panel);
 
-    // value cell
+    // value cell: chip list for list-valued entries, plain editable text otherwise
     const tdVal = document.createElement('td');
     tdVal.className = 'fm-val';
-    bindFmCell(tdVal, entry, 'value', tbody, panel);
+    if (entry.list) {
+        bindFmListCell(tdVal, entry, tbody, panel);
+    } else {
+        bindFmCell(tdVal, entry, 'value', tbody, panel);
+    }
 
     // delete button
     const tdDel = document.createElement('td');
@@ -375,22 +800,22 @@ export function renderFrontmatterPanel(frontmatter: string | undefined): void {
     }
 
     currentFmRaw = frontmatter;
-    const flat = isFlatFrontmatter(frontmatter);
+    // Tabular = flat scalars plus simple lists; anything richer edits as raw YAML.
+    const tabular = parseTabularFrontmatter(frontmatter);
 
     const panel = existing ?? document.createElement('div');
     panel.id = 'frontmatter-panel';
     panel.className = 'frontmatter-panel';
     panel.innerHTML = '';
 
-    if (flat) {
-        const entries = parseFrontmatter(frontmatter);
+    if (tabular !== null) {
         // Keep the panel even when entries are empty (lets the user add rows later)
-        currentFmEntries = entries;
+        currentFmEntries = tabular;
 
         const table = document.createElement('table');
         table.className = 'frontmatter-table';
         const tbody = document.createElement('tbody');
-        entries.forEach((entry, i) => {
+        tabular.forEach((entry, i) => {
             tbody.appendChild(createFmRow(entry, i, tbody, panel));
         });
         table.appendChild(tbody);

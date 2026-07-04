@@ -8,6 +8,7 @@ import { mockVscodeApi } from "./setup";
 import {
     isFlatFrontmatter,
     parseFrontmatter,
+    parseTabularFrontmatter,
     serializeFrontmatter,
     renderFrontmatterPanel,
 } from "../components/frontmatter";
@@ -197,10 +198,14 @@ describe("renderFrontmatterPanel raw mode", () => {
         expect(getRawEditor().value).toBe("author:\n  name: Jane\n  email: jane@example.com");
     });
 
-    it("list frontmatter should render the raw editor", () => {
+    // Intentional behavior change: simple lists were originally routed to the
+    // raw editor as an interim safety measure; they now get the table with
+    // lossless chip-list editing (see the "tabular list editing" suites).
+    it("simple list frontmatter should render the table with a chip list, not the raw editor", () => {
         renderFrontmatterPanel(FM_LIST);
-        expect(document.querySelector(".frontmatter-table")).toBeNull();
-        expect(getRawEditor().value).toBe("tags:\n- one\n- two");
+        expect(document.querySelector(".fm-raw-editor")).toBeNull();
+        const chips = document.querySelectorAll(".fm-chip .fm-chip-text");
+        expect(Array.from(chips).map((c) => c.textContent)).toEqual(["one", "two"]);
     });
 
     it("comment lines should render the raw editor with the comment intact", () => {
@@ -485,5 +490,219 @@ describe("renderFrontmatterPanel collapse toggle", () => {
         renderFrontmatterPanel(FM);
         renderFrontmatterPanel(undefined);
         expect(document.getElementById("frontmatter-panel")).toBeNull();
+    });
+});
+
+// A realistic rich-metadata block mirroring the field report that motivated
+// list support: scalars + inline flow + two multi-line flow sequences with
+// quoted items and trailing commas on every line.
+const FM_RICH = `---
+title: "The AI Playbook"
+date: 2026-06-29T18:00:00-07:00
+tags: ["think", "playbook", "ai"]
+draft: true
+related:
+  [
+    "/write/notion",
+    "/write/anthropic",
+    "/write/shopify",
+  ]
+keywords:
+  [
+    "enablement",
+    "internal AI",
+  ]
+---
+`;
+
+const FM_BLOCK_LIST = `---
+title: Hello
+tags:
+  - one
+  - two words
+---
+`;
+
+describe("parseTabularFrontmatter", () => {
+    it("a rich block with inline and multi-line flow lists should parse into entries", () => {
+        const entries = parseTabularFrontmatter(FM_RICH)!;
+
+        expect(entries.map((e) => e.key)).toEqual([
+            "title", "date", "tags", "draft", "related", "keywords",
+        ]);
+        expect(entries[2]!.list!.kind).toBe("flow-inline");
+        expect(entries[2]!.list!.items.map((i) => i.value)).toEqual(["think", "playbook", "ai"]);
+        expect(entries[4]!.list!.kind).toBe("flow-multi");
+        expect(entries[4]!.list!.items.map((i) => i.value)).toEqual([
+            "/write/notion", "/write/anthropic", "/write/shopify",
+        ]);
+    });
+
+    it("a block list should parse with its indentation and unquoted style", () => {
+        const entries = parseTabularFrontmatter(FM_BLOCK_LIST)!;
+
+        expect(entries[1]!.list!.kind).toBe("block");
+        expect(entries[1]!.list!.items.map((i) => i.value)).toEqual(["one", "two words"]);
+        expect(entries[1]!.list!.itemIndent).toBe("  ");
+    });
+
+    it("nested maps, comments and colon-less lines should not be tabular", () => {
+        expect(parseTabularFrontmatter("---\nauthor:\n  name: Jane\n---\n")).toBeNull();
+        expect(parseTabularFrontmatter("---\n# comment\na: 1\n---\n")).toBeNull();
+        expect(parseTabularFrontmatter("---\nno colon\n---\n")).toBeNull();
+    });
+
+    it("a nested flow sequence should not be tabular", () => {
+        expect(parseTabularFrontmatter("---\nmatrix: [[1, 2], [3, 4]]\n---\n")).toBeNull();
+    });
+});
+
+describe("tabular list editing — lossless serialization", () => {
+    it("an unedited rich block should round-trip byte-for-byte", () => {
+        const entries = parseTabularFrontmatter(FM_RICH)!;
+        expect(serializeFrontmatter(entries, FM_RICH)).toBe(FM_RICH);
+    });
+
+    it("editing a scalar should leave every list line byte-identical", () => {
+        const entries = parseTabularFrontmatter(FM_RICH)!;
+        entries[0]!.value = '"New Title"';
+
+        const out = serializeFrontmatter(entries, FM_RICH);
+
+        expect(out).toContain('title: "New Title"');
+        for (const line of FM_RICH.split("\n").slice(2, -2)) {
+            expect(out).toContain(line);
+        }
+    });
+
+    it("editing one list item should rewrite only that item's line, preserving its quote style", () => {
+        const entries = parseTabularFrontmatter(FM_RICH)!;
+        entries[4]!.list!.items[1]!.value = "/write/renamed";
+
+        const out = serializeFrontmatter(entries, FM_RICH);
+
+        expect(out).toContain('    "/write/renamed",');
+        expect(out).not.toContain("/write/anthropic");
+        expect(out).toContain('    "/write/notion",');
+        expect(out).toContain('    "/write/shopify",');
+        expect(out).toContain('tags: ["think", "playbook", "ai"]');
+    });
+
+    it("removing a list item should delete exactly its line", () => {
+        const entries = parseTabularFrontmatter(FM_RICH)!;
+        entries[4]!.list!.items.splice(1, 1);
+
+        const out = serializeFrontmatter(entries, FM_RICH);
+
+        expect(out).not.toContain("/write/anthropic");
+        expect(out).toContain('    "/write/notion",');
+        expect(out).toContain('    "/write/shopify",');
+    });
+
+    it("adding an item to a trailing-comma list should match the existing style", () => {
+        const entries = parseTabularFrontmatter(FM_RICH)!;
+        entries[5]!.list!.items.push({ value: "new keyword" });
+
+        const out = serializeFrontmatter(entries, FM_RICH);
+
+        expect(out).toContain('    "new keyword",');
+        expect(out).toContain('    "enablement",');
+    });
+
+    it("adding an item to a comma-except-last list should re-comma the old last item", () => {
+        const raw = '---\nrel:\n  [\n    "a",\n    "b"\n  ]\n---\n';
+        const entries = parseTabularFrontmatter(raw)!;
+        entries[0]!.list!.items.push({ value: "c" });
+
+        const out = serializeFrontmatter(entries, raw);
+
+        expect(out).toBe('---\nrel:\n  [\n    "a",\n    "b",\n    "c"\n  ]\n---\n');
+    });
+
+    it("editing an inline flow list should rebuild only that line", () => {
+        const entries = parseTabularFrontmatter(FM_RICH)!;
+        entries[2]!.list!.items.push({ value: "essay" });
+
+        const out = serializeFrontmatter(entries, FM_RICH);
+
+        expect(out).toContain('tags: ["think", "playbook", "ai", "essay"]');
+        expect(out).toContain('    "/write/notion",');
+    });
+
+    it("editing a block-list item should keep the dash style and indentation", () => {
+        const entries = parseTabularFrontmatter(FM_BLOCK_LIST)!;
+        entries[1]!.list!.items[0]!.value = "renamed";
+
+        const out = serializeFrontmatter(entries, FM_BLOCK_LIST);
+
+        expect(out).toBe("---\ntitle: Hello\ntags:\n  - renamed\n  - two words\n---\n");
+    });
+
+    it("deleting a list-valued key should remove its whole span", () => {
+        const entries = parseTabularFrontmatter(FM_RICH)!;
+        const filtered = entries.filter((e) => e.key !== "related");
+
+        const out = serializeFrontmatter(filtered, FM_RICH);
+
+        expect(out).not.toContain("related");
+        expect(out).not.toContain("/write/notion");
+        expect(out).toContain('tags: ["think", "playbook", "ai"]');
+        expect(out).toContain('    "enablement",');
+    });
+});
+
+describe("tabular list editing — chip UI", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    it("a rich block should render chips for each list item", () => {
+        renderFrontmatterPanel(FM_RICH);
+
+        expect(document.querySelector(".fm-raw-editor")).toBeNull();
+        const rows = document.querySelectorAll(".frontmatter-table tr");
+        expect(rows.length).toBe(6);
+        const relatedChips = rows[4]!.querySelectorAll(".fm-chip-text");
+        expect(Array.from(relatedChips).map((c) => c.textContent)).toEqual([
+            "/write/notion", "/write/anthropic", "/write/shopify",
+        ]);
+    });
+
+    it("editing a chip should commit a block where only that item's line changed", () => {
+        renderFrontmatterPanel(FM_RICH);
+        const chip = document.querySelectorAll(".fm-chip-text")[3] as HTMLElement; // first related item
+
+        chip.textContent = "/write/renamed";
+        chip.dispatchEvent(new FocusEvent("blur"));
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledTimes(1);
+        const posted = mockVscodeApi.postMessage.mock.calls[0]![0].frontmatter as string;
+        expect(posted).toContain('    "/write/renamed",');
+        expect(posted).not.toContain("/write/notion");
+        expect(posted).toContain('    "/write/anthropic",');
+    });
+
+    it("the chip remove button should commit a block without that item", () => {
+        renderFrontmatterPanel(FM_RICH);
+        const removeBtn = document.querySelectorAll(".fm-chip-remove")[3] as HTMLElement;
+
+        removeBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+        const posted = mockVscodeApi.postMessage.mock.calls[0]![0].frontmatter as string;
+        expect(posted).not.toContain("/write/notion");
+        expect(posted).toContain('    "/write/anthropic",');
+    });
+
+    it("blurring a new empty chip should discard it without committing", () => {
+        renderFrontmatterPanel(FM_RICH);
+        const addBtn = document.querySelectorAll(".fm-chip-add")[1] as HTMLElement; // related row
+
+        addBtn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        const newChip = document.querySelectorAll(".fm-chip-text")[6] as HTMLElement;
+        newChip.dispatchEvent(new FocusEvent("blur"));
+
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
     });
 });

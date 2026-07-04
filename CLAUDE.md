@@ -22,6 +22,17 @@ The maintainer reads and writes **English only**. This project is being migrated
 - **Packaging/release**: the VSIX must be written to `releases/`. Command: `pnpm run package`.
 - **Git commit convention**: keep the English type prefix (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, `release:`) and write the description in **English**. e.g. `feat: add image upload`, `fix: correct table drag offset`.
 
+### End-of-work handoff (ALWAYS)
+
+Whenever a work session changes extension or webview source (`src/`, `webview/`, `shared/`, `package.json`), finish by making the build testable in the user's own editor with zero extra steps for them:
+
+1. `pnpm test` — all green.
+2. `pnpm run package`
+3. `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force`
+4. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
+
+Do this by default, without being asked, before handing control back. Bump the patch version when it helps the user confirm they're on the new build.
+
 ### Trying changes in the user's editor (Cursor)
 
 `pnpm build` only rebuilds `dist/`; the user's editor runs an **installed copy** of the extension, so a window reload alone never picks up source changes. When the user wants to try changes in their own Cursor window (rather than F5 debugging):
