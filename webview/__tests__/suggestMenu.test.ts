@@ -335,9 +335,10 @@ describe("fm chip edit suggestions — opening", () => {
         typeInChip(chip, "");
         dispatchFmSuggestions("tags", ["one", "two", "three"]);
 
-        // "one" and "two" are chips in this file (including the edited chip's
-        // own original value) → excluded.
-        expect(optionTexts()).toEqual(["three"]);
+        // "two" is another chip in this file → excluded. The edited chip's
+        // OWN original value ("one") stays suggestible so the user can
+        // complete back to it after narrowing the text (intentional change).
+        expect(optionTexts()).toEqual(["one", "three"]);
 
         typeInChip(chip, "three");
 
@@ -476,5 +477,32 @@ describe("fm chip edit suggestions — mouse and blur", () => {
         const committed = postedFrontmatters();
         expect(committed).toHaveLength(1);
         expect(committed[0]).toContain('"/write/renamed",');
+    });
+});
+
+describe("chip-edit suggestions — the edited chip's own value stays suggestible", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    it("narrowing a chip's text should still suggest completing back to its original value", () => {
+        // Regression: the chip menu excluded ALL present values including the
+        // edited chip's own, so "/write/skill-fac" showed no options even
+        // though "/write/skill-factory" exists in the workspace.
+        renderFrontmatterPanel("---\nrelated:\n  [\n    \"/write/notion\",\n    \"/write/skill-factory\",\n  ]\n---\n");
+        const chips = document.querySelectorAll(".fm-chip-text");
+        const chip = chips[1] as HTMLElement; // "/write/skill-factory"
+
+        chip.dispatchEvent(new FocusEvent("focus"));
+        chip.textContent = "/write/skill-fac";
+        chip.dispatchEvent(new Event("input", { bubbles: true }));
+        dispatchFmSuggestions("related", ["/write/skill-factory", "/write/notion", "/write/other"]);
+
+        const options = optionTexts();
+        expect(options).toContain("/write/skill-factory");
+        // Other chips' values stay excluded.
+        expect(options).not.toContain("/write/notion");
     });
 });
