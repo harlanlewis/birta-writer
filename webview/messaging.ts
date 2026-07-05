@@ -46,13 +46,13 @@ export function notifyOpenSettings(): void {
     vscode.postMessage({ type: "openSettings" });
 }
 
-export function notifyUploadImage(
+export function notifySaveImage(
     id: string,
     data: Uint8Array,
     mimeType: string,
     altText: string,
 ): void {
-    vscode.postMessage({ type: "uploadImage", id, data, mimeType, altText });
+    vscode.postMessage({ type: "saveImage", id, data, mimeType, altText });
 }
 
 export function notifyGetProjectImages(id: string): void {

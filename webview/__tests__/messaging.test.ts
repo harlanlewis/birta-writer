@@ -13,7 +13,7 @@ const {
     notifyOpenFile,
     notifySendToClaudeChat,
     notifySwitchToTextEditor,
-    notifyUploadImage,
+    notifySaveImage,
     notifyGetProjectImages,
     notifyGetPathSuggestions,
     notifyResolveImagePath,
@@ -80,11 +80,11 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyUploadImage 携带所有必需字段", () => {
+    it("notifySaveImage should include all required fields", () => {
         const data = new Uint8Array([1, 2, 3]);
-        notifyUploadImage("req-001", data, "image/png", "photo");
+        notifySaveImage("req-001", data, "image/png", "photo");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
-            type: "uploadImage",
+            type: "saveImage",
             id: "req-001",
             data,
             mimeType: "image/png",

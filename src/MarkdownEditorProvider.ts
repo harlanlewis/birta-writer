@@ -506,9 +506,9 @@ export class MarkdownEditorProvider
                     case "openSettings":
                         vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWysiwyg');
                         break;
-                    case "uploadImage":
+                    case "saveImage":
                         if (message.id && message.data) {
-                            this._handleImageUpload(
+                            this._handleSaveImage(
                                 document, panel,
                                 message.id,
                                 message.data,
@@ -1016,7 +1016,7 @@ export class MarkdownEditorProvider
         return restoreContentForSave(content, frontmatter, uriMap);
     }
 
-    private async _handleImageUpload(
+    private async _handleSaveImage(
         document: MarkdownDocument,
         panel: vscode.WebviewPanel,
         id: string,
@@ -1036,11 +1036,11 @@ export class MarkdownEditorProvider
             const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
             this._imageUriMaps.set(uriKey, uriMap);
             uriMap.set(url, relPath);
-            panel.webview.postMessage({ type: 'imageUploaded', id, url });
+            panel.webview.postMessage({ type: 'imageSaved', id, url });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
-            panel.webview.postMessage({ type: 'imageUploadError', id, error: errMsg });
-            vscode.window.showErrorMessage(vscode.l10n.t('Image upload failed: {0}', errMsg));
+            panel.webview.postMessage({ type: 'imageSaveError', id, error: errMsg });
+            vscode.window.showErrorMessage(vscode.l10n.t('Failed to save image: {0}', errMsg));
         }
     }
 

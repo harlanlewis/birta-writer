@@ -19,12 +19,12 @@ import { setLogTableSel } from "./editor";
 import { notifySwitchToTextEditor, getWebviewState } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
 import {
-    handleImageUploaded,
-    handleImageUploadError,
+    handleImageSaved,
+    handleImageSaveError,
     handleProjectImagesList,
     handleImageRenamed,
     handleImageRenameError,
-} from "./imageUpload";
+} from "./imageClient";
 
 // ── 全局表格换行模式 ─────────────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -170,11 +170,11 @@ export function createMessageHandlers(
             setLogTableSel(msg.enabled);
             topbarTb?.setDebugMode(msg.enabled);
         },
-        imageUploaded(msg) {
-            handleImageUploaded(msg.id, msg.url);
+        imageSaved(msg) {
+            handleImageSaved(msg.id, msg.url);
         },
-        imageUploadError(msg) {
-            handleImageUploadError(msg.id, msg.error);
+        imageSaveError(msg) {
+            handleImageSaveError(msg.id, msg.error);
         },
         projectImagesList(msg) {
             handleProjectImagesList(msg.id, msg.images);

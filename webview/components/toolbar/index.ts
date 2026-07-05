@@ -678,7 +678,7 @@ export function initToolbar(
         getLineMap: () => number[];
         getMarkdownSource: () => string;
     },
-    onUploadImage?: (file: File, altText: string) => Promise<string>,
+    onSaveImage?: (file: File, altText: string) => Promise<string>,
     onGetProjectImages?: (
         id: string,
     ) => Promise<Array<{
@@ -949,7 +949,7 @@ export function initToolbar(
                     view.focus();
                 });
             },
-            onUploadImage,
+            onSaveImage,
             onGetProjectImages,
         );
     });

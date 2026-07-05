@@ -1,31 +1,34 @@
 /**
- * imageUpload.ts
- * 
- * 职责：管理图片上传、获取项目图片列表、图片重命名的异步操作
- * 
- * 本模块封装了与 Extension 通信的 Promise 管理，包括：
- * - 图片文件上传（支持超时和错误处理）
- * - 获取项目图片列表
- * - 图片重命名
- * - 在 ProseMirror 编辑器中插入/更新图片节点
+ * imageClient.ts
+ *
+ * WebView-side client for image operations that round-trip through the
+ * Extension host. It manages the async request/response plumbing for:
+ * - saving an image file to local disk (with timeout and error handling)
+ * - listing the project's existing images
+ * - renaming an image
+ * - inserting / updating an image node in the ProseMirror editor
+ *
+ * Every request is correlated with its response by a generated id. Images are
+ * always saved locally by the Extension — this client never talks to a remote
+ * service.
  */
 
 import type { Editor } from "@milkdown/core";
 import { editorViewCtx } from "@milkdown/core";
 import {
-    notifyUploadImage,
+    notifySaveImage,
     notifyGetProjectImages,
     notifyRenameImage,
 } from "./messaging";
 
-// ── 图片上传：pending promise map ────────────────────
-type UploadCallbacks = {
+// ── Save image: pending promise map ──────────────────
+type SaveCallbacks = {
     resolve: (url: string) => void;
     reject: (e: Error) => void;
 };
-const _pendingUploads = new Map<string, UploadCallbacks>();
+const _pendingSaves = new Map<string, SaveCallbacks>();
 
-// ── 获取项目图片列表：pending promise map ────────────
+// ── Get project images: pending promise map ──────────
 type GetImagesCallbacks = {
     resolve: (
         images: Array<{
@@ -38,7 +41,7 @@ type GetImagesCallbacks = {
 };
 const _pendingGetImages = new Map<string, GetImagesCallbacks>();
 
-// ── 图片重命名：pending promise map ──────────────────
+// ── Rename image: pending promise map ────────────────
 type RenameCallbacks = { resolve: () => void; reject: (e: Error) => void };
 const _pendingRenames = new Map<string, RenameCallbacks>();
 
@@ -113,25 +116,29 @@ export async function handleGetProjectImages(
     });
 }
 
-export async function handleImageFile(file: File, altText: string): Promise<string> {
+/**
+ * Read a local image File and ask the Extension to save it to disk, resolving
+ * with the WebView-accessible URI of the saved file.
+ */
+export async function saveImageFile(file: File, altText: string): Promise<string> {
     const id = `img_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     return new Promise<string>((resolve, reject) => {
-        _pendingUploads.set(id, { resolve, reject });
+        _pendingSaves.set(id, { resolve, reject });
         const timeoutId = setTimeout(() => {
-            if (_pendingUploads.has(id)) {
-                _pendingUploads.delete(id);
-                reject(new Error("Upload timed out"));
+            if (_pendingSaves.has(id)) {
+                _pendingSaves.delete(id);
+                reject(new Error("Save timed out"));
             }
         }, 30000);
-        // 读取文件为 Uint8Array 后发送给 Extension
+        // Read the file into a Uint8Array, then hand it to the Extension.
         const reader = new FileReader();
         reader.onload = () => {
             const data = new Uint8Array(reader.result as ArrayBuffer);
-            notifyUploadImage(id, data, file.type, altText);
+            notifySaveImage(id, data, file.type, altText);
         };
         reader.onerror = () => {
             clearTimeout(timeoutId);
-            _pendingUploads.delete(id);
+            _pendingSaves.delete(id);
             reject(new Error("Failed to read file"));
         };
         reader.readAsArrayBuffer(file);
@@ -155,25 +162,25 @@ export function insertImageNode(currentEditor: Editor | null, src: string, alt: 
     });
 }
 
-/** 处理图片上传响应 */
-export function handleImageUploaded(id: string, url: string): void {
-    const cb = _pendingUploads.get(id);
+/** Handle the "image saved" response. */
+export function handleImageSaved(id: string, url: string): void {
+    const cb = _pendingSaves.get(id);
     if (cb) {
-        _pendingUploads.delete(id);
+        _pendingSaves.delete(id);
         cb.resolve(url);
     }
 }
 
-/** 处理图片上传错误 */
-export function handleImageUploadError(id: string, error: string): void {
-    const cb = _pendingUploads.get(id);
+/** Handle the "image save failed" response. */
+export function handleImageSaveError(id: string, error: string): void {
+    const cb = _pendingSaves.get(id);
     if (cb) {
-        _pendingUploads.delete(id);
+        _pendingSaves.delete(id);
         cb.reject(new Error(error));
     }
 }
 
-/** 处理项目图片列表响应 */
+/** Handle the project-images list response. */
 export function handleProjectImagesList(id: string, images: Array<{ relPath: string; webviewUri: string; name: string }>): void {
     const cb = _pendingGetImages.get(id);
     if (cb) {
@@ -182,7 +189,7 @@ export function handleProjectImagesList(id: string, images: Array<{ relPath: str
     }
 }
 
-/** 处理图片重命名响应 */
+/** Handle the image-renamed response. */
 export function handleImageRenamed(id: string): void {
     const cb = _pendingRenames.get(id);
     if (cb) {
@@ -191,7 +198,7 @@ export function handleImageRenamed(id: string): void {
     }
 }
 
-/** 处理图片重命名错误 */
+/** Handle the image-rename-failed response. */
 export function handleImageRenameError(id: string, error: string): void {
     const cb = _pendingRenames.get(id);
     if (cb) {

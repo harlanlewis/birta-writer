@@ -1,21 +1,21 @@
 /**
  * webview/index.ts
  *
- * 职责：WebView 主入口，负责初始化和组合各模块
+ * The WebView's main entry point: it initializes and wires together the modules.
  *
- * 本模块是 WebView 的核心入口文件，负责：
- * - 初始化 Milkdown 编辑器实例
- * - 组合和初始化各 UI 组件（工具栏、目录、查找栏等）
- * - 注册全局事件监听（拖放图片、粘贴图片、Checkbox 切换）
- * - 协调消息处理器、键盘快捷键、滚动持久化等模块
- * - 管理模块级状态（当前编辑器、行号映射、主题覆盖等）
+ * Responsibilities:
+ * - Initialize the Milkdown editor instance
+ * - Compose and initialize the UI components (toolbar, TOC, find bar, ...)
+ * - Register global event listeners (image drop, image paste, checkbox toggle)
+ * - Coordinate the message handlers, keyboard shortcuts, scroll persistence, etc.
+ * - Manage module-level state (current editor, line map, theme overrides, ...)
  *
- * 模块划分：
- * - components/frontmatter: Frontmatter 面板
- * - imageUpload: 图片上传管理
- * - keyboardShortcuts: 键盘快捷键
- * - messageHandlers: 消息分发
- * - scrollPersistence: 滚动位置持久化
+ * Module breakdown:
+ * - components/frontmatter: Frontmatter panel
+ * - imageClient: image save / list / rename plumbing
+ * - keyboardShortcuts: keyboard shortcuts
+ * - messageHandlers: message dispatch
+ * - scrollPersistence: scroll position persistence
  */
 
 import "./style.css";
@@ -48,9 +48,9 @@ import { renderFrontmatterPanel } from "./components/frontmatter";
 import {
     handleRenameImage,
     handleGetProjectImages,
-    handleImageFile,
+    saveImageFile,
     insertImageNode,
-} from "./imageUpload";
+} from "./imageClient";
 import { initScrollPersistence } from "./scrollPersistence";
 import { initKeyboardShortcuts } from "./keyboardShortcuts";
 import { createMessageHandlers, type Handler } from "./messageHandlers";
@@ -223,7 +223,7 @@ const topbarTb = topbar
         topbar,
         () => currentEditor,
         { getLineMap, getMarkdownSource },
-        async (file: File, altText: string) => handleImageFile(file, altText),
+        async (file: File, altText: string) => saveImageFile(file, altText),
         async (id: string) => handleGetProjectImages(id),
         () => findBar.open(),
     )
@@ -301,10 +301,10 @@ if (editorContainer) {
         }
         e.preventDefault();
         e.stopPropagation();
-        handleImageFile(imageFile, "")
+        saveImageFile(imageFile, "")
             .then((url) => insertImageNode(currentEditor, url, ""))
             .catch((err: Error) =>
-                console.error("[ImageUpload] drop failed:", err),
+                console.error("[imageClient] drop failed:", err),
             );
     });
 }
@@ -326,10 +326,10 @@ eventManager.onDocument("paste", (e) => {
         return;
     }
     e.preventDefault();
-    handleImageFile(file, "")
+    saveImageFile(file, "")
         .then((url) => insertImageNode(currentEditor, url, ""))
         .catch((err: Error) =>
-            console.error("[ImageUpload] paste failed:", err),
+            console.error("[imageClient] paste failed:", err),
         );
 });
 

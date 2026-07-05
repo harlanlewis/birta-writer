@@ -1,29 +1,30 @@
 /**
  * shared/messages.ts
- * WebView ↔ Extension 双向消息类型的唯一权威来源。
- * 两侧均从此处导入，禁止各自内联重复定义。
+ * The single source of truth for the bidirectional WebView ↔ Extension
+ * message types. Both sides import from here; neither may redefine them inline.
  */
 
-/** 图片元数据：磁盘相对路径 + WebView 可访问 URI + 文件名 */
+/** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
     relPath: string;
     webviewUri: string;
     name: string;
 };
 
-/** 路径补全建议条目 */
+/** Path-completion suggestion entry */
 export type PathSuggestionItem = {
     path: string;
     isDir: boolean;
-    webviewUri?: string;  // 仅图片文件时返回，供缩略图预览
+    webviewUri?: string;  // returned only for image files, for thumbnail preview
 };
 
-/** 表格换行模式 */
+/** Table cell wrapping mode */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
 /**
- * WebView → Extension 方向的消息。
- * 所有字段反映发送方的实际约束：发送方必须提供的字段不得写成可选。
+ * Messages sent WebView → Extension.
+ * Every field reflects the sender's real constraints: a field the sender must
+ * always provide is not declared optional.
  */
 export type ToExtensionMessage =
     | { type: "ready" }
@@ -34,7 +35,7 @@ export type ToExtensionMessage =
     | { type: "sendToClaudeChat"; text: string; startLine: number; endLine: number }
     | { type: "switchToTextEditor"; line?: number }
     | { type: "openSettings" }
-    | { type: "uploadImage"; id: string; data: Uint8Array; mimeType: string; altText: string }
+    | { type: "saveImage"; id: string; data: Uint8Array; mimeType: string; altText: string }
     | { type: "getProjectImages"; id: string }
     | { type: "renameImage"; id: string; webviewUri: string; newBasename: string }
     | { type: "getPathSuggestions"; id: string; query: string }
@@ -43,8 +44,9 @@ export type ToExtensionMessage =
     | { type: "tocWidth"; width: number };
 
 /**
- * Extension → WebView 方向的消息。
- * lineMap 在 init/revert 中为可选：Extension 始终发送，但 WebView 侧用 `?? []` 兜底以防万一。
+ * Messages sent Extension → WebView.
+ * lineMap is optional on init/revert: the Extension always sends it, but the
+ * WebView side guards with `?? []` just in case.
  */
 export type ToWebviewMessage =
     | { type: "init"; content: string; lineMap?: number[]; scrollToLine?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode }
@@ -52,8 +54,8 @@ export type ToWebviewMessage =
     | { type: "scrollToLine"; line: number }
     | { type: "lineMapUpdate"; lineMap: number[] }
     | { type: "setDebugMode"; enabled: boolean }
-    | { type: "imageUploaded"; id: string; url: string }
-    | { type: "imageUploadError"; id: string; error: string }
+    | { type: "imageSaved"; id: string; url: string }
+    | { type: "imageSaveError"; id: string; error: string }
     | { type: "projectImagesList"; id: string; images: ProjectImage[] }
     | { type: "imageRenamed"; id: string; oldWebviewUri: string; newWebviewUri: string }
     | { type: "imageRenameError"; id: string; error: string }
