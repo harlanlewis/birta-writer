@@ -41,7 +41,7 @@ A VSCode WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdow
 ### Images
 
 - **Paste** an image from the clipboard, **drag-and-drop** a file, or use the **file picker** to insert images
-- Local storage with MD5 deduplication, or configure a custom server upload endpoint
+- Local storage with MD5 deduplication — images are always saved to your workspace and are **never uploaded off your machine**
 - Click an image to select it; click again to open a lightbox preview
 - Toolbar for editing alt text, renaming the file, or deleting the image
 
@@ -61,14 +61,8 @@ A VSCode WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdow
 ### Toolbars
 
 - **Top toolbar**: heading level, bold, italic, strikethrough, ordered/unordered list, task list, blockquote, code block, table
-- **Floating selection toolbar**: appears on text selection; supports quick formatting and Send to Claude
+- **Floating selection toolbar**: appears on text selection; supports quick formatting
 - **Table toolbar**: appears on row/column selection; supports alignment and delete operations
-
-### Claude Integration
-
-- **`Option+K`** (macOS) / **`Alt+K`** (Windows): sends the paragraph under the cursor to Claude with precise file line numbers
-- Select text and click "Send to Claude" in the toolbar — also attaches line range
-- Automatically detects Claude terminal / Claude VSCode extension / VS Code built-in Chat with three-level fallback
 
 ### In-Editor Search
 
@@ -96,7 +90,6 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | Reorder rows/columns     | Hover the **⠿** handle, then drag                              |
 | Select entire row/column | Click the **⠿** handle                                         |
 | Path autocomplete        | Type `@/`, `./`, or `../` inside inline code                   |
-| Send paragraph to Claude | `Option+K` (macOS) / `Alt+K` (Windows)                         |
 | Search in document       | `Cmd+F` (macOS) / `Ctrl+F` (Windows)                           |
 | Manual save              | `Cmd+S` (macOS) / `Ctrl+S` (Windows)                           |
 
@@ -112,8 +105,8 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
 | `markdownWysiwyg.editorMaxWidth`     | number  | `900`       | Maximum editor content width in pixels                                                    |
 | `markdownWysiwyg.fontFamily`         | string  | `""`        | Editor font family; leave empty to inherit VS Code editor font. Example: `Georgia, serif` |
-| `markdownWysiwyg.imageStorage`       | string  | `"local"`   | Image storage mode: `local` (save to disk) or `server` (upload to custom URL)             |
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
+| `markdownWysiwyg.confirmExternalLinks` | boolean | `true`    | Ask for confirmation before opening an external link in your browser                      |
 | `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | Color theme: `auto` follows VS Code, or set a theme ID                                   |
 | `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
 | `markdownWysiwyg.customThemes`       | array   | `[]`        | Custom color themes array. See [Custom Theme Configuration](docs/en/custom-themes.md)    |
@@ -130,5 +123,4 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 
 - Some advanced Markdown extensions (footnotes, math formulas) are not yet supported
 - **Undo in link popup input** (`Cmd+Z` / `Ctrl+Z`): undo is intercepted by VS Code's Electron layer and does not work inside the link URL / text input fields
-- **Table cell line numbers** (Send to Claude): when a table cell is selected, the reported line range may be slightly off due to ProseMirror node index misalignment with the source line map
 - **Global search navigation**: clicking a search result for a `.md` file may not scroll to the matched line in WYSIWYG mode when multiple `.md` files are open simultaneously

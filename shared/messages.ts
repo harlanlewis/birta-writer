@@ -1,29 +1,30 @@
 /**
  * shared/messages.ts
- * WebView ↔ Extension 双向消息类型的唯一权威来源。
- * 两侧均从此处导入，禁止各自内联重复定义。
+ * The single source of truth for the bidirectional WebView ↔ Extension message types.
+ * Both sides import from here; inlining duplicate definitions on either side is forbidden.
  */
 
-/** 图片元数据：磁盘相对路径 + WebView 可访问 URI + 文件名 */
+/** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
     relPath: string;
     webviewUri: string;
     name: string;
 };
 
-/** 路径补全建议条目 */
+/** Path-completion suggestion entry */
 export type PathSuggestionItem = {
     path: string;
     isDir: boolean;
-    webviewUri?: string;  // 仅图片文件时返回，供缩略图预览
+    webviewUri?: string;  // Returned only for image files, for thumbnail preview
 };
 
-/** 表格换行模式 */
+/** Table line-wrapping mode */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
 /**
- * WebView → Extension 方向的消息。
- * 所有字段反映发送方的实际约束：发送方必须提供的字段不得写成可选。
+ * Messages in the WebView → Extension direction.
+ * Every field reflects the sender's actual constraints: fields the sender must
+ * always provide must not be declared optional.
  */
 export type ToExtensionMessage =
     | { type: "ready" }
@@ -31,7 +32,6 @@ export type ToExtensionMessage =
     | { type: "openUrl"; url: string }
     | { type: "openFile"; path: string }
     | { type: "debug"; message: string }
-    | { type: "sendToClaudeChat"; text: string; startLine: number; endLine: number }
     | { type: "switchToTextEditor"; line?: number }
     | { type: "openSettings" }
     | { type: "uploadImage"; id: string; data: Uint8Array; mimeType: string; altText: string }
@@ -43,8 +43,9 @@ export type ToExtensionMessage =
     | { type: "tocWidth"; width: number };
 
 /**
- * Extension → WebView 方向的消息。
- * lineMap 在 init/revert 中为可选：Extension 始终发送，但 WebView 侧用 `?? []` 兜底以防万一。
+ * Messages in the Extension → WebView direction.
+ * lineMap is optional in init/revert: the Extension always sends it, but the
+ * WebView side falls back to `?? []` just in case.
  */
 export type ToWebviewMessage =
     | { type: "init"; content: string; lineMap?: number[]; scrollToLine?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode }

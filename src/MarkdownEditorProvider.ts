@@ -3,7 +3,7 @@ import * as os from "os";
 import * as vscode from "vscode";
 import { MarkdownDocument } from "./MarkdownDocument";
 import { getNonce } from "./utils/getNonce";
-import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
+import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
@@ -210,9 +210,8 @@ export class MarkdownEditorProvider
 
     public static register(
         context: vscode.ExtensionContext,
-        claudeTerminals: Set<vscode.Terminal>,
     ): vscode.Disposable {
-        const provider = new MarkdownEditorProvider(context, claudeTerminals);
+        const provider = new MarkdownEditorProvider(context);
         MarkdownEditorProvider.current = provider;
         return vscode.window.registerCustomEditorProvider(
             MarkdownEditorProvider.viewType,
@@ -228,7 +227,6 @@ export class MarkdownEditorProvider
 
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly claudeTerminals: Set<vscode.Terminal>,
     ) {}
 
     async openCustomDocument(
@@ -381,7 +379,7 @@ export class MarkdownEditorProvider
                     }
                     case "openUrl":
                         if (message.url && isSafeExternalUrl(message.url)) {
-                            vscode.env.openExternal(vscode.Uri.parse(message.url));
+                            this._openExternalUrl(document, message.url);
                         }
                         break;
                     case "openFile": {
@@ -493,16 +491,6 @@ export class MarkdownEditorProvider
                         await vscode.window.showTextDocument(textDoc, opts);
                         break;
                     }
-                    case "sendToClaudeChat":
-                        if (message.text) {
-                            await this._handleSendToClaudeChat(
-                                document, webviewPanel,
-                                message.text,
-                                message.startLine ?? 1,
-                                message.endLine   ?? (message.startLine ?? 1),
-                            );
-                        }
-                        break;
                     case "openSettings":
                         vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWysiwyg');
                         break;
@@ -630,109 +618,32 @@ export class MarkdownEditorProvider
         }
     }
 
-    private async _handleSendToClaudeChat(
+    /**
+     * Open an external URL from the document. Gated by the
+     * `markdownWysiwyg.confirmExternalLinks` setting (default true): when enabled,
+     * the user must confirm before the link is handed to the OS, so a document can
+     * never navigate anywhere without an explicit extra confirmation.
+     */
+    private async _openExternalUrl(
         document: MarkdownDocument,
-        webviewPanel: vscode.WebviewPanel,
-        text: string,
-        startLine: number,
-        endLine: number,
+        url: string,
     ): Promise<void> {
-        const relPath = vscode.workspace.asRelativePath(document.uri);
-        const mentionStr = startLine === endLine
-            ? `@${relPath}#${startLine}`
-            : `@${relPath}#${startLine}-${endLine}`;
-        let success = false;
-        console.log('[sendToClaudeChat] triggered, file:', relPath, 'lines:', startLine, '-', endLine);
+        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
+        const confirm = cfg.get<boolean>('confirmExternalLinks', true);
 
-        try {
-            // Path A: terminal Claude
-            // Heuristic: state.shell is missing → VSCode can't recognize it as a standard shell → likely the claude CLI
-            const isClaudeLikeTerminal = (t: vscode.Terminal) =>
-                !(t.state as { shell?: string }).shell;
-
-            const claudeTerminal =
-                [...this.claudeTerminals].at(-1)                          // ① Shell Integration detection
-                ?? vscode.window.terminals.find(isClaudeLikeTerminal)     // ② state.shell missing
-                ?? undefined;  // Don't fall back to activeTerminal, to avoid mistakenly sending to a plain shell
-            console.log(claudeTerminal,"terminal:", vscode.window.terminals);
-
-            if (claudeTerminal) {
-                claudeTerminal.sendText(mentionStr, false);
-                await vscode.commands.executeCommand('workbench.action.terminal.focus');
-                success = true;
-                console.log('[sendToClaudeChat] sent to terminal');
-            }
-
-            // Path B: VSCode Claude extension
-            if (!success) {
-                // Fix 3: open the temporary text editor in the same column (avoids layout flicker from creating a new column)
-                // Use preview: false to avoid replacing the custom editor tab that's in preview state
-                const textDoc    = await vscode.workspace.openTextDocument(document.uri);
-                const textEditor = await vscode.window.showTextDocument(textDoc, {
-                    viewColumn:    webviewPanel.viewColumn,
-                    preview:       false,
-                    preserveFocus: false,
-                });
-                const setSelection = () => {
-                    textEditor.selection = new vscode.Selection(
-                        new vscode.Position(startLine - 1, 0),
-                        new vscode.Position(endLine   - 1, 9999),
-                    );
-                };
-                setSelection();
-
-                // Fix 2: check whether Claude is already open, splitting into two paths to avoid losing activeTextEditor
-                const claudeOpen = vscode.window.tabGroups.all.some(g =>
-                    g.tabs.some(t =>
-                        t.input instanceof vscode.TabInputWebview &&
-                        (t.input as vscode.TabInputWebview).viewType.includes('claudeVSCodePanel')
-                    )
-                );
-                console.log('[sendToClaudeChat] claudeOpen:', claudeOpen);
-
-                if (claudeOpen) {
-                    await vscode.commands.executeCommand('claude-vscode.focus');
-                } else {
-                    await vscode.commands.executeCommand('claude-vscode.editor.openLast');
-                    await new Promise(r => setTimeout(r, 700));
-                    await vscode.window.showTextDocument(textDoc, {
-                        viewColumn:    textEditor.viewColumn,
-                        preview:       false,
-                        preserveFocus: false,
-                    });
-                    setSelection();
-                    await vscode.commands.executeCommand('claude-vscode.insertAtMention');
-                }
-                success = true;
-
-                // Close the temporary text editor
-                for (const group of vscode.window.tabGroups.all) {
-                    for (const tab of group.tabs) {
-                        if (tab.input instanceof vscode.TabInputText &&
-                            (tab.input as vscode.TabInputText).uri.toString() === document.uri.toString()) {
-                            await vscode.window.tabGroups.close(tab);
-                            break;
-                        }
-                    }
-                }
-                // Bring the custom editor back to the foreground (so it isn't hidden after the temporary text editor closes)
-                webviewPanel.reveal(webviewPanel.viewColumn, false);
-                console.log('[sendToClaudeChat] done');
-            }
-        } catch (_e) {
-            console.log('[sendToClaudeChat] failed:', _e);
-        }
-
-        if (!success) {
-            // Path C: fall back to VSCode's built-in chat
-            const query = `@${relPath}\n\n${text}`;
-            console.log('[sendToClaudeChat] fallback chat.open');
-            try {
-                await vscode.commands.executeCommand('workbench.action.chat.open', { query });
-            } catch (_e) {
-                vscode.window.showErrorMessage(vscode.l10n.t('Cannot open chat: please install Claude extension or GitHub Copilot'));
+        if (confirm) {
+            const open = vscode.l10n.t('Open');
+            const choice = await vscode.window.showWarningMessage(
+                vscode.l10n.t('Open external link?\n{0}', url),
+                { modal: true },
+                open,
+            );
+            if (choice !== open) {
+                return;
             }
         }
+
+        await vscode.env.openExternal(vscode.Uri.parse(url));
     }
 
     async saveCustomDocument(
@@ -1026,25 +937,20 @@ export class MarkdownEditorProvider
     ): Promise<void> {
         const uriKey = document.uri.toString();
         const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
-        const storage = cfg.get<string>('imageStorage', 'local');
         try {
-            let url: string;
-            if (storage === 'server') {
-                url = await uploadImageToServer(cfg, data, mimeType, altText);
-            } else {
-                const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
-                const webviewUri = panel.webview.asWebviewUri(absUri);
-                url = webviewUri.toString();
-                // Store the mapping so that on save, webviewUri is replaced back with relPath
-                const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
-                this._imageUriMaps.set(uriKey, uriMap);
-                uriMap.set(url, relPath);
-            }
+            // Images are always saved to the local workspace; nothing is uploaded off the machine.
+            const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
+            const webviewUri = panel.webview.asWebviewUri(absUri);
+            const url = webviewUri.toString();
+            // Store the mapping so that on save, webviewUri is replaced back with relPath
+            const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
+            this._imageUriMaps.set(uriKey, uriMap);
+            uriMap.set(url, relPath);
             panel.webview.postMessage({ type: 'imageUploaded', id, url });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             panel.webview.postMessage({ type: 'imageUploadError', id, error: errMsg });
-            vscode.window.showErrorMessage(vscode.l10n.t('Image upload failed: {0}', errMsg));
+            vscode.window.showErrorMessage(vscode.l10n.t('Failed to save image: {0}', errMsg));
         }
     }
 

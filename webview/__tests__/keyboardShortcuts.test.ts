@@ -29,7 +29,6 @@ describe("initKeyboardShortcuts find/replace bindings", () => {
             manager,
             () => null,
             () => [],
-            () => "",
             () => 1,
             findBar as unknown as FindBarController,
         );

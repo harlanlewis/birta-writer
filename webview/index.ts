@@ -402,7 +402,6 @@ initKeyboardShortcuts(
     eventManager,
     getEditorView,
     getLineMap,
-    getMarkdownSource,
     getFirstVisibleSourceLine,
     findBar,
 );

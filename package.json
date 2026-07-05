@@ -262,49 +262,17 @@
                     "default": false,
                     "description": "%config.debugMode.description%"
                 },
-                "markdownWysiwyg.imageStorage": {
-                    "order": 100,
-                    "type": "string",
-                    "enum": [
-                        "local",
-                        "server"
-                    ],
-                    "enumDescriptions": [
-                        "%config.imageStorage.local%",
-                        "%config.imageStorage.server%"
-                    ],
-                    "default": "local",
-                    "description": "%config.imageStorage.description%"
-                },
                 "markdownWysiwyg.imageLocalPath": {
                     "order": 101,
                     "type": "string",
                     "default": "",
                     "description": "%config.imageLocalPath.description%"
                 },
-                "markdownWysiwyg.imageServerUrl": {
-                    "order": 102,
-                    "type": "string",
-                    "default": "",
-                    "description": "%config.imageServerUrl.description%"
-                },
-                "markdownWysiwyg.imageServerFieldName": {
-                    "order": 103,
-                    "type": "string",
-                    "default": "file",
-                    "description": "%config.imageServerFieldName.description%"
-                },
-                "markdownWysiwyg.imageServerExtraParams": {
-                    "order": 104,
-                    "type": "string",
-                    "default": "",
-                    "description": "%config.imageServerExtraParams.description%"
-                },
-                "markdownWysiwyg.imageServerResponsePath": {
-                    "order": 105,
-                    "type": "string",
-                    "default": "url",
-                    "description": "%config.imageServerResponsePath.description%"
+                "markdownWysiwyg.confirmExternalLinks": {
+                    "order": 106,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.confirmExternalLinks.description%"
                 },
                 "markdownWysiwyg.imageSelectionColor": {
                     "order": 14,

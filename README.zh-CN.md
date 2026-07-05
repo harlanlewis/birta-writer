@@ -39,7 +39,7 @@
 ### 图片
 
 - 支持从剪贴板**粘贴**、**拖放**文件，或通过**文件选择器**插入图片
-- 本地存储（MD5 去重），或配置自定义服务器上传地址
+- 本地存储（MD5 去重）；图片始终保存在工作区，绝不上传到任何服务器
 - 点击图片选中，再次点击放大到 lightbox 预览
 - 工具栏支持编辑 alt 文本、重命名文件、删除图片
 
@@ -59,14 +59,8 @@
 ### 工具栏
 
 - 顶部固定工具栏：标题级别、加粗、斜体、删除线、有序/无序列表、任务列表、引用、代码块、表格
-- **选中文字浮动工具栏**：选中文字后弹出，支持快速格式化及发送到 Claude
+- **选中文字浮动工具栏**：选中文字后弹出，支持快速格式化
 - **表格工具栏**：选中行/列后弹出，支持对齐、插入/删除行列
-
-### Claude 集成
-
-- **`Option+K`**（macOS）/ **`Alt+K`**（Windows）：将光标所在段落发送到 Claude 对话，自动附带精确文件行号
-- 选中文字后点击工具栏「发送到 Claude」按钮，同样附带行号范围
-- 自动识别 Claude 终端 / Claude VSCode 扩展 / VSCode 内置 Chat，三级降级兜底
 
 ### 编辑器内搜索
 
@@ -94,7 +88,6 @@
 | 拖拽重排行/列      | 悬浮 **⠿** handle 后拖拽                 |
 | 选中整行/整列      | 点击 **⠿** handle                     |
 | 路径自动补全       | 在 inline code 中输入 `@/`、`./` 或 `../` |
-| 发送段落到 Claude | `Option+K`（macOS）/ `Alt+K`（Windows） |
 | 文档内搜索        | `Cmd+F`（macOS）/ `Ctrl+F`（Windows）   |
 | 手动保存         | `Cmd+S`（macOS）/ `Ctrl+S`（Windows）   |
 
@@ -110,8 +103,8 @@
 | `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | 代码块最大显示高度（像素）                                        |
 | `markdownWysiwyg.editorMaxWidth`     | number  | `900`       | 编辑器内容最大宽度（像素）                                        |
 | `markdownWysiwyg.fontFamily`         | string  | `""`        | 编辑器字体，留空继承 VSCode 编辑器字体，示例：`Georgia, serif`          |
-| `markdownWysiwyg.imageStorage`       | string  | `"local"`   | 图片存储模式：`local`（本地保存）或 `server`（上传至自定义 URL）           |
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | 本地图片存储路径（相对于 workspace 根目录）                          |
+| `markdownWysiwyg.confirmExternalLinks` | boolean | `true`    | 在浏览器中打开文档中的外部链接前先弹出确认                            |
 | `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | 颜色主题：`auto` 跟随 VSCode，或设置为特定主题 ID                    |
 | `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | 表格单元格文本换行：`normal`、`aggressive` 或 `none`                   |
 | `markdownWysiwyg.customThemes`       | array   | `[]`        | 自定义颜色主题数组。详见 [自定义主题配置](docs/custom-themes.md)          |
@@ -128,5 +121,4 @@
 
 - 部分复杂 Markdown 扩展语法（如脚注、数学公式）尚未支持
 - **链接弹窗撤销**（`Cmd+Z` / `Ctrl+Z`）：在链接 URL / 文字输入框内，撤销操作被 VS Code Electron 层拦截，暂无法使用
-- **表格单元格行号**（发送到 Claude）：选中表格单元格时，上报的行号范围可能偏差，根因是 ProseMirror 节点索引与源码行号映射不对齐
 - **全局搜索跳转**：点击 `.md` 文件的全局搜索结果时，若同时打开多个 `.md` 文件，WYSIWYG 编辑器可能无法精确跳转到匹配行
