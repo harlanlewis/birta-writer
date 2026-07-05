@@ -31,7 +31,7 @@ docs/          Development documentation
 - WebView ↔ Extension communication **only** through `webview/messaging.ts`
 - CSS must use `--vscode-*` variables for theme compatibility
 - Use `pnpm` — not `npm` or `yarn`
-- Git commit messages: type prefix in English, description in Chinese
+- Git commit messages: type prefix in English, description in English
 
 ## Submitting Changes
 
