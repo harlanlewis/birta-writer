@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Removed
+
+- **Server image upload (breaking).** Removed the remote image-upload path and its settings (`imageStorage`, `imageServerUrl`, `imageServerFieldName`, `imageServerExtraParams`, `imageServerResponsePath`). Images are now always stored locally on disk with MD5 dedup — the editor never sends image data to an external service. This aligns the extension with its security-first, local-by-default philosophy. If you previously set `imageStorage` to `server`, images are now saved locally instead.
+
+---
+
 ## [0.1.6] - 2026-04-27
 
 ### Fixed

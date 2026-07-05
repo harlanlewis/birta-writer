@@ -3,7 +3,7 @@ import * as os from "os";
 import * as vscode from "vscode";
 import { MarkdownDocument } from "./MarkdownDocument";
 import { getNonce } from "./utils/getNonce";
-import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
+import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
 import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
@@ -1026,20 +1026,16 @@ export class MarkdownEditorProvider
     ): Promise<void> {
         const uriKey = document.uri.toString();
         const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
-        const storage = cfg.get<string>('imageStorage', 'local');
         try {
-            let url: string;
-            if (storage === 'server') {
-                url = await uploadImageToServer(cfg, data, mimeType, altText);
-            } else {
-                const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
-                const webviewUri = panel.webview.asWebviewUri(absUri);
-                url = webviewUri.toString();
-                // Store the mapping so that on save, webviewUri is replaced back with relPath
-                const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
-                this._imageUriMaps.set(uriKey, uriMap);
-                uriMap.set(url, relPath);
-            }
+            // Images are always stored locally on disk — this editor never sends
+            // data to an external service.
+            const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
+            const webviewUri = panel.webview.asWebviewUri(absUri);
+            const url = webviewUri.toString();
+            // Store the mapping so that on save, webviewUri is replaced back with relPath
+            const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
+            this._imageUriMaps.set(uriKey, uriMap);
+            uriMap.set(url, relPath);
             panel.webview.postMessage({ type: 'imageUploaded', id, url });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);

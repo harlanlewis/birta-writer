@@ -41,7 +41,7 @@ A VSCode WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdow
 ### Images
 
 - **Paste** an image from the clipboard, **drag-and-drop** a file, or use the **file picker** to insert images
-- Local storage with MD5 deduplication, or configure a custom server upload endpoint
+- Local storage with MD5 deduplication — images are always saved to disk; nothing is ever uploaded to an external service
 - Click an image to select it; click again to open a lightbox preview
 - Toolbar for editing alt text, renaming the file, or deleting the image
 
@@ -112,7 +112,6 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
 | `markdownWysiwyg.editorMaxWidth`     | number  | `900`       | Maximum editor content width in pixels                                                    |
 | `markdownWysiwyg.fontFamily`         | string  | `""`        | Editor font family; leave empty to inherit VS Code editor font. Example: `Georgia, serif` |
-| `markdownWysiwyg.imageStorage`       | string  | `"local"`   | Image storage mode: `local` (save to disk) or `server` (upload to custom URL)             |
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
 | `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | Color theme: `auto` follows VS Code, or set a theme ID                                   |
 | `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |

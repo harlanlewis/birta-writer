@@ -39,7 +39,7 @@
 ### 图片
 
 - 支持从剪贴板**粘贴**、**拖放**文件，或通过**文件选择器**插入图片
-- 本地存储（MD5 去重），或配置自定义服务器上传地址
+- 本地存储（MD5 去重）
 - 点击图片选中，再次点击放大到 lightbox 预览
 - 工具栏支持编辑 alt 文本、重命名文件、删除图片
 
@@ -110,7 +110,6 @@
 | `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | 代码块最大显示高度（像素）                                        |
 | `markdownWysiwyg.editorMaxWidth`     | number  | `900`       | 编辑器内容最大宽度（像素）                                        |
 | `markdownWysiwyg.fontFamily`         | string  | `""`        | 编辑器字体，留空继承 VSCode 编辑器字体，示例：`Georgia, serif`          |
-| `markdownWysiwyg.imageStorage`       | string  | `"local"`   | 图片存储模式：`local`（本地保存）或 `server`（上传至自定义 URL）           |
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | 本地图片存储路径（相对于 workspace 根目录）                          |
 | `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | 颜色主题：`auto` 跟随 VSCode，或设置为特定主题 ID                    |
 | `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | 表格单元格文本换行：`normal`、`aggressive` 或 `none`                   |
