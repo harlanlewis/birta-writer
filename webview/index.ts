@@ -37,12 +37,8 @@ import { setupPathLink } from "./components/pathLink";
 import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { initHeadingIds } from "./headingIds";
-import { setupTableAddButtons } from "./components/table/addButtons";
-import { setupTableHandles } from "./components/table/handles";
 import { initToolbar } from "./components/toolbar";
 import { initToc } from "./components/toc";
-import { setupSelectionToolbar } from "./components/selectionToolbar";
-import { setupTableToolbar } from "./components/table/toolbar";
 import type { Editor } from "@milkdown/core";
 
 import { renderFrontmatterPanel, focusFrontmatterPanel } from "./components/frontmatter";
@@ -58,6 +54,7 @@ import { initScrollPersistence } from "./scrollPersistence";
 import { initKeyboardShortcuts } from "./keyboardShortcuts";
 import { createMessageHandlers, type Handler } from "./messageHandlers";
 import { createEventManager } from "./eventManager";
+import { observeNativeThemeChanges } from "./nativeThemeBridge";
 
 // ── 模块级状态 ─────────────────────────────────────────────
 let currentEditor: Editor | null = null;
@@ -257,13 +254,13 @@ if (topbar) {
 // ── 编辑器容器事件绑定 ───────────────────────────────────────
 const editorContainer = document.getElementById("editor");
 if (editorContainer) {
-    initContextMenu(editorContainer);
+    initContextMenu(editorContainer, () => getEditorView());
     setupLinkPopup(editorContainer, () => getEditorView());
     setupPathLink(editorContainer);
     initHeadingIds(editorContainer);
     initPathComplete(() => getEditorView());
-    setupTableAddButtons(editorContainer, () => getEditorView());
-    setupTableHandles(editorContainer, () => getEditorView());
+    // Table row/column affordances (grips, insert bars, drag-reorder) now live
+    // inside the table NodeView overlay — see components/table/tableView.ts.
 
     // 点击底部空白区域 → 光标移到文档末尾
     eventManager.onElement(editorContainer, "mousedown", (e) => {
@@ -348,17 +345,11 @@ eventManager.onDocument("paste", (e) => {
         );
 });
 
-// ── 选中文字浮动工具栏 ───────────────────────────────────────
-const selTb = setupSelectionToolbar(
-    () => getEditorView(),
-    () => currentEditor,
-    // Same Insert/Edit Link prompt as the main toolbar button and Cmd/Ctrl+K
-    () => topbarTb?.openLinkPrompt(),
-);
-const tableTb = setupTableToolbar(() => getEditorView());
+// The floating selection/table popovers were removed: text formatting lives on
+// the top toolbar + keyboard, and table structure editing lives in the
+// right-click menu + hover affordances. The main toolbar still tracks selection
+// to update its active-state.
 registerSelectionChangeHandler((view) => {
-    selTb.onSelectionChange(view);
-    tableTb.onSelectionChange(view);
     topbarTb?.onSelectionChange(view);
 });
 
@@ -463,5 +454,10 @@ onMessage(async (msg) => {
     }
 });
 
-// WebView 加载完成
+// In auto mode VS Code drives colors via its native --vscode-* variables;
+// bridge its live theme-class swaps to the "theme-changed" event so JS-driven
+// consumers (Mermaid, etc.) refresh even without a setTheme round-trip.
+observeNativeThemeChanges();
+
+// WebView finished loading.
 notifyReady();

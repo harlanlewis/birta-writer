@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
-import { getAllThemes, getThemeColors, getCustomThemes, type ThemeInfo } from "./themeManager";
-import type { TableWrapMode } from "../shared/messages";
+import { getAllThemes, getCustomThemes, type ThemeInfo } from "./themeManager";
+import type { TableWrapMode, FontPreset } from "../shared/messages";
+import { resolveFontFamily } from "../shared/fontPresets";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
@@ -33,7 +34,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Sync editorAssociations once on activation
     const initialMode = vscode.workspace
-        .getConfiguration("markdownWysiwyg")
+        .getConfiguration("markdownWriter")
         .get<string>("defaultMode", "preview");
     syncEditorAssociation(initialMode);
 
@@ -42,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.tabGroups.onDidChangeTabs(async (event) => {
             const mode = vscode.workspace
-                .getConfiguration("markdownWysiwyg")
+                .getConfiguration("markdownWriter")
                 .get<string>("defaultMode", "preview");
             if (mode !== "preview") { return; }
 
@@ -145,22 +146,22 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Debug mode: initialize the context variable
     const initialDebug = vscode.workspace
-        .getConfiguration("markdownWysiwyg")
+        .getConfiguration("markdownWriter")
         .get<boolean>("debugMode", false);
     vscode.commands.executeCommand(
         "setContext",
-        "markdownWysiwyg.debugModeActive",
+        "markdownWriter.debugModeActive",
         initialDebug,
     );
 
     // Debug mode toggle command (two mutually exclusive commands, whose display is switched via when conditions to achieve the ✓ prefix effect)
     const toggleDebugMode = () => {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
         const next = !cfg.get<boolean>("debugMode", false);
         cfg.update("debugMode", next, vscode.ConfigurationTarget.Global);
         vscode.commands.executeCommand(
             "setContext",
-            "markdownWysiwyg.debugModeActive",
+            "markdownWriter.debugModeActive",
             next,
         );
         MarkdownEditorProvider.current?.postToAll({
@@ -170,11 +171,11 @@ export function activate(context: vscode.ExtensionContext) {
     };
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.debugModeEnable",
+            "markdownWriter.debugModeEnable",
             toggleDebugMode,
         ),
         vscode.commands.registerCommand(
-            "markdownWysiwyg.debugModeDisable",
+            "markdownWriter.debugModeDisable",
             toggleDebugMode,
         ),
     );
@@ -183,7 +184,7 @@ export function activate(context: vscode.ExtensionContext) {
     // change listener below broadcasts the new state to every open editor.
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.toggleStyleCheck",
+            "markdownWriter.toggleStyleCheck",
             () => MarkdownEditorProvider.toggleStyleCheck(),
         ),
     );
@@ -191,12 +192,12 @@ export function activate(context: vscode.ExtensionContext) {
     // Select color theme command
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.selectTheme",
+            "markdownWriter.selectTheme",
             async () => {
                 const themes = getAllThemes();
                 const customThemes = getCustomThemes();
                 const currentTheme = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
+                    .getConfiguration("markdownWriter")
                     .get<string>("colorTheme", "auto");
 
                 // Group by type: dark themes first, light themes after, sorted alphabetically within each group
@@ -245,7 +246,7 @@ export function activate(context: vscode.ExtensionContext) {
                     if (selected) {
                         const themeId = (selected as any).value;
                         await vscode.workspace
-                            .getConfiguration("markdownWysiwyg")
+                            .getConfiguration("markdownWriter")
                             .update("colorTheme", themeId, vscode.ConfigurationTarget.Global);
                     }
                     quickPick.dispose();
@@ -259,10 +260,10 @@ export function activate(context: vscode.ExtensionContext) {
     // Show current theme command
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.showCurrentTheme",
+            "markdownWriter.showCurrentTheme",
             () => {
                 const configTheme = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
+                    .getConfiguration("markdownWriter")
                     .get<string>("colorTheme", "auto");
 
                 const vscodeTheme = vscode.workspace
@@ -292,19 +293,19 @@ export function activate(context: vscode.ExtensionContext) {
     // Listen for manual setting changes (sync when modified from the VSCode settings UI)
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration("markdownWysiwyg.defaultMode")) {
+            if (e.affectsConfiguration("markdownWriter.defaultMode")) {
                 const mode = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
+                    .getConfiguration("markdownWriter")
                     .get<string>("defaultMode", "preview");
                 syncEditorAssociation(mode);
             }
-            if (e.affectsConfiguration("markdownWysiwyg.debugMode")) {
+            if (e.affectsConfiguration("markdownWriter.debugMode")) {
                 const v = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
+                    .getConfiguration("markdownWriter")
                     .get<boolean>("debugMode", false);
                 vscode.commands.executeCommand(
                     "setContext",
-                    "markdownWysiwyg.debugModeActive",
+                    "markdownWriter.debugModeActive",
                     v,
                 );
                 MarkdownEditorProvider.current?.postToAll({
@@ -312,40 +313,52 @@ export function activate(context: vscode.ExtensionContext) {
                     enabled: v,
                 });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.colorTheme")) {
+            if (e.affectsConfiguration("markdownWriter.colorTheme")) {
                 MarkdownEditorProvider.current?.applyThemeToAll();
             }
-            if (e.affectsConfiguration("markdownWysiwyg.tableWrap")) {
-                const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+            if (e.affectsConfiguration("markdownWriter.tableWrap")) {
+                const cfg = vscode.workspace.getConfiguration("markdownWriter");
                 const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
                 MarkdownEditorProvider.current?.postToAll({ type: "setTableWrap", wrap: tableWrap });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.styleCheck")
-                || e.affectsConfiguration("markdownWysiwyg.spellCheck")) {
+            if (e.affectsConfiguration("markdownWriter.styleCheck")
+                || e.affectsConfiguration("markdownWriter.spellCheck")) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "proofreadConfig",
                     config: MarkdownEditorProvider.getProofreadConfig(),
                 });
             }
-        }),
-    );
-
-    // Listen for VSCode theme changes (auto-update in auto mode)
-    context.subscriptions.push(
-        vscode.window.onDidChangeActiveColorTheme(() => {
-            const themeId = vscode.workspace
-                .getConfiguration("markdownWysiwyg")
-                .get<string>("colorTheme", "auto");
-            if (themeId === "auto") {
-                MarkdownEditorProvider.current?.applyThemeToAll();
+            if (e.affectsConfiguration("markdownWriter.toolbar")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "toolbarConfig",
+                    config: MarkdownEditorProvider.getToolbarConfig(),
+                });
+            }
+            if (e.affectsConfiguration("markdownWriter.fontPreset")
+                || e.affectsConfiguration("markdownWriter.fontFamily")) {
+                const cfg = vscode.workspace.getConfiguration("markdownWriter");
+                const preset = cfg.get<FontPreset>("fontPreset", "default");
+                const fontFamily = cfg.get<string>("fontFamily", "");
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "setFontFamily",
+                    fontFamily: resolveFontFamily(preset, fontFamily),
+                    preset,
+                });
             }
         }),
     );
 
+    // No onDidChangeActiveColorTheme listener is needed in auto mode: the
+    // webview consumes VS Code's natively-injected --vscode-* variables, which
+    // VS Code updates live on every theme change (see resolveThemeColors and
+    // the webview's native-theme bridge). A pinned/custom editor theme only
+    // changes via configuration, handled by the onDidChangeConfiguration
+    // listener on markdownWriter.colorTheme above.
+
     // Close preview: WYSIWYG → text editor
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.switchToTextEditor",
+            "markdownWriter.switchToTextEditor",
             async (uri?: vscode.Uri) => {
                 let target =
                     uri ?? vscode.window.activeTextEditor?.document.uri;
@@ -385,14 +398,12 @@ export function activate(context: vscode.ExtensionContext) {
     for (const meta of EDITOR_COMMANDS) {
         context.subscriptions.push(
             vscode.commands.registerCommand(editorCommandName(meta.id), (arg?: unknown) => {
-                const documentUri =
-                    arg && typeof arg === "object" && "documentUri" in arg
-                        ? (arg as { documentUri?: unknown }).documentUri
-                        : undefined;
-                MarkdownEditorProvider.current?.postEditorCommand(
-                    meta.id,
-                    typeof documentUri === "string" ? documentUri : undefined,
-                );
+                const ctxObj = arg && typeof arg === "object" ? (arg as Record<string, unknown>) : undefined;
+                const documentUri = typeof ctxObj?.["documentUri"] === "string" ? (ctxObj["documentUri"] as string) : undefined;
+                // Right-click table target (a cell position) travels with the
+                // command so it targets the clicked cell, not the live selection.
+                const tableTarget = ctxObj?.["tableTarget"];
+                MarkdownEditorProvider.current?.postEditorCommand(meta.id, documentUri, tableTarget);
             }),
         );
     }
@@ -400,7 +411,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Open preview: text editor → WYSIWYG
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.switchToPreview",
+            "markdownWriter.switchToPreview",
             async (uri?: vscode.Uri) => {
                 const activeEditor = vscode.window.activeTextEditor;
                 const target = uri ?? activeEditor?.document.uri;
@@ -451,7 +462,7 @@ export function activate(context: vscode.ExtensionContext) {
     // chosen one by posting the existing scrollToLine message to the panel.
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.gotoSymbol",
+            "markdownWriter.gotoSymbol",
             async () => {
                 // Resolve the active custom editor's document URI from the tab
                 // groups (activeTextEditor is undefined here).

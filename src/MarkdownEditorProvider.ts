@@ -10,10 +10,11 @@ import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSugge
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
-import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
-import { zhCn } from "./i18n/webviewTranslations";
-import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig } from "../shared/messages";
+import { resolveThemeColors } from "./themeManager";
+import { selectWebviewTranslations } from "./i18n/webviewTranslations";
+import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
 import type { EditorCommandId } from "../shared/editorCommands";
+import { resolveFontFamily } from "../shared/fontPresets";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -33,7 +34,7 @@ export function isSafeExternalUrl(rawUrl: string): boolean {
 
 export class MarkdownEditorProvider
     implements vscode.CustomTextEditorProvider {
-    public static readonly viewType = "markdownWysiwyg.editor";
+    public static readonly viewType = "markdownWriter.editor";
 
     // Auto-save debounce timers (key: document uri string)
     private readonly _autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -197,8 +198,8 @@ export class MarkdownEditorProvider
      * it as a belt-and-braces routing hint — and otherwise targets the active
      * panel.
      */
-    public postEditorCommand(command: EditorCommandId, documentUriStr?: string): void {
-        const msg: ToWebviewMessage = { type: "editorCommand", command };
+    public postEditorCommand(command: EditorCommandId, documentUriStr?: string, args?: unknown): void {
+        const msg: ToWebviewMessage = { type: "editorCommand", command, args };
         const panel = documentUriStr ? this._webviewPanels.get(documentUriStr) : undefined;
         if (panel) {
             panel.webview.postMessage(msg);
@@ -209,54 +210,20 @@ export class MarkdownEditorProvider
 
     public async applyThemeToAll(): Promise<void> {
         const themeId = vscode.workspace
-            .getConfiguration("markdownWysiwyg")
+            .getConfiguration("markdownWriter")
             .get<string>("colorTheme", "auto");
 
-        const colors = await this._getThemeColors(themeId);
+        const colors = await resolveThemeColors(themeId);
         this.postToAll({ type: "setTheme", colors });
     }
 
     private async _applyThemeToPanel(panel: vscode.WebviewPanel): Promise<void> {
         const themeId = vscode.workspace
-            .getConfiguration("markdownWysiwyg")
+            .getConfiguration("markdownWriter")
             .get<string>("colorTheme", "auto");
 
-        const colors = await this._getThemeColors(themeId);
+        const colors = await resolveThemeColors(themeId);
         panel.webview.postMessage({ type: "setTheme", colors });
-    }
-
-    private async _getThemeColors(themeId: string): Promise<Record<string, string>> {
-        // Check whether it's a custom theme (format: custom:themeName)
-        if (themeId.startsWith("custom:")) {
-            const customThemeName = themeId.slice(7);
-            const customThemes = getCustomThemes();
-            const customTheme = customThemes.find(t => t.name === customThemeName);
-            if (customTheme) {
-                // Convert the custom theme color format
-                const colors: Record<string, string> = {};
-                for (const [key, value] of Object.entries(customTheme.colors)) {
-                    colors[`--vscode-${key.replace(/\./g, "-")}`] = value;
-                }
-                return colors;
-            }
-        }
-
-        // Original logic: look up the built-in VSCode theme
-        let currentThemeLabel: string | undefined;
-        if (themeId === "auto") {
-            const config = vscode.workspace.getConfiguration();
-            currentThemeLabel = config.get<string>(
-                "workbench.colorTheme",
-            );
-        }
-
-        const themes = getAllThemes();
-        const theme = themes.find((t) => t.id === themeId || currentThemeLabel === t.label);
-        if (theme) {
-            return await getThemeColors(theme.path);
-        }
-
-        return getAutoThemeColors();
     }
 
     public static register(
@@ -376,7 +343,7 @@ export class MarkdownEditorProvider
                         const scrollToLine = this._consumePendingNavigation(document.uri.fsPath)
                             ?? this._consumeGlobalRevealLine();
                         console.log('[ready] scrollToLine:', scrollToLine);
-                        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+                        const cfg = vscode.workspace.getConfiguration("markdownWriter");
                         const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
                         // Reset the echo baseline: init hands this exact text to the webview
                         this._lastSyncedText.set(uriKey, initContent);
@@ -569,7 +536,7 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "openSettings":
-                        vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWysiwyg');
+                        vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWriter');
                         break;
                     case "uploadImage":
                         if (message.id && message.data) {
@@ -625,11 +592,20 @@ export class MarkdownEditorProvider
                         break;
                     // Persisting triggers onDidChangeConfiguration in extension.ts,
                     // which re-broadcasts the config to every open editor.
-                    case "setStyleCheckEnabled":
-                        MarkdownEditorProvider.setProofreadEnabled("styleCheck.enabled", message.enabled);
+                    case "setProofreadOption":
+                        MarkdownEditorProvider.setProofreadOption(message.key, message.value);
                         break;
-                    case "setSpellCheckEnabled":
-                        MarkdownEditorProvider.setProofreadEnabled("spellCheck.enabled", message.enabled);
+                    case "setFontPreset":
+                        MarkdownEditorProvider.setFontPreset(message.preset);
+                        break;
+                    case "setToolbarLayout":
+                        if (message.item) {
+                            MarkdownEditorProvider.updateSettingRespectingScope(
+                                `toolbar.items.${message.item.id}`,
+                                message.item.placement,
+                            );
+                        }
+                        MarkdownEditorProvider.updateSettingRespectingScope("toolbar.order", message.order);
                         break;
                     case "spellAddWord":
                         this._handleSpellAddWord(message.word);
@@ -644,7 +620,7 @@ export class MarkdownEditorProvider
                                 } satisfies ToWebviewMessage);
                             })
                             .catch((err) => {
-                                console.error("[markdownWysiwyg] harper lint failed", err);
+                                console.error("[markdownWriter] harper lint failed", err);
                             });
                         break;
                     case "clipboardWrite":
@@ -723,7 +699,7 @@ export class MarkdownEditorProvider
         // re-bump, or the count would drift ahead of the webview's baseline.
         const version = this._syncVersion.get(uriKey) ?? 0;
         const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
-        const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
+        const tableWrap = vscode.workspace.getConfiguration("markdownWriter").get<TableWrapMode>("tableWrap", "normal");
         panel.webview.postMessage({
             type: "externalUpdate",
             content: displayContent,
@@ -782,13 +758,13 @@ export class MarkdownEditorProvider
      * state, and Cmd+S / hot exit / undo/redo are handled by VS Code itself.
      */
     private _scheduleAutoSave(document: vscode.TextDocument): void {
-        const config = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const config = vscode.workspace.getConfiguration("markdownWriter");
         if (!config.get<boolean>("autoSave", true)) { return; }
         // Respect the built-in `files.autoSave` preference: if the user has
         // explicitly chosen manual saving ("off"), don't force a save from here.
         // Now that the editor is TextDocument-backed, VS Code's own autosave
         // governs the other modes natively, so honoring "off" makes the
-        // `markdownWysiwyg.autoSave` deprecation message truthful.
+        // `markdownWriter.autoSave` deprecation message truthful.
         if (vscode.workspace.getConfiguration("files").get<string>("autoSave") === "off") { return; }
         const delay = config.get<number>("autoSaveDelay", 1000);
         const uriKey = document.uri.toString();
@@ -809,7 +785,7 @@ export class MarkdownEditorProvider
     }
 
     private _getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
         const maxHeight = cfg.get<number>("codeBlockMaxHeight", 500);
         const editorMaxWidth = this._getEditorMaxWidthCssValue(cfg.get<number | string>("editorMaxWidth", "auto"));
         const tocContentGap = this._getPixelSettingCssValue(cfg.get<number>("tocContentGap", 100), 100, 16, 240);
@@ -818,6 +794,8 @@ export class MarkdownEditorProvider
         const tocRight = cfg.get<string>("tocPosition", "left") === "right";
         const isAutoWidth = editorMaxWidth === "none";
         const fontFamily = cfg.get<string>("fontFamily", "");
+        const fontPreset = cfg.get<FontPreset>("fontPreset", "mono");
+        const resolvedFont = resolveFontFamily(fontPreset, fontFamily);
         const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
         const customJsUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customJs", []));
@@ -839,14 +817,20 @@ export class MarkdownEditorProvider
 
         const isMac = process.platform === 'darwin';
         // English strings are the t() keys themselves; only non-English locales need a map.
-        const translations = vscode.env.language.toLowerCase().startsWith("zh") ? zhCn : {};
+        const translations = selectWebviewTranslations(vscode.env.language);
         const debugMode = cfg.get<boolean>("debugMode", false);
         const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
+        const toolbar = MarkdownEditorProvider.getToolbarConfig();
         const documentUri = document.uri.toString();
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, documentUri })};`;
+        // The extension's display name, the single source for any UI that must
+        // name the product (e.g. "Open <name> settings"). From package.json;
+        // optional-chained so a stripped-down test context still resolves.
+        const productName =
+            (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "Markdown Writer";
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -867,7 +851,7 @@ export class MarkdownEditorProvider
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
 	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${fontFamily ? ` --custom-font-family: ${fontFamily};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --custom-font-family: ${resolvedFont};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
 	</head>
 	<body class="${bodyClasses}">
 	  <div class="editor-topbar"></div>
@@ -940,16 +924,54 @@ export class MarkdownEditorProvider
 
     /** Snapshot of the proofread (style check + spell check) settings. */
     public static getProofreadConfig(): ProofreadConfig {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
         return {
             styleCheck: cfg.get<boolean>("styleCheck.enabled", false),
             fillers: cfg.get<boolean>("styleCheck.fillers", true),
             redundancies: cfg.get<boolean>("styleCheck.redundancies", true),
             cliches: cfg.get<boolean>("styleCheck.cliches", true),
+            wordiness: cfg.get<boolean>("styleCheck.wordiness", true),
+            aiVocabulary: cfg.get<boolean>("styleCheck.aiVocabulary", true),
+            aiArtifacts: cfg.get<boolean>("styleCheck.aiArtifacts", true),
+            passive: cfg.get<boolean>("styleCheck.passive", true),
+            negativeParallelism: cfg.get<boolean>("styleCheck.negativeParallelism", true),
+            longSentences: cfg.get<boolean>("styleCheck.longSentences", false),
+            ruleOfThree: cfg.get<boolean>("styleCheck.ruleOfThree", false),
+            emDash: cfg.get<boolean>("styleCheck.emDash", false),
+            nonAsciiPunct: cfg.get<boolean>("styleCheck.nonAsciiPunct", false),
             styleExceptions: cfg.get<string[]>("styleCheck.exceptions", []),
             spellCheck: cfg.get<boolean>("spellCheck.enabled", true),
+            grammarCheck: cfg.get<boolean>("spellCheck.grammar", true),
             userWords: cfg.get<string[]>("spellCheck.userWords", []),
         };
+    }
+
+    /** Snapshot of the per-item toolbar placement settings. */
+    public static getToolbarConfig(): ToolbarConfig {
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
+        // VS Code merges contributed defaults into this nested read, so every
+        // registered item id is present with its effective value.
+        return {
+            placements: cfg.get("toolbar.items", {}),
+            order: cfg.get<string[]>("toolbar.order", []),
+        };
+    }
+
+    /** Persist the font-picker choice (toolbar → settings write-back). */
+    public static setFontPreset(preset: FontPreset): void {
+        MarkdownEditorProvider.updateSettingRespectingScope("fontPreset", preset);
+    }
+
+    /**
+     * Persist a setting, writing to the scope that currently wins — a Global
+     * write would be silently overridden by an existing workspace value.
+     */
+    public static updateSettingRespectingScope(key: string, value: unknown): void {
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
+        const target = cfg.inspect(key)?.workspaceValue !== undefined
+            ? vscode.ConfigurationTarget.Workspace
+            : vscode.ConfigurationTarget.Global;
+        void cfg.update(key, value, target);
     }
 
     /**
@@ -958,16 +980,42 @@ export class MarkdownEditorProvider
      * workspace value.
      */
     public static setProofreadEnabled(key: "styleCheck.enabled" | "spellCheck.enabled", enabled: boolean): void {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
-        const target = cfg.inspect(key)?.workspaceValue !== undefined
-            ? vscode.ConfigurationTarget.Workspace
-            : vscode.ConfigurationTarget.Global;
-        void cfg.update(key, enabled, target);
+        MarkdownEditorProvider.updateSettingRespectingScope(key, enabled);
+    }
+
+    /**
+     * Every proofread toggle the webview may write, mapped to its setting path.
+     * The three masters live under their own keys; the sub-checks nest under
+     * `styleCheck.*`. Unknown keys are ignored (guards the write).
+     */
+    private static readonly PROOFREAD_SETTING: Record<ProofreadOptionKey, string> = {
+        styleCheck: "styleCheck.enabled",
+        spellCheck: "spellCheck.enabled",
+        grammarCheck: "spellCheck.grammar",
+        fillers: "styleCheck.fillers",
+        redundancies: "styleCheck.redundancies",
+        cliches: "styleCheck.cliches",
+        wordiness: "styleCheck.wordiness",
+        aiVocabulary: "styleCheck.aiVocabulary",
+        aiArtifacts: "styleCheck.aiArtifacts",
+        passive: "styleCheck.passive",
+        longSentences: "styleCheck.longSentences",
+        negativeParallelism: "styleCheck.negativeParallelism",
+        ruleOfThree: "styleCheck.ruleOfThree",
+        emDash: "styleCheck.emDash",
+        nonAsciiPunct: "styleCheck.nonAsciiPunct",
+    };
+
+    /** Persist one proofread toggle (checks menu → settings write-back). */
+    public static setProofreadOption(key: ProofreadOptionKey, value: boolean): void {
+        const path = MarkdownEditorProvider.PROOFREAD_SETTING[key];
+        if (!path) { return; }
+        MarkdownEditorProvider.updateSettingRespectingScope(path, value);
     }
 
     /** Flip the style check (command palette / keyboard shortcut). */
     public static toggleStyleCheck(): void {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
         MarkdownEditorProvider.setProofreadEnabled(
             "styleCheck.enabled",
             !cfg.get<boolean>("styleCheck.enabled", false),
@@ -977,7 +1025,7 @@ export class MarkdownEditorProvider
     private _handleSpellAddWord(word: string): void {
         const trimmed = word?.trim();
         if (!trimmed) { return; }
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
         const words = cfg.get<string[]>("spellCheck.userWords", []);
         if (words.includes(trimmed)) { return; }
         // Prefer the workspace list (project jargon); fall back to user settings
@@ -988,7 +1036,7 @@ export class MarkdownEditorProvider
     }
 
     private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
         const paths = [
             ...cfg.get<string[]>("customCss", []),
             ...cfg.get<string[]>("customJs", []),
@@ -1095,7 +1143,7 @@ export class MarkdownEditorProvider
         altText: string,
     ): Promise<void> {
         const uriKey = document.uri.toString();
-        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
+        const cfg = vscode.workspace.getConfiguration('markdownWriter', document.uri);
         const storage = cfg.get<string>('imageStorage', 'local');
         try {
             let url: string;
@@ -1124,7 +1172,7 @@ export class MarkdownEditorProvider
         uriKey: string,
         id: string,
     ): Promise<void> {
-        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
+        const cfg = vscode.workspace.getConfiguration('markdownWriter', document.uri);
         const customPath = cfg.get<string>('imageLocalPath', '').trim();
         const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.tiff', '.ico']);
         const CANDIDATE_DIRS = ['images', 'imgs', 'assets/images', 'assets'];

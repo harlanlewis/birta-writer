@@ -703,13 +703,6 @@ body.editor-width-auto {
                 background: rgba(128, 128, 128, 0.08);
                 font-weight: 600;
             }
-
-            tbody tr:nth-child(even) td {
-                background: var(
-                    --vscode-editor-lineHighlightBackground,
-                    rgba(128, 128, 128, 0.04)
-                );
-            }
         }
 
         /* 选中高亮 */
@@ -856,7 +849,7 @@ body.editor-width-auto {
     z-index: 1200;
     display: flex;
     align-items: center;
-    padding: 5px 48px;
+    padding: 5px 8px;
     background-color: var(--vscode-editor-background);
     border-bottom: 1px solid
         var(--vscode-panel-border, rgba(128, 128, 128, 0.2));

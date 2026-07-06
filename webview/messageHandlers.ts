@@ -15,7 +15,6 @@ import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
-import { setDebugMode } from "./components/table/addButtons";
 import { setLogTableSel, syncExternalContent } from "./editor";
 import { setProofreadConfig } from "./plugins";
 import { applyLintResults } from "./plugins/proofread";
@@ -61,10 +60,14 @@ export type Handler<T extends ToWebviewMessage["type"] = ToWebviewMessage["type"
     container: HTMLElement,
 ) => void | Promise<void>;
 
-/** 工具栏控制器接口 */
+/** Toolbar controller interface. */
 export interface ToolbarController {
     onSelectionChange(view: EditorView): void;
     setDebugMode(enabled: boolean): void;
+    /** Rebuild the toolbar for a changed per-item placement config. */
+    applyConfig(config: import("../shared/messages").ToolbarConfig): void;
+    /** Update the font picker's active-preset indicator. */
+    setFontPreset(preset: import("../shared/messages").FontPreset): void;
 }
 
 /** 编辑器状态管理接口 */
@@ -197,7 +200,6 @@ export function createMessageHandlers(
             setLineMap(msg.lineMap);
         },
         setDebugMode(msg) {
-            setDebugMode(msg.enabled);
             setLogTableSel(msg.enabled);
             topbarTb?.setDebugMode(msg.enabled);
         },
@@ -276,13 +278,26 @@ export function createMessageHandlers(
                 setProofreadConfig(view, msg.config);
             }
         },
+        toolbarConfig(msg) {
+            topbarTb?.applyConfig(msg.config);
+        },
+        setFontFamily(msg) {
+            const root = document.documentElement;
+            if (msg.fontFamily) {
+                root.style.setProperty("--custom-font-family", msg.fontFamily);
+            } else {
+                root.style.removeProperty("--custom-font-family");
+            }
+            topbarTb?.setFontPreset(msg.preset);
+        },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);
         },
         editorCommand(msg) {
             // Command palette / right-click menu action routed to this editor.
+            // `args` carries a right-clicked cell target for table commands.
             // An unknown id is a safe no-op inside runEditorCommand.
-            runEditorCommand(msg.command, getEditor);
+            runEditorCommand(msg.command, getEditor, msg.args);
         },
     };
 }
