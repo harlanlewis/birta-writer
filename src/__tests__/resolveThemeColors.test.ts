@@ -1,5 +1,5 @@
 /**
- * resolveThemeColors maps a `markdownWysiwyg.colorTheme` setting value to the
+ * resolveThemeColors maps a `markdownWriter.colorTheme` setting value to the
  * `--vscode-*` overrides pushed to the webview.
  *
  * The critical case is "auto": it must return an EMPTY map so the webview falls

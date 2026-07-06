@@ -1,10 +1,11 @@
 /**
  * messageHandlers.ts
  * 
- * 职责：处理 Extension → WebView 方向的消息分发
- * 
- * 本模块将每种消息类型映射到对应的处理函数，实现消息的解耦和类型安全。
- * 处理函数通过依赖注入获取所需的外部能力，便于测试和维护。
+ * Dispatches Extension -> WebView messages.
+ *
+ * Maps each message type to its handler function, decoupling the messages and
+ * keeping dispatch type-safe. Handlers receive the external capabilities they
+ * need via dependency injection, which keeps them testable and maintainable.
  */
 
 import type { Editor } from "@milkdown/core";
@@ -30,10 +31,10 @@ import {
     handleImageRenameError,
 } from "./imageUpload";
 
-// ── 全局表格换行模式 ─────────────────────────────────────────
+// ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
 
-/** 根据当前 tableWrap 配置动态更新表格单元格的 overflow-wrap 属性 */
+/** Update table cells' overflow-wrap property from the current tableWrap config. */
 export function applyTableWrap(wrap: TableWrapMode): void {
     currentTableWrap = wrap;
     const root = document.documentElement;
@@ -50,11 +51,11 @@ export function applyTableWrap(wrap: TableWrapMode): void {
     }
 }
 
-// ── 类型定义 ──────────────────────────────────────────────
+// ── Type definitions ───────────────────────────────────────
 
 type ExtractMessage<T extends ToWebviewMessage["type"]> = Extract<ToWebviewMessage, { type: T }>;
 
-/** 消息处理函数类型 */
+/** Message-handler function type. */
 export type Handler<T extends ToWebviewMessage["type"] = ToWebviewMessage["type"]> = (
     msg: ExtractMessage<T>,
     container: HTMLElement,
@@ -70,7 +71,7 @@ export interface ToolbarController {
     setFontPreset(preset: import("../shared/messages").FontPreset): void;
 }
 
-/** 编辑器状态管理接口 */
+/** Editor state-management interface. */
 export interface EditorStateAccessor {
     getEditor: () => Editor | null;
     setEditor: (editor: Editor | null) => void;
@@ -80,7 +81,7 @@ export interface EditorStateAccessor {
     setMarkdownSource: (source: string) => void;
 }
 
-/** 编辑器操作接口 */
+/** Editor actions interface. */
 export interface EditorActions {
     scrollToSourceLine: (view: EditorView, lineMap: number[], targetLine: number) => void;
     getFirstVisibleSourceLine: (view: EditorView, lineMap: number[]) => number;
@@ -91,7 +92,7 @@ export interface EditorActions {
     refreshToc: () => void;
 }
 
-/** 消息处理器依赖项 */
+/** Message-handler dependencies. */
 export interface MessageHandlerDeps {
     state: EditorStateAccessor;
     actions: EditorActions;
@@ -99,9 +100,9 @@ export interface MessageHandlerDeps {
     themeOverrides: Set<string>;
 }
 
-// ── 消息处理器工厂 ────────────────────────────────────────
+// ── Message-handler factory ────────────────────────────────
 
-/** 创建消息处理器 */
+/** Create the message handlers. */
 export function createMessageHandlers(
     deps: MessageHandlerDeps,
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
