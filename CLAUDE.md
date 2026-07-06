@@ -53,7 +53,6 @@ src/extension.ts                              — Extension entry; registers Cus
 src/MarkdownEditorProvider.ts                 — Provider core (message routing, autosave, revert)
 src/utils/getNonce.ts                         — CSP nonce generation
 src/utils/imageService.ts                     — Local image save (MD5 dedup) + server upload
-src/i18n/webviewTranslations.ts               — WebView translation data
 webview/index.ts                              — WebView entry
 webview/editor.ts                             — Milkdown editor init (incl. keymap plugins)
 webview/serialization.ts                      — Serializer config (stringify options, table handler, pure-markdown preset)

@@ -170,12 +170,14 @@ The evidence is unambiguous about sequencing:
   (zaaack#24).
 - **Files**: `src/extension.ts` (new providers), reuse `webview/headingIds.ts` slug logic.
 
-### 1.5 Toolbar overflow + i18n hygiene
-- **What**: Responsive overflow menu for narrow panes (upstream #13); sweep remaining
-  hardcoded Chinese strings into `t("<key>")` (upstream #11 — e.g.
-  `webview/components/table/handles.ts:18`), consistent with the English-first migration.
-- **Files**: `webview/components/toolbar/index.ts`, `webview/i18n/`,
-  `src/i18n/webviewTranslations.ts`.
+### 1.5 Toolbar overflow menu
+- **What**: Responsive overflow menu for narrow panes (upstream #13).
+- **Files**: `webview/components/toolbar/index.ts`.
+- **Note**: The i18n-hygiene half of this item (upstream #11 — sweeping hardcoded
+  Chinese strings into `t("<key>")`) is complete. The Chinese-to-English migration
+  is done and now enforced by the CJK guard (`shared/__tests__/noCjkLiterals.test.ts`),
+  so no source string may contain CJK. English is the source/base language: `t()`
+  falls back to its key, and there is no longer a translation-data module.
 
 ---
 

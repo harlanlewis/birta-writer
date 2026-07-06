@@ -10,15 +10,25 @@ import * as path from "path";
 
 /**
  * CJK ranges the guard rejects: CJK Symbols & Punctuation (U+3000-303F),
- * Hiragana/Katakana, CJK Ext-A, CJK Unified Ideographs, CJK Compatibility
- * Ideographs, Halfwidth & Fullwidth Forms (U+FF00-FFEF), and Hangul Syllables.
+ * Hiragana/Katakana (U+3040-30FF), CJK Ext-A (U+3400-4DBF), CJK Unified
+ * Ideographs (U+4E00-9FFF), CJK Compatibility Ideographs (U+F900-FAFF),
+ * Halfwidth & Fullwidth Forms (U+FF00-FFEF), and Hangul Syllables
+ * (U+AC00-D7A3).
+ *
+ * Written with explicit `\u` escapes rather than literal characters. Literal
+ * range bounds are a homoglyph trap: the *unified* ideograph U+8C48 and the
+ * *compatibility* ideograph U+F900 are visually identical, so a literal range
+ * meant to start at the compatibility block can silently start ~29,000 code
+ * points lower and swallow the Private Use Area (where VS Code codicon glyphs
+ * live), flagging harmless icon literals as "CJK". Escapes keep the bounds
+ * exact and keep this matcher free of the very characters the guard bans.
  *
  * Scope is the BMP only (no `u` flag): supplementary-plane ideographs such as
  * CJK Ext-B (U+20000+) are intentionally out of scope — they don't appear in
  * this codebase and adding astral ranges would need surrogate-aware matching.
  */
 export const CJK_RE =
-    /[　-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯가-힣]/;
+    /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\uAC00-\uD7A3]/;
 
 /** Returns the 1-based line numbers that contain any CJK character. */
 export function findCjkLines(source: string): number[] {

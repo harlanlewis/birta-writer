@@ -29,6 +29,18 @@ describe("CJK_RE", () => {
     it("plain ASCII should not be detected", () => {
         expect(CJK_RE.test("Hello, world! 123")).toBe(false);
     });
+
+    it("a CJK compatibility ideograph should be detected", () => {
+        expect(CJK_RE.test("\uF900")).toBe(true); // start of the U+F900-FAFF block
+        expect(CJK_RE.test("\uFAD9")).toBe(true); // last assigned char in the block
+    });
+
+    it("Private Use Area glyphs (e.g. VS Code codicons) should NOT be detected", () => {
+        // Regression: a homoglyph in the range literal once made the compat-ideograph
+        // bound start at U+8C48 instead of U+F900, swallowing the PUA (U+E000-F8FF).
+        expect(CJK_RE.test("\uE000")).toBe(false);
+        expect(CJK_RE.test("\uF8FF")).toBe(false);
+    });
 });
 
 describe("findCjkLines", () => {
