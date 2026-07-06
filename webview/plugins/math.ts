@@ -69,6 +69,47 @@ export const remarkMathBlockPlugin = $remark(
 );
 
 /**
+ * An inline `$...$` is only real math when its inner content has non-space edges
+ * (mirrors INLINE_MATH_RULE_REGEX). `remark-math` has NO such guard, so on parse
+ * it turns "costs $5 and $10" into an `inlineMath` node (value `"5 and "`, note
+ * the trailing space). The typing input rule already refuses that shape, but a
+ * loaded document bypasses the input rule entirely — so without this guard the
+ * same currency renders as math. Keep the two paths consistent.
+ */
+export function isRealInlineMath(value: string): boolean {
+    return value.length > 0 && !/^\s|\s$/.test(value);
+}
+
+/**
+ * Revert currency-shaped `inlineMath` nodes back to literal `$...$` text so
+ * loaded documents render dollar amounts as prose, matching the typing guard.
+ */
+function visitInlineMathGuard(ast: MdastNode): void {
+    visit(
+        ast,
+        "inlineMath",
+        (
+            node: MdastNode & { value: string },
+            index: number | undefined,
+            parent: (MdastNode & { children: MdastNode[] }) | undefined,
+        ) => {
+            if (parent == null || index == null) return;
+            if (isRealInlineMath(node.value)) return;
+            parent.children.splice(index, 1, {
+                type: "text",
+                value: `$${node.value}$`,
+            } as unknown as MdastNode);
+        },
+    );
+}
+
+/** Parse-time currency guard for inline math (see isRealInlineMath). */
+export const remarkInlineMathGuardPlugin = $remark(
+    "remarkInlineMathGuard",
+    () => () => visitInlineMathGuard,
+);
+
+/**
  * Serialize a LaTeX-language `code_block` back to a `math` mdast node so it
  * round-trips as `$$...$$` instead of a fenced ```` ```LaTeX ```` block.
  */
@@ -211,6 +252,7 @@ export const insertInlineMathCommand = $command(
 export const mathPlugin = [
     remarkMathPlugin,
     remarkMathBlockPlugin,
+    remarkInlineMathGuardPlugin,
     mathInlineSchema,
     blockLatexSchema,
     mathInlineInputRule,

@@ -3,6 +3,16 @@
     box-sizing: border-box;
 }
 
+/* Shared checkmark glyph. A single stroked SVG (round caps/joins, weight set by
+   stroke-width) reused everywhere a "check" appears — the task-list checkbox and
+   the toolbar menu rows — so they read as one family. Consumers apply it as a
+   mask and paint it with background-color, so the check takes whatever color the
+   context needs (button-foreground on a filled box, currentColor next to a
+   label). Size is set per consumer via mask-size. */
+:root {
+    --check-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5 10 17.5 19 6.5'/%3E%3C/svg%3E");
+}
+
 html,
 body {
     height: 100%;
@@ -10,6 +20,26 @@ body {
     padding: 0;
     background-color: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);
+    /* Application chrome (toolbar, menus, selection/link popups, TOC — all of
+       which mount on <body>, outside #editor) uses VS Code's native UI font and
+       size, matching the surrounding editor UI. The document content opts back
+       into the reader's content-font preset on #editor below. Keeping the two
+       fonts separate is deliberate: the preset (serif/sans/mono) is a reading
+       choice for the prose, not for the controls around it. */
+    font-family: var(
+        --vscode-font-family,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif
+    );
+    font-size: var(--vscode-font-size, 13px);
+    line-height: 1.4;
+}
+
+/* The editor content — the reader-facing document. This is the only surface
+   that honors the content-font preset and the content type scale. */
+#editor {
     font-family: var(
         --custom-font-family,
         var(
@@ -635,13 +665,10 @@ body.editor-width-auto {
                 width: 14px;
                 height: 14px;
                 background-color: var(--vscode-button-foreground, #fff);
-                /* Stroked (not filled) check: stroke-width controls the glyph
-                   weight directly, and round caps/joins give it a heavier,
-                   softer read that echoes the box's rounded corners. Sized to
-                   fill more of the 14px box than the old filled glyph did. */
-                --task-check-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5 10 17.5 19 6.5'/%3E%3C/svg%3E");
-                -webkit-mask: var(--task-check-mask) center / 11px 11px no-repeat;
-                mask: var(--task-check-mask) center / 11px 11px no-repeat;
+                /* Shared stroked check (see --check-glyph), sized to fill most
+                   of the 14px box. */
+                -webkit-mask: var(--check-glyph) center / 11px 11px no-repeat;
+                mask: var(--check-glyph) center / 11px 11px no-repeat;
             }
 
             /* Strike through checked text (optional visual cue) */

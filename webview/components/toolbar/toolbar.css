@@ -217,17 +217,19 @@
 }
 
 /* Leading check column: reserves space when off, so labels stay aligned.
-   Inherits the row's color so the check matches its label exactly. */
+   Uses the shared --check-glyph (same stroked check as the task-list checkbox)
+   painted with currentColor, so it matches its label's color exactly and reads
+   as the same glyph family. Centered against the label line rather than baseline-
+   aligned, since a masked box has no text baseline. */
 .tb-check-mark {
     flex: 0 0 auto;
-    width: 10px;
-    font-size: 10px;
-    color: inherit;
+    align-self: center;
+    width: 14px;
+    height: 14px;
+    background-color: currentColor;
+    -webkit-mask: var(--check-glyph) center / 13px 13px no-repeat;
+    mask: var(--check-glyph) center / 13px 13px no-repeat;
     visibility: hidden;
-}
-
-.tb-check-mark::before {
-    content: "✓";
 }
 
 /* On-state: brighten the whole row so the check + label share one color. */
