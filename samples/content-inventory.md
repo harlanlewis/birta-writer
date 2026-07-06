@@ -6,11 +6,7 @@ tags: [reference, showcase, regression]
 
 # Content inventory
 
-This document is a **living reference** of every content type Markdown Writer
-supports. Open it directly in the editor to eyeball how each type renders across
-themes and fonts. When we add support for a new content type, add an example
-here; when we drop or change one, update it. Keep the "Not yet supported"
-section honest — move items up into the body as they land.
+This document is a **living reference** of every content type Markdown Writer supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
 
 ---
 
@@ -146,8 +142,7 @@ $$
 
 ## Footnotes
 
-A sentence with a footnote reference.[^note] Footnotes are auto-numbered and
-their definitions round-trip.
+A sentence with a footnote reference.[^note] Footnotes are auto-numbered and their definitions round-trip.
 
 [^note]: The footnote definition, with a second sentence for good measure.
 
@@ -163,8 +158,7 @@ Inline image (replace with a real path to see it render):
 
 ## Diagrams (Mermaid)
 
-Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid`
-block.
+Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid` block.
 
 ```mermaid
 graph TD
@@ -189,8 +183,7 @@ Three marker styles all round-trip in their original form:
 
 ## Raw HTML
 
-Inline and block HTML render as a sanitized, read-only preview (editing raw HTML
-requires the source editor):
+Inline and block HTML render as a sanitized, read-only preview (editing raw HTML requires the source editor):
 
 <div align="center"><strong>Centered raw HTML block</strong></div>
 
@@ -207,14 +200,22 @@ get a table UI; complex/nested YAML preserved verbatim.
 
 ---
 
-## Not yet supported
+## Not supported
 
-These are **not** supported today. When support lands, move the item up into the
-body of this document with a real example.
+If and when support lands for these common content types, move up into the body of this document with a real example.
 
-- **Callouts / admonitions** — `> [!NOTE]`, `> [!WARNING]` (GitHub/Obsidian
-  style). Currently parses as an ordinary blockquote whose first line is the
-  literal `[!NOTE]` text.
-- **Videos / embeds** — no `<video>` / `<iframe>` handling; such tags fall
-  through to the read-only sanitized HTML preview (and iframes are stripped).
-- **Definition lists** — `term` / `: definition` syntax is not parsed.
+### Callouts
+
+Callouts in the GitHub and Obsidian style parse as an ordinary blockquote whose first line is the literal `[!NOTE]` text.
+
+> [!NOTE] Hello
+
+> [!WARNING] Hello
+
+### Videos / embeds
+
+No `<video>` / `<iframe>` handling; such tags fall through to the read-only sanitized HTML preview (and iframes are stripped).
+
+### Definition lists
+
+`term` / `: definition` syntax is not parsed.
