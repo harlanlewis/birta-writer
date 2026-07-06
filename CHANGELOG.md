@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- **`markdownWriter.confirmExternalLinks`** (default `true`): opening an external link from a document now asks for confirmation first, so a document can never navigate anywhere without an explicit confirmation. Set to `false` to restore one-click opening.
+- **`markdownWysiwyg.confirmExternalLinks`** (default `true`): opening an external link from a document now asks for confirmation first, so a document can never navigate anywhere without an explicit confirmation. Set to `false` to restore one-click opening.
 
 ---
 
@@ -36,7 +36,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 - **Native text-document editor (CustomTextEditorProvider)**: the WYSIWYG editor is now backed by VS Code's own `TextDocument` instead of reading and writing the file itself. This brings the standard editor experience:
   - **Native undo/redo**: Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z now use VS Code's document history and stay in sync with edits made in a side-by-side text view.
-  - **Native dirty state**: the tab shows VS Code's unsaved-changes dot and participates in Save All, hot exit, and "revert file" like any text editor. The extension's own `markdownWriter.autoSave` / `autoSaveDelay` settings are deprecated in favor of the built-in `files.autoSave`, which the editor now honors.
+  - **Native dirty state**: the tab shows VS Code's unsaved-changes dot and participates in Save All, hot exit, and "revert file" like any text editor. The extension's own `markdownWysiwyg.autoSave` / `autoSaveDelay` settings are deprecated in favor of the built-in `files.autoSave`, which the editor now honors.
   - **Git integration**: because edits flow through the document, staging, diffing, discarding changes, and `git checkout` update the editor live.
 - **Cursor-preserving inbound sync**: external changes (a side-by-side text edit, undo/redo, git operations, hot-exit restore) are applied to the editor as a minimal ProseMirror diff rather than a full rebuild, so the caret and selection survive edits made elsewhere in the document. Falls back to a full rebuild if the diff can't be applied cleanly.
 - **Source-style preservation**: setext (underlined) headings, `***`/`___` thematic-break markers, and `_`/`*` emphasis markers now round-trip in their original style instead of being canonicalized on edit.

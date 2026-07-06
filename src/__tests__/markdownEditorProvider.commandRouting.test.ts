@@ -74,7 +74,7 @@ describe("MarkdownEditorProvider postEditorCommand routing", () => {
     it("an explicit document uri should route to that panel regardless of focus", async () => {
         const { provider, uriA, panelA, panelB } = await setupTwoPanels();
         vscode.window.tabGroups.activeTabGroup.activeTab = {
-            input: new vscode.TabInputCustom(uriA /* ignored: named wins */, "markdownWriter.editor"),
+            input: new vscode.TabInputCustom(uriA /* ignored: named wins */, "markdownWysiwyg.editor"),
         };
 
         provider.postEditorCommand("openFind", uriA.toString());
@@ -87,7 +87,7 @@ describe("MarkdownEditorProvider postEditorCommand routing", () => {
         const { provider, uriA, panelA, panelB } = await setupTwoPanels();
         // _activePanel is B (resolved last), but focus sits in A's group
         vscode.window.tabGroups.activeTabGroup.activeTab = {
-            input: new vscode.TabInputCustom(uriA, "markdownWriter.editor"),
+            input: new vscode.TabInputCustom(uriA, "markdownWysiwyg.editor"),
         };
 
         provider.postEditorCommand("openFind");

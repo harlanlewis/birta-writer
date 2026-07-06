@@ -1,6 +1,6 @@
 /**
  * toc component tests: dock side is driven by the toc-right body class
- * (set by the extension from the markdownWriter.tocPosition setting).
+ * (set by the extension from the markdownWysiwyg.tocPosition setting).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { initToc } from "../components/toc";

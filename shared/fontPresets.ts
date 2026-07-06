@@ -7,7 +7,7 @@ import type { FontPreset } from "./messages";
 
 /**
  * The default content-font preset. Must stay in sync with the
- * `markdownWriter.fontPreset` default declared in package.json. Import this in
+ * `markdownWysiwyg.fontPreset` default declared in package.json. Import this in
  * every `getConfiguration().get("fontPreset", …)` call so the code fallback
  * can never diverge from the contributed default.
  */

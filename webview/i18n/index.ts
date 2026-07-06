@@ -31,7 +31,7 @@ export function t(key: string): string {
 }
 
 /** The extension's display name (from package.json), or a safe fallback. */
-export const productName: string = window.__i18n?.productName ?? "Markdown Writer";
+export const productName: string = window.__i18n?.productName ?? "WYSIWYG Markdown Editor";
 
 /**
  * Convert a shortcut string into the display format for the current platform.

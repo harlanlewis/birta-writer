@@ -19,7 +19,7 @@
     overflow: hidden;
 }
 
-/* Right-docked variant (markdownWriter.tocPosition = right) */
+/* Right-docked variant (markdownWysiwyg.tocPosition = right) */
 .toc-panel--right {
     left: auto;
     right: 0;

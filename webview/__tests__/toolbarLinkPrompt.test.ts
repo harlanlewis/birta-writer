@@ -198,7 +198,7 @@ describe("toolbar openLinkPrompt", () => {
 
     it("the routed insertLink editor command should open the same prompt and apply the link end to end", () => {
         // Arrange — Cmd/Ctrl+K is a contributed (user-rebindable) keybinding
-        // now: the workbench resolves it to markdownWriter.editor.insertLink,
+        // now: the workbench resolves it to markdownWysiwyg.editor.insertLink,
         // which reaches the webview as an editorCommand message dispatched
         // through runEditorCommand. initToolbar already registered the
         // toolbar's openLinkPrompt as the host hook, so this drives the full

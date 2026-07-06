@@ -1,4 +1,4 @@
-# Claude project instructions — markdown-writer
+# Claude project instructions — md-wysiwyg-editor
 
 ## Language policy
 
@@ -28,7 +28,7 @@ Whenever a work session changes extension or webview source (`src/`, `webview/`,
 
 1. `pnpm test` — all green.
 2. `pnpm run package`
-3. `cursor --install-extension releases/markdown-writer-<version>.vsix --force`
+3. `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force`
 4. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
 Do this by default, without being asked, before handing control back. Bump the patch version when it helps the user confirm they're on the new build.
@@ -38,8 +38,8 @@ Do this by default, without being asked, before handing control back. Bump the p
 `pnpm build` only rebuilds `dist/`; the user's editor runs an **installed copy** of the extension, so a window reload alone never picks up source changes. When the user wants to try changes in their own Cursor window (rather than F5 debugging):
 
 1. `pnpm test` — must pass first.
-2. `pnpm run package` — writes `releases/markdown-writer-<version>.vsix`.
-3. `cursor --install-extension releases/markdown-writer-<version>.vsix --force` (`--force` allows reinstalling the same version).
+2. `pnpm run package` — writes `releases/md-wysiwyg-editor-<version>.vsix`.
+3. `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force` (`--force` allows reinstalling the same version).
 4. Tell the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
 For iterative debugging, F5 (Extension Development Host) is still faster — no packaging step.
@@ -186,5 +186,5 @@ Test fails
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `markdownWriter.autoSave` | boolean | `true` | Write to disk automatically after edits |
-| `markdownWriter.autoSaveDelay` | number | `1000` | Debounce delay (ms) |
+| `markdownWysiwyg.autoSave` | boolean | `true` | Write to disk automatically after edits |
+| `markdownWysiwyg.autoSaveDelay` | number | `1000` | Debounce delay (ms) |

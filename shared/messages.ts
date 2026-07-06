@@ -70,7 +70,7 @@ export type FontPreset = "default" | "sans" | "serif" | "mono";
 
 /**
  * Per-check style-check options (all nested under the `styleCheck` master).
- * Each maps to a `markdownWriter.styleCheck.<key>` boolean setting and to one
+ * Each maps to a `markdownWysiwyg.styleCheck.<key>` boolean setting and to one
  * row in the toolbar's style-check dropdown.
  */
 export type ProofreadOptionKey =

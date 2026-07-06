@@ -6,7 +6,7 @@ tags: [reference, showcase, regression]
 
 # Content inventory
 
-This document is a **living reference** of every content type Markdown Writer supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
+This document is a **living reference** of every content type WYSIWYG Markdown Editor supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
 
 ---
 
@@ -46,7 +46,7 @@ A hard line break ends this line here →<br>and continues on the next.
 
 ## Links
 
-- Inline link: [Markdown Writer](https://example.com)
+- Inline link: [WYSIWYG Markdown Editor](https://example.com)
 - Link with a title: [hover me](https://example.com "A title")
 - Formatted link text stays one link: [**bold** and `code` tail](https://example.com)
 - Autolink: <https://example.com>

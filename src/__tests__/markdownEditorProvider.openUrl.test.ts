@@ -1,7 +1,7 @@
 /**
  * openUrl handling: the provider opens external links via vscode.env.openExternal,
  * but only after the safety gate (isSafeExternalUrl) and, when
- * `markdownWriter.confirmExternalLinks` is enabled (default), an explicit
+ * `markdownWysiwyg.confirmExternalLinks` is enabled (default), an explicit
  * confirmation dialog. This keeps a document from navigating anywhere without
  * the user's consent — the last outbound path after the network-egress removal.
  */

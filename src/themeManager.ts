@@ -21,7 +21,7 @@ export interface CustomTheme {
 
 /** Get user-defined custom themes */
 export function getCustomThemes(): CustomTheme[] {
-    const config = vscode.workspace.getConfiguration("markdownWriter");
+    const config = vscode.workspace.getConfiguration("markdownWysiwyg");
     return config.get<CustomTheme[]>("customThemes", []);
 }
 
@@ -426,7 +426,7 @@ export async function getThemeColors(themePath: string): Promise<ThemeColors> {
 
 /**
  * Resolve the `--vscode-*` color overrides to push to a webview for a given
- * editor theme id (the `markdownWriter.colorTheme` setting value).
+ * editor theme id (the `markdownWysiwyg.colorTheme` setting value).
  *
  * - `"auto"`: return `{}`. VS Code injects the full `--vscode-*` palette into
  *   every webview and updates it live whenever the active color theme changes,
