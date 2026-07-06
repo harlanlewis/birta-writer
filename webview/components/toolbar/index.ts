@@ -105,7 +105,7 @@ function createCheckItem(label: string): CheckItem {
     el.className = "tb-fmt-item tb-check-item";
     el.setAttribute("role", "menuitemcheckbox");
     const mark = document.createElement("span");
-    mark.className = "tb-check-mark";
+    mark.className = "menu-check";
     mark.setAttribute("aria-hidden", "true");
     const labelEl = document.createElement("span");
     labelEl.className = "tb-check-label";

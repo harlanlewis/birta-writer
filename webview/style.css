@@ -13,6 +13,23 @@
     --check-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5 10 17.5 19 6.5'/%3E%3C/svg%3E");
 }
 
+/* Shared leading check column for menu rows — the toolbar's selectable menus
+   (Checks / Font / Format) and the code-block language picker both use it, so a
+   selected/active row looks identical everywhere. Paints the shared --check-glyph
+   in the row's own text color; hidden until the row's context marks it visible
+   (e.g. `.tb-check-item--on .menu-check`, `.lang-picker-item--active .menu-check`).
+   Requires a flex parent for align-self to center it against the label line. */
+.menu-check {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 14px;
+    height: 14px;
+    background-color: currentColor;
+    -webkit-mask: var(--check-glyph) center / 13px 13px no-repeat;
+    mask: var(--check-glyph) center / 13px 13px no-repeat;
+    visibility: hidden;
+}
+
 html,
 body {
     height: 100%;

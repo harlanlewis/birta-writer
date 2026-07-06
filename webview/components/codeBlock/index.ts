@@ -36,8 +36,39 @@ function getLangLabel(val: string): string {
     return label === "Plain Text" ? t("Plain Text") : label;
 }
 
-function isSameLanguage(a: string, b: string): boolean {
+export function isSameLanguage(a: string, b: string): boolean {
     return normalizeCodeLanguage(a) === normalizeCodeLanguage(b);
+}
+
+/**
+ * Build one language-picker row: a leading shared check column (visible only
+ * when this is the current language, via `.lang-picker-item--active .menu-check`)
+ * plus the label. Mirrors the toolbar menus' selected-row treatment so both use
+ * the same check glyph and a checkmark — not a color/weight change — marks the
+ * current selection, matching VS Code's own picker.
+ */
+export function createLangPickerItem(
+    value: string,
+    label: string,
+    selected: boolean,
+): HTMLLIElement {
+    const item = document.createElement("li");
+    item.className = "lang-picker-item";
+    item.dataset["value"] = value;
+    item.setAttribute("role", "option");
+    item.setAttribute("aria-selected", selected ? "true" : "false");
+    if (selected) item.classList.add("lang-picker-item--active");
+
+    const check = document.createElement("span");
+    check.className = "menu-check";
+    check.setAttribute("aria-hidden", "true");
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "lang-picker-item-label";
+    labelEl.textContent = label === "Plain Text" ? t("Plain Text") : label;
+
+    item.append(check, labelEl);
+    return item;
 }
 
 // ─── Line-number update ──────────────────────────────────
@@ -243,18 +274,15 @@ function createLangPicker(
         listEl.innerHTML = "";
         activeIndex = -1;
         filtered.forEach(([val, label], i) => {
-            const item = document.createElement("li");
-            item.className = "lang-picker-item";
-            item.dataset["value"] = val;
-            item.textContent = label === "Plain Text" ? t("Plain Text") : label;
-            if (isSameLanguage(val, currentLang)) item.classList.add("lang-picker-item--active");
+            const selected = isSameLanguage(val, currentLang);
+            const item = createLangPickerItem(val, label, selected);
             item.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 selectLang(val);
             });
             listEl.appendChild(item);
-            if (isSameLanguage(val, currentLang)) activeIndex = i;
+            if (selected) activeIndex = i;
         });
         if (filtered.length > 0) {
             setActiveIdx(activeIndex >= 0 ? activeIndex : 0);

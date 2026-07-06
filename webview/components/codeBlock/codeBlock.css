@@ -95,6 +95,9 @@
 }
 
 .lang-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 5px 10px;
     font-size: 12px;
     cursor: pointer;
@@ -106,9 +109,11 @@
     background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
 }
 
-.lang-picker-item--active {
-    color: var(--vscode-focusBorder, #007acc);
-    font-weight: 600;
+/* Current language: marked with the shared leading check glyph (like the toolbar
+   menus and VS Code's own language picker) rather than a color/weight change,
+   which previously read as a disabled/greyed row. */
+.lang-picker-item--active .menu-check {
+    visibility: visible;
 }
 
 /* ─── Code block drag-to-resize height handle (full-width row at the wrapper bottom) ─── */

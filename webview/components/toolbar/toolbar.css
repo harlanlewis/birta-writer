@@ -216,28 +216,15 @@
     gap: 6px;
 }
 
-/* Leading check column: reserves space when off, so labels stay aligned.
-   Uses the shared --check-glyph (same stroked check as the task-list checkbox)
-   painted with currentColor, so it matches its label's color exactly and reads
-   as the same glyph family. Centered against the label line rather than baseline-
-   aligned, since a masked box has no text baseline. */
-.tb-check-mark {
-    flex: 0 0 auto;
-    align-self: center;
-    width: 14px;
-    height: 14px;
-    background-color: currentColor;
-    -webkit-mask: var(--check-glyph) center / 13px 13px no-repeat;
-    mask: var(--check-glyph) center / 13px 13px no-repeat;
-    visibility: hidden;
-}
+/* The leading check column is the shared .menu-check (see style.css), so the
+   toolbar menus and the language picker mark a selected row identically. */
 
 /* On-state: brighten the whole row so the check + label share one color. */
 .tb-check-item--on {
     color: var(--vscode-foreground, #ccc);
 }
 
-.tb-check-item--on .tb-check-mark {
+.tb-check-item--on .menu-check {
     visibility: visible;
 }
 
