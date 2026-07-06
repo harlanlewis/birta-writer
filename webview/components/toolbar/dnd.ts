@@ -174,6 +174,9 @@ export function enterEditMode(deps: EditModeDeps): () => void {
         if (e.button !== 0) {
             return;
         }
+        if (dragging) {
+            return; // a drag is already in flight; ignore a second pointer
+        }
         const item = (e.target as HTMLElement)?.closest?.(".tb-item") as HTMLElement | null;
         if (!item || item.dataset["itemId"] === "debug") {
             return;
