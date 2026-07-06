@@ -369,12 +369,9 @@ body.editor-width-auto {
             }
         }
 
-        /* Reference-style links keep link styling without an href */
-        a.link-ref {
-            color: var(--vscode-textLink-foreground);
-            text-decoration: underline;
-            cursor: text;
-        }
+        /* Reference-style links ([text][ref]) render identically to inline
+           links — same color, no underline until hover — via the shared `a`
+           rule below; they need no distinct styling. */
 
         /* Image references (![alt][ref]) — inline chip */
         .image-ref {
@@ -548,7 +545,9 @@ body.editor-width-auto {
                 var(--vscode-editor-foreground)
             );
             border-radius: 3px;
-            padding: 0.15em 0.4em;
+            /* Tight horizontal padding so the chip doesn't leave a visible gap
+               before adjacent punctuation (e.g. `code`. ). */
+            padding: 0.15em 0.3em;
             font-family: var(--vscode-editor-font-family, monospace);
             font-size: 0.9em;
         }

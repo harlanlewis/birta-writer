@@ -1,0 +1,9 @@
+# Sample/fixture documents are authored to exercise the editor's own
+# serializer (marker styles, setext headings, thematic-break variants, etc.).
+# Prettier's markdown formatter normalizes those away, fighting the editor —
+# so leave these files exactly as written/saved.
+samples/
+
+# Build artifacts
+dist/
+releases/
