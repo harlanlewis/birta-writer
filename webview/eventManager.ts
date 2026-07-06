@@ -1,14 +1,19 @@
 /**
  * eventManager.ts
- * 
+ *
  * Responsibility: a single place to manage binding and unbinding of event listeners.
  *
  * This module provides:
  * - Bind DOM events (Window, Document, HTMLElement), returning an unbind function
  * - Bind custom events, triggerable via emit
- * - Bind keyboard shortcuts, with modifier-combo config and behavior control
  * - Unbind all events at once (called on component teardown)
  * - Debug support: track the current number of bound events
+ *
+ * There is deliberately NO keyboard-shortcut helper here anymore: editor
+ * shortcuts are contributed (user-rebindable) VS Code keybindings routed
+ * through commands (see shared/editorCommands.ts), and the guard test
+ * shared/__tests__/noHardcodedKeybindings.test.ts fails the suite when a
+ * webview module starts matching modifier chords by hand.
  */
 
 // ── Type definitions ──────────────────────────────────────
@@ -24,35 +29,6 @@ interface BoundEvent {
 
 interface CustomEventEntry {
     handlers: Set<EventHandler>;
-}
-
-/** Keyboard shortcut configuration */
-export interface ShortcutOptions {
-    /**
-     * Physical key code, e.g. "KeyF", "KeyM", "KeyK". Layout-independent;
-     * use for Alt combos, where macOS remaps the produced character
-     * (Option+K types "˚"). Ignored when `key` is set.
-     */
-    code?: string;
-    /**
-     * Produced character (KeyboardEvent.key), compared case-insensitively,
-     * e.g. "f". Layout-aware — prefer this for letter shortcuts so
-     * non-QWERTY layouts (Dvorak, QWERTZ, ...) match what the user typed,
-     * the same way ProseMirror keymaps resolve letter bindings.
-     */
-    key?: string;
-    /** Require the Meta/Cmd key */
-    meta?: boolean;
-    /** Require the Ctrl key */
-    ctrl?: boolean;
-    /** Require the Shift key */
-    shift?: boolean;
-    /** Require the Alt/Option key */
-    alt?: boolean;
-    /** Prevent the default action (default true) */
-    preventDefault?: boolean;
-    /** Stop the event from propagating further (default false) */
-    stopPropagation?: boolean;
 }
 
 /**
@@ -143,94 +119,6 @@ export class EventManager {
                 this.customEvents.delete(type);
             }
         };
-    }
-
-    /**
-     * Bind a keyboard shortcut.
-     *
-     * Modifier semantics: requesting both `meta` and `ctrl` means the
-     * platform primary modifier ("Mod": Cmd on macOS, Ctrl elsewhere) —
-     * either one matches. Otherwise each modifier must match exactly, so
-     * e.g. Cmd+Shift+F does not trigger a plain Cmd+F shortcut.
-     *
-     * @param options - shortcut configuration
-     * @param handler - event handler
-     * @returns unbind function
-     *
-     * @example
-     * // Cmd/Ctrl+F
-     * eventManager.onShortcut(
-     *     { code: "KeyF", meta: true, ctrl: true },
-     *     () => openFindBar()
-     * );
-     *
-     * @example
-     * // Cmd/Ctrl+Shift+M
-     * eventManager.onShortcut(
-     *     { code: "KeyM", meta: true, ctrl: true, shift: true },
-     *     () => switchToTextEditor()
-     * );
-     *
-     * @example
-     * // Alt combo (without stopping propagation)
-     * eventManager.onShortcut(
-     *     { code: "KeyF", alt: true, stopPropagation: false },
-     *     () => openFindReplace()
-     * );
-     */
-    onShortcut(
-        options: ShortcutOptions,
-        handler: (e: KeyboardEvent) => void,
-    ): () => void {
-        const {
-            code,
-            key,
-            meta = false,
-            ctrl = false,
-            shift = false,
-            alt = false,
-            preventDefault = true,
-            stopPropagation = false,
-        } = options;
-        const lowerKey = key?.toLowerCase();
-
-        // Bind on `document`, NOT `window`. The VS Code webview host installs
-        // its own bubble-phase keydown listener on `window` (before this
-        // bundle runs) and forwards every key it sees to the workbench so
-        // workbench keybindings keep working while a webview is focused.
-        // Because that listener is registered first on the same node, a
-        // window-level stopPropagation() of ours can never beat it. Listening
-        // one node lower means our stopPropagation() (and the claimed-key
-        // guard in keyboardShortcuts.ts, also on `document`) actually keeps
-        // handled shortcuts from leaking to the workbench.
-        return this.onDocument("keydown", (e) => {
-            if (lowerKey !== undefined) {
-                // Match the produced character, with the same keyCode fallback
-                // prosemirror-keymap applies for non-Latin layouts (Cmd+F on a
-                // Russian layout produces "а" but must still open find).
-                if (
-                    e.key.toLowerCase() !== lowerKey &&
-                    fallbackKeyFromKeyCode(e) !== lowerKey
-                ) { return; }
-            } else if (e.code !== code) {
-                return;
-            }
-
-            // Check modifiers ("Mod" when both meta and ctrl are requested)
-            if (meta && ctrl) {
-                if (!e.metaKey && !e.ctrlKey) { return; }
-            } else if (meta !== e.metaKey || ctrl !== e.ctrlKey) {
-                return;
-            }
-            if (shift !== e.shiftKey) { return; }
-            if (alt !== e.altKey) { return; }
-
-            // Suppress default behavior and propagation
-            if (preventDefault) { e.preventDefault(); }
-            if (stopPropagation) { e.stopPropagation(); }
-
-            handler(e);
-        });
     }
 
     /**

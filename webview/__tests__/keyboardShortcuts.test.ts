@@ -235,4 +235,47 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         pressKey("Tab", {}, document.body);
         expect(workbenchForwarder).toHaveBeenCalledTimes(1);
     });
+
+    // ── Claimed-set exhaustiveness ───────────────────────────────────────
+    // Policy guard (behavioral half; the source-scan half lives in
+    // shared/__tests__/noHardcodedKeybindings.test.ts): sweep the whole
+    // Mod+<letter> space and pin the claimed set EXACTLY. Adding any entry
+    // to CLAIMED_SHORTCUTS fails here — which is the point: a claimed chord
+    // can never be rebound by the user, so growing the set must be a
+    // deliberate, reviewed decision, not a side effect.
+
+    /** Letters whose Mod+<letter> chord the guard swallowed. */
+    function claimedLetters(modifiers: (letter: string) => Partial<KeyboardEvent>): string[] {
+        const claimed: string[] = [];
+        for (let c = 97; c <= 122; c++) {
+            const letter = String.fromCharCode(c);
+            const before = workbenchForwarder.mock.calls.length;
+            pressKey(`Key${letter.toUpperCase()}`, modifiers(letter), proseMirrorEl);
+            if (workbenchForwarder.mock.calls.length === before) {
+                claimed.push(letter);
+            }
+        }
+        return claimed;
+    }
+
+    it("Cmd+<letter> (macOS) should claim exactly the ProseMirror typing-level set", () => {
+        init(true);
+        expect(claimedLetters((l) => ({ key: l, metaKey: true }))).toEqual(
+            ["b", "e", "i", "y", "z"], // bold, inline code, italic, redo, undo
+        );
+    });
+
+    it("Cmd+Shift+<letter> (macOS) should claim exactly strikethrough and redo", () => {
+        init(true);
+        expect(
+            claimedLetters((l) => ({ key: l.toUpperCase(), metaKey: true, shiftKey: true })),
+        ).toEqual(["x", "z"]);
+    });
+
+    it("Ctrl+<letter> (Windows/Linux) should claim exactly the ProseMirror typing-level set", () => {
+        init(false);
+        expect(claimedLetters((l) => ({ key: l, ctrlKey: true }))).toEqual(
+            ["b", "e", "i", "y", "z"],
+        );
+    });
 });
