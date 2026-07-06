@@ -1305,14 +1305,14 @@ export function initToolbar(
             menu.appendChild(entry);
         };
         addEntry(t("Customize toolbar"), () => startCustomize());
-        // Names the product so it's clear which settings open (t()-templated for
-        // future translation); the name is the single package.json value.
-        addEntry(t("Open {product} settings").replace("{product}", productName), () => notifyOpenSettings());
         // Discoverability for the rebindable shortcuts: opens the native
         // Keyboard Shortcuts UI filtered to this extension, where the user's
         // effective bindings are always accurate (tooltips deliberately
         // don't print defaults that a rebind would make wrong).
         addEntry(t("Keyboard shortcuts"), () => notifyOpenKeybindings());
+        // Names the product so it's clear which settings open (t()-templated for
+        // future translation); the name is the single package.json value.
+        addEntry(t("{product} settings").replace("{product}", productName), () => notifyOpenSettings());
 
         wireHoverMenu(wrapEl, gearBtn, menu);
 
