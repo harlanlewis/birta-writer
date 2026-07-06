@@ -215,6 +215,14 @@ function insertFootnote(getEditor: GetEditor): void {
  * survive VS Code's native context-menu round-trip, so relying on it would make
  * the command a no-op. Without a target it operates on the current selection
  * (command palette / keybinding).
+ *
+ * If a target WAS supplied but no longer resolves to a cell — e.g. an inbound
+ * external-sync diff changed the document between the right-click and the
+ * command arriving — bail rather than falling through to the ambient selection,
+ * which is exactly the unreliable selection this targeting exists to avoid
+ * (acting on it could mutate the wrong row/column). This guards the
+ * no-longer-a-cell case; a doc shift that leaves cellPos resolving to a
+ * DIFFERENT valid cell can't be detected from position alone and is accepted.
  */
 function tableCmd(
     getEditor: GetEditor,
@@ -223,11 +231,15 @@ function tableCmd(
 ): void {
     runProse(getEditor, (view) => {
         const cellPos = (args as { cellPos?: number } | undefined)?.cellPos;
-        if (typeof cellPos === "number" && cellPos >= 0 && cellPos <= view.state.doc.content.size) {
-            const $cell = cellAround(view.state.doc.resolve(cellPos));
-            if ($cell) {
-                view.dispatch(view.state.tr.setSelection(new CellSelection($cell)));
+        if (typeof cellPos === "number") {
+            if (cellPos < 0 || cellPos > view.state.doc.content.size) {
+                return;
             }
+            const $cell = cellAround(view.state.doc.resolve(cellPos));
+            if (!$cell) {
+                return;
+            }
+            view.dispatch(view.state.tr.setSelection(new CellSelection($cell)));
         }
         fn(view.state, view.dispatch);
         view.focus();

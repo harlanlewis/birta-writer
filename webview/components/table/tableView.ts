@@ -1002,38 +1002,72 @@ class TableController {
         const wrap = this.wrapper.getBoundingClientRect();
         const tableRect = this.table.getBoundingClientRect();
         if (d.kind === "row") {
-            for (const row of rows) {
-                const r = row.getBoundingClientRect();
-                if (e.clientY >= r.top && e.clientY <= r.bottom) {
-                    const y =
-                        e.clientY < r.top + r.height / 2 ? r.top : r.bottom;
-                    this.dropLine.className = "mw-drop-line mw-drop-line--h";
-                    this.dropLine.style.left = `${tableRect.left - wrap.left}px`;
-                    this.dropLine.style.width = `${tableRect.width}px`;
-                    this.dropLine.style.top = `${y - wrap.top - 1}px`;
-                    this.dropLine.style.height = "";
-                    this.dropLine.style.display = "block";
-                    return;
-                }
+            const y = this.rowDropEdge(e.clientY, rows);
+            if (y === null) {
+                this.dropLine.style.display = "none";
+                return;
             }
-        } else {
-            const cells = Array.from(rows[0]?.children ?? []) as HTMLElement[];
-            for (const cell of cells) {
-                const c = cell.getBoundingClientRect();
-                if (e.clientX >= c.left && e.clientX <= c.right) {
-                    const x =
-                        e.clientX < c.left + c.width / 2 ? c.left : c.right;
-                    this.dropLine.className = "mw-drop-line mw-drop-line--v";
-                    this.dropLine.style.top = `${tableRect.top - wrap.top}px`;
-                    this.dropLine.style.height = `${tableRect.height}px`;
-                    this.dropLine.style.left = `${x - wrap.left - 1}px`;
-                    this.dropLine.style.width = "";
-                    this.dropLine.style.display = "block";
-                    return;
-                }
+            this.dropLine.className = "mw-drop-line mw-drop-line--h";
+            this.dropLine.style.left = `${tableRect.left - wrap.left}px`;
+            this.dropLine.style.width = `${tableRect.width}px`;
+            this.dropLine.style.top = `${y - wrap.top - 1}px`;
+            this.dropLine.style.height = "";
+            this.dropLine.style.display = "block";
+            return;
+        }
+        const cells = Array.from(rows[0]?.children ?? []) as HTMLElement[];
+        const x = this.colDropEdge(e.clientX, cells);
+        if (x === null) {
+            this.dropLine.style.display = "none";
+            return;
+        }
+        this.dropLine.className = "mw-drop-line mw-drop-line--v";
+        this.dropLine.style.top = `${tableRect.top - wrap.top}px`;
+        this.dropLine.style.height = `${tableRect.height}px`;
+        this.dropLine.style.left = `${x - wrap.left - 1}px`;
+        this.dropLine.style.width = "";
+        this.dropLine.style.display = "block";
+    }
+
+    /**
+     * Viewport Y of the row drop line for the pointer, or null if there is no
+     * valid drop. Mirrors findTarget's fallbacks so the indicator is shown at
+     * exactly the positions a release would act on: inside a row -> its nearer
+     * edge; below the last row -> the last row's bottom (append). The header
+     * row is not a target, so there is no "above the first row" case.
+     */
+    private rowDropEdge(clientY: number, rows: HTMLElement[]): number | null {
+        for (const row of rows) {
+            const r = row.getBoundingClientRect();
+            if (clientY >= r.top && clientY <= r.bottom) {
+                return clientY < r.top + r.height / 2 ? r.top : r.bottom;
             }
         }
-        this.dropLine.style.display = "none";
+        if (rows.length && clientY > rows[rows.length - 1]!.getBoundingClientRect().bottom) {
+            return rows[rows.length - 1]!.getBoundingClientRect().bottom;
+        }
+        return null;
+    }
+
+    /**
+     * Viewport X of the column drop line for the pointer, or null. Mirrors
+     * findTarget: inside a cell -> its nearer edge; past the last cell -> its
+     * right (append); before the first cell -> its left (prepend).
+     */
+    private colDropEdge(clientX: number, cells: HTMLElement[]): number | null {
+        for (const cell of cells) {
+            const c = cell.getBoundingClientRect();
+            if (clientX >= c.left && clientX <= c.right) {
+                return clientX < c.left + c.width / 2 ? c.left : c.right;
+            }
+        }
+        if (cells.length && clientX > cells[cells.length - 1]!.getBoundingClientRect().right) {
+            return cells[cells.length - 1]!.getBoundingClientRect().right;
+        }
+        if (cells.length && clientX < cells[0]!.getBoundingClientRect().left) {
+            return cells[0]!.getBoundingClientRect().left;
+        }
+        return null;
     }
 
     destroy(): void {

@@ -295,6 +295,24 @@ describe("editorCommands registry — table row/column commands", () => {
         expect(tableHeight()).toBe(h - 1);
     });
 
+    it("a menu command whose cellPos target no longer resolves to a cell is a no-op", () => {
+        // A deletable cell selection is live, so a fall-through to the ambient
+        // selection (the old behavior) would visibly delete a row. The command
+        // must bail instead of acting on that unreliable selection.
+        selectRows(1, 1);
+        const before = tableHeight();
+
+        // cellPos past the document end (e.g. an inbound sync shrank the doc).
+        editorCommands.tableDeleteRow(() => editor, { cellPos: v.state.doc.content.size + 50 });
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(tableHeight()).toBe(before);
+
+        // cellPos at doc start: resolvable, but not inside any table cell.
+        editorCommands.tableDeleteRow(() => editor, { cellPos: 0 });
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(tableHeight()).toBe(before);
+    });
+
     /** Put a plain text cursor inside the body cell at (row, col). */
     function putCursor(row: number, col: number): void {
         const { node, pos } = findTable();

@@ -65,9 +65,8 @@ webview/ui/icons.ts                           — SVG icons
 webview/ui/tooltip.ts                         — Tooltip component
 webview/components/toolbar/index.ts           — Top main toolbar
 webview/components/selectionToolbar/index.ts  — Floating selection toolbar
-webview/components/table/addButtons.ts        — Table insert lines
-webview/components/table/handles.ts           — Table row/column drag handles
-webview/components/table/toolbar.ts           — Table toolbar
+webview/components/table/tableView.ts         — Table NodeView (overlay chrome: grips, insert bars, drag-reorder)
+webview/components/table/reorder.ts           — Pure row/column block-reorder + drop-index helpers
 webview/components/codeBlock/index.ts         — Code block UI
 webview/components/toc/index.ts               — Table of contents (TOC) panel
 webview/components/linkPopup/index.ts         — Link hover popup
