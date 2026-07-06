@@ -1,11 +1,12 @@
 /**
- * messaging.ts 测试：验证消息发送函数是否以正确格式调用 postMessage。
- * acquireVsCodeApi 已在 setup.ts 中注入到 globalThis。
+ * messaging.ts tests: verify that the message-sending functions call
+ * postMessage with the correct format. acquireVsCodeApi is already injected
+ * onto globalThis in setup.ts.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 
-// 延迟导入，确保 acquireVsCodeApi 在 setup.ts 中已完成注入
+// Deferred import so acquireVsCodeApi is fully injected by setup.ts first
 const {
     notifyReady,
     notifyUpdate,
@@ -20,12 +21,12 @@ const {
     notifyOpenSettings,
 } = await import("../../webview/messaging");
 
-describe("messaging — postMessage 格式验证", () => {
+describe("messaging — postMessage format", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it("notifyReady 发送 { type: 'ready' }", () => {
+    it("notifyReady should send { type: 'ready' }", () => {
         notifyReady();
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "ready" });
     });
@@ -39,7 +40,7 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyOpenUrl 携带 url 字段", () => {
+    it("notifyOpenUrl should carry the url field", () => {
         notifyOpenUrl("https://example.com");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "openUrl",
@@ -47,7 +48,7 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyOpenFile 携带 path 字段", () => {
+    it("notifyOpenFile should carry the path field", () => {
         notifyOpenFile("./docs/README.md");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "openFile",
@@ -55,14 +56,14 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifySwitchToTextEditor 不带 line 时不发送 line 字段", () => {
+    it("notifySwitchToTextEditor without a line should omit the line field", () => {
         notifySwitchToTextEditor();
         const msg = mockVscodeApi.postMessage.mock.calls[0][0] as Record<string, unknown>;
         expect(msg.type).toBe("switchToTextEditor");
         expect("line" in msg).toBe(false);
     });
 
-    it("notifySwitchToTextEditor 携带 line 时发送 line 字段", () => {
+    it("notifySwitchToTextEditor with a line should send the line field", () => {
         notifySwitchToTextEditor(42);
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "switchToTextEditor",
@@ -70,7 +71,7 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyUploadImage 携带所有必需字段", () => {
+    it("notifyUploadImage should carry all required fields", () => {
         const data = new Uint8Array([1, 2, 3]);
         notifyUploadImage("req-001", data, "image/png", "photo");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
@@ -82,7 +83,7 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyGetProjectImages 携带 id 字段", () => {
+    it("notifyGetProjectImages should carry the id field", () => {
         notifyGetProjectImages("img-list-1");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "getProjectImages",
@@ -90,7 +91,7 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyGetPathSuggestions 携带 id 和 query", () => {
+    it("notifyGetPathSuggestions should carry id and query", () => {
         notifyGetPathSuggestions("path-req-1", "./docs/");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "getPathSuggestions",
@@ -99,7 +100,7 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyResolveImagePath 携带 id 和 relPath", () => {
+    it("notifyResolveImagePath should carry id and relPath", () => {
         notifyResolveImagePath("resolve-1", "./images/photo.png");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "resolveImagePath",
@@ -108,7 +109,7 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyRenameImage 携带 id/webviewUri/newBasename", () => {
+    it("notifyRenameImage should carry id/webviewUri/newBasename", () => {
         notifyRenameImage("rename-1", "vscode-resource://img.png", "new-name.png");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "renameImage",
@@ -118,7 +119,7 @@ describe("messaging — postMessage 格式验证", () => {
         });
     });
 
-    it("notifyOpenSettings 发送 { type: 'openSettings' }", () => {
+    it("notifyOpenSettings should send { type: 'openSettings' }", () => {
         notifyOpenSettings();
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openSettings" });
     });

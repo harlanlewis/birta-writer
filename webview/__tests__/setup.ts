@@ -1,6 +1,6 @@
 /**
- * jsdom 环境 setup：在测试文件加载前注入 acquireVsCodeApi 全局函数，
- * 使 messaging.ts 在模块初始化时能正常调用。
+ * jsdom environment setup: inject the acquireVsCodeApi global before test
+ * files load, so messaging.ts can call it during module initialization.
  */
 import { vi } from "vitest";
 
@@ -17,5 +17,5 @@ Object.defineProperty(globalThis, "acquireVsCodeApi", {
     configurable: true,
 });
 
-/** 供测试断言使用 */
+/** Exposed for test assertions. */
 export { mockVscodeApi };

@@ -2,7 +2,7 @@ import { keymap } from "@milkdown/prose/keymap";
 import { NodeSelection } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 
-// 代码块 Backspace：光标在代码块后的段落行首时，选中代码块而非进入其内部
+// Code block Backspace: when the cursor is at the start of the paragraph following a code block, select the code block instead of entering it
 export const codeBlockBackspacePlugin = $prose(() =>
     keymap({
         Backspace: (state, dispatch) => {

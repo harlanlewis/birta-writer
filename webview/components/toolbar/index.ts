@@ -171,7 +171,7 @@ function showInlineLinkPrompt(
     overlay.style.top = `${rect.bottom + 4}px`;
     overlay.style.left = `${rect.left}px`;
 
-    // 有预填文字则聚焦 URL，否则聚焦文字框
+    // Focus the URL field if there's pre-filled text, otherwise focus the text field
     if (defaultText) {
         urlInput.focus();
         urlInput.select();
@@ -234,7 +234,7 @@ function showInlineLinkPrompt(
 }
 
 /**
- * 图片插入面板：居中悬浮（无遮罩），支持三种模式：浏览项目 / URL / 上传本地
+ * Image insert panel: a centered floating panel (no backdrop) with three modes: Browse Project / URL / Upload local
  */
 function showImageInsertPanel(
     onConfirm: (alt: string, src: string) => void,
@@ -251,7 +251,7 @@ function showImageInsertPanel(
     panel.className = "img-insert-panel";
     panel.addEventListener("mousedown", (e) => e.stopPropagation());
 
-    // ── 标题栏 ────────────────────────────────────────
+    // ── Title bar ─────────────────────────────────────
     const titleBar = document.createElement("div");
     titleBar.className = "img-insert-title";
     const titleText = document.createElement("span");
@@ -264,7 +264,7 @@ function showImageInsertPanel(
     titleBar.appendChild(closeBtn);
     panel.appendChild(titleBar);
 
-    // ── Tab 切换 ──────────────────────────────────────
+    // ── Tab switching ─────────────────────────────────
     const tabsRow = document.createElement("div");
     tabsRow.className = "img-insert-tabs";
 
@@ -288,14 +288,14 @@ function showImageInsertPanel(
     tabsRow.appendChild(tabUpload);
     panel.appendChild(tabsRow);
 
-    // ── Alt 文本（三种模式共用）─────────────────────
+    // ── Alt text (shared by all three modes) ─────────────────────
     const altInput = document.createElement("input");
     altInput.type = "text";
     altInput.className = "img-insert-input";
     altInput.placeholder = t("Alt text (alt)");
     panel.appendChild(altInput);
 
-    // ── 浏览项目 tab ──────────────────────────────────
+    // ── Browse Project tab ─────────────────────────────
     const projectSection = document.createElement("div");
     projectSection.className = "img-insert-section";
 
@@ -315,7 +315,7 @@ function showImageInsertPanel(
     projectSection.appendChild(selectedCount);
     panel.appendChild(projectSection);
 
-    // ── URL 模式内容 ──────────────────────────────────
+    // ── URL mode content ──────────────────────────────
     const urlSection = document.createElement("div");
     urlSection.className = "img-insert-section";
     urlSection.style.display = "none";
@@ -330,7 +330,7 @@ function showImageInsertPanel(
     // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
     const detachPanelUndoFns = [attachInputUndo(altInput), attachInputUndo(srcInput)];
 
-    // ── 上传本地 tab ──────────────────────────────────
+    // ── Upload local tab ──────────────────────────────
     const uploadSection = document.createElement("div");
     uploadSection.className = "img-insert-section";
     uploadSection.style.display = "none";
@@ -359,7 +359,7 @@ function showImageInsertPanel(
     uploadSection.appendChild(statusText);
     panel.appendChild(uploadSection);
 
-    // ── 确认 / 取消 ──────────────────────────────────
+    // ── Confirm / Cancel ──────────────────────────────
     const btnRow = document.createElement("div");
     btnRow.className = "img-insert-btn-row";
 
@@ -379,13 +379,13 @@ function showImageInsertPanel(
 
     document.body.appendChild(panel);
 
-    // 居中定位
+    // Center it
     const pw = Math.min(540, window.innerWidth - 32);
     panel.style.width = pw + "px";
     panel.style.left = Math.round((window.innerWidth - pw) / 2) + "px";
     panel.style.top =
         Math.round((window.innerHeight - panel.offsetHeight) / 2) + "px";
-    // 初次渲染后再垂直居中（offsetHeight 需要元素在 DOM 后才准确）
+    // Re-center vertically after the first render (offsetHeight is only accurate once the element is in the DOM)
     requestAnimationFrame(() => {
         panel.style.top =
             Math.round((window.innerHeight - panel.offsetHeight) / 2) + "px";
@@ -411,7 +411,7 @@ function showImageInsertPanel(
         }
     }
 
-    // ── 放大预览（lightbox）────────────────────────────
+    // ── Enlarge preview (lightbox) ─────────────────────
     function showLightbox(src: string, name: string): void {
         const lb = document.createElement("div");
         lb.className = "img-lightbox";
@@ -453,7 +453,7 @@ function showImageInsertPanel(
         });
     }
 
-    // ── 渲染图片网格 ──────────────────────────────────
+    // ── Render the image grid ──────────────────────────
     function renderGrid(
         images: Array<{ relPath: string; webviewUri: string; name: string }>,
     ): void {
@@ -495,7 +495,7 @@ function showImageInsertPanel(
             item.appendChild(enlargeBtn);
             imageGrid.appendChild(item);
 
-            // 点击选中/取消
+            // Click to select/deselect
             item.addEventListener("mousedown", (e) => {
                 if (
                     (e.target as Element).closest(".img-insert-thumb-enlarge")
@@ -516,7 +516,7 @@ function showImageInsertPanel(
                 updateSelectedCount();
             });
 
-            // 放大预览
+            // Enlarge preview
             enlargeBtn.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -525,7 +525,7 @@ function showImageInsertPanel(
         });
     }
 
-    // ── 加载项目图片 ──────────────────────────────────
+    // ── Load project images ────────────────────────────
     function loadProjectImages(): void {
         if (imagesLoaded) {
             return;
@@ -564,7 +564,7 @@ function showImageInsertPanel(
         }
     }
 
-    // 上传本地：file input
+    // Upload local: file input
     selectFileBtn.addEventListener("mousedown", (e) => {
         e.preventDefault();
         fileInput.click();
@@ -621,7 +621,7 @@ function showImageInsertPanel(
             cleanup();
             selectedImages.forEach((img) => onConfirm(alt, img.webviewUri));
         } else if (activeTab === "url") {
-            // 补全选中时 dataset 存有 webviewUri，优先使用；否则直接用输入值
+            // When chosen via completion, dataset holds a webviewUri — prefer it; otherwise use the input value directly
             const src = (srcInput.dataset.imgWebviewUri ?? "").trim() || srcInput.value.trim();
             cleanup();
             if (src) {
@@ -650,7 +650,7 @@ function showImageInsertPanel(
         }
     }
 
-    // Tab 切换
+    // Tab switching
     tabProject.addEventListener("mousedown", (e) => {
         e.preventDefault();
         switchTab("project");
@@ -691,12 +691,12 @@ function showImageInsertPanel(
         });
     });
 
-    // 隐藏不可用 tab
+    // Hide unavailable tabs
     if (!onGetProjectImages) {
         tabProject.style.display = "none";
         switchTab("url");
     } else {
-        loadProjectImages(); // 默认激活 project tab 时立即加载
+        loadProjectImages(); // load immediately since the project tab is active by default
     }
     if (!onUploadFile) {
         tabUpload.style.display = "none";

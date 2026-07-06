@@ -1,15 +1,15 @@
-/* ─── 代码块 NodeView ─── */
+/* ─── Code block NodeView ─── */
 .code-block-wrapper {
     margin: 0 0 1em;
     border-radius: 6px;
-    /* overflow: visible 保留，避免裁剪语言下拉菜单 */
+    /* keep overflow visible to avoid clipping the language dropdown menu */
     border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
 }
 
 .code-block-header {
     display: flex;
     align-items: center;
-    /* 移除 justify-content:space-between，改用 spacer flex:1 推右侧按钮 */
+    /* dropped justify-content:space-between; use a spacer with flex:1 to push the right-side buttons */
     padding: 4px 8px;
     background: var(
         --vscode-editor-lineHighlightBackground,
@@ -21,7 +21,7 @@
     border-radius: 6px 6px 0 0;
 }
 
-/* ─── lang-picker 自定义搜索下拉 ─── */
+/* ─── lang-picker custom searchable dropdown ─── */
 .lang-picker {
     position: relative;
 }
@@ -87,7 +87,7 @@
     overscroll-behavior: contain;
 }
 
-/* 覆盖 .milkdown .editor ul { padding-left: 1.8em } 的高优先级规则 */
+/* Override the high-specificity .milkdown .editor ul { padding-left: 1.8em } rule */
 .milkdown .editor .lang-picker-list {
     padding-left: 0;
     list-style: none;
@@ -111,7 +111,7 @@
     font-weight: 600;
 }
 
-/* ─── 代码块拖拽调整高度 handle（wrapper 底部整行） ─── */
+/* ─── Code block drag-to-resize height handle (full-width row at the wrapper bottom) ─── */
 .code-block-resize-handle {
     height: 6px;
     background: transparent;
@@ -125,7 +125,7 @@
     opacity: 0.3;
 }
 
-/* 复制按钮（SVG 图标） */
+/* Copy button (SVG icon) */
 .copy-btn,
 .code-wrap-toggle-btn {
     display: inline-flex;
@@ -170,11 +170,11 @@
     color: var(--vscode-charts-green, #4caf50);
 }
 
-/* 更高特异性（覆盖 .milkdown .editor pre），确保 padding:0 和 flex 布局生效 */
+/* Higher specificity (overrides .milkdown .editor pre) to ensure padding:0 and the flex layout take effect */
 .milkdown .editor .code-block-wrapper pre {
     display: flex;
     flex-direction: row;
-    align-items: flex-start; /* 允许子元素按内容高度增长，而非被拉伸到容器高度（使 overflow-y 生效） */
+    align-items: flex-start; /* let children grow to their content height instead of being stretched to the container height (so overflow-y works) */
     margin: 0;
     padding: 0;
     background: var(
@@ -187,7 +187,7 @@
     max-height: var(--code-block-max-height, 500px);
 }
 
-/* 行号侧栏 */
+/* Line-number sidebar */
 .line-numbers-gutter {
     padding: 1em 0.75em;
     min-width: 2.5em;
@@ -200,7 +200,7 @@
     line-height: 1.5;
     color: var(--vscode-editorLineNumber-foreground, rgba(128, 128, 128, 0.6));
     border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-    pointer-events: none; /* 防止行号栏拦截鼠标事件，避免干扰代码区的拖拽选择 */
+    pointer-events: none; /* prevent the line-number column from intercepting mouse events and disrupting drag-selection in the code area */
 }
 
 .line-numbers-gutter span {
@@ -209,14 +209,14 @@
     box-sizing: border-box;
 }
 
-/* 更高特异性（覆盖 .milkdown .editor pre code），确保 padding:1em 和 flex:1 生效 */
+/* Higher specificity (overrides .milkdown .editor pre code) to ensure padding:1em and flex:1 take effect */
 .milkdown .editor .code-block-wrapper pre code {
     flex: 1;
     min-width: 0;
     padding: 1em;
     background: none;
     font-size: 0.9em;
-    line-height: 1.5; /* 与 .line-numbers-gutter 保持一致，避免行号错位 */
+    line-height: 1.5; /* keep in sync with .line-numbers-gutter to avoid line-number misalignment */
     border-radius: 0;
 }
 
@@ -242,9 +242,9 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     word-break: normal;
 }
 
-/* ─── Prism 语法高亮 Token 颜色 ─── */
-/* 使用 VSCode 内置 token 颜色变量，深色/浅色主题自动适配 */
-/* :is() 同时覆盖编辑器内代码块和全屏 lightbox */
+/* ─── Prism syntax-highlighting token colors ─── */
+/* Use VSCode's built-in token color variables so dark/light themes adapt automatically */
+/* :is() covers both in-editor code blocks and the fullscreen lightbox */
 
 :is(.milkdown .editor, .code-lightbox-pre) .token.comment,
 :is(.milkdown .editor, .code-lightbox-pre) .token.prolog,
@@ -316,19 +316,19 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Mermaid 图表渲染
+   Mermaid diagram rendering
    ═══════════════════════════════════════════════════════════ */
 
-/* ─── 内联预览区域 ─── */
+/* ─── Inline preview area ─── */
 .mermaid-preview {
-    /* display 由 JS 控制（none / flex） */
+    /* display is controlled by JS (none / flex) */
     display: none;
-    /* flex 居中：SVG 自然尺寸，不依赖 % 撑满 */
+    /* flex centering: SVG at its natural size, not stretched to fill via % */
     align-items: center;
     justify-content: center;
     overflow: hidden;
     position: relative;
-    /* 高度由 JS 在渲染后根据 SVG 自然尺寸动态设置，CSS 只提供加载占位的最小值 */
+    /* Height is set dynamically by JS from the SVG's natural size after rendering; CSS only provides a minimum for the loading placeholder */
     min-height: 300px;
     background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
     border-radius: 0 0 6px 6px;
@@ -340,9 +340,10 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     cursor: grabbing;
 }
 
-/* SVG 容器：transform 作用目标（translate + scale） */
-/* 不设置 will-change: transform，避免浏览器以 CSS 像素尺寸光栅化合成层，
-   导致在高 DPR（Retina）屏幕上 scale 缩小后图表模糊 */
+/* SVG container: the transform target (translate + scale) */
+/* Deliberately no will-change: transform, to avoid the browser rasterizing the
+   compositing layer at CSS-pixel size, which would blur the diagram after scaling
+   down on high-DPR (Retina) screens */
 .mermaid-svg-container {
     display: inline-block;
     flex-shrink: 0;
@@ -388,7 +389,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     opacity: 0.85;
 }
 
-/* ─── Header 通用按钮（zoom overlay / lightbox / toggle / fullscreen）─── */
+/* ─── Shared header buttons (zoom overlay / lightbox / toggle / fullscreen) ─── */
 .mermaid-zoom-btn,
 .code-view-toggle-btn {
     display: inline-flex;
@@ -414,14 +415,14 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
 }
 
-/* 激活态：用背景色指示，保持前景色一致（避免 focusBorder 蓝色让图标显暗）*/
+/* Active state: indicate via background color while keeping the foreground consistent (avoids the focusBorder blue darkening the icon) */
 .code-view-toggle-btn--active {
     opacity: 1;
     background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.25));
     border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.4));
 }
 
-/* ─── 右上角缩放 overlay（预览区浮层）─── */
+/* ─── Top-right zoom overlay (floating over the preview area) ─── */
 .mermaid-zoom-overlay {
     position: absolute;
     top: 8px;
@@ -448,7 +449,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     opacity: 1;
 }
 
-/* 中间百分比按钮宽一些 */
+/* The middle percentage button is a bit wider */
 .mermaid-overlay-val {
     min-width: 40px !important;
     width: auto !important;
@@ -457,7 +458,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     letter-spacing: -0.3px;
 }
 
-/* ─── Lightbox 全屏 ─── */
+/* ─── Fullscreen lightbox ─── */
 @keyframes lb-open {
     from { opacity: 0; transform: scale(0.97); }
     to   { opacity: 1; transform: scale(1); }
@@ -511,7 +512,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     min-height: 0;
 }
 
-/* lightbox SVG 容器：同样不用 % 尺寸，防止缩放跳变 */
+/* lightbox SVG container: likewise avoids % sizing to prevent zoom jumps */
 .mermaid-lightbox-svg {
     display: inline-block;
     flex-shrink: 0;
@@ -537,7 +538,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     opacity: 1;
 }
 
-/* ─── 方向控制按钮（预览区右下角十字布局）─── */
+/* ─── Directional pan controls (cross layout at the bottom-right of the preview) ─── */
 .mermaid-pan-controls {
     position: absolute;
     bottom: 10px;
@@ -576,7 +577,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.3));
 }
 
-/* 中间 reset 按钮：稍大，区别于方向按钮 */
+/* Middle reset button: slightly larger, to distinguish it from the directional buttons */
 .mermaid-pan-reset {
     opacity: 0.45;
 }
@@ -585,7 +586,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     opacity: 1;
 }
 
-/* 常驻全屏按钮（header 右侧）*/
+/* Persistent fullscreen button (right side of the header) */
 .code-block-fullscreen-btn {
     opacity: 0.5;
 }
@@ -594,9 +595,9 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     opacity: 1;
 }
 
-/* ─── Mermaid lightbox 双面板 ─── */
+/* ─── Mermaid lightbox dual panels ─── */
 
-/* 预览面板：承接原有 lbBody 的拖拽/缩放 */
+/* Preview panel: inherits the original lbBody pan/zoom behavior */
 .lb-mermaid-preview-pane {
     flex: 1;
     align-self: stretch;
@@ -609,11 +610,11 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     min-height: 0;
 }
 
-/* 代码面板：复用 code-lightbox-body 的 flex-row 布局 */
+/* Code panel: reuses the code-lightbox-body flex-row layout */
 .lb-mermaid-code-pane {
     flex: 1;
     align-self: stretch;
-    display: none;   /* switchToCodeMode() 时改为 flex */
+    display: none;   /* switched to flex by switchToCodeMode() */
     flex-direction: row;
     overflow: hidden;
     min-height: 0;
@@ -621,9 +622,9 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
 }
 
-/* ─── 代码全屏 lightbox — 可编辑编辑器 ─── */
+/* ─── Fullscreen code lightbox — editable editor ─── */
 
-/* body 改为 flex-row：行号区 + 代码区并排 */
+/* body becomes flex-row: line-number area + code area side by side */
 .mermaid-lightbox-body.code-lightbox-body {
     flex-direction: row;
     align-items: stretch;
@@ -632,7 +633,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     overflow: hidden;
 }
 
-/* 行号栏（与普通代码块 .line-numbers-gutter 对齐） */
+/* Line-number column (aligned with the regular code block's .line-numbers-gutter) */
 .code-lightbox-gutter {
     padding: 1em 0.75em;
     min-width: 2.5em;
@@ -645,7 +646,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     text-align: right;
     user-select: none;
     pointer-events: none;
-    overflow: hidden;      /* 内容跟随 textarea 滚动，不自滚 */
+    overflow: hidden;      /* content scrolls with the textarea, doesn't scroll on its own */
     flex-shrink: 0;
     box-sizing: border-box;
 }
@@ -656,7 +657,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     box-sizing: border-box;
 }
 
-/* 代码区外层容器（flex: 1，相对定位，承载 pre 和 textarea） */
+/* Code-area outer container (flex: 1, relatively positioned, holds pre and textarea) */
 .code-lightbox-editor-wrap {
     position: relative;
     flex: 1;
@@ -665,7 +666,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
 }
 
-/* pre（高亮层）和 textarea（输入层）共享相同尺寸/字体 */
+/* pre (highlight layer) and textarea (input layer) share the same size/font */
 .code-lightbox-pre,
 .code-lightbox-textarea {
     position: absolute;
@@ -700,7 +701,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     overflow-x: auto;
 }
 
-/* 高亮层：不响应事件，仅显示颜色 */
+/* Highlight layer: non-interactive, only shows colors */
 .code-lightbox-pre {
     pointer-events: none;
     z-index: 0;
@@ -709,7 +710,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     border: 0;
 }
 
-/* 覆盖 VSCode webview 注入的 code 背景色 */
+/* Override the code background color injected by the VSCode webview */
 .code-lightbox-pre code {
     background: none !important;
     padding: 0;
@@ -717,7 +718,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     line-height: inherit;
 }
 
-/* 输入层：文字透明（只显示光标 + 选区），高亮由 pre 负责 */
+/* Input layer: transparent text (only the caret + selection show); highlighting is handled by pre */
 .code-lightbox-textarea {
     z-index: 1;
     color: transparent;
@@ -734,7 +735,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     -webkit-text-fill-color: transparent;
 }
 
-/* ─── 代码编辑器全屏（VSCode 主题色）─── */
+/* ─── Fullscreen code editor (VSCode theme colors) ─── */
 .mermaid-lightbox.code-editor-lightbox {
     background: var(--vscode-editor-background, #1e1e1e);
 }

@@ -1,6 +1,6 @@
 # Markdown Writer
 
-English | [简体中文](README.zh-CN.md) | [GitHub](https://github.com/harlanlewis/markdown-writer)
+[GitHub](https://github.com/harlanlewis/markdown-writer)
 
 > A personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) (MIT). Not affiliated with or endorsed by the upstream project.
 

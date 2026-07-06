@@ -1,4 +1,4 @@
-// refractor exports map: "./*" → "./lang/*.js"，所以导入路径不带 "lang/"
+// refractor's exports map: "./*" → "./lang/*.js", so import paths omit "lang/"
 import { refractor } from "refractor/core";
 import bash from "refractor/bash";
 import batch from "refractor/batch";
@@ -77,7 +77,7 @@ import { normalizeCodeLanguage } from "./codeLanguages";
     swift, toml, typescript, vim, wasm, wgsl, yaml, zig,
 ].forEach((lang) => refractor.register(lang));
 
-// ── 自定义 Mermaid 语法高亮 ─────────────────────────────────
+// ── Custom Mermaid syntax highlighting ─────────────────────────────────
 if (!refractor.registered('mermaid')) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mermaidSyntax: any = function (Prism: any) {
@@ -97,7 +97,7 @@ if (!refractor.registered('mermaid')) {
     refractor.register(mermaidSyntax);
 }
 
-// ── HAST → HTML 字符串（仅处理 token span，无需 hast-util-to-html）──
+// ── HAST → HTML string (only handles token spans; no hast-util-to-html needed) ──
 function escapeHtml(str: string): string {
     return str
         .replace(/&/g, "&amp;")
@@ -121,8 +121,8 @@ function hastToHtml(node: HastNode): string {
 }
 
 /**
- * 用 refractor 对代码进行语法高亮，返回带 token span 的 HTML 字符串。
- * 若语言不支持或高亮失败，返回 HTML 转义后的纯文本。
+ * Syntax-highlight code with refractor, returning an HTML string with token spans.
+ * If the language is unsupported or highlighting fails, returns HTML-escaped plain text.
  */
 export function highlight(code: string, lang: string): string {
     const normalizedLang = normalizeCodeLanguage(lang);

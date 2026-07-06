@@ -136,7 +136,7 @@
     flex-shrink: 0;
 }
 
-/* 按钮通用 */
+/* Shared button styles */
 .find-bar__btn {
     -webkit-appearance: none;
     appearance: none;

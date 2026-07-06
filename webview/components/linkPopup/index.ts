@@ -16,7 +16,7 @@ import { slugify } from "@/utils/slug";
 import { attachInputUndo } from "@/utils/inputUndo";
 import { attachLinkTargetComplete } from "@/components/pathLink/linkTargetComplete";
 
-// ── 类型 ──────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────
 
 interface LinkInfo {
     href: string;
@@ -27,7 +27,7 @@ interface LinkInfo {
 
 type LinkKind = "anchor" | "file" | "external";
 
-// ── 辅助函数 ──────────────────────────────────────────────────────────
+// ── Helper functions ──────────────────────────────────────────────────
 
 function getLinkKind(href: string): LinkKind {
     if (href.startsWith("#")) return "anchor";
@@ -82,16 +82,17 @@ function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
 }
 
 /**
- * 按 slug 在容器内查找标题元素。
- * 优先 getElementById（headingIds 已赋值），失败时 fallback：
- * 扫描所有 h1–h6，按 slug + 重复计数匹配。
- * ProseMirror reconcile 可能清除 id 属性，fallback 确保始终能找到目标。
+ * Find a heading element within the container by slug.
+ * Prefer getElementById (when headingIds are assigned); on failure, fall back
+ * to scanning all h1–h6 and matching by slug + duplicate count.
+ * ProseMirror reconcile may strip the id attribute, so the fallback guarantees
+ * the target is always found.
  */
 function findHeadingElement(id: string, container: HTMLElement): HTMLElement | null {
     const direct = document.getElementById(id);
     if (direct) return direct;
 
-    // Fallback：重新 slug 扫描（ProseMirror 可能清除了 id 属性）
+    // Fallback: re-scan by slug (ProseMirror may have stripped the id attribute)
     const headings = container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6");
     const counts = new Map<string, number>();
     for (const h of Array.from(headings)) {
@@ -105,7 +106,7 @@ function findHeadingElement(id: string, container: HTMLElement): HTMLElement | n
     return null;
 }
 
-// ── 主函数 ────────────────────────────────────────────────────────────
+// ── Main function ─────────────────────────────────────────────────────
 
 export function setupLinkPopup(
     container: HTMLElement,
@@ -128,7 +129,7 @@ export function setupLinkPopup(
         window.scrollTo({ top, behavior: "smooth" });
     }
 
-    // ── 构建 popup DOM ─────────────────────────────────────────────
+    // ── Build the popup DOM ────────────────────────────────────────
 
     const popup = document.createElement("div");
     popup.className = "lp-root";
@@ -165,11 +166,11 @@ export function setupLinkPopup(
     header.appendChild(urlEl);
     header.appendChild(headerActions);
 
-    // Anchor hint（仅锚点类型时有内容）
+    // Anchor hint (has content only for anchor-type links)
     const anchorHint = document.createElement("div");
     anchorHint.className = "lp-anchor-hint";
 
-    // Body（编辑模式，默认折叠）
+    // Body (edit mode, collapsed by default)
     const body = document.createElement("div");
     body.className = "lp-body";
 
@@ -211,7 +212,7 @@ export function setupLinkPopup(
     popup.appendChild(anchorHint);
     popup.appendChild(body);
 
-    // ── 状态 ──────────────────────────────────────────────────────────
+    // ── State ─────────────────────────────────────────────────────────
 
     let hoverTimer: ReturnType<typeof setTimeout> | null = null;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -237,7 +238,7 @@ export function setupLinkPopup(
     function updatePopupContent(link: LinkInfo): void {
         const kind = getLinkKind(link.href);
 
-        // 图标
+        // Icon
         if (kind === "anchor") {
             iconEl.innerHTML = IconHash;
         } else if (kind === "file") {
@@ -246,11 +247,11 @@ export function setupLinkPopup(
             iconEl.innerHTML = IconLink;
         }
 
-        // URL 显示
+        // URL display
         urlEl.textContent = link.href;
         urlEl.title = link.href;
 
-        // 锚点 hint + Open 按钮 tooltip
+        // Anchor hint + Open button tooltip
         if (kind === "anchor") {
             const id = link.href.slice(1);
             const title = resolveAnchorTitle(id);
@@ -262,7 +263,7 @@ export function setupLinkPopup(
             btnOpenTooltip.setText(openHint);
         }
 
-        // 编辑字段预填
+        // Pre-fill the edit fields
         inputText.value = link.text;
         inputUrl.value = link.href;
     }
@@ -276,11 +277,11 @@ export function setupLinkPopup(
 
         updatePopupContent(link);
 
-        // 定位
+        // Position
         const rect = anchorEl.getBoundingClientRect();
         popup.style.display = "flex";
 
-        // 先显示以便取到 popup 高度
+        // Show it first so the popup height can be measured
         requestAnimationFrame(() => {
             const popupH = popup.offsetHeight;
             const spaceBelow = window.innerHeight - rect.bottom;
@@ -320,7 +321,7 @@ export function setupLinkPopup(
         hideTimer = setTimeout(hidePopup, delay);
     }
 
-    // ── 鼠标悬浮：显示 popup ─────────────────────────────────────
+    // ── Mouse hover: show the popup ──────────────────────────────
 
     container.addEventListener("mouseover", (e) => {
         const anchor = (e.target as Element).closest("a");
@@ -360,9 +361,9 @@ export function setupLinkPopup(
         hidePopup();
     });
 
-    // ── 链接点击（capture 阶段）──────────────────────────────────
+    // ── Link click (capture phase) ───────────────────────────────
 
-    // mousedown capture：处理 modifier+click（不 preventDefault，避免 B086 焦点问题）
+    // mousedown capture: handle modifier+click (no preventDefault, to avoid the B086 focus issue)
     container.addEventListener(
         "mousedown",
         (e) => {
@@ -373,7 +374,7 @@ export function setupLinkPopup(
             // link_ref anchors have no href to open
             if (anchor.getAttribute("data-type") === "link-ref") return;
             const href = anchor.getAttribute("href") ?? "";
-            if (href.startsWith("#")) return; // 锚点由 click 处理
+            if (href.startsWith("#")) return; // anchors are handled by click
             e.stopPropagation();
             const cleanHref = href.split("#")[0];
             if (getLinkKind(cleanHref) === "external") {
@@ -386,7 +387,7 @@ export function setupLinkPopup(
         true,
     );
 
-    // click capture：仅处理锚点跳转（外部/文件已在 mousedown 中处理）
+    // click capture: only handle anchor jumps (external/file links are handled in mousedown)
     container.addEventListener(
         "click",
         (e) => {
@@ -398,7 +399,7 @@ export function setupLinkPopup(
             const href = anchor.getAttribute("href") ?? "";
 
             if (href.startsWith("#")) {
-                // 页内锚点：直接跳转，无需修饰键
+                // In-page anchor: jump directly, no modifier key needed
                 scrollToAnchor(href.slice(1));
                 scheduleHide(50);
             }
@@ -406,7 +407,7 @@ export function setupLinkPopup(
         true,
     );
 
-    // ── Open 按钮 ─────────────────────────────────────────────────
+    // ── Open button ───────────────────────────────────────────────
 
     btnOpen.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -426,7 +427,7 @@ export function setupLinkPopup(
         hidePopup();
     });
 
-    // ── Edit 按钮：切换编辑模式 ───────────────────────────────────
+    // ── Edit button: toggle edit mode ─────────────────────────────
 
     btnEdit.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -434,7 +435,7 @@ export function setupLinkPopup(
         setEditMode(!isEditMode);
     });
 
-    // ── Confirm 按钮 ──────────────────────────────────────────────
+    // ── Confirm button ────────────────────────────────────────────
 
     btnConfirm.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -476,7 +477,7 @@ export function setupLinkPopup(
         hidePopup();
     });
 
-    // ── Remove 按钮 ───────────────────────────────────────────────
+    // ── Remove button ─────────────────────────────────────────────
 
     btnRemove.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -527,7 +528,7 @@ export function setupLinkPopup(
         });
     });
 
-    // ── 点击弹框外部关闭 ─────────────────────────────────────────
+    // ── Click outside the popup to close it ──────────────────────
 
     document.addEventListener("mousedown", (e) => {
         if (!popup.contains(e.target as Node)) hidePopup();

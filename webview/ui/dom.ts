@@ -1,8 +1,8 @@
 import { applyTooltip } from '@/ui/tooltip';
 
 /**
- * 通用按钮工厂。
- * onClick 自动包装 e.preventDefault() + e.stopPropagation()。
+ * Generic button factory.
+ * onClick is automatically wrapped with e.preventDefault() + e.stopPropagation().
  */
 export function createButton(options: {
     className: string;
@@ -37,8 +37,8 @@ export function createButton(options: {
 }
 
 /**
- * 通用分隔线工厂。
- * 取代各组件的 sep() / sSep() / makeSep()。
+ * Generic separator factory.
+ * Replaces the per-component sep() / sSep() / makeSep() helpers.
  */
 export function createSeparator(className: string, tag: 'div' | 'span' = 'div'): HTMLElement {
     const el = document.createElement(tag);
@@ -47,8 +47,8 @@ export function createSeparator(className: string, tag: 'div' | 'span' = 'div'):
 }
 
 /**
- * 为输入框绑定 Enter/Escape 键盘处理。
- * 自动处理 isComposing、stopPropagation、preventDefault。
+ * Bind Enter/Escape keyboard handling to an input.
+ * Automatically handles isComposing, stopPropagation, and preventDefault.
  */
 export function setupInputKeyboard(
     input: HTMLInputElement,
@@ -69,11 +69,11 @@ export function setupInputKeyboard(
 }
 
 /**
- * 监听外部 mousedown 事件以关闭浮层。
- * 返回移除监听的函数，用于手动清理。
- * @param targets 点击这些元素内部时不触发关闭
- * @param onClose 关闭回调
- * @param delayMs 延迟注册（默认 0），避免当前事件立即触发
+ * Listen for outside mousedown events to close a popup.
+ * Returns a function that removes the listener, for manual cleanup.
+ * @param targets clicking inside these elements does not trigger close
+ * @param onClose close callback
+ * @param delayMs delay before registering (default 0), to avoid the current event firing it immediately
  */
 export function onOutsideMousedown(
     targets: HTMLElement[],

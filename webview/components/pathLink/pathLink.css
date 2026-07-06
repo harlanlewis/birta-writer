@@ -1,13 +1,13 @@
-/* ─── 路径链接高亮（Cmd/Ctrl + 悬浮）─── */
+/* ─── Path link highlight (Cmd/Ctrl + hover) ─── */
 
-/* 激活态：Cmd 按住 + 鼠标悬浮在路径 code 上 */
+/* Active state: Cmd held + mouse hovering over the path code */
 .milkdown .editor code.path-link--active {
     color: var(--vscode-textLink-foreground, #4ea6ea);
     text-decoration: underline;
     cursor: pointer;
 }
 
-/* ─── 路径自动补全下拉 ─── */
+/* ─── Path autocomplete dropdown ─── */
 
 .path-complete-list {
     position: absolute;

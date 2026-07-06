@@ -63,7 +63,7 @@ A large batch focused on round-trip fidelity, VS Code parity, and Markdown synta
 
 ### Fixed
 
-- Fixed the "简体中文" link in the Marketplace README pointing to a non-existent URL (corrected `--baseContentUrl` to include `/blob/main`)
+- Fixed the "Simplified Chinese" link in the Marketplace README pointing to a non-existent URL (corrected `--baseContentUrl` to include `/blob/main`)
 - Fixed incorrect release dates in CHANGELOG for versions 0.1.0–0.1.2
 
 ---

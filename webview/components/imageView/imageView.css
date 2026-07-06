@@ -1,4 +1,4 @@
-/* ─── 图片 NodeView ──────────────────────────────────── */
+/* ─── Image NodeView ─────────────────────────────────── */
 .image-wrapper {
     position: relative;
     display: inline-block;
@@ -24,12 +24,12 @@
     box-shadow: 0 0 0 1px var(--image-selection-color, rgba(52, 211, 153, 0.6));
 }
 
-/* 覆盖 ProseMirror 默认 NodeSelection 轮廓 */
+/* Override ProseMirror's default NodeSelection outline */
 .milkdown .editor .ProseMirror-selectednode {
     outline: none;
 }
 
-/* ─── 图片工具栏 ─────────────────────────────────────── */
+/* ─── Image toolbar ──────────────────────────────────── */
 .image-toolbar {
     display: none;
     position: absolute;
@@ -85,7 +85,7 @@
     flex-shrink: 0;
 }
 
-/* 文件名 + alt 信息条 */
+/* Filename + alt info bar */
 .img-tb-info {
     max-width: 200px;
     padding: 0 4px;
@@ -99,7 +99,7 @@
     user-select: none;
 }
 
-/* 重命名 inline 输入框 */
+/* Inline rename input */
 .img-rename-input {
     height: 20px;
     padding: 0 5px;
@@ -113,7 +113,7 @@
     width: 130px;
 }
 
-/* 信息区可编辑输入框（本地图片文件名）*/
+/* Editable input in the info area (local image filename) */
 .img-tb-info--input {
     max-width: 160px;
     min-width: 40px;
@@ -140,7 +140,7 @@
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
 }
 
-/* 图片加载失败占位符 */
+/* Image load-failure placeholder */
 .img-error-placeholder {
     align-items: center;
     justify-content: center;
@@ -161,7 +161,7 @@
     opacity: 0.7;
 }
 
-/* ─── 编辑器内图片 lightbox（点击放大） ─────────────── */
+/* ─── In-editor image lightbox (click to zoom) ─────────── */
 .img-editor-lightbox {
     position: fixed;
     inset: 0;
@@ -202,7 +202,7 @@
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* ─── 图片路径补全下拉框 ───────────────────────────────── */
+/* ─── Image path autocomplete dropdown ─────────────────── */
 .img-path-complete-list {
     position: fixed;
     z-index: 9999;

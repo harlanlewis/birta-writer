@@ -1,4 +1,4 @@
-/* ─── 链接 Hover 弹框（重设计版） ─── */
+/* ─── Link hover popup (redesigned) ─── */
 
 @keyframes lp-fadein {
     from { opacity: 0; transform: translateY(-4px); }
@@ -55,7 +55,7 @@
     flex-shrink: 0;
 }
 
-/* ─── Anchor hint（→ 标题文字） ─── */
+/* ─── Anchor hint (→ heading text) ─── */
 .lp-anchor-hint {
     padding: 0 10px 7px 32px;
     font-size: 11px;
@@ -67,7 +67,7 @@
     line-height: 1.4;
 }
 
-/* ─── 通用按钮 ─── */
+/* ─── Generic buttons ─── */
 .lp-btn {
     display: inline-flex;
     align-items: center;
@@ -89,27 +89,27 @@
     }
 }
 
-/* 编辑按钮激活态（编辑模式中） */
+/* Edit button active state (while in edit mode) */
 .lp-btn-edit.lp-btn-active {
     opacity: 1;
     background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
 }
 
-/* Confirm 按钮悬停 */
+/* Confirm button hover */
 .lp-btn-confirm:hover {
     opacity: 1;
     background: var(--vscode-button-background, #007acc);
     color: var(--vscode-button-foreground, #fff);
 }
 
-/* Remove 按钮悬停 */
+/* Remove button hover */
 .lp-btn-remove:hover {
     opacity: 1;
     background: var(--vscode-inputValidation-errorBackground, rgba(200, 50, 50, 0.18));
     color: var(--vscode-errorForeground, #f55);
 }
 
-/* ─── Body（编辑区，默认折叠） ─── */
+/* ─── Body (edit area, collapsed by default) ─── */
 .lp-body {
     display: none;
     flex-direction: column;
@@ -129,7 +129,7 @@
     margin: 0 -10px 4px;
 }
 
-/* 输入框 */
+/* Input */
 .lp-input {
     width: 100%;
     box-sizing: border-box;
@@ -149,7 +149,7 @@
     }
 }
 
-/* 按钮行 */
+/* Button row */
 .lp-body-actions {
     display: flex;
     justify-content: flex-end;

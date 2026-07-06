@@ -112,7 +112,7 @@
     color: var(--vscode-editor-foreground);
 }
 
-/* ─── 顶部工具栏格式选择器（hover 展开，与浮动工具栏风格一致）─── */
+/* ─── Top toolbar format picker (hover to expand, matching the floating toolbar style) ─── */
 .tb-fmt-wrap {
     position: relative;
 }
@@ -265,7 +265,7 @@
     }
 }
 
-/* ─── 工具栏内联 URL 输入框（替代沙箱禁止的 window.prompt） ─── */
+/* ─── Toolbar inline URL input (replaces window.prompt, which the sandbox forbids) ─── */
 .tb-prompt-overlay {
     position: fixed;
     z-index: 9999;
@@ -332,7 +332,7 @@
     color: var(--vscode-errorForeground, #f44);
 }
 
-/* ─── 图片插入面板（居中悬浮，无遮罩） ─── */
+/* ─── Image insert panel (centered floating, no backdrop) ─── */
 .img-insert-panel {
     position: fixed;
     z-index: 9999;
@@ -542,7 +542,7 @@
     background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
 }
 
-/* ─── 图片网格（浏览项目 tab） ─── */
+/* ─── Image grid (browse-project tab) ─── */
 .img-insert-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
@@ -627,7 +627,7 @@
     padding-top: 2px;
 }
 
-/* ─── Lightbox（放大预览） ─── */
+/* ─── Lightbox (zoomed preview) ─── */
 .img-lightbox {
     position: fixed;
     inset: 0;

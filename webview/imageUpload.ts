@@ -1,13 +1,14 @@
 /**
  * imageUpload.ts
- * 
- * 职责：管理图片上传、获取项目图片列表、图片重命名的异步操作
- * 
- * 本模块封装了与 Extension 通信的 Promise 管理，包括：
- * - 图片文件上传（支持超时和错误处理）
- * - 获取项目图片列表
- * - 图片重命名
- * - 在 ProseMirror 编辑器中插入/更新图片节点
+ *
+ * Responsibility: manage the async operations for image upload, fetching the
+ * project's image list, and image rename.
+ *
+ * This module wraps the Promise bookkeeping for talking to the Extension, including:
+ * - Image file upload (with timeout and error handling)
+ * - Fetching the project's image list
+ * - Image rename
+ * - Inserting/updating image nodes in the ProseMirror editor
  */
 
 import type { Editor } from "@milkdown/core";
@@ -18,14 +19,14 @@ import {
     notifyRenameImage,
 } from "./messaging";
 
-// ── 图片上传：pending promise map ────────────────────
+// ── Image upload: pending promise map ────────────────────
 type UploadCallbacks = {
     resolve: (url: string) => void;
     reject: (e: Error) => void;
 };
 const _pendingUploads = new Map<string, UploadCallbacks>();
 
-// ── 获取项目图片列表：pending promise map ────────────
+// ── Fetch project image list: pending promise map ────────────
 type GetImagesCallbacks = {
     resolve: (
         images: Array<{
@@ -38,7 +39,7 @@ type GetImagesCallbacks = {
 };
 const _pendingGetImages = new Map<string, GetImagesCallbacks>();
 
-// ── 图片重命名：pending promise map ──────────────────
+// ── Image rename: pending promise map ──────────────────
 type RenameCallbacks = { resolve: () => void; reject: (e: Error) => void };
 const _pendingRenames = new Map<string, RenameCallbacks>();
 
@@ -123,7 +124,7 @@ export async function handleImageFile(file: File, altText: string): Promise<stri
                 reject(new Error("Upload timed out"));
             }
         }, 30000);
-        // 读取文件为 Uint8Array 后发送给 Extension
+        // Read the file as a Uint8Array, then send it to the Extension
         const reader = new FileReader();
         reader.onload = () => {
             const data = new Uint8Array(reader.result as ArrayBuffer);
@@ -155,7 +156,7 @@ export function insertImageNode(currentEditor: Editor | null, src: string, alt: 
     });
 }
 
-/** 处理图片上传响应 */
+/** Handle the image upload response */
 export function handleImageUploaded(id: string, url: string): void {
     const cb = _pendingUploads.get(id);
     if (cb) {
@@ -164,7 +165,7 @@ export function handleImageUploaded(id: string, url: string): void {
     }
 }
 
-/** 处理图片上传错误 */
+/** Handle an image upload error */
 export function handleImageUploadError(id: string, error: string): void {
     const cb = _pendingUploads.get(id);
     if (cb) {
@@ -173,7 +174,7 @@ export function handleImageUploadError(id: string, error: string): void {
     }
 }
 
-/** 处理项目图片列表响应 */
+/** Handle the project image list response */
 export function handleProjectImagesList(id: string, images: Array<{ relPath: string; webviewUri: string; name: string }>): void {
     const cb = _pendingGetImages.get(id);
     if (cb) {
@@ -182,7 +183,7 @@ export function handleProjectImagesList(id: string, images: Array<{ relPath: str
     }
 }
 
-/** 处理图片重命名响应 */
+/** Handle the image rename response */
 export function handleImageRenamed(id: string): void {
     const cb = _pendingRenames.get(id);
     if (cb) {
@@ -191,7 +192,7 @@ export function handleImageRenamed(id: string): void {
     }
 }
 
-/** 处理图片重命名错误 */
+/** Handle an image rename error */
 export function handleImageRenameError(id: string, error: string): void {
     const cb = _pendingRenames.get(id);
     if (cb) {

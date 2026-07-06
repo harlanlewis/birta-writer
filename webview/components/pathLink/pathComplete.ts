@@ -2,16 +2,16 @@ import { notifyGetPathSuggestions } from "@/messaging";
 import { getFileIcon } from "./fileIcons";
 import type { EditorView } from "@milkdown/prose/view";
 
-// 触发补全的路径前缀检测
+// Path-prefix detection that triggers completion
 const PATH_PREFIX_REGEX = /^(@\/|\.{1,2}\/|[a-zA-Z0-9_-][a-zA-Z0-9._-]*\/)/;
 
 type SuggestionItem = { path: string; isDir: boolean };
 type SuggestCallback = (items: SuggestionItem[]) => void;
 
-// 路径补全回调 map：id → resolve
+// Path-completion callback map: id → resolve
 const _pendingSuggestions = new Map<string, SuggestCallback>();
 
-/** 外部调用此函数分发 pathSuggestions 消息 */
+/** Called from outside to dispatch a pathSuggestions message */
 export function dispatchPathSuggestions(id: string, items: SuggestionItem[]): void {
     const cb = _pendingSuggestions.get(id);
     if (cb) {
@@ -20,7 +20,7 @@ export function dispatchPathSuggestions(id: string, items: SuggestionItem[]): vo
     }
 }
 
-/** 获取当前光标所在的 inline code 元素（排除 pre>code 和 a>code） */
+/** Get the inline code element at the current caret (excluding pre>code and a>code) */
 function getActiveInlineCode(): HTMLElement | null {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) { return null; }
@@ -35,7 +35,7 @@ function getActiveInlineCode(): HTMLElement | null {
     return code as HTMLElement;
 }
 
-/** 通过当前 ProseMirror 选区位置查找 inlineCode mark 的文本范围 */
+/** Find the text range of the inlineCode mark at the current ProseMirror selection position */
 function getCodeNodeRangeFromSelection(view: EditorView): { from: number; to: number } | null {
     const { state } = view;
     const codeMark = state.schema.marks["inlineCode"];
@@ -63,9 +63,9 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
     let activeIndex = -1;
     let lastItems: SuggestionItem[] = [];
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    // 在 showDropdown 时快照 code mark 范围，避免 click 时光标位置不可靠
+    // Snapshot the code mark range in showDropdown, since the caret position may be unreliable on click
     let savedRange: { from: number; to: number } | null = null;
-    // 键盘导航后屏蔽 mouseover，防止 scrollIntoView 触发 mouseover 覆盖 activeIndex
+    // Suppress mouseover after keyboard navigation, so scrollIntoView-triggered mouseover doesn't override activeIndex
     let suppressMouseover = false;
 
     function closeDropdown(): void {
@@ -113,7 +113,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         view.focus();
 
         if (item.isDir) {
-            // 选择了文件夹：替换内容后自动进入该目录（50ms 等 ProseMirror DOM 更新）
+            // A folder was chosen: after replacing the content, enter that directory automatically (50ms wait for the ProseMirror DOM to update)
             closeDropdown();
             setTimeout(() => {
                 const newCode = getActiveInlineCode();
@@ -130,7 +130,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
 
         lastItems = items;
 
-        // 快照当前 code mark 范围，在 click 时光标可能已移位
+        // Snapshot the current code mark range; the caret may have moved by the time of click
         const view = getEditorViewFn();
         if (view) { savedRange = getCodeNodeRangeFromSelection(view); }
 
@@ -144,12 +144,12 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
             const li = document.createElement("li");
             li.className = "path-complete-item";
 
-            // 图标
+            // Icon
             const iconEl = document.createElement("span");
             iconEl.className = "path-complete-icon";
             iconEl.innerHTML = getFileIcon(item.path, item.isDir);
 
-            // 只显示最后一段文件名/目录名，完整路径作 title
+            // Show only the last file/directory name segment; the full path is the title
             const lastSeg = item.path.replace(/\/$/, '').split('/').pop() ?? item.path;
             const label = document.createElement("span");
             label.className = "path-complete-label";
@@ -194,7 +194,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         });
         notifyGetPathSuggestions(id, query);
 
-        // 超时清理
+        // Timeout cleanup
         setTimeout(() => {
             if (_pendingSuggestions.has(id)) {
                 _pendingSuggestions.delete(id);
@@ -202,7 +202,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         }, 5000);
     }
 
-    // 键盘导航（capture 阶段，优先于编辑器处理）
+    // Keyboard navigation (capture phase, takes priority over the editor)
     document.addEventListener("keydown", (e) => {
         if (!dropdown) { return; }
 
@@ -239,7 +239,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         }
     }, true);
 
-    // 输入时触发补全（debounce 200ms）
+    // Trigger completion on input (debounced 200ms)
     document.addEventListener("keyup", (e) => {
         if (["Escape", "ArrowDown", "ArrowUp", "Enter", "Tab"].includes(e.key)) { return; }
 
@@ -256,14 +256,14 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         }, 200);
     });
 
-    // 点击其他区域关闭下拉
+    // Click elsewhere to close the dropdown
     document.addEventListener("mousedown", (e) => {
         if (dropdown && !dropdown.contains(e.target as Node)) {
             closeDropdown();
         }
     }, true);
 
-    // 失焦关闭
+    // Close on blur
     window.addEventListener("blur", () => {
         closeDropdown();
     });

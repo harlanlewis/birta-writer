@@ -2,7 +2,7 @@ import type { ToExtensionMessage, ToWebviewMessage, ProjectImage } from "../shar
 
 export type { ProjectImage };
 
-// Re-export 以保持现有消费者（webview/index.ts 等）对 IncomingMessage 的引用不变
+// Re-exported so existing consumers (webview/index.ts, etc.) can keep referencing IncomingMessage unchanged
 export type IncomingMessage = ToWebviewMessage;
 
 declare function acquireVsCodeApi(): {
@@ -11,7 +11,7 @@ declare function acquireVsCodeApi(): {
     setState(state: unknown): void;
 };
 
-// acquireVsCodeApi 只能调用一次
+// acquireVsCodeApi can only be called once
 const vscode = acquireVsCodeApi();
 
 // The syncVersion of the last init/externalUpdate the webview applied. Echoed

@@ -1,4 +1,4 @@
-/* 全局重置，使用 VSCode 编辑器主题变量 */
+/* Global reset, using VSCode editor theme variables */
 * {
     box-sizing: border-box;
 }
@@ -33,7 +33,7 @@ html {
     scroll-padding-bottom: var(--caret-scroll-bottom-inset, 56px);
 }
 
-/* ─── Frontmatter 面板 ─── */
+/* ─── Frontmatter panel ─── */
 .frontmatter-panel {
     max-width: var(--editor-max-width, none);
     margin: 0 auto;
@@ -59,7 +59,7 @@ html {
         white-space: pre-wrap;
         min-width: 30px;
 
-        /* 空单元格占位符 */
+        /* Empty-cell placeholder */
         &:empty::before {
             content: attr(data-placeholder);
             color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
@@ -93,7 +93,7 @@ html {
     }
 }
 
-/* 行删除按钮 */
+/* Row delete button */
 .fm-delete-btn {
     display: flex;
     align-items: center;
@@ -119,7 +119,7 @@ html {
     }
 }
 
-/* hover 行时显示删除按钮 */
+/* Show the delete button when the row is hovered */
 .frontmatter-table tr:hover .fm-delete-btn {
     opacity: 1;
 }
@@ -203,7 +203,7 @@ html {
     }
 }
 
-/* ─── 编辑器容器 ─── */
+/* ─── Editor container ─── */
 #editor {
     max-width: var(--editor-max-width, none);
     margin: 0 auto;
@@ -290,7 +290,7 @@ body.editor-width-auto {
     }
 }
 
-/* ─── Milkdown 根容器 ─── */
+/* ─── Milkdown root container ─── */
 .milkdown {
     outline: none;
 
@@ -298,7 +298,7 @@ body.editor-width-auto {
         outline: none;
         background: transparent;
         color: inherit;
-        white-space: pre-wrap; /* ProseMirror 要求 */
+        white-space: pre-wrap; /* required by ProseMirror */
         word-wrap: break-word;
 
         /* Inline HTML container (read-only preview after DOMPurify) */
@@ -361,13 +361,13 @@ body.editor-width-auto {
             }
         }
 
-        /* 段落：用 padding 替代 margin，确保点击区域包含视觉间距 */
+        /* Paragraphs: use padding instead of margin so the click area includes the visual spacing */
         p {
             margin: 0;
             padding-bottom: 0.4em;
         }
 
-        /* 标题：用 padding 替代 margin，确保点击区域包含视觉间距 */
+        /* Headings: use padding instead of margin so the click area includes the visual spacing */
         h1,
         h2,
         h3,
@@ -399,7 +399,7 @@ body.editor-width-auto {
             font-size: 1.25em;
         }
 
-        /* H4~H6 仍逐级递减，但不小于正文（1em），避免标题比正文还小 */
+        /* H4~H6 still step down, but never below body text (1em), so a heading is never smaller than body text */
         h4 {
             font-size: 1.15em;
         }
@@ -497,7 +497,7 @@ body.editor-width-auto {
             }
         }
 
-        /* 粗体、斜体 */
+        /* Bold, italic */
         strong {
             color: var(--vscode-editor-foreground);
             font-weight: 700;
@@ -507,7 +507,7 @@ body.editor-width-auto {
             color: var(--vscode-editor-foreground);
         }
 
-        /* 行内代码 */
+        /* Inline code */
         code {
             background: var(
                 --vscode-textCodeBlock-background,
@@ -523,7 +523,7 @@ body.editor-width-auto {
             font-size: 0.9em;
         }
 
-        /* 代码块 */
+        /* Code block */
         pre {
             background: var(
                 --vscode-textCodeBlock-background,
@@ -541,7 +541,7 @@ body.editor-width-auto {
             }
         }
 
-        /* 引用块 */
+        /* Blockquote */
         blockquote {
             border-left: 3px solid var(--vscode-textBlockQuote-border, #007acc);
             background: var(
@@ -554,7 +554,7 @@ body.editor-width-auto {
             opacity: 0.85;
         }
 
-        /* 列表 */
+        /* Lists */
         ul,
         ol {
             padding-left: 1.8em;
@@ -564,7 +564,7 @@ body.editor-width-auto {
             margin: 0.2em 0;
         }
 
-        /* 有序列表多层级数字样式 */
+        /* Ordered-list numbering styles across nesting levels */
         ol {
             list-style-type: decimal;
 
@@ -581,14 +581,14 @@ body.editor-width-auto {
             }
         }
 
-        /* ── 任务列表（Milkdown v7 实际 DOM）───────────────────── */
+        /* ── Task lists (Milkdown v7 actual DOM) ───────────────── */
 
-        /* 任务列表：减小 ul 左缩进，消除复选框左侧多余空间 */
+        /* Task list: reduce the ul left indent to remove extra space left of the checkbox */
         ul:has(> li[data-item-type="task"]) {
             padding-left: 4px;
         }
 
-        /* 任务列表项：消除原始 bullet，用 position 定位伪元素 */
+        /* Task list item: remove the original bullet and position a pseudo-element instead */
         li[data-item-type="task"] {
             list-style: none;
             position: relative;
@@ -599,7 +599,7 @@ body.editor-width-auto {
                 content: "";
             }
 
-            /* 伪元素模拟 checkbox（未勾选） */
+            /* Pseudo-element simulating the checkbox (unchecked) */
             &::before {
                 content: "";
                 position: absolute;
@@ -614,13 +614,13 @@ body.editor-width-auto {
                 cursor: pointer;
             }
 
-            /* 已勾选状态：蓝色背景 */
+            /* Checked state: blue background */
             &[data-checked="true"]::before {
                 background: var(--vscode-checkbox-selectBackground, #007acc);
                 border-color: var(--vscode-checkbox-selectBackground, #007acc);
             }
 
-            /* 已勾选：纯 CSS 勾选标记（旋转 L 形边框） */
+            /* Checked: pure-CSS checkmark (a rotated L-shaped border) */
             &[data-checked="true"]::after {
                 content: "";
                 position: absolute;
@@ -635,14 +635,14 @@ body.editor-width-auto {
                 box-sizing: border-box;
             }
 
-            /* 已勾选的文字加删除线（可选视觉提示） */
+            /* Strike through checked text (optional visual cue) */
             &[data-checked="true"] > p {
                 opacity: 0.6;
                 text-decoration: line-through;
             }
         }
 
-        /* 链接 */
+        /* Links */
         a {
             color: var(--vscode-textLink-foreground, #4ea6ea);
             text-decoration: none;
@@ -653,7 +653,7 @@ body.editor-width-auto {
             }
         }
 
-        /* 水平分割线 */
+        /* Horizontal rule */
         hr {
             border: none;
             border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
@@ -669,12 +669,12 @@ body.editor-width-auto {
             }
         }
 
-        /* 删除线 */
+        /* Strikethrough */
         del {
             opacity: 0.6;
         }
 
-        /* 表格 */
+        /* Tables */
         table {
             border-collapse: collapse;
             width: 100%;
@@ -687,12 +687,12 @@ body.editor-width-auto {
                 border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
                 padding: 6px 12px;
                 text-align: left;
-                position: relative; /* 供 .selectedCell::after 绝对定位 */
+                position: relative; /* anchor for .selectedCell::after absolute positioning */
                 min-width: 60px;
-                overflow-wrap: var(--tbl-ow, break-word); /* 由 messageHandlers.applyTableWrap 动态控制 */
-                word-break: keep-all; /* 避免中文字符中间换行 */
+                overflow-wrap: var(--tbl-ow, break-word); /* controlled dynamically by messageHandlers.applyTableWrap */
+                word-break: keep-all; /* avoid breaking in the middle of CJK characters */
 
-                /* 单元格内段落不留底部间距，并撑开行高确保空表格行高一致 */
+                /* No bottom spacing on paragraphs inside cells; force a line height so empty table rows stay consistent */
                 > p {
                     padding-bottom: 0;
                     min-height: 1.2em;
@@ -705,7 +705,7 @@ body.editor-width-auto {
             }
         }
 
-        /* 选中高亮 */
+        /* Selection highlight */
         & ::selection {
             background: var(
                 --vscode-editor-selectionBackground,
@@ -713,7 +713,7 @@ body.editor-width-auto {
             );
         }
 
-        /* ─── 表格单元格范围选择（prosemirror-tables CellSelection）─── */
+        /* ─── Table cell range selection (prosemirror-tables CellSelection) ─── */
         .selectedCell {
             position: relative;
             background: rgba(52, 211, 153, 0.15) !important;
@@ -728,7 +728,7 @@ body.editor-width-auto {
             }
         }
 
-        /* 列宽拖拽手柄 */
+        /* Column-width drag handle */
         .column-resize-handle {
             position: absolute;
             right: -2px;
@@ -745,7 +745,7 @@ body.editor-width-auto {
             cursor: col-resize !important;
         }
 
-        /* 光标 */
+        /* Caret */
         .ProseMirror-focused {
             outline: none;
         }
@@ -840,7 +840,7 @@ body.editor-width-auto {
     }
 }
 
-/* ─── 顶部工具栏 ─── */
+/* ─── Top toolbar ─── */
 .editor-topbar {
     position: fixed;
     top: 0;
@@ -856,7 +856,7 @@ body.editor-width-auto {
     user-select: none;
 }
 
-/* ─── 自定义 Tooltip ─── */
+/* ─── Custom tooltip ─── */
 .custom-tooltip {
     position: fixed;
     z-index: 10000;

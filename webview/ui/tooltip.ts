@@ -10,16 +10,16 @@ function getTooltip(): HTMLElement {
 }
 
 interface TooltipOptions {
-    /** 显示位置：'below'（默认，工具栏用）或 'above' */
+    /** Placement: 'below' (default, used by the toolbar) or 'above' */
     placement?: "above" | "below";
-    /** 仅在文本被截断（出现 ...）时才显示 */
+    /** Only show when the text is truncated (an ellipsis appears) */
     truncatedOnly?: boolean;
 }
 
 interface TooltipHandle {
-    /** 动态更新 tooltip 文案（不影响显示状态） */
+    /** Dynamically update the tooltip text (without affecting visibility) */
     setText(t: string): void;
-    /** 主动显示 tooltip（用于点击后反馈等场景） */
+    /** Show the tooltip programmatically (e.g. for post-click feedback) */
     show(): void;
 }
 
@@ -41,7 +41,7 @@ function position(
         y = elRect.top - tipRect.height - 6;
         if (y < 4) {
             y = elRect.bottom + 6;
-        } // 上方不够则降到下方
+        } // not enough room above, so drop below
     } else {
         y = elRect.bottom + 6;
         if (y + tipRect.height > window.innerHeight - 4) {
@@ -61,14 +61,14 @@ function position(
     tip.style.visibility = "visible";
 }
 
-/** 立即隐藏当前显示的 tooltip（用于点击交互后主动清除） */
+/** Immediately hide the currently visible tooltip (e.g. to clear it after a click interaction) */
 export function hideTooltip(): void {
     if (tooltipEl) {
         tooltipEl.style.display = "none";
     }
 }
 
-/** 命令式：立即在指定元素旁显示 tooltip，无需事件绑定 */
+/** Imperative: show a tooltip next to the given element right away, no event binding needed */
 export function showTooltipAt(
     el: Element,
     text: string,
@@ -79,7 +79,7 @@ export function showTooltipAt(
     position(tip, el as HTMLElement, placement);
 }
 
-/** 替换原生 title，改用 VSCode 风格的自定义 tooltip */
+/** Replace the native title with a VSCode-style custom tooltip */
 export function applyTooltip(
     el: HTMLElement,
     text: string,

@@ -1,186 +1,186 @@
 ---
 name: devlog
-description: 将已知 bug 或功能需求记录为 GitHub Issue；触发词：记录 bug、已知 bug、功能需求、记录需求、/devlog
+description: Record a known bug or feature request as a GitHub Issue; triggers: record a bug, known bug, feature request, record a feature request, /devlog
 version: 1.0.0
 ---
 # Devlog — GitHub Issue Recording Skill
 
 ## Purpose
 
-将两类条目提交为 GitHub Issue（仓库：`harlanlewis/markdown-writer`）：
+File two kinds of entries as GitHub Issues (repository: `harlanlewis/markdown-writer`):
 
-1. **已知 Bug**：本次开发未修复或历史遗留的 bug（开发中已修复的不记录）
-2. **功能需求**：计划实现但尚未动工的功能点
-
-***
-
-## Step 1：确认记录类型
-
-用 AskUserQuestion 询问：
-
-- 已知 Bug（未修复）
-- 功能需求
-- 两者都有
+1. **Known Bug**: a bug left unfixed this session, or a pre-existing one (do not record bugs already fixed during development).
+2. **Feature Request**: a planned feature that has not been started yet.
 
 ***
 
-## Step 2A：记录已知 Bug
+## Step 1: Confirm the entry type
 
-### 收集信息（AskUserQuestion）
+Ask with AskUserQuestion:
 
-一次性询问：
+- Known Bug (unfixed)
+- Feature Request
+- Both
 
-1. **标题**：一句话描述现象（Issue 标题）
-2. **详细描述**：复现步骤、期望行为、实际行为
-3. **根因**（可选）：已知根因，不知道填"待排查"
-4. **严重程度**：高（功能不可用）/ 中（影响体验）/ 低（轻微缺陷）
+***
 
-### 创建 Issue
+## Step 2A: Record a Known Bug
+
+### Collect information (AskUserQuestion)
+
+Ask all at once:
+
+1. **Title**: a one-line description of the symptom (the Issue title)
+2. **Details**: reproduction steps, expected behavior, actual behavior
+3. **Root cause** (optional): the known root cause; write "to be investigated" if unknown
+4. **Severity**: High (feature unusable) / Medium (degrades the experience) / Low (minor defect)
+
+### Create the Issue
 
 ```bash
 gh issue create \
   --repo harlanlewis/markdown-writer \
-  --title "[Bug] <标题>" \
+  --title "[Bug] <title>" \
   --label "bug,known-limitation" \
   --body "$(cat <<'EOF'
-## 问题描述
+## Problem description
 
-<详细描述>
+<details>
 
-## 复现步骤
+## Reproduction steps
 
-<步骤，不知道填 N/A>
+<steps, or N/A if unknown>
 
-## 根因分析
+## Root cause analysis
 
-<根因，待排查时填 N/A>
+<root cause, or N/A if still to be investigated>
 
-## 严重程度
+## Severity
 
-<高 / 中 / 低>
+<High / Medium / Low>
 
-## 备注
+## Notes
 
-> 此 Issue 由 `/devlog` skill 自动创建，记录已知但暂未修复的 bug。
+> This Issue was created automatically by the `/devlog` skill to record a known but not-yet-fixed bug.
 EOF
 )"
 ```
 
-**Label 说明：**
+**Label notes:**
 
-- `bug`：GitHub 内置，标识这是一个 bug
-- `known-limitation`：自定义，表示已知但暂不计划修复（需先确认此 label 存在，否则先创建）
+- `bug`: built into GitHub, marks this as a bug
+- `known-limitation`: custom, means known but not currently planned for a fix (confirm this label exists first, otherwise create it)
 
-### 检查并创建自定义 label
+### Check for and create the custom label
 
-运行前先检查 `known-limitation` label 是否存在：
+Before running, check whether the `known-limitation` label exists:
 
 ```bash
 gh label list --repo harlanlewis/markdown-writer | grep known-limitation
 ```
 
-若不存在则创建：
+Create it if it does not exist:
 
 ```bash
 gh label create "known-limitation" \
   --repo harlanlewis/markdown-writer \
-  --description "已知但暂未修复的限制或 bug" \
+  --description "A known but not-yet-fixed limitation or bug" \
   --color "FFA500"
 ```
 
 ***
 
-## Step 2B：记录功能需求
+## Step 2B: Record a Feature Request
 
-### 收集信息（AskUserQuestion）
+### Collect information (AskUserQuestion)
 
-询问以下字段：
+Ask for the following fields:
 
-1. **功能标题**：一句话概括（Issue 标题）
-2. **解决什么问题**：用户场景/痛点描述
-3. **期望效果**：功能实现后用户的操作体验
-4. **完善度**：0–100%（0% = 仅有想法；50% = 部分实现）
-5. **优先级**：高 / 中 / 低
-6. **实现思路**（可选）：涉及哪些技术点、大致方案
-7. **涉及文件**（可选）：预计需要改动的文件
+1. **Feature title**: a one-line summary (the Issue title)
+2. **Problem it solves**: the user scenario / pain point
+3. **Desired outcome**: the user's experience once the feature ships
+4. **Maturity**: 0–100% (0% = idea only; 50% = partially implemented)
+5. **Priority**: High / Medium / Low
+6. **Implementation approach** (optional): the technical points involved and a rough plan
+7. **Affected files** (optional): the files expected to change
 
-### 创建 Issue
+### Create the Issue
 
 ```bash
 gh issue create \
   --repo harlanlewis/markdown-writer \
-  --title "[Feature] <功能标题>" \
+  --title "[Feature] <feature title>" \
   --label "enhancement,roadmap" \
   --body "$(cat <<'EOF'
-## 问题 / 场景
+## Problem / scenario
 
-<解决什么问题，用户痛点>
+<the problem it solves, the user pain point>
 
-## 期望效果
+## Desired outcome
 
-<功能实现后的操作体验>
+<the user experience once the feature ships>
 
-## 完善度
+## Maturity
 
-<0%（仅有想法）/ X%（部分实现）>
+<0% (idea only) / X% (partially implemented)>
 
-## 优先级
+## Priority
 
-<高 / 中 / 低>
+<High / Medium / Low>
 
-## 实现思路
+## Implementation approach
 
-<大致方案，涉及技术点，N/A 若暂无思路>
+<rough plan and technical points, N/A if none yet>
 
-## 涉及文件
+## Affected files
 
-<预计改动的文件列表，N/A 若暂不清楚>
+<expected list of files to change, N/A if not yet clear>
 
-## 备注
+## Notes
 
-> 此 Issue 由 `/devlog` skill 自动创建，记录计划功能需求。
+> This Issue was created automatically by the `/devlog` skill to record a planned feature request.
 EOF
 )"
 ```
 
-**Label 说明：**
+**Label notes:**
 
-- `enhancement`：GitHub 内置，标识功能需求
-- `roadmap`：自定义，标识纳入路线图的计划功能（需先确认存在，否则先创建）
+- `enhancement`: built into GitHub, marks a feature request
+- `roadmap`: custom, marks a planned feature on the roadmap (confirm it exists first, otherwise create it)
 
-### 检查并创建自定义 label
+### Check for and create the custom label
 
 ```bash
 gh label list --repo harlanlewis/markdown-writer | grep roadmap
 ```
 
-若不存在则创建：
+Create it if it does not exist:
 
 ```bash
 gh label create "roadmap" \
   --repo harlanlewis/markdown-writer \
-  --description "纳入路线图的计划功能" \
+  --description "A planned feature on the roadmap" \
   --color "0075CA"
 ```
 
 ***
 
-## Step 3：输出结果
+## Step 3: Report the result
 
-Issue 创建成功后，输出 Issue URL 让用户可以直接点击查看：
+After the Issue is created successfully, print the Issue URL so the user can click through:
 
 ```
-✅ Issue 已创建：https://github.com/harlanlewis/markdown-writer/issues/XXX
+✅ Issue created: https://github.com/harlanlewis/markdown-writer/issues/XXX
 ```
 
-若创建多个 Issue，逐一列出所有 URL。
+If several Issues are created, list every URL.
 
 ***
 
-## 注意事项
+## Notes
 
-- Issue 标题前缀：Bug 用 `[Bug]`，需求用 `[Feature]`，方便在 Issues 列表一眼区分
-- 使用 `gh` CLI，不需要浏览器操作
-- 若用户信息不足，主动追问，确保 Issue 有足够上下文
-- 不修改本地任何文件（devlog.md、roadmap.md 均不改动）
-- 严重程度为"高"的 Bug Issue 可考虑加 `priority: high` label（如存在）
+- Issue title prefixes: use `[Bug]` for bugs and `[Feature]` for requests, so they are easy to tell apart at a glance in the Issues list.
+- Use the `gh` CLI; no browser interaction needed.
+- If the user's information is insufficient, proactively follow up so the Issue has enough context.
+- Do not modify any local files (neither devlog.md nor roadmap.md).
+- For a Bug Issue with "High" severity, consider adding a `priority: high` label (if it exists).

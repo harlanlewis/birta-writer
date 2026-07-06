@@ -1,17 +1,17 @@
 /**
  * eventManager.ts
  * 
- * 职责：统一管理事件监听器的绑定和解绑
- * 
- * 本模块提供以下功能：
- * - 绑定 DOM 事件（Window、Document、HTMLElement），返回解绑函数
- * - 绑定自定义事件，支持 emit 触发
- * - 键盘快捷键绑定，支持组合键配置和行为控制
- * - 批量解绑所有事件（组件销毁时调用）
- * - 调试支持：追踪当前绑定的事件数量
+ * Responsibility: a single place to manage binding and unbinding of event listeners.
+ *
+ * This module provides:
+ * - Bind DOM events (Window, Document, HTMLElement), returning an unbind function
+ * - Bind custom events, triggerable via emit
+ * - Bind keyboard shortcuts, with modifier-combo config and behavior control
+ * - Unbind all events at once (called on component teardown)
+ * - Debug support: track the current number of bound events
  */
 
-// ── 类型定义 ──────────────────────────────────────────────
+// ── Type definitions ──────────────────────────────────────
 
 type EventHandler<T = any> = (event: T) => void;
 
@@ -76,7 +76,7 @@ export function fallbackKeyFromKeyCode(e: KeyboardEvent): string | null {
         : null;
 }
 
-// ── 事件管理器实现 ────────────────────────────────────────
+// ── EventManager implementation ───────────────────────────
 
 export class EventManager {
     private boundEvents: BoundEvent[] = [];
@@ -84,8 +84,8 @@ export class EventManager {
     private disposed = false;
 
     /**
-     * 绑定 DOM 事件到 Window
-     * @returns 解绑函数
+     * Bind a DOM event on Window
+     * @returns unbind function
      */
     onWindow<K extends keyof WindowEventMap>(
         type: K,
@@ -96,8 +96,8 @@ export class EventManager {
     }
 
     /**
-     * 绑定 DOM 事件到 Document
-     * @returns 解绑函数
+     * Bind a DOM event on Document
+     * @returns unbind function
      */
     onDocument<K extends keyof DocumentEventMap>(
         type: K,
@@ -108,8 +108,8 @@ export class EventManager {
     }
 
     /**
-     * 绑定 DOM 事件到指定元素
-     * @returns 解绑函数
+     * Bind a DOM event on a specific element
+     * @returns unbind function
      */
     onElement<K extends keyof HTMLElementEventMap>(
         target: HTMLElement,
@@ -121,8 +121,8 @@ export class EventManager {
     }
 
     /**
-     * 绑定自定义事件
-     * @returns 解绑函数
+     * Bind a custom event
+     * @returns unbind function
      */
     onCustom<T = any>(
         type: string,
@@ -234,7 +234,7 @@ export class EventManager {
     }
 
     /**
-     * 触发自定义事件
+     * Trigger a custom event
      */
     emit<T = any>(type: string, detail?: T): void {
         this.ensureNotDisposed();
@@ -252,28 +252,28 @@ export class EventManager {
     }
 
     /**
-     * 批量解绑所有事件（用于组件销毁）
+     * Unbind all events at once (used on component teardown)
      */
     dispose(): void {
         if (this.disposed) { return; }
         this.disposed = true;
 
-        // 解绑 DOM 事件
+        // Unbind DOM events
         for (const { target, type, handler, options } of this.boundEvents) {
             try {
                 target.removeEventListener(type, handler, options);
             } catch {
-                // 忽略已移除的元素
+                // Ignore already-removed elements
             }
         }
         this.boundEvents = [];
 
-        // 清空自定义事件
+        // Clear custom events
         this.customEvents.clear();
     }
 
     /**
-     * 获取当前绑定的事件数量（调试用）
+     * Get the current number of bound events (for debugging)
      */
     get stats(): { domEvents: number; customEvents: number } {
         return {
@@ -283,7 +283,7 @@ export class EventManager {
         };
     }
 
-    // ── 内部方法 ──────────────────────────────────────────
+    // ── Internal methods ──────────────────────────────────
 
     private bind(
         target: EventTarget,
@@ -314,10 +314,10 @@ export class EventManager {
     }
 }
 
-// ── 便捷工厂函数 ──────────────────────────────────────────
+// ── Convenience factory function ──────────────────────────
 
 /**
- * 创建一个新的事件管理器实例
+ * Create a new EventManager instance
  */
 export function createEventManager(): EventManager {
     return new EventManager();

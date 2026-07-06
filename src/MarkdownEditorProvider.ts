@@ -11,7 +11,6 @@ import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
 import { resolveThemeColors } from "./themeManager";
-import { selectWebviewTranslations } from "./i18n/webviewTranslations";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, DEFAULT_FONT_PRESET } from "../shared/fontPresets";
@@ -816,8 +815,9 @@ export class MarkdownEditorProvider
         const nonce = getNonce();
 
         const isMac = process.platform === 'darwin';
-        // English strings are the t() keys themselves; only non-English locales need a map.
-        const translations = selectWebviewTranslations(vscode.env.language);
+        // English is the sole source language: t() falls back to the key itself,
+        // so the webview renders the English base strings with no translation map.
+        const translations: Record<string, string> = {};
         const debugMode = cfg.get<boolean>("debugMode", false);
         const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);

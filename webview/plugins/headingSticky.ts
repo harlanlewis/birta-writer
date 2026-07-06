@@ -159,12 +159,12 @@ export const headingStickyPlugin = $prose(() =>
                 const top = getTopbarBottom();
                 const headings = getVisibleHeadings(view);
 
-                // 动态计算偏移：标题 padding-top（1em）与 sticky padding（0.5em）的差值
+                // Compute the offset dynamically: the difference between the heading's padding-top (1em) and the sticky padding (0.5em)
                 let paddingOffset = 0;
                 if (headings.length > 0) {
                     const headingStyle = window.getComputedStyle(headings[0]);
                     const headingPaddingTop = parseFloat(headingStyle.paddingTop) || 0;
-                    // sticky 的 padding 是 0.5em，这里用标题 padding 的一半作为近似
+                    // The sticky padding is 0.5em, so use half the heading padding as an approximation
                     paddingOffset = headingPaddingTop / 2 - 1;
                 }
                 const threshold = top - paddingOffset;

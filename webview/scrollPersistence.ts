@@ -1,22 +1,22 @@
 /**
  * scrollPersistence.ts
- * 
- * 职责：实现滚动位置的跨会话持久化
- * 
- * 本模块提供以下功能：
- * - 监听滚动事件，防抖保存滚动位置到 VSCode WebView 状态
- * - 在 tab 切换（visibilitychange）时恢复滚动位置
- * - 支持 VSCode 重启后恢复标签页的滚动位置
+ *
+ * Responsibility: persist scroll position across sessions.
+ *
+ * This module provides:
+ * - Listening for scroll events and debounce-saving the scroll position to VSCode WebView state
+ * - Restoring the scroll position on tab switch (visibilitychange)
+ * - Restoring a tab's scroll position after a VSCode restart
  */
 
 import { getWebviewState, setWebviewState } from "./messaging";
 import type { EventManager } from "./eventManager";
 
-// ── 滚动位置持久化 ────────────────────────────────────────────
-// 保存：滚动时防抖写入 VSCode WebView 状态（跨会话可恢复）
+// ── Scroll position persistence ────────────────────────────────────────────
+// Save: on scroll, debounce-write into VSCode WebView state (recoverable across sessions)
 let _scrollSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** 初始化滚动位置持久化 */
+/** Initialize scroll position persistence */
 export function initScrollPersistence(eventManager: EventManager): void {
     eventManager.onWindow("scroll", () => {
         if (_scrollSaveTimer) clearTimeout(_scrollSaveTimer);
@@ -26,8 +26,8 @@ export function initScrollPersistence(eventManager: EventManager): void {
         }, 200);
     }, { passive: true });
 
-    // 恢复（主路径）：tab 切换时 iframe 被隐藏再显示，浏览器会重置 scrollY
-    // visibilitychange 触发时读取已保存位置并还原
+    // Restore (main path): on tab switch the iframe is hidden then shown, and the browser resets scrollY.
+    // When visibilitychange fires, read the saved position and restore it.
     eventManager.onDocument("visibilitychange", () => {
         if (document.visibilityState !== 'visible') return;
         const state = getWebviewState();

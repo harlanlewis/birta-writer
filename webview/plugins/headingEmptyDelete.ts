@@ -44,7 +44,7 @@ function deleteEmptyHeading(view: EditorView, direction: -1 | 1): boolean {
     return true;
 }
 
-// 空标题 Backspace/Delete：避免默认 H3 -> H2 -> H1 逐级降级，一次删除空标题块。
+// Empty heading Backspace/Delete: avoid the default H3 -> H2 -> H1 step-down, and delete the empty heading block in one press.
 export const headingEmptyDeletePlugin = $prose(() =>
     new Plugin({
         view(view) {

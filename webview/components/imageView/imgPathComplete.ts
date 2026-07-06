@@ -2,22 +2,22 @@ import { notifyGetPathSuggestions, notifyResolveImagePath } from "@/messaging";
 import { getFileIcon } from "../pathLink/fileIcons";
 import type { PathSuggestionItem } from "../../../shared/messages";
 
-// ─── resolveImagePath 异步机制 ────────────────────────────────
+// ─── resolveImagePath async mechanism ────────────────────────
 const _pendingResolve = new Map<string, (uri: string) => void>();
 
-/** 由 index.ts 在收到 imagePathResolved 消息时调用 */
+/** Called by index.ts when an imagePathResolved message arrives */
 export function dispatchImagePathResolved(id: string, webviewUri: string): void {
     const cb = _pendingResolve.get(id);
     if (cb) { _pendingResolve.delete(id); cb(webviewUri); }
 }
 
-/** 将 relPath 解析为 webviewUri（异步，超时 3s 返回原值） */
+/** Resolve a relPath to a webviewUri (async; returns the original value on a 3s timeout) */
 export function resolveToWebviewUri(relPath: string): Promise<string> {
     return new Promise((resolve) => {
         const id = `rip_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
         const timer = setTimeout(() => {
             _pendingResolve.delete(id);
-            resolve(relPath); // 超时回退
+            resolve(relPath); // timeout fallback
         }, 3000);
         _pendingResolve.set(id, (uri) => {
             clearTimeout(timer);
@@ -27,15 +27,15 @@ export function resolveToWebviewUri(relPath: string): Promise<string> {
     });
 }
 
-// 触发路径补全的前缀检测（与 pathComplete.ts 保持一致）
+// Path-prefix detection that triggers completion (kept consistent with pathComplete.ts)
 const PATH_PREFIX_REGEX = /^(@\/|\.{1,2}\/|[a-zA-Z0-9_-][a-zA-Z0-9._-]*\/)/;
 
 type SuggestCallback = (items: PathSuggestionItem[]) => void;
 
-// 回调 map：id → resolve（全局唯一，各 input 通过 id 区分）
+// Callback map: id → resolve (globally unique; each input is distinguished by id)
 const _pendingImgSuggestions = new Map<string, SuggestCallback>();
 
-/** 外部调用此函数分发 pathSuggestions 消息到本模块 */
+/** Called from outside to dispatch a pathSuggestions message into this module */
 export function dispatchImgPathSuggestions(id: string, items: PathSuggestionItem[]): void {
     const cb = _pendingImgSuggestions.get(id);
     if (cb) {
@@ -45,10 +45,10 @@ export function dispatchImgPathSuggestions(id: string, items: PathSuggestionItem
 }
 
 /**
- * 为一个 <input> 元素附加图片路径自动补全。
- * @param onEnter  dropdown 关闭时 Enter 调用（即 confirm）
- * @param onEscape dropdown 关闭时 Escape 调用（即 cancel）
- * 返回 cleanup 函数，调用后移除事件监听并关闭下拉。
+ * Attach image-path autocompletion to an <input> element.
+ * @param onEnter  called on Enter when the dropdown is closed (i.e. confirm)
+ * @param onEscape called on Escape when the dropdown is closed (i.e. cancel)
+ * Returns a cleanup function that removes the event listeners and closes the dropdown.
  */
 export function attachImgPathComplete(
     input: HTMLInputElement,
@@ -61,10 +61,10 @@ export function attachImgPathComplete(
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let suppressMouseover = false;
     let isDestroyed = false;
-    // autocomplete 选中后跳过下一次 onInput 里清除 dataset 的操作
+    // After an autocomplete selection, skip clearing the dataset on the next onInput
     let skipDatasetClear = false;
 
-    // ── dropdown 管理 ──────────────────────────────────────────
+    // ── Dropdown management ─────────────────────────────────────
 
     function closeDropdown(): void {
         if (dropdown) {
@@ -87,7 +87,7 @@ export function attachImgPathComplete(
     }
 
     function applySelection(item: PathSuggestionItem): void {
-        // 显示相对路径；若有 webviewUri 存入 dataset，confirm() 取用保证图片能渲染
+        // Show the relative path; if there's a webviewUri, store it in dataset so confirm() can use it to ensure the image renders
         input.value = item.path;
         if (item.webviewUri) {
             input.dataset.imgWebviewUri = item.webviewUri;
@@ -95,12 +95,12 @@ export function attachImgPathComplete(
             delete input.dataset.imgWebviewUri;
         }
         skipDatasetClear = true;
-        // 取消可能已排队的 debounce，避免选中后立即再触发补全
+        // Cancel any queued debounce so selecting doesn't immediately re-trigger completion
         if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
         input.focus();
 
         if (item.isDir) {
-            // 选中目录：自动展开下一层
+            // A directory was selected: auto-expand the next level
             closeDropdown();
             setTimeout(() => {
                 triggerSuggest();
@@ -112,7 +112,7 @@ export function attachImgPathComplete(
 
     function showDropdown(items: PathSuggestionItem[]): void {
         closeDropdown();
-        // 只保留目录和图片文件（有 webviewUri 的条目）
+        // Keep only directories and image files (entries that have a webviewUri)
         const filtered = items.filter(item => item.isDir || item.webviewUri !== undefined);
         if (filtered.length === 0) { return; }
         lastItems = filtered;
@@ -120,7 +120,7 @@ export function attachImgPathComplete(
         const rect = input.getBoundingClientRect();
         const ul = document.createElement("ul");
         ul.className = "img-path-complete-list";
-        // position: fixed，直接用 viewport 坐标
+        // position: fixed, so use viewport coordinates directly
         ul.style.top = `${rect.bottom + 2}px`;
         ul.style.left = `${rect.left}px`;
         ul.style.minWidth = `${rect.width}px`;
@@ -129,7 +129,7 @@ export function attachImgPathComplete(
             const li = document.createElement("li");
             li.className = "img-path-complete-item";
 
-            // 左侧：缩略图（图片）或文件夹图标（目录）
+            // Left: a thumbnail (image) or folder icon (directory)
             if (item.webviewUri) {
                 const thumb = document.createElement("img");
                 thumb.className = "img-complete-thumb";
@@ -143,7 +143,7 @@ export function attachImgPathComplete(
                 li.appendChild(iconEl);
             }
 
-            // 右侧：文件名（不含斜杠后缀，完整路径作 title）
+            // Right: the file name (without a trailing slash; the full path is the title)
             const lastSeg = item.path.replace(/\/$/, "").split("/").pop() ?? item.path;
             const label = document.createElement("span");
             label.className = "img-complete-label";
@@ -172,7 +172,7 @@ export function attachImgPathComplete(
         updateActiveItem();
     }
 
-    // ── 触发补全请求 ───────────────────────────────────────────
+    // ── Trigger a completion request ────────────────────────────
 
     function triggerSuggest(): void {
         const query = input.value.trim();
@@ -189,16 +189,16 @@ export function attachImgPathComplete(
         });
         notifyGetPathSuggestions(id, query);
 
-        // 超时清理
+        // Timeout cleanup
         setTimeout(() => {
             _pendingImgSuggestions.delete(id);
         }, 5000);
     }
 
-    // ── 事件监听 ───────────────────────────────────────────────
+    // ── Event listeners ─────────────────────────────────────────
 
     function onInput(): void {
-        // autocomplete 选中后首次 onInput 不清除 dataset（dataset 是手动输入的判断依据）
+        // On the first onInput after an autocomplete selection, don't clear the dataset (dataset is how we tell manual input apart)
         if (skipDatasetClear) {
             skipDatasetClear = false;
         } else {
@@ -215,7 +215,7 @@ export function attachImgPathComplete(
 
         if (e.isComposing) { return; }
 
-        // ── Enter / Escape：dropdown 打开时优先处理下拉，否则委托回调 ──
+        // ── Enter / Escape: handle the dropdown first when open, otherwise delegate to the callbacks ──
         if (e.key === "Enter") {
             e.preventDefault();
             e.stopPropagation();
@@ -240,7 +240,7 @@ export function attachImgPathComplete(
 
         if (!dropdown) { return; }
 
-        // ── dropdown 方向键导航 ───────────────────────────────────
+        // ── Dropdown arrow-key navigation ─────────────────────────
         if (e.key === "ArrowDown") {
             e.preventDefault();
             e.stopPropagation();
@@ -274,7 +274,7 @@ export function attachImgPathComplete(
     }
 
     function onBlur(): void {
-        // 延迟关闭，让 mousedown 的 applySelection 先执行
+        // Delay closing so the mousedown's applySelection runs first
         setTimeout(() => {
             if (!isDestroyed) { closeDropdown(); }
         }, 150);

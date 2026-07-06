@@ -37,7 +37,7 @@ function copyHarperWasm() {
     );
 }
 
-// WebView 前端（Browser）- ESM + code splitting，Mermaid 等懒加载
+// WebView frontend (Browser) - ESM + code splitting, lazy-loads Mermaid etc.
 const webviewBuild = {
     ...commonOptions,
     entryPoints: { webview: 'webview/index.ts' },

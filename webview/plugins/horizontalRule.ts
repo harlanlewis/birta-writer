@@ -43,7 +43,7 @@ function findHorizontalRuleElementNear(view: EditorView, event: MouseEvent): HTM
     return null;
 }
 
-// 分割线：支持点击选中。
+// Horizontal rule: supports click-to-select.
 export const horizontalRulePlugin = $prose(() =>
     new Plugin({
         props: {
@@ -77,7 +77,7 @@ export const horizontalRulePlugin = $prose(() =>
     }),
 );
 
-// 光标位于分割线下方块起始处时，Backspace 一次直接删除分割线。
+// When the cursor is at the start of the block below a horizontal rule, a single Backspace deletes the rule directly.
 export const horizontalRuleKeymapPlugin = $prose(() =>
     keymap({
         Backspace: (state, dispatch) => {
@@ -126,8 +126,8 @@ export const horizontalRuleKeymapPlugin = $prose(() =>
     }),
 );
 
-// 分割线位于文档末尾时，自动在其后补一个空段落：
-// 否则点击分割线下方只会选中分割线本身，无法获取光标输入内容。
+// When a horizontal rule is the last node in the document, automatically append an empty paragraph after it:
+// otherwise clicking below the rule only selects the rule itself, leaving no place for the cursor to type.
 export const trailingHrParagraphPlugin = $prose((ctx) => {
     const schema = ctx.get(schemaCtx);
     const paragraph = schema.nodes["paragraph"];

@@ -37,7 +37,7 @@ import './selectionToolbar.css';
 
 type GetEditor = () => Editor | null;
 
-// 一次性位置覆盖：点击 drag handle 选中行/列时，由 tableHandles 设置鼠标坐标
+// One-time position override: set by tableHandles with the mouse coordinates when a row/column is selected via the drag handle
 let pendingPos: { x: number; y: number } | null = null;
 export function setPendingToolbarPos(x: number, y: number): void {
     pendingPos = { x, y };
@@ -54,9 +54,9 @@ function isInTableCell($pos: {
     return false;
 }
 
-// 内联代码切换：
-// - TextSelection → 直接用 Milkdown command（可靠）
-// - CellSelection  → 用 forEachCell 逐格处理，解决跨单元格时只应用到最后一格的问题
+// Inline-code toggle:
+// - TextSelection → use the Milkdown command directly (reliable)
+// - CellSelection  → process cell by cell with forEachCell, fixing the issue where a cross-cell selection only applied to the last cell
 function applyInlineCodeToSelection(
     view: EditorView,
     getEditor: GetEditor,
@@ -69,7 +69,7 @@ function applyInlineCodeToSelection(
         return;
     }
 
-    // CellSelection：用 spec.code===true 可靠定位 code mark，不依赖名称字符串
+    // CellSelection: locate the code mark reliably via spec.code===true, without relying on a name string
     const codeMarkType =
         Object.values(state.schema.marks).find(
             (mt) => (mt.spec as { code?: boolean }).code === true,
@@ -134,7 +134,7 @@ function sSep(): HTMLElement {
     return createSeparator("sel-tb-sep");
 }
 
-// 判断 CellSelection 是否选中了表格第一行（表头）
+// Determine whether a CellSelection selects the table's first row (the header)
 function isFirstRow(sel: CellSelection): boolean {
     const $anchor = sel.$anchorCell;
     for (let d = $anchor.depth; d >= 0; d--) {
@@ -145,7 +145,7 @@ function isFirstRow(sel: CellSelection): boolean {
     return false;
 }
 
-// 判断 CellSelection 是否选中了表格所有行（全选表格）
+// Determine whether a CellSelection selects all rows of the table (whole-table selection)
 function isAllRowsSelected(sel: CellSelection): boolean {
     if (!sel.isRowSelection()) {
         return false;
@@ -162,7 +162,7 @@ function isAllRowsSelected(sel: CellSelection): boolean {
     return false;
 }
 
-// 判断 CellSelection 是否选中了表格所有列
+// Determine whether a CellSelection selects all columns of the table
 function isAllColsSelected(sel: CellSelection): boolean {
     if (!sel.isColSelection()) {
         return false;
@@ -188,12 +188,12 @@ function isAllColsSelected(sel: CellSelection): boolean {
     return false;
 }
 
-// 判断整个表格是否被选中
+// Determine whether the entire table is selected
 function isEntireTableSelected(sel: CellSelection): boolean {
     return isAllRowsSelected(sel) || isAllColsSelected(sel);
 }
 
-/** 去掉常见 markdown 标记，用于与原始内容做模糊比较 */
+/** Strip common markdown markers, for fuzzy comparison against the original content */
 function normalizeForSearch(s: string): string {
     return s
         .replace(/^#{1,6}\s+/m, "")
@@ -208,7 +208,7 @@ function normalizeForSearch(s: string): string {
         .trim();
 }
 
-/** 获取光标所在的最深块级容器节点的完整文本内容 */
+/** Get the full text content of the deepest block-level container node at the caret */
 export function getBlockContainerText($pos: ResolvedPos): string {
     for (let d = $pos.depth; d >= 1; d--) {
         const node = $pos.node(d);
@@ -236,7 +236,7 @@ export function findLineInOriginalSource(
     return -1;
 }
 
-/** 调试用：对任意 doc 位置运行行号计算，返回诊断数据 */
+/** Debug helper: run line-number computation for any doc position and return diagnostic data */
 export function sampleDocPosition(
     view: EditorView,
     docPos: number,
@@ -338,7 +338,7 @@ export function setupSelectionToolbar(
     toolbar.style.display = "none";
     document.body.appendChild(toolbar);
 
-    // ── 格式下拉（文字模式 / 非表格专属）──────────
+    // ── Format dropdown (text mode / non-table only) ──────────
     const fmtWrap = document.createElement("div");
     fmtWrap.className = "sel-tb-fmt-wrap";
 
@@ -399,7 +399,7 @@ export function setupSelectionToolbar(
             e.stopPropagation();
             action();
             fmtMenu.style.display = "none";
-            // 格式命令执行后刷新激活状态（事务在下一帧 applied）
+            // Refresh the active state after the format command runs (the transaction is applied next frame)
             requestAnimationFrame(() => {
                 const v = getView();
                 if (v && toolbar.style.display !== "none") {
@@ -418,7 +418,7 @@ export function setupSelectionToolbar(
             clearTimeout(fmtHideTimer);
             fmtHideTimer = null;
         }
-        // 空间检测：默认在上方，空间不足则切换到下方
+        // Space check: default above, switch below when there isn't enough room
         const rect = fmtBtn.getBoundingClientRect();
         const approxH = formats.length * 30;
         if (rect.top < approxH + 16) {
@@ -449,7 +449,7 @@ export function setupSelectionToolbar(
     const textFmtSep = sSep();
     toolbar.appendChild(textFmtSep);
 
-    // ── 内联格式按钮（文字 + 表格模式都显示）──────
+    // ── Inline format buttons (shown in both text and table modes) ──────
     const boldBtn = sBtn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
         callCmd(getEditor, toggleStrongCommand),
     );
@@ -491,12 +491,12 @@ export function setupSelectionToolbar(
     });
     toolbar.appendChild(linkBtn);
 
-    // ── 表格模式元素（对齐 + 删除，初始全部隐藏）──
+    // ── Table-mode elements (align + delete, all hidden initially) ──
     const tableSep = sSep();
     tableSep.style.display = "none";
     toolbar.appendChild(tableSep);
 
-    // 对齐下拉（单图标 hover 展开）
+    // Alignment dropdown (single icon, expands on hover)
     const alignWrap = document.createElement("div");
     alignWrap.className = "sel-tb-fmt-wrap";
     alignWrap.style.display = "none";
@@ -542,7 +542,7 @@ export function setupSelectionToolbar(
             clearTimeout(alignHideTimer);
             alignHideTimer = null;
         }
-        // 空间检测：默认在上方，空间不足则切换到下方
+        // Space check: default above, switch below when there isn't enough room
         const rect = alignBtn.getBoundingClientRect();
         const approxH = alignDefs.length * 34;
         if (rect.top < approxH + 16) {
@@ -698,7 +698,7 @@ export function setupSelectionToolbar(
     deleteColBtn.style.display = "none";
     toolbar.appendChild(deleteColBtn);
 
-    // ── 工具栏外部点击关闭（编辑器内点击不关闭，避免 shift+click 扩选后工具栏被隐藏）
+    // ── Click outside the toolbar to close it (clicks inside the editor don't close, so shift+click extending a selection won't hide the toolbar)
     document.addEventListener("mousedown", (e) => {
         const target = e.target as Element;
         const inEditor = !!target.closest?.(".milkdown");
@@ -753,12 +753,12 @@ export function setupSelectionToolbar(
         }
         const { selection } = view.state;
 
-        // ── 表格 CellSelection 模式 ────────────────────
+        // ── Table CellSelection mode ───────────────────
         if (selection instanceof CellSelection) {
             const isRow = selection.isRowSelection();
             const isCol = selection.isColSelection();
 
-            // 格式下拉在表格模式无意义，隐藏
+            // The format dropdown is meaningless in table mode, so hide it
             fmtWrap.style.display = "none";
             textFmtSep.style.display = "none";
 
@@ -792,14 +792,14 @@ export function setupSelectionToolbar(
             deleteSep.style.display =
                 isEntireTable || isRow || isCol ? "" : "none";
 
-            // 定位
+            // Position
             toolbar.style.visibility = "hidden";
             toolbar.style.display = "flex";
             positionToolbar(view, selection.from, selection.to);
             return;
         }
 
-        // ── 文字 TextSelection 模式 ────────────────────
+        // ── Text TextSelection mode ────────────────────
         if (selection.empty || !(selection instanceof TextSelection)) {
             hideToolbar();
             return;
@@ -807,7 +807,7 @@ export function setupSelectionToolbar(
 
         const { $from } = selection;
 
-        // 代码块内不显示
+        // Don't show inside a code block
         for (let d = $from.depth; d >= 0; d--) {
             if ($from.node(d).type.name === "code_block") {
                 hideToolbar();
@@ -817,7 +817,7 @@ export function setupSelectionToolbar(
 
         const inTable = isInTableCell($from);
 
-        // 格式下拉：表格内隐藏，表格外正常显示
+        // Format dropdown: hidden inside a table, shown normally outside
         fmtWrap.style.display = inTable ? "none" : "";
         textFmtSep.style.display = inTable ? "none" : "";
 
@@ -829,7 +829,7 @@ export function setupSelectionToolbar(
         linkSep.style.display = "";
         linkBtn.style.display = "";
 
-        // 表格专属元素：隐藏
+        // Table-specific elements: hidden
         tableSep.style.display = "none";
         alignWrap.style.display = "none";
         deleteRowBtn.style.display = "none";
@@ -838,7 +838,7 @@ export function setupSelectionToolbar(
         deleteColBtn.style.display = "none";
         deleteSep.style.display = "none";
 
-        // 高亮当前格式 + 更新格式按钮图标（仅非表格模式有意义）
+        // Highlight the current format + update the format button icon (only meaningful outside table mode)
         if (!inTable) {
             let activeLevel = 0;
             for (let d = $from.depth; d >= 0; d--) {
@@ -860,13 +860,13 @@ export function setupSelectionToolbar(
             });
         }
 
-        // 定位
+        // Position
         toolbar.style.visibility = "hidden";
         toolbar.style.display = "flex";
         positionToolbar(view, selection.from, selection.to);
     }
 
-    // 滚动时重新计算工具栏位置（使 fixed 工具栏跟随内容滚动）
+    // Recompute the toolbar position on scroll (so the fixed toolbar follows the content)
     window.addEventListener(
         "scroll",
         () => {

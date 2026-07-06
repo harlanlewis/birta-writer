@@ -1,6 +1,5 @@
 .vscode/**
 .claude/**
-.mimocode/**
 src/**
 webview/**
 out/**

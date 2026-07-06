@@ -40,7 +40,7 @@ function isSameLanguage(a: string, b: string): boolean {
     return normalizeCodeLanguage(a) === normalizeCodeLanguage(b);
 }
 
-// ─── 行号更新 ────────────────────────────────────────────
+// ─── Line-number update ──────────────────────────────────
 function getLineHeightPx(target: HTMLElement): number {
     const style = getComputedStyle(target);
     const lineHeight = Number.parseFloat(style.lineHeight);
@@ -101,7 +101,7 @@ function updateLineNumbers(gutter: HTMLElement, text: string, visualLineCounts?:
     });
 }
 
-// ─── Mermaid 模块级初始化 ────────────────────────────────
+// ─── Mermaid module-level initialization ─────────────────
 let mermaidInitialized = false;
 let lastMermaidTheme = "";
 function ensureMermaid(): void {
@@ -111,7 +111,7 @@ function ensureMermaid(): void {
     const isDark = !bg.includes("255") && !bg.includes("fff") && !bg.includes("FFF");
     const currentTheme = isDark ? "dark" : "default";
     
-    // 如果主题没变且已初始化，直接返回
+    // If the theme hasn't changed and it's already initialized, return early
     if (mermaidInitialized && lastMermaidTheme === currentTheme) return;
     
     mermaidInitialized = true;
@@ -120,14 +120,14 @@ function ensureMermaid(): void {
         startOnLoad: false,
         theme: currentTheme,
         securityLevel: "strict",
-        // 禁用 Mermaid 为 SVG 设置 max-width:100%，避免与我们写回的固定 width/height 属性冲突
+        // Disable Mermaid setting max-width:100% on the SVG, to avoid conflicting with the fixed width/height attributes we write back
         flowchart: { useMaxWidth: false },
         sequence: { useMaxWidth: false },
         gantt: { useMaxWidth: false },
     });
 }
 
-// ─── Mermaid 实例注册表（用于主题切换时重新渲染）──────────
+// ─── Mermaid instance registry (used to re-render on theme change) ──────────
 type MermaidInstance = {
     isMermaid: boolean;
     isPreviewMode: boolean;
@@ -136,12 +136,12 @@ type MermaidInstance = {
 };
 const mermaidInstances = new Set<MermaidInstance>();
 
-// 监听主题切换事件，重新渲染所有 Mermaid 图表
+// Listen for theme-change events and re-render all Mermaid diagrams
 if (typeof window !== 'undefined') {
     window.addEventListener('theme-changed', () => {
-        // 强制重新初始化 Mermaid（主题可能已变化）
+        // Force Mermaid to re-initialize (the theme may have changed)
         mermaidInitialized = false;
-        // 重新渲染所有可见的 Mermaid 图表
+        // Re-render every visible Mermaid diagram
         for (const instance of mermaidInstances) {
             if (instance.isMermaid && instance.isPreviewMode && instance.lastRenderedCode) {
                 instance.renderMermaid(instance.lastRenderedCode);
@@ -376,7 +376,7 @@ function createLangPicker(
     };
 }
 
-// ─── NodeView 工厂 ────────────────────────────────────────
+// ─── NodeView factory ─────────────────────────────────────
 export function createCodeBlockView(
     node: PMNode,
     view: EditorView,
@@ -391,7 +391,7 @@ export function createCodeBlockView(
     destroy: () => void;
 } {
     const _id = Math.random().toString(36).slice(2, 6);
-    void _id; // 保留供调试使用
+    void _id; // kept for debugging
 
     const wrapper = document.createElement("div");
     wrapper.className = "code-block-wrapper";
@@ -410,7 +410,7 @@ export function createCodeBlockView(
         view.focus();
     });
 
-    // ── Mermaid 状态 ──────────────────────────────────────
+    // ── Mermaid state ─────────────────────────────────────
     let isMermaid = currentLang === "mermaid";
     // ── LaTeX state (block math preview via KaTeX) ────────
     let isLatex = normalizeCodeLanguage(currentLang) === "latex";
@@ -422,11 +422,11 @@ export function createCodeBlockView(
     let lastRenderedCode = "";
     let isRendering = false;
     let panX = 0, panY = 0, zoomLevel = 1.0;
-    let naturalSvgW = 0, naturalSvgH = 0; // SVG viewBox 自然尺寸（固定不变）
+    let naturalSvgW = 0, naturalSvgH = 0; // SVG viewBox natural size (fixed)
     const ZOOM_MIN = 0.05, ZOOM_MAX = 10.0, ZOOM_BTN = 0.25;
     const PAN_STEP = 80;
     let lbActiveLightbox: HTMLElement | null = null;
-    // 当前缩放百分比显示元素（overlay 中间）
+    // Element showing the current zoom percentage (center of the overlay)
     let zoomValueDisplay: HTMLButtonElement | null = null;
     let isWordWrap = shouldWordWrapCodeBlock();
 
@@ -440,11 +440,11 @@ export function createCodeBlockView(
         });
     }
 
-    // ── Header 按钮（spacer 之后，右对齐）────────────────
+    // ── Header buttons (after the spacer, right-aligned) ────────────────
     const spacer = document.createElement("div");
     spacer.style.flex = "1";
 
-    // 代码/预览切换按钮（仅 mermaid 时显示）
+    // Code/preview toggle button (shown only for mermaid)
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "code-view-toggle-btn";
     toggleBtn.tabIndex = -1;
@@ -453,21 +453,21 @@ export function createCodeBlockView(
     const previewTip = (): string => (isLatex ? t("Preview Formula") : t("Preview Diagram"));
     const toggleTooltip = applyTooltip(toggleBtn, previewTip(), { placement: "above" });
 
-    // 当前代码块自动换行开关（局部覆盖，不写入 Markdown）
+    // Word-wrap toggle for the current code block (local override, not written to Markdown)
     const wordWrapBtn = document.createElement("button");
     wordWrapBtn.className = "code-wrap-toggle-btn";
     wordWrapBtn.tabIndex = -1;
     wordWrapBtn.innerHTML = IconWrapText;
     const wordWrapTooltip = applyTooltip(wordWrapBtn, t("Toggle Word Wrap"), { placement: "above" });
 
-    // 全屏按钮（常驻）
+    // Fullscreen button (always present)
     const fullscreenBtn = document.createElement("button");
     fullscreenBtn.className = "mermaid-zoom-btn code-block-fullscreen-btn";
     fullscreenBtn.tabIndex = -1;
     fullscreenBtn.innerHTML = IconMaximize2;
     applyTooltip(fullscreenBtn, t("View Fullscreen"), { placement: "above" });
 
-    // 复制按钮
+    // Copy button
     const copyBtn = document.createElement("button");
     copyBtn.className = "copy-btn";
     copyBtn.tabIndex = -1;
@@ -527,7 +527,7 @@ export function createCodeBlockView(
     header.appendChild(fullscreenBtn);
     header.appendChild(copyBtn);
 
-    // ── 代码区 ────────────────────────────────────────────
+    // ── Code area ─────────────────────────────────────────
     const pre = document.createElement("pre");
     const codeEl = document.createElement("code");
     const currentClassLang = normalizeCodeLanguage(currentLang);
@@ -559,17 +559,17 @@ export function createCodeBlockView(
         });
     };
 
-    // ── Mermaid 预览区域 ───────────────────────────────────
+    // ── Mermaid preview area ───────────────────────────────
     const mermaidPreview = document.createElement("div");
     mermaidPreview.className = "mermaid-preview";
     mermaidPreview.contentEditable = "false";
 
-    // SVG 容器（transform 作用在这里）
+    // SVG container (the transform is applied here)
     const svgContainer = document.createElement("div");
     svgContainer.className = "mermaid-svg-container";
     mermaidPreview.appendChild(svgContainer);
 
-    // ── 右上角缩放 overlay：[-] [百分比] [+] ─────────────
+    // ── Top-right zoom overlay: [-] [percentage] [+] ─────────────
     const zoomOverlay = document.createElement("div");
     zoomOverlay.className = "mermaid-zoom-overlay";
     zoomOverlay.contentEditable = "false";
@@ -586,12 +586,12 @@ export function createCodeBlockView(
     zoomOverlay.append(overlayZoomOut, overlayZoomVal, overlayZoomIn);
     mermaidPreview.appendChild(zoomOverlay);
 
-    // ── 右下角方向控制：↑←[reset]→↓ ─────────────────────
+    // ── Bottom-right direction controls: ↑←[reset]→↓ ─────────────────────
     const panControls = document.createElement("div");
     panControls.className = "mermaid-pan-controls";
     panControls.contentEditable = "false";
 
-    // 中间 reset 按钮（fit-to-view）
+    // Center reset button (fit-to-view)
     const panResetBtn = document.createElement("button");
     panResetBtn.className = "mermaid-pan-btn mermaid-pan-reset";
     panResetBtn.tabIndex = -1;
@@ -643,7 +643,7 @@ export function createCodeBlockView(
         return btn;
     }
 
-    // ── 拖拽 handle ────────────────────────────────────────
+    // ── Drag handle ────────────────────────────────────────
     const resizeHandle = document.createElement("div");
     resizeHandle.className = "code-block-resize-handle";
     resizeHandle.contentEditable = "false";
@@ -651,7 +651,7 @@ export function createCodeBlockView(
 
     resizeHandle.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
-        // 以当前可见元素为基准测量起始高度
+        // Measure the starting height from whichever element is currently visible
         const visibleEl = isPreviewMode ? previewEl() : pre;
         const startY = e.clientY;
         const startH = visibleEl.getBoundingClientRect().height;
@@ -674,7 +674,7 @@ export function createCodeBlockView(
         document.addEventListener("mouseup", onUp);
     });
 
-    // ── LaTeX 预览区域 (block math) ───────────────────────
+    // ── LaTeX preview area (block math) ───────────────────
     const latexPreview = document.createElement("div");
     latexPreview.className = "latex-preview";
     latexPreview.contentEditable = "false";
@@ -713,16 +713,16 @@ export function createCodeBlockView(
         : null;
     lineNumberResizeObserver?.observe(codeEl);
 
-    // ── Transform 工具函数 ─────────────────────────────────
+    // ── Transform helpers ──────────────────────────────────
     function applyTransform(): void {
         svgContainer.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
-        // 同步百分比显示
+        // Sync the percentage display
         if (zoomValueDisplay) {
             zoomValueDisplay.textContent = `${Math.round(zoomLevel * 100)}%`;
         }
     }
 
-    // fitToView：读取 SVG viewBox，自适应填满容器
+    // fitToView: read the SVG viewBox and scale to fill the container
     function fitToView(): void {
         const svgEl = svgContainer.querySelector("svg");
         if (!svgEl) return;
@@ -744,7 +744,7 @@ export function createCodeBlockView(
         });
     }
 
-    // ── Mermaid 渲染 ───────────────────────────────────────
+    // ── Mermaid rendering ──────────────────────────────────
     async function renderMermaid(code: string): Promise<void> {
         if (!isMermaid || !isPreviewMode) return;
         if (isRendering) return;
@@ -755,13 +755,13 @@ export function createCodeBlockView(
         naturalSvgW = 0; naturalSvgH = 0;
         svgContainer.innerHTML = `<div class="mermaid-loading">${t("Rendering...")}</div>`;
 
-        // svgContainer 是 inline-block，loading div 绝对定位不占空间 → clientWidth=0。
-        // 渲染前临时设置宽度，让 Mermaid（尤其是甘特图）以正确宽度布局。
+        // svgContainer is inline-block, and the loading div is absolutely positioned so it takes no space → clientWidth=0.
+        // Set a temporary width before rendering so Mermaid (especially Gantt charts) lays out at the correct width.
         const renderWidth = mermaidPreview.clientWidth || 800;
         svgContainer.style.width = renderWidth + "px";
 
-        // 传入 svgContainer 作为第三参数：mermaid 改用 hidden div（不可见），
-        // 不再向 body 注入可见错误元素（bomb icon），且渲染完成后自动移除 hidden div
+        // Pass svgContainer as the third argument: mermaid then uses a hidden div (invisible),
+        // no longer injecting a visible error element (bomb icon) into body, and auto-removes the hidden div after rendering
         const id = `mmid-${Math.random().toString(36).slice(2, 9)}`;
         try {
             const { svg } = await mermaid.render(id, code, svgContainer);
@@ -769,10 +769,10 @@ export function createCodeBlockView(
             const svgEl = svgContainer.querySelector("svg");
             if (svgEl) {
                 svgEl.style.display = "block";
-                // 多级 fallback 读取自然尺寸（svgContainer.style.width 此时仍为 renderWidth，
-                // 确保甘特图等 width="100%" 的 SVG 在真实宽度下计算 clientWidth）
+                // Multi-level fallback for reading the natural size (svgContainer.style.width is still renderWidth here,
+                // so width="100%" SVGs like Gantt charts compute clientWidth at the real width)
                 let nw = 0, nh = 0;
-                // 1. viewBox（最精确）
+                // 1. viewBox (most precise)
                 const vb = svgEl.getAttribute("viewBox");
                 if (vb) {
                     const parts = vb.trim().split(/[\s,]+/);
@@ -781,7 +781,7 @@ export function createCodeBlockView(
                         nh = parseFloat(parts[3]);
                     }
                 }
-                // 2. 显式 width/height 属性（排除 "100%" 等百分比值）
+                // 2. Explicit width/height attributes (excluding percentage values like "100%")
                 if (!nw) {
                     const wa = svgEl.getAttribute("width");
                     if (wa && !wa.includes("%")) nw = parseFloat(wa);
@@ -790,27 +790,27 @@ export function createCodeBlockView(
                     const ha = svgEl.getAttribute("height");
                     if (ha && !ha.includes("%")) nh = parseFloat(ha);
                 }
-                // 3. 浏览器实际渲染尺寸（svgContainer 宽度还在，clientWidth 有效）
+                // 3. The browser's actual rendered size (svgContainer width is still set, so clientWidth is valid)
                 if (!nw) nw = svgEl.clientWidth || renderWidth;
                 if (!nh) nh = svgEl.clientHeight || 400;
                 naturalSvgW = nw;
                 naturalSvgH = nh;
-                // 将自然尺寸写回 SVG 属性，确保 CSS scale 以固定像素尺寸为基准
-                // （若 Mermaid 输出 width="100%"，不写回则 CSS scale 会以容器宽度为基准，导致缩放错误）
+                // Write the natural size back to the SVG attributes so CSS scale is based on a fixed pixel size
+                // (if Mermaid outputs width="100%", not writing it back makes CSS scale base on the container width, causing incorrect scaling)
                 svgEl.setAttribute("width", String(nw));
                 svgEl.setAttribute("height", String(nh));
-                // 清除 Mermaid 可能附加的 max-width:100%;height:auto 内联样式
-                // 否则会覆盖上方写入的 width/height 属性，导致 SVG 以容器宽度渲染
+                // Clear any max-width:100%;height:auto inline styles Mermaid may have added,
+                // otherwise they override the width/height attributes written above and the SVG renders at the container width
                 svgEl.style.maxWidth = "none";
                 svgEl.style.height = "";
-                // 清除临时渲染宽度（已读取完尺寸）
+                // Clear the temporary render width (the size has been read)
                 svgContainer.style.width = "";
-                // ── 自适应容器高度 ──────────────────────────────────
-                // 以"填满宽度"缩放比估算合适的容器高度，高图表自动扩展
-                // fitWidthScale 限制 ≤1.0，不对小图放大
+                // ── Adaptive container height ────────────────────────
+                // Estimate a suitable container height from the "fill width" scale ratio; tall diagrams expand automatically
+                // fitWidthScale is capped at ≤1.0, so small diagrams aren't enlarged
                 const availableW = mermaidPreview.clientWidth || 800;
                 const fitWidthScale = Math.min((availableW - 40) / nw, 1.0);
-                const idealH = nh * fitWidthScale + 80; // 上下各 40px padding
+                const idealH = nh * fitWidthScale + 80; // 40px padding top and bottom
                 const maxH = Math.min(window.innerHeight * 0.92, 2000);
                 const finalH = Math.max(300, Math.min(Math.ceil(idealH), maxH));
                 mermaidPreview.style.height = finalH + "px";
@@ -822,7 +822,7 @@ export function createCodeBlockView(
             lastRenderedCode = code;
             fitToView();
         } catch (err) {
-            svgContainer.style.width = ""; // 出错时同样还原
+            svgContainer.style.width = ""; // restore on error too
             const msg = err instanceof Error ? err.message : String(err);
             svgContainer.innerHTML = `
                 <div class="mermaid-error">
@@ -834,7 +834,7 @@ export function createCodeBlockView(
         }
     }
 
-    // 注册 Mermaid 实例（用于主题切换时重新渲染）
+    // Register the Mermaid instance (used to re-render on theme change)
     const mermaidInstance: MermaidInstance = {
         get isMermaid() { return isMermaid; },
         get isPreviewMode() { return isPreviewMode; },
@@ -843,7 +843,7 @@ export function createCodeBlockView(
     };
     mermaidInstances.add(mermaidInstance);
 
-    // 进入预览模式（内部复用）
+    // Enter preview mode (internal reuse)
     function enterPreviewMode(): void {
         isPreviewMode = true;
         toggleBtn.innerHTML = IconCode;
@@ -854,7 +854,7 @@ export function createCodeBlockView(
         wordWrapBtn.style.display = "none";
     }
 
-    // 退出预览模式（内部复用）
+    // Exit preview mode (internal reuse)
     function exitPreviewMode(): void {
         isPreviewMode = false;
         toggleBtn.innerHTML = IconEye;
@@ -872,7 +872,7 @@ export function createCodeBlockView(
         else void renderMermaid(code);
     }
 
-    // ── 切换代码/预览 ──────────────────────────────────────
+    // ── Toggle code/preview ────────────────────────────────
     toggleBtn.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
         if (isPreviewMode) {
@@ -883,13 +883,13 @@ export function createCodeBlockView(
         }
     });
 
-    // ── Mermaid / LaTeX 默认进入预览模式 ──────────────────
+    // ── Mermaid / LaTeX enter preview mode by default ──────────────────
     if (isPreviewable() && shouldAutoConvertCodeBlock()) {
         enterPreviewMode();
         setTimeout(() => renderPreview(node.textContent), 0);
     }
 
-    // ── 拖拽 pan（鼠标拖拽）──────────────────────────────
+    // ── Drag to pan (mouse drag) ──────────────────────────
     mermaidPreview.addEventListener("mousedown", (e) => {
         if (e.button !== 0 || (e.target as Element).closest("button")) return;
         e.preventDefault(); e.stopPropagation();
@@ -910,17 +910,17 @@ export function createCodeBlockView(
         document.addEventListener("mouseup", onUp);
     });
 
-    // ── 触控板/滚轮事件 ────────────────────────────────────
-    // 内联预览只响应 ctrlKey=true（Mac 双指捏合缩放），普通滚动透传给页面。
-    // 全屏预览（openDiagramLightbox）仍保留滚轮平移+缩放。
+    // ── Trackpad/wheel events ──────────────────────────────
+    // The inline preview only responds to ctrlKey=true (Mac pinch-to-zoom); normal scrolling passes through to the page.
+    // The fullscreen preview (openDiagramLightbox) still keeps wheel pan + zoom.
     const onPreviewWheel = (e: WheelEvent) => {
-        if (!e.ctrlKey) return; // 普通滚动不拦截，让页面正常滚动
+        if (!e.ctrlKey) return; // don't intercept normal scrolling, let the page scroll
         e.preventDefault();
         e.stopPropagation();
-        // 双指捏合：指数平滑缩放，不跳变
+        // Pinch: exponential smooth zoom, no jumps
         const factor = Math.pow(0.98, e.deltaY);
         const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoomLevel * factor));
-        // 以鼠标/手指位置为缩放中心
+        // Use the mouse/finger position as the zoom center
         const rect = mermaidPreview.getBoundingClientRect();
         const mx = e.clientX - rect.left - rect.width / 2;
         const my = e.clientY - rect.top - rect.height / 2;
@@ -932,7 +932,7 @@ export function createCodeBlockView(
     };
     mermaidPreview.addEventListener("wheel", onPreviewWheel, { passive: false });
 
-    // ── Overlay 缩放按钮 ──────────────────────────────────
+    // ── Overlay zoom buttons ──────────────────────────────
     overlayZoomOut.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
         zoomLevel = Math.max(ZOOM_MIN, zoomLevel - ZOOM_BTN);
@@ -948,14 +948,14 @@ export function createCodeBlockView(
         fitToView();
     });
 
-    // ── 全屏按钮 ───────────────────────────────────────────
+    // ── Fullscreen button ──────────────────────────────────
     fullscreenBtn.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
         if (isMermaid && isPreviewMode) openDiagramLightbox();
         else openCodeLightbox();
     });
 
-    // ── 代码全屏（可编辑 + 语法高亮） ─────────────────────────
+    // ── Code fullscreen (editable + syntax highlighting) ─────────────────────────
     function openCodeLightbox(): void {
         if (lbActiveLightbox) return;
         const overlay = document.createElement("div");
@@ -977,16 +977,16 @@ export function createCodeBlockView(
 
         lbHeader.append(lbTitle, lbCopyBtn, lbCloseBtn);
 
-        // ── 编辑器主体：行号区 + 代码区（高亮 pre + textarea 叠加）
+        // ── Editor body: line-number area + code area (highlighted pre + textarea overlay)
         const lbBody = document.createElement("div");
         lbBody.className = "mermaid-lightbox-body code-lightbox-body";
 
-        // 行号栏
+        // Line-number bar
         const gutter = document.createElement("div");
         gutter.className = "code-lightbox-gutter";
         gutter.setAttribute("aria-hidden", "true");
 
-        // 代码区（pre 高亮层 + textarea 输入层）
+        // Code area (pre highlight layer + textarea input layer)
         const codeArea = document.createElement("div");
         codeArea.className = "code-lightbox-editor-wrap";
 
@@ -1016,7 +1016,7 @@ export function createCodeBlockView(
         lockBodyScroll();
         lbActiveLightbox = overlay;
 
-        // ── 行号更新
+        // ── Line-number update
         const updateGutter = (): void => {
             updateLineNumbers(
                 gutter,
@@ -1030,13 +1030,13 @@ export function createCodeBlockView(
             : null;
         gutterResizeObserver?.observe(textarea);
 
-        // 自动聚焦
+        // Auto-focus
         requestAnimationFrame(() => {
             textarea.focus();
             updateGutter();
         });
 
-        // ── 实时高亮 + 行号 + 滚动同步
+        // ── Live highlight + line numbers + scroll sync
         const updateHighlight = (): void => {
             codeClone.innerHTML = highlight(textarea.value, lang);
             updateGutter();
@@ -1069,7 +1069,7 @@ export function createCodeBlockView(
             }
         });
 
-        // ── 复制当前 textarea 内容
+        // ── Copy the current textarea content
         lbCopyBtn.addEventListener("mousedown", (e) => {
             e.preventDefault(); e.stopPropagation();
             navigator.clipboard?.writeText(textarea.value).catch(() => {});
@@ -1077,7 +1077,7 @@ export function createCodeBlockView(
             setTimeout(() => { lbCopyBtn.innerHTML = IconCopy; }, 1500);
         });
 
-        // ── 关闭（带淡出动画 + 写回 ProseMirror）
+        // ── Close (with fade-out animation + write back to ProseMirror)
         function closeLb(): void {
             const newCode = textarea.value;
             const originalCode = codeEl.textContent ?? "";
@@ -1108,7 +1108,7 @@ export function createCodeBlockView(
         const removeKeyListener = bindLightboxDismiss(overlay, lbCloseBtn, closeLb);
     }
 
-    // ── Mermaid 图表全屏 ──────────────────────────────────
+    // ── Mermaid diagram fullscreen ─────────────────────────
     function openDiagramLightbox(): void {
         if (lbActiveLightbox) return;
         if (!svgContainer.querySelector("svg")) return;
@@ -1152,7 +1152,7 @@ export function createCodeBlockView(
         const lbBody = document.createElement("div");
         lbBody.className = "mermaid-lightbox-body";
 
-        // 预览面板
+        // Preview pane
         const lbPreviewPane = document.createElement("div");
         lbPreviewPane.className = "lb-mermaid-preview-pane";
 
@@ -1163,7 +1163,7 @@ export function createCodeBlockView(
         if (lbSvgEl) lbSvgEl.style.display = "block";
         lbPreviewPane.appendChild(lbSvgContainer);
 
-        // 代码编辑面板（复用 code lightbox 结构）
+        // Code editing pane (reuses the code lightbox structure)
         const lbCodePane = document.createElement("div");
         lbCodePane.className = "lb-mermaid-code-pane";
 
@@ -1199,7 +1199,7 @@ export function createCodeBlockView(
         lockBodyScroll();
         lbActiveLightbox = overlay;
 
-        // ── 行号 ──────────────────────────────────────────────
+        // ── Line numbers ───────────────────────────────────────
         const updateGutter = (): void => {
             updateLineNumbers(
                 gutter,
@@ -1213,7 +1213,7 @@ export function createCodeBlockView(
             : null;
         gutterResizeObserver?.observe(textarea);
 
-        // ── 实时高亮 + 滚动同步 ──────────────────────────────
+        // ── Live highlight + scroll sync ──────────────────────
         const updateHighlight = (): void => {
             lbCodeEl.innerHTML = highlight(textarea.value, "mermaid");
             updateGutter();
@@ -1237,7 +1237,7 @@ export function createCodeBlockView(
             }
         });
 
-        // ── 预览区 transform ──────────────────────────────────
+        // ── Preview-pane transform ─────────────────────────────
         function applyLbTransform(): void {
             lbSvgContainer.style.transform = `translate(${lbPanX}px, ${lbPanY}px) scale(${lbZoom})`;
             lbZoomResetBtn.textContent = `${Math.round(lbZoom * 100)}%`;
@@ -1258,7 +1258,7 @@ export function createCodeBlockView(
 
         requestAnimationFrame(fitLbView);
 
-        // ── Lightbox 内部 Mermaid 渲染 ────────────────────────
+        // ── Mermaid rendering inside the lightbox ────────────────────────
         async function renderLbMermaid(code: string): Promise<void> {
             ensureMermaid();
             lbSvgContainer.innerHTML = `<div class="mermaid-loading">${t("Rendering...")}</div>`;
@@ -1290,7 +1290,7 @@ export function createCodeBlockView(
             }
         }
 
-        // ── 切换代码 / 预览 ───────────────────────────────────
+        // ── Toggle code / preview ──────────────────────────────
         function switchToCodeMode(): void {
             lbIsCodeMode = true;
             lbPreviewPane.style.display = "none";
@@ -1318,7 +1318,7 @@ export function createCodeBlockView(
             if (lbIsCodeMode) switchToPreviewMode(); else switchToCodeMode();
         });
 
-        // ── 预览区交互（拖拽平移 + 滚轮缩放）────────────────
+        // ── Preview-pane interaction (drag to pan + wheel to zoom) ────────────────
         lbPreviewPane.addEventListener("mousedown", (e) => {
             if (e.button !== 0 || (e.target as Element).closest("button")) return;
             e.preventDefault();
@@ -1352,7 +1352,7 @@ export function createCodeBlockView(
         lbZoomOutBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); lbZoom = Math.max(ZOOM_MIN, lbZoom - ZOOM_BTN); applyLbTransform(); });
         lbZoomResetBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); lbPanX = 0; lbPanY = 0; lbZoom = 1.0; applyLbTransform(); });
 
-        // ── 关闭（写回 ProseMirror）──────────────────────────
+        // ── Close (write back to ProseMirror) ──────────────────────────
         function closeLb(): void {
             const newCode = textarea.value;
             if (newCode !== originalCode) {
@@ -1427,7 +1427,7 @@ export function createCodeBlockView(
 
         ignoreMutation(mutation: ViewMutationRecord): boolean {
             if (mutation.type === "selection") return false;
-            if (mutation.type === "attributes") return true; // update() 会修改 className，忽略 attribute mutation 防止 reconcile 死循环（B085）
+            if (mutation.type === "attributes") return true; // update() modifies className, so ignore attribute mutations to prevent a reconcile infinite loop (B085)
             return (
                 !codeEl.contains(mutation.target as Node) &&
                 mutation.target !== codeEl

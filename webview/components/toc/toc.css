@@ -136,10 +136,10 @@ body.toc-resizing {
     text-align: center;
 }
 
-/* ─── TOC 右侧收起/展开 Tab（独立 fixed 元素，panel overflow:hidden 不影响）─── */
+/* ─── TOC collapse/expand tab on the side (standalone fixed element, unaffected by the panel's overflow:hidden) ─── */
 .toc-toggle-tab {
     position: fixed;
-    /* left / top 由 JS 动态设置 */
+    /* left / top set dynamically by JS */
     width: var(--toc-tab-width, 20px);
     height: 48px;
     background: var(
@@ -158,7 +158,7 @@ body.toc-resizing {
     user-select: none;
     z-index: 100;
     padding: 0;
-    transition: left 0.2s ease; /* 与 panel transform 动画同步 */
+    transition: left 0.2s ease; /* in sync with the panel transform animation */
 }
 
 /* Right-docked variant: mirror the tab onto the right edge */

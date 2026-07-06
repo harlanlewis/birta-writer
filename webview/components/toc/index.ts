@@ -186,7 +186,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     }
 
-    // ── 从 ProseMirror 文档中提取所有 heading 节点 ────────
+    // ── Extract all heading nodes from the ProseMirror document ────────
     function getHeadings(): HeadingEntry[] {
         const view = getEditorView();
         if (!view) {
@@ -269,12 +269,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                             window.scrollY -
                             topbarH -
                             8;
-                        // 立即更新 TOC 选中状态
+                        // Update the TOC active state immediately
                         setActiveHeadingPos(pos);
                         window.scrollTo({ top, behavior: "smooth" });
                     }
                 } catch {
-                    /* 文档结构异常时忽略 */
+                    /* ignore when the document structure is unexpected */
                 }
             });
             list.appendChild(item);
@@ -319,14 +319,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     }
 
-    // Tab 点击：始终调用 toggle
+    // Tab click: always call toggle
     tabEl.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
         toggle();
     });
 
-    // ── 自动展开检测 ──────────────────────────────────────
+    // ── Auto-expand detection ─────────────────────────────
     function hasEnoughSpace(): boolean {
         if (document.body.classList.contains("editor-width-auto")) {
             return window.innerWidth >= tocWidth + DOCKED_MIN_CONTENT_WIDTH;
@@ -360,7 +360,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         syncTocState();
     }
 
-    // ── 动态对齐到 topbar 底部，同步 tab 垂直位置 ──────────
+    // ── Dynamically align to the bottom of the topbar and sync the tab's vertical position ──────────
     function updatePanelPosition(): void {
         const topbar = document.querySelector(
             ".editor-topbar",
@@ -368,13 +368,13 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const topbarBottom = topbar?.getBoundingClientRect().bottom ?? 40;
         panel.style.top = `${topbarBottom}px`;
         panel.style.height = `calc(100vh - ${topbarBottom}px)`;
-        // tab 垂直居中于面板
+        // Center the tab vertically on the panel
         const tabTop =
             topbarBottom + (window.innerHeight - topbarBottom) / 2 - 24;
         tabEl.style.top = `${tabTop}px`;
     }
 
-    // ── TOC 独立的滚动检测：更新当前可见标题的选中状态 ──────
+    // ── TOC's own scroll detection: update the active state of the currently visible heading ──────
     function updateActiveHeadingOnScroll(): void {
         scrollRafId = null;
         const view = getEditorView();
@@ -383,9 +383,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
 
         const top = getTopbarBottom();
-        // 检测点往下偏移 50px，避免滚动完成前误判为上一个标题
+        // Offset the detection point 50px down, to avoid mis-detecting the previous heading before the scroll finishes
         const threshold = top + 50;
-        // TOC 不排除折叠隐藏的标题
+        // The TOC does not exclude collapsed/hidden headings
         const result = findActiveHeading(view, threshold, false);
         setActiveHeadingPos(result?.pos ?? null);
     }
@@ -403,7 +403,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         isOpen = userToggled ? tocMode === "docked" && !dockedUserCollapsed : shouldAutoOpen(headings);
         updatePanelPosition();
         syncTocState();
-        // 初始化时检测一次当前可见标题
+        // Detect the currently visible heading once on init
         updateActiveHeadingOnScroll();
     });
 
@@ -411,7 +411,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         updatePanelPosition();
         checkResponsiveMode();
     });
-    // 监听滚动事件，独立更新 TOC 选中状态
+    // Listen for scroll events to update the TOC active state independently
     eventManager.onWindow("scroll", scheduleScrollUpdate, { passive: true });
 
     return { panel, toggle, refresh };

@@ -102,8 +102,8 @@ let _savedMarkdown = '';
 // until the next reload — by then they are part of the saved baseline.
 let _protection: RoundTripProtection | null = null;
 
-// 用户是否已与编辑器产生交互（键盘/鼠标/粘贴等）
-// 每次 createEditor() 重置为 false，避免"仅打开文件即触发自动保存"
+// Whether the user has interacted with the editor yet (keyboard/mouse/paste/...)
+// Reset to false on every createEditor() so that "just opening a file" never triggers an autosave.
 let _hasUserInteracted = false;
 let _interactionListenerAdded = false;
 
@@ -256,11 +256,11 @@ export async function createEditor(
                 _savedMarkdown = toSave;
                 debouncedUpdate(toSave);
             });
-            // 配置 prism：使用我们已注册语言的 refractor 实例
+            // Configure prism: use our refractor instance with the languages we registered
             ctx.set(prismConfig.key, {
                 configureRefractor: () => refractor,
             });
-            // 注册 code_block NodeView（顶部语言选择 + 复制按钮）
+            // Register the code_block NodeView (top language picker + copy button)
             ctx.set(nodeViewCtx, [
                 ["code_block", createCodeBlockView],
                 ["footnote_reference", createFootnoteReferenceView],
