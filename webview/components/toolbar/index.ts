@@ -1411,12 +1411,13 @@ export function initToolbar(
         setupOverflow();
     }
 
-    // Width available to the center zone = toolbar minus the sides' CONTENT.
-    // The side zones fill their `1fr` grid tracks, so scrollWidth/clientWidth
-    // report the (large) track width, not the content — using those made a lone
-    // center item look like it overflowed. Sum the side items' own widths
-    // instead. Measured from the sides (not center) so collapse never feeds
-    // back into the measurement. The slack absorbs the inter-zone grid gaps.
+    // Width available to the collapsible (left + center) items = toolbar
+    // minus the right zone's CONTENT. The zones fill their `1fr` grid
+    // tracks, so scrollWidth/clientWidth report the (large) track width,
+    // not the content — using those made a lone item look like it
+    // overflowed. Sum the right items' own widths instead; the left/center
+    // items are the overflow groups themselves, so the controller already
+    // accounts for them. The slack absorbs the inter-zone grid gaps.
     const ZONE_GAP_SLACK = 8;
     function measureContentWidth(zone: HTMLElement): number {
         let total = 0;
@@ -1432,15 +1433,18 @@ export function initToolbar(
         }
         return total;
     }
-    function availableCenterWidth(): number {
+    function availableWidth(): number {
         return Math.max(
             0,
-            toolbar.clientWidth - measureContentWidth(leftZone) - measureContentWidth(rightZone) - ZONE_GAP_SLACK,
+            toolbar.clientWidth - measureContentWidth(rightZone) - ZONE_GAP_SLACK,
         );
     }
 
     function setupOverflow(): void {
-        const wrappers = Array.from(centerZone.children).filter(
+        // Collapsible items span the left AND center zones (the shipped
+        // default keeps every editing control on the left with the center
+        // empty); each group's comment marker remembers its home zone.
+        const wrappers = [...leftZone.children, ...centerZone.children].filter(
             (el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains("tb-item"),
         );
         const groups: OverflowGroup[] = wrappers.map((el) => ({
@@ -1448,22 +1452,22 @@ export function initToolbar(
             el,
             sepBefore: null,
         }));
-        // Collapse from the end of the center zone; never collapse the format
-        // (text-level) dropdown — it is the toolbar's anchor control.
+        // Collapse from the end (center tail first, then the left tail);
+        // never collapse the format (text-level) dropdown — it is the
+        // toolbar's anchor control.
         const collapseOrder = groups
             .map((_, i) => i)
             .filter((i) => groups[i]!.name !== "format")
             .reverse();
         overflow = createOverflowController({
-            toolbar: centerZone,
             groups,
             collapseOrder,
             moreWrap,
             panel: moreMenu,
         });
-        overflow.update(availableCenterWidth());
+        overflow.update(availableWidth());
         if (typeof ResizeObserver !== "undefined") {
-            resizeObserver = new ResizeObserver(() => overflow?.update(availableCenterWidth()));
+            resizeObserver = new ResizeObserver(() => overflow?.update(availableWidth()));
             resizeObserver.observe(toolbar);
         }
     }
@@ -1473,12 +1477,11 @@ export function initToolbar(
         resizeObserver = null;
         overflow = null;
         // Detach every item wrapper (from its zone or the ⋯ panel) plus any
-        // stale overflow markers, keeping the persistent moreWrap in place.
+        // stale overflow markers; the persistent moreWrap is re-homed below.
+        moreWrap.remove();
         leftZone.replaceChildren();
+        centerZone.replaceChildren();
         rightZone.replaceChildren();
-        Array.from(centerZone.childNodes).forEach((n) => {
-            if (n !== moreWrap) { centerZone.removeChild(n); }
-        });
         moreMenu.replaceChildren();
 
         const zones = computeZones(config);
@@ -1488,12 +1491,16 @@ export function initToolbar(
         }
         for (const id of zones.center) {
             const el = items[id];
-            if (el) { centerZone.insertBefore(el, moreWrap); }
+            if (el) { centerZone.appendChild(el); }
         }
         for (const id of zones.right) {
             const el = items[id];
             if (el) { rightZone.appendChild(el); }
         }
+        // The ⋯ button follows the collapsible tail: end of the center zone
+        // when it has items, otherwise end of the left zone — so collapsed
+        // items reappear where their neighbors are, not in an empty zone.
+        (zones.center.length > 0 ? centerZone : leftZone).appendChild(moreWrap);
 
         // Debug dropdown: pinned just before Settings in the right zone.
         if (dbgItem) {

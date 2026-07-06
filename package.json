@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.50",
+  "version": "0.2.51",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -865,7 +865,7 @@
             "center",
             "right"
           ],
-          "default": "center",
+          "default": "left",
           "description": "Text level menu (paragraph, headings): pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.clearFormatting": {
@@ -877,7 +877,7 @@
             "center",
             "right"
           ],
-          "default": "center",
+          "default": "left",
           "description": "Clear formatting button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.fontPreset": {
@@ -889,7 +889,7 @@
             "center",
             "right"
           ],
-          "default": "center",
+          "default": "right",
           "description": "Font picker: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.bold": {
@@ -901,7 +901,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Bold button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.italic": {
@@ -913,7 +913,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Italic button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.strikethrough": {
@@ -925,7 +925,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Strikethrough button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.inlineCode": {
@@ -937,7 +937,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Inline code button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.link": {
@@ -949,7 +949,7 @@
             "center",
             "right"
           ],
-          "default": "center",
+          "default": "left",
           "description": "Insert/edit link button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.image": {
@@ -961,7 +961,7 @@
             "center",
             "right"
           ],
-          "default": "center",
+          "default": "left",
           "description": "Insert image button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.table": {
@@ -973,7 +973,7 @@
             "center",
             "right"
           ],
-          "default": "center",
+          "default": "left",
           "description": "Insert table button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.footnote": {
@@ -997,7 +997,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Insert math button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.bulletList": {
@@ -1009,7 +1009,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Bullet list button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.orderedList": {
@@ -1021,7 +1021,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Ordered list button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.taskList": {
@@ -1033,7 +1033,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Task list button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.blockquote": {
@@ -1045,7 +1045,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Blockquote button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.codeBlock": {
@@ -1057,7 +1057,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Code block button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.horizontalRule": {
@@ -1069,7 +1069,7 @@
             "center",
             "right"
           ],
-          "default": "hidden",
+          "default": "left",
           "description": "Horizontal rule button: pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.viewSource": {

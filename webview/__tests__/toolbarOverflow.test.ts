@@ -198,7 +198,6 @@ describe("createOverflowController", () => {
 
     function makeController() {
         return createOverflowController({
-            toolbar,
             groups,
             // insert collapses first, then blocks; fmt and inline-core never do
             collapseOrder: [2, 3],
@@ -332,5 +331,49 @@ describe("createOverflowController", () => {
         // Assert
         expect(controller.collapsedNames()).toEqual(["insert"]);
         expect(groups[3]!.el.parentElement).toBe(toolbar);
+    });
+
+    it("groups from different zones should restore to their own home zone", () => {
+        // Arrange: the shipped layout keeps items in the LEFT zone and the
+        // ⋯ can also collapse them — a collapsed left item must come back to
+        // the left zone, not to whichever container hosts the ⋯ button.
+        const leftZone = document.createElement("div");
+        const centerZone = document.createElement("div");
+        document.body.append(leftZone, centerZone);
+        const mk = (zone: HTMLElement, name: string, w: number): OverflowGroup => {
+            const el = document.createElement("div");
+            el.dataset["w"] = String(w);
+            zone.appendChild(el);
+            return { name, el, sepBefore: null };
+        };
+        const twoZoneGroups = [
+            mk(leftZone, "left-a", 60),
+            mk(leftZone, "left-b", 60),
+            mk(centerZone, "center-a", 60),
+        ];
+        const controller = createOverflowController({
+            groups: twoZoneGroups,
+            collapseOrder: [2, 1], // center tail first, then left tail
+            moreWrap,
+            panel,
+            measure,
+        });
+
+        // Act: collapse both tails, then widen so everything restores
+        controller.update(80);
+        expect(controller.collapsedNames()).toEqual(["left-b", "center-a"]);
+        expect(twoZoneGroups[1]!.el.parentElement).toBe(panel);
+        controller.update(400);
+
+        // Assert: each group returned to its own zone, in position
+        expect(controller.collapsedNames()).toEqual([]);
+        expect(twoZoneGroups[0]!.el.parentElement).toBe(leftZone);
+        expect(twoZoneGroups[1]!.el.parentElement).toBe(leftZone);
+        expect(twoZoneGroups[2]!.el.parentElement).toBe(centerZone);
+        // left zone order preserved: left-a before left-b
+        const leftChildren = Array.from(leftZone.children);
+        expect(leftChildren.indexOf(twoZoneGroups[0]!.el)).toBeLessThan(
+            leftChildren.indexOf(twoZoneGroups[1]!.el),
+        );
     });
 });

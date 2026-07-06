@@ -16,17 +16,29 @@ describe("computeZones", () => {
         // Act
         const zones = computeZones(undefined);
 
-        // Assert: defaults put six items in center and four on the right
-        expect(zones.center).toEqual([
+        // Assert: shipped layout — editing controls left, utilities right,
+        // center empty, footnote the sole opt-in
+        expect(zones.left).toEqual([
             "format",
-            "clearFormatting",
-            "fontPreset",
+            "bold",
+            "italic",
+            "strikethrough",
+            "inlineCode",
             "link",
-            "image",
+            "bulletList",
+            "orderedList",
+            "taskList",
+            "codeBlock",
+            "blockquote",
+            "horizontalRule",
             "table",
+            "image",
+            "math",
+            "clearFormatting",
         ]);
-        expect(zones.right).toEqual(["viewSource", "styleCheck", "find", "settings"]);
-        expect(zones.left).toEqual([]);
+        expect(zones.center).toEqual([]);
+        expect(zones.right).toEqual(["viewSource", "find", "styleCheck", "fontPreset", "settings"]);
+        expect(zones.hidden).toEqual(["footnote"]);
     });
 
     it("hidden items should be omitted from every zone and listed under hidden", () => {
@@ -37,33 +49,32 @@ describe("computeZones", () => {
         const zones = computeZones(config);
 
         // Assert
-        expect(zones.center).not.toContain("link");
-        expect(zones.center).not.toContain("table");
-        expect(zones.center).toContain("image");
+        expect(zones.left).not.toContain("link");
+        expect(zones.left).not.toContain("table");
+        expect(zones.left).toContain("image");
         expect(zones.hidden).toContain("link");
         expect(zones.hidden).toContain("table");
     });
 
-    it("default-hidden items should populate the hidden list in registry order", () => {
-        // Act
-        const zones = computeZones(undefined);
+    it("hiding items should populate the hidden list in registry order", () => {
+        // Arrange: hide two visible items on top of the default-hidden footnote
+        const zones = computeZones(cfg({ bold: "hidden", italic: "hidden" }));
 
         // Assert: bold precedes italic (registry order); visible items absent
-        expect(zones.hidden).toContain("bold");
         expect(zones.hidden.indexOf("bold")).toBeLessThan(zones.hidden.indexOf("italic"));
         expect(zones.hidden).not.toContain("format");
     });
 
     it("showing a default-hidden item should move it out of the hidden list", () => {
         // Arrange
-        const config = cfg({ bold: "left" });
+        const config = cfg({ footnote: "left" });
 
         // Act
         const zones = computeZones(config);
 
         // Assert
-        expect(zones.left).toContain("bold");
-        expect(zones.hidden).not.toContain("bold");
+        expect(zones.left).toContain("footnote");
+        expect(zones.hidden).not.toContain("footnote");
     });
 
     it("without an order hint, items should keep canonical registry order within a zone", () => {
@@ -78,17 +89,22 @@ describe("computeZones", () => {
     });
 
     it("an order hint should reorder items within a zone", () => {
-        // Arrange: move clearFormatting to the end of the left set
+        // Arrange: pull link ahead of the format anchor
         const config = cfg(
-            { format: "left", clearFormatting: "left", link: "left" },
-            ["format", "link", "clearFormatting"],
+            Object.fromEntries(
+                TOOLBAR_ITEM_IDS.map((id) => [
+                    id,
+                    id === "format" || id === "link" || id === "clearFormatting" ? "left" : "hidden",
+                ]),
+            ),
+            ["link", "clearFormatting", "format"],
         );
 
         // Act
         const zones = computeZones(config);
 
         // Assert
-        expect(zones.left).toEqual(["format", "link", "clearFormatting"]);
+        expect(zones.left).toEqual(["link", "clearFormatting", "format"]);
     });
 
     it("items not named in the order hint should follow the listed ones in canonical order", () => {
@@ -116,7 +132,12 @@ describe("computeZones", () => {
     it("an order id in another zone should not affect this zone", () => {
         // Arrange: order references a right-zone item while ranking left
         const config = cfg(
-            { format: "left", link: "left", settings: "right" },
+            Object.fromEntries(
+                TOOLBAR_ITEM_IDS.map((id) => [
+                    id,
+                    id === "format" || id === "link" ? "left" : id === "settings" ? "right" : "hidden",
+                ]),
+            ),
             ["settings", "link", "format"],
         );
 
@@ -146,8 +167,8 @@ describe("computeZones", () => {
         // Act
         const zones = computeZones(config);
 
-        // Assert: link keeps its default (center)
-        expect(zones[DEFAULT_PLACEMENTS.link as "center"]).toContain("link");
+        // Assert: link keeps its default zone
+        expect(zones[DEFAULT_PLACEMENTS.link as "left"]).toContain("link");
     });
 
     it("a malformed order value should be ignored", () => {
@@ -156,7 +177,7 @@ describe("computeZones", () => {
 
         // Act + Assert: falls back to canonical default layout, no throw
         expect(() => computeZones(config)).not.toThrow();
-        expect(computeZones(config).center[0]).toBe("format");
+        expect(computeZones(config).left[0]).toBe("format");
     });
 
     it("unknown item ids in the config should be ignored", () => {

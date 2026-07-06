@@ -62,9 +62,12 @@ export function computeOverflow(
 }
 
 export interface OverflowControllerOptions {
-    /** The `.toolbar` flex container owning the groups. */
-    toolbar: HTMLElement;
-    /** Groups in toolbar DOM order. */
+    /**
+     * Groups in toolbar DOM order. Groups may live in DIFFERENT zone
+     * containers (e.g. left + center): each group is restored to its home
+     * slot via a comment marker, so the controller never needs to know
+     * which zone owns it.
+     */
     groups: OverflowGroup[];
     /** Indices into `groups`, first-to-collapse first. */
     collapseOrder: number[];
@@ -88,7 +91,7 @@ export interface OverflowController {
 export function createOverflowController(
     options: OverflowControllerOptions,
 ): OverflowController {
-    const { toolbar, groups, collapseOrder, moreWrap, panel } = options;
+    const { groups, collapseOrder, moreWrap, panel } = options;
     const measure =
         options.measure ?? ((el: HTMLElement) => el.getBoundingClientRect().width);
 
@@ -118,8 +121,8 @@ export function createOverflowController(
             return 0;
         }
         if (naturalWidths[index] == null) {
-            // Only measure in natural (toolbar) layout — panel layout differs.
-            if (group.el.parentElement !== toolbar) {
+            // Only measure in natural (zone) layout — panel layout differs.
+            if (group.el.parentElement === panel) {
                 return 0;
             }
             const own = measure(group.el);
@@ -161,7 +164,8 @@ export function createOverflowController(
         groups.forEach((group, i) => {
             const shouldCollapse = collapsedSet.has(i);
             if (!shouldCollapse && group.el.parentElement === panel) {
-                toolbar.insertBefore(group.el, markers[i]!.nextSibling);
+                // Restore to the home zone the marker pins, whichever zone that is
+                markers[i]!.parentNode?.insertBefore(group.el, markers[i]!.nextSibling);
             }
             if (group.sepBefore) {
                 group.sepBefore.style.display =

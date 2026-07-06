@@ -14,54 +14,60 @@ import type { ToolbarConfig, ToolbarPlacement, ToolbarZone } from "../../../shar
  */
 export const TOOLBAR_ITEM_IDS = [
     "format",
-    "clearFormatting",
-    "fontPreset",
     "bold",
     "italic",
     "strikethrough",
     "inlineCode",
     "link",
-    "image",
-    "table",
-    "footnote",
-    "math",
     "bulletList",
     "orderedList",
     "taskList",
-    "blockquote",
     "codeBlock",
+    "blockquote",
     "horizontalRule",
+    "table",
+    "image",
+    "math",
+    "footnote",
+    "clearFormatting",
     "viewSource",
-    "styleCheck",
     "find",
+    "styleCheck",
+    "fontPreset",
     "settings",
 ] as const;
 
 export type ToolbarItemId = (typeof TOOLBAR_ITEM_IDS)[number];
 
-/** Default placement for each item when the user has not overridden it. */
+/**
+ * Default placement for each item when the user has not overridden it.
+ * The shipped layout: every editing control in the left zone (in
+ * TOOLBAR_ITEM_IDS order), utilities on the right, center empty, and
+ * footnote opt-in. Kept in lockstep with the package.json setting defaults
+ * by shared/__tests__/toolbarDefaultsContributions.test.ts.
+ */
 export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
-    format: "center",
-    clearFormatting: "center",
-    fontPreset: "center",
-    bold: "hidden",
-    italic: "hidden",
-    strikethrough: "hidden",
-    inlineCode: "hidden",
-    link: "center",
-    image: "center",
-    table: "center",
+    format: "left",
+    bold: "left",
+    italic: "left",
+    strikethrough: "left",
+    inlineCode: "left",
+    link: "left",
+    bulletList: "left",
+    orderedList: "left",
+    taskList: "left",
+    codeBlock: "left",
+    blockquote: "left",
+    horizontalRule: "left",
+    table: "left",
+    image: "left",
+    math: "left",
     footnote: "hidden",
-    math: "hidden",
-    bulletList: "hidden",
-    orderedList: "hidden",
-    taskList: "hidden",
-    blockquote: "hidden",
-    codeBlock: "hidden",
-    horizontalRule: "hidden",
+    clearFormatting: "left",
     viewSource: "right",
-    styleCheck: "right",
     find: "right",
+    styleCheck: "right",
+    fontPreset: "right",
     settings: "right",
 };
 
