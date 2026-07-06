@@ -14,7 +14,7 @@
  * message protocol carries the bare `<id>` as `EditorCommandId`.
  */
 
-export type WebviewSection = "editor" | "table" | "link";
+export type WebviewSection = "editor" | "table" | "link" | "toolbar";
 
 export interface EditorCommandMeta {
     /** Stable id; also the message payload and the command-name suffix. */
@@ -68,8 +68,15 @@ export const EDITOR_COMMANDS = [
     { id: "tableDeleteRow", title: "Delete Row", palette: false, sections: ["table"] },
     { id: "tableDeleteColumn", title: "Delete Column", palette: false, sections: ["table"] },
     { id: "tableDeleteTable", title: "Delete Table", palette: false, sections: ["table"] },
-    { id: "copyAsHtml", title: "Copy as HTML", palette: false, sections: ["editor"] },
-    { id: "copyAsMarkdown", title: "Copy as Markdown", palette: false, sections: ["editor"] },
+    { id: "copyAsHtml", title: "Copy as HTML", palette: false, sections: ["editor", "table", "link"] },
+    { id: "copyAsMarkdown", title: "Copy as Markdown", palette: false, sections: ["editor", "table", "link"] },
+    // Bottom "9_view" group of every content menu; same switch path as the
+    // toolbar button (carries the first visible line to preserve the viewport).
+    { id: "editRawMarkdown", title: "Edit Raw Markdown", palette: false, sections: ["editor", "table", "link"] },
+    // Toolbar (chrome) right-click menu — mirrors the settings-gear dropdown.
+    { id: "customizeToolbar", title: "Customize Toolbar", palette: true, sections: ["toolbar"] },
+    { id: "openExtensionSettings", title: "Extension Settings", palette: false, sections: ["toolbar"] },
+    { id: "openKeyboardShortcuts", title: "Keyboard Shortcuts", palette: false, sections: ["toolbar"] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 export type EditorCommandId = typeof EDITOR_COMMANDS[number]["id"];

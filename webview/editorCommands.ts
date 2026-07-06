@@ -32,7 +32,7 @@ import { insertFootnoteCommand } from "@/plugins";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { lift } from "@milkdown/prose/commands";
 import { TextSelection } from "@milkdown/prose/state";
-import { DOMSerializer } from "@milkdown/prose/model";
+import { DOMSerializer, Fragment } from "@milkdown/prose/model";
 import {
     addColumnAfter,
     addColumnBefore,
@@ -67,6 +67,10 @@ export interface EditorCommandHost {
     findSelection(): void;
     toggleToc(): void;
     editFrontmatter(): void;
+    editRawMarkdown(): void;
+    customizeToolbar(): void;
+    openExtensionSettings(): void;
+    openKeyboardShortcuts(): void;
 }
 
 let host: Partial<EditorCommandHost> = {};
@@ -249,22 +253,45 @@ function tableCmd(
     });
 }
 
-/** Serializes the current selection and hands it to the extension's clipboard. */
-function copySelection(getEditor: GetEditor, format: "html" | "markdown"): void {
+/**
+ * The top-level block containing `blockPos` (right-click menus stamp the
+ * position under the pointer), or undefined when it doesn't resolve. A caret
+ * is the normal state when right-clicking, so "copy the block you clicked"
+ * — a paragraph, list, or whole table — is the useful fallback.
+ */
+function blockContentAt(view: EditorView, blockPos: number): Fragment | undefined {
+    if (blockPos < 0 || blockPos > view.state.doc.content.size) { return undefined; }
+    const $pos = view.state.doc.resolve(blockPos);
+    const node = $pos.depth >= 1 ? $pos.node(1) : ($pos.nodeAfter ?? $pos.nodeBefore);
+    return node ? Fragment.from(node) : undefined;
+}
+
+/**
+ * Serializes the selection — or, when it's empty, the block under the
+ * right-click target — and hands it to the extension's clipboard.
+ */
+function copySelection(getEditor: GetEditor, format: "html" | "markdown", args?: unknown): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
         const view = ctx.get(editorViewCtx);
         const { from, to, empty } = view.state.selection;
-        if (empty) { return; }
-        const slice = view.state.doc.slice(from, to);
+        let content: Fragment | undefined;
+        if (!empty) {
+            content = view.state.doc.slice(from, to).content;
+        } else {
+            const blockPos = (args as { blockPos?: number } | undefined)?.blockPos;
+            if (typeof blockPos !== "number") { return; }
+            content = blockContentAt(view, blockPos);
+        }
+        if (!content) { return; }
         if (format === "markdown") {
             const serializer = ctx.get(serializerCtx);
-            const doc = view.state.schema.topNodeType.create(null, slice.content);
+            const doc = view.state.schema.topNodeType.create(null, content);
             notifyClipboardWrite("markdown", serializer(doc));
         } else {
             const domSerializer = DOMSerializer.fromSchema(view.state.schema);
-            const fragment = domSerializer.serializeFragment(slice.content);
+            const fragment = domSerializer.serializeFragment(content);
             const div = document.createElement("div");
             div.appendChild(fragment);
             notifyClipboardWrite("html", div.innerHTML);
@@ -317,8 +344,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     tableDeleteRow: (getEditor, args) => tableCmd(getEditor, deleteRow, args),
     tableDeleteColumn: (getEditor, args) => tableCmd(getEditor, deleteColumn, args),
     tableDeleteTable: (getEditor, args) => tableCmd(getEditor, deleteTable, args),
-    copyAsHtml: (getEditor) => copySelection(getEditor, "html"),
-    copyAsMarkdown: (getEditor) => copySelection(getEditor, "markdown"),
+    copyAsHtml: (getEditor, args) => copySelection(getEditor, "html", args),
+    copyAsMarkdown: (getEditor, args) => copySelection(getEditor, "markdown", args),
+    editRawMarkdown: () => host.editRawMarkdown?.(),
+    customizeToolbar: () => host.customizeToolbar?.(),
+    openExtensionSettings: () => host.openExtensionSettings?.(),
+    openKeyboardShortcuts: () => host.openKeyboardShortcuts?.(),
 };
 
 /** Dispatches an editor command by id; an unknown id is a safe no-op. */

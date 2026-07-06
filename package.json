@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.53",
+  "version": "0.2.54",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -280,6 +280,26 @@
         "command": "markdownWysiwyg.editor.copyAsMarkdown",
         "title": "%command.editor.copyAsMarkdown.title%",
         "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.editRawMarkdown",
+        "title": "%command.editor.editRawMarkdown.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.customizeToolbar",
+        "title": "%command.editor.customizeToolbar.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.openExtensionSettings",
+        "title": "%command.editor.openExtensionSettings.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
+        "title": "%command.editor.openKeyboardShortcuts.title%",
+        "category": "WYSIWYG Markdown Editor"
       }
     ],
     "keybindings": [
@@ -541,48 +561,64 @@
         {
           "command": "markdownWysiwyg.editor.copyAsMarkdown",
           "when": "false"
+        },
+        {
+          "command": "markdownWysiwyg.editor.editRawMarkdown",
+          "when": "false"
+        },
+        {
+          "command": "markdownWysiwyg.editor.customizeToolbar",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.openExtensionSettings",
+          "when": "false"
+        },
+        {
+          "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
+          "when": "false"
         }
       ],
       "webview/context": [
         {
           "command": "markdownWysiwyg.editor.tableInsertRowAbove",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_table@1"
+          "group": "1_tableinsert@1"
         },
         {
           "command": "markdownWysiwyg.editor.tableInsertRowBelow",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_table@2"
+          "group": "1_tableinsert@2"
         },
         {
           "command": "markdownWysiwyg.editor.tableInsertColumnLeft",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_table@3"
+          "group": "1_tableinsert@3"
         },
         {
           "command": "markdownWysiwyg.editor.tableInsertColumnRight",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_table@4"
+          "group": "1_tableinsert@4"
         },
         {
           "command": "markdownWysiwyg.editor.tableDeleteRow",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_table@5"
+          "group": "2_tabledelete@1"
         },
         {
           "command": "markdownWysiwyg.editor.tableDeleteColumn",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_table@6"
+          "group": "2_tabledelete@2"
         },
         {
           "command": "markdownWysiwyg.editor.tableDeleteTable",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_table@7"
+          "group": "2_tabledelete@3"
         },
         {
           "command": "markdownWysiwyg.editor.insertLink",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
-          "group": "2_link@1"
+          "group": "1_link@1"
         },
         {
           "command": "markdownWysiwyg.editor.copyAsHtml",
@@ -593,6 +629,56 @@
           "command": "markdownWysiwyg.editor.copyAsMarkdown",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'editor'",
           "group": "3_copy@2"
+        },
+        {
+          "command": "markdownWysiwyg.editor.copyAsHtml",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+          "group": "3_copy@1"
+        },
+        {
+          "command": "markdownWysiwyg.editor.copyAsMarkdown",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+          "group": "3_copy@2"
+        },
+        {
+          "command": "markdownWysiwyg.editor.copyAsHtml",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
+          "group": "3_copy@1"
+        },
+        {
+          "command": "markdownWysiwyg.editor.copyAsMarkdown",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
+          "group": "3_copy@2"
+        },
+        {
+          "command": "markdownWysiwyg.editor.editRawMarkdown",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'editor'",
+          "group": "9_view@1"
+        },
+        {
+          "command": "markdownWysiwyg.editor.editRawMarkdown",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+          "group": "9_view@1"
+        },
+        {
+          "command": "markdownWysiwyg.editor.editRawMarkdown",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
+          "group": "9_view@1"
+        },
+        {
+          "command": "markdownWysiwyg.editor.customizeToolbar",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
+          "group": "1_toolbar@1"
+        },
+        {
+          "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
+          "group": "1_toolbar@2"
+        },
+        {
+          "command": "markdownWysiwyg.editor.openExtensionSettings",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
+          "group": "1_toolbar@3"
         }
       ]
     },

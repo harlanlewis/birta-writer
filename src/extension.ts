@@ -400,10 +400,19 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.commands.registerCommand(editorCommandName(meta.id), (arg?: unknown) => {
                 const ctxObj = arg && typeof arg === "object" ? (arg as Record<string, unknown>) : undefined;
                 const documentUri = typeof ctxObj?.["documentUri"] === "string" ? (ctxObj["documentUri"] as string) : undefined;
-                // Right-click table target (a cell position) travels with the
-                // command so it targets the clicked cell, not the live selection.
+                // Right-click targets travel with the command so it operates on
+                // the clicked cell/block, not the live selection (which the
+                // native-menu round-trip does not reliably preserve). The two
+                // stamps merge into one args object: { cellPos?, blockPos? }.
                 const tableTarget = ctxObj?.["tableTarget"];
-                MarkdownEditorProvider.current?.postEditorCommand(meta.id, documentUri, tableTarget);
+                const blockTarget = ctxObj?.["blockTarget"];
+                const args = tableTarget || blockTarget
+                    ? {
+                        ...(typeof tableTarget === "object" ? tableTarget : {}),
+                        ...(typeof blockTarget === "object" ? blockTarget : {}),
+                    }
+                    : undefined;
+                MarkdownEditorProvider.current?.postEditorCommand(meta.id, documentUri, args);
             }),
         );
     }

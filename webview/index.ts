@@ -220,6 +220,16 @@ document.body.appendChild(toc.panel);
 const findBar = initFindBar(() => getEditorView(), getMarkdownSource, eventManager);
 
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
+// "Edit Raw Markdown" (toolbar button AND right-click menu): same switch path
+// as Cmd+Shift+M, carrying the first visible source line to preserve the
+// viewport.
+const switchToSource = (): void => {
+    const view = getEditorView();
+    const line = view
+        ? getFirstVisibleSourceLine(view, getLineMap())
+        : undefined;
+    notifySwitchToTextEditor(line);
+};
 const topbarTb = topbar
     ? initToolbar(
         topbar,
@@ -228,15 +238,7 @@ const topbarTb = topbar
         async (file: File, altText: string) => handleImageFile(file, altText),
         async (id: string) => handleGetProjectImages(id),
         () => findBar.open(),
-        // Toolbar "Edit Raw Markdown" button: same switch path as Cmd+Shift+M,
-        // carrying the first visible source line to preserve the viewport.
-        () => {
-            const view = getEditorView();
-            const line = view
-                ? getFirstVisibleSourceLine(view, getLineMap())
-                : undefined;
-            notifySwitchToTextEditor(line);
-        },
+        switchToSource,
     )
     : null;
 
@@ -258,6 +260,7 @@ setEditorCommandHost({
     },
     toggleToc: () => toc.toggle(),
     editFrontmatter: () => focusFrontmatterPanel(),
+    editRawMarkdown: switchToSource,
 });
 
 if (topbar) {
@@ -274,7 +277,7 @@ if (topbar) {
 // ── Editor container event bindings ────────────────────────
 const editorContainer = document.getElementById("editor");
 if (editorContainer) {
-    initContextMenu(editorContainer, () => getEditorView());
+    initContextMenu(editorContainer, () => getEditorView(), topbar);
     setupLinkPopup(editorContainer, () => getEditorView());
     setupPathLink(editorContainer);
     initHeadingIds(editorContainer);

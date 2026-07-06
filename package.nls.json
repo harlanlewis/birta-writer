@@ -101,5 +101,9 @@
   "command.editor.tableDeleteColumn.title": "Delete Column",
   "command.editor.tableDeleteTable.title": "Delete Table",
   "command.editor.copyAsHtml.title": "Copy as HTML",
-  "command.editor.copyAsMarkdown.title": "Copy as Markdown"
+  "command.editor.copyAsMarkdown.title": "Copy as Markdown",
+  "command.editor.editRawMarkdown.title": "Edit Raw Markdown",
+  "command.editor.customizeToolbar.title": "Customize Toolbar",
+  "command.editor.openExtensionSettings.title": "Extension Settings",
+  "command.editor.openKeyboardShortcuts.title": "Keyboard Shortcuts"
 }

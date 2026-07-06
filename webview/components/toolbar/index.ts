@@ -1516,6 +1516,10 @@ export function initToolbar(
         openLinkPrompt,
         openImagePanel,
         ...(onOpenFind ? { openFind: onOpenFind } : {}),
+        // Toolbar right-click menu entries (mirroring the settings gear).
+        customizeToolbar: startCustomize,
+        openExtensionSettings: () => notifyOpenSettings(),
+        openKeyboardShortcuts: () => notifyOpenKeybindings(),
     });
 
     return {

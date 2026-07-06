@@ -124,6 +124,10 @@ describe("editorCommands registry — host-delegating entries", () => {
         findSelection: vi.fn(),
         toggleToc: vi.fn(),
         editFrontmatter: vi.fn(),
+        editRawMarkdown: vi.fn(),
+        customizeToolbar: vi.fn(),
+        openExtensionSettings: vi.fn(),
+        openKeyboardShortcuts: vi.fn(),
     };
 
     beforeEach(() => {
@@ -141,6 +145,10 @@ describe("editorCommands registry — host-delegating entries", () => {
         ["findSelection", "findSelection"],
         ["toggleToc", "toggleToc"],
         ["editFrontmatter", "editFrontmatter"],
+        ["editRawMarkdown", "editRawMarkdown"],
+        ["customizeToolbar", "customizeToolbar"],
+        ["openExtensionSettings", "openExtensionSettings"],
+        ["openKeyboardShortcuts", "openKeyboardShortcuts"],
     ] as const)("%s should delegate to host.%s", (id, hook) => {
         editorCommands[id](() => null);
         expect(hooks[hook]).toHaveBeenCalledTimes(1);
@@ -198,6 +206,40 @@ describe("editorCommands registry — copy commands", () => {
     it("an empty selection should not post anything", () => {
         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 3)));
         editorCommands.copyAsMarkdown(() => editor);
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+    });
+
+    it("an empty selection with a blockPos target should copy the enclosing block", () => {
+        // Caret only; the right-click menu stamped the position under the pointer.
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 3)));
+        editorCommands.copyAsMarkdown(() => editor, { blockPos: 3 });
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "clipboardWrite", format: "markdown", data: expect.stringContaining("hello world") }),
+        );
+    });
+
+    it("an empty selection with a blockPos inside a table should copy the whole table", async () => {
+        await editor.destroy();
+        editor = await makeEditor("intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n");
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        let tablePos = -1;
+        v.state.doc.descendants((n, p) => {
+            if (n.type.name === "table" && tablePos === -1) { tablePos = p; return false; }
+            return true;
+        });
+        expect(tablePos).toBeGreaterThan(-1);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1))); // caret in "intro"
+        // A position inside the table's first cell.
+        editorCommands.copyAsMarkdown(() => editor, { blockPos: tablePos + 3 });
+        const [msg] = mockVscodeApi.postMessage.mock.calls.at(-1) ?? [];
+        expect(msg).toMatchObject({ type: "clipboardWrite", format: "markdown" });
+        expect((msg as { data: string }).data).toContain("| A | B |");
+        expect((msg as { data: string }).data).not.toContain("intro");
+    });
+
+    it("a blockPos that no longer resolves should not post anything", () => {
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 3)));
+        editorCommands.copyAsMarkdown(() => editor, { blockPos: v.state.doc.content.size + 50 });
         expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
     });
 });
