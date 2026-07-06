@@ -114,17 +114,15 @@
 /* ─── Code block drag-to-resize height handle (full-width row at the wrapper bottom) ─── */
 .code-block-resize-handle {
     height: 6px;
-    background: transparent;
+    /* Same fill as the code/preview area above it, so the handle reads as a
+       seamless extension rather than a transparent strip exposing the page
+       background (which looked like a doubled bottom border, worst on the
+       mermaid preview). It also provides the rounded bottom corners — the
+       code/preview elements above square theirs off. */
+    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
     cursor: ns-resize;
     border-radius: 0 0 6px 6px;
     transition: background 0.15s;
-    /* Overlap the bottom of the preview/code area rather than sitting below it
-       in flow: an in-flow transparent strip exposes the page background between
-       the preview and the wrapper's bottom border, which reads as a doubled
-       bottom border (most visible on the mermaid preview). */
-    margin-top: -6px;
-    position: relative;
-    z-index: 1;
 }
 
 .code-block-resize-handle:hover {
@@ -188,7 +186,9 @@
         --vscode-textCodeBlock-background,
         rgba(128, 128, 128, 0.1)
     );
-    border-radius: 0 0 6px 6px;
+    /* The resize handle below provides the rounded bottom; keep this square so
+       there's no corner gap between them. */
+    border-radius: 0;
     overflow-x: auto;
     overflow-y: auto;
     max-height: var(--code-block-max-height, 500px);
@@ -338,7 +338,8 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     /* Height is set dynamically by JS from the SVG's natural size after rendering; CSS only provides a minimum for the loading placeholder */
     min-height: 300px;
     background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
-    border-radius: 0 0 6px 6px;
+    /* Square bottom; the resize handle below provides the rounded corners. */
+    border-radius: 0;
     cursor: grab;
     user-select: none;
 }

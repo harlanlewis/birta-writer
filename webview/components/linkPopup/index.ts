@@ -468,9 +468,7 @@ export function setupLinkPopup(
 
     // ── Open button ───────────────────────────────────────────────
 
-    btnOpen.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    function openCurrentLink(): void {
         if (!currentLink) return;
         const { href } = currentLink;
         if (href.startsWith("#")) {
@@ -484,6 +482,19 @@ export function setupLinkPopup(
             }
         }
         hidePopup();
+    }
+
+    btnOpen.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCurrentLink();
+    });
+
+    // The URL text is itself a click target to open the link — not just the icon.
+    urlEl.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openCurrentLink();
     });
 
     // ── Edit button: toggle edit mode ─────────────────────────────

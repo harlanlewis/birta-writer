@@ -794,6 +794,14 @@ body.editor-width-auto {
     padding: 0.5em 0;
     background: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);
+    /* This is a floating copy of an in-document heading but it mounts on <body>,
+       outside #editor, so it does not inherit the content-font preset. Opt back
+       in explicitly so a stuck heading matches the heading it mirrors instead of
+       switching to the chrome/UI font. */
+    font-family: var(
+        --custom-font-family,
+        var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)
+    );
     font-weight: 600;
     line-height: 1.3;
     pointer-events: auto;

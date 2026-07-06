@@ -44,7 +44,8 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    cursor: default;
+    /* The URL text opens the link on click. */
+    cursor: pointer;
     user-select: text;
 }
 

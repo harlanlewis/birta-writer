@@ -38,13 +38,13 @@ Setext headings round-trip in their original form too:
 
 ## Inline text
 
-A paragraph with **underscore**, **star strong**, **underscore strong**, _star emphasis_,
-_underscore emphasis_, ~~strikethrough~~, and `inline code`. Emphasis markers
-are preserved as written.
+The supported inline text styles are **bold**, _italic_, **_bold italic_**, ~~strikethrough~~, and `inline code`. That is the complete set — Markdown has no underline, highlight, superscript, or subscript (those need raw HTML, which renders read-only).
 
-Nested emphasis: **bold with _italic_ inside** and _italic with `code` inside_.
+Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
 
 A hard line break ends this line here →<br>and continues on the next.
+
+(Links, inline math, and footnotes are inline too — see their own sections.)
 
 ---
 
@@ -126,7 +126,7 @@ no highlighting here
 | Feature     | Supported | Notes                           |
 | ----------- | :-------: | ------------------------------- |
 | Alignment   |    yes    | left / center / right           |
-| Formatting  |    yes    | **bold**, `code`, [links][spec] |
+| Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
 | Line breaks |    yes    | first line<br>second line       |
 
 ---

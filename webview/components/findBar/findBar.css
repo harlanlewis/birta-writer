@@ -5,9 +5,10 @@
     position: fixed;
     top: calc(var(--editor-topbar-height, 40px) + 6px);
     right: 16px;
-    /* Above .heading-sticky-title (z-index 1100), which is position:fixed and
-       would otherwise paint over the find bar; still below modal popups (9999). */
-    z-index: 1300;
+    /* Sits in the band between the sticky heading title (1100), which must not
+       paint over the find bar, and the topbar (1200), whose dropdown menus
+       (Format / Checks / Settings) must paint OVER it. So: 1100 < 1180 < 1200. */
+    z-index: 1180;
     display: flex;
     align-items: stretch;
     gap: 0;
