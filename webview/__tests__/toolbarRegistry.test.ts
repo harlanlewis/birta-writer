@@ -25,7 +25,7 @@ describe("computeZones", () => {
             "image",
             "table",
         ]);
-        expect(zones.right).toEqual(["styleCheck", "find", "settings"]);
+        expect(zones.right).toEqual(["viewSource", "styleCheck", "find", "settings"]);
         expect(zones.left).toEqual([]);
     });
 

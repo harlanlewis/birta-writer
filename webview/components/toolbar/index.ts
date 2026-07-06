@@ -25,6 +25,7 @@ import {
     IconStyleCheck,
     IconSearch,
     IconSettings,
+    IconFileCode,
 } from "@/ui/icons";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
@@ -723,6 +724,7 @@ export function initToolbar(
         name: string;
     }> | null>,
     onOpenFind?: () => void,
+    onSwitchToSource?: () => void,
 ): {
     onSelectionChange: (view: EditorView) => void;
     setDebugMode: (enabled: boolean) => void;
@@ -1262,6 +1264,16 @@ export function initToolbar(
         if (view) { repaintChecks(getProofreadConfig(view)); }
     }
     items.styleCheck = wrap("styleCheck", checksControl);
+    // Mode switch: leave the rendered editor for the raw markdown text editor.
+    // Same code path as Cmd/Ctrl+Shift+M and the tab-bar button (the callback
+    // captures the first visible source line so the viewport is preserved).
+    if (onSwitchToSource) {
+        items.viewSource = wrap("viewSource", btn(
+            IconFileCode,
+            `${t("Edit Raw Markdown")} ${kbd("Mod-Shift-m")}`,
+            onSwitchToSource,
+        ));
+    }
     if (onOpenFind) {
         items.find = wrap("find", btn(IconSearch, `${t("Find")} (${kbd("Mod-f")})`, onOpenFind));
     }

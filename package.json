@@ -2,7 +2,7 @@
   "name": "markdown-writer",
   "displayName": "Markdown Writer",
   "description": "Markdown Writer: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.41",
+  "version": "0.2.42",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -284,7 +284,7 @@
         "command": "markdownWriter.switchToPreview",
         "key": "ctrl+shift+m",
         "mac": "cmd+shift+m",
-        "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWriter.editor'"
+        "when": "resourceLangId == markdown && activeCustomEditorId != 'markdownWriter.editor'"
       },
       {
         "command": "markdownWriter.gotoSymbol",
@@ -303,7 +303,7 @@
         {
           "command": "markdownWriter.switchToPreview",
           "group": "navigation",
-          "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWriter.editor'"
+          "when": "resourceLangId == markdown && activeCustomEditorId != 'markdownWriter.editor'"
         },
         {
           "command": "markdownWriter.debugModeEnable",
@@ -995,8 +995,20 @@
           "default": "hidden",
           "description": "Horizontal rule button: pick a toolbar zone or hide it."
         },
-        "markdownWriter.toolbar.items.styleCheck": {
+        "markdownWriter.toolbar.items.viewSource": {
           "order": 48,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "right",
+          "description": "Edit Raw Markdown button (switch to the plain text editor): pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.styleCheck": {
+          "order": 49,
           "type": "string",
           "enum": [
             "hidden",
@@ -1038,7 +1050,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `bulletList`, `orderedList`, `taskList`, `blockquote`, `codeBlock`, `horizontalRule`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
+          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `bulletList`, `orderedList`, `taskList`, `blockquote`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
         },
         "markdownWriter.tocAutoHideThreshold": {
           "order": 11,

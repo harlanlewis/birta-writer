@@ -28,7 +28,7 @@ import {
 import type { EditorView } from "@milkdown/prose/view";
 import { TextSelection } from "@milkdown/prose/state";
 import { t } from "./i18n";
-import { notifyReady, notifyUpdate, onMessage } from "./messaging";
+import { notifyReady, notifyUpdate, notifySwitchToTextEditor, onMessage } from "./messaging";
 import type { ToWebviewMessage } from "../shared/messages";
 import { computeLineMap } from "../shared/lineMap";
 
@@ -228,6 +228,15 @@ const topbarTb = topbar
         async (file: File, altText: string) => handleImageFile(file, altText),
         async (id: string) => handleGetProjectImages(id),
         () => findBar.open(),
+        // Toolbar "Edit Raw Markdown" button: same switch path as Cmd+Shift+M,
+        // carrying the first visible source line to preserve the viewport.
+        () => {
+            const view = getEditorView();
+            const line = view
+                ? getFirstVisibleSourceLine(view, getLineMap())
+                : undefined;
+            notifySwitchToTextEditor(line);
+        },
     )
     : null;
 
