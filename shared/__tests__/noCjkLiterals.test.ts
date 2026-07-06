@@ -122,6 +122,9 @@ describe("CJK literal guard", () => {
         const files = ["package.json", "package.nls.json", "l10n/bundle.l10n.json"]
             .map((rel) => path.join(REPO_ROOT, rel))
             .filter((f) => fs.existsSync(f));
+        // Guard against a vacuous pass: if a future rename made every path
+        // disappear, the empty-offenders assertion would still go green.
+        expect(files.length).toBeGreaterThan(0);
         const offenders: string[] = [];
         for (const file of files) {
             const source = fs.readFileSync(file, "utf8");

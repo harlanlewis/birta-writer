@@ -147,6 +147,10 @@ export function stripComments(source: string, options: StripCommentsOptions = {}
  * Ideographs, Halfwidth & Fullwidth Forms (！？（）…), and Hangul Syllables.
  * Kept wide so a stripped literal that survives as only fullwidth punctuation
  * or an Ext-A/compat character is still caught.
+ *
+ * Scope is the BMP only (no `u` flag): supplementary-plane ideographs such as
+ * CJK Ext-B (U+20000+) are intentionally out of scope — they don't appear in
+ * this codebase and adding astral ranges would need surrogate-aware matching.
  */
 export const CJK_RE =
     /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\uAC00-\uD7A3]/;
