@@ -41,7 +41,7 @@ Markdown Writer is a VS Code WYSIWYG Markdown editor extension powered by [Milkd
 ### Images
 
 - **Paste** an image from the clipboard, **drag-and-drop** a file, or use the **file picker** to insert images
-- Local storage with MD5 deduplication, or configure a custom server upload endpoint
+- Local storage with MD5 deduplication — images are always saved to your workspace and are **never uploaded off your machine**
 - Click an image to select it; click again to open a lightbox preview
 - Toolbar for editing alt text, renaming the file, or deleting the image
 
@@ -105,8 +105,8 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | `markdownWriter.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
 | `markdownWriter.editorMaxWidth`     | number  | `900`       | Maximum editor content width in pixels                                                    |
 | `markdownWriter.fontFamily`         | string  | `""`        | Editor font family; leave empty to inherit VS Code editor font. Example: `Georgia, serif` |
-| `markdownWriter.imageStorage`       | string  | `"local"`   | Image storage mode: `local` (save to disk) or `server` (upload to custom URL)             |
 | `markdownWriter.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
+| `markdownWriter.confirmExternalLinks` | boolean | `true`    | Ask for confirmation before opening an external link in your browser; images are always stored locally and never uploaded off your machine |
 | `markdownWriter.colorTheme`         | string  | `"auto"`    | Color theme: `auto` follows VS Code, or set a theme ID                                   |
 | `markdownWriter.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
 | `markdownWriter.customThemes`       | array   | `[]`        | Custom color themes array. See [Custom Theme Configuration](docs/en/custom-themes.md)    |
