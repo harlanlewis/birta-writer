@@ -150,7 +150,7 @@ The evidence is unambiguous about sequencing:
 
 ### 1.3 Command palette + context menu surface
 - **What**: Contribute the editor's actions as real VS Code commands gated on
-  `activeCustomEditorId == 'markdownWysiwyg.editor'` — insert table/code block/image,
+  `activeCustomEditorId == 'markdownWriter.editor'` — insert table/code block/image,
   toggle bold/heading/list, open find, edit frontmatter, toggle TOC — plus `webview/context`
   menu items (right-click: cut/copy/paste, insert row/column, edit link, copy as HTML).
   Today `package.json` contributes **zero** editing commands and no context menu at all.
@@ -349,7 +349,7 @@ The evidence is unambiguous about sequencing:
   [#13](https://github.com/git-xing/md-wysiwyg-editor/issues/13),
   [#14](https://github.com/git-xing/md-wysiwyg-editor/issues/14),
   [#15](https://github.com/git-xing/md-wysiwyg-editor/issues/15); fork
-  [#1](https://github.com/harlanlewis/md-wysiwyg-editor/issues/1)
+  [#1](https://github.com/harlanlewis/markdown-writer/issues/1)
 - VS Code custom editor API: [guide](https://code.visualstudio.com/api/extension-guides/custom-editors),
   [microsoft/vscode#86802](https://github.com/microsoft/vscode/issues/86802)
 - Milkdown constraints: [#1249 HTML](https://github.com/Milkdown/milkdown/issues/1249),

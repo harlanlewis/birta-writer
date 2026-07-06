@@ -1,10 +1,10 @@
-# Markdown WYSIWYG Editor
+# Markdown Writer
 
-English | [简体中文](README.zh-CN.md) | [GitHub](https://github.com/harlanlewis/md-wysiwyg-editor)
+English | [简体中文](README.zh-CN.md) | [GitHub](https://github.com/harlanlewis/markdown-writer)
 
 > A personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) (MIT). Not affiliated with or endorsed by the upstream project.
 
-A VSCode WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdown.dev/) (ProseMirror). Edit `.md` / `.markdown` files as rich text and save as standard Markdown — fully compatible with any text editor.
+Markdown Writer is a VS Code WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdown.dev/) (ProseMirror). Edit `.md` / `.markdown` files as rich text and save as standard Markdown — fully compatible with any text editor.
 
 ***
 
@@ -47,7 +47,7 @@ A VSCode WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdow
 
 ### Custom Themes
 
-- Support for custom color themes via `markdownWysiwyg.customThemes` configuration
+- Support for custom color themes via `markdownWriter.customThemes` configuration
 - Define themes in `.vscode/settings.json` with custom name and VS Code color IDs
 - Select custom themes from the Command Palette: "Select Color Theme"
 - See [Custom Theme Configuration](docs/en/custom-themes.md) for details
@@ -99,17 +99,17 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 
 | Setting                              | Type    | Default     | Description                                                                               |
 | ------------------------------------ | ------- | ----------- | ----------------------------------------------------------------------------------------- |
-| `markdownWysiwyg.autoSave`           | boolean | `true`      | Automatically save to disk after editing                                                  |
-| `markdownWysiwyg.autoSaveDelay`      | number  | `1000`      | Debounce delay in milliseconds for auto-save                                              |
-| `markdownWysiwyg.defaultMode`        | string  | `"preview"` | Default mode when opening `.md`: `preview` (WYSIWYG) or `markdown` (text editor)          |
-| `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
-| `markdownWysiwyg.editorMaxWidth`     | number  | `900`       | Maximum editor content width in pixels                                                    |
-| `markdownWysiwyg.fontFamily`         | string  | `""`        | Editor font family; leave empty to inherit VS Code editor font. Example: `Georgia, serif` |
-| `markdownWysiwyg.imageStorage`       | string  | `"local"`   | Image storage mode: `local` (save to disk) or `server` (upload to custom URL)             |
-| `markdownWysiwyg.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
-| `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | Color theme: `auto` follows VS Code, or set a theme ID                                   |
-| `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
-| `markdownWysiwyg.customThemes`       | array   | `[]`        | Custom color themes array. See [Custom Theme Configuration](docs/en/custom-themes.md)    |
+| `markdownWriter.autoSave`           | boolean | `true`      | Automatically save to disk after editing                                                  |
+| `markdownWriter.autoSaveDelay`      | number  | `1000`      | Debounce delay in milliseconds for auto-save                                              |
+| `markdownWriter.defaultMode`        | string  | `"preview"` | Default mode when opening `.md`: `preview` (WYSIWYG) or `markdown` (text editor)          |
+| `markdownWriter.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
+| `markdownWriter.editorMaxWidth`     | number  | `900`       | Maximum editor content width in pixels                                                    |
+| `markdownWriter.fontFamily`         | string  | `""`        | Editor font family; leave empty to inherit VS Code editor font. Example: `Georgia, serif` |
+| `markdownWriter.imageStorage`       | string  | `"local"`   | Image storage mode: `local` (save to disk) or `server` (upload to custom URL)             |
+| `markdownWriter.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
+| `markdownWriter.colorTheme`         | string  | `"auto"`    | Color theme: `auto` follows VS Code, or set a theme ID                                   |
+| `markdownWriter.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
+| `markdownWriter.customThemes`       | array   | `[]`        | Custom color themes array. See [Custom Theme Configuration](docs/en/custom-themes.md)    |
 
 ***
 

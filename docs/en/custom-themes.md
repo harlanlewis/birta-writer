@@ -4,11 +4,11 @@ Markdown WYSIWYG Editor supports custom color themes that can be configured in `
 
 ## Configuration
 
-Add the `markdownWysiwyg.customThemes` setting to `.vscode/settings.json`:
+Add the `markdownWriter.customThemes` setting to `.vscode/settings.json`:
 
 ```json
 {
-    "markdownWysiwyg.customThemes": [
+    "markdownWriter.customThemes": [
         {
             "name": "My Custom Theme",
             "colors": {
@@ -168,7 +168,7 @@ Supported color formats:
 ### Dark Theme (GitHub Dark style)
 ```json
 {
-    "markdownWysiwyg.customThemes": [
+    "markdownWriter.customThemes": [
         {
             "name": "GitHub Dark",
             "colors": {
@@ -202,7 +202,7 @@ Supported color formats:
 ### Light Theme (Apple Style)
 ```json
 {
-    "markdownWysiwyg.customThemes": [
+    "markdownWriter.customThemes": [
         {
             "name": "Apple Light",
             "colors": {
@@ -236,7 +236,7 @@ Supported color formats:
 ### Dark Purple Theme
 ```json
 {
-    "markdownWysiwyg.customThemes": [
+    "markdownWriter.customThemes": [
         {
             "name": "Purple Dark",
             "colors": {

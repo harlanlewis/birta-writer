@@ -189,7 +189,7 @@ export async function uploadImageToServer(
 ): Promise<string> {
     const serverUrl = cfg.get<string>("imageServerUrl", "").trim();
     if (!serverUrl) {
-        throw new Error("Please configure markdownWysiwyg.imageServerUrl in settings first");
+        throw new Error("Please configure markdownWriter.imageServerUrl in settings first");
     }
 
     const fieldName =
