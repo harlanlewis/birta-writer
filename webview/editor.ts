@@ -51,6 +51,7 @@ import {
     listSpreadNormalizePlugin,
     proofreadPlugin,
     selectionPlugin,
+    slashMenuPlugin,
     tabKeymapPlugin,
     tableKeymapPlugin,
     trailingHrParagraphPlugin,
@@ -308,6 +309,7 @@ export async function createEditor(
         .use(footnoteNumberingPlugin)
         .use(linkInputRule)
         .use(linkUrlCompletePlugin)
+        .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
         .use(cellClickFixPlugin)
         .use(listSpreadNormalizePlugin)

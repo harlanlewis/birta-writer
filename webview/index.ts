@@ -42,7 +42,8 @@ import { initToc } from "./components/toc";
 import type { Editor } from "@milkdown/core";
 
 import { renderFrontmatterPanel, focusFrontmatterPanel } from "./components/frontmatter";
-import { setEditorCommandHost } from "./editorCommands";
+import { runEditorCommand, setEditorCommandHost } from "./editorCommands";
+import { setSlashMenuHost } from "./plugins";
 import { initContextMenu } from "./components/contextMenu";
 import {
     handleRenameImage,
@@ -261,6 +262,12 @@ setEditorCommandHost({
     toggleToc: () => toc.toggle(),
     editFrontmatter: () => focusFrontmatterPanel(),
     editRawMarkdown: switchToSource,
+});
+
+// The slash menu executes picks through the same registry the toolbar and
+// command palette use, so every insertable behaves identically everywhere.
+setSlashMenuHost({
+    runCommand: (id, args) => runEditorCommand(id, () => currentEditor, args),
 });
 
 if (topbar) {

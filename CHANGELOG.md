@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Slash command menu**: typing `/` at the start of a block (or after a space) opens a filterable, keyboard-first insert menu — headings, lists, task list, blockquote, divider, code block, table, image, link, math, footnote — with markdown-shortcut hints per row. Type to filter, arrows to navigate, Enter/Tab or click to insert, Escape to dismiss (typed text stays). Items run the same actions as the toolbar and command palette, so behavior is identical everywhere.
 - **`markdownWysiwyg.confirmExternalLinks`** (default `true`): opening an external link from a document now asks for confirmation first, so a document can never navigate anywhere without an explicit confirmation. Set to `false` to restore one-click opening.
 - **Consistent right-click menus**: the toolbar now has its own context menu (Customize Toolbar / Extension Settings / Keyboard Shortcuts, mirroring the settings gear); Copy as HTML / Copy as Markdown appear in table and link menus too, and with nothing selected they copy the block under the cursor (right-click a table → copy the whole table); every content menu gains **Edit Raw Markdown** in a bottom group, preserving the scroll position like the toolbar button; the table menu shows a divider between the insert and delete actions.
 

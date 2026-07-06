@@ -48,6 +48,7 @@ export const IconSearch = svg(`<circle cx="11" cy="11" r="8"/><line x1="21" y1="
 export const IconReplace    = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/>`);
 export const IconReplaceAll = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/><path d="M14 14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2"/>`);
 export const IconHeading = svg(`<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/>`);
+export const IconPilcrow = svg(`<path d="M13 4v16"/><path d="M17 4v16"/><path d="M19 4H9.5a4.5 4.5 0 0 0 0 9H13"/>`);
 export const IconToc = svg(`<line x1="3" y1="5" x2="21" y2="5"/><line x1="7" y1="10" x2="21" y2="10"/><line x1="11" y1="15" x2="21" y2="15"/><line x1="7" y1="20" x2="17" y2="20"/>`);
 export const IconStyleCheck = svg(`<path d="m5 17 7-13 7 13"/><line x1="4" y1="13" x2="20" y2="13"/>`);
 export const IconSpellCheck = svg(`<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>`);
