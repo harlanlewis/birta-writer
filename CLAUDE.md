@@ -70,7 +70,6 @@ webview/components/codeBlock/index.ts         — Code block UI
 webview/components/toc/index.ts               — Table of contents (TOC) panel
 webview/components/linkPopup/index.ts         — Link hover popup
 webview/components/imageView/index.ts         — Image NodeView (selection/lightbox/toolbar)
-docs/roadmap.md                               — Project roadmap
 ```
 
 ---
@@ -91,7 +90,9 @@ Known bugs and feature requests are filed as GitHub Issues via the `/devlog` ski
 - Skill definition: `.claude/skills/devlog/SKILL.md`.
 - Triggers: the user says "record a bug", "record a feature request", or invokes `/devlog`.
 
-Keep `docs/roadmap.md` in sync when phase progress changes.
+There is deliberately no local roadmap document: project intent and ordering
+principles live in `README.md` ("Why this fork"); planned work lives in GitHub
+Issues. Do not recreate a roadmap file.
 
 ---
 

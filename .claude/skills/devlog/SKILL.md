@@ -182,5 +182,5 @@ If several Issues are created, list every URL.
 - Issue title prefixes: use `[Bug]` for bugs and `[Feature]` for requests, so they are easy to tell apart at a glance in the Issues list.
 - Use the `gh` CLI; no browser interaction needed.
 - If the user's information is insufficient, proactively follow up so the Issue has enough context.
-- Do not modify any local files (neither devlog.md nor roadmap.md).
+- Do not modify any local files; planned work lives only in GitHub Issues.
 - For a Bug Issue with "High" severity, consider adding a `priority: high` label (if it exists).
