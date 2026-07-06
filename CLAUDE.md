@@ -83,16 +83,13 @@ webview/components/imageView/index.ts         — Image NodeView (selection/ligh
 
 ## Issue tracking
 
-Known bugs and feature requests are filed as GitHub Issues via the `/devlog` skill rather than local files.
+All bugs and planned work live in **Linear** (team "Markdown Editor", `MAR-` prefix) — never GitHub Issues, and never local files.
 
-- **Known bug**: `bug` + `known-limitation` labels; only for issues still unfixed after development.
-- **Feature request**: `enhancement` + `roadmap` labels; record maturity, implementation approach, and affected files.
-- Skill definition: `.claude/skills/devlog/SKILL.md`.
-- Triggers: the user says "record a bug", "record a feature request", or invokes `/devlog`.
+- **Known bug**: `#Bug` label; only for issues still unfixed after development.
+- **Feature request**: `#Improvement` label; record maturity, implementation approach, and affected files.
+- Filed via the `/devlog` skill (`.claude/skills/devlog/SKILL.md`); triggers: "record a bug", "record a feature request", `/devlog`.
 
-There is deliberately no local roadmap document: project intent and ordering
-principles live in `README.md` ("Why this fork"); planned work lives in GitHub
-Issues. Do not recreate a roadmap file.
+Project intent and ordering principles live in `README.md` ("Why this fork").
 
 ---
 

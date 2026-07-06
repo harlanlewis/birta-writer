@@ -1,6 +1,6 @@
 # Markdown Writer
 
-[GitHub](https://github.com/harlanlewis/markdown-writer)
+[GitHub](https://github.com/harlanlewis/md-wysiwyg-editor)
 
 > A personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) (MIT). Not affiliated with or endorsed by the upstream project.
 
@@ -18,8 +18,6 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 2. **VS Code parity second.** The custom-editor API deliberately provides nothing — no find, no undo integration, no search reveal ("that's all intentionally left up to extensions", [microsoft/vscode#86802](https://github.com/microsoft/vscode/issues/86802)) — so parity users feel daily is hand-built here: find/replace, command palette and context-menu commands, Go-to-Symbol, user-rebindable keybindings, theme fidelity.
 3. **Parser and syntax breadth third.** Math, footnotes, frontmatter, reference links — and anything the schema can't represent must degrade to *visible but safe*, never a silent deletion, so the editor is trustworthy on any file.
 4. **Interaction patterns last.** Slash commands, smart paste, richer keyboard interaction — the polish that makes the editor *preferred* rather than merely tolerated, worth investing in only once the layers beneath it hold.
-
-Planned work is tracked as [GitHub Issues](https://github.com/harlanlewis/markdown-writer/issues) (`enhancement` + `roadmap` labels) rather than a standing roadmap document.
 
 ***
 

@@ -2,7 +2,7 @@
   "name": "markdown-writer",
   "displayName": "Markdown Writer",
   "description": "Markdown Writer: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.47",
+  "version": "0.2.48",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -26,12 +26,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/harlanlewis/markdown-writer.git"
+    "url": "https://github.com/harlanlewis/md-wysiwyg-editor.git"
   },
   "bugs": {
-    "url": "https://github.com/harlanlewis/markdown-writer/issues"
+    "url": "https://github.com/harlanlewis/md-wysiwyg-editor/issues"
   },
-  "homepage": "https://github.com/harlanlewis/markdown-writer#readme",
+  "homepage": "https://github.com/harlanlewis/md-wysiwyg-editor#readme",
   "activationEvents": [],
   "main": "./dist/extension.js",
   "l10n": "./l10n",
@@ -1200,7 +1200,7 @@
     "vscode:prepublish": "node esbuild.mjs --production",
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/markdown-writer/blob/dev --baseImagesUrl https://github.com/harlanlewis/markdown-writer/raw/dev",
+    "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/md-wysiwyg-editor/blob/dev --baseImagesUrl https://github.com/harlanlewis/md-wysiwyg-editor/raw/dev",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
