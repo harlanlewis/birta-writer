@@ -93,16 +93,26 @@ export function notifyTocWidth(width: number): void {
     vscode.postMessage({ type: "tocWidth", width });
 }
 
-export function notifySetStyleCheckEnabled(enabled: boolean): void {
-    vscode.postMessage({ type: "setStyleCheckEnabled", enabled });
-}
-
-export function notifySetSpellCheckEnabled(enabled: boolean): void {
-    vscode.postMessage({ type: "setSpellCheckEnabled", enabled });
+export function notifySetProofreadOption(
+    key: import("../shared/messages").ProofreadOptionKey,
+    value: boolean,
+): void {
+    vscode.postMessage({ type: "setProofreadOption", key, value });
 }
 
 export function notifySpellAddWord(word: string): void {
     vscode.postMessage({ type: "spellAddWord", word });
+}
+
+export function notifySetFontPreset(preset: import("../shared/messages").FontPreset): void {
+    vscode.postMessage({ type: "setFontPreset", preset });
+}
+
+export function notifySetToolbarLayout(
+    item: { id: string; placement: import("../shared/messages").ToolbarPlacement } | undefined,
+    order: string[],
+): void {
+    vscode.postMessage({ type: "setToolbarLayout", ...(item ? { item } : {}), order });
 }
 
 export function notifyLintBlocks(id: number, blocks: import("../shared/messages").LintBlock[]): void {

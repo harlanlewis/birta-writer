@@ -28,3 +28,15 @@ MIT License, © Titus Wormer.
 
 The repeated-word exception list ("had had", "that that", …).
 https://github.com/retextjs/retext-repeated-words — MIT License, © Titus Wormer.
+
+## write-good
+
+Seeds for the wordiness list and the passive-voice / structural prose checks.
+https://github.com/btford/write-good — MIT License, © Brian Ford.
+
+## slop-gate
+
+Seeds for the AI-vocabulary and AI-artifact word lists (the LLM-ism checks).
+Curated MIT-clean; cross-checked against, but not copied from, the CC-BY-SA
+Wikipedia "Signs of AI writing" catalogue.
+https://github.com/hwajongpark/slop-gate — MIT License.

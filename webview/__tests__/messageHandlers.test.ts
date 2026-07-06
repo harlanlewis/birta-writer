@@ -102,3 +102,65 @@ describe("editorCommand handler", () => {
         ).not.toThrow();
     });
 });
+
+describe("setFontFamily handler", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.documentElement.style.removeProperty("--custom-font-family");
+    });
+
+    const container = document.createElement("div");
+
+    it("a resolved font family should set the --custom-font-family variable", () => {
+        // Arrange
+        const setFontPreset = vi.fn();
+        const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig() {}, setFontPreset } };
+        const handlers = createMessageHandlers(deps);
+
+        // Act
+        handlers.setFontFamily?.(
+            { type: "setFontFamily", fontFamily: "Georgia, serif", preset: "serif" },
+            container,
+        );
+
+        // Assert
+        expect(document.documentElement.style.getPropertyValue("--custom-font-family").trim()).toBe("Georgia, serif");
+        expect(setFontPreset).toHaveBeenCalledWith("serif");
+    });
+
+    it("a null font family should remove the --custom-font-family variable", () => {
+        // Arrange: set it first, then clear it
+        document.documentElement.style.setProperty("--custom-font-family", "Georgia, serif");
+        const handlers = createMessageHandlers(stubDeps());
+
+        // Act
+        handlers.setFontFamily?.(
+            { type: "setFontFamily", fontFamily: null, preset: "default" },
+            container,
+        );
+
+        // Assert
+        expect(document.documentElement.style.getPropertyValue("--custom-font-family")).toBe("");
+    });
+});
+
+describe("toolbarConfig handler", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("a toolbarConfig message should forward the config to the toolbar controller", () => {
+        // Arrange
+        const applyConfig = vi.fn();
+        const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig, setFontPreset() {} } };
+        const handlers = createMessageHandlers(deps);
+
+        // Act
+        const config = { placements: { bold: "center" }, order: [] };
+        handlers.toolbarConfig?.(
+            { type: "toolbarConfig", config },
+            document.createElement("div"),
+        );
+
+        // Assert
+        expect(applyConfig).toHaveBeenCalledWith(config);
+    });
+});

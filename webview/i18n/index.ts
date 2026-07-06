@@ -1,4 +1,4 @@
-import type { ProofreadConfig } from "../../shared/messages";
+import type { ProofreadConfig, ToolbarConfig, FontPreset } from "../../shared/messages";
 
 declare global {
     interface Window {
@@ -10,8 +10,14 @@ declare global {
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
             proofread?: ProofreadConfig;
+            /** Per-item toolbar placement config (see the toolbar registry). */
+            toolbar?: ToolbarConfig;
+            /** Editor content font preset (drives the toolbar font picker). */
+            fontPreset?: FontPreset;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */
             documentUri?: string;
+            /** The extension's display name (package.json), for UI that names the product. */
+            productName?: string;
         };
     }
 }
@@ -23,6 +29,9 @@ const _isMac: boolean = window.__i18n?.isMac ?? false;
 export function t(key: string): string {
     return _t[key] ?? key;
 }
+
+/** The extension's display name (from package.json), or a safe fallback. */
+export const productName: string = window.__i18n?.productName ?? "Markdown Writer";
 
 /**
  * 将快捷键字符串转为当前平台的显示格式。

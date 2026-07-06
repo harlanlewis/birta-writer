@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
-import { zhCn } from "../i18n/webviewTranslations";
+import { zhCn, selectWebviewTranslations } from "../i18n/webviewTranslations";
 import { walkFiles } from "../../shared/__tests__/cjkScanner";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -44,6 +44,19 @@ describe("zhCn translation map", () => {
             expect(key.length).toBeGreaterThan(0);
             expect(typeof value).toBe("string");
             expect(value.length).toBeGreaterThan(0);
+        }
+    });
+});
+
+describe("selectWebviewTranslations locale gate", () => {
+    it("a zh-prefixed locale should receive the Simplified Chinese map", () => {
+        expect(selectWebviewTranslations("zh-cn")).toBe(zhCn);
+        expect(selectWebviewTranslations("ZH-TW")).toBe(zhCn);
+    });
+
+    it("a non-Chinese locale should receive an empty map so English is served", () => {
+        for (const lang of ["en", "en-US", "ja", "ko", ""]) {
+            expect(selectWebviewTranslations(lang)).toEqual({});
         }
     });
 });

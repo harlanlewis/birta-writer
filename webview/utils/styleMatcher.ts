@@ -12,7 +12,35 @@
  *   usual exception list (had had, that that…).
  */
 
-export type StyleCategory = "fillers" | "redundancies" | "cliches" | "repeated";
+import {
+    findPassiveVoice,
+    findLongSentences,
+    findNegativeParallelism,
+    findRuleOfThree,
+    findEmDash,
+    findNonAsciiPunct,
+} from "./proseChecks";
+
+/** Categories backed by a phrase list (compiled to one alternation regex each). */
+export type PhraseCategory =
+    | "fillers"
+    | "redundancies"
+    | "cliches"
+    | "wordiness"
+    | "aiVocabulary"
+    | "aiArtifacts";
+
+/** Categories backed by a structural check (sentence shape, not a fixed list). */
+export type StructuralCategory =
+    | "repeated"
+    | "passive"
+    | "longSentences"
+    | "negativeParallelism"
+    | "ruleOfThree"
+    | "emDash"
+    | "nonAsciiPunct";
+
+export type StyleCategory = PhraseCategory | StructuralCategory;
 
 export type StyleMatch = {
     /** 0-indexed character offset of the flagged span start (inclusive) */
@@ -139,15 +167,40 @@ function strikeSpans(
     return spans;
 }
 
+const PHRASE_CATEGORIES: readonly PhraseCategory[] = [
+    "fillers", "redundancies", "cliches", "wordiness", "aiVocabulary", "aiArtifacts",
+];
+
 /**
- * Compile enabled category lists into a single matcher function.
- * Phrases in `exceptions` (user's escape valve, compared lowercase,
- * markers ignored) are removed before compiling. The matcher returns
- * flagged spans sorted by start offset.
+ * Structural checks keyed by category. `repeated` is intentionally absent: it
+ * rides the style-check master switch (always on when the master is), so it is
+ * appended unconditionally rather than toggled here.
+ */
+const STRUCTURAL_CHECKS: Record<
+    Exclude<StructuralCategory, "repeated">,
+    (text: string) => StyleMatch[]
+> = {
+    passive: findPassiveVoice,
+    longSentences: findLongSentences,
+    negativeParallelism: findNegativeParallelism,
+    ruleOfThree: findRuleOfThree,
+    emDash: findEmDash,
+    nonAsciiPunct: findNonAsciiPunct,
+};
+
+/**
+ * Compile the enabled categories into a single matcher function. Phrase
+ * categories become alternation regexes; structural categories are pure checks
+ * (see proseChecks.ts). Phrases in `exceptions` (the user's escape valve,
+ * compared lowercase, markers ignored) are removed before compiling, and any
+ * structural hit whose flagged text matches an exception is dropped too. The
+ * matcher returns flagged spans sorted by start offset. Both `lists` and
+ * `enabled` are partial: an absent list or a falsy flag simply omits that
+ * category.
  */
 export function compileStyleMatcher(
-    lists: Record<Exclude<StyleCategory, "repeated">, readonly string[]>,
-    enabled: Record<Exclude<StyleCategory, "repeated">, boolean>,
+    lists: Partial<Record<PhraseCategory, readonly string[]>>,
+    enabled: Partial<Record<StyleCategory, boolean>>,
     exceptions: readonly string[] = [],
 ): StyleMatcher {
     const excluded = new Set(exceptions.map((p) => normalizePhrase(p.replace(/~~/g, ""))));
@@ -155,10 +208,12 @@ export function compileStyleMatcher(
     // Strike ranges per normalized phrase, shared across categories
     const strikesByPhrase = new Map<string, StrikeRanges>();
 
-    for (const category of ["fillers", "redundancies", "cliches"] as const) {
+    for (const category of PHRASE_CATEGORIES) {
         if (!enabled[category]) { continue; }
+        const list = lists[category];
+        if (!list) { continue; }
         const phrases: string[] = [];
-        for (const entry of lists[category]) {
+        for (const entry of list) {
             const parsed = parseEntry(entry);
             if (excluded.has(normalizePhrase(parsed.phrase))) { continue; }
             phrases.push(parsed.phrase);
@@ -167,6 +222,10 @@ export function compileStyleMatcher(
         const regex = compileList(phrases);
         if (regex) { compiled.push({ category, regex }); }
     }
+
+    const structural = (Object.entries(STRUCTURAL_CHECKS) as Array<
+        [Exclude<StructuralCategory, "repeated">, (text: string) => StyleMatch[]]
+    >).filter(([category]) => enabled[category]).map(([, fn]) => fn);
 
     return (text: string): StyleMatch[] => {
         const matches: StyleMatch[] = [];
@@ -186,6 +245,13 @@ export function compileStyleMatcher(
                 }
                 // Guard against zero-length matches looping forever
                 if (m[0].length === 0) { regex.lastIndex++; }
+            }
+        }
+        for (const check of structural) {
+            for (const hit of check(text)) {
+                if (!excluded.has(normalizePhrase(text.slice(hit.start, hit.end)))) {
+                    matches.push(hit);
+                }
             }
         }
         matches.push(...findRepeatedWords(text));

@@ -29,8 +29,21 @@ const CONFIG: ProofreadConfig = {
     fillers: true,
     redundancies: true,
     cliches: true,
+    // New categories default off in these decoration tests so existing
+    // assertions (which only expect filler/redundancy/cliche/repeated hits)
+    // stay exact; individual tests opt one in via { ...CONFIG, passive: true }.
+    wordiness: false,
+    aiVocabulary: false,
+    aiArtifacts: false,
+    passive: false,
+    longSentences: false,
+    negativeParallelism: false,
+    ruleOfThree: false,
+    emDash: false,
+    nonAsciiPunct: false,
     styleExceptions: [],
     spellCheck: false,
+    grammarCheck: false,
     userWords: [],
 };
 

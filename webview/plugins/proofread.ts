@@ -20,8 +20,15 @@ import type { Node as ProseNode } from "@milkdown/prose/model";
 import { $prose } from "@milkdown/utils";
 import type { HarperLint, LintBlock, LintBlockResult, ProofreadConfig } from "../../shared/messages";
 import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";
-import { compileStyleMatcher, type StyleMatcher } from "../utils/styleMatcher";
-import { CLICHES, FILLERS, REDUNDANCIES } from "../proofread/wordlists";
+import { compileStyleMatcher, type StyleCategory, type StyleMatcher } from "../utils/styleMatcher";
+import {
+    AI_ARTIFACTS,
+    AI_VOCABULARY,
+    CLICHES,
+    FILLERS,
+    REDUNDANCIES,
+    WORDINESS,
+} from "../proofread/wordlists";
 import { isLintSuppressed, setUserWords } from "../proofread/engine";
 import { hideLintPopup, showLintPopup } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
@@ -51,13 +58,64 @@ export const proofreadPluginKey = new PluginKey<ProofreadState>("proofread");
 
 const DEFAULT_CONFIG: ProofreadConfig = {
     styleCheck: false,
+    // Phrase categories — high-signal, on by default.
     fillers: true,
     redundancies: true,
     cliches: true,
+    wordiness: true,
+    aiVocabulary: true,
+    aiArtifacts: true,
+    // Structural — passive + negative parallelism are high-signal; the noisier
+    // or more opinionated checks default off.
+    passive: true,
+    negativeParallelism: true,
+    longSentences: false,
+    ruleOfThree: false,
+    emDash: false,
+    nonAsciiPunct: false,
     styleExceptions: [],
     spellCheck: false,
+    grammarCheck: false,
     userWords: [],
 };
+
+/** Phrase lists keyed by category, passed to the matcher. */
+const PHRASE_LISTS = {
+    fillers: FILLERS,
+    redundancies: REDUNDANCIES,
+    cliches: CLICHES,
+    wordiness: WORDINESS,
+    aiVocabulary: AI_VOCABULARY,
+    aiArtifacts: AI_ARTIFACTS,
+} as const;
+
+/** Per-check enabled map, in the shape compileStyleMatcher expects. */
+function enabledMap(c: ProofreadConfig): Partial<Record<StyleCategory, boolean>> {
+    return {
+        fillers: c.fillers,
+        redundancies: c.redundancies,
+        cliches: c.cliches,
+        wordiness: c.wordiness,
+        aiVocabulary: c.aiVocabulary,
+        aiArtifacts: c.aiArtifacts,
+        passive: c.passive,
+        longSentences: c.longSentences,
+        negativeParallelism: c.negativeParallelism,
+        ruleOfThree: c.ruleOfThree,
+        emDash: c.emDash,
+        nonAsciiPunct: c.nonAsciiPunct,
+    };
+}
+
+/**
+ * Non-deletable "flag" categories — a nudge to reconsider (passive, long
+ * sentence, an AI cadence), not a "delete this" strikethrough. They render as
+ * an underline instead. Everything else (phrase hits, repeated words) reads as
+ * "read the sentence without it" and keeps the strikethrough.
+ */
+const FLAG_CATEGORIES = new Set<StyleCategory>([
+    "passive", "longSentences", "negativeParallelism", "ruleOfThree", "emDash", "nonAsciiPunct",
+]);
 
 function initialConfig(): ProofreadConfig {
     return { ...DEFAULT_CONFIG, ...(window.__i18n?.proofread ?? {}) };
@@ -83,15 +141,12 @@ export function setProofreadConfig(view: EditorView, config: ProofreadConfig): v
 let cachedMatcher: { key: string; matcher: StyleMatcher } | null = null;
 
 function styleMatcherFor(config: ProofreadConfig): StyleMatcher {
-    const key = `${config.fillers}|${config.redundancies}|${config.cliches}|${config.styleExceptions.join(" ")}`;
+    const enabled = enabledMap(config);
+    const key = `${JSON.stringify(enabled)}|${config.styleExceptions.join(" ")}`;
     if (cachedMatcher?.key !== key) {
         cachedMatcher = {
             key,
-            matcher: compileStyleMatcher(
-                { fillers: FILLERS, redundancies: REDUNDANCIES, cliches: CLICHES },
-                { fillers: config.fillers, redundancies: config.redundancies, cliches: config.cliches },
-                config.styleExceptions,
-            ),
+            matcher: compileStyleMatcher(PHRASE_LISTS, enabled, config.styleExceptions),
         };
     }
     return cachedMatcher.matcher;
@@ -103,6 +158,15 @@ function styleHitTitle(category: string): string {
         case "fillers": return t("Filler — consider removing");
         case "redundancies": return t("Redundancy — consider shortening");
         case "cliches": return t("Cliché — consider rephrasing");
+        case "wordiness": return t("Wordy — consider tightening");
+        case "aiVocabulary": return t("AI vocabulary — consider a plainer word");
+        case "aiArtifacts": return t("AI boilerplate — consider removing");
+        case "passive": return t("Passive voice — consider active");
+        case "longSentences": return t("Long sentence — consider splitting");
+        case "negativeParallelism": return t("AI cadence — 'not X, but Y'");
+        case "ruleOfThree": return t("Rule of three — consider varying");
+        case "emDash": return t("Em dash — use a spaced hyphen");
+        case "nonAsciiPunct": return t("Non-ASCII punctuation — normalize to ASCII");
         case "repeated": return t("Repeated word");
         default: return "";
     }
@@ -149,7 +213,8 @@ export function computeDecorations(doc: ProseNode, config: ProofreadConfig): Dec
         const text = blockPlainText(node);
         const base = pos + 1;
         for (const match of matcher(text)) {
-            const cls = `pf-style-hit pf-style-hit--${match.category}`;
+            const cls = `pf-style-hit pf-style-hit--${match.category}`
+                + (FLAG_CATEGORIES.has(match.category) ? " pf-style-hit--flag" : "");
             decorations.push(Decoration.inline(base + match.start, base + match.end,
                 { class: cls, title: styleHitTitle(match.category) }, { class: cls }));
         }
@@ -169,7 +234,11 @@ function collectLintBlocks(doc: ProseNode): LintBlock[] {
 }
 
 /** Build decorations from Harper results (block keys are request-time positions). */
-function buildLintDecorations(doc: ProseNode, results: LintBlockResult[]): DecorationSet {
+function buildLintDecorations(
+    doc: ProseNode,
+    results: LintBlockResult[],
+    config: ProofreadConfig,
+): DecorationSet {
     const decorations: Decoration[] = [];
     for (const { key, lints } of results) {
         const node = doc.nodeAt(key);
@@ -177,12 +246,17 @@ function buildLintDecorations(doc: ProseNode, results: LintBlockResult[]): Decor
         const base = key + 1;
         const blockEnd = key + node.nodeSize - 1;
         for (const lint of lints) {
+            // Spelling and grammar are toggled independently (one Harper pass,
+            // split by lint kind). "Spelling" is the spelling bucket; everything
+            // else is grammar.
+            const isSpelling = lint.kind === "Spelling";
+            if (isSpelling ? !config.spellCheck : !config.grammarCheck) { continue; }
             const from = base + lint.start;
             const to = base + lint.end;
             if (to > blockEnd || from >= to) { continue; }
             const text = doc.textBetween(from, to);
             if (isLintSuppressed(lint.kind, text)) { continue; }
-            const cls = lint.kind === "Spelling" ? "pf-spell-err" : "pf-lint-err";
+            const cls = isSpelling ? "pf-spell-err" : "pf-lint-err";
             const spec: LintSpec = { class: cls, lint };
             decorations.push(Decoration.inline(from, to, { class: cls, title: lint.message }, spec));
         }
@@ -284,9 +358,12 @@ export const proofreadPlugin = $prose(() => {
                 // If the doc changed since the request, positions are invalid;
                 // the pending rescan will re-request.
                 if (view.state.doc !== lintRequestDoc) { return; }
+                const cfg = proofreadPluginKey.getState(view.state)?.config;
                 const meta: ProofreadMeta = {
                     type: "lints",
-                    decorations: buildLintDecorations(view.state.doc, results),
+                    decorations: cfg
+                        ? buildLintDecorations(view.state.doc, results, cfg)
+                        : DecorationSet.empty,
                 };
                 view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
             };
@@ -306,7 +383,7 @@ export const proofreadPlugin = $prose(() => {
                     view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
                 }
 
-                if (state.config.spellCheck) {
+                if (state.config.spellCheck || state.config.grammarCheck) {
                     lintRequestId++;
                     lintRequestDoc = view.state.doc;
                     notifyLintBlocks(lintRequestId, collectLintBlocks(view.state.doc));

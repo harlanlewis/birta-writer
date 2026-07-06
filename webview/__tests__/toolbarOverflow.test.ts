@@ -97,68 +97,53 @@ describe("computeOverflow", () => {
     });
 });
 
-describe("production group mapping", () => {
-    // Mirrors initToolbar: groups in real DOM order and the real collapse
-    // order (see webview/components/toolbar/index.ts). Update both places
-    // together when the toolbar gains or reorders groups.
-    const domOrder = [
-        "fmt",
-        "inline-core",
-        "inline-extra",
+describe("center-zone item collapse mapping", () => {
+    // Mirrors initToolbar's setupOverflow: the overflow controller now runs on
+    // individual center-zone items (each a single-item group), collapsing from
+    // the end while the `format` (text-level) dropdown stays pinned. This uses
+    // the default center layout (see the toolbar registry).
+    const centerOrder = [
+        "format",
+        "clearFormatting",
+        "fontPreset",
         "link",
-        "insert",
-        "lists",
-        "blocks",
-        "debug",
-        "proofread",
-        "utility",
+        "image",
+        "table",
     ];
-    const collapseNames = [
-        "insert",
-        "blocks",
-        "lists",
-        "inline-extra",
-        "proofread",
-        "utility",
-        "debug",
-    ];
-    const collapseOrder = collapseNames.map((n) => domOrder.indexOf(n));
-    // Uniform 50px groups keep the arithmetic legible; ⋯ button is 30px.
-    const widths = domOrder.map(() => 50);
+    // Every item except `format` collapses, from the end backwards.
+    const collapseOrder = centerOrder
+        .map((_, i) => i)
+        .filter((i) => centerOrder[i] !== "format")
+        .reverse();
+    // Uniform 50px items keep the arithmetic legible; ⋯ button is 30px.
+    const widths = centerOrder.map(() => 50);
 
     const collapsedAt = (available: number): string[] =>
         [...computeOverflow(widths, collapseOrder, available, 30)].map(
-            (i) => domOrder[i],
+            (i) => centerOrder[i],
         );
 
-    it("shrinking the pane should collapse groups in the documented order", () => {
-        // Arrange: total 500; budget = available - 30; each step frees 50
-        // Act & Assert: one more group collapses per 50px lost
-        expect(collapsedAt(500)).toEqual([]);
-        expect(collapsedAt(480)).toEqual(["insert"]);
-        expect(collapsedAt(430)).toEqual(["insert", "blocks"]);
-        expect(collapsedAt(380)).toEqual(["insert", "blocks", "lists"]);
-        expect(collapsedAt(330)).toEqual([
-            "insert", "blocks", "lists", "inline-extra",
+    it("shrinking the pane should collapse items from the end backwards", () => {
+        // Arrange: total 300; budget = available - 30; each step frees 50
+        expect(collapsedAt(300)).toEqual([]);
+        expect(collapsedAt(280)).toEqual(["table"]);
+        expect(collapsedAt(230)).toEqual(["table", "image"]);
+        expect(collapsedAt(180)).toEqual(["table", "image", "link"]);
+        expect(collapsedAt(130)).toEqual(["table", "image", "link", "fontPreset"]);
+        expect(collapsedAt(80)).toEqual([
+            "table", "image", "link", "fontPreset", "clearFormatting",
         ]);
-        expect(collapsedAt(280)).toEqual([
-            "insert", "blocks", "lists", "inline-extra", "proofread",
-        ]);
-        expect(collapsedAt(230)).toEqual([
-            "insert", "blocks", "lists", "inline-extra", "proofread", "utility",
-        ]);
-        expect(collapsedAt(180)).toEqual(collapseNames);
     });
 
-    it("fmt, inline-core and link should never collapse, even at zero width", () => {
+    it("the format dropdown should never collapse, even at zero width", () => {
         // Act
         const collapsed = collapsedAt(0);
 
-        // Assert: every collapsible group is out, the pinned three remain
-        expect(collapsed).toEqual(collapseNames);
-        expect(collapsed).not.toContain("fmt");
-        expect(collapsed).not.toContain("inline-core");
-        expect(collapsed).not.toContain("link");
+        // Assert: every other center item collapses, format stays
+        expect(collapsed).not.toContain("format");
+        expect(collapsed.sort()).toEqual(
+            ["clearFormatting", "fontPreset", "image", "link", "table"].sort(),
+        );
     });
 });
 

@@ -14,6 +14,10 @@
  *   whose phrase→replacement pairs also derive the strike spans
  * - hand-picked distinctive entries from wooorm's weasels/hedges (MIT);
  *   generic quantifiers ("many", "few", "about") deliberately excluded
+ * - write-good (MIT, github.com/btford/write-good) seeds the wordiness list
+ * - slop-gate (MIT, github.com/hwajongpark/slop-gate) seeds the AI vocabulary /
+ *   artifact lists; kept MIT-clean, cross-checked against but not copied from the
+ *   CC-BY-SA Wikipedia "Signs of AI writing" catalogue
  * See THIRD_PARTY_NOTICES.md at the repo root for license texts.
  *
  * Keep entries lowercase (ASCII apostrophes; the matcher also accepts
@@ -1039,4 +1043,118 @@ export const CLICHES: readonly string[] = [
     "you're the boss",
     "young and foolish",
     "young and vibrant",
+];
+
+/**
+ * Wordiness: expletive constructions and long-winded phrases that pad a
+ * sentence without adding meaning. Seeded from write-good's `tooWordy`/`thereIs`
+ * checks (MIT, github.com/btford/write-good). Distinct from redundancies (a word
+ * repeating its neighbor) — here the whole phrase is filler that a tighter
+ * construction replaces.
+ */
+export const WORDINESS: readonly string[] = [
+    "there is",
+    "there are",
+    "there was",
+    "there were",
+    "the fact that",
+    "due to the fact that",
+    "in the event that",
+    "in spite of the fact that",
+    "for the purpose of",
+    "with regard to",
+    "with respect to",
+    "in the process of",
+    "on a daily basis",
+    "in a timely manner",
+];
+
+/**
+ * AI vocabulary: words and phrases an LLM over-reaches for — the "empty scale
+ * words" and puffery that read as machine cadence. Seeded from the MIT-licensed
+ * slop-gate vocabulary pack (github.com/hwajongpark/slop-gate) and the author's
+ * own voice guide ("the tells"); cross-checked against, but NOT copied from, the
+ * CC-BY-SA Wikipedia "Signs of AI writing" catalogue (kept MIT-clean on purpose).
+ * Curated for precision: the strongest tells, key inflections enumerated
+ * (the redundancies-list pattern), everyday words with common literal senses
+ * (harness, unlock, foster) deliberately excluded.
+ */
+export const AI_VOCABULARY: readonly string[] = [
+    "delve",
+    "delves",
+    "delving",
+    "delve into",
+    "dive into",
+    "leverage",
+    "leverages",
+    "leveraging",
+    "robust",
+    "seamless",
+    "seamlessly",
+    "pivotal",
+    "landscape",
+    "ecosystem",
+    "testament",
+    "a testament to",
+    "tapestry",
+    "rich tapestry",
+    "underscore",
+    "underscores",
+    "underscoring",
+    "showcase",
+    "showcases",
+    "showcasing",
+    "realm",
+    "intricate",
+    "intricacies",
+    "meticulous",
+    "meticulously",
+    "nuanced",
+    "multifaceted",
+    "boasts",
+    "boasting",
+    "bustling",
+    "vibrant",
+    "garner",
+    "garners",
+    "garnered",
+    "garnering",
+    "myriad",
+    "a myriad of",
+    "plethora",
+    "a plethora of",
+    "ever-evolving",
+    "ever-changing",
+    "ever-growing",
+    "treasure trove",
+    "navigating the complexities",
+];
+
+/**
+ * AI artifacts: boilerplate an LLM leaks into prose — meta disclaimers, chat
+ * pleasantries, knowledge-cutoff hedges, and the reflexive "note that…" gloss.
+ * High-precision (long, distinctive phrases), so this stays low-noise even
+ * default-on. Seeded from slop-gate + the author's voice guide; MIT-clean.
+ */
+export const AI_ARTIFACTS: readonly string[] = [
+    "as an ai language model",
+    "as a large language model",
+    "as an ai",
+    "i hope this helps",
+    "i cannot fulfill",
+    "i can't fulfill",
+    "i'm unable to provide",
+    "i'd be happy to help",
+    "let me know if you have any questions",
+    "here's a comprehensive",
+    "here is a comprehensive",
+    "it's important to note",
+    "it is important to note",
+    "it's worth noting",
+    "it is worth noting",
+    "in conclusion",
+    "in summary",
+    "knowledge cutoff",
+    "as of my last knowledge update",
+    "i don't have access to real-time",
 ];

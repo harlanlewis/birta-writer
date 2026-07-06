@@ -15,6 +15,16 @@
     }
 }
 
+/* Non-deletable "flag" hits (passive voice, long sentence, AI cadence, em dash,
+   non-ASCII punctuation): a reconsider-nudge, not a "delete this". Dotted
+   underline instead of the strikethrough — overrides the base line-through,
+   keeping the dimmed color. */
+.pf-style-hit--flag {
+    text-decoration: underline dotted var(--vscode-descriptionForeground);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 3px;
+}
+
 /* Spelling hits: dotted underline, native-spellcheck look */
 .pf-spell-err {
     text-decoration: underline dotted var(--vscode-editorWarning-foreground, #cca700);
@@ -81,12 +91,4 @@
     max-width: 240px;
 }
 
-/* Toolbar toggle "on" state — the inputOption vars are VS Code's own
-   toggle-button colors (find-widget "match case"), unmistakable in both
-   themes and distinct from the transient hover background. */
-.tb-btn--active,
-.tb-btn--active:hover {
-    background: var(--vscode-inputOption-activeBackground, rgba(0, 120, 212, 0.25));
-    color: var(--vscode-inputOption-activeForeground, var(--vscode-editor-foreground));
-    border-color: var(--vscode-inputOption-activeBorder, transparent);
-}
+/* The toolbar toggle "on" state (.tb-btn--active) is styled in toolbar.css. */

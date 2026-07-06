@@ -1,32 +1,43 @@
 /* ─── Toolbar ─── */
+/* Three placement zones: equal-flex left/right keep the center zone visually
+   centered regardless of how many items each side holds. */
 .toolbar {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: center;
     gap: 2px;
-    flex-wrap: nowrap;
     flex: 1;
-    /* Narrow panes: clip instead of spilling; the overflow controller
-       moves whole groups into the ⋯ menu before clipping matters. */
     min-width: 0;
-    overflow: hidden;
 }
 
-/* Priority group wrapper; same gap as the toolbar so grouping is
-   invisible at full width. */
-.tb-group {
+.tb-zone {
     display: flex;
     align-items: center;
     gap: 2px;
-    flex: none;
+    min-width: 0;
 }
 
-.tb-sep {
-    width: 1px;
-    height: 18px;
-    background: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
-    margin: 0 4px;
-    flex-shrink: 0;
+.tb-zone--left {
+    justify-content: flex-start;
+}
+
+.tb-zone--center {
+    justify-content: center;
+    /* No `overflow: hidden` here: it would clip the hover dropdown menus
+       (format, font) that open below the bar. The overflow controller keeps
+       the center content within its available width by collapsing items into
+       the ⋯ menu, so clipping is unnecessary. */
+}
+
+.tb-zone--right {
+    justify-content: flex-end;
+}
+
+/* Per-item wrapper; transparent to layout so the zones' gaps do the spacing. */
+.tb-item {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
 }
 
 .tb-btn {
@@ -106,8 +117,28 @@
     position: relative;
 }
 
+/* Active toggle state (style check / spell check on). A filled accent gives
+   clear "on" visibility, distinct from the subtle hover background. */
+.tb-btn--active,
+.tb-btn--active:active {
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #ffffff);
+    border-color: var(--vscode-button-background, #0e639c);
+}
+
+.tb-btn--active:hover {
+    background: var(--vscode-button-hoverBackground, #1177bb);
+    color: var(--vscode-button-foreground, #ffffff);
+    border-color: var(--vscode-button-hoverBackground, #1177bb);
+}
+
 .tb-fmt-btn {
     gap: 1px;
+}
+
+/* Font picker entries render in their own stack; keep them on one line. */
+.tb-font-item {
+    white-space: nowrap;
 }
 
 .tb-fmt-label {
@@ -145,14 +176,67 @@
     background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
 }
 
-.tb-fmt-item--active {
-    color: var(--vscode-focusBorder, #007acc);
-    font-weight: 600;
+/* ─── Checks menu (spelling / grammar / style + per-check toggles) ─── */
+.tb-checks-menu {
+    /* Side + vertical direction are set at open time by placeMenu (menuPlacement.ts),
+       which measures the button and flips to fit the viewport — so no left/right
+       here. Only intrinsic sizing lives in CSS. */
+    min-width: 184px;
+    padding: 2px 0;
+    /* Tall menu (~15 rows): cap and scroll so it can't run off a short pane. */
+    max-height: min(70vh, 520px);
+    overflow-y: auto;
 }
 
-.tb-fmt-item--active::after {
-    content: " ✓";
+/* Divider between the masters and each grouped section. */
+.tb-menu-sep {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--vscode-editorHoverWidget-border, #454545);
+}
+
+/* A style sub-check while "Check Style" is off: inert but still clickable. */
+.tb-check-item--muted {
+    opacity: 0.45;
+}
+
+.tb-fmt-header {
+    padding: 5px 12px 2px;
     font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--vscode-descriptionForeground, #999);
+    cursor: default;
+}
+
+.tb-check-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+/* Leading check column: reserves space when off, so labels stay aligned.
+   Inherits the row's color so the check matches its label exactly. */
+.tb-check-mark {
+    flex: 0 0 auto;
+    width: 10px;
+    font-size: 10px;
+    color: inherit;
+    visibility: hidden;
+}
+
+.tb-check-mark::before {
+    content: "✓";
+}
+
+/* On-state: brighten the whole row so the check + label share one color. */
+.tb-check-item--on {
+    color: var(--vscode-foreground, #ccc);
+}
+
+.tb-check-item--on .tb-check-mark {
+    visibility: visible;
 }
 
 /* ─── Overflow (⋯) menu for narrow panes ─── */
@@ -175,8 +259,8 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     z-index: 200;
 
-    /* Each collapsed group becomes one horizontal row. */
-    .tb-group {
+    /* Each collapsed item becomes one row in the panel. */
+    .tb-item {
         justify-content: flex-start;
     }
 }
@@ -582,4 +666,130 @@
 }
 .img-lightbox-close:hover {
     background: rgba(0, 0, 0, 0.8);
+}
+
+/* ─── Settings gear dropdown (right-aligned so it never clips off-screen) ─── */
+.tb-settings-menu {
+    left: auto;
+    right: 0;
+}
+
+/* ─── Drag-and-drop "Customize toolbar" mode ─── */
+.toolbar--editing .tb-zone {
+    flex-wrap: wrap;
+    min-height: 26px;
+    outline: 1px dashed var(--vscode-focusBorder, #007acc);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Empty zones still need a targetable drop area. The center zone is a grid
+   `auto` track that collapses to ~0 when empty, so give it a real min-width;
+   the side zones fill their `1fr` tracks but get a floor too. */
+.toolbar--editing .tb-zone--left,
+.toolbar--editing .tb-zone--right {
+    min-width: 60px;
+}
+
+.toolbar--editing .tb-zone--center {
+    min-width: 120px;
+}
+
+.toolbar--editing .tb-item,
+.tb-hidden-tray .tb-item {
+    cursor: grab;
+}
+
+/* Make the wrapper the sole drag target: children (buttons) don't intercept
+   the pointer, so native drag starts reliably, menus can't open, and items
+   parked in the tray can't fire their action (e.g. the link prompt). */
+.toolbar--editing .tb-item > *,
+.tb-hidden-tray .tb-item > * {
+    pointer-events: none;
+}
+
+.toolbar--editing .tb-item:active {
+    cursor: grabbing;
+}
+
+.tb-item--dragging {
+    opacity: 0.4;
+}
+
+/* Floating clone that follows the pointer during a drag (pointer-based DnD).
+   pointer-events:none so elementFromPoint sees the zones underneath it. */
+.tb-drag-ghost {
+    position: fixed;
+    z-index: 3000;
+    margin: 0;
+    opacity: 0.85;
+    pointer-events: none;
+}
+
+/* Insertion indicator shown between items during a drag. */
+.tb-drop-indicator {
+    width: 2px;
+    align-self: stretch;
+    min-height: 20px;
+    margin: 0 1px;
+    background: var(--vscode-focusBorder, #007acc);
+    border-radius: 1px;
+    flex: none;
+    pointer-events: none;
+}
+
+/* Hidden-items tray shown below the toolbar during customize mode. */
+.tb-hidden-tray {
+    position: fixed;
+    top: var(--editor-topbar-height, 40px);
+    left: 0;
+    right: 0;
+    z-index: 1150;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    border-bottom: 1px solid var(--vscode-focusBorder, #007acc);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+
+.tb-hidden-tray-label {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #999);
+    white-space: nowrap;
+    flex: none;
+}
+
+/* The drop target for hidden items; grows to fill and wraps if crowded. */
+.tb-hidden-tray-items {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    min-height: 26px;
+    outline: 1px dashed var(--vscode-focusBorder, #007acc);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* While a drag hovers the tray: highlight the whole target (no per-slot line). */
+.tb-hidden-tray-items.tb-tray-drop-active {
+    outline-style: solid;
+    background: var(--vscode-list-dropBackground, rgba(0, 122, 204, 0.12));
+}
+
+/* "Done" button to leave customize mode (lives at the right of the tray). */
+.tb-edit-done {
+    flex: none;
+    padding: 4px 16px;
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #fff);
+    border: none;
+    border-radius: 12px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.tb-edit-done:hover {
+    background: var(--vscode-button-hoverBackground, #1177bb);
 }

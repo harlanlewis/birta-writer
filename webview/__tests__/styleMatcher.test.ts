@@ -1,8 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { compileStyleMatcher, findRepeatedWords, parseEntry, type StyleCategory } from "../utils/styleMatcher";
-import { CLICHES, FILLERS, REDUNDANCIES } from "../proofread/wordlists";
+import {
+    AI_ARTIFACTS,
+    AI_VOCABULARY,
+    CLICHES,
+    FILLERS,
+    REDUNDANCIES,
+    WORDINESS,
+} from "../proofread/wordlists";
 
-const LISTS = { fillers: FILLERS, redundancies: REDUNDANCIES, cliches: CLICHES };
+const LISTS = {
+    fillers: FILLERS,
+    redundancies: REDUNDANCIES,
+    cliches: CLICHES,
+    wordiness: WORDINESS,
+    aiVocabulary: AI_VOCABULARY,
+    aiArtifacts: AI_ARTIFACTS,
+};
 const ALL_ON = { fillers: true, redundancies: true, cliches: true };
 
 function makeMatcher(enabled = ALL_ON, exceptions: string[] = []) {
@@ -241,5 +255,44 @@ describe("wordlists", () => {
                 expect(phrase).toBe(phrase.toLowerCase().trim());
             }
         }
+    });
+});
+
+describe("new categories through compileStyleMatcher", () => {
+    it("an AI-vocabulary word is flagged when enabled", () => {
+        const matcher = compileStyleMatcher(LISTS, { aiVocabulary: true });
+        const text = "We should delve deeper.";
+        const hits = matcher(text);
+        expect(hits).toHaveLength(1);
+        expect(hits[0].category).toBe("aiVocabulary");
+        expect(text.slice(hits[0].start, hits[0].end)).toBe("delve");
+    });
+
+    it("a wordiness phrase is flagged when enabled", () => {
+        const matcher = compileStyleMatcher(LISTS, { wordiness: true });
+        const hits = matcher("There is a problem here.");
+        expect(hits.map((h) => h.category)).toEqual(["wordiness"]);
+    });
+
+    it("a disabled category produces no hits", () => {
+        const matcher = compileStyleMatcher(LISTS, { aiVocabulary: false });
+        expect(matcher("We should delve into it.")).toHaveLength(0);
+    });
+
+    it("a structural check fires only when enabled", () => {
+        const off = compileStyleMatcher(LISTS, {});
+        const on = compileStyleMatcher(LISTS, { passive: true });
+        expect(off("The report was written.").filter((h) => h.category === "passive")).toHaveLength(0);
+        expect(on("The report was written.").some((h) => h.category === "passive")).toBe(true);
+    });
+
+    it("exceptions suppress a structural hit by its flagged text", () => {
+        const matcher = compileStyleMatcher(LISTS, { passive: true }, ["was written"]);
+        expect(matcher("The report was written.").filter((h) => h.category === "passive")).toHaveLength(0);
+    });
+
+    it("repeated words still flag independently of the toggles", () => {
+        const matcher = compileStyleMatcher(LISTS, {});
+        expect(matcher("the the end").some((h) => h.category === "repeated")).toBe(true);
     });
 });
