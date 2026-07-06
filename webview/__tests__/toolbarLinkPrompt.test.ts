@@ -1,6 +1,7 @@
 /**
  * Toolbar Insert/Edit Link prompt tests: the openLinkPrompt controller
- * method (behind both the toolbar link button and the Cmd/Ctrl+K shortcut)
+ * method (behind the toolbar link button and the routed insertLink editor
+ * command, whose contributed Cmd/Ctrl+K keybinding is user-rebindable)
  * opens the two-input prompt against the REAL Milkdown editor — with a
  * selection it pre-fills the link text and links the selected range, without
  * one it inserts new linked text at the caret.
@@ -14,9 +15,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { Mark } from "@milkdown/prose/model";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";
-import { createEventManager } from "../eventManager";
-import { initKeyboardShortcuts } from "../keyboardShortcuts";
-import type { FindBarController } from "../components/findBar";
+import { runEditorCommand } from "../editorCommands";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -197,43 +196,26 @@ describe("toolbar openLinkPrompt", () => {
         expect(linkedTexts(v)).toEqual([{ text: "new", href: "y" }]);
     });
 
-    it("a REAL Cmd+K keydown should open the same prompt and apply the link end to end", () => {
-        // Arrange — wire the production shortcut router to the toolbar's
-        // openLinkPrompt (exactly as webview/index.ts does) and select "hello"
-        window.__i18n = { translations: {}, isMac: true };
-        const manager = createEventManager();
-        const findBar = {
-            open: vi.fn(),
-            close: vi.fn(),
-            isOpen: vi.fn(() => false),
-        } as unknown as FindBarController;
-        initKeyboardShortcuts(manager, () => v, () => [], () => 1, findBar, tb.openLinkPrompt);
+    it("the routed insertLink editor command should open the same prompt and apply the link end to end", () => {
+        // Arrange — Cmd/Ctrl+K is a contributed (user-rebindable) keybinding
+        // now: the workbench resolves it to markdownWriter.editor.insertLink,
+        // which reaches the webview as an editorCommand message dispatched
+        // through runEditorCommand. initToolbar already registered the
+        // toolbar's openLinkPrompt as the host hook, so this drives the full
+        // production route. Select "hello" first.
         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)));
 
-        try {
-            // Act — a real Cmd+K keydown through document, then confirm
-            document.body.dispatchEvent(
-                new KeyboardEvent("keydown", {
-                    code: "KeyK",
-                    key: "k",
-                    metaKey: true,
-                    bubbles: true,
-                    cancelable: true,
-                }),
-            );
-            const { text, url } = promptInputs();
-            expect(text.value).toBe("hello");
-            url.value = "https://kbd.example";
-            pressEnter(url);
+        // Act — the exact call messageHandlers makes for the routed command
+        runEditorCommand("insertLink", () => editor);
+        const { text, url } = promptInputs();
+        expect(text.value).toBe("hello");
+        url.value = "https://kbd.example";
+        pressEnter(url);
 
-            // Assert — the shortcut path produced the same doc change as the button
-            expect(linkedTexts(v)).toEqual([
-                { text: "hello", href: "https://kbd.example" },
-            ]);
-        } finally {
-            manager.dispose();
-            delete window.__i18n;
-        }
+        // Assert — the command path produced the same doc change as the button
+        expect(linkedTexts(v)).toEqual([
+            { text: "hello", href: "https://kbd.example" },
+        ]);
     });
 
     it("Escape should close the prompt without touching the document", () => {

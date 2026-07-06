@@ -83,3 +83,73 @@ describe("editor command contributions", () => {
         }
     });
 });
+
+describe("editor command keybinding contributions", () => {
+    interface Keybinding {
+        command: string;
+        key?: string;
+        mac?: string;
+        win?: string;
+        linux?: string;
+        when?: string;
+    }
+
+    const keybindings: Keybinding[] = pkg.contributes.keybindings;
+    const editorKeybindings = keybindings.filter((k) =>
+        k.command.startsWith(EDITOR_COMMAND_PREFIX),
+    );
+
+    /**
+     * The default keybindings shipped for editor commands. These exist so
+     * users can REBIND them (Keyboard Shortcuts UI) — the webview must never
+     * hardcode these chords itself (see keyboardShortcuts.test.ts, which
+     * asserts they propagate to the workbench).
+     */
+    const EXPECTED_DEFAULTS: Record<string, Partial<Keybinding>[]> = {
+        openFind: [{ key: "ctrl+f", mac: "cmd+f" }],
+        openFindReplace: [
+            { key: "ctrl+alt+f", mac: "cmd+alt+f" },
+            { win: "ctrl+h", linux: "ctrl+h" },
+        ],
+        insertLink: [{ key: "ctrl+k", mac: "cmd+k" }],
+        findNext: [{ key: "f3" }, { mac: "cmd+g" }],
+        findPrevious: [{ key: "shift+f3" }, { mac: "cmd+shift+g" }],
+        findSelection: [{ key: "ctrl+d", mac: "cmd+d" }],
+    };
+
+    it("every editor keybinding should reference a table entry", () => {
+        const ids = new Set(EDITOR_COMMANDS.map((m) => editorCommandName(m.id)));
+        for (const kb of editorKeybindings) {
+            expect(ids.has(kb.command), `keybinding for unknown command ${kb.command}`).toBe(true);
+        }
+    });
+
+    it("every editor keybinding should be scoped to the active custom editor", () => {
+        for (const kb of editorKeybindings) {
+            expect(kb.when, `keybinding for ${kb.command} must be scoped`).toBe(PALETTE_WHEN);
+        }
+    });
+
+    it("the expected default keybindings should all be contributed", () => {
+        for (const [id, expected] of Object.entries(EXPECTED_DEFAULTS)) {
+            const name = EDITOR_COMMAND_PREFIX + id;
+            const entries = editorKeybindings.filter((k) => k.command === name);
+            expect(entries, `keybindings for ${name}`).toHaveLength(expected.length);
+            for (const exp of expected) {
+                const match = entries.find(
+                    (k) =>
+                        k.key === exp.key &&
+                        k.mac === exp.mac &&
+                        k.win === exp.win &&
+                        k.linux === exp.linux,
+                );
+                expect(match, `missing ${JSON.stringify(exp)} for ${name}`).toBeDefined();
+            }
+        }
+    });
+
+    it("no editor keybinding should exist outside the expected set (update EXPECTED_DEFAULTS)", () => {
+        const expectedCount = Object.values(EXPECTED_DEFAULTS).reduce((n, e) => n + e.length, 0);
+        expect(editorKeybindings).toHaveLength(expectedCount);
+    });
+});

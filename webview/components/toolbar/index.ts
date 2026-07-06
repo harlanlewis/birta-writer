@@ -988,9 +988,11 @@ export function initToolbar(
             },
         );
     };
+    // No shortcut label: insert-link is a user-rebindable contributed
+    // keybinding and the webview cannot query its effective binding.
     linkBtnEl = btn(
         IconLink,
-        t("Insert/Edit Link") + " " + kbd("Mod-k"),
+        t("Insert/Edit Link"),
         openLinkPrompt,
     );
     items.link = wrap("link", linkBtnEl);
@@ -1265,17 +1267,20 @@ export function initToolbar(
     }
     items.styleCheck = wrap("styleCheck", checksControl);
     // Mode switch: leave the rendered editor for the raw markdown text editor.
-    // Same code path as Cmd/Ctrl+Shift+M and the tab-bar button (the callback
-    // captures the first visible source line so the viewport is preserved).
+    // Same code path as the switch-to-text-editor keybinding and the tab-bar
+    // button (the callback captures the first visible source line so the
+    // viewport is preserved). No shortcut labels on these tooltips: both are
+    // user-rebindable contributed keybindings and the webview cannot query
+    // their effective bindings.
     if (onSwitchToSource) {
         items.viewSource = wrap("viewSource", btn(
             IconFileCode,
-            `${t("Edit Raw Markdown")} ${kbd("Mod-Shift-m")}`,
+            t("Edit Raw Markdown"),
             onSwitchToSource,
         ));
     }
     if (onOpenFind) {
-        items.find = wrap("find", btn(IconSearch, `${t("Find")} (${kbd("Mod-f")})`, onOpenFind));
+        items.find = wrap("find", btn(IconSearch, t("Find"), onOpenFind));
     }
     // Settings gear is a hover dropdown: open the native settings, or enter the
     // drag-and-drop "Customize toolbar" mode.

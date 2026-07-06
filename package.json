@@ -2,7 +2,7 @@
   "name": "markdown-writer",
   "displayName": "Markdown Writer",
   "description": "Markdown Writer: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.44",
+  "version": "0.2.45",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -305,6 +305,30 @@
         "command": "markdownWriter.gotoSymbol",
         "key": "ctrl+shift+o",
         "mac": "cmd+shift+o",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.openFind",
+        "key": "ctrl+f",
+        "mac": "cmd+f",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.openFindReplace",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.openFindReplace",
+        "win": "ctrl+h",
+        "linux": "ctrl+h",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.insertLink",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
         "when": "activeCustomEditorId == 'markdownWriter.editor'"
       },
       {

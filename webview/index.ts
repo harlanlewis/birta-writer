@@ -424,14 +424,10 @@ eventManager.onDocument(
 );
 
 // ── Initialize keyboard shortcuts and scroll persistence ───
-initKeyboardShortcuts(
-    eventManager,
-    getEditorView,
-    getLineMap,
-    getFirstVisibleSourceLine,
-    findBar,
-    () => topbarTb?.openLinkPrompt(),
-);
+// Workbench key-leak guard only: every rebindable editor shortcut (find
+// family, insert link, switch to text editor) is a contributed keybinding
+// in package.json routed back here through the editorCommand message.
+initKeyboardShortcuts(eventManager);
 initScrollPersistence(eventManager);
 
 // ── Message handlers ───────────────────────────────────────

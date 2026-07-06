@@ -3,6 +3,7 @@
  * dispatch path (MAR-9).
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { mockVscodeApi } from "./setup";
 import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
 import { setEditorCommandHost } from "../editorCommands";
 import type { ToWebviewMessage, ToolbarConfig } from "../../shared/messages";
@@ -100,6 +101,46 @@ describe("editorCommand handler", () => {
                 container,
             ),
         ).not.toThrow();
+    });
+});
+
+describe("requestSwitchToTextEditor handler", () => {
+    // The ONLY switch path for the contributed (user-rebindable)
+    // Cmd/Ctrl+Shift+M keybinding: the extension command posts this message,
+    // the webview answers with switchToTextEditor carrying the first visible
+    // source line so the text editor restores the viewport.
+    beforeEach(() => vi.clearAllMocks());
+
+    const container = document.createElement("div");
+
+    it("with a live editor view it should reply with the first visible source line", () => {
+        const deps = stubDeps();
+        deps.actions.getEditorView = () => ({} as never);
+        deps.actions.getFirstVisibleSourceLine = () => 42;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.requestSwitchToTextEditor?.(
+            { type: "requestSwitchToTextEditor" },
+            container,
+        );
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "switchToTextEditor",
+            line: 42,
+        });
+    });
+
+    it("without an editor view it should reply without a line", () => {
+        const handlers = createMessageHandlers(stubDeps());
+
+        handlers.requestSwitchToTextEditor?.(
+            { type: "requestSwitchToTextEditor" },
+            container,
+        );
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "switchToTextEditor",
+        });
     });
 });
 

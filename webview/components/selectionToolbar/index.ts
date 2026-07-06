@@ -482,10 +482,12 @@ export function setupSelectionToolbar(
     // the editor selection survives the click (same as the other buttons).
     const linkSep = sSep();
     toolbar.appendChild(linkSep);
+    // No shortcut label: insert-link is a user-rebindable contributed
+    // keybinding and the webview cannot query its effective binding.
     const linkBtn = createButton({
         className: "sel-tb-btn sel-tb-link-btn",
         icon: IconLink,
-        title: t("Insert/Edit Link") + " " + kbd("Mod-k"),
+        title: t("Insert/Edit Link"),
         tooltipPlacement: "above",
         onClick: openLinkPrompt,
     });

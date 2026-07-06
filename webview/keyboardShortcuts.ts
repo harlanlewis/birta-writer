@@ -1,23 +1,25 @@
 /**
- * keyboardShortcuts.ts
+ * keyboardShortcuts.ts — the workbench key-leak guard.
  *
- * Registers and handles the editor's keyboard shortcuts:
- * - Cmd/Ctrl+F: open the find bar (pre-filled with the current selection)
- * - Cmd/Ctrl+Alt+F and Ctrl+H: open the find bar with the replace row shown
- * - Cmd/Ctrl+K: open the Insert/Edit Link prompt (same as the toolbar button)
- * - Cmd/Ctrl+Shift+M: switch to the text editor (with the current viewport line)
+ * This module deliberately handles NO editor shortcuts of its own anymore.
+ * Every UI-level action (find, find & replace, find next/previous, find &
+ * replace selection, insert/edit link, switch to text editor) is a
+ * contributed keybinding in package.json routed through a VS Code command
+ * (`markdownWriter.editor.*` / `markdownWriter.switchToTextEditor`) back
+ * into the webview, so users can rebind or unbind them like any other
+ * keybinding. Those chords must stay visible to the workbench — never claim
+ * them below, or the user's binding stops resolving.
  *
- * Find navigation (Cmd+G / F3 find next, Cmd+Shift+G / Shift+F3 find
- * previous, Cmd/Ctrl+D find & replace selection) is deliberately NOT handled
- * here: those are contributed keybindings in package.json routed through the
- * `markdownWriter.editor.findNext/findPrevious/findSelection` commands, so
- * users can rebind them like any VS Code keybinding. The chords must stay
- * visible to the workbench (never claimed below) for that to work.
+ * What remains hardcoded (and therefore claimed) are the typing-level keys
+ * ProseMirror must handle synchronously inside the webview: formatting
+ * (Mod+B/I/E, Mod+Shift+X), history (Mod+Z/Shift+Z/Y), and Tab. These cannot
+ * be routed through the extension host because the keystroke's default action
+ * (native contenteditable formatting, focus traversal, workbench side
+ * effects like Cmd+B toggling the sidebar) has to be suppressed at the event
+ * itself. Users can still bind ADDITIONAL chords to the corresponding
+ * `markdownWriter.editor.toggle*` commands; only these defaults are fixed.
  */
 
-import type { EditorView } from "@milkdown/prose/view";
-import { notifySwitchToTextEditor } from "./messaging";
-import type { FindBarController } from "./components/findBar";
 import { fallbackKeyFromKeyCode, type EventManager } from "./eventManager";
 
 // ── Workbench key-leak guard ─────────────────────────────────────────────
@@ -32,8 +34,8 @@ import { fallbackKeyFromKeyCode, type EventManager } from "./eventManager";
 // The fix is a single bubble-phase listener on `document` that stops
 // propagation for key combos the editor claims for itself:
 // - Bubble phase on `document` runs AFTER ProseMirror's handlers (bound on
-//   the editor DOM) and after our own document-level shortcut handlers, so
-//   everything that should handle the key has already seen it.
+//   the editor DOM), so everything that should handle the key has already
+//   seen it.
 // - `document` is one node below `window`, so stopPropagation() here is the
 //   last stop before the host's forwarder. (A capture-phase listener on
 //   `window` would be wrong: stopPropagation() during capture at `window`
@@ -41,7 +43,7 @@ import { fallbackKeyFromKeyCode, type EventManager } from "./eventManager";
 //   listener on `window` is too late: the host's forwarder is registered
 //   first on that node.)
 // - The guard never calls preventDefault(): whether the key's default action
-//   is suppressed stays the decision of ProseMirror / the shortcut handlers.
+//   is suppressed stays the decision of ProseMirror's keymaps.
 
 /**
  * A key combo the editor claims for itself.
@@ -57,27 +59,14 @@ interface ClaimedShortcut {
      */
     key?: string;
     /**
-     * Physical key code (KeyboardEvent.code). Used instead of `key` only
-     * for Alt combos: macOS Option remaps the produced character (Option+K
-     * types "˚"), and our Alt handlers (EventManager.onShortcut) match
-     * e.code for the same reason.
-     */
-    code?: string;
-    /**
      * Platform primary modifier ("Mod"): Cmd (and not Ctrl) on macOS, Ctrl
      * (and not Cmd) elsewhere — the normalization prosemirror-keymap
-     * applies to "Mod-" bindings. Our own onShortcut registrations below
-     * are tightened to the platform primary modifier too, so the guard
-     * claims exactly the combos some handler responds to (e.g. Ctrl+Z on
-     * macOS is handled by nothing and stays visible to the workbench).
+     * applies to "Mod-" bindings, so the guard claims exactly the combos
+     * ProseMirror responds to (e.g. Ctrl+Z on macOS is handled by nothing
+     * and stays visible to the workbench).
      */
     mod?: boolean;
-    /** Require Ctrl specifically (used for the non-Mod Ctrl+H binding). */
-    ctrl?: boolean;
     shift?: boolean;
-    alt?: boolean;
-    /** Skip this entry on macOS (e.g. Ctrl+H is delete-backward there). */
-    nonMacOnly?: boolean;
 }
 
 /** Combos handled inside the webview that must never reach the workbench. */
@@ -91,23 +80,6 @@ const CLAIMED_SHORTCUTS: ClaimedShortcut[] = [
     { key: "z", mod: true },                // undo
     { key: "z", mod: true, shift: true },   // redo
     { key: "y", mod: true },                // redo
-    // find bar (registered below)
-    { key: "f", mod: true },                // find
-    { code: "KeyF", mod: true, alt: true }, // find & replace (Alt combo)
-    { key: "h", ctrl: true, nonMacOnly: true }, // replace (Win/Linux)
-    // NOTE: find navigation (Cmd+G/F3/Cmd+D) is intentionally absent — those
-    // chords must reach the workbench so the contributed (user-rebindable)
-    // keybindings resolve them (see the module comment).
-    // Insert/Edit Link prompt (registered below). Claimed document-wide so
-    // the chord never starts a workbench Cmd+K key sequence while the
-    // webview is focused; the handler itself skips overlay inputs.
-    { key: "k", mod: true },
-    // Switch to text editor (registered below). Safe to swallow even though
-    // package.json contributes the same keybinding: while the webview is
-    // focused our handler posts the switch message itself; when the webview
-    // is NOT focused the key never enters it and the contributed keybinding
-    // fires natively.
-    { key: "m", mod: true, shift: true },
 ];
 
 /** Whether a keydown matches a combo the editor handles itself. */
@@ -123,6 +95,8 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
         );
     }
 
+    if (e.altKey) { return false; }
+
     // Everything else is claimed document-wide: the whole webview document
     // is editor UI (content, topbar, TOC, find bar, ...), and these combos
     // must not trigger workbench actions no matter which part has focus.
@@ -133,114 +107,31 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
     // too, or the chord leaks to the workbench and the action fires twice.
     const fallbackKey = fallbackKeyFromKeyCode(e);
     for (const s of CLAIMED_SHORTCUTS) {
-        if (s.nonMacOnly && isMac) { continue; }
-        if (s.key !== undefined) {
-            if (eventKey !== s.key && fallbackKey !== s.key) { continue; }
-        } else if (e.code !== s.code) {
-            continue;
-        }
+        if (eventKey !== s.key && fallbackKey !== s.key) { continue; }
         if (s.mod) {
             // Platform primary modifier only (see ClaimedShortcut.mod)
             const primary = isMac
                 ? e.metaKey && !e.ctrlKey
                 : e.ctrlKey && !e.metaKey;
             if (!primary) { continue; }
-        } else if (e.metaKey || e.ctrlKey !== !!s.ctrl) {
-            continue;
         }
         if (e.shiftKey !== !!s.shift) { continue; }
-        if (e.altKey !== !!s.alt) { continue; }
         return true;
     }
     return false;
 }
 
-/** Initialize the editor's keyboard shortcuts and the key-leak guard. */
-export function initKeyboardShortcuts(
-    eventManager: EventManager,
-    getEditorView: () => EditorView | null,
-    getLineMap: () => number[],
-    getFirstVisibleSourceLine: (view: EditorView, lineMap: number[]) => number,
-    findBar: FindBarController,
-    openLinkPrompt: () => void,
-): void {
+/** Install the key-leak guard (see the comment block above). */
+export function initKeyboardShortcuts(eventManager: EventManager): void {
     const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
 
-    // Key-leak guard: keep claimed combos from reaching the VS Code webview
-    // host's window-level key forwarder (see the comment block above).
+    // Keep claimed combos from reaching the VS Code webview host's
+    // window-level key forwarder.
     eventManager.onDocument("keydown", (e) => {
         if (isEditorClaimedKey(e, isMac)) {
             // stopPropagation only — never preventDefault — so ProseMirror
-            // and the shortcut handlers below keep full control of the key.
+            // keeps full control of the key.
             e.stopPropagation();
         }
     });
-
-    // Platform primary modifier for our own bindings: Cmd on macOS, Ctrl
-    // elsewhere — the same "Mod-" normalization prosemirror-keymap applies.
-    // Registered as a single exact modifier (not meta-or-ctrl) so the
-    // claimed-key guard above and these handlers agree on what is handled.
-    const mod: { meta?: boolean; ctrl?: boolean } =
-        isMac ? { meta: true } : { ctrl: true };
-
-    // Cmd/Ctrl+F: open the find bar (pre-fills from the selection itself).
-    // Letter shortcuts match on the produced character (`key`) so non-QWERTY
-    // layouts work; Alt combos match on `code` (see CLAIMED_SHORTCUTS).
-    eventManager.onShortcut(
-        { key: "f", ...mod, stopPropagation: true },
-        () => findBar.open(),
-    );
-
-    // Cmd/Ctrl+Alt+F: open the find bar with the replace row shown
-    eventManager.onShortcut(
-        { code: "KeyF", ...mod, alt: true, stopPropagation: true },
-        () => findBar.open(undefined, { showReplace: true }),
-    );
-
-    // Ctrl+H (Windows/Linux convention; on macOS Ctrl+H is delete-backward)
-    if (!isMac) {
-        eventManager.onShortcut(
-            { key: "h", ctrl: true, stopPropagation: true },
-            () => findBar.open(undefined, { showReplace: true }),
-        );
-    }
-
-    // Cmd/Ctrl+K: open the Insert/Edit Link prompt — the exact prompt behind
-    // the toolbar's link button, so selection handling (pre-filled text,
-    // existing href, no-selection insert) matches the button 1:1.
-    eventManager.onShortcut(
-        // preventDefault is done in the handler, after the overlay-input
-        // check below, so overlay inputs keep the key's default action
-        { key: "k", ...mod, stopPropagation: true, preventDefault: false },
-        (e) => {
-            // Ignore Cmd/Ctrl+K while typing in overlay inputs (find bar,
-            // link popup, language picker, ...): the prompt edits editor
-            // content only. The ProseMirror root is itself contenteditable,
-            // so editable targets inside it stay allowed.
-            const target = e.target;
-            if (
-                target instanceof HTMLElement &&
-                target.closest(".ProseMirror") === null &&
-                (target instanceof HTMLInputElement ||
-                    target instanceof HTMLTextAreaElement ||
-                    target.isContentEditable)
-            ) {
-                return;
-            }
-            e.preventDefault();
-            openLinkPrompt();
-        },
-    );
-
-    // Cmd/Ctrl+Shift+M: switch to the text editor (with the first visible
-    // source line so the text editor can restore the viewport position)
-    eventManager.onShortcut(
-        { key: "m", ...mod, shift: true, stopPropagation: true },
-        () => {
-            const view = getEditorView();
-            const lineMap = getLineMap();
-            const line = view ? getFirstVisibleSourceLine(view, lineMap) : undefined;
-            notifySwitchToTextEditor(line);
-        },
-    );
 }

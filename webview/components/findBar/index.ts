@@ -105,8 +105,6 @@ export function initFindBar(
     getEditorView: () => EditorView | null,
     getMarkdownSource: () => string = () => "",
 ): FindBarController {
-    const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
-
     // ── DOM structure ────────────────────────────────────
     const bar = document.createElement("div");
     bar.className = "find-bar";
@@ -138,17 +136,21 @@ export function initFindBar(
     const count = document.createElement("span");
     count.className = "find-bar__count";
 
+    // Tooltips name only the bar-local keys (Enter / Shift+Enter): the
+    // find-next/previous commands are user-rebindable contributed
+    // keybindings, and the webview cannot query their effective binding,
+    // so printing a default here could show a wrong shortcut.
     const btnPrev = createButton({
         className: "find-bar__btn",
         icon: IconChevronUp,
-        title: `${t("Previous Match")} (${kbd("Shift-Enter")}, ${isMac ? kbd("Mod-Shift-G") : kbd("Shift-F3")})`,
+        title: `${t("Previous Match")} (${kbd("Shift-Enter")})`,
     });
     btnPrev.setAttribute("aria-label", t("Previous Match"));
 
     const btnNext = createButton({
         className: "find-bar__btn",
         icon: IconChevronDown,
-        title: `${t("Next Match")} (Enter, ${isMac ? kbd("Mod-G") : kbd("F3")})`,
+        title: `${t("Next Match")} (Enter)`,
     });
     btnNext.setAttribute("aria-label", t("Next Match"));
 
