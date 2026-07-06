@@ -5,6 +5,14 @@
  */
 import type { FontPreset } from "./messages";
 
+/**
+ * The default content-font preset. Must stay in sync with the
+ * `markdownWriter.fontPreset` default declared in package.json. Import this in
+ * every `getConfiguration().get("fontPreset", …)` call so the code fallback
+ * can never diverge from the contributed default.
+ */
+export const DEFAULT_FONT_PRESET: FontPreset = "mono";
+
 /** Font-family stacks for the non-default presets. */
 export const FONT_PRESET_STACKS: Record<Exclude<FontPreset, "default">, string> = {
     sans: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',

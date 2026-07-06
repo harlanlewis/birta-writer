@@ -14,7 +14,7 @@ import { resolveThemeColors } from "./themeManager";
 import { selectWebviewTranslations } from "./i18n/webviewTranslations";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
 import type { EditorCommandId } from "../shared/editorCommands";
-import { resolveFontFamily } from "../shared/fontPresets";
+import { resolveFontFamily, DEFAULT_FONT_PRESET } from "../shared/fontPresets";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -794,7 +794,7 @@ export class MarkdownEditorProvider
         const tocRight = cfg.get<string>("tocPosition", "left") === "right";
         const isAutoWidth = editorMaxWidth === "none";
         const fontFamily = cfg.get<string>("fontFamily", "");
-        const fontPreset = cfg.get<FontPreset>("fontPreset", "mono");
+        const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
         const resolvedFont = resolveFontFamily(fontPreset, fontFamily);
         const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));

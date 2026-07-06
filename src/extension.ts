@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import { getAllThemes, getCustomThemes, type ThemeInfo } from "./themeManager";
 import type { TableWrapMode, FontPreset } from "../shared/messages";
-import { resolveFontFamily } from "../shared/fontPresets";
+import { resolveFontFamily, DEFAULT_FONT_PRESET } from "../shared/fontPresets";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
@@ -337,7 +337,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (e.affectsConfiguration("markdownWriter.fontPreset")
                 || e.affectsConfiguration("markdownWriter.fontFamily")) {
                 const cfg = vscode.workspace.getConfiguration("markdownWriter");
-                const preset = cfg.get<FontPreset>("fontPreset", "default");
+                const preset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
                 const fontFamily = cfg.get<string>("fontFamily", "");
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setFontFamily",
