@@ -634,8 +634,8 @@ export class MarkdownEditorProvider
         if (confirm) {
             const open = vscode.l10n.t('Open');
             const choice = await vscode.window.showWarningMessage(
-                vscode.l10n.t('Open external link?\n{0}', url),
-                { modal: true },
+                vscode.l10n.t('Open external link?'),
+                { modal: true, detail: url },
                 open,
             );
             if (choice !== open) {

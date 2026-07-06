@@ -140,10 +140,10 @@ export class EventManager {
      * );
      *
      * @example
-     * // Alt+K (without stopping propagation)
+     * // Alt+M (without stopping propagation)
      * eventManager.onShortcut(
-     *     { code: "KeyK", alt: true, stopPropagation: false },
-     *     () => sendToClaude()
+     *     { code: "KeyM", alt: true, stopPropagation: false },
+     *     () => doSomething()
      * );
      */
     onShortcut(
