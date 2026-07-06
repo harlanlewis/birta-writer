@@ -614,25 +614,34 @@ body.editor-width-auto {
                 cursor: pointer;
             }
 
-            /* Checked state: blue background */
+            /* Checked state: accent fill. Use the button color pair, which every
+               VS Code theme defines as a guaranteed high-contrast fill/foreground
+               duo — unlike checkbox.selectBackground, which resolves to a light
+               tone in light themes and washes out a white checkmark. */
             &[data-checked="true"]::before {
-                background: var(--vscode-checkbox-selectBackground, #007acc);
-                border-color: var(--vscode-checkbox-selectBackground, #007acc);
+                background: var(--vscode-button-background, #007acc);
+                border-color: var(--vscode-button-background, #007acc);
             }
 
-            /* Checked: pure-CSS checkmark (a rotated L-shaped border) */
+            /* Checked: checkmark drawn as a masked SVG. The ::after is laid exactly
+               over the ::before box (same left/top/size) so the glyph centers by
+               construction, and its color comes from the theme rather than a
+               hardcoded white. */
             &[data-checked="true"]::after {
                 content: "";
                 position: absolute;
-                left: 3px;
-                top: calc(0.2em + 1px);
-                width: 5px;
-                height: 9px;
-                border-right: 2px solid #fff;
-                border-bottom: 2px solid #fff;
-                transform: rotate(45deg) translate(-1px, -2px);
-                transform-origin: center;
-                box-sizing: border-box;
+                left: 0;
+                top: 0.2em;
+                width: 14px;
+                height: 14px;
+                background-color: var(--vscode-button-foreground, #fff);
+                /* Stroked (not filled) check: stroke-width controls the glyph
+                   weight directly, and round caps/joins give it a heavier,
+                   softer read that echoes the box's rounded corners. Sized to
+                   fill more of the 14px box than the old filled glyph did. */
+                --task-check-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5 10 17.5 19 6.5'/%3E%3C/svg%3E");
+                -webkit-mask: var(--task-check-mask) center / 11px 11px no-repeat;
+                mask: var(--task-check-mask) center / 11px 11px no-repeat;
             }
 
             /* Strike through checked text (optional visual cue) */
