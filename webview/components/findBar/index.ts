@@ -61,6 +61,33 @@ function sortPos(m: SearchMatch): number {
     }
 }
 
+/**
+ * Query for the find-selection command (Cmd/Ctrl+D): the selected text, or
+ * the word around the caret when the selection is empty (mirroring how
+ * VS Code's "add selection to next find match" seeds its query).
+ */
+export function selectionOrWordQuery(view: EditorView): string | undefined {
+    const { selection } = view.state;
+    if (!selection.empty) {
+        const text = view.state.doc.textBetween(selection.from, selection.to);
+        return text.trim() ? text : undefined;
+    }
+    const $pos = selection.$from;
+    if (!$pos.parent.isTextblock) {
+        return undefined;
+    }
+    // Leaf nodes (images, math) map to a placeholder so offsets stay aligned
+    const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
+    const off = $pos.parentOffset;
+    const isWordChar = (ch: string | undefined) =>
+        ch !== undefined && /[\p{L}\p{N}_]/u.test(ch);
+    let start = off;
+    let end = off;
+    while (isWordChar(text[start - 1])) { start--; }
+    while (isWordChar(text[end])) { end++; }
+    return start < end ? text.slice(start, end) : undefined;
+}
+
 /** Secondary sort key: offset inside the attribute string (or the line for block hits). */
 function sortSub(m: SearchMatch): number {
     switch (m.kind) {

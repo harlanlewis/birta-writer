@@ -35,7 +35,7 @@ import { computeLineMap } from "../shared/lineMap";
 import { setupLinkPopup } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
 import { initPathComplete } from "./components/pathLink/pathComplete";
-import { initFindBar } from "./components/findBar";
+import { initFindBar, selectionOrWordQuery } from "./components/findBar";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
 import { initToc } from "./components/toc";
@@ -241,10 +241,21 @@ const topbarTb = topbar
     : null;
 
 // Register the editor-command hooks the toolbar does not own (find-with-
-// replace, TOC toggle, frontmatter focus). The toolbar itself registers
-// openLinkPrompt / openImagePanel / openFind (MAR-9).
+// replace, find navigation, TOC toggle, frontmatter focus). The toolbar
+// itself registers openLinkPrompt / openImagePanel / openFind (MAR-9).
+// The find-navigation hooks back the contributed (user-rebindable)
+// keybindings: Cmd+G / F3, Cmd+Shift+G / Shift+F3, and Cmd/Ctrl+D.
 setEditorCommandHost({
     openFindReplace: () => findBar.open(undefined, { showReplace: true }),
+    findNext: () => findBar.findNext(),
+    findPrevious: () => findBar.findPrev(),
+    findSelection: () => {
+        const view = getEditorView();
+        findBar.open(view ? selectionOrWordQuery(view) : undefined, {
+            showReplace: true,
+            focusReplace: true,
+        });
+    },
     toggleToc: () => toc.toggle(),
     editFrontmatter: () => focusFrontmatterPanel(),
 });

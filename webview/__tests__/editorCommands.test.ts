@@ -119,6 +119,9 @@ describe("editorCommands registry — host-delegating entries", () => {
         openImagePanel: vi.fn(),
         openFind: vi.fn(),
         openFindReplace: vi.fn(),
+        findNext: vi.fn(),
+        findPrevious: vi.fn(),
+        findSelection: vi.fn(),
         toggleToc: vi.fn(),
         editFrontmatter: vi.fn(),
     };
@@ -133,6 +136,9 @@ describe("editorCommands registry — host-delegating entries", () => {
         ["insertImage", "openImagePanel"],
         ["openFind", "openFind"],
         ["openFindReplace", "openFindReplace"],
+        ["findNext", "findNext"],
+        ["findPrevious", "findPrevious"],
+        ["findSelection", "findSelection"],
         ["toggleToc", "toggleToc"],
         ["editFrontmatter", "editFrontmatter"],
     ] as const)("%s should delegate to host.%s", (id, hook) => {

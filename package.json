@@ -2,7 +2,7 @@
   "name": "markdown-writer",
   "displayName": "Markdown Writer",
   "description": "Markdown Writer: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.43",
+  "version": "0.2.44",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -212,6 +212,21 @@
         "category": "Markdown Writer"
       },
       {
+        "command": "markdownWriter.editor.findNext",
+        "title": "%command.editor.findNext.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.findPrevious",
+        "title": "%command.editor.findPrevious.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.findSelection",
+        "title": "%command.editor.findSelection.title%",
+        "category": "Markdown Writer"
+      },
+      {
         "command": "markdownWriter.editor.toggleToc",
         "title": "%command.editor.toggleToc.title%",
         "category": "Markdown Writer"
@@ -290,6 +305,32 @@
         "command": "markdownWriter.gotoSymbol",
         "key": "ctrl+shift+o",
         "mac": "cmd+shift+o",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.findNext",
+        "key": "f3",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.findNext",
+        "mac": "cmd+g",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.findPrevious",
+        "key": "shift+f3",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.findPrevious",
+        "mac": "cmd+shift+g",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.editor.findSelection",
+        "key": "ctrl+d",
+        "mac": "cmd+d",
         "when": "activeCustomEditorId == 'markdownWriter.editor'"
       }
     ],
@@ -419,6 +460,18 @@
         },
         {
           "command": "markdownWriter.editor.openFindReplace",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.findNext",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.findPrevious",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.findSelection",
           "when": "activeCustomEditorId == 'markdownWriter.editor'"
         },
         {

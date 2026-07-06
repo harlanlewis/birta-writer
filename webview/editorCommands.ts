@@ -62,6 +62,9 @@ export interface EditorCommandHost {
     openImagePanel(): void;
     openFind(): void;
     openFindReplace(): void;
+    findNext(): void;
+    findPrevious(): void;
+    findSelection(): void;
     toggleToc(): void;
     editFrontmatter(): void;
 }
@@ -302,6 +305,9 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertFootnote: (getEditor) => insertFootnote(getEditor),
     openFind: () => host.openFind?.(),
     openFindReplace: () => host.openFindReplace?.(),
+    findNext: () => host.findNext?.(),
+    findPrevious: () => host.findPrevious?.(),
+    findSelection: () => host.findSelection?.(),
     toggleToc: () => host.toggleToc?.(),
     editFrontmatter: () => host.editFrontmatter?.(),
     tableInsertRowAbove: (getEditor, args) => tableCmd(getEditor, addRowBefore, args),

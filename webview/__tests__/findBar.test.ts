@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { EditorView } from "@milkdown/prose/view";
 import { Schema, type Node as PmNode, type Mark } from "@milkdown/prose/model";
 import { EditorState, TextSelection, type Transaction } from "@milkdown/prose/state";
-import { initFindBar } from "../components/findBar";
+import { initFindBar, selectionOrWordQuery } from "../components/findBar";
 
 // ── Test schema ──────────────────────────────────────────
 const schema = new Schema({
@@ -246,6 +246,39 @@ describe("initFindBar search", () => {
         expect(findBar.isOpen()).toBe(false);
         expect(bar.classList.contains("find-bar--visible")).toBe(false);
         expect(count.textContent).toBe("");
+    });
+});
+
+describe("selectionOrWordQuery", () => {
+    const viewFor = (text: string, from: number, to = from) =>
+        createFakeView(mkDoc(p(text)), { from, to }).view;
+
+    it("a non-empty selection should return the selected text", () => {
+        // "foo bar baz": "bar" spans doc positions 5..8
+        expect(selectionOrWordQuery(viewFor("foo bar baz", 5, 8))).toBe("bar");
+    });
+
+    it("a whitespace-only selection should return undefined", () => {
+        expect(selectionOrWordQuery(viewFor("foo bar baz", 4, 5))).toBe(undefined);
+    });
+
+    it("an empty selection inside a word should return the surrounding word", () => {
+        expect(selectionOrWordQuery(viewFor("foo bar baz", 6))).toBe("bar");
+    });
+
+    it("an empty selection at a word boundary should still pick up the adjacent word", () => {
+        // caret right after "foo" (position 4)
+        expect(selectionOrWordQuery(viewFor("foo bar baz", 4))).toBe("foo");
+    });
+
+    it("an empty selection surrounded by whitespace should return undefined", () => {
+        // "foo  bar": caret between the two spaces (position 5)
+        expect(selectionOrWordQuery(viewFor("foo  bar", 5))).toBe(undefined);
+    });
+
+    it("word expansion should treat unicode letters as word characters", () => {
+        // "der Käse hier": caret inside "Käse" (position 7)
+        expect(selectionOrWordQuery(viewFor("der Käse hier", 7))).toBe("Käse");
     });
 });
 

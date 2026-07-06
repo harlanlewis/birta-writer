@@ -4,11 +4,15 @@
  * Registers and handles the editor's keyboard shortcuts:
  * - Cmd/Ctrl+F: open the find bar (pre-filled with the current selection)
  * - Cmd/Ctrl+Alt+F and Ctrl+H: open the find bar with the replace row shown
- * - Cmd+G / Cmd+Shift+G (macOS) and F3 / Shift+F3: find next/previous match
- * - Cmd/Ctrl+D: open find & replace pre-filled with the selection or the
- *   word around the caret, replace input focused
  * - Cmd/Ctrl+K: open the Insert/Edit Link prompt (same as the toolbar button)
  * - Cmd/Ctrl+Shift+M: switch to the text editor (with the current viewport line)
+ *
+ * Find navigation (Cmd+G / F3 find next, Cmd+Shift+G / Shift+F3 find
+ * previous, Cmd/Ctrl+D find & replace selection) is deliberately NOT handled
+ * here: those are contributed keybindings in package.json routed through the
+ * `markdownWriter.editor.findNext/findPrevious/findSelection` commands, so
+ * users can rebind them like any VS Code keybinding. The chords must stay
+ * visible to the workbench (never claimed below) for that to work.
  */
 
 import type { EditorView } from "@milkdown/prose/view";
@@ -74,8 +78,6 @@ interface ClaimedShortcut {
     alt?: boolean;
     /** Skip this entry on macOS (e.g. Ctrl+H is delete-backward there). */
     nonMacOnly?: boolean;
-    /** Claim this entry only on macOS (e.g. Ctrl+G is go-to-line elsewhere). */
-    macOnly?: boolean;
 }
 
 /** Combos handled inside the webview that must never reach the workbench. */
@@ -93,11 +95,9 @@ const CLAIMED_SHORTCUTS: ClaimedShortcut[] = [
     { key: "f", mod: true },                // find
     { code: "KeyF", mod: true, alt: true }, // find & replace (Alt combo)
     { key: "h", ctrl: true, nonMacOnly: true }, // replace (Win/Linux)
-    { key: "g", mod: true, macOnly: true },              // find next (Ctrl+G is go-to-line elsewhere)
-    { key: "g", mod: true, shift: true, macOnly: true }, // find previous
-    { key: "f3" },                          // find next
-    { key: "f3", shift: true },             // find previous
-    { key: "d", mod: true },                // selection/word → find & replace
+    // NOTE: find navigation (Cmd+G/F3/Cmd+D) is intentionally absent — those
+    // chords must reach the workbench so the contributed (user-rebindable)
+    // keybindings resolve them (see the module comment).
     // Insert/Edit Link prompt (registered below). Claimed document-wide so
     // the chord never starts a workbench Cmd+K key sequence while the
     // webview is focused; the handler itself skips overlay inputs.
@@ -134,7 +134,6 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
     const fallbackKey = fallbackKeyFromKeyCode(e);
     for (const s of CLAIMED_SHORTCUTS) {
         if (s.nonMacOnly && isMac) { continue; }
-        if (s.macOnly && !isMac) { continue; }
         if (s.key !== undefined) {
             if (eventKey !== s.key && fallbackKey !== s.key) { continue; }
         } else if (e.code !== s.code) {
@@ -154,33 +153,6 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
         return true;
     }
     return false;
-}
-
-/**
- * Query for the Cmd/Ctrl+D find bridge: the selected text, or the word
- * around the caret when the selection is empty (mirroring how VS Code's
- * "add selection to next find match" seeds its query).
- */
-export function selectionOrWordQuery(view: EditorView): string | undefined {
-    const { selection } = view.state;
-    if (!selection.empty) {
-        const text = view.state.doc.textBetween(selection.from, selection.to);
-        return text.trim() ? text : undefined;
-    }
-    const $pos = selection.$from;
-    if (!$pos.parent.isTextblock) {
-        return undefined;
-    }
-    // Leaf nodes (images, math) map to a placeholder so offsets stay aligned
-    const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
-    const off = $pos.parentOffset;
-    const isWordChar = (ch: string | undefined) =>
-        ch !== undefined && /[\p{L}\p{N}_]/u.test(ch);
-    let start = off;
-    let end = off;
-    while (isWordChar(text[start - 1])) { start--; }
-    while (isWordChar(text[end])) { end++; }
-    return start < end ? text.slice(start, end) : undefined;
 }
 
 /** Initialize the editor's keyboard shortcuts and the key-leak guard. */
@@ -232,55 +204,6 @@ export function initKeyboardShortcuts(
             () => findBar.open(undefined, { showReplace: true }),
         );
     }
-
-    // Cmd+G / Cmd+Shift+G (macOS only — Ctrl+G is go-to-line elsewhere) and
-    // F3 / Shift+F3 (all platforms): find next/previous while the editor
-    // keeps focus, reopening the bar with the last query when it is hidden.
-    if (isMac) {
-        eventManager.onShortcut(
-            { key: "g", ...mod, stopPropagation: true },
-            () => findBar.findNext(),
-        );
-        eventManager.onShortcut(
-            { key: "g", ...mod, shift: true, stopPropagation: true },
-            () => findBar.findPrev(),
-        );
-    }
-    eventManager.onShortcut(
-        { key: "f3", stopPropagation: true },
-        () => findBar.findNext(),
-    );
-    eventManager.onShortcut(
-        { key: "f3", shift: true, stopPropagation: true },
-        () => findBar.findPrev(),
-    );
-
-    // Cmd/Ctrl+D: bridge to find & replace pre-filled with the selection (or
-    // the word around the caret), replace input focused — the WYSIWYG
-    // stand-in for VS Code's "add selection to next find match" flow.
-    eventManager.onShortcut(
-        // preventDefault is done in the handler, after the overlay-input
-        // check, so overlay inputs keep the key's default action
-        { key: "d", ...mod, stopPropagation: true, preventDefault: false },
-        (e) => {
-            // Ignore Cmd/Ctrl+D while typing in overlay inputs (find bar,
-            // link popup, ...): the bridge reads the editor selection only.
-            const target = e.target;
-            if (
-                target instanceof HTMLElement &&
-                target.closest(".ProseMirror") === null &&
-                (target instanceof HTMLInputElement ||
-                    target instanceof HTMLTextAreaElement ||
-                    target.isContentEditable)
-            ) {
-                return;
-            }
-            e.preventDefault();
-            const view = getEditorView();
-            const query = view ? selectionOrWordQuery(view) : undefined;
-            findBar.open(query, { showReplace: true, focusReplace: true });
-        },
-    );
 
     // Cmd/Ctrl+K: open the Insert/Edit Link prompt — the exact prompt behind
     // the toolbar's link button, so selection handling (pre-filled text,

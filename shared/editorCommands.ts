@@ -53,6 +53,12 @@ export const EDITOR_COMMANDS = [
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
     { id: "openFind", title: "Find", palette: true, sections: [] },
     { id: "openFindReplace", title: "Replace", palette: true, sections: [] },
+    // Find navigation is contributed (rather than handled as hardcoded webview
+    // keydowns) so users can rebind it like any VS Code keybinding; the
+    // defaults in package.json mirror the built-in editor's find bindings.
+    { id: "findNext", title: "Find Next", palette: true, sections: [] },
+    { id: "findPrevious", title: "Find Previous", palette: true, sections: [] },
+    { id: "findSelection", title: "Find & Replace Selection", palette: true, sections: [] },
     { id: "toggleToc", title: "Toggle Table of Contents", palette: true, sections: [] },
     { id: "editFrontmatter", title: "Edit Frontmatter", palette: true, sections: [] },
     { id: "tableInsertRowAbove", title: "Insert Row Above", palette: false, sections: ["table"] },
