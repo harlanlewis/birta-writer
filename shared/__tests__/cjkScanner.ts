@@ -141,8 +141,15 @@ export function stripComments(source: string, options: StripCommentsOptions = {}
     return out;
 }
 
-/** CJK ranges the guard rejects: CJK Unified Ideographs, Hiragana/Katakana, Hangul Syllables. */
-export const CJK_RE = /[一-鿿぀-ヿ가-힯]/;
+/**
+ * CJK ranges the guard rejects: CJK Symbols & Punctuation (。、「」…),
+ * Hiragana/Katakana, CJK Ext-A, CJK Unified Ideographs, CJK Compatibility
+ * Ideographs, Halfwidth & Fullwidth Forms (！？（）…), and Hangul Syllables.
+ * Kept wide so a stripped literal that survives as only fullwidth punctuation
+ * or an Ext-A/compat character is still caught.
+ */
+export const CJK_RE =
+    /[\u3000-\u303F\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF\uAC00-\uD7A3]/;
 
 /** Returns the 1-based line numbers that still contain CJK after comment stripping. */
 export function findCjkLines(source: string, options: StripCommentsOptions = {}): number[] {

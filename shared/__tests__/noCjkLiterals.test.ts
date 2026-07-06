@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import * as path from "path";
 import * as fs from "fs";
-import { stripComments, findCjkLines, walkFiles } from "./cjkScanner";
+import { stripComments, findCjkLines, walkFiles, CJK_RE } from "./cjkScanner";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const SCANNED_DIRS = ["src", "webview", "shared"];
@@ -111,6 +111,30 @@ describe("CJK literal guard", () => {
         expect(
             offenders,
             `CJK characters found in code (comments are exempt; route user-facing text through t()):\n${offenders.join("\n")}`,
+        ).toEqual([]);
+    });
+
+    // package.json contributions and the NLS bundles are pure user-facing data
+    // with no comment layer, so ANY CJK there is a shipped Chinese string. These
+    // files sit outside SCANNED_DIRS, which is how a Chinese command title or
+    // setting description could regress unnoticed.
+    it("package.json and NLS bundles should contain no CJK", () => {
+        const files = ["package.json", "package.nls.json", "l10n/bundle.l10n.json"]
+            .map((rel) => path.join(REPO_ROOT, rel))
+            .filter((f) => fs.existsSync(f));
+        const offenders: string[] = [];
+        for (const file of files) {
+            const source = fs.readFileSync(file, "utf8");
+            // JSON has no code comments; every line is data, scan verbatim.
+            source.split("\n").forEach((line, idx) => {
+                if (CJK_RE.test(line)) {
+                    offenders.push(`${path.relative(REPO_ROOT, file)}:${idx + 1}`);
+                }
+            });
+        }
+        expect(
+            offenders,
+            `CJK characters found in user-facing JSON:\n${offenders.join("\n")}`,
         ).toEqual([]);
     });
 });
