@@ -1,4 +1,4 @@
-# Claude project instructions — md-wysiwyg-editor
+# Claude project instructions — markdown-writer
 
 ## Language policy
 
@@ -22,13 +22,24 @@ The maintainer reads and writes **English only**. This project is being migrated
 - **Packaging/release**: the VSIX must be written to `releases/`. Command: `pnpm run package`.
 - **Git commit convention**: keep the English type prefix (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, `release:`) and write the description in **English**. e.g. `feat: add image upload`, `fix: correct table drag offset`.
 
+### End-of-work handoff (ALWAYS)
+
+Whenever a work session changes extension or webview source (`src/`, `webview/`, `shared/`, `package.json`), finish by making the build testable in the user's own editor with zero extra steps for them:
+
+1. `pnpm test` — all green.
+2. `pnpm run package`
+3. `cursor --install-extension releases/markdown-writer-<version>.vsix --force`
+4. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
+
+Do this by default, without being asked, before handing control back. Bump the patch version when it helps the user confirm they're on the new build.
+
 ### Trying changes in the user's editor (Cursor)
 
 `pnpm build` only rebuilds `dist/`; the user's editor runs an **installed copy** of the extension, so a window reload alone never picks up source changes. When the user wants to try changes in their own Cursor window (rather than F5 debugging):
 
 1. `pnpm test` — must pass first.
-2. `pnpm run package` — writes `releases/md-wysiwyg-editor-<version>.vsix`.
-3. `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force` (`--force` allows reinstalling the same version).
+2. `pnpm run package` — writes `releases/markdown-writer-<version>.vsix`.
+3. `cursor --install-extension releases/markdown-writer-<version>.vsix --force` (`--force` allows reinstalling the same version).
 4. Tell the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
 For iterative debugging, F5 (Extension Development Host) is still faster — no packaging step.
@@ -54,9 +65,8 @@ webview/ui/icons.ts                           — SVG icons
 webview/ui/tooltip.ts                         — Tooltip component
 webview/components/toolbar/index.ts           — Top main toolbar
 webview/components/selectionToolbar/index.ts  — Floating selection toolbar
-webview/components/table/addButtons.ts        — Table insert lines
-webview/components/table/handles.ts           — Table row/column drag handles
-webview/components/table/toolbar.ts           — Table toolbar
+webview/components/table/tableView.ts         — Table NodeView (overlay chrome: grips, insert bars, drag-reorder)
+webview/components/table/reorder.ts           — Pure row/column block-reorder + drop-index helpers
 webview/components/codeBlock/index.ts         — Code block UI
 webview/components/toc/index.ts               — Table of contents (TOC) panel
 webview/components/linkPopup/index.ts         — Link hover popup
@@ -91,7 +101,7 @@ Keep `docs/roadmap.md` in sync when phase progress changes.
 ### Stack
 | Layer | Framework | Scope |
 |-------|-----------|-------|
-| Extension unit tests | **Vitest 2.x** (Node env) | `src/utils/`, `src/MarkdownDocument.ts` |
+| Extension unit tests | **Vitest 2.x** (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
 | WebView unit tests | **Vitest 2.x + jsdom 24.x** | `webview/utils/`, `webview/messaging.ts` |
 | Integration tests (planned) | **@vscode/test-electron + Mocha** | needs a real VS Code Extension Host |
 
@@ -125,7 +135,7 @@ __mocks__/vscode.ts         — Central vscode API mock
 |--------|-------------------|
 | `src/utils/imageService.ts` | ≥ 85% |
 | `src/utils/getNonce.ts` | 100% |
-| `src/MarkdownDocument.ts` | ≥ 80% |
+| `src/utils/textEdit.ts` | ≥ 90% |
 | `src/utils/contentTransform.ts` | ≥ 90% |
 | `src/utils/lineMap.ts` | ≥ 90% |
 | `webview/utils/slug.ts` | ≥ 90% |
@@ -179,5 +189,5 @@ Test fails
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `markdownWysiwyg.autoSave` | boolean | `true` | Write to disk automatically after edits |
-| `markdownWysiwyg.autoSaveDelay` | number | `1000` | Debounce delay (ms) |
+| `markdownWriter.autoSave` | boolean | `true` | Write to disk automatically after edits |
+| `markdownWriter.autoSaveDelay` | number | `1000` | Debounce delay (ms) |

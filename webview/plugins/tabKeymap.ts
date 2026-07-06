@@ -1,10 +1,9 @@
 import { editorViewCtx, schemaCtx } from "@milkdown/core";
 import { keymap } from "@milkdown/prose/keymap";
-import { TextSelection } from "@milkdown/prose/state";
 import { sinkListItem } from "@milkdown/prose/schema-list";
 import { $prose } from "@milkdown/utils";
 
-/** 判断光标是否在代码块内 */
+/** Whether the cursor is inside a code block */
 function isInCodeBlock(view: any): boolean {
     const { state } = view;
     const { $from } = state.selection;
@@ -16,7 +15,7 @@ function isInCodeBlock(view: any): boolean {
     return false;
 }
 
-/** 获取光标所在的列表类型（bullet_list 或 ordered_list），不在列表中返回 null */
+/** List type at the cursor (bullet_list or ordered_list), or null when not in a list */
 function getListType(view: any): string | null {
     const { state } = view;
     const { $from } = state.selection;
@@ -29,14 +28,22 @@ function getListType(view: any): string | null {
     return null;
 }
 
-/** Tab 键快捷键 */
+/**
+ * Tab key handling. The key-leak guard in webview/keyboardShortcuts.ts stops
+ * Tab from propagating to the VS Code webview key forwarder — but only when
+ * the event target is inside the ProseMirror content, so overlay inputs keep
+ * native focus traversal.
+ *
+ * Table cells are handled by `tableKeymapPlugin` (registered with higher
+ * precedence), so Tab never reaches the "insert spaces" branch there.
+ */
 export const tabKeymapPlugin = $prose((ctx) =>
     keymap({
         Tab: (state, dispatch) => {
             const view = ctx.get(editorViewCtx);
             if (!dispatch) { return false; }
 
-            // 代码块内：插入 4 空格
+            // Inside a code block: insert 4 spaces
             if (isInCodeBlock(view)) {
                 const { selection } = state;
                 if (selection.empty) {
@@ -49,19 +56,19 @@ export const tabKeymapPlugin = $prose((ctx) =>
                 return true;
             }
 
-            // 列表内：调用 sinkListItem 变成二级列表
+            // Inside a list: sinkListItem to indent one level
             if (getListType(view)) {
                 const schema = ctx.get(schemaCtx);
                 const listItemType = schema.nodes["list_item"];
                 if (listItemType) {
                     const doSink = sinkListItem(listItemType);
                     const result = doSink(state, dispatch);
-                    // 无法再缩进时（已经是深层列表），阻止默认行为
+                    // Even when it cannot sink further (already deeply nested), block the default
                     return true;
                 }
             }
 
-            // 普通文本：插入 2 空格
+            // Plain text: insert 2 spaces
             const { selection } = state;
             if (selection.empty) {
                 const tr = state.tr.insertText("  ");

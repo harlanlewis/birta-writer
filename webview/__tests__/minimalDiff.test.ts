@@ -129,6 +129,29 @@ describe("applyMinimalChanges — untouched formatting is preserved", () => {
         expect(applyMinimalChanges(saved, serialized)).toBe(saved);
     });
 
+    it("thematic breaks differing only in marker char should compare as unchanged", () => {
+        // A legacy `---` save vs a freshly preserved `***` (MAR-16): the rule
+        // normalizer collapses both to a canonical form so no churn is applied.
+        const saved = "para1\n\n***\n\npara2\n";
+        const serialized = "para1\n\n---\n\npara2\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+
+    it("thematic breaks differing only in repetition or spacing should compare as unchanged", () => {
+        const saved = "para1\n\n- - -\n\npara2\n";
+        const serialized = "para1\n\n-----\n\npara2\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+
+    it("editing text next to a rule should not rewrite the rule marker", () => {
+        const saved = "intro\n\n___\n\noutro old\n";
+        const serialized = "intro\n\n---\n\noutro new\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe("intro\n\n___\n\noutro new\n");
+    });
+
     it("table cells differing only in padding or <br /> placeholders should compare as unchanged", () => {
         const saved = "| fruit | price |\n| --- | --- |\n| apple |  |\n";
         const serialized = "| fruit | price |\n| --- | --- |\n| apple | <br /> |\n";
@@ -150,6 +173,40 @@ describe("applyMinimalChanges — untouched formatting is preserved", () => {
         const serialized = "**bold [link](https://a.b)** **text**\n";
 
         expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+
+    it("legacy whole-link emphasis vs the new emphasis-inside form should compare as unchanged", () => {
+        // Older builds (and hand-written files) wrap the emphasis around the
+        // whole link; the fidelity serializer emits emphasis inside the link
+        // text. On kept lines the saved bytes must win.
+        const cases: Array<[saved: string, serialized: string]> = [
+            ["**[x](https://a.b)**\n", "[**x**](https://a.b)\n"],
+            ["*[x](https://a.b)*\n", "[*x*](https://a.b)\n"],
+            ["~~[x](https://a.b)~~\n", "[~~x~~](https://a.b)\n"],
+            ["***[x](https://a.b)***\n", "[***x***](https://a.b)\n"],
+        ];
+        for (const [saved, serialized] of cases) {
+            expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+        }
+    });
+
+    it("legacy split-strong around a link vs the new merged form should compare as unchanged", () => {
+        // normalizeSplitStrong must run FIRST: the legacy split form merges
+        // into `**a [l](u) b**`, which the wrapped-emphasis rewrite then
+        // leaves alone (the markers are not flush against the link).
+        const saved = "**a** **[l](https://a.b)** **b**\n";
+        const serialized = "**a [l](https://a.b) b**\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+
+    it("an edit elsewhere should not rewrite an untouched legacy wrapped-emphasis link", () => {
+        const saved = "**[x](https://a.b)**\n\npara old\n";
+        const serialized = "[**x**](https://a.b)\n\npara new\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "**[x](https://a.b)**\n\npara new\n",
+        );
     });
 
     it("a fence language with leading space should compare as unchanged", () => {

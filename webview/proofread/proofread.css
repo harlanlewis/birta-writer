@@ -1,0 +1,94 @@
+/* Proofread: style-check + spell-check decorations and suggestion popup */
+
+/* Style-check hits: dimmed + struck through ("read the sentence without it").
+   Deliberately distinct from real ~~strikethrough~~ content, which keeps
+   normal text color — hits are also dimmed. */
+.pf-style-hit {
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.65;
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+    transition: opacity 0.1s ease;
+
+    &:hover {
+        opacity: 0.9;
+    }
+}
+
+/* Non-deletable "flag" hits (passive voice, long sentence, AI cadence, em dash,
+   non-ASCII punctuation): a reconsider-nudge, not a "delete this". Dotted
+   underline instead of the strikethrough — overrides the base line-through,
+   keeping the dimmed color. */
+.pf-style-hit--flag {
+    text-decoration: underline dotted var(--vscode-descriptionForeground);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 3px;
+}
+
+/* Spelling hits: dotted underline, native-spellcheck look */
+.pf-spell-err {
+    text-decoration: underline dotted var(--vscode-editorWarning-foreground, #cca700);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
+/* Grammar/style findings from Harper: quieter dotted underline */
+.pf-lint-err {
+    text-decoration: underline dotted var(--vscode-editorInfo-foreground, #3794ff);
+    text-decoration-skip-ink: none;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
+/* Suggestion popup */
+.pf-popup {
+    position: fixed;
+    z-index: 1000;
+    min-width: 140px;
+    max-width: 260px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    font-size: 13px;
+}
+
+.pf-popup-item {
+    display: block;
+    width: 100%;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+
+    &:hover {
+        background: var(--vscode-list-hoverBackground);
+    }
+}
+
+.pf-popup-ignore {
+    color: var(--vscode-descriptionForeground);
+    border-top: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 0 0 3px 3px;
+    margin-top: 2px;
+    padding-top: 6px;
+}
+
+.pf-popup-message {
+    padding: 4px 8px 6px;
+    color: var(--vscode-descriptionForeground);
+    border-bottom: 1px solid var(--vscode-editorWidget-border);
+    margin-bottom: 2px;
+    max-width: 240px;
+}
+
+/* The toolbar toggle "on" state (.tb-btn--active) is styled in toolbar.css. */

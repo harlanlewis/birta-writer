@@ -17,8 +17,10 @@ import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import mermaid from "mermaid";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
+import { renderKatexInto } from "@/utils/katexLoader";
 import { highlight } from "@/highlighter";
 import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
+import { attachInputUndo } from "@/utils/inputUndo";
 import { createButton } from "@/ui/dom";
 import './codeBlock.css';
 
@@ -188,6 +190,9 @@ function createLangPicker(
     searchInput.placeholder = t("Search language...");
     searchInput.setAttribute("autocomplete", "off");
     searchInput.setAttribute("spellcheck", "false");
+    // Local undo/redo: VS Code's Electron layer swallows Cmd/Ctrl+Z before
+    // native inputs see it (same as the other overlay inputs)
+    const detachSearchUndo = attachInputUndo(searchInput);
 
     const listEl = document.createElement("ul");
     listEl.className = "lang-picker-list";
@@ -322,24 +327,38 @@ function createLangPicker(
     });
 
     searchInput.addEventListener("input", () => renderList(searchInput.value));
+    // Stop propagation only for keys the picker actually consumes (list
+    // navigation and plain filter typing). Modifier chords it does not
+    // handle (Cmd+Shift+M, other workbench keybindings, ...) must keep
+    // propagating; undo/redo chords are stopped by attachInputUndo itself.
     searchInput.addEventListener("keydown", (e) => {
-        e.stopPropagation();
         if (e.isComposing) return;
         const items = listEl.querySelectorAll<HTMLElement>(".lang-picker-item");
         if (e.key === "ArrowDown") {
             e.preventDefault();
+            e.stopPropagation();
             setActiveIdx(Math.min(activeIndex + 1, items.length - 1));
         } else if (e.key === "ArrowUp") {
             e.preventDefault();
+            e.stopPropagation();
             setActiveIdx(Math.max(activeIndex - 1, 0));
         } else if (e.key === "Enter") {
             e.preventDefault();
+            e.stopPropagation();
             const focused = listEl.querySelector<HTMLElement>(".lang-picker-item--focused");
             if (focused) selectLang(focused.dataset["value"] ?? "");
             else if (items[0]) selectLang(items[0].dataset["value"] ?? "");
         } else if (e.key === "Escape") {
             e.preventDefault();
+            e.stopPropagation();
             close();
+        } else if (
+            !e.metaKey && !e.ctrlKey && !e.altKey &&
+            (e.key.length === 1 || e.key === "Backspace" || e.key === "Delete")
+        ) {
+            // Plain typing/editing that mutates the filter: keep it inside
+            // the picker so document-level shortcut handlers never see it
+            e.stopPropagation();
         }
     });
 
@@ -351,6 +370,7 @@ function createLangPicker(
         },
         destroy() {
             close();
+            detachSearchUndo();
             if (document.body.contains(dropdown)) document.body.removeChild(dropdown);
         },
     };
@@ -392,6 +412,11 @@ export function createCodeBlockView(
 
     // ── Mermaid 状态 ──────────────────────────────────────
     let isMermaid = currentLang === "mermaid";
+    // ── LaTeX state (block math preview via KaTeX) ────────
+    let isLatex = normalizeCodeLanguage(currentLang) === "latex";
+    // A block that shows a rendered preview instead of raw code — mermaid or
+    // LaTeX. Both reuse the same code/preview toggle and preview container.
+    const isPreviewable = (): boolean => isMermaid || isLatex;
     let isPreviewMode = false;
     let renderTimer: ReturnType<typeof setTimeout> | null = null;
     let lastRenderedCode = "";
@@ -424,8 +449,9 @@ export function createCodeBlockView(
     toggleBtn.className = "code-view-toggle-btn";
     toggleBtn.tabIndex = -1;
     toggleBtn.innerHTML = IconEye;
-    toggleBtn.style.display = isMermaid ? "inline-flex" : "none";
-    const toggleTooltip = applyTooltip(toggleBtn, t("Preview Diagram"), { placement: "above" });
+    toggleBtn.style.display = isPreviewable() ? "inline-flex" : "none";
+    const previewTip = (): string => (isLatex ? t("Preview Formula") : t("Preview Diagram"));
+    const toggleTooltip = applyTooltip(toggleBtn, previewTip(), { placement: "above" });
 
     // 当前代码块自动换行开关（局部覆盖，不写入 Markdown）
     const wordWrapBtn = document.createElement("button");
@@ -626,17 +652,19 @@ export function createCodeBlockView(
     resizeHandle.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
         // 以当前可见元素为基准测量起始高度
-        const visibleEl = isPreviewMode ? mermaidPreview : pre;
+        const visibleEl = isPreviewMode ? previewEl() : pre;
         const startY = e.clientY;
         const startH = visibleEl.getBoundingClientRect().height;
 
         const onMove = (ev: MouseEvent) => {
             const newH = Math.max(80, startH + ev.clientY - startY);
-            // 同步更新两个元素，确保切换模式时高度保持一致
+            // Keep every element's height in sync so switching modes preserves it
             pre.style.maxHeight = `${newH}px`;
             pre.style.height = `${newH}px`;
             mermaidPreview.style.maxHeight = `${newH}px`;
             mermaidPreview.style.height = `${newH}px`;
+            latexPreview.style.maxHeight = `${newH}px`;
+            latexPreview.style.height = `${newH}px`;
         };
         const onUp = () => {
             document.removeEventListener("mousemove", onMove);
@@ -646,9 +674,37 @@ export function createCodeBlockView(
         document.addEventListener("mouseup", onUp);
     });
 
+    // ── LaTeX 预览区域 (block math) ───────────────────────
+    const latexPreview = document.createElement("div");
+    latexPreview.className = "latex-preview";
+    latexPreview.contentEditable = "false";
+    const latexRender = document.createElement("div");
+    latexRender.className = "latex-render";
+    latexPreview.appendChild(latexRender);
+
+    // The single element that is visible while in preview mode.
+    const previewEl = (): HTMLElement => (isLatex ? latexPreview : mermaidPreview);
+
+    let latexRenderTimer: ReturnType<typeof setTimeout> | null = null;
+    async function renderLatex(code: string): Promise<void> {
+        if (!isLatex || !isPreviewMode) return;
+        const trimmed = code.trim();
+        if (!trimmed) {
+            latexRender.innerHTML = `<div class="latex-empty">${t("Empty formula")}</div>`;
+            return;
+        }
+        try {
+            await renderKatexInto(latexRender, trimmed, true);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            latexRender.innerHTML = `<div class="mermaid-error"><span>${IconAlertCircle}</span><pre class="mermaid-error-msg">${escapeHtml(msg)}</pre></div>`;
+        }
+    }
+
     wrapper.appendChild(header);
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
+    wrapper.appendChild(latexPreview);
     wrapper.appendChild(resizeHandle);
     scheduleLineNumberRefresh();
 
@@ -794,7 +850,7 @@ export function createCodeBlockView(
         toggleBtn.classList.add("code-view-toggle-btn--active");
         toggleTooltip.setText(t("Edit Code"));
         pre.style.display = "none";
-        mermaidPreview.style.display = "flex";
+        previewEl().style.display = "flex";
         wordWrapBtn.style.display = "none";
     }
 
@@ -803,10 +859,17 @@ export function createCodeBlockView(
         isPreviewMode = false;
         toggleBtn.innerHTML = IconEye;
         toggleBtn.classList.remove("code-view-toggle-btn--active");
-        toggleTooltip.setText(t("Preview Diagram"));
+        toggleTooltip.setText(previewTip());
         pre.style.display = "";
         mermaidPreview.style.display = "none";
+        latexPreview.style.display = "none";
         wordWrapBtn.style.display = "inline-flex";
+    }
+
+    // Render whichever preview the current language maps to.
+    function renderPreview(code: string): void {
+        if (isLatex) void renderLatex(code);
+        else void renderMermaid(code);
     }
 
     // ── 切换代码/预览 ──────────────────────────────────────
@@ -816,14 +879,14 @@ export function createCodeBlockView(
             exitPreviewMode();
         } else {
             enterPreviewMode();
-            renderMermaid(node.textContent);
+            renderPreview(node.textContent);
         }
     });
 
-    // ── Mermaid 默认进入预览模式 ──────────────────────────
-    if (isMermaid && shouldAutoConvertCodeBlock()) {
+    // ── Mermaid / LaTeX 默认进入预览模式 ──────────────────
+    if (isPreviewable() && shouldAutoConvertCodeBlock()) {
         enterPreviewMode();
-        setTimeout(() => renderMermaid(node.textContent), 0);
+        setTimeout(() => renderPreview(node.textContent), 0);
     }
 
     // ── 拖拽 pan（鼠标拖拽）──────────────────────────────
@@ -988,7 +1051,11 @@ export function createCodeBlockView(
             gutter.scrollTop = textarea.scrollTop;
         });
 
-        // Tab 键插入 4 空格（不跳焦）
+        // Local undo/redo: VS Code's Electron layer swallows Cmd/Ctrl+Z
+        // before the native textarea sees it
+        const detachTextareaUndo = attachInputUndo(textarea);
+
+        // Tab inserts 4 spaces (instead of moving focus)
         textarea.addEventListener("keydown", (e) => {
             if (e.key === "Tab") {
                 e.preventDefault();
@@ -996,7 +1063,9 @@ export function createCodeBlockView(
                 const end = textarea.selectionEnd;
                 textarea.value = textarea.value.slice(0, s) + "    " + textarea.value.slice(end);
                 textarea.selectionStart = textarea.selectionEnd = s + 4;
-                updateHighlight();
+                // Synthetic input event: refreshes the highlight layer AND
+                // records the insertion in the local undo history
+                textarea.dispatchEvent(new Event("input", { bubbles: true }));
             }
         });
 
@@ -1029,6 +1098,7 @@ export function createCodeBlockView(
             }
             unlockBodyScroll();
             gutterResizeObserver?.disconnect();
+            detachTextareaUndo();
             animateCloseLightbox(overlay, () => {
                 lbActiveLightbox = null;
                 removeKeyListener();
@@ -1319,8 +1389,10 @@ export function createCodeBlockView(
             if (updatedNode.type !== node.type) return false;
 
             const newLang = (updatedNode.attrs["language"] as string) || "";
-            const wasM = isMermaid;
+            const wasPreviewable = isPreviewable();
             isMermaid = newLang === "mermaid";
+            isLatex = normalizeCodeLanguage(newLang) === "latex";
+            const nowPreviewable = isPreviewable();
 
             picker.update(newLang);
             const classLang = normalizeCodeLanguage(newLang);
@@ -1328,21 +1400,24 @@ export function createCodeBlockView(
             node = updatedNode;
             scheduleLineNumberRefresh();
 
-            if (!wasM && isMermaid) {
+            if (!wasPreviewable && nowPreviewable) {
                 toggleBtn.style.display = "inline-flex";
                 if (shouldAutoConvertCodeBlock()) {
                     enterPreviewMode();
-                    setTimeout(() => renderMermaid(updatedNode.textContent), 0);
+                    setTimeout(() => renderPreview(updatedNode.textContent), 0);
                 }
             }
-            if (wasM && !isMermaid) {
+            if (wasPreviewable && !nowPreviewable) {
                 toggleBtn.style.display = "none";
                 exitPreviewMode();
                 lastRenderedCode = "";
             }
-            if (isMermaid && isPreviewMode) {
+            if (nowPreviewable && isPreviewMode) {
                 const newCode = updatedNode.textContent;
-                if (newCode !== lastRenderedCode) {
+                if (isLatex) {
+                    if (latexRenderTimer) clearTimeout(latexRenderTimer);
+                    latexRenderTimer = setTimeout(() => renderLatex(newCode), 300);
+                } else if (newCode !== lastRenderedCode) {
                     if (renderTimer) clearTimeout(renderTimer);
                     renderTimer = setTimeout(() => renderMermaid(newCode), 600);
                 }
@@ -1364,6 +1439,7 @@ export function createCodeBlockView(
             picker.destroy();
             if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
             if (renderTimer) clearTimeout(renderTimer);
+            if (latexRenderTimer) clearTimeout(latexRenderTimer);
             if (lineNumberRaf !== null) cancelAnimationFrame(lineNumberRaf);
             lineNumberResizeObserver?.disconnect();
             mermaidPreview.removeEventListener("wheel", onPreviewWheel);

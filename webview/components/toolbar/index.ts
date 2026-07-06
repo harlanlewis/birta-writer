@@ -1,24 +1,7 @@
-import { commandsCtx, editorViewCtx } from "@milkdown/core";
-import {
-    createCodeBlockCommand,
-    insertHrCommand,
-    toggleEmphasisCommand,
-    toggleInlineCodeCommand,
-    toggleStrongCommand,
-    turnIntoTextCommand,
-    wrapInBlockquoteCommand,
-    wrapInBulletListCommand,
-    wrapInHeadingCommand,
-    wrapInOrderedListCommand,
-} from "@milkdown/preset-commonmark";
-import {
-    insertTableCommand,
-    toggleStrikethroughCommand,
-} from "@milkdown/preset-gfm";
-import { lift } from "@milkdown/prose/commands";
-import { TextSelection } from "@milkdown/prose/state";
+import { editorViewCtx } from "@milkdown/core";
 import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
+import { runEditorCommand, setEditorCommandHost } from "@/editorCommands";
 import {
     IconBold,
     IconItalic,
@@ -27,6 +10,8 @@ import {
     IconLink,
     IconImage,
     IconTable,
+    IconFootnote,
+    IconMath,
     IconQuote,
     IconTerminal,
     IconMinus,
@@ -37,22 +22,30 @@ import {
     IconX,
     IconChevronDown,
     IconEraser,
+    IconStyleCheck,
     IconSearch,
     IconSettings,
 } from "@/ui/icons";
-import { applyTooltip } from "@/ui/tooltip";
-import { t, kbd } from "@/i18n";
+import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
-import { notifyOpenSettings, notifyGetProjectImages } from "@/messaging";
-import { createButton, createSeparator } from "@/ui/dom";
+import { notifyOpenSettings, notifySetProofreadOption, notifySetFontPreset, notifySetToolbarLayout } from "@/messaging";
+import { getEditorView } from "@/editor";
+import { getProofreadConfig, setProofreadConfig } from "@/plugins";
+import { createButton } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
+import { attachLinkTargetComplete } from '../pathLink/linkTargetComplete';
+import { attachInputUndo } from "@/utils/inputUndo";
+import { createOverflowController } from './overflow';
+import type { OverflowController, OverflowGroup } from './overflow';
+import { computeZones } from './registry';
+import type { ToolbarItemId } from './registry';
+import { enterEditMode } from './dnd';
+import { wireHoverMenu } from './hoverMenu';
+import type { ToolbarConfig, FontPreset, ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
+import { FONT_PRESET_STACKS } from "../../../shared/fontPresets";
 import './toolbar.css';
 
 type GetEditor = () => Editor | null;
-
-function sep(): HTMLElement {
-    return createSeparator("tb-sep");
-}
 
 function btn(
     icon: string,
@@ -68,35 +61,67 @@ function btn(
     });
 }
 
-// 调用 Milkdown 命令：传 command.key（CmdKey），而非 command 本身
-function callCmd<T>(
-    getEditor: GetEditor,
-    command: { key: unknown },
-    payload?: T,
-): void {
-    const editor = getEditor();
-    if (!editor) {
-        return;
-    }
-    editor.action((ctx) => {
-        const mgr = ctx.get(commandsCtx);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        mgr.call(command.key as any, payload as any);
+/**
+ * A dropdown trigger button — the shared shape behind every hover-menu opener
+ * (Format, Font, Settings, Checks, ⋯). Its mousedown is swallowed:
+ * preventDefault so it never fires an action or starts a text selection,
+ * stopPropagation so it never reaches the editor. Deliberately carries no
+ * tooltip — a tooltip would open in the same spot as the menu and overlap it.
+ */
+function createMenuTrigger(opts: {
+    html?: string;
+    text?: string;
+    className?: string;
+    ariaLabel?: string;
+}): HTMLButtonElement {
+    const el = document.createElement("button");
+    el.className = opts.className ?? "tb-btn tb-fmt-btn";
+    if (opts.html !== undefined) { el.innerHTML = opts.html; }
+    if (opts.text !== undefined) { el.textContent = opts.text; }
+    if (opts.ariaLabel) { el.setAttribute("aria-label", opts.ariaLabel); }
+    el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
     });
+    return el;
 }
 
-// 检查光标是否在指定节点类型内
-function isInNode(view: EditorView, typeName: string): boolean {
-    const { $from } = view.state.selection;
-    for (let depth = $from.depth; depth >= 0; depth--) {
-        if ($from.node(depth).type.name === typeName) {
-            return true;
-        }
-    }
-    return false;
+/** A selectable/checkable menu row. */
+interface CheckItem {
+    el: HTMLElement;
+    /** The label span, e.g. to apply a per-row font preview. */
+    label: HTMLElement;
+    /** Show/hide the leading check and set aria-checked. */
+    setChecked: (on: boolean) => void;
 }
 
-// 自定义内联链接输入框（文本 + URL 两个输入框）
+/**
+ * A checkable menu row: a leading ✓ (shown when checked) + a label. The shared
+ * checkmark treatment for every toolbar menu with selectable state — Checks
+ * (multi-toggle), Font and Format (single-select) — so they look identical.
+ */
+function createCheckItem(label: string): CheckItem {
+    const el = document.createElement("div");
+    el.className = "tb-fmt-item tb-check-item";
+    el.setAttribute("role", "menuitemcheckbox");
+    const mark = document.createElement("span");
+    mark.className = "tb-check-mark";
+    mark.setAttribute("aria-hidden", "true");
+    const labelEl = document.createElement("span");
+    labelEl.className = "tb-check-label";
+    labelEl.textContent = label;
+    el.append(mark, labelEl);
+    return {
+        el,
+        label: labelEl,
+        setChecked: (on: boolean): void => {
+            el.classList.toggle("tb-check-item--on", on);
+            el.setAttribute("aria-checked", on ? "true" : "false");
+        },
+    };
+}
+
+// Custom inline link prompt (two inputs: link text + URL)
 function showInlineLinkPrompt(
     near: HTMLElement,
     defaultText: string,
@@ -135,7 +160,13 @@ function showInlineLinkPrompt(
     overlay.appendChild(cancelBtn);
     document.body.appendChild(overlay);
 
-    // 定位到按钮下方
+    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
+    const detachUndoFns = [attachInputUndo(textInput), attachInputUndo(urlInput)];
+
+    // Workspace file autocompletion on the URL field (local link targets)
+    const detachLinkComplete = attachLinkTargetComplete(urlInput);
+
+    // Position the overlay below the toolbar button
     const rect = near.getBoundingClientRect();
     overlay.style.top = `${rect.bottom + 4}px`;
     overlay.style.left = `${rect.left}px`;
@@ -156,6 +187,8 @@ function showInlineLinkPrompt(
     }
 
     function cleanup(): void {
+        detachUndoFns.forEach((detach) => detach());
+        detachLinkComplete();
         if (document.body.contains(overlay)) {
             document.body.removeChild(overlay);
         }
@@ -294,6 +327,8 @@ function showImageInsertPanel(
     urlSection.appendChild(srcInput);
     panel.appendChild(urlSection);
     const detachSrcComplete = attachImgPathComplete(srcInput);
+    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
+    const detachPanelUndoFns = [attachInputUndo(altInput), attachInputUndo(srcInput)];
 
     // ── 上传本地 tab ──────────────────────────────────
     const uploadSection = document.createElement("div");
@@ -602,6 +637,7 @@ function showImageInsertPanel(
 
     function cleanup(): void {
         detachSrcComplete();
+        detachPanelUndoFns.forEach((detach) => detach());
         if (document.body.contains(panel)) {
             document.body.removeChild(panel);
         }
@@ -690,6 +726,12 @@ export function initToolbar(
 ): {
     onSelectionChange: (view: EditorView) => void;
     setDebugMode: (enabled: boolean) => void;
+    /** Rebuild the toolbar for a changed per-item placement config. */
+    applyConfig: (config: ToolbarConfig) => void;
+    /** Update the font picker's active-preset indicator. */
+    setFontPreset: (preset: FontPreset) => void;
+    /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
+    openLinkPrompt: () => void;
 } {
     const toolbar = document.createElement("div");
     toolbar.className = "toolbar";
@@ -697,158 +739,163 @@ export function initToolbar(
     // TOC toggling lives on the panel's edge tab; undo/redo stay on their
     // keyboard shortcuts — neither needs a toolbar button.
 
-    // ── 块类型下拉（hover 展开，与浮动工具栏风格一致）──
+    // ── Placement zones ──
+    // Items are assigned to a zone (or hidden) by the per-item
+    // `toolbar.items.*` settings and ordered within a zone by `toolbar.order`
+    // (see computeZones). The ⋯ overflow menu collapses only the center zone
+    // (see setupOverflow).
+    const leftZone = document.createElement("div");
+    leftZone.className = "tb-zone tb-zone--left";
+    const centerZone = document.createElement("div");
+    centerZone.className = "tb-zone tb-zone--center";
+    const rightZone = document.createElement("div");
+    rightZone.className = "tb-zone tb-zone--right";
+    toolbar.append(leftZone, centerZone, rightZone);
+
+    // Every item is built exactly once and wrapped in a `.tb-item`; render()
+    // re-parents the wrappers into their zones, so button listeners survive a
+    // layout change without rebuilding.
+    const items: Partial<Record<ToolbarItemId, HTMLElement>> = {};
+    function wrap(id: string, child: HTMLElement): HTMLElement {
+        const w = document.createElement("div");
+        w.className = "tb-item";
+        w.dataset["itemId"] = id;
+        w.appendChild(child);
+        return w;
+    }
+
+    // ── Font picker state ──
+    // The active preset is echoed back from the extension after a settings
+    // write, which updates the checkmark via setFontPreset() on the controller.
+    let currentFontPreset: FontPreset = window.__i18n?.fontPreset ?? "mono";
+    const fontEntries: { preset: FontPreset; item: CheckItem }[] = [];
+    // The picker button's "A" glyph, rendered in the active preset's stack so
+    // the control previews its own choice.
+    let fontLabelEl: HTMLElement | null = null;
+    function setFontActive(preset: FontPreset): void {
+        currentFontPreset = preset;
+        for (const { preset: p, item } of fontEntries) {
+            item.setChecked(p === preset);
+        }
+        if (fontLabelEl) {
+            fontLabelEl.style.fontFamily =
+                preset === "default" ? "" : FONT_PRESET_STACKS[preset];
+        }
+    }
+    function createFontPicker(): HTMLElement {
+        const fontWrap = document.createElement("div");
+        fontWrap.className = "tb-fmt-wrap";
+
+        const fontBtn = createMenuTrigger({
+            html: `<span class="tb-fmt-label tb-fmt-label--font">A</span>${IconChevronDown}`,
+        });
+        fontLabelEl = fontBtn.querySelector(".tb-fmt-label--font");
+
+        const fontMenu = document.createElement("div");
+        fontMenu.className = "tb-fmt-menu tb-font-menu";
+        fontMenu.style.display = "none";
+
+        // The picker offers the three built-in font stacks; "default" (inherit the
+        // VS Code font / the Font Family setting) stays a valid setting value for
+        // power users, just not a menu item. Monospace is the default preset.
+        const choices: { preset: FontPreset; label: string; stack: string }[] = [
+            { preset: "sans", label: t("Sans serif"), stack: FONT_PRESET_STACKS.sans },
+            { preset: "serif", label: t("Serif"), stack: FONT_PRESET_STACKS.serif },
+            { preset: "mono", label: t("Monospace"), stack: FONT_PRESET_STACKS.mono },
+        ];
+        for (const { preset, label, stack } of choices) {
+            const item = createCheckItem(label);
+            item.el.classList.add("tb-font-item");
+            if (stack) {
+                item.label.style.fontFamily = stack; // preview the font on its own label
+            }
+            item.el.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fontMenu.style.display = "none";
+                setFontActive(preset);
+                notifySetFontPreset(preset);
+            });
+            fontMenu.appendChild(item.el);
+            fontEntries.push({ preset, item });
+        }
+        setFontActive(currentFontPreset);
+
+        wireHoverMenu(fontWrap, fontBtn, fontMenu);
+
+        fontWrap.appendChild(fontBtn);
+        fontWrap.appendChild(fontMenu);
+        return fontWrap;
+    }
+
+    // ── Block-type dropdown (opens on hover, same style as the floating toolbar) ──
     const fmtWrap = document.createElement("div");
     fmtWrap.className = "tb-fmt-wrap";
 
-    const fmtBtn = document.createElement("button");
-    fmtBtn.className = "tb-btn tb-fmt-btn";
-    fmtBtn.innerHTML = `<span class="tb-fmt-label">P</span>${IconChevronDown}`;
-    fmtBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    });
+    const fmtBtn = createMenuTrigger({ html: `<span class="tb-fmt-label">P</span>${IconChevronDown}` });
 
     const fmtMenu = document.createElement("div");
     fmtMenu.className = "tb-fmt-menu";
     fmtMenu.style.display = "none";
 
     const formats: [string, () => void][] = [
-        ["P", () => callCmd(getEditor, turnIntoTextCommand)],
-        ["H1", () => callCmd(getEditor, wrapInHeadingCommand, 1)],
-        ["H2", () => callCmd(getEditor, wrapInHeadingCommand, 2)],
-        ["H3", () => callCmd(getEditor, wrapInHeadingCommand, 3)],
-        ["H4", () => callCmd(getEditor, wrapInHeadingCommand, 4)],
-        ["H5", () => callCmd(getEditor, wrapInHeadingCommand, 5)],
-        ["H6", () => callCmd(getEditor, wrapInHeadingCommand, 6)],
+        ["P", () => runEditorCommand("setParagraph", getEditor)],
+        ["H1", () => runEditorCommand("setHeading1", getEditor)],
+        ["H2", () => runEditorCommand("setHeading2", getEditor)],
+        ["H3", () => runEditorCommand("setHeading3", getEditor)],
+        ["H4", () => runEditorCommand("setHeading4", getEditor)],
+        ["H5", () => runEditorCommand("setHeading5", getEditor)],
+        ["H6", () => runEditorCommand("setHeading6", getEditor)],
     ];
 
-    const fmtItems: HTMLElement[] = [];
+    const fmtItems: CheckItem[] = [];
     formats.forEach(([label, action]) => {
-        const item = document.createElement("div");
-        item.className = "tb-fmt-item";
-        item.textContent = label;
-        item.addEventListener("mousedown", (e) => {
+        const item = createCheckItem(label);
+        item.el.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
             action();
             fmtMenu.style.display = "none";
         });
-        fmtMenu.appendChild(item);
+        fmtMenu.appendChild(item.el);
         fmtItems.push(item);
     });
 
-    let fmtHideTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function positionFmtMenu(): void {
-        const rect = fmtBtn.getBoundingClientRect();
-        const approxMenuH = formats.length * 30;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        if (spaceBelow < approxMenuH + 8) {
-            fmtMenu.style.top = "auto";
-            fmtMenu.style.bottom = "calc(100% + 6px)";
-        } else {
-            fmtMenu.style.bottom = "auto";
-            fmtMenu.style.top = "calc(100% + 6px)";
-        }
-    }
-
-    fmtWrap.addEventListener("mouseenter", () => {
-        if (fmtHideTimer) {
-            clearTimeout(fmtHideTimer);
-            fmtHideTimer = null;
-        }
-        positionFmtMenu();
-        fmtMenu.style.display = "flex";
-    });
-    fmtWrap.addEventListener("mouseleave", () => {
-        fmtHideTimer = setTimeout(() => {
-            fmtMenu.style.display = "none";
-        }, 100);
-    });
-    fmtMenu.addEventListener("mouseenter", () => {
-        if (fmtHideTimer) {
-            clearTimeout(fmtHideTimer);
-            fmtHideTimer = null;
-        }
-    });
+    wireHoverMenu(fmtWrap, fmtBtn, fmtMenu);
 
     fmtWrap.appendChild(fmtBtn);
     fmtWrap.appendChild(fmtMenu);
-    toolbar.appendChild(fmtWrap);
+    items.format = wrap("format", fmtWrap);
 
-    toolbar.appendChild(sep());
+    // ── Font picker (serif / sans-serif / monospace presets) ──
+    items.fontPreset = wrap("fontPreset", createFontPicker());
 
-    // ── 内联格式 ──────────────────────────────────────
-    toolbar.appendChild(
-        btn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
-            callCmd(getEditor, toggleStrongCommand),
-        ),
-    );
-    toolbar.appendChild(
-        btn(IconItalic, t("Italic") + " " + kbd("Mod-i"), () =>
-            callCmd(getEditor, toggleEmphasisCommand),
-        ),
-    );
-    toolbar.appendChild(
-        btn(
-            IconStrikethrough,
-            t("Strikethrough") + " " + kbd("Mod-Shift-x"),
-            () => callCmd(getEditor, toggleStrikethroughCommand),
-        ),
-    );
-    toolbar.appendChild(
-        btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () => {
-            const editor = getEditor();
-            if (!editor) { return; }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                const { state } = view;
-                if (!state.selection.empty) {
-                    ctx.get(commandsCtx).call(toggleInlineCodeCommand.key as any);
-                    return;
-                }
-                // 无选区：插入零宽空格占位文本 + inlineCode mark，光标置入其中
-                const codeMark = state.schema.marks["inlineCode"];
-                if (!codeMark) { return; }
-                const { from } = state.selection;
-                const textNode = state.schema.text("\u200b", [codeMark.create()]);
-                const tr = state.tr.insert(from, textNode);
-                tr.setSelection(TextSelection.create(tr.doc, from + 1));
-                view.dispatch(tr);
-                view.focus();
-            });
-        }),
-    );
-    toolbar.appendChild(
-        btn(IconEraser, t("Clear Formatting"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                const { state } = view;
-                const { from, to, empty } = state.selection;
-                if (empty) {
-                    return;
-                }
-                let tr = state.tr;
-                Object.values(state.schema.marks).forEach((markType) => {
-                    tr = tr.removeMark(from, to, markType);
-                });
-                view.dispatch(tr);
-                view.focus();
-            });
-        }),
-    );
+    // ── Inline formatting ─────────────────────────────
+    items.bold = wrap("bold", btn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
+        runEditorCommand("toggleBold", getEditor),
+    ));
+    items.italic = wrap("italic", btn(IconItalic, t("Italic") + " " + kbd("Mod-i"), () =>
+        runEditorCommand("toggleItalic", getEditor),
+    ));
+    items.strikethrough = wrap("strikethrough", btn(
+        IconStrikethrough,
+        t("Strikethrough") + " " + kbd("Mod-Shift-x"),
+        () => runEditorCommand("toggleStrikethrough", getEditor),
+    ));
+    items.inlineCode = wrap("inlineCode", btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () =>
+        runEditorCommand("toggleInlineCode", getEditor),
+    ));
+    items.clearFormatting = wrap("clearFormatting", btn(IconEraser, t("Clear Formatting"), () =>
+        runEditorCommand("clearFormatting", getEditor),
+    ));
 
-    toolbar.appendChild(sep());
-
-    // ── 插入 ──────────────────────────────────────────
-    // 链接：先捕获当前选区文字和已有链接，再通过双输入框获取文本和 URL
+    // ── Insert ────────────────────────────────────────
+    // Link: capture the current selection text and any existing link first,
+    // then collect text and URL through the two-input prompt. Also invoked
+    // by the Cmd/Ctrl+K shortcut (webview/keyboardShortcuts.ts), so it is
+    // exposed on the returned controller as openLinkPrompt.
     let linkBtnEl: HTMLButtonElement;
-    linkBtnEl = btn(IconLink, t("Insert/Edit Link"), () => {
+    const openLinkPrompt = (): void => {
         const editor = getEditor();
         if (!editor) {
             return;
@@ -868,6 +915,18 @@ export function initToolbar(
             }
             capturedFrom = state.selection.from;
             capturedTo = state.selection.to;
+            // A selection spanning several textblocks (paragraphs, headings,
+            // list items, ...) cannot become ONE inline link without fusing
+            // the blocks' texts together. Clamp to the portion inside the
+            // first textblock: the prompt pre-fills and the confirm applies
+            // to that range only, leaving the other blocks untouched.
+            const $from = state.selection.$from;
+            if ($from.parent.isTextblock) {
+                const firstBlockEnd = $from.end();
+                if (capturedTo > firstBlockEnd) {
+                    capturedTo = firstBlockEnd;
+                }
+            }
             if (capturedFrom !== capturedTo) {
                 selectedText = state.doc.textBetween(capturedFrom, capturedTo);
             }
@@ -881,7 +940,8 @@ export function initToolbar(
         });
 
         showInlineLinkPrompt(
-            linkBtnEl,
+            // The link button may be hidden; fall back to anchoring on the toolbar.
+            linkBtnEl.isConnected ? linkBtnEl : toolbar,
             selectedText,
             existingHref,
             (text, href) => {
@@ -894,7 +954,7 @@ export function initToolbar(
                     }
                     let tr = state.tr;
                     if (capturedFrom === capturedTo) {
-                        // 无选区：插入新文字并加链接
+                        // No selection: insert new text and link it
                         const insertText = text || href;
                         if (!insertText) {
                             return;
@@ -908,7 +968,7 @@ export function initToolbar(
                             );
                         }
                     } else {
-                        // 有选区：替换文字并更新链接
+                        // Selection: replace the text and update the link
                         const newText = text || selectedText;
                         tr = tr.removeMark(capturedFrom, capturedTo, lType);
                         tr = tr.insertText(newText, capturedFrom, capturedTo);
@@ -925,12 +985,16 @@ export function initToolbar(
                 });
             },
         );
-    });
-    toolbar.appendChild(linkBtnEl);
+    };
+    linkBtnEl = btn(
+        IconLink,
+        t("Insert/Edit Link") + " " + kbd("Mod-k"),
+        openLinkPrompt,
+    );
+    items.link = wrap("link", linkBtnEl);
 
-    // 图片：弹出插入面板后插入 image 节点
-    let imgBtnEl: HTMLButtonElement;
-    imgBtnEl = btn(IconImage, t("Insert Image"), () => {
+    // Image: open the insert panel, then insert an image node
+    const openImagePanel = (): void => {
         showImageInsertPanel(
             (alt, src) => {
                 const editor = getEditor();
@@ -952,163 +1016,55 @@ export function initToolbar(
             onUploadImage,
             onGetProjectImages,
         );
-    });
-    toolbar.appendChild(imgBtnEl);
+    };
+    const imgBtnEl = btn(IconImage, t("Insert Image"), openImagePanel);
+    items.image = wrap("image", imgBtnEl);
+    items.table = wrap("table", btn(IconTable, t("Insert Table"), () =>
+        runEditorCommand("insertTable", getEditor),
+    ));
+    items.footnote = wrap("footnote", btn(IconFootnote, t("Insert Footnote"), () =>
+        runEditorCommand("insertFootnote", getEditor),
+    ));
+    items.math = wrap("math", btn(IconMath, t("Insert Math"), () =>
+        runEditorCommand("insertMath", getEditor),
+    ));
 
-    toolbar.appendChild(
-        btn(IconTable, t("Insert Table"), () =>
-            callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
-        ),
-    );
+    // Lists (toggle: clicking the active one again lifts out)
+    items.bulletList = wrap("bulletList", btn(IconList, t("Bullet List"), () =>
+        runEditorCommand("toggleBulletList", getEditor),
+    ));
+    items.orderedList = wrap("orderedList", btn(IconListOrdered, t("Ordered List"), () =>
+        runEditorCommand("toggleOrderedList", getEditor),
+    ));
+    items.taskList = wrap("taskList", btn(IconCheckSquare, t("Task List"), () =>
+        runEditorCommand("toggleTaskList", getEditor),
+    ));
 
-    toolbar.appendChild(sep());
+    // Blocks (toggle)
+    items.blockquote = wrap("blockquote", btn(IconQuote, t("Blockquote"), () =>
+        runEditorCommand("toggleBlockquote", getEditor),
+    ));
+    items.codeBlock = wrap("codeBlock", btn(IconTerminal, t("Code Block"), () =>
+        runEditorCommand("insertCodeBlock", getEditor),
+    ));
+    items.horizontalRule = wrap("horizontalRule", btn(IconMinus, t("Horizontal Rule"), () =>
+        runEditorCommand("insertHorizontalRule", getEditor),
+    ));
 
-    // ── 列表（支持切换：再次点击取消） ──────────────────
-    toolbar.appendChild(
-        btn(IconList, t("Bullet List"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                if (isInNode(view, "bullet_list")) {
-                    // 已在无序列表中：lift 取消
-                    lift(view.state, view.dispatch);
-                } else {
-                    ctx.get(commandsCtx).call(
-                        wrapInBulletListCommand.key as any,
-                    );
-                }
-            });
-        }),
-    );
-
-    toolbar.appendChild(
-        btn(IconListOrdered, t("Ordered List"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                if (isInNode(view, "ordered_list")) {
-                    lift(view.state, view.dispatch);
-                } else {
-                    ctx.get(commandsCtx).call(
-                        wrapInOrderedListCommand.key as any,
-                    );
-                }
-            });
-        }),
-    );
-
-    // 任务列表：检测是否已是任务项，若是则 lift 取消
-    toolbar.appendChild(
-        btn(IconCheckSquare, t("Task List"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                const { state } = view;
-
-                // 检查是否已在 bullet_list 且有 checked 属性（任务列表）
-                const { $from } = state.selection;
-                let isTaskList = false;
-                for (let depth = $from.depth; depth >= 0; depth--) {
-                    const node = $from.node(depth);
-                    if (
-                        node.type.name === "list_item" &&
-                        node.attrs["checked"] != null
-                    ) {
-                        isTaskList = true;
-                        break;
-                    }
-                }
-
-                if (isTaskList) {
-                    lift(state, view.dispatch);
-                } else {
-                    // 先包裹为 bullet_list，再将 list_item 设为任务项
-                    const mgr = ctx.get(commandsCtx);
-                    mgr.call(wrapInBulletListCommand.key as any);
-
-                    const { state: newState, dispatch } = view;
-                    const { from, to } = newState.selection;
-                    let tr = newState.tr;
-                    let changed = false;
-                    newState.doc.nodesBetween(from, to, (node, pos) => {
-                        if (
-                            node.type.name === "list_item" &&
-                            node.attrs["checked"] == null
-                        ) {
-                            tr = tr.setNodeMarkup(pos, null, {
-                                ...node.attrs,
-                                checked: false,
-                            });
-                            changed = true;
-                        }
-                    });
-                    if (changed) {
-                        dispatch(tr);
-                    }
-                }
-            });
-        }),
-    );
-
-    toolbar.appendChild(sep());
-
-    // ── 块（支持切换） ──────────────────────────────────
-    toolbar.appendChild(
-        btn(IconQuote, t("Blockquote"), () => {
-            const editor = getEditor();
-            if (!editor) {
-                return;
-            }
-            editor.action((ctx) => {
-                const view = ctx.get(editorViewCtx);
-                if (isInNode(view, "blockquote")) {
-                    lift(view.state, view.dispatch);
-                } else {
-                    ctx.get(commandsCtx).call(
-                        wrapInBlockquoteCommand.key as any,
-                    );
-                }
-            });
-        }),
-    );
-    toolbar.appendChild(
-        btn(IconTerminal, t("Code Block"), () =>
-            callCmd(getEditor, createCodeBlockCommand),
-        ),
-    );
-    toolbar.appendChild(
-        btn(IconMinus, t("Horizontal Rule"), () =>
-            callCmd(getEditor, insertHrCommand),
-        ),
-    );
-
-    // ── 调试工具按钮（始终创建，由 setDebugMode 控制显隐）─────────────────
-    let dbgSep: HTMLElement | null = null;
-    let dbgWrap: HTMLElement | null = null;
+    // ── Debug tools (dev-only dropdown, gated by debugMode; pinned before
+    //    Settings in the right zone, not user-placeable) ──
+    let dbgItem: HTMLElement | null = null;
 
     if (debugOpts) {
         const { getLineMap, getMarkdownSource } = debugOpts;
 
-        dbgSep = sep();
-        dbgSep.style.display = "none";
-
-        dbgWrap = document.createElement("div");
+        const dbgWrap = document.createElement("div");
         dbgWrap.className = "tb-fmt-wrap";
-        dbgWrap.style.display = "none";
 
         const dbgBtn = document.createElement("button");
         dbgBtn.className = "tb-btn tb-fmt-btn";
         dbgBtn.innerHTML = IconList + IconChevronDown;
-        applyTooltip(dbgBtn, t("Debug tools"));
+        // No tooltip: it would overlap the dropdown menu (see the font picker).
         dbgBtn.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1171,7 +1127,7 @@ export function initToolbar(
                 await navigator.clipboard.writeText(json);
             } catch {
                 console.log(
-                    "[Debug] 测试行号结果（剪切板写入失败，改用 console）:",
+                    "[Debug] line-number test result (clipboard write failed, falling back to console):",
                     json,
                 );
             }
@@ -1181,35 +1137,366 @@ export function initToolbar(
         dbgWrap.appendChild(dbgBtn);
         dbgWrap.appendChild(dbgMenu);
 
-        dbgWrap.addEventListener("mouseenter", () => {
-            dbgMenu.style.display = "flex";
-        });
-        dbgWrap.addEventListener("mouseleave", () => {
-            dbgMenu.style.display = "none";
-        });
+        wireHoverMenu(dbgWrap, dbgBtn, dbgMenu);
 
-        toolbar.appendChild(dbgSep);
-        toolbar.appendChild(dbgWrap);
+        dbgItem = wrap("debug", dbgWrap);
     }
 
-    // ── Find & settings ─────────────────────────────────
-    toolbar.appendChild(sep());
+    // ── Checks menu (spelling, grammar, style + per-check toggles) ───────────
+    // One toolbar button opens a menu of checkmarkable items: the three masters
+    // up top, then the style sub-checks grouped under headers. Every row toggles
+    // one option live (webview state) and persists it (settings). The menu opens
+    // on hover, like the font picker; the button itself is just its anchor.
+    // The chevron signals it opens a menu; aria-label names it for assistive tech.
+    const checksBtn = createMenuTrigger({
+        html: `${IconStyleCheck}${IconChevronDown}`,
+        ariaLabel: t("Checks"),
+    });
+
+    type CheckRow = { key: ProofreadOptionKey; item: CheckItem; styleDependent: boolean };
+    const checkRows: CheckRow[] = [];
+
+    const repaintChecks = (cfg: ProofreadConfig): void => {
+        for (const { key, item, styleDependent } of checkRows) {
+            item.setChecked(Boolean(cfg[key]));
+            // A style sub-check is inert while "Check Style" is off — dim it so
+            // the dependency reads, but keep it clickable (pre-arm for later).
+            if (styleDependent) {
+                item.el.classList.toggle("tb-check-item--muted", !cfg.styleCheck);
+            }
+        }
+        // The button carries no on/off highlight: with a dozen sub-toggles inside,
+        // a single boolean state is more distracting than informative. The menu's
+        // own checkmarks are the source of truth.
+    };
+
+    function createChecksControl(): HTMLElement {
+        const wrapEl = document.createElement("div");
+        wrapEl.className = "tb-fmt-wrap tb-checks-wrap";
+        wrapEl.appendChild(checksBtn);
+
+        const menu = document.createElement("div");
+        menu.className = "tb-fmt-menu tb-checks-menu";
+        menu.style.display = "none";
+        menu.setAttribute("role", "menu");
+
+        const addRow = (key: ProofreadOptionKey, label: string, styleDependent: boolean): void => {
+            const item = createCheckItem(label);
+            item.el.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const view = getEditorView();
+                if (!view) { return; }
+                const cfg = getProofreadConfig(view);
+                const value = !cfg[key];
+                setProofreadConfig(view, { ...cfg, [key]: value });
+                notifySetProofreadOption(key, value);
+                // Menu stays open so several checks can be toggled in a row.
+            });
+            menu.appendChild(item.el);
+            checkRows.push({ key, item, styleDependent });
+        };
+        const addSep = (): void => {
+            const sep = document.createElement("div");
+            sep.className = "tb-menu-sep";
+            sep.setAttribute("role", "separator");
+            menu.appendChild(sep);
+        };
+        const addHeader = (title: string): void => {
+            const header = document.createElement("div");
+            header.className = "tb-fmt-header";
+            header.textContent = title;
+            menu.appendChild(header);
+        };
+
+        // Masters
+        addRow("spellCheck", t("Check spelling"), false);
+        addRow("grammarCheck", t("Check grammar"), false);
+        addRow("styleCheck", t("Check style"), false);
+
+        // Style sub-checks, grouped
+        const groups: { title: string; opts: [ProofreadOptionKey, string][] }[] = [
+            { title: t("Phrases"), opts: [
+                ["fillers", t("Fillers")],
+                ["redundancies", t("Redundancies")],
+                ["cliches", t("Cliches")],
+                ["wordiness", t("Wordiness")],
+            ] },
+            { title: t("AI tells"), opts: [
+                ["aiVocabulary", t("AI vocabulary")],
+                ["aiArtifacts", t("AI boilerplate")],
+                ["negativeParallelism", t("Not X, but Y")],
+                ["ruleOfThree", t("Rule of three")],
+            ] },
+            { title: t("Prose"), opts: [
+                ["passive", t("Passive voice")],
+                ["longSentences", t("Long sentences")],
+                ["emDash", t("Em dash")],
+                ["nonAsciiPunct", t("Curly punctuation")],
+            ] },
+        ];
+        for (const group of groups) {
+            addSep();
+            addHeader(group.title);
+            for (const [key, label] of group.opts) { addRow(key, label, true); }
+        }
+
+        wireHoverMenu(wrapEl, checksBtn, menu, {
+            onOpen: () => {
+                const view = getEditorView();
+                if (view) { repaintChecks(getProofreadConfig(view)); }
+            },
+        });
+
+        wrapEl.appendChild(menu);
+        return wrapEl;
+    }
+    const checksControl = createChecksControl();
+
+    window.addEventListener("proofread-config-changed", (e) => {
+        repaintChecks((e as CustomEvent<ProofreadConfig>).detail);
+    });
+    {
+        // Paint the initial state if the editor already exists at build time.
+        const view = getEditorView();
+        if (view) { repaintChecks(getProofreadConfig(view)); }
+    }
+    items.styleCheck = wrap("styleCheck", checksControl);
     if (onOpenFind) {
-        toolbar.appendChild(
-            btn(IconSearch, `${t("Find")} (${kbd("Mod-f")})`, onOpenFind),
-        );
+        items.find = wrap("find", btn(IconSearch, `${t("Find")} (${kbd("Mod-f")})`, onOpenFind));
     }
-    toolbar.appendChild(
-        btn(IconSettings, t("Settings"), () => notifyOpenSettings()),
-    );
+    // Settings gear is a hover dropdown: open the native settings, or enter the
+    // drag-and-drop "Customize toolbar" mode.
+    function createSettingsMenu(): HTMLElement {
+        const wrapEl = document.createElement("div");
+        wrapEl.className = "tb-fmt-wrap";
+
+        const gearBtn = createMenuTrigger({ html: IconSettings + IconChevronDown });
+
+        const menu = document.createElement("div");
+        menu.className = "tb-fmt-menu tb-settings-menu";
+        menu.style.display = "none";
+
+        const addEntry = (label: string, onSelect: () => void): void => {
+            const entry = document.createElement("div");
+            entry.className = "tb-fmt-item";
+            entry.textContent = label;
+            entry.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                menu.style.display = "none";
+                onSelect();
+            });
+            menu.appendChild(entry);
+        };
+        addEntry(t("Customize toolbar"), () => startCustomize());
+        // Names the product so it's clear which settings open (t()-templated for
+        // future translation); the name is the single package.json value.
+        addEntry(t("Open {product} settings").replace("{product}", productName), () => notifyOpenSettings());
+
+        wireHoverMenu(wrapEl, gearBtn, menu);
+
+        wrapEl.appendChild(gearBtn);
+        wrapEl.appendChild(menu);
+        return wrapEl;
+    }
+    items.settings = wrap("settings", createSettingsMenu());
+
+    // ── Overflow (⋯) menu for the center zone on narrow panes ──
+    // Reuses the tb-fmt-wrap hover/positioning pattern; collapsed center items
+    // are physically reparented into the panel so listeners survive.
+    const moreWrap = document.createElement("div");
+    moreWrap.className = "tb-fmt-wrap tb-more-wrap";
+    moreWrap.style.display = "none";
+
+    const moreBtn = createMenuTrigger({ text: "⋯", className: "tb-btn tb-more-btn" });
+
+    const moreMenu = document.createElement("div");
+    moreMenu.className = "tb-more-menu";
+    moreMenu.style.display = "none";
+
+    wireHoverMenu(moreWrap, moreBtn, moreMenu);
+
+    moreWrap.appendChild(moreBtn);
+    moreWrap.appendChild(moreMenu);
+    centerZone.appendChild(moreWrap);
 
     topbar.appendChild(toolbar);
 
-    // 若页面加载时 debugMode 已为 true，立即显示
-    if (window.__i18n?.debugMode && dbgSep && dbgWrap) {
-        dbgSep.style.display = "";
-        dbgWrap.style.display = "";
+    // ── Render + responsive overflow ──────────────────────
+    let overflow: OverflowController | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let debugVisible = !!window.__i18n?.debugMode;
+    // The last placement config we know about, and whether the user is in the
+    // drag-and-drop customize mode. While editing, the DOM is the source of
+    // truth and incoming config echoes (from our own writes) are deferred so
+    // they don't tear down the drag state mid-session.
+    let latestConfig: ToolbarConfig | undefined = window.__i18n?.toolbar;
+    let editing = false;
+
+    function startCustomize(): void {
+        if (editing) {
+            return;
+        }
+        editing = true;
+
+        // Hidden tray: a bar below the toolbar holding every off item, plus the
+        // Done button. Dragging between it and the zones shows/hides items.
+        const tray = document.createElement("div");
+        tray.className = "tb-hidden-tray";
+
+        const label = document.createElement("span");
+        label.className = "tb-hidden-tray-label";
+        label.textContent = t("Hidden — drag to add");
+
+        const trayItems = document.createElement("div");
+        trayItems.className = "tb-hidden-tray-items tb-zone";
+
+        const doneBtn = document.createElement("button");
+        doneBtn.className = "tb-edit-done";
+        doneBtn.textContent = t("Done");
+
+        tray.append(label, trayItems, doneBtn);
+
+        for (const id of computeZones(latestConfig).hidden) {
+            const el = items[id];
+            if (el) { trayItems.appendChild(el); }
+        }
+        document.body.appendChild(tray);
+
+        const exit = enterEditMode({
+            toolbar,
+            zones: { left: leftZone, center: centerZone, right: rightZone, hidden: trayItems },
+            moreWrap,
+            expandOverflow: () => overflow?.update(Number.MAX_SAFE_INTEGER),
+            onChange: (change) => notifySetToolbarLayout(change.item, change.order),
+            onExit: () => {
+                editing = false;
+                // The DOM already reflects every drag; don't rebuild from config
+                // (which may lag behind the write echo). Detach the tray (drops
+                // any still-hidden items) and re-sync overflow to the live DOM.
+                tray.remove();
+                resyncOverflow();
+            },
+        });
+        doneBtn.addEventListener("click", exit);
     }
+
+    function resyncOverflow(): void {
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        overflow = null;
+        setupOverflow();
+    }
+
+    // Width available to the center zone = toolbar minus the sides' CONTENT.
+    // The side zones fill their `1fr` grid tracks, so scrollWidth/clientWidth
+    // report the (large) track width, not the content — using those made a lone
+    // center item look like it overflowed. Sum the side items' own widths
+    // instead. Measured from the sides (not center) so collapse never feeds
+    // back into the measurement. The slack absorbs the inter-zone grid gaps.
+    const ZONE_GAP_SLACK = 8;
+    function measureContentWidth(zone: HTMLElement): number {
+        let total = 0;
+        let count = 0;
+        for (const el of Array.from(zone.children)) {
+            if (el instanceof HTMLElement && el.classList.contains("tb-item")) {
+                total += el.getBoundingClientRect().width;
+                count++;
+            }
+        }
+        if (count > 1) {
+            total += 2 * (count - 1); // inter-item flex gaps (2px each)
+        }
+        return total;
+    }
+    function availableCenterWidth(): number {
+        return Math.max(
+            0,
+            toolbar.clientWidth - measureContentWidth(leftZone) - measureContentWidth(rightZone) - ZONE_GAP_SLACK,
+        );
+    }
+
+    function setupOverflow(): void {
+        const wrappers = Array.from(centerZone.children).filter(
+            (el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains("tb-item"),
+        );
+        const groups: OverflowGroup[] = wrappers.map((el) => ({
+            name: el.dataset["itemId"] ?? "",
+            el,
+            sepBefore: null,
+        }));
+        // Collapse from the end of the center zone; never collapse the format
+        // (text-level) dropdown — it is the toolbar's anchor control.
+        const collapseOrder = groups
+            .map((_, i) => i)
+            .filter((i) => groups[i]!.name !== "format")
+            .reverse();
+        overflow = createOverflowController({
+            toolbar: centerZone,
+            groups,
+            collapseOrder,
+            moreWrap,
+            panel: moreMenu,
+        });
+        overflow.update(availableCenterWidth());
+        if (typeof ResizeObserver !== "undefined") {
+            resizeObserver = new ResizeObserver(() => overflow?.update(availableCenterWidth()));
+            resizeObserver.observe(toolbar);
+        }
+    }
+
+    function render(config: ToolbarConfig | undefined): void {
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        overflow = null;
+        // Detach every item wrapper (from its zone or the ⋯ panel) plus any
+        // stale overflow markers, keeping the persistent moreWrap in place.
+        leftZone.replaceChildren();
+        rightZone.replaceChildren();
+        Array.from(centerZone.childNodes).forEach((n) => {
+            if (n !== moreWrap) { centerZone.removeChild(n); }
+        });
+        moreMenu.replaceChildren();
+
+        const zones = computeZones(config);
+        for (const id of zones.left) {
+            const el = items[id];
+            if (el) { leftZone.appendChild(el); }
+        }
+        for (const id of zones.center) {
+            const el = items[id];
+            if (el) { centerZone.insertBefore(el, moreWrap); }
+        }
+        for (const id of zones.right) {
+            const el = items[id];
+            if (el) { rightZone.appendChild(el); }
+        }
+
+        // Debug dropdown: pinned just before Settings in the right zone.
+        if (dbgItem) {
+            const settingsEl = items.settings;
+            if (settingsEl && settingsEl.parentElement === rightZone) {
+                rightZone.insertBefore(dbgItem, settingsEl);
+            } else {
+                rightZone.appendChild(dbgItem);
+            }
+            dbgItem.style.display = debugVisible ? "" : "none";
+        }
+
+        setupOverflow();
+    }
+
+    render(window.__i18n?.toolbar);
+
+    // Expose the toolbar-owned actions to the shared editor-command registry so
+    // the command palette / context menu reach the exact same code paths.
+    // (openFindReplace, toggleToc and editFrontmatter are wired in index.ts.)
+    setEditorCommandHost({
+        openLinkPrompt,
+        openImagePanel,
+        ...(onOpenFind ? { openFind: onOpenFind } : {}),
+    });
 
     return {
         onSelectionChange(view: EditorView): void {
@@ -1226,7 +1513,7 @@ export function initToolbar(
                     break;
                 }
             }
-            // 更新按钮显示的格式标签
+            // Update the format button's label (may be detached when hidden).
             const labelEl = fmtBtn.querySelector(".tb-fmt-label");
             if (labelEl) {
                 const labels = ["P","H1","H2","H3","H4","H5","H6"];
@@ -1234,18 +1521,29 @@ export function initToolbar(
             }
             fmtItems.forEach((item, i) => {
                 // i=0 → P (activeLevel===0), i=1..6 → H1..H6 (activeLevel===i)
-                item.classList.toggle(
-                    "tb-fmt-item--active",
-                    i === 0 ? activeLevel === 0 : i === activeLevel,
-                );
+                item.setChecked(i === 0 ? activeLevel === 0 : i === activeLevel);
             });
         },
         setDebugMode(enabled: boolean): void {
-            if (!dbgSep || !dbgWrap) {
-                return;
+            debugVisible = enabled;
+            if (dbgItem) {
+                dbgItem.style.display = enabled ? "" : "none";
             }
-            dbgSep.style.display = enabled ? "" : "none";
-            dbgWrap.style.display = enabled ? "" : "none";
+            // Toggling debug changes the right zone's width, which changes the
+            // space available to the center zone.
+            overflow?.update(availableCenterWidth());
         },
+        applyConfig(config: ToolbarConfig): void {
+            latestConfig = config;
+            // Defer while dragging: the DOM already reflects the change, and a
+            // rebuild would drop the edit-mode decorations. Applied on exit.
+            if (!editing) {
+                render(config);
+            }
+        },
+        setFontPreset(preset: FontPreset): void {
+            setFontActive(preset);
+        },
+        openLinkPrompt,
     };
 }

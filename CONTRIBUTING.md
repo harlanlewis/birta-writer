@@ -31,7 +31,7 @@ docs/          Development documentation
 - WebView ↔ Extension communication **only** through `webview/messaging.ts`
 - CSS must use `--vscode-*` variables for theme compatibility
 - Use `pnpm` — not `npm` or `yarn`
-- Git commit messages: type prefix in English, description in Chinese
+- Git commit messages: type prefix in English, description in English
 
 ## Submitting Changes
 
@@ -42,4 +42,4 @@ docs/          Development documentation
 
 ## Reporting Bugs
 
-Please use the [Bug Report template](https://github.com/harlanlewis/md-wysiwyg-editor/issues/new?template=bug_report.md) and include your VS Code version and the Output panel logs.
+Please use the [Bug Report template](https://github.com/harlanlewis/markdown-writer/issues/new?template=bug_report.md) and include your VS Code version and the Output panel logs.

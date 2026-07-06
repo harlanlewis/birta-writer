@@ -23,6 +23,7 @@ import {
     IconItalic,
     IconStrikethrough,
     IconCode,
+    IconLink,
     IconChevronDown,
     IconAlignLeft,
     IconAlignCenter,
@@ -219,7 +220,7 @@ export function getBlockContainerText($pos: ResolvedPos): string {
     return "";
 }
 
-/** 在原始 markdown 中搜索块文本所在行号（1-indexed），未找到返回 -1 */
+/** Search the original markdown for the line number (1-indexed) containing the block text; return -1 when not found */
 export function findLineInOriginalSource(
     source: string,
     blockText: string,
@@ -302,8 +303,7 @@ export function sampleDocPosition(
 export function setupSelectionToolbar(
     getView: () => EditorView | null,
     getEditor: () => Editor | null,
-    getLineMap: () => number[],
-    getMarkdownSource: () => string,
+    openLinkPrompt: () => void,
 ): { onSelectionChange(view: EditorView): void } {
     let lastView: EditorView | null = null;
     let isDragging = false;
@@ -476,10 +476,20 @@ export function setupSelectionToolbar(
     toolbar.appendChild(strikeBtn);
     toolbar.appendChild(codeBtn);
 
-    // Separator between the inline-format buttons and the table-mode controls.
-    // Shown only in table mode (in plain-text mode there is nothing after it).
-    const textInlineSep = sSep();
-    toolbar.appendChild(textInlineSep);
+    // ── Link button (text mode only) ─────────────────
+    // Opens the same Insert/Edit Link prompt as the main toolbar button and
+    // Cmd/Ctrl+K. createButton's mousedown handler calls preventDefault so
+    // the editor selection survives the click (same as the other buttons).
+    const linkSep = sSep();
+    toolbar.appendChild(linkSep);
+    const linkBtn = createButton({
+        className: "sel-tb-btn sel-tb-link-btn",
+        icon: IconLink,
+        title: t("Insert/Edit Link") + " " + kbd("Mod-k"),
+        tooltipPlacement: "above",
+        onClick: openLinkPrompt,
+    });
+    toolbar.appendChild(linkBtn);
 
     // ── Table-mode elements (alignment + delete, all hidden initially) ──
     const tableSep = sSep();
@@ -577,18 +587,22 @@ export function setupSelectionToolbar(
         hideToolbar();
         const v2 = getView();
         if (v2) {
-            const safePos = Math.min(1, v2.state.doc.content.size - 1);
+            // Collapse the residual selection to a caret next to where the
+            // row/column was, so the viewport stays on the edited table
+            // instead of jumping to the top of the document.
+            const sel2 = v2.state.selection;
+            const $near =
+                sel2 instanceof CellSelection ? sel2.$headCell : sel2.$head;
             v2.dispatch(
-                v2.state.tr.setSelection(
-                    TextSelection.create(v2.state.doc, safePos),
-                ),
+                v2.state.tr.setSelection(TextSelection.near($near)),
             );
         }
     });
+    deleteRowBtn.classList.add("sel-tb-del-row-btn");
     deleteRowBtn.style.display = "none";
     toolbar.appendChild(deleteRowBtn);
 
-    // 清空表头内容（不删除行）
+    // Clear the header cells' content (without deleting the row)
     const clearHeaderBtn = sBtn(IconTrash2, t("Clear Header"), () => {
         const view = getView();
         if (!view) {
@@ -604,7 +618,7 @@ export function setupSelectionToolbar(
                 const tableNode = $anchor.node(d);
                 const map = TableMap.get(tableNode);
                 const tableStart = $anchor.start(d);
-                // 收集第 0 行所有单元格的内容范围（从后往前，避免位置偏移）
+                // Collect the content ranges of every cell in row 0 (back to front, to avoid position drift)
                 const ranges: Array<{ from: number; to: number }> = [];
                 for (let col = 0; col < map.width; col++) {
                     const cellPos =
@@ -636,7 +650,7 @@ export function setupSelectionToolbar(
     clearHeaderBtn.style.display = "none";
     toolbar.appendChild(clearHeaderBtn);
 
-    // 删除整个表格（仅整表格选中时显示）
+    // Delete the whole table (shown only when the entire table is selected)
     const deleteTableBtn = sBtn(IconTrash2, t("Delete Table"), () => {
         const view = getView();
         if (!view) {
@@ -669,14 +683,18 @@ export function setupSelectionToolbar(
         hideToolbar();
         const v2 = getView();
         if (v2) {
-            const safePos = Math.min(1, v2.state.doc.content.size - 1);
+            // Collapse the residual selection to a caret next to where the
+            // row/column was, so the viewport stays on the edited table
+            // instead of jumping to the top of the document.
+            const sel2 = v2.state.selection;
+            const $near =
+                sel2 instanceof CellSelection ? sel2.$headCell : sel2.$head;
             v2.dispatch(
-                v2.state.tr.setSelection(
-                    TextSelection.create(v2.state.doc, safePos),
-                ),
+                v2.state.tr.setSelection(TextSelection.near($near)),
             );
         }
     });
+    deleteColBtn.classList.add("sel-tb-del-col-btn");
     deleteColBtn.style.display = "none";
     toolbar.appendChild(deleteColBtn);
 
@@ -744,21 +762,26 @@ export function setupSelectionToolbar(
             fmtWrap.style.display = "none";
             textFmtSep.style.display = "none";
 
-            // 内联格式按钮对所有 CellSelection 都显示
+            // Inline format buttons stay visible for every CellSelection
             boldBtn.style.display = "";
             italicBtn.style.display = "";
             strikeBtn.style.display = "";
             codeBtn.style.display = "";
-            textInlineSep.style.display = "";
 
-            // 对齐：整列选中（且非整表格）时显示
+            // Link: hidden in cell-selection mode — the link prompt replaces
+            // a flat text range, which would corrupt the table structure
+            // when the selection spans cells.
+            linkSep.style.display = "none";
+            linkBtn.style.display = "none";
+
+            // Alignment: shown when a whole column is selected (and not the whole table)
             const isEntireTable = isEntireTableSelected(
                 selection as CellSelection,
             );
-            tableSep.style.display = "none";
+            tableSep.style.display = isCol && !isEntireTable ? "" : "none";
             alignWrap.style.display = isCol && !isEntireTable ? "" : "none";
 
-            // 删除按钮显示逻辑
+            // Delete-button visibility logic
             const headerRow = isRow && isFirstRow(selection as CellSelection);
             deleteTableBtn.style.display = isEntireTable ? "" : "none";
             clearHeaderBtn.style.display =
@@ -798,13 +821,13 @@ export function setupSelectionToolbar(
         fmtWrap.style.display = inTable ? "none" : "";
         textFmtSep.style.display = inTable ? "none" : "";
 
-        // 内联格式：始终显示
+        // Inline formats + link: always visible in text mode
         boldBtn.style.display = "";
         italicBtn.style.display = "";
         strikeBtn.style.display = "";
         codeBtn.style.display = "";
-        // Nothing follows the separator in plain-text mode, so hide it.
-        textInlineSep.style.display = "none";
+        linkSep.style.display = "";
+        linkBtn.style.display = "";
 
         // 表格专属元素：隐藏
         tableSep.style.display = "none";

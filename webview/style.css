@@ -24,6 +24,15 @@ body {
     line-height: 1.6;
 }
 
+/* Browser-native scroll-into-view (initial focus, find-in-page, …) must not
+   park the caret under the fixed topbar/sticky heading. ProseMirror-driven
+   scrolls are handled by plugins/caretScrollMargin.ts, which also keeps
+   these vars in sync with the measured header stack. */
+html {
+    scroll-padding-top: var(--caret-scroll-top-inset, 104px);
+    scroll-padding-bottom: var(--caret-scroll-bottom-inset, 56px);
+}
+
 /* ─── Frontmatter 面板 ─── */
 .frontmatter-panel {
     max-width: var(--editor-max-width, none);
@@ -154,9 +163,41 @@ body {
     border-style: solid;
 }
 
-/* Collapsed: hide the table and Add-field button, keep only the toggle */
+/* Raw YAML editor for non-flat frontmatter (nested maps, lists, comments, ...) */
+.fm-raw-editor {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    border-radius: 4px;
+    background: var(--vscode-input-background, transparent);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.85em;
+    line-height: 1.5;
+    white-space: pre;
+    overflow-x: auto;
+    resize: vertical;
+    field-sizing: content;
+    min-height: 3em;
+
+    &:focus {
+        outline: 1px solid var(--vscode-focusBorder, #007acc);
+        outline-offset: -1px;
+    }
+
+    /* Rejected commit (e.g. an inner `---` line would corrupt the document) */
+    &[aria-invalid="true"] {
+        outline: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+        outline-offset: -1px;
+    }
+}
+
+/* Collapsed: hide the table/raw editor and Add-field button, keep only the toggle */
 .frontmatter-panel.collapsed {
     .frontmatter-table,
+    .fm-raw-editor,
     .fm-add-btn {
         display: none;
     }
@@ -260,12 +301,63 @@ body.editor-width-auto {
         white-space: pre-wrap; /* ProseMirror 要求 */
         word-wrap: break-word;
 
-        /* 内联 HTML 渲染容器（DOMPurify 净化后只读显示） */
+        /* Inline HTML container (read-only preview after DOMPurify) */
         .html-inline {
             display: contents;
 
             [align="center"] {
                 text-align: center;
+            }
+        }
+
+        /* HTML comments: visible as a dimmed chip instead of vanishing.
+           Overrides .html-inline's display: contents so the chip has a box. */
+        .html-comment {
+            display: inline-block;
+            max-width: 100%;
+            padding: 0 0.35em;
+            border-radius: 3px;
+            background: var(--vscode-textBlockQuote-background);
+            color: var(--vscode-descriptionForeground);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.85em;
+            white-space: pre-wrap;
+            opacity: 0.85;
+        }
+
+        /* Reference-link definitions ([label]: url) — read-only block line */
+        .link-definition {
+            padding: 0.1em 0.35em;
+            border-left: 2px solid var(--vscode-editorLineNumber-foreground);
+            color: var(--vscode-descriptionForeground);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.9em;
+            opacity: 0.85;
+
+            &.ProseMirror-selectednode {
+                outline: 2px solid var(--vscode-focusBorder);
+            }
+        }
+
+        /* Reference-style links keep link styling without an href */
+        a.link-ref {
+            color: var(--vscode-textLink-foreground);
+            text-decoration: underline;
+            cursor: text;
+        }
+
+        /* Image references (![alt][ref]) — inline chip */
+        .image-ref {
+            display: inline-block;
+            padding: 0 0.35em;
+            border-radius: 3px;
+            background: var(--vscode-textBlockQuote-background);
+            color: var(--vscode-descriptionForeground);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.85em;
+
+            &.ProseMirror-selectednode {
+                outline: 2px solid var(--vscode-focusBorder);
             }
         }
 
@@ -611,13 +703,6 @@ body.editor-width-auto {
                 background: rgba(128, 128, 128, 0.08);
                 font-weight: 600;
             }
-
-            tbody tr:nth-child(even) td {
-                background: var(
-                    --vscode-editor-lineHighlightBackground,
-                    rgba(128, 128, 128, 0.04)
-                );
-            }
         }
 
         /* 选中高亮 */
@@ -764,7 +849,7 @@ body.editor-width-auto {
     z-index: 1200;
     display: flex;
     align-items: center;
-    padding: 5px 48px;
+    padding: 5px 8px;
     background-color: var(--vscode-editor-background);
     border-bottom: 1px solid
         var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
@@ -786,4 +871,159 @@ body.editor-width-auto {
     white-space: nowrap;
     pointer-events: none;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+}
+
+/* Chip-list editing for list-valued frontmatter keys (tags, related, ...) */
+.fm-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.fm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    padding: 1px 4px 1px 8px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+    border-radius: 10px;
+    background: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.08));
+
+    .fm-chip-text {
+        outline: none;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-width: 1ch;
+
+        &:focus {
+            text-decoration: underline dotted var(--vscode-focusBorder, #007acc);
+        }
+    }
+
+    .fm-chip-remove {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        padding: 0;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        cursor: pointer;
+        opacity: 0.4;
+
+        svg {
+            width: 10px;
+            height: 10px;
+        }
+
+        &:hover {
+            opacity: 1;
+            color: var(--vscode-errorForeground, #f44747);
+        }
+    }
+}
+
+.fm-chip-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border-radius: 10px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+
+    svg {
+        width: 11px;
+        height: 11px;
+    }
+
+    &:hover {
+        color: var(--vscode-editor-foreground);
+        border-color: var(--vscode-focusBorder, #007acc);
+    }
+}
+
+/* Suggestion dropdown for the "+" chip button: workspace-wide values used
+   under the same frontmatter key (filter input on top, create row at the end) */
+.fm-suggest-menu {
+    position: fixed;
+    z-index: 1000;
+    min-width: 180px;
+    max-width: 320px;
+    background: var(
+        --vscode-editorSuggestWidget-background,
+        var(--vscode-dropdown-background, var(--vscode-editor-background))
+    );
+    border: 1px solid
+        var(--vscode-editorSuggestWidget-border, var(--vscode-focusBorder, #007acc));
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.fm-suggest-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: none;
+    border-bottom: 1px solid
+        var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+    background: transparent;
+    color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+}
+
+.fm-suggest-list {
+    list-style: none;
+    margin: 0;
+    padding: 4px 0;
+    max-height: 200px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+
+    &:empty {
+        padding: 0;
+    }
+}
+
+.fm-suggest-item {
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(
+        --vscode-editorSuggestWidget-foreground,
+        var(--vscode-dropdown-foreground, var(--vscode-editor-foreground))
+    );
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:hover,
+    &.fm-suggest-item--focused {
+        background: var(
+            --vscode-editorSuggestWidget-selectedBackground,
+            var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15))
+        );
+    }
+
+    &.fm-suggest-create {
+        font-style: italic;
+        color: var(--vscode-descriptionForeground);
+    }
+}
+
+/* Link URL autocompletion dropdown (link popup / insert-link prompt): shares
+   the fm-suggest look; only the width cap differs, file paths run long */
+.fm-suggest-menu.link-target-menu {
+    max-width: 480px;
 }

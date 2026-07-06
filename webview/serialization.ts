@@ -4,25 +4,110 @@
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
+import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
+import { referenceLinksPlugin } from "./plugins/referenceLinks";
+import { mathPlugin } from "./plugins/math";
+import {
+    sourceStyleHandlers,
+    sourceStylePlugin,
+    sourceStyleReplacedPlugins,
+} from "./plugins/sourceStyle";
+import { tableBreakReplacedPlugins, tableBreaksPlugin } from "./plugins/tableBreaks";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
 
 /**
- * The commonmark preset minus Milkdown's `remark-preserve-empty-line` plugin.
+ * The commonmark preset minus two of Milkdown's remark transforms, plus our
+ * reference-link schemas.
  *
- * That plugin round-trips empty paragraphs (and empty table cells) as literal
- * `<br />` HTML, which pollutes a file that should stay pure Markdown. With
- * it removed, empty paragraphs degrade to blank lines — the closest Markdown
- * has to an empty paragraph — and empty table cells serialize as genuinely
- * empty cells. Standalone `<br />` lines already present in a file are no
- * longer swallowed on parse either; they stay as inert HTML nodes and
- * round-trip unchanged.
+ * `remark-preserve-empty-line` round-trips empty paragraphs (and empty table
+ * cells) as literal `<br />` HTML, which pollutes a file that should stay
+ * pure Markdown. With it removed, empty paragraphs degrade to blank lines —
+ * the closest Markdown has to an empty paragraph — and empty table cells
+ * serialize as genuinely empty cells. Standalone `<br />` lines already
+ * present in a file are no longer swallowed on parse either; they stay as
+ * inert HTML nodes and round-trip unchanged.
+ *
+ * `remark-inline-links` rewrites `[text][ref]` into inline links and DELETES
+ * the `[ref]: url` definitions before the ProseMirror transformer runs, so
+ * reference-style documents were silently restructured. With it removed, the
+ * `definition` / `linkReference` / `imageReference` mdast nodes reach the
+ * transformer and are modeled by `referenceLinksPlugin`
+ * (plugins/referenceLinks.ts), keeping the reference form intact. The plugin
+ * is absent from the preset's .d.ts, so it is filtered by its withMeta
+ * displayName rather than by identity.
+ *
+ * `fidelitySerializerPlugin` (plugins/fidelitySerializer.ts) swaps the stock
+ * `SerializerState` for a vendored, patched copy that keeps a link
+ * containing bold/italic/code children serialized as ONE link instead of
+ * several adjacent same-URL links, and defers emphasis edge-space trimming
+ * until after adjacent mark segments have merged.
+ *
+ * `mathPlugin` (plugins/math.ts) adds KaTeX inline/block math: `remark-math`
+ * for parsing/serializing `$...$` and `$$...$$`, a visitor that routes block
+ * math through the fenced-code-block machinery, and a `code_block` schema
+ * extension that serializes LaTeX-language blocks back to `$$`. It is placed
+ * after the base preset so the `code_block` extendSchema overrides the stock
+ * commonmark definition.
+ *
+ * `sourceStylePlugin` (plugins/sourceStyle.ts) preserves cosmetic Markdown
+ * style (MAR-16): the stock `hr` / `heading` schemas are filtered out and
+ * replaced with extended copies that carry the original thematic-break marker
+ * and setext form; paired with the custom stringify handlers in
+ * `sourceStyleHandlers`, `***`/`___` rules and setext headings round-trip
+ * instead of being canonicalized. (Emphasis/strong markers already survive as
+ * PM attrs via the preset's `remarkMarker`; only the stringify handler is
+ * new.)
+ *
+ * `tableBreaksPlugin` (plugins/tableBreaks.ts) preserves `<br>` line breaks
+ * inside table cells (MAR-17): the stock `hardbreak` schema is filtered out and
+ * replaced with an extended copy carrying a `variant` attr (the original `<br>`
+ * byte spelling), and a remark visitor rewrites `<br>` html atoms inside cells
+ * into real, editable break nodes. The serializer side lives in
+ * `serializeTableNoAlign` below.
  */
-export const pureCommonmark = commonmark.filter(
-    (plugin) =>
-        plugin !== remarkPreserveEmptyLinePlugin.plugin &&
-        plugin !== remarkPreserveEmptyLinePlugin.options,
-);
+export const pureCommonmark = [
+    ...commonmark.filter((plugin) => {
+        if (
+            plugin === remarkPreserveEmptyLinePlugin.plugin ||
+            plugin === remarkPreserveEmptyLinePlugin.options
+        ) {
+            return false;
+        }
+        if (sourceStyleReplacedPlugins.has(plugin)) return false;
+        if (tableBreakReplacedPlugins.has(plugin)) return false;
+        const displayName = (plugin as { meta?: { displayName?: string } }).meta?.displayName;
+        return !(displayName?.includes("remarkInlineLinkPlugin"));
+    }),
+    ...referenceLinksPlugin,
+    ...mathPlugin,
+    ...sourceStylePlugin,
+    ...tableBreaksPlugin,
+    fidelitySerializerPlugin,
+];
+
+// Replace `break` nodes with `html` nodes carrying the recorded `<br>` bytes
+// (MAR-17). mdast-util-to-markdown's `hardBreak` handler cannot emit an
+// end-of-line inside a `tableCell` construct and falls back to a SPACE, so a
+// hard break inside a cell was silently lost. The `html` handler emits its
+// value verbatim, bypassing that fallback. Returns the SAME node reference when
+// a cell contains no break, so cells without line breaks serialize
+// byte-identically (no churn on untouched cells). Recurses through phrasing
+// wrappers (strong/emphasis/link) so a break nested inside a mark is caught too.
+function replaceBreaksWithHtml(node: any): any {
+    if (!node.children) return node;
+    let changed = false;
+    const children = node.children.map((child: any) => {
+        if (child.type === "break") {
+            changed = true;
+            return { type: "html", value: child.data?.htmlVariant || "<br>" };
+        }
+        const transformed = replaceBreaksWithHtml(child);
+        if (transformed !== child) changed = true;
+        return transformed;
+    });
+    return changed ? { ...node, children } : node;
+}
 
 // Custom table serializer: every column keeps its natural width, with no
 // column-width alignment. Overrides the remark-gfm default table handler,
@@ -41,7 +126,10 @@ function serializeTableNoAlign(node: any, _parent: any, state: any): string {
         const cellValues: string[] = row.children.map((cell: any) => {
             const cellExit = state.enter("tableCell");
             const phrasingExit = state.enter("phrasing");
-            const value = state.containerPhrasing(cell, { before: "|", after: "|" });
+            const value = state.containerPhrasing(replaceBreaksWithHtml(cell), {
+                before: "|",
+                after: "|",
+            });
             phrasingExit();
             cellExit();
             return value;
@@ -81,6 +169,7 @@ export function configureSerialization(ctx: EditorCtx): void {
         rule: "-" as const,
         handlers: {
             ...(prev.handlers ?? {}),
+            ...sourceStyleHandlers,
             table: serializeTableNoAlign,
         },
     }));

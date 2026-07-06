@@ -4,11 +4,11 @@ Markdown WYSIWYG Editor 支持自定义主题颜色，可以在 `.vscode/setting
 
 ## 配置方式
 
-在 `.vscode/settings.json` 中添加 `markdownWysiwyg.customThemes` 配置项：
+在 `.vscode/settings.json` 中添加 `markdownWriter.customThemes` 配置项：
 
 ```json
 {
-    "markdownWysiwyg.customThemes": [
+    "markdownWriter.customThemes": [
         {
             "name": "My Custom Theme",
             "colors": {
@@ -168,7 +168,7 @@ Markdown WYSIWYG Editor 支持自定义主题颜色，可以在 `.vscode/setting
 ### 深色主题（类似 GitHub Dark）
 ```json
 {
-    "markdownWysiwyg.customThemes": [
+    "markdownWriter.customThemes": [
         {
             "name": "GitHub Dark",
             "colors": {
@@ -202,7 +202,7 @@ Markdown WYSIWYG Editor 支持自定义主题颜色，可以在 `.vscode/setting
 ### 浅色主题（类似 Apple Style）
 ```json
 {
-    "markdownWysiwyg.customThemes": [
+    "markdownWriter.customThemes": [
         {
             "name": "Apple Light",
             "colors": {
@@ -236,7 +236,7 @@ Markdown WYSIWYG Editor 支持自定义主题颜色，可以在 `.vscode/setting
 ### 暗紫色主题
 ```json
 {
-    "markdownWysiwyg.customThemes": [
+    "markdownWriter.customThemes": [
         {
             "name": "Purple Dark",
             "colors": {

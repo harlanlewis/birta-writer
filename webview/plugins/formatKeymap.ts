@@ -9,8 +9,13 @@ import { keymap } from "@milkdown/prose/keymap";
 import { TextSelection } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 
-// 格式化快捷键：Mod-b 粗体、Mod-i 斜体、Mod-Shift-x 删除线、Mod-e 行内代码
-// return true 使 ProseMirror 调用 preventDefault，阻止 VSCode 快捷键（如 Cmd+B 侧栏切换）冒泡
+// Formatting shortcuts: Mod-b bold, Mod-i italic, Mod-Shift-x strikethrough,
+// Mod-e inline code.
+// Returning true makes ProseMirror call preventDefault(), but the event still
+// BUBBLES: the VS Code webview host forwards it to the workbench from a
+// window-level listener (so Cmd+B would also toggle the sidebar, Cmd+I open
+// chat, ...). The document-level key-leak guard in webview/keyboardShortcuts.ts
+// stops propagation for these combos before they reach that forwarder.
 export const formatKeymapPlugin = $prose((ctx) =>
     keymap({
         "Mod-b": () => {

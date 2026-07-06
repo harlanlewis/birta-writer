@@ -1,107 +1,189 @@
-/* ─── 表格边框高亮线段 overlay（不操作 ProseMirror 节点）── */
-.table-add-line {
-    position: fixed;
-    z-index: 999;
-    pointer-events: none;
-    background: rgba(52, 211, 153, 0.8);
+/* ───────────────────────────────────────────────────────────────────────────
+ * Google-Docs-style table affordances.
+ *
+ * All chrome lives inside the table NodeView's overlay (components/table/
+ * tableView.ts). The overlay itself never intercepts pointer events; only the
+ * grips and the "+" buttons do, and those sit in the OUTER gutters / on the
+ * gridlines so they never block clicking or selecting cell text.
+ *
+ * Accent: the project's table green (rgba(52, 211, 153, …)) with
+ * --vscode-focusBorder as the theme-aware fallback.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* Wrapper is the positioning frame for the overlay. The <table> inside keeps
+ * every global table style (border-collapse, display:block, overflow-x, …). */
+.mw-table {
+    position: relative;
 }
-.table-add-line--h {
-    height: 2px;
-    pointer-events: none;
+
+.mw-table-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none; /* individual affordances re-enable it */
+    overflow: visible;    /* grips / + buttons protrude into the gutters */
+
+    /* A future column-resize layer goes HERE: add a <colgroup> to the <table>
+     * and a row of `.mw-col-resize` handles on the vertical gridlines, reusing
+     * the same wrapper-relative measurement path as reposition(). */
 }
-.table-add-line--v {
-    width: 2px;
+
+/* ─── Row / column grips ────────────────────────────────────────────────────
+ * A pill along each row's left edge and each column's top edge. Hidden until
+ * the pointer is near THIS row/column (the JS pointermove reveal adds
+ * `.mw-near` to only the nearest grip, Google-Docs style); the grip of the
+ * selected row/column stays lit regardless. */
+.mw-grip {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+.mw-grip.mw-near {
+    opacity: 0.55;
+}
+.mw-grip:hover,
+.mw-grip--active,
+.mw-grip--dragging {
+    opacity: 1;
+}
+.mw-grip:active {
+    cursor: grabbing;
+}
+
+.mw-grip-handle {
+    width: 100%;
+    height: 100%;
+    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.22));
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+.mw-grip--row .mw-grip-handle {
+    border-radius: 4px 0 0 4px;
+    border-right: none;
+}
+.mw-grip--col .mw-grip-handle {
+    border-radius: 4px 4px 0 0;
+    border-bottom: none;
+}
+.mw-grip:hover .mw-grip-handle,
+.mw-grip--active .mw-grip-handle {
+    background: rgba(52, 211, 153, 0.85);
+    border-color: var(--vscode-focusBorder, rgba(52, 211, 153, 0.9));
+}
+
+/* ─── Insert bars ("+") ─────────────────────────────────────────────────────
+ * The bar spans the full gridline but is itself click-through (pointer-events
+ * none), so it never blocks editing. Only the "+" button is interactive; it
+ * lives in the gutter on the gridline. Hovering the button reveals the
+ * full-length insertion line. Because the button is a descendant of the bar,
+ * :hover on the bar lights the line even though the bar is click-through. */
+.mw-insert {
+    position: absolute;
     pointer-events: none;
 }
 
-/* ─── 表格 + 插入按钮 ───────────────────────────────── */
-.table-add-btn {
-    position: fixed;
-    z-index: 1000;
-    width: 24px;
-    height: 24px;
+.mw-insert-line {
+    position: absolute;
+    background: var(--vscode-focusBorder, rgba(52, 211, 153, 0.85));
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    pointer-events: none;
+}
+.mw-insert--row .mw-insert-line {
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    transform: translateY(-50%);
+}
+.mw-insert--col .mw-insert-line {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+}
+.mw-insert:hover .mw-insert-line {
+    opacity: 1;
+}
+
+.mw-insert-btn {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    padding: 0;
     border-radius: 50%;
     border: 1px solid var(--vscode-focusBorder, rgba(52, 211, 153, 0.6));
     background: var(--vscode-editor-background);
     color: var(--vscode-focusBorder, rgba(52, 211, 153, 0.9));
-    font-size: 16px;
-    line-height: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    pointer-events: all;
-    padding: 0;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity 0.12s ease, background 0.12s ease;
 }
-.table-add-btn:hover {
+.mw-insert-btn svg {
+    width: 13px;
+    height: 13px;
+}
+/* Revealed only for the insert gap nearest the pointer (the JS pointermove
+ * reveal adds `.mw-near`). A grace timer keeps it alive while the pointer
+ * crosses the gutter toward the "+", so moving to it never dismisses it. */
+.mw-insert.mw-near .mw-insert-btn {
+    opacity: 0.5;
+}
+.mw-insert-btn:hover {
+    opacity: 1;
     background: var(--vscode-focusBorder, rgba(52, 211, 153, 0.9));
     color: var(--vscode-editor-background, #1e1e1e);
 }
-
-/* ─── 表格行/列拖拽 handle ─── */
-.table-handle {
-    position: fixed;
-    z-index: 998;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: var(
-        --vscode-toolbar-hoverBackground,
-        rgba(128, 128, 128, 0.15)
-    );
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
-    border-radius: 3px;
-    cursor: grab;
-    color: var(--vscode-editor-foreground);
-    font-size: 11px;
-    opacity: 0.6;
-    pointer-events: all;
-    user-select: none;
+/* Button sits on the gridline, centered in the gutter just outside the table. */
+.mw-insert--row .mw-insert-btn {
+    left: 0;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+.mw-insert--col .mw-insert-btn {
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
-.table-handle:hover {
-    opacity: 1;
-    background: var(
-        --vscode-toolbar-activeBackground,
-        rgba(128, 128, 128, 0.25)
-    );
-}
-
-.table-handle--row {
-    width: 18px;
-    height: 20px;
-}
-
-.table-handle--col {
-    width: 20px;
-    height: 18px;
-}
-
-/* 拖拽时的目标占位线 */
-.table-drag-line {
-    position: fixed;
-    z-index: 1001;
-    background: var(--vscode-focusBorder, #007acc);
+/* ─── Drag-to-reorder feedback ──────────────────────────────────────────────*/
+/* While reordering, no insert or non-dragged grip may take pointer events, so
+ * their hover tooltips ("Insert row" etc.) can never fire mid-drag. The dragged
+ * grip keeps its events so the grabbing cursor persists. */
+.mw-table--dragging .mw-insert,
+.mw-table--dragging .mw-grip:not(.mw-grip--dragging) {
     pointer-events: none;
-    display: none;
 }
 
-.table-drag-line--h {
-    height: 2px;
+.mw-drop-line {
+    position: absolute;
+    z-index: 5;
+    background: var(--vscode-focusBorder, rgba(52, 211, 153, 0.95));
+    pointer-events: none;
 }
-.table-drag-line--v {
-    width: 2px;
+.mw-drop-line--h {
+    height: 3px;
+}
+.mw-drop-line--v {
+    width: 3px;
 }
 
-/* 拖拽时跟随鼠标的行/列 ghost 覆盖层 */
-.table-drag-ghost {
-    position: fixed;
-    z-index: 1002;
+.mw-drag-ghost {
+    position: absolute;
+    z-index: 4;
     pointer-events: none;
     background: var(
         --vscode-editor-selectionBackground,
         rgba(52, 211, 153, 0.18)
     );
     border: 1px solid var(--vscode-focusBorder, rgba(52, 211, 153, 0.5));
-    display: none;
 }

@@ -12,7 +12,8 @@ function isEmptyListItem(item: any): boolean {
     );
 }
 
-// 列表 Backspace：空列表项优先删除；非空列表项行首则上升一级/转普通段落
+// List Backspace: an empty list item is deleted first; at the start of a
+// non-empty item, lift it one level / turn it into a plain paragraph.
 export const listLiftPlugin = $prose((ctx) => {
     const schema = ctx.get(schemaCtx);
     const listItemType = schema.nodes["list_item"];
@@ -90,9 +91,62 @@ export const listLiftPlugin = $prose((ctx) => {
     });
 });
 
-// 列表 spread 规范化：编辑后若列表项只含单个块级子节点，自动将 spread 重置为 false
-// 防止删除嵌套子列表后，原 loose list 的 spread:true 残留导致序列化时插入多余空行
-// 仅对实际变更范围内的列表节点做规范化，避免编辑表格时全文档列表间距被重置
+// Enter on an EMPTY list item: never leave the empty item behind (Slack /
+// Google Docs behavior). A nested empty item outdents exactly one level per
+// press; a top-level empty item exits the list and becomes an empty paragraph
+// after it (liftListItem splits the list when the item sits in the middle).
+// Non-empty items fall through to the default split behavior. Task-list items
+// are the same list_item node type (with a `checked` attr in preset-gfm), so
+// they are covered too. "Empty" = a single empty paragraph and nothing else;
+// an empty paragraph with a nested sublist below is NOT empty.
+export const listEnterPlugin = $prose((ctx) => {
+    const schema = ctx.get(schemaCtx);
+    const listItemType = schema.nodes["list_item"];
+    if (!listItemType) {
+        return new Plugin({});
+    }
+    const doLift = liftListItem(listItemType);
+
+    return keymap({
+        Enter: (state, dispatch, view) => {
+            // Never intercept while an IME composition is in progress.
+            if (view?.composing) {
+                return false;
+            }
+            const { selection } = state;
+            if (!selection.empty) {
+                return false;
+            }
+            const { $from } = selection;
+            if ($from.parent.type.name !== "paragraph") {
+                return false;
+            }
+
+            let listItemDepth = -1;
+            for (let d = $from.depth; d >= 0; d--) {
+                if ($from.node(d).type === listItemType) {
+                    listItemDepth = d;
+                    break;
+                }
+            }
+            if (listItemDepth < 0) {
+                return false;
+            }
+            if (!isEmptyListItem($from.node(listItemDepth))) {
+                return false;
+            }
+
+            return doLift(state, dispatch);
+        },
+    });
+});
+
+// List spread normalization: after an edit, if a list item contains only a
+// single block child, reset its spread to false. This prevents a stale
+// spread:true (left over from a loose list after deleting a nested sublist)
+// from inserting extra blank lines on serialization. Only list nodes inside
+// the actually-changed range are normalized, so editing a table doesn't reset
+// list spacing across the whole document.
 export const listSpreadNormalizePlugin = $prose((ctx) => {
     const schema = ctx.get(schemaCtx);
     return new Plugin({

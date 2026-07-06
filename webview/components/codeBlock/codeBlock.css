@@ -753,3 +753,34 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
     border-color: transparent;
 }
+
+/* ─── LaTeX block preview (KaTeX) ─── */
+.latex-preview {
+    /* display is controlled by JS (none / flex) */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 20px 16px;
+    min-height: 80px;
+    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+    border-radius: 0 0 6px 6px;
+    user-select: none;
+}
+
+.latex-render {
+    max-width: 100%;
+    overflow-x: auto;
+    color: var(--vscode-editor-foreground);
+    text-align: center;
+}
+
+.latex-render .katex-display {
+    margin: 0;
+}
+
+.latex-empty {
+    opacity: 0.5;
+    font-style: italic;
+    font-size: 13px;
+}

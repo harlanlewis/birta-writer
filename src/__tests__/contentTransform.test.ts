@@ -66,6 +66,49 @@ describe("extractFrontmatter", () => {
         expect(frontmatter).toBe("");
         expect(body).toBe(content);
     });
+
+    it("an inner line starting with --- (e.g. `--- draft`) should not terminate the block", () => {
+        // Before the fix the extraction regex stopped at any line merely
+        // STARTING with ---, truncating the document at `--- draft`.
+        const content = "---\ntitle: A\n--- draft\nmore: x\n---\n# Body";
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("---\ntitle: A\n--- draft\nmore: x\n---\n");
+        expect(body).toBe("# Body");
+    });
+
+    it("an inner line of ---- should not terminate the block", () => {
+        const content = "---\ntitle: A\n----\nmore: x\n---\n# Body";
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("---\ntitle: A\n----\nmore: x\n---\n");
+        expect(body).toBe("# Body");
+    });
+
+    it("frontmatter with inner ----prefixed lines round-trips through restoreContentForSave", () => {
+        const content = "---\ntitle: A\n--- draft\n----\n---\n# Body\n";
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(restoreContentForSave(body, frontmatter, new Map())).toBe(content);
+    });
+
+    it("a ----prefixed line with no real closing fence yields no frontmatter", () => {
+        const content = "---\ntitle: A\n--- draft\n# Body";
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("");
+        expect(body).toBe(content);
+    });
+
+    it("a closing fence at end of file without a trailing newline is recognized", () => {
+        const content = "---\ntitle: A\n---";
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("---\ntitle: A\n---");
+        expect(body).toBe("");
+    });
+
+    it("CRLF frontmatter with an inner ----prefixed line finds the real closing fence", () => {
+        const content = "---\r\ntitle: A\r\n--- draft\r\n---\r\n# Body";
+        const { frontmatter, body } = extractFrontmatter(content);
+        expect(frontmatter).toBe("---\r\ntitle: A\r\n--- draft\r\n---\r\n");
+        expect(body).toBe("# Body");
+    });
 });
 
 // ─────────────────────────────────────────────────────────────

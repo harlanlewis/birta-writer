@@ -1,21 +1,21 @@
 /**
  * webview/index.ts
  *
- * 职责：WebView 主入口，负责初始化和组合各模块
+ * WebView entry point: initializes and wires together the modules.
  *
- * 本模块是 WebView 的核心入口文件，负责：
- * - 初始化 Milkdown 编辑器实例
- * - 组合和初始化各 UI 组件（工具栏、目录、查找栏等）
- * - 注册全局事件监听（拖放图片、粘贴图片、Checkbox 切换）
- * - 协调消息处理器、键盘快捷键、滚动持久化等模块
- * - 管理模块级状态（当前编辑器、行号映射、主题覆盖等）
+ * This is the WebView's core entry file. It:
+ * - initializes the Milkdown editor instance
+ * - composes and initializes the UI components (toolbar, TOC, find bar, etc.)
+ * - registers global event listeners (image drop, image paste, checkbox toggle)
+ * - coordinates the message handlers, keyboard shortcuts, and scroll persistence
+ * - manages module-level state (current editor, line map, theme overrides, etc.)
  *
- * 模块划分：
- * - components/frontmatter: Frontmatter 面板
- * - imageUpload: 图片上传管理
- * - keyboardShortcuts: 键盘快捷键
- * - messageHandlers: 消息分发
- * - scrollPersistence: 滚动位置持久化
+ * Module layout:
+ * - components/frontmatter: Frontmatter panel
+ * - imageUpload: image upload management
+ * - keyboardShortcuts: keyboard shortcuts
+ * - messageHandlers: message dispatch
+ * - scrollPersistence: scroll-position persistence
  */
 
 import "./style.css";
@@ -30,21 +30,20 @@ import { TextSelection } from "@milkdown/prose/state";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, onMessage } from "./messaging";
 import type { ToWebviewMessage } from "../shared/messages";
+import { computeLineMap } from "../shared/lineMap";
 
 import { setupLinkPopup } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
 import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { initHeadingIds } from "./headingIds";
-import { setupTableAddButtons } from "./components/table/addButtons";
-import { setupTableHandles } from "./components/table/handles";
 import { initToolbar } from "./components/toolbar";
 import { initToc } from "./components/toc";
-import { setupSelectionToolbar } from "./components/selectionToolbar";
-import { setupTableToolbar } from "./components/table/toolbar";
 import type { Editor } from "@milkdown/core";
 
-import { renderFrontmatterPanel } from "./components/frontmatter";
+import { renderFrontmatterPanel, focusFrontmatterPanel } from "./components/frontmatter";
+import { setEditorCommandHost } from "./editorCommands";
+import { initContextMenu } from "./components/contextMenu";
 import {
     handleRenameImage,
     handleGetProjectImages,
@@ -55,8 +54,9 @@ import { initScrollPersistence } from "./scrollPersistence";
 import { initKeyboardShortcuts } from "./keyboardShortcuts";
 import { createMessageHandlers, type Handler } from "./messageHandlers";
 import { createEventManager } from "./eventManager";
+import { observeNativeThemeChanges } from "./nativeThemeBridge";
 
-// ── 模块级状态 ─────────────────────────────────────────────
+// ── Module-level state ─────────────────────────────────────
 let currentEditor: Editor | null = null;
 let currentLineMap: number[] = [];
 const _themeOverrides = new Set<string>();
@@ -70,9 +70,9 @@ export function getMarkdownSource(): string {
     return markdownSource;
 }
 
-// ── 滚动相关工具函数 ────────────────────────────────────────
+// ── Scroll helper functions ────────────────────────────────
 
-/** 将 lineMap 中的源码行号（1-indexed）对应的块滚动到视口中间 */
+/** Scroll the block for a lineMap source line (1-indexed) to the viewport center. */
 function scrollToSourceLine(
     view: EditorView,
     lineMap: number[],
@@ -116,7 +116,7 @@ function scrollToSourceLine(
     window.scrollTo({ top: Math.max(0, targetScrollTop) });
 }
 
-/** 检测视口中间对应的源码行号（1-indexed） */
+/** Detect the source line (1-indexed) at the viewport center. */
 function getFirstVisibleSourceLine(
     view: EditorView,
     lineMap: number[],
@@ -164,7 +164,7 @@ function getFirstVisibleSourceLine(
     return lineMap[closestIdx] ?? 1;
 }
 
-// ── 重试滚动 ────────────────────────────────────────────────
+// ── Retry scroll ───────────────────────────────────────────
 function retryScroll(fn: () => void): void {
     let done = false;
     const tryFn = () => {
@@ -182,7 +182,7 @@ function retryScroll(fn: () => void): void {
     }
 }
 
-// ── 编辑器初始化 ─────────────────────────────────────────────
+// ── Editor initialization ──────────────────────────────────
 async function initEditor(
     container: HTMLElement,
     markdown: string,
@@ -197,6 +197,11 @@ async function initEditor(
         container,
         markdown,
         (updated) => {
+            // Keep the cached source (and its line map) in sync with every
+            // edit so source-based search stays accurate; the extension later
+            // echoes an authoritative lineMapUpdate after saving (MAR-8).
+            markdownSource = updated;
+            currentLineMap = computeLineMap(updated);
             notifyUpdate(updated);
             toc.refresh();
         },
@@ -205,17 +210,14 @@ async function initEditor(
     toc.refresh();
 }
 
-// ── 初始化事件管理器 ──────────────────────────────────────────
+// ── Initialize the event manager ───────────────────────────
 const eventManager = createEventManager();
 
-// ── 初始化 UI 组件 ───────────────────────────────────────────
+// ── UI component initialization ────────────────────────────
 const toc = initToc(eventManager, () => getEditorView());
 document.body.appendChild(toc.panel);
 
-const findBar = initFindBar(
-    () => document.getElementById("editor"),
-    () => getEditorView(),
-);
+const findBar = initFindBar(() => getEditorView(), getMarkdownSource);
 
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 const topbarTb = topbar
@@ -229,6 +231,15 @@ const topbarTb = topbar
     )
     : null;
 
+// Register the editor-command hooks the toolbar does not own (find-with-
+// replace, TOC toggle, frontmatter focus). The toolbar itself registers
+// openLinkPrompt / openImagePanel / openFind (MAR-9).
+setEditorCommandHost({
+    openFindReplace: () => findBar.open(undefined, { showReplace: true }),
+    toggleToc: () => toc.toggle(),
+    editFrontmatter: () => focusFrontmatterPanel(),
+});
+
 if (topbar) {
     const updateTopbarHeight = () => {
         document.documentElement.style.setProperty(
@@ -240,17 +251,18 @@ if (topbar) {
     new ResizeObserver(updateTopbarHeight).observe(topbar);
 }
 
-// ── 编辑器容器事件绑定 ───────────────────────────────────────
+// ── Editor container event bindings ────────────────────────
 const editorContainer = document.getElementById("editor");
 if (editorContainer) {
+    initContextMenu(editorContainer, () => getEditorView());
     setupLinkPopup(editorContainer, () => getEditorView());
     setupPathLink(editorContainer);
     initHeadingIds(editorContainer);
     initPathComplete(() => getEditorView());
-    setupTableAddButtons(editorContainer, () => getEditorView());
-    setupTableHandles(editorContainer, () => getEditorView());
+    // Table row/column affordances (grips, insert bars, drag-reorder) now live
+    // inside the table NodeView overlay — see components/table/tableView.ts.
 
-    // 点击底部空白区域 → 光标移到文档末尾
+    // Click the empty area below the content -> move the caret to the document end
     eventManager.onElement(editorContainer, "mousedown", (e) => {
         const view = getEditorView();
         if (!view) {
@@ -274,7 +286,7 @@ if (editorContainer) {
         view.focus();
     });
 
-    // 拖放图片
+    // Drag-and-drop images
     eventManager.onElement(editorContainer, "dragover", (e) => {
         const items = e.dataTransfer?.items;
         if (
@@ -309,7 +321,7 @@ if (editorContainer) {
     });
 }
 
-// 粘贴图片
+// Paste images
 eventManager.onDocument("paste", (e) => {
     const items = e.clipboardData?.items;
     if (!items) {
@@ -333,17 +345,11 @@ eventManager.onDocument("paste", (e) => {
         );
 });
 
-// ── 选中文字浮动工具栏 ───────────────────────────────────────
-const selTb = setupSelectionToolbar(
-    () => getEditorView(),
-    () => currentEditor,
-    getLineMap,
-    getMarkdownSource,
-);
-const tableTb = setupTableToolbar(() => getEditorView());
+// The floating selection/table popovers were removed: text formatting lives on
+// the top toolbar + keyboard, and table structure editing lives in the
+// right-click menu + hover affordances. The main toolbar still tracks selection
+// to update its active-state.
 registerSelectionChangeHandler((view) => {
-    selTb.onSelectionChange(view);
-    tableTb.onSelectionChange(view);
     topbarTb?.onSelectionChange(view);
 });
 
@@ -397,17 +403,18 @@ eventManager.onDocument(
     true,
 );
 
-// ── 初始化键盘快捷键和滚动持久化 ──────────────────────────────
+// ── Initialize keyboard shortcuts and scroll persistence ───
 initKeyboardShortcuts(
     eventManager,
     getEditorView,
     getLineMap,
     getFirstVisibleSourceLine,
     findBar,
+    () => topbarTb?.openLinkPrompt(),
 );
 initScrollPersistence(eventManager);
 
-// ── 消息处理器 ───────────────────────────────────────────────
+// ── Message handlers ───────────────────────────────────────
 const handlers = createMessageHandlers({
     state: {
         getEditor: () => currentEditor,
@@ -429,6 +436,7 @@ const handlers = createMessageHandlers({
         initEditor,
         retryScroll,
         getEditorView,
+        refreshToc: () => toc.refresh(),
     },
     topbarTb,
     themeOverrides: _themeOverrides,
@@ -441,10 +449,15 @@ onMessage(async (msg) => {
     }
     const handler = handlers[msg.type as ToWebviewMessage["type"]];
     if (handler) {
-        // 类型安全的调用：msg 的类型已经是 ToWebviewMessage，handler 接受对应类型的 msg
+        // Type-safe call: msg is already a ToWebviewMessage and the handler accepts the matching type
         await (handler as Handler)(msg, container);
     }
 });
 
-// WebView 加载完成
+// In auto mode VS Code drives colors via its native --vscode-* variables;
+// bridge its live theme-class swaps to the "theme-changed" event so JS-driven
+// consumers (Mermaid, etc.) refresh even without a setTheme round-trip.
+observeNativeThemeChanges();
+
+// WebView finished loading.
 notifyReady();

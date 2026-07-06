@@ -1,6 +1,6 @@
-# Markdown WYSIWYG Editor
+# Markdown Writer
 
-[English](README.md) | 简体中文 | [GitHub](https://github.com/harlanlewis/md-wysiwyg-editor)
+[English](README.md) | 简体中文 | [GitHub](https://github.com/harlanlewis/markdown-writer)
 
 一款基于 [Milkdown](https://milkdown.dev/)（ProseMirror）的 VSCode 所见即所得 Markdown 编辑器扩展，以富文本方式直接编辑 `.md` / `.markdown` 文件，保存结果为标准 Markdown，与任何文本编辑器完全兼容。
 
@@ -45,7 +45,7 @@
 
 ### 自定义主题
 
-- 支持通过 `markdownWysiwyg.customThemes` 配置项自定义主题颜色
+- 支持通过 `markdownWriter.customThemes` 配置项自定义主题颜色
 - 在 `.vscode/settings.json` 中定义自定义主题名称和 VS Code 颜色 ID
 - 通过命令面板选择自定义主题："选择颜色主题"
 - 详见 [自定义主题配置](docs/custom-themes.md)
@@ -97,17 +97,17 @@
 
 | 设置项                                  | 类型      | 默认值         | 说明                                                   |
 | ------------------------------------ | ------- | ----------- | ---------------------------------------------------- |
-| `markdownWysiwyg.autoSave`           | boolean | `true`      | 编辑后自动写盘                                              |
-| `markdownWysiwyg.autoSaveDelay`      | number  | `1000`      | 自动保存防抖延迟（毫秒）                                         |
-| `markdownWysiwyg.defaultMode`        | string  | `"preview"` | 打开 `.md` 的默认模式：`preview`（WYSIWYG）或 `markdown`（文本编辑器） |
-| `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | 代码块最大显示高度（像素）                                        |
-| `markdownWysiwyg.editorMaxWidth`     | number  | `900`       | 编辑器内容最大宽度（像素）                                        |
-| `markdownWysiwyg.fontFamily`         | string  | `""`        | 编辑器字体，留空继承 VSCode 编辑器字体，示例：`Georgia, serif`          |
-| `markdownWysiwyg.imageLocalPath`     | string  | `""`        | 本地图片存储路径（相对于 workspace 根目录）                          |
-| `markdownWysiwyg.confirmExternalLinks` | boolean | `true`    | 在浏览器中打开文档中的外部链接前先弹出确认                            |
-| `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | 颜色主题：`auto` 跟随 VSCode，或设置为特定主题 ID                    |
-| `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | 表格单元格文本换行：`normal`、`aggressive` 或 `none`                   |
-| `markdownWysiwyg.customThemes`       | array   | `[]`        | 自定义颜色主题数组。详见 [自定义主题配置](docs/custom-themes.md)          |
+| `markdownWriter.autoSave`           | boolean | `true`      | 编辑后自动写盘                                              |
+| `markdownWriter.autoSaveDelay`      | number  | `1000`      | 自动保存防抖延迟（毫秒）                                         |
+| `markdownWriter.defaultMode`        | string  | `"preview"` | 打开 `.md` 的默认模式：`preview`（WYSIWYG）或 `markdown`（文本编辑器） |
+| `markdownWriter.codeBlockMaxHeight` | number  | `600`       | 代码块最大显示高度（像素）                                        |
+| `markdownWriter.editorMaxWidth`     | number  | `900`       | 编辑器内容最大宽度（像素）                                        |
+| `markdownWriter.fontFamily`         | string  | `""`        | 编辑器字体，留空继承 VSCode 编辑器字体，示例：`Georgia, serif`          |
+| `markdownWriter.imageLocalPath`     | string  | `""`        | 本地图片存储路径（相对于 workspace 根目录）                          |
+| `markdownWriter.confirmExternalLinks` | boolean | `true`    | 在浏览器中打开文档中的外部链接前先弹出确认；图片始终保存在本地，绝不上传到任何服务器 |
+| `markdownWriter.colorTheme`         | string  | `"auto"`    | 颜色主题：`auto` 跟随 VSCode，或设置为特定主题 ID                    |
+| `markdownWriter.tableWrap`          | string  | `"normal"`  | 表格单元格文本换行：`normal`、`aggressive` 或 `none`                   |
+| `markdownWriter.customThemes`       | array   | `[]`        | 自定义颜色主题数组。详见 [自定义主题配置](docs/custom-themes.md)          |
 
 ***
 

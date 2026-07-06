@@ -1,354 +1,1152 @@
 {
-    "name": "md-wysiwyg-editor",
-    "displayName": "WYSIWYG Markdown Editor",
-    "description": "WYSIWYG Markdown editor with live table editing",
-    "version": "0.1.6",
-    "publisher": "harlanlewis",
-    "engines": {
-        "vscode": "^1.80.0"
-    },
-    "packageManager": "pnpm@10.6.1",
-    "extensionKind": [
-        "ui"
-    ],
-    "icon": "images/icon.jpg",
-    "categories": [
-        "Formatters",
-        "Other"
-    ],
-    "keywords": [
-        "markdown",
-        "wysiwyg",
-        "editor",
-        "table",
-        "milkdown"
-    ],
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/harlanlewis/md-wysiwyg-editor.git"
-    },
-    "bugs": {
-        "url": "https://github.com/harlanlewis/md-wysiwyg-editor/issues"
-    },
-    "homepage": "https://github.com/harlanlewis/md-wysiwyg-editor#readme",
-    "activationEvents": [],
-    "main": "./dist/extension.js",
-    "l10n": "./l10n",
-    "contributes": {
-        "customEditors": [
-            {
-                "viewType": "markdownWysiwyg.editor",
-                "displayName": "WYSIWYG Markdown Editor",
-                "selector": [
-                    {
-                        "filenamePattern": "*.md"
-                    },
-                    {
-                        "filenamePattern": "*.markdown"
-                    }
-                ],
-                "priority": "option"
-            }
+  "name": "markdown-writer",
+  "displayName": "Markdown Writer",
+  "description": "Markdown Writer: a WYSIWYG Markdown editor with live table editing",
+  "version": "0.2.32",
+  "publisher": "harlanlewis",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "packageManager": "pnpm@10.6.1",
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
+  "icon": "images/icon.jpg",
+  "categories": [
+    "Formatters",
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "wysiwyg",
+    "editor",
+    "table",
+    "milkdown"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/harlanlewis/markdown-writer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/harlanlewis/markdown-writer/issues"
+  },
+  "homepage": "https://github.com/harlanlewis/markdown-writer#readme",
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "l10n": "./l10n",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "markdownWriter.editor",
+        "displayName": "Markdown Writer",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          }
         ],
-        "commands": [
-            {
-                "command": "markdownWysiwyg.switchToTextEditor",
-                "title": "%command.switchToTextEditor.title%",
-                "icon": "$(eye-closed)"
-            },
-            {
-                "command": "markdownWysiwyg.switchToPreview",
-                "title": "%command.switchToPreview.title%",
-                "icon": "$(eye)"
-            },
-            {
-                "command": "markdownWysiwyg.debugModeEnable",
-                "title": "%command.debugModeEnable.title%"
-            },
-            {
-                "command": "markdownWysiwyg.debugModeDisable",
-                "title": "%command.debugModeDisable.title%"
-            },
-            {
-                "command": "markdownWysiwyg.selectTheme",
-                "title": "%command.selectTheme.title%"
-            },
-            {
-                "command": "markdownWysiwyg.showCurrentTheme",
-                "title": "%command.showCurrentTheme.title%"
-            }
-        ],
-        "keybindings": [
-            {
-                "command": "markdownWysiwyg.switchToTextEditor",
-                "key": "ctrl+shift+m",
-                "mac": "cmd+shift+m",
-                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-            },
-            {
-                "command": "markdownWysiwyg.switchToPreview",
-                "key": "ctrl+shift+m",
-                "mac": "cmd+shift+m",
-                "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWysiwyg.editor'"
-            }
-        ],
-        "menus": {
-            "editor/title": [
-                {
-                    "command": "markdownWysiwyg.switchToTextEditor",
-                    "group": "navigation",
-                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-                },
-                {
-                    "command": "markdownWysiwyg.switchToPreview",
-                    "group": "navigation",
-                    "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWysiwyg.editor'"
-                },
-                {
-                    "command": "markdownWysiwyg.debugModeEnable",
-                    "group": "9_debug",
-                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && !markdownWysiwyg.debugModeActive"
-                },
-                {
-                    "command": "markdownWysiwyg.debugModeDisable",
-                    "group": "9_debug",
-                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && markdownWysiwyg.debugModeActive"
-                }
-            ]
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      {
+        "command": "markdownWriter.switchToTextEditor",
+        "title": "%command.switchToTextEditor.title%",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "markdownWriter.switchToPreview",
+        "title": "%command.switchToPreview.title%",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "markdownWriter.debugModeEnable",
+        "title": "%command.debugModeEnable.title%"
+      },
+      {
+        "command": "markdownWriter.debugModeDisable",
+        "title": "%command.debugModeDisable.title%"
+      },
+      {
+        "command": "markdownWriter.selectTheme",
+        "title": "%command.selectTheme.title%"
+      },
+      {
+        "command": "markdownWriter.showCurrentTheme",
+        "title": "%command.showCurrentTheme.title%"
+      },
+      {
+        "command": "markdownWriter.toggleStyleCheck",
+        "title": "%command.toggleStyleCheck.title%"
+      },
+      {
+        "command": "markdownWriter.gotoSymbol",
+        "title": "%command.gotoSymbol.title%"
+      },
+      {
+        "command": "markdownWriter.editor.toggleBold",
+        "title": "%command.editor.toggleBold.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.toggleItalic",
+        "title": "%command.editor.toggleItalic.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.toggleStrikethrough",
+        "title": "%command.editor.toggleStrikethrough.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.toggleInlineCode",
+        "title": "%command.editor.toggleInlineCode.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.clearFormatting",
+        "title": "%command.editor.clearFormatting.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.setParagraph",
+        "title": "%command.editor.setParagraph.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.setHeading1",
+        "title": "%command.editor.setHeading1.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.setHeading2",
+        "title": "%command.editor.setHeading2.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.setHeading3",
+        "title": "%command.editor.setHeading3.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.setHeading4",
+        "title": "%command.editor.setHeading4.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.setHeading5",
+        "title": "%command.editor.setHeading5.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.setHeading6",
+        "title": "%command.editor.setHeading6.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.toggleBulletList",
+        "title": "%command.editor.toggleBulletList.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.toggleOrderedList",
+        "title": "%command.editor.toggleOrderedList.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.toggleTaskList",
+        "title": "%command.editor.toggleTaskList.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.toggleBlockquote",
+        "title": "%command.editor.toggleBlockquote.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.insertCodeBlock",
+        "title": "%command.editor.insertCodeBlock.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.insertHorizontalRule",
+        "title": "%command.editor.insertHorizontalRule.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.insertTable",
+        "title": "%command.editor.insertTable.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.insertLink",
+        "title": "%command.editor.insertLink.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.insertImage",
+        "title": "%command.editor.insertImage.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.insertMath",
+        "title": "%command.editor.insertMath.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.insertFootnote",
+        "title": "%command.editor.insertFootnote.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.openFind",
+        "title": "%command.editor.openFind.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.openFindReplace",
+        "title": "%command.editor.openFindReplace.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.toggleToc",
+        "title": "%command.editor.toggleToc.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.editFrontmatter",
+        "title": "%command.editor.editFrontmatter.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.tableInsertRowAbove",
+        "title": "%command.editor.tableInsertRowAbove.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.tableInsertRowBelow",
+        "title": "%command.editor.tableInsertRowBelow.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.tableInsertColumnLeft",
+        "title": "%command.editor.tableInsertColumnLeft.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.tableInsertColumnRight",
+        "title": "%command.editor.tableInsertColumnRight.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.tableDeleteRow",
+        "title": "%command.editor.tableDeleteRow.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.tableDeleteColumn",
+        "title": "%command.editor.tableDeleteColumn.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.tableDeleteTable",
+        "title": "%command.editor.tableDeleteTable.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.copyAsHtml",
+        "title": "%command.editor.copyAsHtml.title%",
+        "category": "Markdown Writer"
+      },
+      {
+        "command": "markdownWriter.editor.copyAsMarkdown",
+        "title": "%command.editor.copyAsMarkdown.title%",
+        "category": "Markdown Writer"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "markdownWriter.switchToTextEditor",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.toggleStyleCheck",
+        "key": "ctrl+alt+shift+d",
+        "mac": "cmd+alt+shift+d",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.switchToPreview",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWriter.editor'"
+      },
+      {
+        "command": "markdownWriter.gotoSymbol",
+        "key": "ctrl+shift+o",
+        "mac": "cmd+shift+o",
+        "when": "activeCustomEditorId == 'markdownWriter.editor'"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "markdownWriter.switchToTextEditor",
+          "group": "navigation",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
         },
-        "configuration": {
-            "title": "Markdown WYSIWYG Editor",
-            "properties": {
-                "markdownWysiwyg.autoSave": {
-                    "order": 2,
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.autoSave.description%"
-                },
-                "markdownWysiwyg.autoSaveDelay": {
-                    "order": 3,
-                    "type": "number",
-                    "default": 1000,
-                    "minimum": 100,
-                    "maximum": 10000,
-                    "description": "%config.autoSaveDelay.description%"
-                },
-                "markdownWysiwyg.codeBlockMaxHeight": {
-                    "order": 8,
-                    "type": "number",
-                    "default": 600,
-                    "minimum": 100,
-                    "description": "%config.codeBlockMaxHeight.description%"
-                },
-                "markdownWysiwyg.codeBlockAutoConvert": {
-                    "order": 7,
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.codeBlockAutoConvert.description%"
-                },
-                "markdownWysiwyg.codeBlockWordWrap": {
-                    "order": 9,
-                    "type": "string",
-                    "enum": [
-                        "inherit",
-                        "on",
-                        "off"
-                    ],
-                    "enumDescriptions": [
-                        "%config.codeBlockWordWrap.inherit%",
-                        "%config.codeBlockWordWrap.on%",
-                        "%config.codeBlockWordWrap.off%"
-                    ],
-                    "default": "inherit",
-                    "description": "%config.codeBlockWordWrap.description%"
-                },
-                "markdownWysiwyg.tableWrap": {
-                    "order": 10,
-                    "type": "string",
-                    "enum": [
-                        "none",
-                        "normal",
-                        "aggressive"
-                    ],
-                    "default": "normal",
-                    "description": "%config.tableWrap.description%",
-                    "enumDescriptions": [
-                        "%config.tableWrap.none%",
-                        "%config.tableWrap.normal%",
-                        "%config.tableWrap.aggressive%"
-                    ]
-                },
-                "markdownWysiwyg.defaultMode": {
-                    "order": 1,
-                    "type": "string",
-                    "enum": [
-                        "preview",
-                        "markdown"
-                    ],
-                    "enumDescriptions": [
-                        "%config.defaultMode.preview%",
-                        "%config.defaultMode.markdown%"
-                    ],
-                    "default": "preview",
-                    "description": "%config.defaultMode.description%"
-                },
-                "markdownWysiwyg.editorMaxWidth": {
-                    "order": 4,
-                    "type": [
-                        "number",
-                        "string"
-                    ],
-                    "default": "auto",
-                    "minimum": 400,
-                    "description": "%config.editorMaxWidth.description%"
-                },
-                "markdownWysiwyg.tocContentGap": {
-                    "order": 5,
-                    "type": "number",
-                    "default": 100,
-                    "minimum": 16,
-                    "maximum": 240,
-                    "description": "%config.tocContentGap.description%"
-                },
-                "markdownWysiwyg.tocPosition": {
-                    "order": 5,
-                    "type": "string",
-                    "enum": [
-                        "left",
-                        "right"
-                    ],
-                    "default": "left",
-                    "description": "%config.tocPosition.description%",
-                    "enumDescriptions": [
-                        "%config.tocPosition.left%",
-                        "%config.tocPosition.right%"
-                    ]
-                },
-                "markdownWysiwyg.customCss": {
-                    "order": 12,
-                    "type": "array",
-                    "default": [],
-                    "items": {
-                        "type": "string"
-                    },
-                    "description": "%config.customCss.description%"
-                },
-                "markdownWysiwyg.customJs": {
-                    "order": 13,
-                    "type": "array",
-                    "default": [],
-                    "items": {
-                        "type": "string"
-                    },
-                    "description": "%config.customJs.description%"
-                },
-                "markdownWysiwyg.fontFamily": {
-                    "order": 6,
-                    "type": "string",
-                    "default": "",
-                    "description": "%config.fontFamily.description%"
-                },
-                "markdownWysiwyg.tocAutoHideThreshold": {
-                    "order": 11,
-                    "type": "number",
-                    "default": 3,
-                    "minimum": 0,
-                    "maximum": 20,
-                    "description": "%config.tocAutoHideThreshold.description%"
-                },
-                "markdownWysiwyg.debugMode": {
-                    "order": 90,
-                    "type": "boolean",
-                    "default": false,
-                    "description": "%config.debugMode.description%"
-                },
-                "markdownWysiwyg.imageLocalPath": {
-                    "order": 101,
-                    "type": "string",
-                    "default": "",
-                    "description": "%config.imageLocalPath.description%"
-                },
-                "markdownWysiwyg.confirmExternalLinks": {
-                    "order": 106,
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.confirmExternalLinks.description%"
-                },
-                "markdownWysiwyg.imageSelectionColor": {
-                    "order": 14,
-                    "type": "string",
-                    "default": "rgba(52, 211, 153, 0.6)",
-                    "description": "%config.imageSelectionColor.description%"
-                },
-                "markdownWysiwyg.colorTheme": {
-                    "order": 15,
-                    "type": "string",
-                    "default": "auto",
-                    "description": "%config.colorTheme.description%"
-                },
-                "markdownWysiwyg.customThemes": {
-                    "order": 16,
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "string",
-                                "description": "Theme display name"
-                            },
-                            "colors": {
-                                "type": "object",
-                                "description": "Theme color definitions (VS Code color IDs as keys)",
-                                "additionalProperties": {
-                                    "type": "string"
-                                }
-                            }
-                        },
-                        "required": [
-                            "name",
-                            "colors"
-                        ]
-                    },
-                    "default": [],
-                    "description": "%config.customThemes.description%"
-                }
-            }
+        {
+          "command": "markdownWriter.switchToPreview",
+          "group": "navigation",
+          "when": "resourceExtname == '.md' && activeCustomEditorId != 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.debugModeEnable",
+          "group": "9_debug",
+          "when": "activeCustomEditorId == 'markdownWriter.editor' && !markdownWriter.debugModeActive"
+        },
+        {
+          "command": "markdownWriter.debugModeDisable",
+          "group": "9_debug",
+          "when": "activeCustomEditorId == 'markdownWriter.editor' && markdownWriter.debugModeActive"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "markdownWriter.gotoSymbol",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleBold",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleItalic",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleStrikethrough",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleInlineCode",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.clearFormatting",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.setParagraph",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.setHeading1",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.setHeading2",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.setHeading3",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.setHeading4",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.setHeading5",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.setHeading6",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleBulletList",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleOrderedList",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleTaskList",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleBlockquote",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.insertCodeBlock",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.insertHorizontalRule",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.insertTable",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.insertLink",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.insertImage",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.insertMath",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.insertFootnote",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.openFind",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.openFindReplace",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.toggleToc",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.editFrontmatter",
+          "when": "activeCustomEditorId == 'markdownWriter.editor'"
+        },
+        {
+          "command": "markdownWriter.editor.tableInsertRowAbove",
+          "when": "false"
+        },
+        {
+          "command": "markdownWriter.editor.tableInsertRowBelow",
+          "when": "false"
+        },
+        {
+          "command": "markdownWriter.editor.tableInsertColumnLeft",
+          "when": "false"
+        },
+        {
+          "command": "markdownWriter.editor.tableInsertColumnRight",
+          "when": "false"
+        },
+        {
+          "command": "markdownWriter.editor.tableDeleteRow",
+          "when": "false"
+        },
+        {
+          "command": "markdownWriter.editor.tableDeleteColumn",
+          "when": "false"
+        },
+        {
+          "command": "markdownWriter.editor.tableDeleteTable",
+          "when": "false"
+        },
+        {
+          "command": "markdownWriter.editor.copyAsHtml",
+          "when": "false"
+        },
+        {
+          "command": "markdownWriter.editor.copyAsMarkdown",
+          "when": "false"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "markdownWriter.editor.tableInsertRowAbove",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'table'",
+          "group": "1_table@1"
+        },
+        {
+          "command": "markdownWriter.editor.tableInsertRowBelow",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'table'",
+          "group": "1_table@2"
+        },
+        {
+          "command": "markdownWriter.editor.tableInsertColumnLeft",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'table'",
+          "group": "1_table@3"
+        },
+        {
+          "command": "markdownWriter.editor.tableInsertColumnRight",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'table'",
+          "group": "1_table@4"
+        },
+        {
+          "command": "markdownWriter.editor.tableDeleteRow",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'table'",
+          "group": "1_table@5"
+        },
+        {
+          "command": "markdownWriter.editor.tableDeleteColumn",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'table'",
+          "group": "1_table@6"
+        },
+        {
+          "command": "markdownWriter.editor.tableDeleteTable",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'table'",
+          "group": "1_table@7"
+        },
+        {
+          "command": "markdownWriter.editor.insertLink",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'link'",
+          "group": "2_link@1"
+        },
+        {
+          "command": "markdownWriter.editor.copyAsHtml",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'editor'",
+          "group": "3_copy@1"
+        },
+        {
+          "command": "markdownWriter.editor.copyAsMarkdown",
+          "when": "webviewId == 'markdownWriter.editor' && webviewSection == 'editor'",
+          "group": "3_copy@2"
+        }
+      ]
     },
-    "scripts": {
-        "vscode:prepublish": "node esbuild.mjs --production",
-        "build": "node esbuild.mjs",
-        "watch": "node esbuild.mjs --watch",
-        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/md-wysiwyg-editor/blob/dev --baseImagesUrl https://github.com/harlanlewis/md-wysiwyg-editor/raw/dev",
-        "test": "vitest run",
-        "test:watch": "vitest",
-        "test:coverage": "vitest run --coverage"
-    },
-    "devDependencies": {
-        "@types/dompurify": "^3.2.0",
-        "@types/jsdom": "^21.1.0",
-        "@types/node": "^18.0.0",
-        "@types/vscode": "^1.80.0",
-        "@vitest/coverage-v8": "^2.1.0",
-        "@vscode/vsce": "^2.32.0",
-        "esbuild": "^0.24.0",
-        "jsdom": "24.1.3",
-        "typescript": "^5.7.0",
-        "vitest": "^2.1.0",
-        "vscode-uri": "^3.1.0"
-    },
-    "dependencies": {
-        "@milkdown/core": "^7.5.0",
-        "@milkdown/plugin-listener": "^7.5.0",
-        "@milkdown/plugin-prism": "^7.19.0",
-        "@milkdown/preset-commonmark": "^7.5.0",
-        "@milkdown/preset-gfm": "^7.5.0",
-        "@milkdown/prose": "^7.19.0",
-        "@milkdown/transformer": "^7.5.0",
-        "@milkdown/utils": "^7.19.0",
-        "dompurify": "^3.4.11",
-        "mermaid": "^11.0.0",
-        "prosemirror-tables": "^1.8.5",
-        "refractor": "^5.0.0"
+    "configuration": {
+      "title": "Markdown Writer",
+      "properties": {
+        "markdownWriter.autoSave": {
+          "order": 2,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.autoSave.description%",
+          "deprecationMessage": "Deprecated: the editor is now backed by a native text document. Use the built-in `files.autoSave` setting instead — it governs saving for this editor too."
+        },
+        "markdownWriter.styleCheck.enabled": {
+          "order": 110,
+          "type": "boolean",
+          "default": false,
+          "description": "%config.styleCheck.enabled.description%"
+        },
+        "markdownWriter.styleCheck.fillers": {
+          "order": 111,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.styleCheck.fillers.description%"
+        },
+        "markdownWriter.styleCheck.redundancies": {
+          "order": 112,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.styleCheck.redundancies.description%"
+        },
+        "markdownWriter.styleCheck.cliches": {
+          "order": 113,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.styleCheck.cliches.description%"
+        },
+        "markdownWriter.styleCheck.wordiness": {
+          "order": 117,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.styleCheck.wordiness.description%"
+        },
+        "markdownWriter.styleCheck.aiVocabulary": {
+          "order": 118,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.styleCheck.aiVocabulary.description%"
+        },
+        "markdownWriter.styleCheck.aiArtifacts": {
+          "order": 119,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.styleCheck.aiArtifacts.description%"
+        },
+        "markdownWriter.styleCheck.passive": {
+          "order": 120,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.styleCheck.passive.description%"
+        },
+        "markdownWriter.styleCheck.negativeParallelism": {
+          "order": 121,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.styleCheck.negativeParallelism.description%"
+        },
+        "markdownWriter.styleCheck.longSentences": {
+          "order": 122,
+          "type": "boolean",
+          "default": false,
+          "description": "%config.styleCheck.longSentences.description%"
+        },
+        "markdownWriter.styleCheck.ruleOfThree": {
+          "order": 123,
+          "type": "boolean",
+          "default": false,
+          "description": "%config.styleCheck.ruleOfThree.description%"
+        },
+        "markdownWriter.styleCheck.emDash": {
+          "order": 124,
+          "type": "boolean",
+          "default": false,
+          "description": "%config.styleCheck.emDash.description%"
+        },
+        "markdownWriter.styleCheck.nonAsciiPunct": {
+          "order": 125,
+          "type": "boolean",
+          "default": false,
+          "description": "%config.styleCheck.nonAsciiPunct.description%"
+        },
+        "markdownWriter.spellCheck.enabled": {
+          "order": 114,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.spellCheck.enabled.description%"
+        },
+        "markdownWriter.spellCheck.grammar": {
+          "order": 114,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.spellCheck.grammar.description%"
+        },
+        "markdownWriter.spellCheck.userWords": {
+          "order": 115,
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "%config.spellCheck.userWords.description%"
+        },
+        "markdownWriter.styleCheck.exceptions": {
+          "order": 116,
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "%config.styleCheck.exceptions.description%"
+        },
+        "markdownWriter.autoSaveDelay": {
+          "order": 3,
+          "type": "number",
+          "default": 1000,
+          "minimum": 100,
+          "maximum": 10000,
+          "description": "%config.autoSaveDelay.description%",
+          "deprecationMessage": "Deprecated: the editor is now backed by a native text document. Use the built-in `files.autoSaveDelay` setting instead."
+        },
+        "markdownWriter.codeBlockMaxHeight": {
+          "order": 8,
+          "type": "number",
+          "default": 600,
+          "minimum": 100,
+          "description": "%config.codeBlockMaxHeight.description%"
+        },
+        "markdownWriter.codeBlockAutoConvert": {
+          "order": 7,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.codeBlockAutoConvert.description%"
+        },
+        "markdownWriter.codeBlockWordWrap": {
+          "order": 9,
+          "type": "string",
+          "enum": [
+            "inherit",
+            "on",
+            "off"
+          ],
+          "enumDescriptions": [
+            "%config.codeBlockWordWrap.inherit%",
+            "%config.codeBlockWordWrap.on%",
+            "%config.codeBlockWordWrap.off%"
+          ],
+          "default": "inherit",
+          "description": "%config.codeBlockWordWrap.description%"
+        },
+        "markdownWriter.tableWrap": {
+          "order": 10,
+          "type": "string",
+          "enum": [
+            "none",
+            "normal",
+            "aggressive"
+          ],
+          "default": "normal",
+          "description": "%config.tableWrap.description%",
+          "enumDescriptions": [
+            "%config.tableWrap.none%",
+            "%config.tableWrap.normal%",
+            "%config.tableWrap.aggressive%"
+          ]
+        },
+        "markdownWriter.defaultMode": {
+          "order": 1,
+          "type": "string",
+          "enum": [
+            "preview",
+            "markdown"
+          ],
+          "enumDescriptions": [
+            "%config.defaultMode.preview%",
+            "%config.defaultMode.markdown%"
+          ],
+          "default": "preview",
+          "description": "%config.defaultMode.description%"
+        },
+        "markdownWriter.editorMaxWidth": {
+          "order": 4,
+          "type": [
+            "number",
+            "string"
+          ],
+          "default": "auto",
+          "minimum": 400,
+          "description": "%config.editorMaxWidth.description%"
+        },
+        "markdownWriter.tocContentGap": {
+          "order": 5,
+          "type": "number",
+          "default": 100,
+          "minimum": 16,
+          "maximum": 240,
+          "description": "%config.tocContentGap.description%"
+        },
+        "markdownWriter.tocPosition": {
+          "order": 5,
+          "type": "string",
+          "enum": [
+            "left",
+            "right"
+          ],
+          "default": "left",
+          "description": "%config.tocPosition.description%",
+          "enumDescriptions": [
+            "%config.tocPosition.left%",
+            "%config.tocPosition.right%"
+          ]
+        },
+        "markdownWriter.customCss": {
+          "order": 12,
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "%config.customCss.description%"
+        },
+        "markdownWriter.customJs": {
+          "order": 13,
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "%config.customJs.description%"
+        },
+        "markdownWriter.fontFamily": {
+          "order": 6,
+          "type": "string",
+          "default": "",
+          "description": "%config.fontFamily.description%"
+        },
+        "markdownWriter.fontPreset": {
+          "order": 7,
+          "type": "string",
+          "enum": [
+            "default",
+            "sans",
+            "serif",
+            "mono"
+          ],
+          "enumDescriptions": [
+            "%config.fontPreset.default%",
+            "%config.fontPreset.sans%",
+            "%config.fontPreset.serif%",
+            "%config.fontPreset.mono%"
+          ],
+          "default": "mono",
+          "description": "%config.fontPreset.description%"
+        },
+        "markdownWriter.toolbar.items.format": {
+          "order": 30,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "center",
+          "description": "Text level menu (paragraph, headings): pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.clearFormatting": {
+          "order": 31,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "center",
+          "description": "Clear formatting button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.fontPreset": {
+          "order": 32,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "center",
+          "description": "Font picker: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.bold": {
+          "order": 33,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Bold button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.italic": {
+          "order": 34,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Italic button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.strikethrough": {
+          "order": 35,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Strikethrough button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.inlineCode": {
+          "order": 36,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Inline code button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.link": {
+          "order": 37,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "center",
+          "description": "Insert/edit link button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.image": {
+          "order": 38,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "center",
+          "description": "Insert image button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.table": {
+          "order": 39,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "center",
+          "description": "Insert table button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.footnote": {
+          "order": 40,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Insert footnote button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.math": {
+          "order": 41,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Insert math button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.bulletList": {
+          "order": 42,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Bullet list button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.orderedList": {
+          "order": 43,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Ordered list button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.taskList": {
+          "order": 44,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Task list button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.blockquote": {
+          "order": 45,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Blockquote button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.codeBlock": {
+          "order": 46,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Code block button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.horizontalRule": {
+          "order": 47,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Horizontal rule button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.styleCheck": {
+          "order": 48,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "right",
+          "description": "Checks menu (spelling, grammar, style): pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.find": {
+          "order": 50,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "right",
+          "description": "Find button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.items.settings": {
+          "order": 51,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "center",
+            "right"
+          ],
+          "default": "right",
+          "description": "Settings button: pick a toolbar zone or hide it."
+        },
+        "markdownWriter.toolbar.order": {
+          "order": 52,
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `bulletList`, `orderedList`, `taskList`, `blockquote`, `codeBlock`, `horizontalRule`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
+        },
+        "markdownWriter.tocAutoHideThreshold": {
+          "order": 11,
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 20,
+          "description": "%config.tocAutoHideThreshold.description%"
+        },
+        "markdownWriter.debugMode": {
+          "order": 90,
+          "type": "boolean",
+          "default": false,
+          "description": "%config.debugMode.description%"
+        },
+        "markdownWriter.imageLocalPath": {
+          "order": 101,
+          "type": "string",
+          "default": "",
+          "description": "%config.imageLocalPath.description%"
+        },
+        "markdownWriter.confirmExternalLinks": {
+          "order": 106,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.confirmExternalLinks.description%"
+        },
+        "markdownWriter.imageSelectionColor": {
+          "order": 14,
+          "type": "string",
+          "default": "rgba(52, 211, 153, 0.6)",
+          "description": "%config.imageSelectionColor.description%"
+        },
+        "markdownWriter.colorTheme": {
+          "order": 15,
+          "type": "string",
+          "default": "auto",
+          "description": "%config.colorTheme.description%"
+        },
+        "markdownWriter.customThemes": {
+          "order": 16,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Theme display name"
+              },
+              "colors": {
+                "type": "object",
+                "description": "Theme color definitions (VS Code color IDs as keys)",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "name",
+              "colors"
+            ]
+          },
+          "default": [],
+          "description": "%config.customThemes.description%"
+        }
+      }
     }
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.mjs --production",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/markdown-writer/blob/dev --baseImagesUrl https://github.com/harlanlewis/markdown-writer/raw/dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.2.0",
+    "@types/jsdom": "^21.1.0",
+    "@types/katex": "^0.16.8",
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "@vscode/vsce": "^2.32.0",
+    "esbuild": "^0.24.0",
+    "jsdom": "24.1.3",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0",
+    "vscode-uri": "^3.1.0"
+  },
+  "dependencies": {
+    "@milkdown/core": "7.21.2",
+    "@milkdown/plugin-diff": "7.21.2",
+    "@milkdown/plugin-listener": "7.21.2",
+    "@milkdown/plugin-prism": "7.21.2",
+    "@milkdown/preset-commonmark": "7.21.2",
+    "@milkdown/preset-gfm": "7.21.2",
+    "@milkdown/prose": "7.21.2",
+    "@milkdown/transformer": "7.21.2",
+    "@milkdown/utils": "7.21.2",
+    "dompurify": "^3.4.11",
+    "harper.js": "^2.4.0",
+    "katex": "^0.16.44",
+    "mermaid": "^11.0.0",
+    "prosemirror-tables": "^1.8.5",
+    "refractor": "^5.0.0",
+    "remark-math": "6",
+    "unist-util-visit": "^5.1.0"
+  }
 }

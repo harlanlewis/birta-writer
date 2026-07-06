@@ -30,7 +30,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     toggle: () => void;
     refresh: () => void;
 } {
-    // Set by the markdownWysiwyg.tocPosition setting via a server-rendered body class
+    // Set by the markdownWriter.tocPosition setting via a server-rendered body class
     const tocRight = document.body.classList.contains("toc-right");
 
     const panel = document.createElement("div");

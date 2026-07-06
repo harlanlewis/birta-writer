@@ -26,22 +26,54 @@ interface CustomEventEntry {
     handlers: Set<EventHandler>;
 }
 
-/** 键盘快捷键配置 */
+/** Keyboard shortcut configuration */
 export interface ShortcutOptions {
-    /** 按键码，如 "KeyF"、"KeyM"、"KeyK" */
-    code: string;
-    /** 是否需要 Meta/Cmd 键 */
+    /**
+     * Physical key code, e.g. "KeyF", "KeyM", "KeyK". Layout-independent;
+     * use for Alt combos, where macOS remaps the produced character
+     * (Option+K types "˚"). Ignored when `key` is set.
+     */
+    code?: string;
+    /**
+     * Produced character (KeyboardEvent.key), compared case-insensitively,
+     * e.g. "f". Layout-aware — prefer this for letter shortcuts so
+     * non-QWERTY layouts (Dvorak, QWERTZ, ...) match what the user typed,
+     * the same way ProseMirror keymaps resolve letter bindings.
+     */
+    key?: string;
+    /** Require the Meta/Cmd key */
     meta?: boolean;
-    /** 是否需要 Ctrl 键 */
+    /** Require the Ctrl key */
     ctrl?: boolean;
-    /** 是否需要 Shift 键 */
+    /** Require the Shift key */
     shift?: boolean;
-    /** 是否需要 Alt/Option 键 */
+    /** Require the Alt/Option key */
     alt?: boolean;
-    /** 是否阻止默认行为（默认 true） */
+    /** Prevent the default action (default true) */
     preventDefault?: boolean;
-    /** 是否阻止事件冒泡（默认 false） */
+    /** Stop the event from propagating further (default false) */
     stopPropagation?: boolean;
+}
+
+/**
+ * Layout fallback mirroring prosemirror-keymap's keyCode path: when the
+ * produced character cannot name a "Mod-z"-style letter binding — a non-ASCII
+ * char from a non-Latin layout (Russian Ctrl+Z produces "я") or a named key
+ * like "Dead" — prosemirror-keymap additionally resolves the binding via
+ * `base[event.keyCode]` (w3c-keyname), where keyCodes 65-90 map to "a"-"z".
+ * Letter matchers must apply the same fallback or those layouts miss/leak.
+ *
+ * Returns the fallback letter, or null when `e.key` is a plain ASCII char
+ * (no fallback is attempted then, matching prosemirror-keymap: e.g. Dvorak
+ * Cmd+X produces "x" and must match as "x", not as its physical key).
+ */
+export function fallbackKeyFromKeyCode(e: KeyboardEvent): string | null {
+    const nonAsciiChar = e.key.length === 1 && e.key.charCodeAt(0) > 127;
+    const namedKey = e.key.length > 1;
+    if (!nonAsciiChar && !namedKey) { return null; }
+    return e.keyCode >= 65 && e.keyCode <= 90
+        ? String.fromCharCode(e.keyCode).toLowerCase()
+        : null;
 }
 
 // ── 事件管理器实现 ────────────────────────────────────────
@@ -140,10 +172,10 @@ export class EventManager {
      * );
      *
      * @example
-     * // Alt+M (without stopping propagation)
+     * // Alt combo (without stopping propagation)
      * eventManager.onShortcut(
-     *     { code: "KeyM", alt: true, stopPropagation: false },
-     *     () => doSomething()
+     *     { code: "KeyF", alt: true, stopPropagation: false },
+     *     () => openFindReplace()
      * );
      */
     onShortcut(
@@ -152,6 +184,7 @@ export class EventManager {
     ): () => void {
         const {
             code,
+            key,
             meta = false,
             ctrl = false,
             shift = false,
@@ -159,9 +192,29 @@ export class EventManager {
             preventDefault = true,
             stopPropagation = false,
         } = options;
+        const lowerKey = key?.toLowerCase();
 
-        return this.onWindow("keydown", (e) => {
-            if (e.code !== code) { return; }
+        // Bind on `document`, NOT `window`. The VS Code webview host installs
+        // its own bubble-phase keydown listener on `window` (before this
+        // bundle runs) and forwards every key it sees to the workbench so
+        // workbench keybindings keep working while a webview is focused.
+        // Because that listener is registered first on the same node, a
+        // window-level stopPropagation() of ours can never beat it. Listening
+        // one node lower means our stopPropagation() (and the claimed-key
+        // guard in keyboardShortcuts.ts, also on `document`) actually keeps
+        // handled shortcuts from leaking to the workbench.
+        return this.onDocument("keydown", (e) => {
+            if (lowerKey !== undefined) {
+                // Match the produced character, with the same keyCode fallback
+                // prosemirror-keymap applies for non-Latin layouts (Cmd+F on a
+                // Russian layout produces "а" but must still open find).
+                if (
+                    e.key.toLowerCase() !== lowerKey &&
+                    fallbackKeyFromKeyCode(e) !== lowerKey
+                ) { return; }
+            } else if (e.code !== code) {
+                return;
+            }
 
             // Check modifiers ("Mod" when both meta and ctrl are requested)
             if (meta && ctrl) {

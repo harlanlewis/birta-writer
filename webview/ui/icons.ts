@@ -14,6 +14,7 @@ export const IconBold = svg(`<path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><p
 export const IconItalic = svg(`<line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/>`);
 export const IconStrikethrough = svg(`<path d="M16 4H9a3 3 0 0 0-2.83 4"/><path d="M14 12a4 4 0 0 1 0 8H6"/><line x1="4" y1="12" x2="20" y2="12"/>`);
 export const IconCode = svg(`<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>`);
+export const IconMath = svg(`<path d="M4 5h11l-6.5 7L15 19H4"/><line x1="16" y1="9" x2="21" y2="9"/><line x1="18.5" y1="6.5" x2="18.5" y2="11.5"/>`);
 export const IconLink = svg(`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>`);
 export const IconUnlink = svg(`<path d="M18.84 12.25l1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"/><path d="M5.17 11.75l-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.72-1.71"/><line x1="8" y1="2" x2="8" y2="5"/><line x1="2" y1="8" x2="5" y2="8"/><line x1="16" y1="19" x2="16" y2="22"/><line x1="19" y1="16" x2="22" y2="16"/>`);
 
@@ -48,6 +49,8 @@ export const IconReplace    = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 1
 export const IconReplaceAll = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/><path d="M14 14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2"/>`);
 export const IconHeading = svg(`<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/>`);
 export const IconToc = svg(`<line x1="3" y1="5" x2="21" y2="5"/><line x1="7" y1="10" x2="21" y2="10"/><line x1="11" y1="15" x2="21" y2="15"/><line x1="7" y1="20" x2="17" y2="20"/>`);
+export const IconStyleCheck = svg(`<path d="m5 17 7-13 7 13"/><line x1="4" y1="13" x2="20" y2="13"/>`);
+export const IconSpellCheck = svg(`<path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/>`);
 export const IconExternalLink = svg(`<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>`);
 export const IconImage = svg(`<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>`);
 export const IconAlignLeft   = svg(`<line x1="21" y1="6" x2="3" y2="6"/><line x1="15" y1="12" x2="3" y2="12"/><line x1="17" y1="18" x2="3" y2="18"/>`);
@@ -67,3 +70,4 @@ export const IconResetZoom   = svg(`<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0
 export const IconAlertCircle = svg(`<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>`);
 export const IconHash        = svg(`<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>`);
 export const IconFileText    = svg(`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`);
+export const IconFootnote    = svg(`<path d="M6 4h5a4 4 0 0 1 0 8H8"/><path d="M8 4v10"/><path d="M14.5 15.5h4"/><path d="m16.5 15.5.9 3.2a.7.7 0 0 0 1.35 0l.9-3.2"/>`);

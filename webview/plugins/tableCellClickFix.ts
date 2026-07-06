@@ -4,7 +4,7 @@ import { CellSelection, TableMap } from "@milkdown/prose/tables";
 import { $prose } from "@milkdown/utils";
 import { isLogTableSelEnabled } from "./tableDebug";
 
-// 诊断日志辅助：从文档位置获取 1-indexed 行列号
+// Diagnostic-log helper: resolve a document position to a 1-indexed row/col.
 function getCellCoords(
     doc: any,
     pos: number,
@@ -30,9 +30,34 @@ function getCellCoords(
     return null;
 }
 
-// 单击表格单元格：将单格 CellSelection 转为 TextSelection，光标定位到点击位置
-// 用 appendTransaction 确保修正在首次渲染前同步完成（无绿色闪烁）
-// 格内文字拖拽：从点击位到当前鼠标位构造 TextSelection，恢复正常选区
+/**
+ * Decides whether a transaction should be vetoed during the brief window after
+ * a cross-cell drag, where an incidental caret move would clobber the freshly
+ * made CellSelection.
+ *
+ * A document-changing transaction is NEVER vetoed: silently dropping one would
+ * diverge the editor from the file (e.g. an inbound external-sync diff, or VS
+ * Code undo/redo, landing inside the post-drag window). Only a pure selection
+ * replacement — CellSelection being overwritten by a non-cell selection while
+ * the veto is armed — is blocked.
+ */
+export function shouldVetoTransaction(
+    hasPendingCellVeto: boolean,
+    stateSelIsCell: boolean,
+    trSelIsCell: boolean,
+    trDocChanged: boolean,
+): boolean {
+    if (!hasPendingCellVeto || trDocChanged) {
+        return false;
+    }
+    return stateSelIsCell && !trSelIsCell;
+}
+
+// Single click on a table cell: convert a single-cell CellSelection into a
+// TextSelection with the caret at the click position. appendTransaction is used
+// so the correction lands synchronously before the first render (no green
+// flash). In-cell text drag: build a TextSelection from the click position to
+// the current mouse position, restoring a normal text selection.
 export const cellClickFixPlugin = $prose(() => {
     let pendingClickPos: number | null = null;
     let clickIsPlain = true;
@@ -111,7 +136,7 @@ export const cellClickFixPlugin = $prose(() => {
                                     cellCount++;
                                 });
                                 console.log(
-                                    `[TableSel] 拖拽结束 ${headCoords ? `${headCoords.row}行${headCoords.col}列` : "?行?列"} 共选中${cellCount}个表格内容`,
+                                    `[TableSel] drag ended at ${headCoords ? `row ${headCoords.row}, col ${headCoords.col}` : "row ?, col ?"} — ${cellCount} cells selected`,
                                 );
                             }
                             const savedCellSel = lastGoodCellSelection;
@@ -133,21 +158,18 @@ export const cellClickFixPlugin = $prose(() => {
             },
         },
         filterTransaction(tr, state) {
-            if (!lastGoodCellSelection) {
-                return true;
+            const veto = shouldVetoTransaction(
+                !!lastGoodCellSelection,
+                state.selection instanceof CellSelection,
+                tr.selection instanceof CellSelection,
+                tr.docChanged,
+            );
+            if (veto && isLogTableSelEnabled()) {
+                console.log(
+                    "[TableSel] filterTransaction: blocked overwrite of CellSelection",
+                );
             }
-            if (
-                state.selection instanceof CellSelection &&
-                !(tr.selection instanceof CellSelection)
-            ) {
-                if (isLogTableSelEnabled()) {
-                    console.log(
-                        "[TableSel] filterTransaction: 已阻止覆盖CellSelection",
-                    );
-                }
-                return false;
-            }
-            return true;
+            return !veto;
         },
         appendTransaction(_trs, _oldState, newState) {
             if (pendingClickPos === null) return null;
@@ -166,9 +188,9 @@ export const cellClickFixPlugin = $prose(() => {
                         pendingClickPos !== null
                             ? getCellCoords(newState.doc, pendingClickPos)
                             : null;
-                    console.log(`[TableSel] 第${multiSelectCount}次多选表格`);
+                    console.log(`[TableSel] table multi-select #${multiSelectCount}`);
                     console.log(
-                        `[TableSel] 开始拖拽 ${startCoords ? `${startCoords.row}行${startCoords.col}列` : "?行?列"}`,
+                        `[TableSel] drag started at ${startCoords ? `row ${startCoords.row}, col ${startCoords.col}` : "row ?, col ?"}`,
                     );
                 }
                 wasCrossCell = true;
@@ -219,7 +241,7 @@ export const cellClickFixPlugin = $prose(() => {
                                 return null;
                             }
                         } catch {
-                            /* ignore, 继续转换 */
+                            /* ignore, continue with the conversion */
                         }
                         return newState.tr.setSelection(
                             TextSelection.create(newState.doc, anchorP, headP),

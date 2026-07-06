@@ -14,12 +14,22 @@ declare function acquireVsCodeApi(): {
 // acquireVsCodeApi 只能调用一次
 const vscode = acquireVsCodeApi();
 
+// The syncVersion of the last init/externalUpdate the webview applied. Echoed
+// back to the extension on every content update so it can drop edits the
+// webview serialized against a document state it has since replaced.
+let baseSyncVersion = 0;
+
+/** Records the version of the latest authoritative content the webview applied. */
+export function setBaseSyncVersion(version: number): void {
+    baseSyncVersion = version;
+}
+
 export function notifyReady(): void {
     vscode.postMessage({ type: "ready" });
 }
 
 export function notifyUpdate(markdown: string): void {
-    vscode.postMessage({ type: "update", content: markdown });
+    vscode.postMessage({ type: "update", content: markdown, baseSyncVersion });
 }
 
 export function notifyOpenUrl(url: string): void {
@@ -55,6 +65,10 @@ export function notifyGetPathSuggestions(id: string, query: string): void {
     vscode.postMessage({ type: "getPathSuggestions", id, query });
 }
 
+export function notifyGetLinkTargetSuggestions(id: string, query: string): void {
+    vscode.postMessage({ type: "getLinkTargetSuggestions", id, query });
+}
+
 export function notifyResolveImagePath(id: string, relPath: string): void {
     vscode.postMessage({ type: "resolveImagePath", id, relPath });
 }
@@ -68,11 +82,46 @@ export function notifyRenameImage(
 }
 
 export function notifyFrontmatterUpdate(frontmatter: string): void {
-    vscode.postMessage({ type: "frontmatterUpdate", frontmatter });
+    vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
+}
+
+export function notifyRequestFmSuggestions(key: string): void {
+    vscode.postMessage({ type: "requestFmSuggestions", key });
 }
 
 export function notifyTocWidth(width: number): void {
     vscode.postMessage({ type: "tocWidth", width });
+}
+
+export function notifySetProofreadOption(
+    key: import("../shared/messages").ProofreadOptionKey,
+    value: boolean,
+): void {
+    vscode.postMessage({ type: "setProofreadOption", key, value });
+}
+
+export function notifySpellAddWord(word: string): void {
+    vscode.postMessage({ type: "spellAddWord", word });
+}
+
+export function notifySetFontPreset(preset: import("../shared/messages").FontPreset): void {
+    vscode.postMessage({ type: "setFontPreset", preset });
+}
+
+export function notifySetToolbarLayout(
+    item: { id: string; placement: import("../shared/messages").ToolbarPlacement } | undefined,
+    order: string[],
+): void {
+    vscode.postMessage({ type: "setToolbarLayout", ...(item ? { item } : {}), order });
+}
+
+export function notifyLintBlocks(id: number, blocks: import("../shared/messages").LintBlock[]): void {
+    vscode.postMessage({ type: "lintBlocks", id, blocks });
+}
+
+/** Asks the extension to write serialized selection text to the system clipboard. */
+export function notifyClipboardWrite(format: "html" | "markdown", data: string): void {
+    vscode.postMessage({ type: "clipboardWrite", format, data });
 }
 
 export function onMessage(handler: (msg: IncomingMessage) => void): void {

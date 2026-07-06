@@ -1,13 +1,20 @@
 import * as path from "path";
 import * as os from "os";
 import * as vscode from "vscode";
-import { MarkdownDocument } from "./MarkdownDocument";
 import { getNonce } from "./utils/getNonce";
+import { computeReplaceRange } from "./utils/textEdit";
 import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
-import { getAllThemes, getThemeColors, getAutoThemeColors, getCustomThemes } from "./themeManager";
-import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode } from "../shared/messages";
+import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
+import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
+import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
+import { lintBlocks } from "./utils/harperService";
+import { resolveThemeColors } from "./themeManager";
+import { selectWebviewTranslations } from "./i18n/webviewTranslations";
+import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
+import type { EditorCommandId } from "../shared/editorCommands";
+import { resolveFontFamily, DEFAULT_FONT_PRESET } from "../shared/fontPresets";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -26,30 +33,54 @@ export function isSafeExternalUrl(rawUrl: string): boolean {
 }
 
 export class MarkdownEditorProvider
-    implements vscode.CustomEditorProvider<MarkdownDocument> {
-    public static readonly viewType = "markdownWysiwyg.editor";
-
-    private readonly _onDidChangeCustomDocument = new vscode.EventEmitter<
-        vscode.CustomDocumentEditEvent<MarkdownDocument>
-    >();
-    public readonly onDidChangeCustomDocument =
-        this._onDidChangeCustomDocument.event;
+    implements vscode.CustomTextEditorProvider {
+    public static readonly viewType = "markdownWriter.editor";
 
     // Auto-save debounce timers (key: document uri string)
     private readonly _autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-    // Tracks the webviewPanel for each document (used to push new content on revert)
+    // Tracks the webviewPanel for each document (used to push new content on external changes)
     private readonly _webviewPanels = new Map<string, vscode.WebviewPanel>();
+
+    // The panel that is currently the active editor. Command-palette and
+    // right-click commands (MAR-9) target it. Set on resolve and whenever a
+    // panel becomes active; cleared when the active panel is disposed.
+    private _activePanel: vscode.WebviewPanel | null = null;
 
     // URIs that have already run keepEditor (pin tab), to avoid running it again
     private readonly _pinnedDocuments = new Set<string>();
 
-    // Records the time of our own last write to disk, to avoid our own save triggering a file-watcher revert
-    private readonly _lastSaveTimes = new Map<string, number>();
+    // File-space text the webview last produced or was last sent (key: uriKey).
+    // onDidChangeTextDocument compares against this to tell webview-originated
+    // edits (echoes of our own applyEdit) from genuine external changes.
+    private readonly _lastSyncedText = new Map<string, string>();
+
+    // Authoritative sync version per document (key: uriKey). Bumped on every
+    // externalUpdate push (external text-editor edit, undo/redo, git, hot-exit
+    // restore). The webview echoes the version it last applied back as
+    // `baseSyncVersion`; a content update whose base doesn't match the current
+    // version was serialized against content we've since replaced, so it is
+    // dropped and the current state is re-pushed.
+    private readonly _syncVersion = new Map<string, number>();
+
+    // Per-document promise chain serializing webview-originated WorkspaceEdits,
+    // so a second update can never race the applyEdit (and its change event)
+    // of the first.
+    private readonly _editQueues = new Map<string, Promise<void>>();
 
     // Image webviewUri → relPath mapping (key: docUri.toString())
     private readonly _imageUriMaps = new Map<string, Map<string, string>>();
     private readonly _frontmatterMap = new Map<string, string>(); // uriKey → raw frontmatter string
+
+    // Workspace-wide frontmatter list-value scan, cached for a short TTL so
+    // repeated "+" menu opens stay snappy (fsPath → key → list values).
+    private _fmScanCache: { perFile: Map<string, ReadonlyMap<string, string[]>>; expires: number } | undefined;
+    private static readonly _FM_SCAN_TTL_MS = 30_000;
+
+    // Workspace file list cache for link target suggestions — avoids re-running
+    // findFiles on every debounced keystroke in a link URL input.
+    private _linkFileCache: { uris: vscode.Uri[]; expires: number } | undefined;
+    private static readonly _LINK_FILE_TTL_MS = 10_000;
     /** While switchToTextEditor is in progress, suppress onDidChangeTabs from switching the text tab back to WYSIWYG */
     public static readonly suppressAutoSwitch = new Set<string>();
 
@@ -156,56 +187,43 @@ export class MarkdownEditorProvider
         }
     }
 
+    /** Sends a message to the active editor panel (no-op when none is active). */
+    public postToActivePanel(msg: ToWebviewMessage): void {
+        this._activePanel?.webview.postMessage(msg);
+    }
+
+    /**
+     * Routes an editor command (command palette / context menu) to the webview.
+     * Prefers the panel named by `documentUriStr` — the context object carries
+     * it as a belt-and-braces routing hint — and otherwise targets the active
+     * panel.
+     */
+    public postEditorCommand(command: EditorCommandId, documentUriStr?: string, args?: unknown): void {
+        const msg: ToWebviewMessage = { type: "editorCommand", command, args };
+        const panel = documentUriStr ? this._webviewPanels.get(documentUriStr) : undefined;
+        if (panel) {
+            panel.webview.postMessage(msg);
+            return;
+        }
+        this.postToActivePanel(msg);
+    }
+
     public async applyThemeToAll(): Promise<void> {
         const themeId = vscode.workspace
-            .getConfiguration("markdownWysiwyg")
+            .getConfiguration("markdownWriter")
             .get<string>("colorTheme", "auto");
 
-        const colors = await this._getThemeColors(themeId);
+        const colors = await resolveThemeColors(themeId);
         this.postToAll({ type: "setTheme", colors });
     }
 
     private async _applyThemeToPanel(panel: vscode.WebviewPanel): Promise<void> {
         const themeId = vscode.workspace
-            .getConfiguration("markdownWysiwyg")
+            .getConfiguration("markdownWriter")
             .get<string>("colorTheme", "auto");
 
-        const colors = await this._getThemeColors(themeId);
+        const colors = await resolveThemeColors(themeId);
         panel.webview.postMessage({ type: "setTheme", colors });
-    }
-
-    private async _getThemeColors(themeId: string): Promise<Record<string, string>> {
-        // Check whether it's a custom theme (format: custom:themeName)
-        if (themeId.startsWith("custom:")) {
-            const customThemeName = themeId.slice(7);
-            const customThemes = getCustomThemes();
-            const customTheme = customThemes.find(t => t.name === customThemeName);
-            if (customTheme) {
-                // Convert the custom theme color format
-                const colors: Record<string, string> = {};
-                for (const [key, value] of Object.entries(customTheme.colors)) {
-                    colors[`--vscode-${key.replace(/\./g, "-")}`] = value;
-                }
-                return colors;
-            }
-        }
-
-        // Original logic: look up the built-in VSCode theme
-        let currentThemeLabel: string | undefined;
-        if (themeId === "auto") {
-            const config = vscode.workspace.getConfiguration();
-            currentThemeLabel = config.get<string>(
-                "workbench.colorTheme",
-            );
-        }
-
-        const themes = getAllThemes();
-        const theme = themes.find((t) => t.id === themeId || currentThemeLabel === t.label);
-        if (theme) {
-            return await getThemeColors(theme.path);
-        }
-
-        return getAutoThemeColors();
     }
 
     public static register(
@@ -229,18 +247,8 @@ export class MarkdownEditorProvider
         private readonly context: vscode.ExtensionContext,
     ) {}
 
-    async openCustomDocument(
-        uri: vscode.Uri,
-        _openContext: vscode.CustomDocumentOpenContext,
-        _token: vscode.CancellationToken,
-    ): Promise<MarkdownDocument> {
-        // Debug: log the URI fragment/query to check whether global search passes a line number
-        console.log('[openCustomDocument] uri:', uri.toString(), '| fragment:', uri.fragment, '| query:', uri.query);
-        return MarkdownDocument.create(uri);
-    }
-
-    async resolveCustomEditor(
-        document: MarkdownDocument,
+    async resolveCustomTextEditor(
+        document: vscode.TextDocument,
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken,
     ): Promise<void> {
@@ -254,12 +262,18 @@ export class MarkdownEditorProvider
         // Save the panel reference (used to push content on revert)
         const uriKey = document.uri.toString();
         this._webviewPanels.set(uriKey, webviewPanel);
+        // A freshly resolved editor is the active one.
+        this._activePanel = webviewPanel;
 
         webviewPanel.onDidDispose(() => {
             this._webviewPanels.delete(uriKey);
+            if (this._activePanel === webviewPanel) { this._activePanel = null; }
             this._pinnedDocuments.delete(uriKey);
             this._imageUriMaps.delete(uriKey);
             this._initializedPanels.delete(uriKey);
+            this._lastSyncedText.delete(uriKey);
+            this._syncVersion.delete(uriKey);
+            this._editQueues.delete(uriKey);
             // Clean up any leftover timer
             const timer = this._autoSaveTimers.get(uriKey);
             if (timer !== undefined) {
@@ -289,6 +303,8 @@ export class MarkdownEditorProvider
         // Only handle panels that are already initialized (ready), to avoid prematurely consuming the pending navigation when a new panel is created
         webviewPanel.onDidChangeViewState(({ webviewPanel: p }) => {
             if (!p.active) { return; }
+            // Track the active panel for command-palette / context-menu routing.
+            this._activePanel = p;
             if (!this._initializedPanels.has(uriKey)) { return; }
             const line = this._consumePendingNavigation(document.uri.fsPath)
                 ?? this._consumeGlobalRevealLine();
@@ -327,9 +343,13 @@ export class MarkdownEditorProvider
                         const scrollToLine = this._consumePendingNavigation(document.uri.fsPath)
                             ?? this._consumeGlobalRevealLine();
                         console.log('[ready] scrollToLine:', scrollToLine);
-                        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+                        const cfg = vscode.workspace.getConfiguration("markdownWriter");
                         const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
-                        // Reset the stabilization baseline (a new init means the content will be reloaded from disk)
+                        // Reset the echo baseline: init hands this exact text to the webview
+                        this._lastSyncedText.set(uriKey, initContent);
+                        // Reset the sync version so the webview's baseSyncVersion
+                        // starts aligned with the extension.
+                        this._syncVersion.set(uriKey, 0);
                         webviewPanel.webview.postMessage({
                             type: "init",
                             content: displayContent,
@@ -337,6 +357,7 @@ export class MarkdownEditorProvider
                             frontmatter: this._frontmatterMap.get(uriKey) || undefined,
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
                             tableWrap,
+                            syncVersion: 0,
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
                         // Apply the theme
@@ -345,36 +366,59 @@ export class MarkdownEditorProvider
                     }
                     case "update":
                         if (message.content !== undefined) {
-                            const newContent = this._prepareContentForSave(message.content, uriKey);
-                            // If the content is identical to the current in-memory version, skip auto-save:
-                            // the WebView-side isSettled flag already blocks init-triggered updates; this is the last line of defense against infinite loops
-                            if (newContent === document.getText()) { break; }
-                            document.update(newContent);
-                            // Pin the tab on first edit (remove the italic preview state)
-                            if (!this._pinnedDocuments.has(uriKey)) {
-                                this._pinnedDocuments.add(uriKey);
-                                vscode.commands.executeCommand('workbench.action.keepEditor');
+                            // Stale-update rejection: the webview serialized this
+                            // against content we've since replaced (an
+                            // externalUpdate landed after it read the document).
+                            // Drop it and re-push the current authoritative state
+                            // so the webview re-bases.
+                            const currentVersion = this._syncVersion.get(uriKey) ?? 0;
+                            if (message.baseSyncVersion !== currentVersion) {
+                                this._pushExternalUpdate(document, webviewPanel, uriKey);
+                                break;
                             }
-                            this._scheduleAutoSaveOrMarkDirty(document);
+                            const newContent = this._prepareContentForSave(message.content, uriKey);
+                            void this._enqueueEdit(uriKey, async () => {
+                                // Identical to the current document (e.g. serializer no-op echo): nothing to do
+                                const applied = await this._applyWebviewEdit(document, newContent);
+                                if (!applied) { return; }
+                                this._pinTabOnFirstEdit(uriKey);
+                                this._scheduleAutoSave(document);
+                                webviewPanel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
+                            });
                         }
                         break;
                     case "frontmatterUpdate": {
-                        // The WebView edited the frontmatter panel; sync it to the Extension and trigger a save
+                        // Stale-update rejection (same rule as "update"): a
+                        // frontmatter edit serialized against replaced content is
+                        // dropped and the current state re-pushed.
+                        const fmVersion = this._syncVersion.get(uriKey) ?? 0;
+                        if (message.baseSyncVersion !== fmVersion) {
+                            this._pushExternalUpdate(document, webviewPanel, uriKey);
+                            break;
+                        }
+                        // The WebView edited the frontmatter panel; replace just the frontmatter block
                         const oldFm = this._frontmatterMap.get(uriKey) ?? "";
                         const newFm = message.frontmatter;
                         if (oldFm === newFm) { break; }
                         this._frontmatterMap.set(uriKey, newFm);
-                        // Extract the body from the current document content (dropping the old frontmatter) and prepend the new frontmatter
-                        const currentText = document.getText();
-                        const { body } = extractFrontmatter(currentText);
-                        const fullContent = newFm + body;
-                        if (fullContent === currentText) { break; }
-                        document.update(fullContent);
-                        if (!this._pinnedDocuments.has(uriKey)) {
-                            this._pinnedDocuments.add(uriKey);
-                            vscode.commands.executeCommand('workbench.action.keepEditor');
-                        }
-                        this._scheduleAutoSaveOrMarkDirty(document);
+                        void this._enqueueEdit(uriKey, async () => {
+                            const currentText = document.getText();
+                            const { frontmatter } = extractFrontmatter(currentText);
+                            const fullContent = newFm + currentText.slice(frontmatter.length);
+                            if (fullContent === currentText) { return; }
+                            this._lastSyncedText.set(uriKey, fullContent);
+                            const edit = new vscode.WorkspaceEdit();
+                            edit.replace(
+                                document.uri,
+                                new vscode.Range(document.positionAt(0), document.positionAt(frontmatter.length)),
+                                newFm,
+                            );
+                            const applied = await vscode.workspace.applyEdit(edit);
+                            if (!applied) { return; }
+                            this._pinTabOnFirstEdit(uriKey);
+                            this._scheduleAutoSave(document);
+                            webviewPanel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
+                        });
                         break;
                     }
                     case "openUrl":
@@ -492,7 +536,7 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "openSettings":
-                        vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWysiwyg');
+                        vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWriter');
                         break;
                     case "uploadImage":
                         if (message.id && message.data) {
@@ -525,9 +569,19 @@ export class MarkdownEditorProvider
                             this._handleGetPathSuggestions(document, panel, message.id, message.query).catch(() => {});
                         }
                         break;
+                    case "getLinkTargetSuggestions":
+                        if (message.id && message.query !== undefined) {
+                            this._handleGetLinkTargetSuggestions(document, panel, message.id, message.query).catch(() => {});
+                        }
+                        break;
                     case "resolveImagePath":
                         if (message.id && message.relPath) {
                             this._handleResolveImagePath(document, panel, uriKey, message.id, message.relPath);
+                        }
+                        break;
+                    case "requestFmSuggestions":
+                        if (message.key !== undefined) {
+                            this._handleRequestFmSuggestions(document, panel, message.key).catch(() => {});
                         }
                         break;
                     case "tocWidth":
@@ -536,99 +590,211 @@ export class MarkdownEditorProvider
                             this._getNumberSettingValue(message.width, 220, 150, 600),
                         );
                         break;
+                    // Persisting triggers onDidChangeConfiguration in extension.ts,
+                    // which re-broadcasts the config to every open editor.
+                    case "setProofreadOption":
+                        MarkdownEditorProvider.setProofreadOption(message.key, message.value);
+                        break;
+                    case "setFontPreset":
+                        MarkdownEditorProvider.setFontPreset(message.preset);
+                        break;
+                    case "setToolbarLayout":
+                        if (message.item) {
+                            MarkdownEditorProvider.updateSettingRespectingScope(
+                                `toolbar.items.${message.item.id}`,
+                                message.item.placement,
+                            );
+                        }
+                        MarkdownEditorProvider.updateSettingRespectingScope("toolbar.order", message.order);
+                        break;
+                    case "spellAddWord":
+                        this._handleSpellAddWord(message.word);
+                        break;
+                    case "lintBlocks":
+                        lintBlocks(message.blocks)
+                            .then((results) => {
+                                void webviewPanel.webview.postMessage({
+                                    type: "lintResults",
+                                    id: message.id,
+                                    results,
+                                } satisfies ToWebviewMessage);
+                            })
+                            .catch((err) => {
+                                console.error("[markdownWriter] harper lint failed", err);
+                            });
+                        break;
+                    case "clipboardWrite":
+                        // Copy-as-HTML / copy-as-Markdown from the right-click menu.
+                        // The webview already serialized the selection; VS Code's
+                        // clipboard API is text-only, so both formats write text.
+                        if (message.data) {
+                            void vscode.env.clipboard.writeText(message.data);
+                        }
+                        break;
                 }
             },
         );
 
 
-        // Watch for external file changes (including writes by AI tools) and auto-sync them to the WebView
-        // Note: vscode.workspace.createFileSystemWatcher does not detect files written by the same Extension Host
-        // so we use Node.js fs.watch instead, listening to OS-level events directly
-        import("fs").then(({ watch: fsWatch }) => {
-            let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-            const targetFile = path.basename(document.uri.fsPath);
-            const fsWatcher = fsWatch(path.dirname(document.uri.fsPath), async (_event, filename) => {
-                if (filename !== targetFile) { return; }
-                // Debounce: with multiple triggers in a short window, only handle the last one
-                if (debounceTimer !== undefined) { clearTimeout(debounceTimer); }
-                debounceTimer = setTimeout(async () => {
-                    debounceTimer = undefined;
-                    // If the change was caused by our own auto-save (within 1.5 seconds), skip it
-                    const lastSave = this._lastSaveTimes.get(uriKey) ?? 0;
-                    if (Date.now() - lastSave < 1500) { return; }
-                    const cts = new vscode.CancellationTokenSource();
-                    try {
-                        await document.revert(cts.token);
-                        const panel = this._webviewPanels.get(uriKey);
-                        if (panel) {
-                            const revertContent = document.getText();
-                            const displayContent = this._prepareContentForDisplay(revertContent, document, panel, uriKey);
-                            const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
-                            panel.webview.postMessage({ type: "revert", content: displayContent, lineMap: computeLineMap(revertContent), frontmatter: this._frontmatterMap.get(uriKey) || undefined, imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []), tableWrap });
-                        }
-                    } finally {
-                        cts.dispose();
-                    }
-                }, 200);
-            });
-            // Dispose the watcher when the panel closes
-            webviewPanel.onDidDispose(() => { fsWatcher.close(); });
+        // Sync external document changes (text editor edits, undo/redo, git checkout,
+        // disk changes picked up by VS Code, hot exit restore) into the WebView.
+        // The TextDocument is the single source of truth now, so listening to
+        // onDidChangeTextDocument replaces the old FileSystemWatcher + self-write
+        // suppression window: our own webview-originated WorkspaceEdits are
+        // recognized by comparing against the _lastSyncedText baseline instead.
+        let externalChangeTimer: ReturnType<typeof setTimeout> | undefined;
+        const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
+            if (e.document.uri.toString() !== uriKey) { return; }
+            if (e.contentChanges.length === 0) { return; }
+            // Echo of a webview-originated applyEdit: the webview already has this text
+            if (e.document.getText() === this._lastSyncedText.get(uriKey)) { return; }
+            // A genuine external change is now pending. Bump the sync version
+            // SYNCHRONOUSLY — before the 200ms debounce — so a webview `update`
+            // that was already in flight (serialized against the pre-change text,
+            // carrying the old baseSyncVersion) is recognized as stale and
+            // rejected rather than silently overwriting the external edit inside
+            // the debounce window. Without this, the version only bumped when the
+            // debounced push fired, leaving a ~200ms hole where a concurrent
+            // external edit (git checkout, format-on-save, external tool) could be
+            // lost. _pushExternalUpdate reads (does not re-bump) this version, so
+            // it stays a monotonic count of distinct external changes.
+            this._syncVersion.set(uriKey, (this._syncVersion.get(uriKey) ?? 0) + 1);
+            // Debounce: coalesce bursts (e.g. typing in a side-by-side text editor)
+            if (externalChangeTimer !== undefined) { clearTimeout(externalChangeTimer); }
+            externalChangeTimer = setTimeout(() => {
+                externalChangeTimer = undefined;
+                const panel = this._webviewPanels.get(uriKey);
+                if (!panel) { return; }
+                const text = document.getText();
+                // The document settled back to the webview's state within the debounce window
+                if (text === this._lastSyncedText.get(uriKey)) { return; }
+                this._pushExternalUpdate(document, panel, uriKey);
+            }, 200);
+        });
+        // Dispose the subscription when the panel closes
+        webviewPanel.onDidDispose(() => {
+            if (externalChangeTimer !== undefined) { clearTimeout(externalChangeTimer); }
+            changeSubscription.dispose();
         });
     }
 
-    private _scheduleAutoSaveOrMarkDirty(document: MarkdownDocument): void {
-        const config = vscode.workspace.getConfiguration("markdownWysiwyg");
-        const autoSave = config.get<boolean>("autoSave", true);
+    /**
+     * Pushes the current document state to the webview as a cursor-preserving
+     * externalUpdate, bumping the sync version. Used both for genuine external
+     * changes (side-by-side text edits, undo/redo, git, hot-exit restore) and
+     * to re-base the webview after a stale update is rejected. The webview
+     * applies this as a minimal diff so the caret survives; it falls back to a
+     * full rebuild only when the diff can't be applied.
+     */
+    private _pushExternalUpdate(
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        uriKey: string,
+    ): void {
+        const text = document.getText();
+        this._lastSyncedText.set(uriKey, text);
+        // The version is bumped at observe-time in the onDidChangeTextDocument
+        // listener (and only there), so a concurrent in-flight webview update is
+        // rejected as stale before this debounced push runs. Read it here; do not
+        // re-bump, or the count would drift ahead of the webview's baseline.
+        const version = this._syncVersion.get(uriKey) ?? 0;
+        const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
+        const tableWrap = vscode.workspace.getConfiguration("markdownWriter").get<TableWrapMode>("tableWrap", "normal");
+        panel.webview.postMessage({
+            type: "externalUpdate",
+            content: displayContent,
+            lineMap: computeLineMap(text),
+            frontmatter: this._frontmatterMap.get(uriKey) || undefined,
+            imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
+            tableWrap,
+            syncVersion: version,
+        });
+    }
+
+    /** Serializes webview-originated edits per document so they never interleave. */
+    private _enqueueEdit(uriKey: string, task: () => Promise<void>): Promise<void> {
+        const prev = this._editQueues.get(uriKey) ?? Promise.resolve();
+        const next = prev.then(task, task);
+        this._editQueues.set(uriKey, next);
+        return next;
+    }
+
+    /**
+     * Applies webview-produced whole-file content to the TextDocument as a
+     * single minimal range replacement. Returns false when the content is
+     * already current or the edit was rejected.
+     */
+    private async _applyWebviewEdit(
+        document: vscode.TextDocument,
+        newContent: string,
+    ): Promise<boolean> {
+        const replace = computeReplaceRange(document.getText(), newContent);
+        if (!replace) { return false; }
+        // Record the expected text BEFORE applying: onDidChangeTextDocument
+        // fires during applyEdit and must recognize this change as our own.
+        this._lastSyncedText.set(document.uri.toString(), newContent);
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(
+            document.uri,
+            new vscode.Range(
+                document.positionAt(replace.startOffset),
+                document.positionAt(replace.endOffset),
+            ),
+            replace.replacement,
+        );
+        return vscode.workspace.applyEdit(edit);
+    }
+
+    /** Pin the tab on first edit (remove the italic preview state) */
+    private _pinTabOnFirstEdit(uriKey: string): void {
+        if (this._pinnedDocuments.has(uriKey)) { return; }
+        this._pinnedDocuments.add(uriKey);
+        vscode.commands.executeCommand('workbench.action.keepEditor');
+    }
+
+    /**
+     * Auto-save mode: debounce a native workspace save after webview-originated
+     * edits. Manual mode needs no code — the TextDocument carries native dirty
+     * state, and Cmd+S / hot exit / undo/redo are handled by VS Code itself.
+     */
+    private _scheduleAutoSave(document: vscode.TextDocument): void {
+        const config = vscode.workspace.getConfiguration("markdownWriter");
+        if (!config.get<boolean>("autoSave", true)) { return; }
+        // Respect the built-in `files.autoSave` preference: if the user has
+        // explicitly chosen manual saving ("off"), don't force a save from here.
+        // Now that the editor is TextDocument-backed, VS Code's own autosave
+        // governs the other modes natively, so honoring "off" makes the
+        // `markdownWriter.autoSave` deprecation message truthful.
+        if (vscode.workspace.getConfiguration("files").get<string>("autoSave") === "off") { return; }
         const delay = config.get<number>("autoSaveDelay", 1000);
         const uriKey = document.uri.toString();
 
-        if (autoSave) {
-            // Debounced auto-save: write to disk delay ms after editing stops, without showing the ● marker
-            const existing = this._autoSaveTimers.get(uriKey);
-            if (existing !== undefined) {
-                clearTimeout(existing);
-            }
-            this._autoSaveTimers.set(
-                uriKey,
-                setTimeout(async () => {
-                    this._autoSaveTimers.delete(uriKey);
-                    const cts = new vscode.CancellationTokenSource();
-                    try {
-                        await document.save(cts.token);
-                        // Record the time only after the write completes, so the timestamp is accurate when FileWatcher fires
-                        // (If recorded before save, the protection fails when FileWatcher is delayed by > 1500ms)
-                        this._lastSaveTimes.set(uriKey, Date.now());
-                        const panel = this._webviewPanels.get(uriKey);
-                        if (panel) {
-                            panel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
-                        }
-                    } finally {
-                        cts.dispose();
-                    }
-                }, delay),
-            );
-        } else {
-            // Manual save mode: mark as dirty and wait for Cmd+S
-            this._onDidChangeCustomDocument.fire({
-                document,
-                label: "Edit",
-                undo: () => { /* TODO */ },
-                redo: () => { /* TODO */ },
-            });
+        const existing = this._autoSaveTimers.get(uriKey);
+        if (existing !== undefined) {
+            clearTimeout(existing);
         }
+        this._autoSaveTimers.set(
+            uriKey,
+            setTimeout(() => {
+                this._autoSaveTimers.delete(uriKey);
+                if (document.isDirty) {
+                    void vscode.workspace.save(document.uri);
+                }
+            }, delay),
+        );
     }
 
     /**
      * Open an external URL from the document. Gated by the
-     * `markdownWysiwyg.confirmExternalLinks` setting (default true): when enabled,
+     * `markdownWriter.confirmExternalLinks` setting (default true): when enabled,
      * the user must confirm before the link is handed to the OS, so a document can
      * never navigate anywhere without an explicit extra confirmation.
      */
     private async _openExternalUrl(
-        document: MarkdownDocument,
+        document: vscode.TextDocument,
         url: string,
     ): Promise<void> {
-        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
+        const cfg = vscode.workspace.getConfiguration('markdownWriter', document.uri);
         const confirm = cfg.get<boolean>('confirmExternalLinks', true);
 
         if (confirm) {
@@ -646,64 +812,8 @@ export class MarkdownEditorProvider
         await vscode.env.openExternal(vscode.Uri.parse(url));
     }
 
-    async saveCustomDocument(
-        document: MarkdownDocument,
-        cancellation: vscode.CancellationToken,
-    ): Promise<void> {
-        // Clear the auto-save timer (Cmd+S saves immediately, no need to wait for the timer)
-        const uriKey = document.uri.toString();
-        const timer = this._autoSaveTimers.get(uriKey);
-        if (timer !== undefined) {
-            clearTimeout(timer);
-            this._autoSaveTimers.delete(uriKey);
-        }
-        this._lastSaveTimes.set(uriKey, Date.now());
-        await document.save(cancellation);
-        const panel = this._webviewPanels.get(uriKey);
-        if (panel) {
-            panel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
-        }
-    }
-
-    async saveCustomDocumentAs(
-        document: MarkdownDocument,
-        destination: vscode.Uri,
-        cancellation: vscode.CancellationToken,
-    ): Promise<void> {
-        await document.saveAs(destination, cancellation);
-    }
-
-    async revertCustomDocument(
-        document: MarkdownDocument,
-        cancellation: vscode.CancellationToken,
-    ): Promise<void> {
-        await document.revert(cancellation);
-        // Push the new content to the WebView to trigger an editor rebuild
-        const uriKey = document.uri.toString();
-        const panel = this._webviewPanels.get(uriKey);
-        if (panel) {
-            const revertContent = document.getText();
-            const displayContent = this._prepareContentForDisplay(revertContent, document, panel, uriKey);
-            panel.webview.postMessage({
-                type: "revert",
-                content: displayContent,
-                lineMap: computeLineMap(revertContent),
-                frontmatter: this._frontmatterMap.get(uriKey) || undefined,
-                imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
-            });
-        }
-    }
-
-    async backupCustomDocument(
-        document: MarkdownDocument,
-        context: vscode.CustomDocumentBackupContext,
-        cancellation: vscode.CancellationToken,
-    ): Promise<vscode.CustomDocumentBackup> {
-        return document.backup(context.destination, cancellation);
-    }
-
-    private _getHtmlForWebview(webview: vscode.Webview, document: MarkdownDocument): string {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+    private _getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
         const maxHeight = cfg.get<number>("codeBlockMaxHeight", 500);
         const editorMaxWidth = this._getEditorMaxWidthCssValue(cfg.get<number | string>("editorMaxWidth", "auto"));
         const tocContentGap = this._getPixelSettingCssValue(cfg.get<number>("tocContentGap", 100), 100, 16, 240);
@@ -712,6 +822,8 @@ export class MarkdownEditorProvider
         const tocRight = cfg.get<string>("tocPosition", "left") === "right";
         const isAutoWidth = editorMaxWidth === "none";
         const fontFamily = cfg.get<string>("fontFamily", "");
+        const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
+        const resolvedFont = resolveFontFamily(fontPreset, fontFamily);
         const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
         const customJsUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customJs", []));
@@ -732,12 +844,21 @@ export class MarkdownEditorProvider
         const nonce = getNonce();
 
         const isMac = process.platform === 'darwin';
-        const translations = {};
+        // English strings are the t() keys themselves; only non-English locales need a map.
+        const translations = selectWebviewTranslations(vscode.env.language);
         const debugMode = cfg.get<boolean>("debugMode", false);
         const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold })};`;
+        const proofread = MarkdownEditorProvider.getProofreadConfig();
+        const toolbar = MarkdownEditorProvider.getToolbarConfig();
+        const documentUri = document.uri.toString();
+        // The extension's display name, the single source for any UI that must
+        // name the product (e.g. "Open <name> settings"). From package.json;
+        // optional-chained so a stripped-down test context still resolves.
+        const productName =
+            (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "Markdown Writer";
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -752,12 +873,13 @@ export class MarkdownEditorProvider
     content="default-src 'none';
              style-src ${webview.cspSource} 'unsafe-inline';
              script-src 'nonce-${nonce}' ${webview.cspSource};
-             img-src ${webview.cspSource} data:;">
+             img-src ${webview.cspSource} data:;
+             font-src ${webview.cspSource} data:;">
 	  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
 	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${fontFamily ? ` --custom-font-family: ${fontFamily};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --custom-font-family: ${resolvedFont};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
 	</head>
 	<body class="${bodyClasses}">
 	  <div class="editor-topbar"></div>
@@ -828,8 +950,121 @@ export class MarkdownEditorProvider
         return editorWordWrap !== "off";
     }
 
+    /** Snapshot of the proofread (style check + spell check) settings. */
+    public static getProofreadConfig(): ProofreadConfig {
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
+        return {
+            styleCheck: cfg.get<boolean>("styleCheck.enabled", false),
+            fillers: cfg.get<boolean>("styleCheck.fillers", true),
+            redundancies: cfg.get<boolean>("styleCheck.redundancies", true),
+            cliches: cfg.get<boolean>("styleCheck.cliches", true),
+            wordiness: cfg.get<boolean>("styleCheck.wordiness", true),
+            aiVocabulary: cfg.get<boolean>("styleCheck.aiVocabulary", true),
+            aiArtifacts: cfg.get<boolean>("styleCheck.aiArtifacts", true),
+            passive: cfg.get<boolean>("styleCheck.passive", true),
+            negativeParallelism: cfg.get<boolean>("styleCheck.negativeParallelism", true),
+            longSentences: cfg.get<boolean>("styleCheck.longSentences", false),
+            ruleOfThree: cfg.get<boolean>("styleCheck.ruleOfThree", false),
+            emDash: cfg.get<boolean>("styleCheck.emDash", false),
+            nonAsciiPunct: cfg.get<boolean>("styleCheck.nonAsciiPunct", false),
+            styleExceptions: cfg.get<string[]>("styleCheck.exceptions", []),
+            spellCheck: cfg.get<boolean>("spellCheck.enabled", true),
+            grammarCheck: cfg.get<boolean>("spellCheck.grammar", true),
+            userWords: cfg.get<string[]>("spellCheck.userWords", []),
+        };
+    }
+
+    /** Snapshot of the per-item toolbar placement settings. */
+    public static getToolbarConfig(): ToolbarConfig {
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
+        // VS Code merges contributed defaults into this nested read, so every
+        // registered item id is present with its effective value.
+        return {
+            placements: cfg.get("toolbar.items", {}),
+            order: cfg.get<string[]>("toolbar.order", []),
+        };
+    }
+
+    /** Persist the font-picker choice (toolbar → settings write-back). */
+    public static setFontPreset(preset: FontPreset): void {
+        MarkdownEditorProvider.updateSettingRespectingScope("fontPreset", preset);
+    }
+
+    /**
+     * Persist a setting, writing to the scope that currently wins — a Global
+     * write would be silently overridden by an existing workspace value.
+     */
+    public static updateSettingRespectingScope(key: string, value: unknown): void {
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
+        const target = cfg.inspect(key)?.workspaceValue !== undefined
+            ? vscode.ConfigurationTarget.Workspace
+            : vscode.ConfigurationTarget.Global;
+        void cfg.update(key, value, target);
+    }
+
+    /**
+     * Persist a proofread on/off switch, writing to the scope that currently
+     * wins — a Global write would be silently overridden by an existing
+     * workspace value.
+     */
+    public static setProofreadEnabled(key: "styleCheck.enabled" | "spellCheck.enabled", enabled: boolean): void {
+        MarkdownEditorProvider.updateSettingRespectingScope(key, enabled);
+    }
+
+    /**
+     * Every proofread toggle the webview may write, mapped to its setting path.
+     * The three masters live under their own keys; the sub-checks nest under
+     * `styleCheck.*`. Unknown keys are ignored (guards the write).
+     */
+    private static readonly PROOFREAD_SETTING: Record<ProofreadOptionKey, string> = {
+        styleCheck: "styleCheck.enabled",
+        spellCheck: "spellCheck.enabled",
+        grammarCheck: "spellCheck.grammar",
+        fillers: "styleCheck.fillers",
+        redundancies: "styleCheck.redundancies",
+        cliches: "styleCheck.cliches",
+        wordiness: "styleCheck.wordiness",
+        aiVocabulary: "styleCheck.aiVocabulary",
+        aiArtifacts: "styleCheck.aiArtifacts",
+        passive: "styleCheck.passive",
+        longSentences: "styleCheck.longSentences",
+        negativeParallelism: "styleCheck.negativeParallelism",
+        ruleOfThree: "styleCheck.ruleOfThree",
+        emDash: "styleCheck.emDash",
+        nonAsciiPunct: "styleCheck.nonAsciiPunct",
+    };
+
+    /** Persist one proofread toggle (checks menu → settings write-back). */
+    public static setProofreadOption(key: ProofreadOptionKey, value: boolean): void {
+        const path = MarkdownEditorProvider.PROOFREAD_SETTING[key];
+        if (!path) { return; }
+        MarkdownEditorProvider.updateSettingRespectingScope(path, value);
+    }
+
+    /** Flip the style check (command palette / keyboard shortcut). */
+    public static toggleStyleCheck(): void {
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
+        MarkdownEditorProvider.setProofreadEnabled(
+            "styleCheck.enabled",
+            !cfg.get<boolean>("styleCheck.enabled", false),
+        );
+    }
+
+    private _handleSpellAddWord(word: string): void {
+        const trimmed = word?.trim();
+        if (!trimmed) { return; }
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
+        const words = cfg.get<string[]>("spellCheck.userWords", []);
+        if (words.includes(trimmed)) { return; }
+        // Prefer the workspace list (project jargon); fall back to user settings
+        const target = vscode.workspace.workspaceFolders?.length
+            ? vscode.ConfigurationTarget.Workspace
+            : vscode.ConfigurationTarget.Global;
+        void cfg.update("spellCheck.userWords", [...words, trimmed], target);
+    }
+
     private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("markdownWriter");
         const paths = [
             ...cfg.get<string[]>("customCss", []),
             ...cfg.get<string[]>("customJs", []),
@@ -887,7 +1122,7 @@ export class MarkdownEditorProvider
 
     private _prepareContentForDisplay(
         content: string,
-        document: MarkdownDocument,
+        document: vscode.TextDocument,
         panel: vscode.WebviewPanel,
         uriKey: string,
     ): string {
@@ -928,7 +1163,7 @@ export class MarkdownEditorProvider
     }
 
     private async _handleImageUpload(
-        document: MarkdownDocument,
+        document: vscode.TextDocument,
         panel: vscode.WebviewPanel,
         id: string,
         data: Uint8Array,
@@ -936,7 +1171,7 @@ export class MarkdownEditorProvider
         altText: string,
     ): Promise<void> {
         const uriKey = document.uri.toString();
-        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
+        const cfg = vscode.workspace.getConfiguration('markdownWriter', document.uri);
         try {
             // Images are always saved to the local workspace; nothing is uploaded off the machine.
             const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
@@ -955,12 +1190,12 @@ export class MarkdownEditorProvider
     }
 
     private async _handleGetProjectImages(
-        document: MarkdownDocument,
+        document: vscode.TextDocument,
         panel: vscode.WebviewPanel,
         uriKey: string,
         id: string,
     ): Promise<void> {
-        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
+        const cfg = vscode.workspace.getConfiguration('markdownWriter', document.uri);
         const customPath = cfg.get<string>('imageLocalPath', '').trim();
         const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.tiff', '.ico']);
         const CANDIDATE_DIRS = ['images', 'imgs', 'assets/images', 'assets'];
@@ -1023,7 +1258,7 @@ export class MarkdownEditorProvider
     }
 
     private async _handleImageRename(
-        document: MarkdownDocument,
+        document: vscode.TextDocument,
         panel: vscode.WebviewPanel,
         uriKey: string,
         id: string,
@@ -1092,8 +1327,41 @@ export class MarkdownEditorProvider
         }
     }
 
+    /**
+     * Answers a requestFmSuggestions message: scans the workspace's markdown
+     * files (once per TTL window, indexing every list-valued key), then replies
+     * with the values used for `key` in files OTHER than the current document,
+     * ranked by frequency (descending) then alphabetically.
+     */
+    private async _handleRequestFmSuggestions(
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        key: string,
+    ): Promise<void> {
+        const now = Date.now();
+        if (!this._fmScanCache || now >= this._fmScanCache.expires) {
+            const uris = await vscode.workspace.findFiles("**/*.md", "**/node_modules/**", 500);
+            const perFile = new Map<string, ReadonlyMap<string, string[]>>();
+            await Promise.all(uris.map(async (uri) => {
+                try {
+                    const bytes = await vscode.workspace.fs.readFile(uri);
+                    perFile.set(uri.fsPath, extractListValuesByKey(Buffer.from(bytes).toString("utf8")));
+                } catch { /* unreadable file: skip it */ }
+            }));
+            this._fmScanCache = { perFile, expires: now + MarkdownEditorProvider._FM_SCAN_TTL_MS };
+        }
+        // Suggestions come from OTHER files only; the current document's own
+        // values are already visible as chips (and excluded WebView-side too).
+        const docFsPath = document.uri.fsPath;
+        const otherFiles = [...this._fmScanCache.perFile.entries()]
+            .filter(([fsPath]) => fsPath !== docFsPath)
+            .map(([, keyValues]) => keyValues);
+        const values = rankListValues(otherFiles, key);
+        panel.webview.postMessage({ type: "fmSuggestions", key, values });
+    }
+
     private async _handleGetPathSuggestions(
-        document: MarkdownDocument,
+        document: vscode.TextDocument,
         panel: vscode.WebviewPanel,
         id: string,
         query: string,
@@ -1175,8 +1443,53 @@ export class MarkdownEditorProvider
         panel.webview.postMessage({ type: 'pathSuggestions', id, items });
     }
 
+    /**
+     * Workspace-wide file suggestions for link URL inputs (link popup /
+     * insert-link prompt): case-insensitive substring match on the path,
+     * markdown files first. Each match is replied in BOTH document-relative
+     * and root-relative form; the WebView picks the form matching what the
+     * user typed. External queries (http/https/mailto/#) get no suggestions.
+     */
+    private async _handleGetLinkTargetSuggestions(
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        id: string,
+        query: string,
+    ): Promise<void> {
+        const post = (items: ReturnType<typeof rankLinkTargets>) =>
+            panel.webview.postMessage({ type: 'linkTargetSuggestions', id, items });
+
+        if (!isLocalPathQuery(query) || document.uri.scheme !== 'file') {
+            post([]);
+            return;
+        }
+        const workspaceRoot = (vscode.workspace.getWorkspaceFolder(document.uri)
+            ?? vscode.workspace.workspaceFolders?.[0])?.uri.fsPath;
+        if (!workspaceRoot) {
+            post([]);
+            return;
+        }
+
+        const now = Date.now();
+        if (!this._linkFileCache || now >= this._linkFileCache.expires) {
+            const uris = await vscode.workspace.findFiles(
+                '**/*',
+                '{**/node_modules/**,**/.git/**,**/dist/**,**/releases/**}',
+                2000,
+            );
+            this._linkFileCache = { uris, expires: now + MarkdownEditorProvider._LINK_FILE_TTL_MS };
+        }
+
+        const candidates = buildLinkTargetItems(
+            this._linkFileCache.uris.map((u) => u.fsPath),
+            document.uri.fsPath,
+            workspaceRoot,
+        );
+        post(rankLinkTargets(candidates, query));
+    }
+
     private _handleResolveImagePath(
-        document: MarkdownDocument,
+        document: vscode.TextDocument,
         panel: vscode.WebviewPanel,
         uriKey: string,
         id: string,

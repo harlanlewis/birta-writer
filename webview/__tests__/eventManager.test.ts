@@ -8,6 +8,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createEventManager, type EventManager } from "../eventManager";
 
+// Dispatch on document.body: real key events target the focused element and
+// bubble through document up to window (onShortcut listens on document, below
+// the window-level listener the VS Code webview host uses to forward keys to
+// the workbench).
 function pressKey(code: string, modifiers: Partial<KeyboardEvent> = {}): KeyboardEvent {
     const event = new KeyboardEvent("keydown", {
         code,
@@ -15,7 +19,7 @@ function pressKey(code: string, modifiers: Partial<KeyboardEvent> = {}): Keyboar
         cancelable: true,
         ...modifiers,
     });
-    window.dispatchEvent(event);
+    document.body.dispatchEvent(event);
     return event;
 }
 
@@ -115,6 +119,32 @@ describe("EventManager.onShortcut", () => {
         });
     });
 
+    describe("produced-character (key) matching with non-Latin layouts", () => {
+        // prosemirror-keymap resolves letter bindings via base[event.keyCode]
+        // when the produced character is non-ASCII; the `key` matcher must
+        // apply the same fallback so e.g. Cmd+F works on a Russian layout.
+        it("Russian Cmd+F (key 'а', keyCode 70) should trigger a { key: 'f' } shortcut", () => {
+            manager.onShortcut({ key: "f", meta: true }, handler);
+            pressKey("KeyF", { key: "а", keyCode: 70, metaKey: true });
+            expect(handler).toHaveBeenCalledTimes(1);
+        });
+
+        it("Russian Cmd+P (key 'з', keyCode 80) should not trigger a { key: 'f' } shortcut", () => {
+            manager.onShortcut({ key: "f", meta: true }, handler);
+            pressKey("KeyP", { key: "з", keyCode: 80, metaKey: true });
+            expect(handler).not.toHaveBeenCalled();
+        });
+
+        it("an ASCII produced character should not fall back to the keyCode", () => {
+            // Dvorak-style remap: physical KeyB produces "x"; a { key: "b" }
+            // shortcut must NOT fire (prosemirror-keymap only falls back for
+            // non-ASCII characters, and "x" names the binding directly).
+            manager.onShortcut({ key: "b", meta: true }, handler);
+            pressKey("KeyB", { key: "x", keyCode: 66, metaKey: true });
+            expect(handler).not.toHaveBeenCalled();
+        });
+    });
+
     describe("distinct shortcuts on the same key", () => {
         it("Mod+F and Mod+Alt+F should dispatch to their own handlers", () => {
             const altHandler = vi.fn();
@@ -128,6 +158,40 @@ describe("EventManager.onShortcut", () => {
             pressKey("KeyF", { metaKey: true, altKey: true });
             expect(handler).toHaveBeenCalledTimes(1);
             expect(altHandler).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe("propagation to window (VS Code webview key forwarding)", () => {
+        it("stopPropagation: true should keep a matching event from reaching window listeners", () => {
+            const windowListener = vi.fn();
+            window.addEventListener("keydown", windowListener);
+            try {
+                manager.onShortcut(
+                    { code: "KeyF", meta: true, ctrl: true, stopPropagation: true },
+                    handler,
+                );
+                pressKey("KeyF", { metaKey: true });
+                expect(handler).toHaveBeenCalledTimes(1);
+                expect(windowListener).not.toHaveBeenCalled();
+            } finally {
+                window.removeEventListener("keydown", windowListener);
+            }
+        });
+
+        it("a non-matching event should still reach window listeners", () => {
+            const windowListener = vi.fn();
+            window.addEventListener("keydown", windowListener);
+            try {
+                manager.onShortcut(
+                    { code: "KeyF", meta: true, ctrl: true, stopPropagation: true },
+                    handler,
+                );
+                pressKey("KeyP", { metaKey: true });
+                expect(handler).not.toHaveBeenCalled();
+                expect(windowListener).toHaveBeenCalledTimes(1);
+            } finally {
+                window.removeEventListener("keydown", windowListener);
+            }
         });
     });
 

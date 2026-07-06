@@ -1,10 +1,11 @@
 /**
  * messageHandlers.ts
  * 
- * 职责：处理 Extension → WebView 方向的消息分发
- * 
- * 本模块将每种消息类型映射到对应的处理函数，实现消息的解耦和类型安全。
- * 处理函数通过依赖注入获取所需的外部能力，便于测试和维护。
+ * Dispatches Extension -> WebView messages.
+ *
+ * Maps each message type to its handler function, decoupling the messages and
+ * keeping dispatch type-safe. Handlers receive the external capabilities they
+ * need via dependency injection, which keeps them testable and maintainable.
  */
 
 import type { Editor } from "@milkdown/core";
@@ -13,11 +14,15 @@ import { editorViewCtx } from "@milkdown/core";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
+import { dispatchLinkTargetSuggestions } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
-import { setDebugMode } from "./components/table/addButtons";
-import { setLogTableSel } from "./editor";
-import { notifySwitchToTextEditor, getWebviewState } from "./messaging";
+import { setLogTableSel, syncExternalContent } from "./editor";
+import { setProofreadConfig } from "./plugins";
+import { applyLintResults } from "./plugins/proofread";
+import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
+import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
+import { runEditorCommand } from "./editorCommands";
 import {
     handleImageUploaded,
     handleImageUploadError,
@@ -26,10 +31,10 @@ import {
     handleImageRenameError,
 } from "./imageUpload";
 
-// ── 全局表格换行模式 ─────────────────────────────────────────
+// ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
 
-/** 根据当前 tableWrap 配置动态更新表格单元格的 overflow-wrap 属性 */
+/** Update table cells' overflow-wrap property from the current tableWrap config. */
 export function applyTableWrap(wrap: TableWrapMode): void {
     currentTableWrap = wrap;
     const root = document.documentElement;
@@ -46,23 +51,27 @@ export function applyTableWrap(wrap: TableWrapMode): void {
     }
 }
 
-// ── 类型定义 ──────────────────────────────────────────────
+// ── Type definitions ───────────────────────────────────────
 
 type ExtractMessage<T extends ToWebviewMessage["type"]> = Extract<ToWebviewMessage, { type: T }>;
 
-/** 消息处理函数类型 */
+/** Message-handler function type. */
 export type Handler<T extends ToWebviewMessage["type"] = ToWebviewMessage["type"]> = (
     msg: ExtractMessage<T>,
     container: HTMLElement,
 ) => void | Promise<void>;
 
-/** 工具栏控制器接口 */
+/** Toolbar controller interface. */
 export interface ToolbarController {
     onSelectionChange(view: EditorView): void;
     setDebugMode(enabled: boolean): void;
+    /** Rebuild the toolbar for a changed per-item placement config. */
+    applyConfig(config: import("../shared/messages").ToolbarConfig): void;
+    /** Update the font picker's active-preset indicator. */
+    setFontPreset(preset: import("../shared/messages").FontPreset): void;
 }
 
-/** 编辑器状态管理接口 */
+/** Editor state-management interface. */
 export interface EditorStateAccessor {
     getEditor: () => Editor | null;
     setEditor: (editor: Editor | null) => void;
@@ -72,16 +81,18 @@ export interface EditorStateAccessor {
     setMarkdownSource: (source: string) => void;
 }
 
-/** 编辑器操作接口 */
+/** Editor actions interface. */
 export interface EditorActions {
     scrollToSourceLine: (view: EditorView, lineMap: number[], targetLine: number) => void;
     getFirstVisibleSourceLine: (view: EditorView, lineMap: number[]) => number;
     initEditor: (container: HTMLElement, markdown: string) => Promise<void>;
     retryScroll: (fn: () => void) => void;
     getEditorView: () => EditorView | null;
+    /** Refreshes the table-of-contents panel after an inbound diff sync. */
+    refreshToc: () => void;
 }
 
-/** 消息处理器依赖项 */
+/** Message-handler dependencies. */
 export interface MessageHandlerDeps {
     state: EditorStateAccessor;
     actions: EditorActions;
@@ -89,18 +100,19 @@ export interface MessageHandlerDeps {
     themeOverrides: Set<string>;
 }
 
-// ── 消息处理器工厂 ────────────────────────────────────────
+// ── Message-handler factory ────────────────────────────────
 
-/** 创建消息处理器 */
+/** Create the message handlers. */
 export function createMessageHandlers(
     deps: MessageHandlerDeps,
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb, themeOverrides } = deps;
     const { getEditor, setEditor, getLineMap, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView } = actions;
-    
+    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc } = actions;
+
     return {
         async init(msg, container) {
+            setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
             setLineMap(msg.lineMap ?? []);
             renderFrontmatterPanel(msg.frontmatter);
@@ -141,6 +153,29 @@ export function createMessageHandlers(
             }
             await initEditor(container, msg.content);
         },
+        async externalUpdate(msg, container) {
+            // Record the version we're syncing to so subsequent outbound edits
+            // carry it as baseSyncVersion (stale-update rejection on the
+            // extension side).
+            setBaseSyncVersion(msg.syncVersion);
+            setMarkdownSource(msg.content);
+            setLineMap(msg.lineMap ?? []);
+            renderFrontmatterPanel(msg.frontmatter);
+            if (msg.imageUriMap) {
+                setImageUriMap(msg.imageUriMap);
+            }
+            if (msg.tableWrap) {
+                applyTableWrap(msg.tableWrap);
+            }
+            // Cursor-preserving diff apply; on any failure fall back to a full
+            // rebuild exactly like revert (which loses the selection but is
+            // guaranteed correct).
+            if (syncExternalContent(msg.content)) {
+                refreshToc();
+            } else {
+                await initEditor(container, msg.content);
+            }
+        },
         requestSwitchToTextEditor() {
             const view = getEditorView();
             const lineMap = getLineMap();
@@ -166,7 +201,6 @@ export function createMessageHandlers(
             setLineMap(msg.lineMap);
         },
         setDebugMode(msg) {
-            setDebugMode(msg.enabled);
             setLogTableSel(msg.enabled);
             topbarTb?.setDebugMode(msg.enabled);
         },
@@ -213,6 +247,9 @@ export function createMessageHandlers(
             dispatchPathSuggestions(msg.id, msg.items);
             dispatchImgPathSuggestions(msg.id, msg.items);
         },
+        linkTargetSuggestions(msg) {
+            dispatchLinkTargetSuggestions(msg.id, msg.items);
+        },
         imagePathResolved(msg) {
             dispatchImagePathResolved(msg.id, msg.webviewUri);
         },
@@ -232,6 +269,36 @@ export function createMessageHandlers(
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
+        },
+        fmSuggestions(msg) {
+            dispatchFmSuggestions(msg.key, msg.values);
+        },
+        proofreadConfig(msg) {
+            const view = getEditorView();
+            if (view) {
+                setProofreadConfig(view, msg.config);
+            }
+        },
+        toolbarConfig(msg) {
+            topbarTb?.applyConfig(msg.config);
+        },
+        setFontFamily(msg) {
+            const root = document.documentElement;
+            if (msg.fontFamily) {
+                root.style.setProperty("--custom-font-family", msg.fontFamily);
+            } else {
+                root.style.removeProperty("--custom-font-family");
+            }
+            topbarTb?.setFontPreset(msg.preset);
+        },
+        lintResults(msg) {
+            applyLintResults(msg.id, msg.results);
+        },
+        editorCommand(msg) {
+            // Command palette / right-click menu action routed to this editor.
+            // `args` carries a right-clicked cell target for table commands.
+            // An unknown id is a safe no-op inside runEditorCommand.
+            runEditorCommand(msg.command, getEditor, msg.args);
         },
     };
 }

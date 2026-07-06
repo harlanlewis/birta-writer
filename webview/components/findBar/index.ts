@@ -1,5 +1,6 @@
 import "./findBar.css";
 import type { EditorView } from "@milkdown/prose/view";
+import type { Transaction } from "@milkdown/prose/state";
 import { createButton } from "@/ui/dom";
 import {
     IconChevronUp,
@@ -10,6 +11,21 @@ import {
     IconX,
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
+import { attachInputUndo } from "@/utils/inputUndo";
+import { computeLineMap } from "../../../shared/lineMap";
+import {
+    buildQuery,
+    collectSegments,
+    searchSegments,
+    searchSourceFallback,
+    computeBlockPositions,
+    expandReplacement,
+    type SearchMatch,
+    type SegmentMatch,
+    type TextMatch,
+    type NodeAttrMatch,
+    type MarkAttrMatch,
+} from "./sourceSearch";
 
 // TypeScript declarations: CSS Custom Highlight API (Chromium 105+ / Electron 22+)
 declare class Highlight {
@@ -25,9 +41,35 @@ export interface FindBarController {
     isOpen(): boolean;
 }
 
+/** Document-order sort position of a match. */
+function sortPos(m: SearchMatch): number {
+    switch (m.kind) {
+        case "text":
+        case "mark-attr":
+            return m.from;
+        case "node-attr":
+            return m.nodePos;
+        case "block":
+            return m.blockPos;
+    }
+}
+
+/** Secondary sort key: offset inside the attribute string (or the line for block hits). */
+function sortSub(m: SearchMatch): number {
+    switch (m.kind) {
+        case "text":
+            return -1;
+        case "node-attr":
+        case "mark-attr":
+            return m.start;
+        case "block":
+            return m.line;
+    }
+}
+
 export function initFindBar(
-    getEditorEl: () => HTMLElement | null,
     getEditorView: () => EditorView | null,
+    getMarkdownSource: () => string = () => "",
 ): FindBarController {
     // ── DOM structure ────────────────────────────────────
     const bar = document.createElement("div");
@@ -85,6 +127,22 @@ export function initFindBar(
     btnCase.setAttribute("aria-label", t("Match Case"));
     btnCase.setAttribute("aria-pressed", "false");
 
+    const btnWord = createButton({
+        className: "find-bar__btn",
+        label: "ab",
+        title: t("Match Whole Word"),
+    });
+    btnWord.setAttribute("aria-label", t("Match Whole Word"));
+    btnWord.setAttribute("aria-pressed", "false");
+
+    const btnRegex = createButton({
+        className: "find-bar__btn",
+        label: ".*",
+        title: t("Use Regular Expression"),
+    });
+    btnRegex.setAttribute("aria-label", t("Use Regular Expression"));
+    btnRegex.setAttribute("aria-pressed", "false");
+
     const btnClose = createButton({
         className: "find-bar__btn",
         icon: IconX,
@@ -92,7 +150,7 @@ export function initFindBar(
     });
     btnClose.setAttribute("aria-label", t("Close"));
 
-    findRow.append(input, count, btnPrev, btnNext, sep, btnCase, btnClose);
+    findRow.append(input, count, btnPrev, btnNext, sep, btnCase, btnWord, btnRegex, btnClose);
 
     // Replace row (hidden until toggled)
     const replaceRow = document.createElement("div");
@@ -122,7 +180,12 @@ export function initFindBar(
 
     replaceRow.append(replaceInput, btnReplace, btnReplaceAll);
 
-    rows.append(findRow, replaceRow);
+    // Hint row: shown when raw-source (syntax) matches exist — they are find-only
+    const hint = document.createElement("div");
+    hint.className = "find-bar__hint";
+    hint.hidden = true;
+
+    rows.append(findRow, replaceRow, hint);
     bar.append(btnToggleReplace, rows);
     document.body.appendChild(bar);
 
@@ -130,68 +193,189 @@ export function initFindBar(
     let visible = false;
     let replaceVisible = false;
     let caseSensitive = false;
-    let matchRanges: Range[] = [];
+    let wholeWord = false;
+    let regexMode = false;
+    let matches: SearchMatch[] = [];
     let currentIdx = 0;
     let debounceTimer = 0;
+    /** Elements carrying attr/block highlight classes, for cleanup. */
+    let markedEls: HTMLElement[] = [];
 
     // ── Highlight updates ────────────────────────────────
     const supportsHighlights = () => typeof CSS !== "undefined" && "highlights" in CSS;
 
+    /** Convert a text match's PM range to a DOM Range (null if unmappable). */
+    function textMatchRange(view: EditorView, m: TextMatch): Range | null {
+        try {
+            const start = view.domAtPos(m.from);
+            const end = view.domAtPos(m.to);
+            const r = new Range();
+            r.setStart(start.node, start.offset);
+            r.setEnd(end.node, end.offset);
+            return r;
+        } catch {
+            return null;
+        }
+    }
+
+    /** DOM element to reveal/outline for an attr or block match. */
+    function matchElement(view: EditorView, m: SearchMatch): HTMLElement | null {
+        try {
+            if (m.kind === "node-attr") {
+                const dom = view.nodeDOM(m.nodePos);
+                if (dom instanceof HTMLElement) {
+                    return dom;
+                }
+                return dom?.parentElement ?? null;
+            }
+            if (m.kind === "mark-attr") {
+                const { node } = view.domAtPos(m.from);
+                const el = node instanceof Element ? node : node.parentElement;
+                return (el?.closest("a") as HTMLElement | null) ?? (el as HTMLElement | null);
+            }
+            if (m.kind === "block") {
+                return (view.dom.children[m.blockIndex] as HTMLElement | undefined) ?? null;
+            }
+            if (m.kind === "text") {
+                const { node } = view.domAtPos(m.from);
+                return node instanceof HTMLElement ? node : node.parentElement;
+            }
+        } catch {
+            /* decoration widgets / detached nodes: nothing to reveal */
+        }
+        return null;
+    }
+
+    function clearElementHighlights() {
+        for (const el of markedEls.splice(0)) {
+            el.classList.remove("find-match-el", "find-match-el--current");
+        }
+    }
+
     function updateHighlights() {
-        if (!supportsHighlights()) { return; }
-        if (!matchRanges.length) {
+        const view = getEditorView();
+        clearElementHighlights();
+
+        if (view) {
+            for (let i = 0; i < matches.length; i++) {
+                const m = matches[i];
+                if (m.kind === "text") {
+                    continue;
+                }
+                const el = matchElement(view, m);
+                if (!el) {
+                    continue;
+                }
+                el.classList.add("find-match-el");
+                el.classList.toggle("find-match-el--current", i === currentIdx);
+                markedEls.push(el);
+            }
+        }
+
+        if (!supportsHighlights()) {
+            return;
+        }
+        const ranges: Range[] = [];
+        let currentRange: Range | null = null;
+        if (view) {
+            for (let i = 0; i < matches.length; i++) {
+                const m = matches[i];
+                if (m.kind !== "text") {
+                    continue;
+                }
+                const r = textMatchRange(view, m);
+                if (!r) {
+                    continue;
+                }
+                ranges.push(r);
+                if (i === currentIdx) {
+                    currentRange = r;
+                }
+            }
+        }
+        if (!ranges.length) {
             CSS.highlights.delete("find-highlight");
             CSS.highlights.delete("find-highlight-current");
             return;
         }
-        CSS.highlights.set("find-highlight", new Highlight(...matchRanges));
-        if (matchRanges[currentIdx]) {
-            CSS.highlights.set("find-highlight-current", new Highlight(matchRanges[currentIdx]));
+        CSS.highlights.set("find-highlight", new Highlight(...ranges));
+        if (currentRange) {
+            CSS.highlights.set("find-highlight-current", new Highlight(currentRange));
+        } else {
+            CSS.highlights.delete("find-highlight-current");
         }
     }
 
     function clearHighlights() {
-        if (!supportsHighlights()) { return; }
+        clearElementHighlights();
+        if (!supportsHighlights()) {
+            return;
+        }
         CSS.highlights.delete("find-highlight");
         CSS.highlights.delete("find-highlight-current");
     }
 
+    function updateHint() {
+        const syntaxCount = matches.filter((m) => m.kind === "block").length;
+        if (syntaxCount > 0) {
+            hint.textContent = `${syntaxCount} ${t("syntax matches (find only, not replaceable)")}`;
+            hint.hidden = false;
+        } else {
+            hint.textContent = "";
+            hint.hidden = true;
+        }
+    }
+
     // ── Search ───────────────────────────────────────────
     function search(query: string) {
-        matchRanges = [];
+        matches = [];
         currentIdx = 0;
+        bar.classList.remove("find-bar--invalid");
 
         if (!query) {
             count.textContent = "";
             bar.classList.remove("find-bar--no-results");
             updateHighlights();
+            updateHint();
             return;
         }
 
-        const editorEl = getEditorEl();
-        if (!editorEl) { return; }
+        const compiled = buildQuery(query, { regex: regexMode, wholeWord, caseSensitive });
+        if (compiled.error !== undefined) {
+            count.textContent = t("Invalid pattern");
+            bar.classList.add("find-bar--invalid");
+            bar.classList.remove("find-bar--no-results");
+            input.setAttribute("aria-invalid", "true");
+            updateHighlights();
+            updateHint();
+            return;
+        }
+        input.removeAttribute("aria-invalid");
 
-        const q = caseSensitive ? query : query.toLowerCase();
-        const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT);
-        let node: Text | null;
-        while ((node = walker.nextNode() as Text | null)) {
-            const text = caseSensitive ? node.textContent! : node.textContent!.toLowerCase();
-            let idx = 0;
-            while (idx < text.length) {
-                const found = text.indexOf(q, idx);
-                if (found === -1) { break; }
-                const r = new Range();
-                r.setStart(node, found);
-                r.setEnd(node, found + query.length);
-                matchRanges.push(r);
-                // Advance past the whole match: overlapping matches would
-                // corrupt positions when replacing all in one transaction
-                idx = found + q.length;
-            }
+        const view = getEditorView();
+        if (!view) {
+            count.textContent = "";
+            updateHint();
+            return;
         }
 
-        if (matchRanges.length) {
-            count.textContent = `1/${matchRanges.length}`;
+        // Tier 1: precise, replace-capable matches over doc text + attributes
+        const doc = view.state.doc;
+        const segMatches: SegmentMatch[] = searchSegments(collectSegments(doc), compiled.re);
+
+        // Tier 2: raw markdown source fallback for pure-syntax hits (find-only)
+        const source = getMarkdownSource();
+        const blockPositions = computeBlockPositions(doc);
+        const blockMatches = source
+            ? searchSourceFallback(source, computeLineMap(source), compiled.re, segMatches, blockPositions)
+            : [];
+
+        matches = [...segMatches, ...blockMatches].sort(
+            (a, b) => sortPos(a) - sortPos(b) || sortSub(a) - sortSub(b),
+        );
+
+        if (matches.length) {
+            count.textContent = `1/${matches.length}`;
             bar.classList.remove("find-bar--no-results");
             scrollToMatch(0);
         } else {
@@ -199,16 +383,21 @@ export function initFindBar(
             bar.classList.add("find-bar--no-results");
         }
         updateHighlights();
+        updateHint();
     }
 
     function scrollToMatch(idx: number) {
-        if (!matchRanges[idx]) { return; }
+        if (!matches[idx]) {
+            return;
+        }
         currentIdx = idx;
-        count.textContent = `${currentIdx + 1}/${matchRanges.length}`;
+        count.textContent = `${currentIdx + 1}/${matches.length}`;
         updateHighlights();
-        const r = matchRanges[idx];
-        const node = r.startContainer;
-        const el = node instanceof Element ? node : (node as ChildNode).parentElement;
+        const view = getEditorView();
+        if (!view) {
+            return;
+        }
+        const el = matchElement(view, matches[idx]);
         if (el) {
             const topbarH = document.querySelector(".editor-topbar")?.getBoundingClientRect().height ?? 40;
             const rect = el.getBoundingClientRect();
@@ -219,72 +408,174 @@ export function initFindBar(
     }
 
     function goNext() {
-        if (!matchRanges.length) { return; }
-        scrollToMatch((currentIdx + 1) % matchRanges.length);
+        if (!matches.length) {
+            return;
+        }
+        scrollToMatch((currentIdx + 1) % matches.length);
     }
 
     function goPrev() {
-        if (!matchRanges.length) { return; }
-        scrollToMatch((currentIdx - 1 + matchRanges.length) % matchRanges.length);
+        if (!matches.length) {
+            return;
+        }
+        scrollToMatch((currentIdx - 1 + matches.length) % matches.length);
     }
 
     // ── Replace ──────────────────────────────────────────
 
-    /**
-     * Map a DOM match range to ProseMirror document positions.
-     * Returns null for text that is not part of the document (e.g. text
-     * inside decoration widgets), which must not be replaced.
-     */
-    function toPmRange(view: EditorView, r: Range): { from: number; to: number } | null {
-        try {
-            const from = view.posAtDOM(r.startContainer, r.startOffset);
-            const to = view.posAtDOM(r.endContainer, r.endOffset);
-            if (from < 0 || to < from) { return null; }
-            return { from, to };
-        } catch {
-            return null;
+    /** Replacement text for a match: expands $n groups in regex mode. */
+    function replacementFor(m: SegmentMatch): string {
+        const template = replaceInput.value;
+        return regexMode ? expandReplacement(template, m.exec) : template;
+    }
+
+    /** Current value of the attribute an attr match points at. */
+    function currentAttrValue(view: EditorView, m: NodeAttrMatch | MarkAttrMatch): string | null {
+        if (m.kind === "node-attr") {
+            const node = view.state.doc.nodeAt(m.nodePos);
+            if (!node) {
+                return null;
+            }
+            const value = node.attrs[m.attr];
+            return typeof value === "string" ? value : null;
         }
+        const value = m.mark.attrs[m.attr];
+        return typeof value === "string" ? value : null;
+    }
+
+    /**
+     * Add the attribute rewrite for `m` (with `newValue`) to the transaction.
+     * Attr rewrites never shift document positions. Node attrs are read from
+     * `tr.doc` so earlier rewrites to other attrs of the same node (e.g.
+     * image src + alt in one Replace All) are preserved.
+     */
+    function applyAttrRewrite(
+        tr: Transaction,
+        m: NodeAttrMatch | MarkAttrMatch,
+        newValue: string,
+    ): Transaction {
+        if (m.kind === "node-attr") {
+            const node = tr.doc.nodeAt(m.nodePos);
+            if (!node) {
+                return tr;
+            }
+            return tr.setNodeMarkup(m.nodePos, null, { ...node.attrs, [m.attr]: newValue });
+        }
+        const newMark = m.mark.type.create({ ...m.mark.attrs, [m.attr]: newValue });
+        return tr.removeMark(m.from, m.to, m.mark).addMark(m.from, m.to, newMark);
+    }
+
+    /** Lexicographic key used to pick the next match after a replacement. */
+    function matchKey(m: SearchMatch): [number, number] {
+        return [sortPos(m), sortSub(m)];
+    }
+
+    function keyGte(a: [number, number], b: [number, number]): boolean {
+        return a[0] > b[0] || (a[0] === b[0] && a[1] >= b[1]);
+    }
+
+    function flashHint() {
+        if (hint.hidden) {
+            return;
+        }
+        hint.classList.add("find-bar__hint--flash");
+        window.setTimeout(() => hint.classList.remove("find-bar__hint--flash"), 600);
     }
 
     function replaceCurrent() {
         const view = getEditorView();
-        if (!view || !matchRanges.length) { return; }
-        const pos = toPmRange(view, matchRanges[currentIdx]);
-        if (!pos) { return; }
-        const replacement = replaceInput.value;
-        view.dispatch(view.state.tr.insertText(replacement, pos.from, pos.to));
+        if (!view || !matches.length) {
+            return;
+        }
+        const m = matches[currentIdx];
+        if (m.kind === "block") {
+            // Pure-syntax matches live only in the raw source; skip past them
+            flashHint();
+            goNext();
+            return;
+        }
 
-        // Rescan the updated document, then advance to the first match after
-        // the inserted text (so a replacement containing the query does not
-        // get matched again immediately)
-        const nextTarget = pos.from + replacement.length;
+        const replacement = replacementFor(m);
+        let nextKey: [number, number];
+        if (m.kind === "text") {
+            view.dispatch(view.state.tr.insertText(replacement, m.from, m.to));
+            // Advance past the inserted text so a replacement containing the
+            // query does not get matched again immediately
+            nextKey = [m.from + replacement.length, -1];
+        } else {
+            const value = currentAttrValue(view, m);
+            if (value === null) {
+                return;
+            }
+            const newValue = value.slice(0, m.start) + replacement + value.slice(m.end);
+            view.dispatch(applyAttrRewrite(view.state.tr, m, newValue));
+            nextKey = [sortPos(m), m.start + replacement.length];
+        }
+
+        // Rescan the updated document, then advance to the first match at or
+        // after the replacement
         search(input.value);
-        if (matchRanges.length) {
-            const idx = matchRanges.findIndex((m) => {
-                const p = toPmRange(view, m);
-                return p !== null && p.from >= nextTarget;
-            });
+        if (matches.length) {
+            const idx = matches.findIndex((mm) => keyGte(matchKey(mm), nextKey));
             scrollToMatch(idx === -1 ? 0 : idx);
         }
     }
 
     function replaceAll() {
         const view = getEditorView();
-        if (!view || !matchRanges.length) { return; }
-        const replacement = replaceInput.value;
-        const positions = matchRanges
-            .map((r) => toPmRange(view, r))
-            .filter((p): p is { from: number; to: number } => p !== null);
-        if (!positions.length) { return; }
+        if (!view || !matches.length) {
+            return;
+        }
+        const texts: TextMatch[] = [];
+        const attrGroups = new Map<string, (NodeAttrMatch | MarkAttrMatch)[]>();
+        for (const m of matches) {
+            if (m.kind === "text") {
+                texts.push(m);
+            } else if (m.kind === "node-attr" || m.kind === "mark-attr") {
+                const key = m.kind === "node-attr" ? `n:${m.nodePos}:${m.attr}` : `m:${m.from}:${m.attr}`;
+                const group = attrGroups.get(key);
+                if (group) {
+                    group.push(m);
+                } else {
+                    attrGroups.set(key, [m]);
+                }
+            }
+            // block matches are raw-source syntax and intentionally skipped
+        }
+        if (!texts.length && !attrGroups.size) {
+            flashHint();
+            return;
+        }
 
-        // Apply in reverse document order so earlier positions stay valid;
-        // a single transaction keeps the whole operation one undo step
         let tr = view.state.tr;
-        for (let i = positions.length - 1; i >= 0; i--) {
-            tr = tr.insertText(replacement, positions[i].from, positions[i].to);
+
+        // Attribute rewrites first — they do not shift positions. Multiple
+        // hits on the same attribute value are folded right-to-left into one
+        // rewrite so each offset stays valid against the original string.
+        for (const group of attrGroups.values()) {
+            const value = currentAttrValue(view, group[0]);
+            if (value === null) {
+                continue;
+            }
+            let next = value;
+            for (const m of [...group].sort((a, b) => b.start - a.start)) {
+                next = next.slice(0, m.start) + replacementFor(m) + next.slice(m.end);
+            }
+            tr = applyAttrRewrite(tr, group[0], next);
+        }
+
+        // Text replacements in reverse document order keep earlier positions
+        // valid; the single transaction keeps everything one undo step.
+        for (let i = texts.length - 1; i >= 0; i--) {
+            tr = tr.insertText(replacementFor(texts[i]), texts[i].from, texts[i].to);
         }
         view.dispatch(tr);
+
+        const hadSyntax = matches.some((m) => m.kind === "block");
         search(input.value);
+        if (hadSyntax) {
+            flashHint();
+        }
     }
 
     function setReplaceVisible(show: boolean) {
@@ -295,6 +586,11 @@ export function initFindBar(
     }
 
     // ── Event bindings ───────────────────────────────────
+    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it.
+    // The bar is long-lived (never torn down), so attaching once is fine.
+    attachInputUndo(input);
+    attachInputUndo(replaceInput);
+
     input.addEventListener("input", () => {
         clearTimeout(debounceTimer);
         debounceTimer = window.setTimeout(() => search(input.value), 150);
@@ -334,12 +630,17 @@ export function initFindBar(
         if (replaceVisible) { replaceInput.focus(); }
     });
 
-    btnCase.addEventListener("click", () => {
-        caseSensitive = !caseSensitive;
-        btnCase.classList.toggle("find-bar__btn--active", caseSensitive);
-        btnCase.setAttribute("aria-pressed", String(caseSensitive));
-        search(input.value);
-    });
+    function bindToggle(btn: HTMLButtonElement, get: () => boolean, set: (v: boolean) => void) {
+        btn.addEventListener("click", () => {
+            set(!get());
+            btn.classList.toggle("find-bar__btn--active", get());
+            btn.setAttribute("aria-pressed", String(get()));
+            search(input.value);
+        });
+    }
+    bindToggle(btnCase, () => caseSensitive, (v) => { caseSensitive = v; });
+    bindToggle(btnWord, () => wholeWord, (v) => { wholeWord = v; });
+    bindToggle(btnRegex, () => regexMode, (v) => { regexMode = v; });
 
     // Stop mousedown inside the bar from bubbling into the editor
     bar.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -376,9 +677,12 @@ export function initFindBar(
         visible = false;
         bar.classList.remove("find-bar--visible");
         bar.classList.remove("find-bar--no-results");
+        bar.classList.remove("find-bar--invalid");
         clearHighlights();
-        matchRanges = [];
+        matches = [];
         count.textContent = "";
+        hint.textContent = "";
+        hint.hidden = true;
     }
 
     return { open, close, isOpen: () => visible };

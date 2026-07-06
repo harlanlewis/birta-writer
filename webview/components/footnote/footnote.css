@@ -1,0 +1,110 @@
+/* ── Footnote reference chip ─────────────────────────────────────────────── */
+.footnote-ref {
+    cursor: pointer;
+    color: var(--vscode-textLink-foreground);
+    font-weight: 600;
+    padding: 0 1px;
+    border-radius: 3px;
+    line-height: 0;
+    transition: background-color 0.12s ease;
+}
+
+.footnote-ref::before { content: "["; opacity: 0.55; }
+.footnote-ref::after { content: "]"; opacity: 0.55; }
+
+.footnote-ref:hover {
+    background-color: var(--vscode-textLink-activeForeground);
+    color: var(--vscode-editor-background);
+}
+
+/* ── Definition block ────────────────────────────────────────────────────── */
+.footnote-def {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 4px 6px;
+    border-left: 2px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    background-color: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.06));
+    border-radius: 0 4px 4px 0;
+}
+
+.footnote-def-marker {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    user-select: none;
+    padding-top: 2px;
+}
+
+.footnote-def-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4em;
+    height: 1.4em;
+    padding: 0 4px;
+    font-size: 0.82em;
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+    background-color: var(--vscode-badge-background, rgba(128, 128, 128, 0.18));
+    border-radius: 3px;
+}
+
+.footnote-def-backlink {
+    all: unset;
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    padding: 0 2px;
+    border-radius: 3px;
+}
+.footnote-def-backlink:hover {
+    color: var(--vscode-textLink-activeForeground);
+    background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+.footnote-def-content {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.footnote-def-content > :first-child { margin-top: 0; }
+.footnote-def-content > :last-child { margin-bottom: 0; }
+
+/* ── Flash highlight on jump ──────────────────────────────────────────────── */
+.footnote-flash {
+    animation: footnote-flash-anim 1.2s ease;
+}
+@keyframes footnote-flash-anim {
+    0%, 40% { background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)); }
+    100% { background-color: transparent; }
+}
+
+/* ── Hover preview popover ────────────────────────────────────────────────── */
+.footnote-popup {
+    position: absolute;
+    z-index: 1000;
+    max-width: 360px;
+    padding: 8px 10px;
+    font-size: 0.9em;
+    line-height: 1.4;
+    color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+    background-color: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.footnote-popup-marker {
+    display: block;
+    margin-bottom: 3px;
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground);
+}
+
+.footnote-popup-body {
+    display: block;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--vscode-descriptionForeground);
+}
