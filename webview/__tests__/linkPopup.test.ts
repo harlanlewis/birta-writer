@@ -76,13 +76,19 @@ describe("link popup with reference links", () => {
         await editor.destroy();
     });
 
-    it("hovering a link_ref anchor should not open the edit popup", async () => {
+    it("hovering a link_ref anchor should open a read-only popup (no edit button)", async () => {
         const refAnchor = container.querySelector('a[data-type="link-ref"]');
         expect(refAnchor).not.toBeNull();
 
         await hover(refAnchor!);
 
-        expect(getPopup().style.display).toBe("none");
+        // The popup opens (so the reference is openable) but its edit affordance
+        // is hidden, and it shows the resolved definition URL.
+        expect(getPopup().style.display).toBe("flex");
+        const btnEdit = document.querySelector<HTMLElement>(".lp-btn-edit");
+        expect(btnEdit?.style.display).toBe("none");
+        const url = document.querySelector(".lp-url")?.textContent;
+        expect(url).toBe("https://example.com/b");
     });
 
     it("hover + Confirm on a link_ref must not modify the document", async () => {
@@ -92,8 +98,8 @@ describe("link popup with reference links", () => {
         await hover(refAnchor);
         clickConfirm();
 
-        // The old paragraph-bounds fallback stripped/replaced marks across the
-        // whole paragraph here, destroying the inline link and the ref form.
+        // Read-only guard: Confirm must never apply a `link` mark to a reference,
+        // which would strip marks across the paragraph and destroy the ref form.
         expect(editor.action(getMarkdown())).toBe(before);
         expect(editor.action(getMarkdown())).toContain("[inline](https://example.com/a)");
         expect(editor.action(getMarkdown())).toContain("[the docs][docs]");

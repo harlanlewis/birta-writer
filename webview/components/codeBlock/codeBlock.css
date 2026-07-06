@@ -118,6 +118,13 @@
     cursor: ns-resize;
     border-radius: 0 0 6px 6px;
     transition: background 0.15s;
+    /* Overlap the bottom of the preview/code area rather than sitting below it
+       in flow: an in-flow transparent strip exposes the page background between
+       the preview and the wrapper's bottom border, which reads as a doubled
+       bottom border (most visible on the mermaid preview). */
+    margin-top: -6px;
+    position: relative;
+    z-index: 1;
 }
 
 .code-block-resize-handle:hover {

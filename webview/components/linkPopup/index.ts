@@ -23,6 +23,9 @@ interface LinkInfo {
     text: string;
     from: number;
     to: number;
+    /** A reference link ([text][ref]): openable but not editable in the popup —
+     * editing would apply a `link` mark and destroy the reference form. */
+    readOnly?: boolean;
 }
 
 type LinkKind = "anchor" | "file" | "external";
@@ -35,10 +38,17 @@ function getLinkKind(href: string): LinkKind {
     return "file";
 }
 
-function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
-    const href = anchor.getAttribute("href") ?? "";
-    const text = anchor.textContent ?? "";
-
+/**
+ * Walk left/right from the anchor's position collecting the contiguous run
+ * covered by `markName`, returning null when the mark isn't found (a stale DOM
+ * anchor). Never falls back to paragraph bounds: an edit keyed off wrong bounds
+ * would rewrite the whole paragraph as one link.
+ */
+function markBoundsAt(
+    view: EditorView,
+    anchor: Element,
+    markName: string,
+): { from: number; to: number } | null {
     let domPos: number;
     try {
         domPos = view.posAtDOM(anchor, 0);
@@ -50,35 +60,73 @@ function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
     const { state } = view;
     const docSize = state.doc.content.size;
     const pos = Math.min(domPos, docSize - 1);
-    const linkType = state.schema.marks["link"];
-    if (!linkType) return null;
+    const markType = state.schema.marks[markName];
+    if (!markType) return null;
 
     let from = pos;
     let to = pos;
     const nodeAt = state.doc.nodeAt(pos);
-    if (nodeAt && linkType.isInSet(nodeAt.marks)) {
-        while (
-            from > 0 &&
-            (() => {
-                const n = state.doc.nodeAt(from - 1);
-                return n && linkType.isInSet(n.marks);
-            })()
-        ) from--;
-        while (
-            to < docSize &&
-            (() => {
-                const n = state.doc.nodeAt(to);
-                return n && linkType.isInSet(n.marks);
-            })()
-        ) to++;
+    if (nodeAt && markType.isInSet(nodeAt.marks)) {
+        while (from > 0) {
+            const n = state.doc.nodeAt(from - 1);
+            if (n && markType.isInSet(n.marks)) from--;
+            else break;
+        }
+        while (to < docSize) {
+            const n = state.doc.nodeAt(to);
+            if (n && markType.isInSet(n.marks)) to++;
+            else break;
+        }
+    }
+    if (from === to) return null;
+    return { from, to };
+}
+
+/**
+ * Resolve a reference link's identifier to its `[label]: url` definition's URL,
+ * scanning the document's `link_definition` nodes. Markdown identifiers are
+ * normalized (case-insensitive), so compare case-folded. Returns null when no
+ * definition (or an empty URL) is found — there is then nothing to open.
+ */
+export function resolveReferenceUrl(
+    view: EditorView,
+    identifier: string,
+): string | null {
+    const id = identifier.trim().toLowerCase();
+    if (!id) return null;
+    let url: string | null = null;
+    view.state.doc.descendants((node) => {
+        if (url !== null) return false;
+        if (node.type.name === "link_definition") {
+            const defId = String(node.attrs["identifier"] ?? "").trim().toLowerCase();
+            if (defId === id) {
+                const u = String(node.attrs["url"] ?? "");
+                if (u) url = u;
+                return false;
+            }
+        }
+        return undefined;
+    });
+    return url;
+}
+
+function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
+    const text = anchor.textContent ?? "";
+
+    // Reference link: resolve the URL from its definition and treat as read-only.
+    if (anchor.getAttribute("data-type") === "link-ref") {
+        const identifier = (anchor as HTMLElement).dataset["identifier"] ?? "";
+        const url = resolveReferenceUrl(view, identifier);
+        if (!url) return null;
+        const bounds = markBoundsAt(view, anchor, "link_ref");
+        if (!bounds) return null;
+        return { href: url, text, from: bounds.from, to: bounds.to, readOnly: true };
     }
 
-    // No `link` mark bounds found (e.g. a `link_ref` mark or a stale DOM anchor).
-    // Never fall back to paragraph bounds: Confirm/Remove would then rewrite the
-    // ENTIRE paragraph as one link, destroying every other link in it.
-    if (from === to) { return null; }
-
-    return { href, text, from, to };
+    const href = anchor.getAttribute("href") ?? "";
+    const bounds = markBoundsAt(view, anchor, "link");
+    if (!bounds) return null;
+    return { href, text, from: bounds.from, to: bounds.to };
 }
 
 /**
@@ -274,6 +322,9 @@ export function setupLinkPopup(
         isEditMode = false;
         body.classList.remove("expanded");
         btnEdit.classList.remove("lp-btn-active");
+        // Reference links are openable but not editable (editing would convert
+        // them to inline links and destroy the reference form).
+        btnEdit.style.display = link.readOnly ? "none" : "";
 
         updatePopupContent(link);
 
@@ -326,10 +377,6 @@ export function setupLinkPopup(
     container.addEventListener("mouseover", (e) => {
         const anchor = (e.target as Element).closest("a");
         if (!anchor) return;
-        // Reference links ([text][ref], rendered as <a data-type="link-ref"> by the
-        // link_ref mark) have no href and no `link` mark; the edit popup would apply a
-        // `link` mark and destroy the reference form, so never open it for them.
-        if (anchor.getAttribute("data-type") === "link-ref") return;
 
         clearHoverTimer();
         clearHideTimer();
@@ -371,9 +418,21 @@ export function setupLinkPopup(
             if (!me.metaKey && !me.ctrlKey) return;
             const anchor = (me.target as Element).closest("a");
             if (!anchor) return;
-            // link_ref anchors have no href to open
-            if (anchor.getAttribute("data-type") === "link-ref") return;
-            const href = anchor.getAttribute("href") ?? "";
+            let href: string;
+            if (anchor.getAttribute("data-type") === "link-ref") {
+                // Resolve the reference's definition URL (link_ref carries no href).
+                const view = getView();
+                const resolved = view
+                    ? resolveReferenceUrl(
+                          view,
+                          (anchor as HTMLElement).dataset["identifier"] ?? "",
+                      )
+                    : null;
+                if (!resolved) return;
+                href = resolved;
+            } else {
+                href = anchor.getAttribute("href") ?? "";
+            }
             if (href.startsWith("#")) return; // anchors are handled by click
             e.stopPropagation();
             const cleanHref = href.split("#")[0];
@@ -442,6 +501,10 @@ export function setupLinkPopup(
         e.stopPropagation();
         const view = getView();
         if (!view || !currentLink) { hidePopup(); return; }
+        // Reference links are read-only here: applying a `link` mark would
+        // destroy the reference form. The edit UI is hidden for them, but guard
+        // the action too in case it is reached another way.
+        if (currentLink.readOnly) { hidePopup(); return; }
 
         const { state } = view;
         const linkType = state.schema.marks["link"];
@@ -484,6 +547,7 @@ export function setupLinkPopup(
         e.stopPropagation();
         const view = getView();
         if (!view || !currentLink) { hidePopup(); return; }
+        if (currentLink.readOnly) { hidePopup(); return; }
 
         const { state } = view;
         const linkType = state.schema.marks["link"];
