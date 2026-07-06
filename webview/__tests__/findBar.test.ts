@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { EditorView } from "@milkdown/prose/view";
 import { Schema, type Node as PmNode, type Mark } from "@milkdown/prose/model";
 import { EditorState, TextSelection, type Transaction } from "@milkdown/prose/state";
+import { createEventManager } from "../eventManager";
 import { initFindBar, selectionOrWordQuery } from "../components/findBar";
 
 // ── Test schema ──────────────────────────────────────────
@@ -104,6 +105,7 @@ function setup(
     const findBar = initFindBar(
         () => (opts.view === undefined ? fake.view : opts.view),
         () => opts.source ?? "",
+        createEventManager(),
     );
 
     const bar = document.querySelector(".find-bar") as HTMLElement;

@@ -19,6 +19,7 @@ const {
     notifyResolveImagePath,
     notifyRenameImage,
     notifyOpenSettings,
+    notifyOpenKeybindings,
 } = await import("../../webview/messaging");
 
 describe("messaging — postMessage format", () => {
@@ -122,5 +123,10 @@ describe("messaging — postMessage format", () => {
     it("notifyOpenSettings should send { type: 'openSettings' }", () => {
         notifyOpenSettings();
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openSettings" });
+    });
+
+    it("notifyOpenKeybindings should send { type: 'openKeybindings' }", () => {
+        notifyOpenKeybindings();
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openKeybindings" });
     });
 });

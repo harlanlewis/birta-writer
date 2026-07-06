@@ -29,7 +29,7 @@ import {
 } from "@/ui/icons";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
-import { notifyOpenSettings, notifySetProofreadOption, notifySetFontPreset, notifySetToolbarLayout } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetToolbarLayout } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
@@ -1310,6 +1310,11 @@ export function initToolbar(
         // Names the product so it's clear which settings open (t()-templated for
         // future translation); the name is the single package.json value.
         addEntry(t("Open {product} settings").replace("{product}", productName), () => notifyOpenSettings());
+        // Discoverability for the rebindable shortcuts: opens the native
+        // Keyboard Shortcuts UI filtered to this extension, where the user's
+        // effective bindings are always accurate (tooltips deliberately
+        // don't print defaults that a rebind would make wrong).
+        addEntry(t("Keyboard shortcuts"), () => notifyOpenKeybindings());
 
         wireHoverMenu(wrapEl, gearBtn, menu);
 

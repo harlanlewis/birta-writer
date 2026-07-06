@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createEventManager, type EventManager } from "../eventManager";
-import { initKeyboardShortcuts } from "../keyboardShortcuts";
+import { initKeyboardShortcuts, CLAIMED_SHORTCUTS } from "../keyboardShortcuts";
 
 // Dispatch on the ProseMirror element by default: real key events target the
 // focused element and bubble through document up to window, which is where
@@ -238,11 +238,26 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
 
     // ── Claimed-set exhaustiveness ───────────────────────────────────────
     // Policy guard (behavioral half; the source-scan half lives in
-    // shared/__tests__/noHardcodedKeybindings.test.ts): sweep the whole
-    // Mod+<letter> space and pin the claimed set EXACTLY. Adding any entry
-    // to CLAIMED_SHORTCUTS fails here — which is the point: a claimed chord
-    // can never be rebound by the user, so growing the set must be a
-    // deliberate, reviewed decision, not a side effect.
+    // shared/__tests__/noHardcodedKeybindings.test.ts): pin the claim list
+    // EXACTLY, both by direct snapshot and by sweeping the Mod+<letter>
+    // space. Adding any entry to CLAIMED_SHORTCUTS fails here — which is
+    // the point: a claimed chord can never be rebound by the user, so
+    // growing the set must be a deliberate, reviewed decision, not a side
+    // effect.
+
+    it("CLAIMED_SHORTCUTS should be exactly the ProseMirror typing-level combos", () => {
+        // Direct snapshot: catches non-letter claims (digits, symbols, named
+        // keys) that the letter sweeps below cannot see.
+        expect(CLAIMED_SHORTCUTS).toEqual([
+            { key: "b", mod: true },
+            { key: "i", mod: true },
+            { key: "e", mod: true },
+            { key: "x", mod: true, shift: true },
+            { key: "z", mod: true },
+            { key: "z", mod: true, shift: true },
+            { key: "y", mod: true },
+        ]);
+    });
 
     /** Letters whose Mod+<letter> chord the guard swallowed. */
     function claimedLetters(modifiers: (letter: string) => Partial<KeyboardEvent>): string[] {

@@ -12,6 +12,7 @@ import {
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
 import { attachInputUndo } from "@/utils/inputUndo";
+import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
 import {
     buildQuery,
@@ -103,7 +104,8 @@ function sortSub(m: SearchMatch): number {
 
 export function initFindBar(
     getEditorView: () => EditorView | null,
-    getMarkdownSource: () => string = () => "",
+    getMarkdownSource: () => string,
+    eventManager: EventManager,
 ): FindBarController {
     // ── DOM structure ────────────────────────────────────
     const bar = document.createElement("div");
@@ -775,11 +777,11 @@ export function initFindBar(
     bar.addEventListener("mousedown", (e) => e.stopPropagation());
 
     // Esc with focus in the editor content closes the bar (the input handlers
-    // above cover Esc while the bar itself has focus — relevant since Cmd+G
+    // above cover Esc while the bar itself has focus — relevant since find
     // navigation leaves focus in the editor). Bubble phase so overlays that
     // claim Escape first (menus, lightbox) win via preventDefault;
     // stopPropagation keeps the chord from also reaching the workbench.
-    document.addEventListener("keydown", (e) => {
+    eventManager.onDocument("keydown", (e) => {
         if (
             visible &&
             e.key === "Escape" &&

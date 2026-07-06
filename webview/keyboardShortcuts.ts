@@ -50,7 +50,7 @@ import { fallbackKeyFromKeyCode, type EventManager } from "./eventManager";
  * Modifiers not listed must NOT be pressed (exact matching), so e.g.
  * Cmd+Shift+E is not claimed by the Mod+E entry.
  */
-interface ClaimedShortcut {
+export interface ClaimedShortcut {
     /**
      * Produced character (KeyboardEvent.key), compared lowercase.
      * Layout-aware: ProseMirror keymaps match the produced character, so a
@@ -69,8 +69,13 @@ interface ClaimedShortcut {
     shift?: boolean;
 }
 
-/** Combos handled inside the webview that must never reach the workbench. */
-const CLAIMED_SHORTCUTS: ClaimedShortcut[] = [
+/**
+ * Combos handled inside the webview that must never reach the workbench.
+ * Exported ONLY for the policy snapshot in keyboardShortcuts.test.ts: every
+ * claimed chord is permanently un-rebindable for the user, so any change to
+ * this list must be a deliberate, reviewed decision.
+ */
+export const CLAIMED_SHORTCUTS: readonly ClaimedShortcut[] = [
     // formatKeymap plugin (webview/plugins/formatKeymap.ts)
     { key: "b", mod: true },                // bold
     { key: "i", mod: true },                // italic

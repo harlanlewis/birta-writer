@@ -148,6 +148,7 @@ export type ToExtensionMessage =
     | { type: "debug"; message: string }
     | { type: "switchToTextEditor"; line?: number }
     | { type: "openSettings" }
+    | { type: "openKeybindings" }
     | { type: "uploadImage"; id: string; data: Uint8Array; mimeType: string; altText: string }
     | { type: "getProjectImages"; id: string }
     | { type: "renameImage"; id: string; webviewUri: string; newBasename: string }

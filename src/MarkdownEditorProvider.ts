@@ -192,17 +192,30 @@ export class MarkdownEditorProvider
     }
 
     /**
-     * Routes an editor command (command palette / context menu) to the webview.
-     * Prefers the panel named by `documentUriStr` — the context object carries
-     * it as a belt-and-braces routing hint — and otherwise targets the active
-     * panel.
+     * Routes an editor command (keybinding / command palette / context menu)
+     * to the webview. Target resolution, most to least specific:
+     * 1. the panel named by `documentUriStr` (right-click context objects
+     *    carry it as a belt-and-braces routing hint);
+     * 2. the focused group's active tab — keybindings match per editor group
+     *    (`activeCustomEditorId` is group-scoped), and with split editors two
+     *    panels are simultaneously "active" in their groups, so
+     *    `_activePanel` (last view-state change) may name the wrong split;
+     * 3. `_activePanel` as the fallback.
      */
     public postEditorCommand(command: EditorCommandId, documentUriStr?: string, args?: unknown): void {
         const msg: ToWebviewMessage = { type: "editorCommand", command, args };
-        const panel = documentUriStr ? this._webviewPanels.get(documentUriStr) : undefined;
-        if (panel) {
-            panel.webview.postMessage(msg);
+        const named = documentUriStr ? this._webviewPanels.get(documentUriStr) : undefined;
+        if (named) {
+            named.webview.postMessage(msg);
             return;
+        }
+        const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+        if (activeTab?.input instanceof vscode.TabInputCustom) {
+            const focused = this._webviewPanels.get(activeTab.input.uri.toString());
+            if (focused) {
+                focused.webview.postMessage(msg);
+                return;
+            }
         }
         this.postToActivePanel(msg);
     }
@@ -536,6 +549,11 @@ export class MarkdownEditorProvider
                     }
                     case "openSettings":
                         vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWriter');
+                        break;
+                    case "openKeybindings":
+                        // Filtered to this extension's commands; shows the
+                        // user's effective (possibly rebound) shortcuts
+                        vscode.commands.executeCommand('workbench.action.openGlobalKeybindings', 'markdownWriter');
                         break;
                     case "uploadImage":
                         if (message.id && message.data) {

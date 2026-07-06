@@ -217,7 +217,7 @@ const eventManager = createEventManager();
 const toc = initToc(eventManager, () => getEditorView());
 document.body.appendChild(toc.panel);
 
-const findBar = initFindBar(() => getEditorView(), getMarkdownSource);
+const findBar = initFindBar(() => getEditorView(), getMarkdownSource, eventManager);
 
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 const topbarTb = topbar

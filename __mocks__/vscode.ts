@@ -293,10 +293,27 @@ export const env = {
     openExternal: vi.fn(),
 };
 
+/** Tab input for custom editors (instanceof-checked by command routing). */
+export class TabInputCustom {
+    constructor(
+        public readonly uri: unknown,
+        public readonly viewType: string,
+    ) {}
+}
+
 export const window = {
     showErrorMessage: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
+    /**
+     * Tab-group state for command routing tests. Mutate
+     * `tabGroups.activeTabGroup.activeTab` to simulate the focused tab;
+     * reset it to undefined between tests.
+     */
+    tabGroups: {
+        activeTabGroup: { activeTab: undefined as { input?: unknown } | undefined },
+        all: [] as unknown[],
+    },
 };
 
 export const commands = {

@@ -48,6 +48,16 @@ export function notifyOpenSettings(): void {
     vscode.postMessage({ type: "openSettings" });
 }
 
+/**
+ * Opens the native Keyboard Shortcuts UI filtered to this extension — the
+ * one place where the user's EFFECTIVE bindings are always accurate (and
+ * rebindable in place). Tooltips deliberately don't print shortcut defaults
+ * for rebindable commands; this is the discoverability path instead.
+ */
+export function notifyOpenKeybindings(): void {
+    vscode.postMessage({ type: "openKeybindings" });
+}
+
 export function notifyUploadImage(
     id: string,
     data: Uint8Array,
