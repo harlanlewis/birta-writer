@@ -30,7 +30,7 @@ describe("toolbar default placements", () => {
             const prop = props[`${SETTING_PREFIX}${id}`];
             expect(prop, `missing setting for toolbar item "${id}"`).toBeDefined();
             expect(prop!.default, `default for "${id}" drifted`).toBe(DEFAULT_PLACEMENTS[id]);
-            expect(prop!.enum, `enum for "${id}"`).toEqual(["hidden", "left", "center", "right"]);
+            expect(prop!.enum, `enum for "${id}"`).toEqual(["hidden", "left", "right"]);
         }
     });
 

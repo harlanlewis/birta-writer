@@ -13,10 +13,10 @@
  *
  * The shape: while active, a capture-phase listener swallows button
  * mousedown/click (so parked buttons can't fire their action), and a pointer
- * drag reorders items across four targets — the three toolbar zones plus a
+ * drag reorders items across three targets — the two toolbar zones plus a
  * "hidden" tray shown below the bar. A drop into a zone shows the item there; a
  * drop anywhere else (the editor, off the bar, the tray) hides it.
- * `ToolbarPlacement` models all four (`left | center | right | hidden`).
+ * `ToolbarPlacement` models all three (`left | right | hidden`).
  */
 import type { ToolbarPlacement } from "../../../shared/messages";
 
@@ -30,9 +30,9 @@ export interface ToolbarLayoutChange {
 
 export interface EditModeDeps {
     toolbar: HTMLElement;
-    /** The four drop targets: three zones + the hidden tray's item container. */
+    /** The three drop targets: two zones + the hidden tray's item container. */
     zones: Record<ToolbarPlacement, HTMLElement>;
-    /** The ⋯ wrapper; stays pinned at the end of the center zone. */
+    /** The ⋯ wrapper; stays pinned at the end of the left zone. */
     moreWrap: HTMLElement;
     /** Force all collapsed items back into the toolbar so they are draggable. */
     expandOverflow: () => void;
@@ -56,9 +56,9 @@ export function insertionIndexFromX(items: HTMLElement[], clientX: number): numb
     return items.length;
 }
 
-const PLACEMENTS: ToolbarPlacement[] = ["left", "center", "right", "hidden"];
+const PLACEMENTS: ToolbarPlacement[] = ["left", "right", "hidden"];
 /** Zones that contribute to the persisted visible order (the tray does not). */
-const ORDER_ZONES: ToolbarPlacement[] = ["left", "center", "right"];
+const ORDER_ZONES: ToolbarPlacement[] = ["left", "right"];
 
 /** Movement (px) before a press becomes a drag — distinguishes a click from a drag. */
 const DRAG_THRESHOLD = 4;
@@ -120,9 +120,9 @@ export function enterEditMode(deps: EditModeDeps): () => void {
         return el ? (PLACEMENTS.find((n) => zones[n] === el) ?? null) : null;
     }
 
-    /** End-of-target reference node (before ⋯ in the center zone). */
+    /** End-of-target reference node (before ⋯ in the left zone). */
     function endRef(zone: HTMLElement): Node | null {
-        return zone === zones.center ? moreWrap : null;
+        return zone === zones.left ? moreWrap : null;
     }
 
     function clearIndicator(): void {
@@ -143,7 +143,7 @@ export function enterEditMode(deps: EditModeDeps): () => void {
         return PLACEMENTS.find((n) => zones[n] === hit || zones[n].contains(hit)) ?? null;
     }
 
-    /** Insert `node` into `zone` at the slot for pointer X (before ⋯ in center). */
+    /** Insert `node` into `zone` at the slot for pointer X (before ⋯ on the left). */
     function insertAtX(zone: HTMLElement, node: Node, x: number): void {
         const others = zoneItems(zone).filter((el) => el !== dragging);
         const idx = insertionIndexFromX(others, x);
@@ -282,7 +282,7 @@ export function enterEditMode(deps: EditModeDeps): () => void {
         const targetName = placementOf(targetZone);
         dragging = null;
 
-        // Persisted order is the visible items only (left → center → right).
+        // Persisted order is the visible items only (left → right).
         const order = items(ORDER_ZONES)
             .map((el) => el.dataset["itemId"] ?? "")
             .filter(Boolean);

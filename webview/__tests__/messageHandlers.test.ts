@@ -195,7 +195,7 @@ describe("toolbarConfig handler", () => {
         const handlers = createMessageHandlers(deps);
 
         // Act
-        const config: ToolbarConfig = { placements: { bold: "center" }, order: [] };
+        const config: ToolbarConfig = { placements: { bold: "right" }, order: [] };
         handlers.toolbarConfig?.(
             { type: "toolbarConfig", config },
             document.createElement("div"),

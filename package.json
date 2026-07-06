@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.51",
+  "version": "0.2.52",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -609,7 +609,7 @@
         "markdownWysiwyg.styleCheck.enabled": {
           "order": 110,
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.styleCheck.enabled.description%"
         },
         "markdownWysiwyg.styleCheck.fillers": {
@@ -663,25 +663,25 @@
         "markdownWysiwyg.styleCheck.longSentences": {
           "order": 122,
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.styleCheck.longSentences.description%"
         },
         "markdownWysiwyg.styleCheck.ruleOfThree": {
           "order": 123,
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.styleCheck.ruleOfThree.description%"
         },
         "markdownWysiwyg.styleCheck.emDash": {
           "order": 124,
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.styleCheck.emDash.description%"
         },
         "markdownWysiwyg.styleCheck.nonAsciiPunct": {
           "order": 125,
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.styleCheck.nonAsciiPunct.description%"
         },
         "markdownWysiwyg.spellCheck.enabled": {
@@ -862,7 +862,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -874,7 +873,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -886,7 +884,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "right",
@@ -898,7 +895,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -910,7 +906,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -922,7 +917,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -934,7 +928,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -946,7 +939,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -958,7 +950,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -970,7 +961,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -982,7 +972,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "hidden",
@@ -994,7 +983,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -1006,7 +994,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -1018,7 +1005,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -1030,7 +1016,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -1042,7 +1027,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -1054,7 +1038,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -1066,7 +1049,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "left",
@@ -1078,7 +1060,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "right",
@@ -1090,7 +1071,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "right",
@@ -1102,7 +1082,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "right",
@@ -1114,7 +1093,6 @@
           "enum": [
             "hidden",
             "left",
-            "center",
             "right"
           ],
           "default": "right",

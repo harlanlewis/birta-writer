@@ -972,7 +972,7 @@ export class MarkdownEditorProvider
     public static getProofreadConfig(): ProofreadConfig {
         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
         return {
-            styleCheck: cfg.get<boolean>("styleCheck.enabled", false),
+            styleCheck: cfg.get<boolean>("styleCheck.enabled", true),
             fillers: cfg.get<boolean>("styleCheck.fillers", true),
             redundancies: cfg.get<boolean>("styleCheck.redundancies", true),
             cliches: cfg.get<boolean>("styleCheck.cliches", true),
@@ -981,10 +981,10 @@ export class MarkdownEditorProvider
             aiArtifacts: cfg.get<boolean>("styleCheck.aiArtifacts", true),
             passive: cfg.get<boolean>("styleCheck.passive", true),
             negativeParallelism: cfg.get<boolean>("styleCheck.negativeParallelism", true),
-            longSentences: cfg.get<boolean>("styleCheck.longSentences", false),
-            ruleOfThree: cfg.get<boolean>("styleCheck.ruleOfThree", false),
-            emDash: cfg.get<boolean>("styleCheck.emDash", false),
-            nonAsciiPunct: cfg.get<boolean>("styleCheck.nonAsciiPunct", false),
+            longSentences: cfg.get<boolean>("styleCheck.longSentences", true),
+            ruleOfThree: cfg.get<boolean>("styleCheck.ruleOfThree", true),
+            emDash: cfg.get<boolean>("styleCheck.emDash", true),
+            nonAsciiPunct: cfg.get<boolean>("styleCheck.nonAsciiPunct", true),
             styleExceptions: cfg.get<string[]>("styleCheck.exceptions", []),
             spellCheck: cfg.get<boolean>("spellCheck.enabled", true),
             grammarCheck: cfg.get<boolean>("spellCheck.grammar", true),

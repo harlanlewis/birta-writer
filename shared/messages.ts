@@ -47,7 +47,7 @@ export type HarperLint = {
 export type LintBlockResult = { key: number; lints: HarperLint[] };
 
 /** A toolbar zone, or "hidden" to omit the item entirely. */
-export type ToolbarZone = "left" | "center" | "right";
+export type ToolbarZone = "left" | "right";
 export type ToolbarPlacement = ToolbarZone | "hidden";
 
 /** Per-item placement map keyed by toolbar item id (see the webview registry). */

@@ -71,11 +71,13 @@ export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     settings: "right",
 };
 
+// "center" is intentionally NOT valid: the zone was removed, and persisted
+// "center" placements from older builds fall back to the item's default.
 function isValidPlacement(value: unknown): value is ToolbarPlacement {
-    return value === "left" || value === "center" || value === "right" || value === "hidden";
+    return value === "left" || value === "right" || value === "hidden";
 }
 
-const ZONES: ToolbarZone[] = ["left", "center", "right"];
+const ZONES: ToolbarZone[] = ["left", "right"];
 
 /**
  * Resolve per-zone ordered item id lists from a (possibly partial or malformed)
@@ -95,7 +97,6 @@ export function computeZones(
 
     const result: Record<ToolbarZone | "hidden", ToolbarItemId[]> = {
         left: [],
-        center: [],
         right: [],
         hidden: [],
     };

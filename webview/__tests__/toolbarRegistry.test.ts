@@ -17,7 +17,7 @@ describe("computeZones", () => {
         const zones = computeZones(undefined);
 
         // Assert: shipped layout — editing controls left, utilities right,
-        // center empty, footnote the sole opt-in
+        // footnote the sole opt-in
         expect(zones.left).toEqual([
             "format",
             "bold",
@@ -36,7 +36,6 @@ describe("computeZones", () => {
             "math",
             "clearFormatting",
         ]);
-        expect(zones.center).toEqual([]);
         expect(zones.right).toEqual(["viewSource", "find", "styleCheck", "fontPreset", "settings"]);
         expect(zones.hidden).toEqual(["footnote"]);
     });
@@ -78,14 +77,14 @@ describe("computeZones", () => {
     });
 
     it("without an order hint, items should keep canonical registry order within a zone", () => {
-        // Arrange: place bold + italic in center, out of registry order in the config
-        const config = cfg({ italic: "center", bold: "center" });
+        // Arrange: place bold + italic on the right, out of registry order in the config
+        const config = cfg({ italic: "right", bold: "right" });
 
         // Act
         const zones = computeZones(config);
 
         // Assert: bold precedes italic because that is the registry order
-        expect(zones.center.indexOf("bold")).toBeLessThan(zones.center.indexOf("italic"));
+        expect(zones.right.indexOf("bold")).toBeLessThan(zones.right.indexOf("italic"));
     });
 
     it("an order hint should reorder items within a zone", () => {
@@ -108,17 +107,17 @@ describe("computeZones", () => {
     });
 
     it("items not named in the order hint should follow the listed ones in canonical order", () => {
-        // Arrange: pin fontPreset first; hide the other default-center items so
-        // only format + clearFormatting remain to fall through in registry order
+        // Arrange: pin fontPreset first; hide everything else so only
+        // format + clearFormatting remain to fall through in registry order
         const config = cfg(
-            {
-                format: "center",
-                clearFormatting: "center",
-                fontPreset: "center",
-                link: "hidden",
-                image: "hidden",
-                table: "hidden",
-            },
+            Object.fromEntries(
+                TOOLBAR_ITEM_IDS.map((id) => [
+                    id,
+                    id === "format" || id === "clearFormatting" || id === "fontPreset"
+                        ? "right"
+                        : "hidden",
+                ]),
+            ),
             ["fontPreset"],
         );
 
@@ -126,7 +125,7 @@ describe("computeZones", () => {
         const zones = computeZones(config);
 
         // Assert: fontPreset first, then format + clearFormatting in registry order
-        expect(zones.center).toEqual(["fontPreset", "format", "clearFormatting"]);
+        expect(zones.right).toEqual(["fontPreset", "format", "clearFormatting"]);
     });
 
     it("an order id in another zone should not affect this zone", () => {
@@ -182,18 +181,18 @@ describe("computeZones", () => {
 
     it("unknown item ids in the config should be ignored", () => {
         // Arrange
-        const config = { placements: { notARealItem: "center" }, order: [] } as unknown as ToolbarConfig;
+        const config = { placements: { notARealItem: "right" }, order: [] } as unknown as ToolbarConfig;
 
         // Act
         const zones = computeZones(config);
 
         // Assert: only real ids ever appear
-        const all = [...zones.left, ...zones.center, ...zones.right];
+        const all = [...zones.left, ...zones.right];
         expect(all).not.toContain("notARealItem");
         all.forEach((id) => expect(TOOLBAR_ITEM_IDS).toContain(id));
     });
 
-    it("hiding everything should produce three empty zones", () => {
+    it("hiding everything should produce empty zones", () => {
         // Arrange
         const config = cfg(
             Object.fromEntries(TOOLBAR_ITEM_IDS.map((id) => [id, "hidden"])),
@@ -204,7 +203,6 @@ describe("computeZones", () => {
 
         // Assert
         expect(zones.left).toEqual([]);
-        expect(zones.center).toEqual([]);
         expect(zones.right).toEqual([]);
     });
 });

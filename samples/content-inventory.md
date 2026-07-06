@@ -4,7 +4,7 @@ description: A living showcase of every content type the editor supports. Open i
 tags: [reference, showcase, regression]
 ---
 
-# Content inventory
+> # Content inventory
 
 This document is a **living reference** of every content type WYSIWYG Markdown Editor supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
 

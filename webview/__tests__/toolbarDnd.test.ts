@@ -94,12 +94,12 @@ describe("enterEditMode drag lifecycle", () => {
         document.elementFromPoint = vi.fn(() => hitZone) as typeof document.elementFromPoint;
 
         toolbar = document.createElement("div");
-        const left = zone("left"), center = zone("center"), right = zone("right"), hidden = zone("hidden");
+        const left = zone("left"), right = zone("right"), hidden = zone("hidden");
         moreWrap = document.createElement("div");
-        center.appendChild(moreWrap); // the ⋯ wrapper, pinned at the end of center
-        toolbar.append(left, center, right, hidden);
+        left.appendChild(moreWrap); // the ⋯ wrapper, pinned at the end of left
+        toolbar.append(left, right, hidden);
         document.body.appendChild(toolbar);
-        zones = { left, center, right, hidden };
+        zones = { left, right, hidden };
 
         onChange = vi.fn();
         onExit = vi.fn();
@@ -120,8 +120,8 @@ describe("enterEditMode drag lifecycle", () => {
 
     it("a drag into another zone should move the item and report the new placement", () => {
         const a = addItem("a", zones.left);
-        addItem("b", zones.center);
-        hitZone = zones.center;
+        addItem("b", zones.right);
+        hitZone = zones.right;
 
         pev("pointerdown", 0, 0, a);
         pev("pointermove", 20, 0); // past the 4px threshold → begins the drag
@@ -130,14 +130,14 @@ describe("enterEditMode drag lifecycle", () => {
 
         expect(onChange).toHaveBeenCalledTimes(1);
         const change = onChange.mock.calls[0]![0];
-        expect(change.item).toEqual({ id: "a", placement: "center" });
-        expect(a.parentElement).toBe(zones.center);
+        expect(change.item).toEqual({ id: "a", placement: "right" });
+        expect(a.parentElement).toBe(zones.right);
         expect(ghostEl()).toBeNull(); // ghost torn down on drop
     });
 
     it("a sub-threshold press should be treated as a click, not a drag", () => {
         const a = addItem("a", zones.left);
-        hitZone = zones.center;
+        hitZone = zones.right;
 
         pev("pointerdown", 0, 0, a);
         pev("pointerup", 2, 0); // 2px < 4px threshold
@@ -149,7 +149,7 @@ describe("enterEditMode drag lifecycle", () => {
 
     it("a below-threshold move should not start a drag (still a click)", () => {
         const a = addItem("a", zones.left);
-        hitZone = zones.center;
+        hitZone = zones.right;
 
         pev("pointerdown", 0, 0, a);
         pev("pointermove", 3, 0); // 3px < 4px threshold → moved stays false
@@ -162,7 +162,7 @@ describe("enterEditMode drag lifecycle", () => {
 
     it("pointercancel mid-drag should remove the ghost and leave the item in place", () => {
         const a = addItem("a", zones.left);
-        hitZone = zones.center;
+        hitZone = zones.right;
 
         pev("pointerdown", 0, 0, a);
         pev("pointermove", 20, 0);
@@ -176,7 +176,7 @@ describe("enterEditMode drag lifecycle", () => {
 
     it("Escape mid-drag should cancel the drag without exiting edit mode", () => {
         const a = addItem("a", zones.left);
-        hitZone = zones.center;
+        hitZone = zones.right;
 
         pev("pointerdown", 0, 0, a);
         pev("pointermove", 20, 0);
