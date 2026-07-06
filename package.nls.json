@@ -14,7 +14,7 @@
   "config.defaultMode.markdown": "Open .md files with the VS Code text editor.",
   "config.editorMaxWidth.description": "Maximum width of the editor content area in pixels, or 'auto' to use the remaining space beside the table of contents. Default is auto.",
   "config.tocContentGap.description": "Left-side gap in pixels between the table of contents or its toggle button and the editor content. Default is 100.",
-  "config.tocPosition.description": "Which side of the editor the table of contents docks on. Default is left.",
+  "config.tocPosition.description": "Which side of the editor the table of contents docks on. Default is right.",
   "config.tocPosition.left": "Dock the table of contents on the left side of the editor.",
   "config.tocPosition.right": "Dock the table of contents on the right side of the editor.",
   "config.tocAutoHideThreshold.description": "Do not automatically show the table of contents when the document has this many or fewer non-empty headings. Manual opening is not affected. Default is 3.",

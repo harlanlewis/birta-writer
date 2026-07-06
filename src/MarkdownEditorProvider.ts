@@ -836,7 +836,7 @@ export class MarkdownEditorProvider
         const tocContentGap = this._getPixelSettingCssValue(cfg.get<number>("tocContentGap", 100), 100, 16, 240);
         // User-dragged TOC panel width, persisted across documents and sessions
         const tocWidth = this._getNumberSettingValue(this.context.globalState.get<number>("tocWidth"), 220, 150, 600);
-        const tocRight = cfg.get<string>("tocPosition", "left") === "right";
+        const tocRight = cfg.get<string>("tocPosition", "right") === "right";
         const isAutoWidth = editorMaxWidth === "none";
         const fontFamily = cfg.get<string>("fontFamily", "");
         const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
