@@ -21,7 +21,7 @@ export interface CustomTheme {
 
 /** Get user-defined custom themes */
 export function getCustomThemes(): CustomTheme[] {
-    const config = vscode.workspace.getConfiguration("markdownWysiwyg");
+    const config = vscode.workspace.getConfiguration("markdownWriter");
     return config.get<CustomTheme[]>("customThemes", []);
 }
 
@@ -424,8 +424,48 @@ export async function getThemeColors(themePath: string): Promise<ThemeColors> {
     }
 }
 
-export function getAutoThemeColors(): ThemeColors {
-    // Return an empty object, letting the webview obtain VSCode's currently injected variable values via getComputedStyle
+/**
+ * Resolve the `--vscode-*` color overrides to push to a webview for a given
+ * editor theme id (the `markdownWriter.colorTheme` setting value).
+ *
+ * - `"auto"`: return `{}`. VS Code injects the full `--vscode-*` palette into
+ *   every webview and updates it live whenever the active color theme changes,
+ *   so in auto mode the webview should use those native variables directly.
+ *   Sending inline overrides would shadow the native values (inline styles win
+ *   over VS Code's injected `:root {}` block) and freeze the colors until the
+ *   webview reloads — the root cause of the "theme doesn't update" bug.
+ * - `"custom:<name>"`: map a user-defined custom theme's colors. These aren't
+ *   known to VS Code, so they must be pushed explicitly.
+ * - a specific built-in theme id: read colors from that theme's JSON so the
+ *   editor can intentionally differ from the active workbench theme.
+ * - anything unresolved: return `{}` (fall back to VS Code's native palette).
+ */
+export async function resolveThemeColors(themeId: string): Promise<ThemeColors> {
+    // Custom theme (format: custom:themeName)
+    if (themeId.startsWith("custom:")) {
+        const customThemeName = themeId.slice("custom:".length);
+        const customTheme = getCustomThemes().find(t => t.name === customThemeName);
+        if (customTheme) {
+            const colors: ThemeColors = {};
+            for (const [key, value] of Object.entries(customTheme.colors)) {
+                colors[`--vscode-${key.replace(/\./g, "-")}`] = value;
+            }
+            return colors;
+        }
+        return {};
+    }
+
+    // Auto mode: let VS Code's live-updating native variables show through.
+    if (themeId === "auto") {
+        return {};
+    }
+
+    // A specific built-in theme was pinned: read its colors from the theme JSON.
+    const theme = getAllThemes().find(t => t.id === themeId);
+    if (theme) {
+        return await getThemeColors(theme.path);
+    }
+
     return {};
 }
 
