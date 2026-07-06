@@ -817,7 +817,7 @@ export function setupSelectionToolbar(
 
         const inTable = isInTableCell($from);
 
-        // 格式下拉：表格内隐藏，表格外正常显示
+        // Format dropdown: hidden inside a table, shown normally outside one
         fmtWrap.style.display = inTable ? "none" : "";
         textFmtSep.style.display = inTable ? "none" : "";
 
@@ -829,7 +829,7 @@ export function setupSelectionToolbar(
         linkSep.style.display = "";
         linkBtn.style.display = "";
 
-        // 表格专属元素：隐藏
+        // Table-only elements: hidden
         tableSep.style.display = "none";
         alignWrap.style.display = "none";
         deleteRowBtn.style.display = "none";
@@ -838,7 +838,7 @@ export function setupSelectionToolbar(
         deleteColBtn.style.display = "none";
         deleteSep.style.display = "none";
 
-        // 高亮当前格式 + 更新格式按钮图标（仅非表格模式有意义）
+        // Highlight the current format + update the format-button icon (only meaningful outside table mode)
         if (!inTable) {
             let activeLevel = 0;
             for (let d = $from.depth; d >= 0; d--) {
