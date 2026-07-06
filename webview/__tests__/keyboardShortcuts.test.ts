@@ -8,9 +8,27 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
+import type { EditorView } from "@milkdown/prose/view";
+import { Schema } from "@milkdown/prose/model";
+import { EditorState, TextSelection } from "@milkdown/prose/state";
 import { createEventManager, type EventManager } from "../eventManager";
-import { initKeyboardShortcuts } from "../keyboardShortcuts";
+import { initKeyboardShortcuts, selectionOrWordQuery } from "../keyboardShortcuts";
 import type { FindBarController } from "../components/findBar";
+
+// Minimal doc + view stub for the shortcuts that read the editor selection
+const schema = new Schema({
+    nodes: {
+        doc: { content: "block+" },
+        paragraph: { group: "block", content: "inline*" },
+        text: { group: "inline" },
+    },
+});
+
+function fakeViewFor(text: string, from: number, to = from): EditorView {
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text)])]);
+    const state = EditorState.create({ doc, selection: TextSelection.create(doc, from, to) });
+    return { state } as unknown as EditorView;
+}
 
 // Dispatch on document.body by default: real key events target the focused
 // element and bubble through document up to window, which is where the
@@ -37,15 +55,21 @@ function pressKey(
 
 describe("initKeyboardShortcuts find/replace bindings", () => {
     let manager: EventManager;
-    let findBar: { open: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; isOpen: ReturnType<typeof vi.fn> };
+    let findBar: {
+        open: ReturnType<typeof vi.fn>;
+        close: ReturnType<typeof vi.fn>;
+        isOpen: ReturnType<typeof vi.fn>;
+        findNext: ReturnType<typeof vi.fn>;
+        findPrev: ReturnType<typeof vi.fn>;
+    };
     let openLinkPrompt: ReturnType<typeof vi.fn>;
 
-    function init(isMac: boolean): void {
+    function init(isMac: boolean, getView: () => EditorView | null = () => null): void {
         window.__i18n = { translations: {}, isMac };
         manager = createEventManager();
         initKeyboardShortcuts(
             manager,
-            () => null,
+            getView,
             () => [],
             () => 1,
             findBar as unknown as FindBarController,
@@ -55,7 +79,10 @@ describe("initKeyboardShortcuts find/replace bindings", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        findBar = { open: vi.fn(), close: vi.fn(), isOpen: vi.fn(() => false) };
+        findBar = {
+            open: vi.fn(), close: vi.fn(), isOpen: vi.fn(() => false),
+            findNext: vi.fn(), findPrev: vi.fn(),
+        };
         openLinkPrompt = vi.fn();
     });
 
@@ -117,6 +144,89 @@ describe("initKeyboardShortcuts find/replace bindings", () => {
         expect(findBar.open).not.toHaveBeenCalled();
     });
 
+    it("Cmd+G (macOS) should find the next match", () => {
+        init(true);
+        pressKey("KeyG", { key: "g", metaKey: true });
+        expect(findBar.findNext).toHaveBeenCalledTimes(1);
+    });
+
+    it("Cmd+Shift+G (macOS) should find the previous match", () => {
+        init(true);
+        pressKey("KeyG", { key: "G", metaKey: true, shiftKey: true });
+        expect(findBar.findPrev).toHaveBeenCalledTimes(1);
+    });
+
+    it("Ctrl+G (Windows/Linux) should stay unbound (it is go-to-line there)", () => {
+        init(false);
+        pressKey("KeyG", { key: "g", ctrlKey: true });
+        expect(findBar.findNext).not.toHaveBeenCalled();
+    });
+
+    it("F3 should find the next match on all platforms", () => {
+        init(false);
+        pressKey("F3", { key: "F3" });
+        expect(findBar.findNext).toHaveBeenCalledTimes(1);
+        manager.dispose();
+
+        init(true);
+        pressKey("F3", { key: "F3" });
+        expect(findBar.findNext).toHaveBeenCalledTimes(2);
+    });
+
+    it("Shift+F3 should find the previous match", () => {
+        init(false);
+        pressKey("F3", { key: "F3", shiftKey: true });
+        expect(findBar.findPrev).toHaveBeenCalledTimes(1);
+        expect(findBar.findNext).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+D with no editor view should open find & replace focused on the replace input", () => {
+        init(true);
+        const event = pressKey("KeyD", { key: "d", metaKey: true });
+        expect(findBar.open).toHaveBeenCalledWith(undefined, {
+            showReplace: true,
+            focusReplace: true,
+        });
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it("Cmd+D with a selection should pre-fill the query from it", () => {
+        // "foo bar baz": "bar" spans doc positions 5..8
+        init(true, () => fakeViewFor("foo bar baz", 5, 8));
+        pressKey("KeyD", { key: "d", metaKey: true });
+        expect(findBar.open).toHaveBeenCalledWith("bar", {
+            showReplace: true,
+            focusReplace: true,
+        });
+    });
+
+    it("Cmd+D with an empty selection should pre-fill the word around the caret", () => {
+        init(true, () => fakeViewFor("foo bar baz", 6)); // caret inside "bar"
+        pressKey("KeyD", { key: "d", metaKey: true });
+        expect(findBar.open).toHaveBeenCalledWith("bar", {
+            showReplace: true,
+            focusReplace: true,
+        });
+    });
+
+    it("Ctrl+D (Windows/Linux) should open find & replace too", () => {
+        init(false);
+        pressKey("KeyD", { key: "d", ctrlKey: true });
+        expect(findBar.open).toHaveBeenCalledTimes(1);
+    });
+
+    it("Cmd+D in an overlay input should not open find & replace nor block typing", () => {
+        init(true);
+        const overlayInput = document.createElement("input");
+        document.body.appendChild(overlayInput);
+
+        const event = pressKey("KeyD", { key: "d", metaKey: true }, overlayInput);
+
+        expect(findBar.open).not.toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(false);
+        overlayInput.remove();
+    });
+
     it("Cmd+Shift+M should request the switch to the text editor", () => {
         init(true);
         pressKey("KeyM", { key: "M", metaKey: true, shiftKey: true });
@@ -163,7 +273,13 @@ describe("initKeyboardShortcuts find/replace bindings", () => {
 
 describe("initKeyboardShortcuts workbench key-leak guard", () => {
     let manager: EventManager;
-    let findBar: { open: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; isOpen: ReturnType<typeof vi.fn> };
+    let findBar: {
+        open: ReturnType<typeof vi.fn>;
+        close: ReturnType<typeof vi.fn>;
+        isOpen: ReturnType<typeof vi.fn>;
+        findNext: ReturnType<typeof vi.fn>;
+        findPrev: ReturnType<typeof vi.fn>;
+    };
     /**
      * Stand-in for the VS Code webview host's key forwarder: a bubble-phase
      * keydown listener on `window`. Keys the editor claims must never reach
@@ -189,7 +305,10 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        findBar = { open: vi.fn(), close: vi.fn(), isOpen: vi.fn(() => false) };
+        findBar = {
+            open: vi.fn(), close: vi.fn(), isOpen: vi.fn(() => false),
+            findNext: vi.fn(), findPrev: vi.fn(),
+        };
         openLinkPrompt = vi.fn();
         workbenchForwarder = vi.fn();
         window.addEventListener("keydown", workbenchForwarder);
@@ -351,6 +470,50 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         expect(workbenchForwarder).toHaveBeenCalledTimes(1);
     });
 
+    it("Cmd+G / Cmd+Shift+G on macOS should be claimed as find next/previous", () => {
+        init(true);
+        pressKey("KeyG", { key: "g", metaKey: true }, proseMirrorEl);
+        pressKey("KeyG", { key: "G", metaKey: true, shiftKey: true }, proseMirrorEl);
+        expect(findBar.findNext).toHaveBeenCalledTimes(1);
+        expect(findBar.findPrev).toHaveBeenCalledTimes(1);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+G on Windows/Linux should NOT be claimed (go-to-line belongs to the workbench)", () => {
+        init(false);
+        pressKey("KeyG", { key: "g", ctrlKey: true }, proseMirrorEl);
+        expect(findBar.findNext).not.toHaveBeenCalled();
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+
+    it("F3 and Shift+F3 should be claimed as find next/previous", () => {
+        init(false);
+        pressKey("F3", { key: "F3" }, proseMirrorEl);
+        pressKey("F3", { key: "F3", shiftKey: true }, proseMirrorEl);
+        expect(findBar.findNext).toHaveBeenCalledTimes(1);
+        expect(findBar.findPrev).toHaveBeenCalledTimes(1);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+D inside the editor content should be claimed and open find & replace", () => {
+        init(true);
+        pressKey("KeyD", { key: "d", metaKey: true }, proseMirrorEl);
+        expect(findBar.open).toHaveBeenCalledTimes(1);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+D in an overlay input should still be claimed but not open find & replace", () => {
+        init(true);
+        const overlayInput = document.createElement("input");
+        document.body.appendChild(overlayInput);
+
+        pressKey("KeyD", { key: "d", metaKey: true }, overlayInput);
+
+        expect(findBar.open).not.toHaveBeenCalled();
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+        overlayInput.remove();
+    });
+
     it("Cmd+P (not claimed by the editor) should still reach window listeners", () => {
         init(true);
         const event = pressKey("KeyP", { key: "p", metaKey: true }, proseMirrorEl);
@@ -391,5 +554,35 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         init(true);
         pressKey("Tab", {}, document.body);
         expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("selectionOrWordQuery", () => {
+    it("a non-empty selection should return the selected text", () => {
+        // "foo bar baz": "bar" spans doc positions 5..8
+        expect(selectionOrWordQuery(fakeViewFor("foo bar baz", 5, 8))).toBe("bar");
+    });
+
+    it("a whitespace-only selection should return undefined", () => {
+        expect(selectionOrWordQuery(fakeViewFor("foo bar baz", 4, 5))).toBe(undefined);
+    });
+
+    it("an empty selection inside a word should return the surrounding word", () => {
+        expect(selectionOrWordQuery(fakeViewFor("foo bar baz", 6))).toBe("bar");
+    });
+
+    it("an empty selection at a word boundary should still pick up the adjacent word", () => {
+        // caret right after "foo" (position 4)
+        expect(selectionOrWordQuery(fakeViewFor("foo bar baz", 4))).toBe("foo");
+    });
+
+    it("an empty selection surrounded by whitespace should return undefined", () => {
+        // "foo  bar": caret between the two spaces (position 5)
+        expect(selectionOrWordQuery(fakeViewFor("foo  bar", 5))).toBe(undefined);
+    });
+
+    it("word expansion should treat unicode letters as word characters", () => {
+        // "der Käse hier": caret inside "Käse" (position 7)
+        expect(selectionOrWordQuery(fakeViewFor("der Käse hier", 7))).toBe("Käse");
     });
 });

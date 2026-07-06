@@ -1,6 +1,6 @@
 import "./findBar.css";
 import type { EditorView } from "@milkdown/prose/view";
-import type { Transaction } from "@milkdown/prose/state";
+import { TextSelection, type Transaction } from "@milkdown/prose/state";
 import { createButton } from "@/ui/dom";
 import {
     IconChevronUp,
@@ -36,9 +36,16 @@ declare namespace CSS {
 }
 
 export interface FindBarController {
-    open(initialQuery?: string, opts?: { showReplace?: boolean }): void;
+    open(
+        initialQuery?: string,
+        opts?: { showReplace?: boolean; focusReplace?: boolean },
+    ): void;
     close(): void;
     isOpen(): boolean;
+    /** Cmd+G / F3: next match while the editor keeps focus. */
+    findNext(): void;
+    /** Cmd+Shift+G / Shift+F3: previous match while the editor keeps focus. */
+    findPrev(): void;
 }
 
 /** Document-order sort position of a match. */
@@ -71,6 +78,8 @@ export function initFindBar(
     getEditorView: () => EditorView | null,
     getMarkdownSource: () => string = () => "",
 ): FindBarController {
+    const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
+
     // ── DOM structure ────────────────────────────────────
     const bar = document.createElement("div");
     bar.className = "find-bar";
@@ -105,14 +114,14 @@ export function initFindBar(
     const btnPrev = createButton({
         className: "find-bar__btn",
         icon: IconChevronUp,
-        title: `${t("Previous Match")} (${kbd("Shift-Enter")})`,
+        title: `${t("Previous Match")} (${kbd("Shift-Enter")}, ${isMac ? kbd("Mod-Shift-G") : kbd("Shift-F3")})`,
     });
     btnPrev.setAttribute("aria-label", t("Previous Match"));
 
     const btnNext = createButton({
         className: "find-bar__btn",
         icon: IconChevronDown,
-        title: `${t("Next Match")} (Enter)`,
+        title: `${t("Next Match")} (Enter, ${isMac ? kbd("Mod-G") : kbd("F3")})`,
     });
     btnNext.setAttribute("aria-label", t("Next Match"));
 
@@ -198,6 +207,13 @@ export function initFindBar(
     let matches: SearchMatch[] = [];
     let currentIdx = 0;
     let debounceTimer = 0;
+    /**
+     * Editor selection observed after the last search/navigation. While the
+     * selection stays here, next/prev step through matches in order; once it
+     * moves (the user clicked or typed elsewhere), navigation re-seeks from
+     * the caret — matching VS Code's Cmd+G behavior.
+     */
+    let lastNavSel: { from: number; to: number } | null = null;
     /** Elements carrying attr/block highlight classes, for cleanup. */
     let markedEls: HTMLElement[] = [];
 
@@ -355,6 +371,7 @@ export function initFindBar(
         const view = getEditorView();
         if (!view) {
             count.textContent = "";
+            lastNavSel = null;
             updateHint();
             return;
         }
@@ -382,6 +399,9 @@ export function initFindBar(
             count.textContent = t("No results");
             bar.classList.add("find-bar--no-results");
         }
+        // Baseline for caret-relative navigation (see lastNavSel)
+        const sel = view.state.selection;
+        lastNavSel = { from: sel.from, to: sel.to };
         updateHighlights();
         updateHint();
     }
@@ -407,18 +427,98 @@ export function initFindBar(
         }
     }
 
-    function goNext() {
+    /** Index of the first match after (dir=1) / last match before (dir=-1) `sel`, wrapping around. */
+    function seekFromCaret(sel: { from: number; to: number }, dir: 1 | -1): number {
+        if (dir === 1) {
+            const idx = matches.findIndex((m) => sortPos(m) >= sel.to);
+            return idx === -1 ? 0 : idx;
+        }
+        for (let i = matches.length - 1; i >= 0; i--) {
+            if (sortPos(matches[i]) < sel.from) {
+                return i;
+            }
+        }
+        return matches.length - 1;
+    }
+
+    /**
+     * Move the editor caret to the end of `m` so navigation and typing agree
+     * on where the user is (text matches only — attr/block matches have no
+     * addressable caret position). Records the navigation baseline either way.
+     */
+    function placeCaret(m: SearchMatch) {
+        const view = getEditorView();
+        if (!view) {
+            lastNavSel = null;
+            return;
+        }
+        if (m.kind === "text") {
+            try {
+                view.dispatch(
+                    view.state.tr.setSelection(TextSelection.create(view.state.doc, m.to)),
+                );
+            } catch {
+                /* unmappable position (stale match): keep the old caret */
+            }
+        }
+        const sel = view.state.selection;
+        lastNavSel = { from: sel.from, to: sel.to };
+    }
+
+    function navigate(dir: 1 | -1) {
         if (!matches.length) {
             return;
         }
-        scrollToMatch((currentIdx + 1) % matches.length);
+        const view = getEditorView();
+        const sel = view?.state.selection;
+        const moved =
+            sel !== undefined &&
+            lastNavSel !== null &&
+            (sel.from !== lastNavSel.from || sel.to !== lastNavSel.to);
+        const idx = moved
+            ? seekFromCaret(sel, dir)
+            : (currentIdx + dir + matches.length) % matches.length;
+        scrollToMatch(idx);
+        placeCaret(matches[idx]);
+    }
+
+    function goNext() {
+        navigate(1);
     }
 
     function goPrev() {
-        if (!matches.length) {
+        navigate(-1);
+    }
+
+    /**
+     * Editor-focused navigation (Cmd+G / F3): when the bar is hidden, reopen
+     * it with the last query (or the current selection) WITHOUT stealing
+     * focus, landing on the first match at/after the caret.
+     */
+    function findFrom(dir: 1 | -1) {
+        if (visible) {
+            navigate(dir);
             return;
         }
-        scrollToMatch((currentIdx - 1 + matches.length) % matches.length);
+        if (!input.value) {
+            const sel = selectionQuery();
+            if (sel !== undefined) {
+                input.value = sel;
+            }
+        }
+        if (!input.value) {
+            open(); // nothing to search for: behave like Cmd+F
+            return;
+        }
+        visible = true;
+        bar.classList.add("find-bar--visible");
+        search(input.value);
+        const view = getEditorView();
+        if (view && matches.length) {
+            const idx = seekFromCaret(view.state.selection, dir);
+            scrollToMatch(idx);
+            placeCaret(matches[idx]);
+        }
     }
 
     // ── Replace ──────────────────────────────────────────
@@ -645,6 +745,24 @@ export function initFindBar(
     // Stop mousedown inside the bar from bubbling into the editor
     bar.addEventListener("mousedown", (e) => e.stopPropagation());
 
+    // Esc with focus in the editor content closes the bar (the input handlers
+    // above cover Esc while the bar itself has focus — relevant since Cmd+G
+    // navigation leaves focus in the editor). Bubble phase so overlays that
+    // claim Escape first (menus, lightbox) win via preventDefault;
+    // stopPropagation keeps the chord from also reaching the workbench.
+    document.addEventListener("keydown", (e) => {
+        if (
+            visible &&
+            e.key === "Escape" &&
+            !e.defaultPrevented &&
+            e.target instanceof Element &&
+            e.target.closest(".ProseMirror") !== null
+        ) {
+            e.stopPropagation();
+            close();
+        }
+    });
+
     /** Current editor selection text, used to pre-fill the find input. */
     function selectionQuery(): string | undefined {
         const view = getEditorView();
@@ -656,7 +774,10 @@ export function initFindBar(
     }
 
     // ── Public API ───────────────────────────────────────
-    function open(initialQuery?: string, opts?: { showReplace?: boolean }) {
+    function open(
+        initialQuery?: string,
+        opts?: { showReplace?: boolean; focusReplace?: boolean },
+    ) {
         visible = true;
         bar.classList.add("find-bar--visible");
         if (opts?.showReplace !== undefined) {
@@ -668,8 +789,13 @@ export function initFindBar(
         if (initialQuery !== undefined && initialQuery !== input.value) {
             input.value = initialQuery;
         }
-        input.focus();
-        input.select();
+        if (opts?.focusReplace) {
+            replaceInput.focus();
+            replaceInput.select();
+        } else {
+            input.focus();
+            input.select();
+        }
         search(input.value);
     }
 
@@ -683,7 +809,15 @@ export function initFindBar(
         count.textContent = "";
         hint.textContent = "";
         hint.hidden = true;
+        // Hand focus back to the editor (VS Code convention on closing find)
+        getEditorView()?.focus();
     }
 
-    return { open, close, isOpen: () => visible };
+    return {
+        open,
+        close,
+        isOpen: () => visible,
+        findNext: () => findFrom(1),
+        findPrev: () => findFrom(-1),
+    };
 }

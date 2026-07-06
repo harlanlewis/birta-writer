@@ -50,6 +50,8 @@ interface FakeView {
     view: EditorView;
     getState: () => EditorState;
     getDispatchCount: () => number;
+    getFocusCount: () => number;
+    setSelection: (from: number, to?: number) => void;
 }
 
 function createFakeView(doc: PmNode, selection?: { from: number; to: number }): FakeView {
@@ -58,6 +60,7 @@ function createFakeView(doc: PmNode, selection?: { from: number; to: number }): 
         selection: selection ? TextSelection.create(doc, selection.from, selection.to) : undefined,
     });
     let dispatchCount = 0;
+    let focusCount = 0;
     const view = {
         get state() {
             return state;
@@ -65,6 +68,9 @@ function createFakeView(doc: PmNode, selection?: { from: number; to: number }): 
         dispatch(tr: Transaction) {
             dispatchCount++;
             state = state.apply(tr);
+        },
+        focus() {
+            focusCount++;
         },
         domAtPos(): never {
             throw new Error("no DOM mapping in tests");
@@ -76,6 +82,12 @@ function createFakeView(doc: PmNode, selection?: { from: number; to: number }): 
         view: view as unknown as EditorView,
         getState: () => state,
         getDispatchCount: () => dispatchCount,
+        getFocusCount: () => focusCount,
+        setSelection: (from: number, to = from) => {
+            state = state.apply(
+                state.tr.setSelection(TextSelection.create(state.doc, from, to)),
+            );
+        },
     };
 }
 
@@ -120,6 +132,8 @@ function setup(
         docText,
         getState: fake.getState,
         getDispatchCount: fake.getDispatchCount,
+        getFocusCount: fake.getFocusCount,
+        setSelection: fake.setSelection,
     };
 }
 
@@ -232,6 +246,121 @@ describe("initFindBar search", () => {
         expect(findBar.isOpen()).toBe(false);
         expect(bar.classList.contains("find-bar--visible")).toBe(false);
         expect(count.textContent).toBe("");
+    });
+});
+
+describe("initFindBar editor-focused navigation (findNext/findPrev)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    // "foo bar foo baz foo": matches at 1..4, 9..12, 17..20
+    const threeMatches = () => mkDoc(p("foo bar foo baz foo"));
+
+    it("findNext with the bar closed should reopen with the last query and land after the caret", () => {
+        const { findBar, count, setSelection } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo");
+        findBar.close();
+        setSelection(5); // caret inside "bar", after the first match
+        findBar.findNext();
+        expect(findBar.isOpen()).toBe(true);
+        expect(count.textContent).toBe("2/2");
+    });
+
+    it("findNext reopening the bar should not steal focus from the editor", () => {
+        const { findBar, findInput, setSelection } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo");
+        findBar.close();
+        // the fake view's focus() cannot move jsdom focus, so clear it by hand
+        findInput.blur();
+        setSelection(5);
+        findBar.findNext();
+        expect(document.activeElement).not.toBe(findInput);
+    });
+
+    it("findNext with no query should seed from the editor selection", () => {
+        const { findBar, findInput, count } = setup(mkDoc(p("foo bar foo")), {
+            selection: { from: 5, to: 8 },
+        });
+        findBar.findNext();
+        expect(findBar.isOpen()).toBe(true);
+        expect(findInput.value).toBe("bar");
+        expect(count.textContent).toBe("1/1");
+    });
+
+    it("findNext with no query and no selection should open the bar focused like Cmd+F", () => {
+        const { findBar, findInput } = setup(mkDoc(p("foo bar foo")));
+        findBar.findNext();
+        expect(findBar.isOpen()).toBe(true);
+        expect(document.activeElement).toBe(findInput);
+    });
+
+    it("a moved caret should make findNext seek from the new position, then step in order", () => {
+        const { findBar, count, setSelection } = setup(threeMatches());
+        findBar.open("foo");
+        expect(count.textContent).toBe("1/3");
+        setSelection(6); // user clicked into "bar"
+        findBar.findNext();
+        expect(count.textContent).toBe("2/3"); // first match after the caret
+        findBar.findNext(); // caret unmoved since navigation: step in order
+        expect(count.textContent).toBe("3/3");
+    });
+
+    it("a moved caret should make findPrev seek backwards from the new position", () => {
+        const { findBar, count, setSelection } = setup(threeMatches());
+        findBar.open("foo");
+        setSelection(6);
+        findBar.findPrev();
+        expect(count.textContent).toBe("1/3"); // last match before the caret
+    });
+
+    it("findNext past the last match should wrap around to the first", () => {
+        const { findBar, count, setSelection, btnNext } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo");
+        click(btnNext);
+        expect(count.textContent).toBe("2/2");
+        setSelection(12); // caret after the last match
+        findBar.findNext();
+        expect(count.textContent).toBe("1/2");
+    });
+
+    it("navigation should move the editor caret to the end of the match", () => {
+        const { findBar, btnNext, getState } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo");
+        click(btnNext); // second match spans 9..12
+        const sel = getState().selection;
+        expect(sel.empty).toBe(true);
+        expect(sel.from).toBe(12);
+    });
+
+    it("closing the bar should hand focus back to the editor", () => {
+        const { findBar, findInput, getFocusCount } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo");
+        findInput.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+        );
+        expect(findBar.isOpen()).toBe(false);
+        expect(getFocusCount()).toBeGreaterThan(0);
+    });
+
+    it("Escape inside the editor content should close the bar", () => {
+        const { findBar, editor } = setup(mkDoc(p("foo bar foo")));
+        const pm = document.createElement("div");
+        pm.className = "ProseMirror";
+        editor.appendChild(pm);
+        findBar.open("foo");
+        pm.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+        );
+        expect(findBar.isOpen()).toBe(false);
+    });
+
+    it("open with focusReplace should focus the replace input and show the replace row", () => {
+        const { findBar, bar, replaceInput } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true, focusReplace: true });
+        expect(bar.classList.contains("find-bar--replace-visible")).toBe(true);
+        expect(document.activeElement).toBe(replaceInput);
     });
 });
 
