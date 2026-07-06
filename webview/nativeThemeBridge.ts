@@ -38,6 +38,20 @@ export function themeKindFromClass(className: string): string {
 }
 
 /**
+ * Defer a callback to the next animation frame so VS Code's freshly-applied
+ * --vscode-* variables are settled before consumers react. VS Code swaps the
+ * `<body>` theme class and rewrites the injected `:root` variable block in the
+ * same task, but deferring a frame guarantees a consumer that reads
+ * getComputedStyle (e.g. Mermaid picking a dark/light palette) never samples a
+ * stale background. Falls back to a macrotask in non-visual environments (tests)
+ * where requestAnimationFrame is unavailable.
+ */
+const nextFrame: (cb: () => void) => void =
+    typeof requestAnimationFrame === "function"
+        ? (cb) => { requestAnimationFrame(() => cb()); }
+        : (cb) => { setTimeout(cb, 0); };
+
+/**
  * Observe `<body>` for VS Code theme-class changes and dispatch a
  * `theme-changed` event on the given target when the theme kind actually
  * changes. Returns a disposer that stops observing.
@@ -58,7 +72,7 @@ export function observeNativeThemeChanges(
         const kind = themeKindFromClass(body.className);
         if (kind !== lastKind) {
             lastKind = kind;
-            target.dispatchEvent(new CustomEvent("theme-changed"));
+            nextFrame(() => target.dispatchEvent(new CustomEvent("theme-changed")));
         }
     });
     observer.observe(body, { attributes: true, attributeFilter: ["class"] });

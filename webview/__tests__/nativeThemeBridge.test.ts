@@ -44,12 +44,26 @@ describe("observeNativeThemeChanges", () => {
         dispose();
     });
 
-    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+    // The bridge defers the dispatch to the next animation frame; wait long
+    // enough for that (or its setTimeout fallback) to run.
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 30));
 
     it("changing the theme kind should dispatch theme-changed", async () => {
         body.className = "vscode-light";
         await flush();
         expect(onThemeChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it("high-contrast dark -> high-contrast light should dispatch (ordered discriminator)", async () => {
+        // VS Code sets `vscode-high-contrast-light` ALONGSIDE `vscode-high-contrast`,
+        // so this transition only registers if the most-specific class wins.
+        body.className = "vscode-high-contrast";
+        await flush();
+        expect(onThemeChanged).toHaveBeenCalledTimes(1); // dark -> hc
+
+        body.className = "vscode-high-contrast vscode-high-contrast-light";
+        await flush();
+        expect(onThemeChanged).toHaveBeenCalledTimes(2); // hc -> hc-light
     });
 
     it("an unrelated class change should not dispatch theme-changed", async () => {

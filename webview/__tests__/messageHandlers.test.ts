@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
 import { setEditorCommandHost } from "../editorCommands";
-import type { ToWebviewMessage } from "../../shared/messages";
+import type { ToWebviewMessage, ToolbarConfig } from "../../shared/messages";
 
 /** Minimal deps: the editorCommand handler only reaches state.getEditor. */
 function stubDeps(): MessageHandlerDeps {
@@ -34,30 +34,30 @@ function stubDeps(): MessageHandlerDeps {
 describe("applyTableWrap", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // 清除 CSS 变量
+        // Clear the CSS variable
         const root = document.documentElement;
         root.style.removeProperty("--tbl-ow");
     });
 
-    it("aggressive 模式设置 overflow-wrap: anywhere", () => {
+    it("aggressive mode should set overflow-wrap: anywhere", () => {
         applyTableWrap("aggressive");
         const val = document.documentElement.style.getPropertyValue("--tbl-ow").trim();
         expect(val).toBe("anywhere");
     });
 
-    it("normal 模式设置 overflow-wrap: break-word", () => {
+    it("normal mode should set overflow-wrap: break-word", () => {
         applyTableWrap("normal");
         const val = document.documentElement.style.getPropertyValue("--tbl-ow").trim();
         expect(val).toBe("break-word");
     });
 
-    it("none 模式设置 overflow-wrap: normal", () => {
+    it("none mode should set overflow-wrap: normal", () => {
         applyTableWrap("none");
         const val = document.documentElement.style.getPropertyValue("--tbl-ow").trim();
         expect(val).toBe("normal");
     });
 
-    it("切换模式时覆盖之前的设置", () => {
+    it("switching modes should override the previous setting", () => {
         applyTableWrap("aggressive");
         expect(document.documentElement.style.getPropertyValue("--tbl-ow").trim()).toBe("anywhere");
 
@@ -154,7 +154,7 @@ describe("toolbarConfig handler", () => {
         const handlers = createMessageHandlers(deps);
 
         // Act
-        const config = { placements: { bold: "center" }, order: [] };
+        const config: ToolbarConfig = { placements: { bold: "center" }, order: [] };
         handlers.toolbarConfig?.(
             { type: "toolbarConfig", config },
             document.createElement("div"),
@@ -162,5 +162,35 @@ describe("toolbarConfig handler", () => {
 
         // Assert
         expect(applyConfig).toHaveBeenCalledWith(config);
+    });
+});
+
+describe("setTheme handler (override un-freeze)", () => {
+    const BG = "--vscode-editor-background";
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.documentElement.style.removeProperty(BG);
+    });
+
+    it("an empty color map should clear the inline overrides a prior push installed", () => {
+        // Arrange: a shared themeOverrides set so both pushes see the same state.
+        const deps = { ...stubDeps(), themeOverrides: new Set<string>() };
+        const handlers = createMessageHandlers(deps);
+        const container = document.createElement("div");
+
+        // Act 1: a pinned/custom palette installs an inline --vscode-* override.
+        handlers.setTheme?.({ type: "setTheme", colors: { [BG]: "#123456" } }, container);
+        expect(document.documentElement.style.getPropertyValue(BG).trim()).toBe("#123456");
+        expect(deps.themeOverrides.has(BG)).toBe(true);
+
+        // Act 2: switching to auto sends an empty map, which must REMOVE the
+        // override so VS Code's live native variable shows through again — this
+        // is the mechanism that un-freezes the theme without a webview reload.
+        handlers.setTheme?.({ type: "setTheme", colors: {} }, container);
+
+        // Assert
+        expect(document.documentElement.style.getPropertyValue(BG)).toBe("");
+        expect(deps.themeOverrides.size).toBe(0);
     });
 });

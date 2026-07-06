@@ -456,6 +456,12 @@ export async function resolveThemeColors(themeId: string): Promise<ThemeColors> 
     }
 
     // Auto mode: let VS Code's live-updating native variables show through.
+    // The colorsAreSimilar selection-contrast fallback in getThemeColors (which
+    // substitutes a visible blue when a theme's selection highlight is nearly
+    // invisible against its background) is intentionally NOT applied here: auto
+    // uses VS Code's own --vscode-editor-selectionBackground verbatim, so
+    // selection contrast matches the native editor exactly. Pinned/custom themes
+    // below still get the fallback.
     if (themeId === "auto") {
         return {};
     }
