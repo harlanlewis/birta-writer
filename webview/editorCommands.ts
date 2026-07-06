@@ -38,8 +38,11 @@ import {
     addColumnBefore,
     addRowAfter,
     addRowBefore,
+    cellAround,
     deleteColumn,
     deleteRow,
+    deleteTable,
+    CellSelection,
 } from "@milkdown/prose/tables";
 import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
@@ -204,12 +207,28 @@ function insertFootnote(getEditor: GetEditor): void {
     getEditor()?.action((ctx) => ctx.get(editorViewCtx).focus());
 }
 
-/** Runs a ProseMirror table command against the live view. */
+/**
+ * Runs a ProseMirror table command against the live view. When `args` carries a
+ * `cellPos` (the document position of a right-clicked cell, passed through the
+ * context menu), the selection is first moved to that cell so the command
+ * targets exactly the cell the user clicked — the ProseMirror selection does not
+ * survive VS Code's native context-menu round-trip, so relying on it would make
+ * the command a no-op. Without a target it operates on the current selection
+ * (command palette / keybinding).
+ */
 function tableCmd(
     getEditor: GetEditor,
     fn: (state: EditorView["state"], dispatch: EditorView["dispatch"]) => boolean,
+    args?: unknown,
 ): void {
     runProse(getEditor, (view) => {
+        const cellPos = (args as { cellPos?: number } | undefined)?.cellPos;
+        if (typeof cellPos === "number" && cellPos >= 0 && cellPos <= view.state.doc.content.size) {
+            const $cell = cellAround(view.state.doc.resolve(cellPos));
+            if ($cell) {
+                view.dispatch(view.state.tr.setSelection(new CellSelection($cell)));
+            }
+        }
         fn(view.state, view.dispatch);
         view.focus();
     });
@@ -273,12 +292,13 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     openFindReplace: () => host.openFindReplace?.(),
     toggleToc: () => host.toggleToc?.(),
     editFrontmatter: () => host.editFrontmatter?.(),
-    tableInsertRowAbove: (getEditor) => tableCmd(getEditor, addRowBefore),
-    tableInsertRowBelow: (getEditor) => tableCmd(getEditor, addRowAfter),
-    tableInsertColumnLeft: (getEditor) => tableCmd(getEditor, addColumnBefore),
-    tableInsertColumnRight: (getEditor) => tableCmd(getEditor, addColumnAfter),
-    tableDeleteRow: (getEditor) => tableCmd(getEditor, deleteRow),
-    tableDeleteColumn: (getEditor) => tableCmd(getEditor, deleteColumn),
+    tableInsertRowAbove: (getEditor, args) => tableCmd(getEditor, addRowBefore, args),
+    tableInsertRowBelow: (getEditor, args) => tableCmd(getEditor, addRowAfter, args),
+    tableInsertColumnLeft: (getEditor, args) => tableCmd(getEditor, addColumnBefore, args),
+    tableInsertColumnRight: (getEditor, args) => tableCmd(getEditor, addColumnAfter, args),
+    tableDeleteRow: (getEditor, args) => tableCmd(getEditor, deleteRow, args),
+    tableDeleteColumn: (getEditor, args) => tableCmd(getEditor, deleteColumn, args),
+    tableDeleteTable: (getEditor, args) => tableCmd(getEditor, deleteTable, args),
     copyAsHtml: (getEditor) => copySelection(getEditor, "html"),
     copyAsMarkdown: (getEditor) => copySelection(getEditor, "markdown"),
 };

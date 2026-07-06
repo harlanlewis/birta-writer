@@ -1,6 +1,5 @@
 import { editorViewCtx, schemaCtx } from "@milkdown/core";
 import { keymap } from "@milkdown/prose/keymap";
-import { TextSelection } from "@milkdown/prose/state";
 import { sinkListItem } from "@milkdown/prose/schema-list";
 import { $prose } from "@milkdown/utils";
 
@@ -34,6 +33,9 @@ function getListType(view: any): string | null {
  * Tab from propagating to the VS Code webview key forwarder — but only when
  * the event target is inside the ProseMirror content, so overlay inputs keep
  * native focus traversal.
+ *
+ * Table cells are handled by `tableKeymapPlugin` (registered with higher
+ * precedence), so Tab never reaches the "insert spaces" branch there.
  */
 export const tabKeymapPlugin = $prose((ctx) =>
     keymap({

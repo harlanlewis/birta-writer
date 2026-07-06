@@ -24,3 +24,4 @@ export { registerSelectionChangeHandler, selectionPlugin } from "./selection";
 export { cellClickFixPlugin } from "./tableCellClickFix";
 export { setLogTableSel } from "./tableDebug";
 export { tabKeymapPlugin } from "./tabKeymap";
+export { tableKeymapPlugin } from "./tableKeymap";

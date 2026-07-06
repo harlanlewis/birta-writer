@@ -29,6 +29,7 @@ import {
 import { insertTableCommand, toggleStrikethroughCommand, gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
+import { CellSelection, TableMap } from "@milkdown/prose/tables";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { editorCommands, runEditorCommand, setEditorCommandHost } from "../editorCommands";
 import { mockVscodeApi } from "./setup";
@@ -192,6 +193,147 @@ describe("editorCommands registry — copy commands", () => {
         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 3)));
         editorCommands.copyAsMarkdown(() => editor);
         expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+    });
+});
+
+describe("editorCommands registry — table row/column commands", () => {
+    let editor: Editor;
+    let v: EditorView;
+
+    const TABLE_MD = "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n";
+
+    async function makeEditor(markdown: string): Promise<Editor> {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        return Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, markdown);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfm)
+            .create();
+    }
+
+    function findTable(): { node: import("@milkdown/prose/model").Node | null; pos: number } {
+        let node: import("@milkdown/prose/model").Node | null = null;
+        let pos = -1;
+        v.state.doc.descendants((n, p) => {
+            if (n.type.name === "table" && node === null) { node = n; pos = p; return false; }
+            return true;
+        });
+        return { node, pos };
+    }
+
+    function tableHeight(): number {
+        const { node } = findTable();
+        return node ? TableMap.get(node).height : 0;
+    }
+
+    /** Select rows [r0..r1] (inclusive, 0-indexed) across all columns. */
+    function selectRows(r0: number, r1: number): void {
+        const { node, pos } = findTable();
+        if (!node) { throw new Error("no table"); }
+        const map = TableMap.get(node);
+        const start = pos + 1;
+        const anchor = v.state.doc.resolve(start + map.positionAt(r0, 0, node));
+        const head = v.state.doc.resolve(start + map.positionAt(r1, map.width - 1, node));
+        v.dispatch(v.state.tr.setSelection(new CellSelection(anchor, head)));
+    }
+
+    /** Select columns [c0..c1] (inclusive, 0-indexed) across all rows. */
+    function selectCols(c0: number, c1: number): void {
+        const { node, pos } = findTable();
+        if (!node) { throw new Error("no table"); }
+        const map = TableMap.get(node);
+        const start = pos + 1;
+        const anchor = v.state.doc.resolve(start + map.positionAt(0, c0, node));
+        const head = v.state.doc.resolve(start + map.positionAt(map.height - 1, c1, node));
+        v.dispatch(v.state.tr.setSelection(new CellSelection(anchor, head)));
+    }
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        editor = await makeEditor(TABLE_MD);
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    /** The document position inside the body cell at (row, col). */
+    function cellPosAt(row: number, col: number): number {
+        const { node, pos } = findTable();
+        if (!node) { throw new Error("no table"); }
+        const map = TableMap.get(node);
+        return pos + 1 + map.positionAt(row, col, node) + 1;
+    }
+
+    it("insert commands insert exactly one row/column", () => {
+        const before = tableHeight();
+        selectRows(1, 1);
+        editorCommands.tableInsertRowBelow(() => editor);
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(tableHeight()).toBe(before + 1);
+    });
+
+    it("a menu command with a cellPos target operates on that cell regardless of the live selection", () => {
+        // Selection is elsewhere (row 1); the passed target points at row 2.
+        selectRows(1, 1);
+        const before = tableHeight(); // 3
+        editorCommands.tableInsertRowBelow(() => editor, { cellPos: cellPosAt(2, 0) });
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(tableHeight()).toBe(before + 1);
+        // And a delete via target with NO cell selection at all still deletes the row.
+        const h = tableHeight();
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1))); // caret at doc start
+        editorCommands.tableDeleteRow(() => editor, { cellPos: cellPosAt(1, 0) });
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(tableHeight()).toBe(h - 1);
+    });
+
+    /** Put a plain text cursor inside the body cell at (row, col). */
+    function putCursor(row: number, col: number): void {
+        const { node, pos } = findTable();
+        if (!node) { throw new Error("no table"); }
+        const map = TableMap.get(node);
+        const cellPos = pos + 1 + map.positionAt(row, col, node);
+        v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(cellPos + 1))));
+    }
+
+    it("tableDeleteRow with a single-cell selection should remove that row (not clear contents)", () => {
+        const beforeH = tableHeight(); // header + 2 body = 3
+        selectRows(1, 1); // single-cell-ish CellSelection on the first body row
+        editorCommands.tableDeleteRow(() => editor);
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(tableHeight()).toBe(beforeH - 1); // row removed, not just emptied
+    });
+
+    it("tableDeleteRow with only a text cursor should still remove the row", () => {
+        const beforeH = tableHeight();
+        putCursor(1, 0); // just a caret, no cell selection
+        editorCommands.tableDeleteRow(() => editor);
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(tableHeight()).toBe(beforeH - 1);
+    });
+
+    it("tableDeleteColumn with a single-cell selection should remove that column", () => {
+        const widthOf = () => { const { node } = findTable(); return node ? TableMap.get(node).width : 0; };
+        const beforeW = widthOf(); // 2
+        selectCols(0, 0);
+        editorCommands.tableDeleteColumn(() => editor);
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(widthOf()).toBe(beforeW - 1);
+    });
+
+    it("tableDeleteTable should remove the whole table", () => {
+        selectRows(1, 1);
+        editorCommands.tableDeleteTable(() => editor);
+        v = editor.action((ctx) => ctx.get(editorViewCtx));
+        expect(findTable().node).toBeNull();
     });
 });
 

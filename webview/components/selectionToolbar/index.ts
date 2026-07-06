@@ -587,18 +587,22 @@ export function setupSelectionToolbar(
         hideToolbar();
         const v2 = getView();
         if (v2) {
-            const safePos = Math.min(1, v2.state.doc.content.size - 1);
+            // Collapse the residual selection to a caret next to where the
+            // row/column was, so the viewport stays on the edited table
+            // instead of jumping to the top of the document.
+            const sel2 = v2.state.selection;
+            const $near =
+                sel2 instanceof CellSelection ? sel2.$headCell : sel2.$head;
             v2.dispatch(
-                v2.state.tr.setSelection(
-                    TextSelection.create(v2.state.doc, safePos),
-                ),
+                v2.state.tr.setSelection(TextSelection.near($near)),
             );
         }
     });
+    deleteRowBtn.classList.add("sel-tb-del-row-btn");
     deleteRowBtn.style.display = "none";
     toolbar.appendChild(deleteRowBtn);
 
-    // 清空表头内容（不删除行）
+    // Clear the header cells' content (without deleting the row)
     const clearHeaderBtn = sBtn(IconTrash2, t("Clear Header"), () => {
         const view = getView();
         if (!view) {
@@ -614,7 +618,7 @@ export function setupSelectionToolbar(
                 const tableNode = $anchor.node(d);
                 const map = TableMap.get(tableNode);
                 const tableStart = $anchor.start(d);
-                // 收集第 0 行所有单元格的内容范围（从后往前，避免位置偏移）
+                // Collect the content ranges of every cell in row 0 (back to front, to avoid position drift)
                 const ranges: Array<{ from: number; to: number }> = [];
                 for (let col = 0; col < map.width; col++) {
                     const cellPos =
@@ -646,7 +650,7 @@ export function setupSelectionToolbar(
     clearHeaderBtn.style.display = "none";
     toolbar.appendChild(clearHeaderBtn);
 
-    // 删除整个表格（仅整表格选中时显示）
+    // Delete the whole table (shown only when the entire table is selected)
     const deleteTableBtn = sBtn(IconTrash2, t("Delete Table"), () => {
         const view = getView();
         if (!view) {
@@ -679,14 +683,18 @@ export function setupSelectionToolbar(
         hideToolbar();
         const v2 = getView();
         if (v2) {
-            const safePos = Math.min(1, v2.state.doc.content.size - 1);
+            // Collapse the residual selection to a caret next to where the
+            // row/column was, so the viewport stays on the edited table
+            // instead of jumping to the top of the document.
+            const sel2 = v2.state.selection;
+            const $near =
+                sel2 instanceof CellSelection ? sel2.$headCell : sel2.$head;
             v2.dispatch(
-                v2.state.tr.setSelection(
-                    TextSelection.create(v2.state.doc, safePos),
-                ),
+                v2.state.tr.setSelection(TextSelection.near($near)),
             );
         }
     });
+    deleteColBtn.classList.add("sel-tb-del-col-btn");
     deleteColBtn.style.display = "none";
     toolbar.appendChild(deleteColBtn);
 
@@ -773,7 +781,7 @@ export function setupSelectionToolbar(
             tableSep.style.display = isCol && !isEntireTable ? "" : "none";
             alignWrap.style.display = isCol && !isEntireTable ? "" : "none";
 
-            // 删除按钮显示逻辑
+            // Delete-button visibility logic
             const headerRow = isRow && isFirstRow(selection as CellSelection);
             deleteTableBtn.style.display = isEntireTable ? "" : "none";
             clearHeaderBtn.style.display =

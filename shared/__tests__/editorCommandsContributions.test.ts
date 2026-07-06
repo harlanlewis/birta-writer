@@ -5,7 +5,7 @@
  * webview registry (typed as Record<EditorCommandId, …>).
  *
  * Verifies, in both directions:
- *   - every contributed `markdownWysiwyg.editor.*` command has a table entry;
+ *   - every contributed `markdownWriter.editor.*` command has a table entry;
  *   - every table entry is contributed, with an nls title, correct command
  *     palette gating, and a right-click menu item per declared section.
  */
@@ -18,7 +18,7 @@ const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const nls = JSON.parse(fs.readFileSync(path.join(root, "package.nls.json"), "utf8"));
 
-const PALETTE_WHEN = "activeCustomEditorId == 'markdownWysiwyg.editor'";
+const PALETTE_WHEN = "activeCustomEditorId == 'markdownWriter.editor'";
 
 interface Contribution { command: string; title?: string; when?: string; group?: string }
 
@@ -69,7 +69,7 @@ describe("editor command contributions", () => {
                     (c) => c.command === name && c.when?.includes(`webviewSection == '${section}'`),
                 );
                 expect(entry, `missing webview/context entry for ${name} in section ${section}`).toBeDefined();
-                expect(entry!.when).toContain("webviewId == 'markdownWysiwyg.editor'");
+                expect(entry!.when).toContain("webviewId == 'markdownWriter.editor'");
             }
         }
     });

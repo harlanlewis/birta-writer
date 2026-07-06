@@ -4,7 +4,7 @@ import { CellSelection } from "@milkdown/prose/tables";
 import { $prose } from "@milkdown/utils";
 import { isLogTableSelEnabled } from "./tableDebug";
 
-// 选区变更回调（由 index.ts 注入，用于驱动浮动工具栏）
+// Selection-change callback (injected by index.ts; drives the floating toolbars)
 let onSelectionChange: ((view: EditorView) => void) | null = null;
 
 export function registerSelectionChangeHandler(

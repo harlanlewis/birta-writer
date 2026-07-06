@@ -18,6 +18,7 @@ import {
 } from "./components/footnote";
 import { createImageView } from "./components/imageView";
 import { createMathInlineView } from "./components/math";
+import { createTableView } from "./components/table/tableView";
 import { getMarkdown } from "@milkdown/utils";
 import { refractor } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
@@ -51,6 +52,7 @@ import {
     proofreadPlugin,
     selectionPlugin,
     tabKeymapPlugin,
+    tableKeymapPlugin,
     trailingHrParagraphPlugin,
 } from "./plugins";
 
@@ -264,6 +266,7 @@ export async function createEditor(
                 ["footnote_reference", createFootnoteReferenceView],
                 ["footnote_definition", createFootnoteDefinitionView],
                 ["math_inline", createMathInlineView],
+                ["table", createTableView],
                 ["html", (node: { attrs: Record<string, string> }) => createHtmlView(node)],
                 [
                     "image",
@@ -279,6 +282,9 @@ export async function createEditor(
                 ],
             ]);
         })
+        // Registered BEFORE the commonmark/base keymap so table Tab/Enter/Delete
+        // win over the defaults (e.g. base Backspace only clears cell contents).
+        .use(tableKeymapPlugin)
         .use(pureCommonmark)
         .use(gfm)
         .use(listener)
