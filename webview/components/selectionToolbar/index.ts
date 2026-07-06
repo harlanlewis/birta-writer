@@ -491,7 +491,7 @@ export function setupSelectionToolbar(
     });
     toolbar.appendChild(linkBtn);
 
-    // ── Table-mode elements (align + delete, all hidden initially) ──
+    // ── Table-mode elements (alignment + delete, all hidden initially) ──
     const tableSep = sSep();
     tableSep.style.display = "none";
     toolbar.appendChild(tableSep);
@@ -817,7 +817,7 @@ export function setupSelectionToolbar(
 
         const inTable = isInTableCell($from);
 
-        // Format dropdown: hidden inside a table, shown normally outside
+        // Format dropdown: hidden inside a table, shown normally outside one
         fmtWrap.style.display = inTable ? "none" : "";
         textFmtSep.style.display = inTable ? "none" : "";
 
@@ -829,7 +829,7 @@ export function setupSelectionToolbar(
         linkSep.style.display = "";
         linkBtn.style.display = "";
 
-        // Table-specific elements: hidden
+        // Table-only elements: hidden
         tableSep.style.display = "none";
         alignWrap.style.display = "none";
         deleteRowBtn.style.display = "none";
@@ -838,7 +838,7 @@ export function setupSelectionToolbar(
         deleteColBtn.style.display = "none";
         deleteSep.style.display = "none";
 
-        // Highlight the current format + update the format button icon (only meaningful outside table mode)
+        // Highlight the current format + update the format-button icon (only meaningful outside table mode)
         if (!inTable) {
             let activeLevel = 0;
             for (let d = $from.depth; d >= 0; d--) {

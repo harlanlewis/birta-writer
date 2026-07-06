@@ -1,14 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as path from "path";
-import * as https from "https";
-import * as http from "http";
 
 // Imported from the vscode mock (alias is configured in vitest.config.ts)
 import * as vscode from "vscode";
 
-// Module-level mocks (Vitest automatically hoists them above the imports)
-vi.mock("https", () => ({ request: vi.fn() }));
-vi.mock("http", () => ({ request: vi.fn() }));
 const mockFs = vscode.workspace.fs as {
     readFile: ReturnType<typeof vi.fn>;
     writeFile: ReturnType<typeof vi.fn>;
@@ -21,9 +16,7 @@ import {
     mimeToExt,
     generateFilename,
     buildRelPath,
-    getByPath,
     saveImageLocally,
-    uploadImageToServer,
 } from "../../src/utils/imageService";
 
 // ─────────────────────────────────────────────────────────────
@@ -133,33 +126,6 @@ describe("buildRelPath", () => {
         const fileUri = vscode.Uri.file("/home/user/images/photo.png");
         const rel = buildRelPath(docUri as typeof fileUri, fileUri);
         expect(path.isAbsolute(rel)).toBe(true);
-    });
-});
-
-// ─────────────────────────────────────────────────────────────
-// getByPath
-// ─────────────────────────────────────────────────────────────
-describe("getByPath", () => {
-    it("extracts a top-level property correctly", () => {
-        expect(getByPath({ url: "https://example.com" }, "url")).toBe("https://example.com");
-    });
-
-    it("extracts a nested property correctly with a dot-separated path data.url", () => {
-        expect(getByPath({ data: { url: "https://img.example.com/a.png" } }, "data.url")).toBe(
-            "https://img.example.com/a.png"
-        );
-    });
-
-    it("returns undefined when the path does not exist", () => {
-        expect(getByPath({ a: 1 }, "b.c")).toBeUndefined();
-    });
-
-    it("returns undefined when an intermediate level is null", () => {
-        expect(getByPath({ a: null }, "a.b")).toBeUndefined();
-    });
-
-    it("returns undefined for an empty object", () => {
-        expect(getByPath({}, "x")).toBeUndefined();
     });
 });
 
@@ -357,180 +323,5 @@ describe("saveImageLocally — additional path branches", () => {
 
         expect(mockFs.writeFile).toHaveBeenCalledOnce();
         expect(result.relPath).toMatch(/\.png$/);
-    });
-});
-
-// ─────────────────────────────────────────────────────────────
-// uploadImageToServer
-// ─────────────────────────────────────────────────────────────
-
-function createSuccessMockTransport(responseBody: string) {
-    const dataHandlers: Array<(chunk: Buffer) => void> = [];
-    const endHandlers: Array<() => void> = [];
-
-    const mockRes = {
-        on: vi.fn((event: string, cb: unknown) => {
-            if (event === "data") dataHandlers.push(cb as (c: Buffer) => void);
-            if (event === "end") endHandlers.push(cb as () => void);
-        }),
-    };
-
-    const mockReq = {
-        on: vi.fn(),
-        setTimeout: vi.fn(),
-        write: vi.fn(),
-        end: vi.fn(() => {
-            dataHandlers.forEach(h => h(Buffer.from(responseBody)));
-            endHandlers.forEach(h => h());
-        }),
-        destroy: vi.fn(),
-    };
-
-    return { mockRes, mockReq };
-}
-
-function createErrorMockTransport(error: Error) {
-    const errHandlers: Array<(e: Error) => void> = [];
-
-    return {
-        on: vi.fn((event: string, cb: unknown) => {
-            if (event === "error") errHandlers.push(cb as (e: Error) => void);
-        }),
-        setTimeout: vi.fn(),
-        write: vi.fn(),
-        end: vi.fn(() => { errHandlers.forEach(h => h(error)); }),
-        destroy: vi.fn(),
-    };
-}
-
-describe("uploadImageToServer", () => {
-    const imageData = new Uint8Array([1, 2, 3, 4]);
-
-    function makeCfg(overrides: Record<string, unknown> = {}) {
-        return { get: vi.fn((key: string, def?: unknown) => overrides[key] ?? def) };
-    }
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
-
-    it("throws immediately without making a network request when serverUrl is empty", async () => {
-        const cfg = makeCfg({ imageServerUrl: "" });
-        await expect(
-            uploadImageToServer(cfg as never, imageData, "image/png", "photo"),
-        ).rejects.toThrow("Please configure");
-    });
-
-    it("uploads successfully over HTTPS and returns the URL from the response", async () => {
-        const { mockRes, mockReq } = createSuccessMockTransport('{"url":"https://cdn.example.com/img.png"}');
-        vi.mocked(https.request).mockImplementation((_opts, cb) => {
-            (cb as (r: typeof mockRes) => void)(mockRes);
-            return mockReq as never;
-        });
-
-        const cfg = makeCfg({ imageServerUrl: "https://upload.example.com/api" });
-        const result = await uploadImageToServer(cfg as never, imageData, "image/png", "photo");
-        expect(result).toBe("https://cdn.example.com/img.png");
-    });
-
-    it("uses the http module instead of the https module for an HTTP URL", async () => {
-        const { mockRes, mockReq } = createSuccessMockTransport('{"url":"http://cdn.example.com/img.png"}');
-        vi.mocked(http.request).mockImplementation((_opts, cb) => {
-            (cb as (r: typeof mockRes) => void)(mockRes);
-            return mockReq as never;
-        });
-
-        const cfg = makeCfg({ imageServerUrl: "http://upload.example.com/api" });
-        await uploadImageToServer(cfg as never, imageData, "image/png", "photo");
-
-        expect(vi.mocked(http.request)).toHaveBeenCalled();
-        expect(vi.mocked(https.request)).not.toHaveBeenCalled();
-    });
-
-    it("serializes extraParams and writes them into the request body", async () => {
-        const { mockRes, mockReq } = createSuccessMockTransport('{"url":"https://cdn.example.com/img.png"}');
-        vi.mocked(https.request).mockImplementation((_opts, cb) => {
-            (cb as (r: typeof mockRes) => void)(mockRes);
-            return mockReq as never;
-        });
-
-        const cfg = makeCfg({
-            imageServerUrl: "https://upload.example.com/api",
-            imageServerExtraParams: '{"token":"abc123"}',
-        });
-        await uploadImageToServer(cfg as never, imageData, "image/png", "photo");
-
-        const body = (mockReq.write.mock.calls[0]?.[0] as Buffer).toString();
-        expect(body).toContain("token");
-        expect(body).toContain("abc123");
-    });
-
-    it("ignores invalid JSON in extraParams and continues uploading", async () => {
-        const { mockRes, mockReq } = createSuccessMockTransport('{"url":"https://cdn.example.com/img.png"}');
-        vi.mocked(https.request).mockImplementation((_opts, cb) => {
-            (cb as (r: typeof mockRes) => void)(mockRes);
-            return mockReq as never;
-        });
-
-        const cfg = makeCfg({
-            imageServerUrl: "https://upload.example.com/api",
-            imageServerExtraParams: "not-valid-json!!!",
-        });
-        await expect(
-            uploadImageToServer(cfg as never, imageData, "image/png", "photo"),
-        ).resolves.toBe("https://cdn.example.com/img.png");
-    });
-
-    it("throws an error when the server returns non-JSON", async () => {
-        const { mockRes, mockReq } = createSuccessMockTransport("Internal Server Error");
-        vi.mocked(https.request).mockImplementation((_opts, cb) => {
-            (cb as (r: typeof mockRes) => void)(mockRes);
-            return mockReq as never;
-        });
-
-        const cfg = makeCfg({ imageServerUrl: "https://upload.example.com/api" });
-        await expect(
-            uploadImageToServer(cfg as never, imageData, "image/png", "photo"),
-        ).rejects.toThrow("non-JSON");
-    });
-
-    it("throws an error when the URL cannot be extracted from the path in the response JSON", async () => {
-        const { mockRes, mockReq } = createSuccessMockTransport('{"status":"ok"}');
-        vi.mocked(https.request).mockImplementation((_opts, cb) => {
-            (cb as (r: typeof mockRes) => void)(mockRes);
-            return mockReq as never;
-        });
-
-        const cfg = makeCfg({ imageServerUrl: "https://upload.example.com/api" });
-        await expect(
-            uploadImageToServer(cfg as never, imageData, "image/png", "photo"),
-        ).rejects.toThrow("Cannot extract URL");
-    });
-
-    it("rejects the Promise on a network error", async () => {
-        const mockReq = createErrorMockTransport(new Error("ECONNREFUSED"));
-        vi.mocked(https.request).mockImplementation(() => mockReq as never);
-
-        const cfg = makeCfg({ imageServerUrl: "https://upload.example.com/api" });
-        await expect(
-            uploadImageToServer(cfg as never, imageData, "image/png", "photo"),
-        ).rejects.toThrow("ECONNREFUSED");
-    });
-
-    it("extracts the URL correctly with a nested responsePath (e.g. data.url)", async () => {
-        const { mockRes, mockReq } = createSuccessMockTransport(
-            '{"data":{"url":"https://cdn.example.com/img.png"}}',
-        );
-        vi.mocked(https.request).mockImplementation((_opts, cb) => {
-            (cb as (r: typeof mockRes) => void)(mockRes);
-            return mockReq as never;
-        });
-
-        const cfg = makeCfg({
-            imageServerUrl: "https://upload.example.com/api",
-            imageServerResponsePath: "data.url",
-        });
-        const result = await uploadImageToServer(cfg as never, imageData, "image/png", "photo");
-        expect(result).toBe("https://cdn.example.com/img.png");
     });
 });

@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Removed
+
+- **Image server upload**: removed the `server` image-storage mode and all `imageServer*` settings (`imageServerUrl`, `imageServerFieldName`, `imageServerExtraParams`, `imageServerResponsePath`) along with the `imageStorage` toggle. Images are now always saved to the local workspace and are never uploaded off the machine — the editor no longer has any network egress path for document content.
+- **Send to Claude**: removed the selection-toolbar "Send to Claude" button and the `Option+K` / `Alt+K` shortcut, along with the terminal/extension detection plumbing.
+
+### Added
+
+- **`markdownWriter.confirmExternalLinks`** (default `true`): opening an external link from a document now asks for confirmation first, so a document can never navigate anywhere without an explicit confirmation. Set to `false` to restore one-click opening.
+
+---
+
 ## [0.2.3] - 2026-07-04
 
 A large batch focused on round-trip fidelity, VS Code parity, and Markdown syntax breadth.

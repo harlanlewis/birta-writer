@@ -1054,49 +1054,17 @@
           "default": false,
           "description": "%config.debugMode.description%"
         },
-        "markdownWriter.imageStorage": {
-          "order": 100,
-          "type": "string",
-          "enum": [
-            "local",
-            "server"
-          ],
-          "enumDescriptions": [
-            "%config.imageStorage.local%",
-            "%config.imageStorage.server%"
-          ],
-          "default": "local",
-          "description": "%config.imageStorage.description%"
-        },
         "markdownWriter.imageLocalPath": {
           "order": 101,
           "type": "string",
           "default": "",
           "description": "%config.imageLocalPath.description%"
         },
-        "markdownWriter.imageServerUrl": {
-          "order": 102,
-          "type": "string",
-          "default": "",
-          "description": "%config.imageServerUrl.description%"
-        },
-        "markdownWriter.imageServerFieldName": {
-          "order": 103,
-          "type": "string",
-          "default": "file",
-          "description": "%config.imageServerFieldName.description%"
-        },
-        "markdownWriter.imageServerExtraParams": {
-          "order": 104,
-          "type": "string",
-          "default": "",
-          "description": "%config.imageServerExtraParams.description%"
-        },
-        "markdownWriter.imageServerResponsePath": {
-          "order": 105,
-          "type": "string",
-          "default": "url",
-          "description": "%config.imageServerResponsePath.description%"
+        "markdownWriter.confirmExternalLinks": {
+          "order": 106,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.confirmExternalLinks.description%"
         },
         "markdownWriter.imageSelectionColor": {
           "order": 14,

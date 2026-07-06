@@ -3,7 +3,7 @@ import * as os from "os";
 import * as vscode from "vscode";
 import { getNonce } from "./utils/getNonce";
 import { computeReplaceRange } from "./utils/textEdit";
-import { saveImageLocally, uploadImageToServer } from "./utils/imageService";
+import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
 import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
@@ -422,7 +422,7 @@ export class MarkdownEditorProvider
                     }
                     case "openUrl":
                         if (message.url && isSafeExternalUrl(message.url)) {
-                            vscode.env.openExternal(vscode.Uri.parse(message.url));
+                            this._openExternalUrl(document, message.url);
                         }
                         break;
                     case "openFile": {
@@ -781,6 +781,34 @@ export class MarkdownEditorProvider
                 }
             }, delay),
         );
+    }
+
+    /**
+     * Open an external URL from the document. Gated by the
+     * `markdownWriter.confirmExternalLinks` setting (default true): when enabled,
+     * the user must confirm before the link is handed to the OS, so a document can
+     * never navigate anywhere without an explicit extra confirmation.
+     */
+    private async _openExternalUrl(
+        document: vscode.TextDocument,
+        url: string,
+    ): Promise<void> {
+        const cfg = vscode.workspace.getConfiguration('markdownWriter', document.uri);
+        const confirm = cfg.get<boolean>('confirmExternalLinks', true);
+
+        if (confirm) {
+            const open = vscode.l10n.t('Open');
+            const choice = await vscode.window.showWarningMessage(
+                vscode.l10n.t('Open external link?'),
+                { modal: true, detail: url },
+                open,
+            );
+            if (choice !== open) {
+                return;
+            }
+        }
+
+        await vscode.env.openExternal(vscode.Uri.parse(url));
     }
 
     private _getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
@@ -1144,25 +1172,20 @@ export class MarkdownEditorProvider
     ): Promise<void> {
         const uriKey = document.uri.toString();
         const cfg = vscode.workspace.getConfiguration('markdownWriter', document.uri);
-        const storage = cfg.get<string>('imageStorage', 'local');
         try {
-            let url: string;
-            if (storage === 'server') {
-                url = await uploadImageToServer(cfg, data, mimeType, altText);
-            } else {
-                const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
-                const webviewUri = panel.webview.asWebviewUri(absUri);
-                url = webviewUri.toString();
-                // Store the mapping so that on save, webviewUri is replaced back with relPath
-                const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
-                this._imageUriMaps.set(uriKey, uriMap);
-                uriMap.set(url, relPath);
-            }
+            // Images are always saved to the local workspace; nothing is uploaded off the machine.
+            const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
+            const webviewUri = panel.webview.asWebviewUri(absUri);
+            const url = webviewUri.toString();
+            // Store the mapping so that on save, webviewUri is replaced back with relPath
+            const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
+            this._imageUriMaps.set(uriKey, uriMap);
+            uriMap.set(url, relPath);
             panel.webview.postMessage({ type: 'imageUploaded', id, url });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
             panel.webview.postMessage({ type: 'imageUploadError', id, error: errMsg });
-            vscode.window.showErrorMessage(vscode.l10n.t('Image upload failed: {0}', errMsg));
+            vscode.window.showErrorMessage(vscode.l10n.t('Failed to save image: {0}', errMsg));
         }
     }
 

@@ -1,7 +1,7 @@
 /**
  * shared/messages.ts
- * The single authoritative source for WebView ↔ Extension message types.
- * Both sides import from here; inline duplicate definitions are forbidden.
+ * The single source of truth for the bidirectional WebView ↔ Extension message types.
+ * Both sides import from here; inlining duplicate definitions on either side is forbidden.
  */
 
 import type { EditorCommandId } from "./editorCommands";
@@ -13,11 +13,11 @@ export type ProjectImage = {
     name: string;
 };
 
-/** A path-completion suggestion entry */
+/** Path-completion suggestion entry */
 export type PathSuggestionItem = {
     path: string;
     isDir: boolean;
-    webviewUri?: string;  // returned only for image files, for thumbnail preview
+    webviewUri?: string;  // Returned only for image files, for thumbnail preview
 };
 
 /** Link target suggestion: one workspace file in both of its addressable forms */
@@ -28,7 +28,7 @@ export type LinkTargetSuggestionItem = {
     rootRelative: string;
 };
 
-/** Table line-wrap mode */
+/** Table line-wrapping mode */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
 /** One text block sent for grammar/spell linting (key = block position). */
