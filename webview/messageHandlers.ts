@@ -288,9 +288,11 @@ export function createMessageHandlers(
         setFontFamily(msg) {
             const root = document.documentElement;
             if (msg.fontFamily) {
-                root.style.setProperty("--custom-font-family", msg.fontFamily);
+                root.style.setProperty("--content-font-family", msg.fontFamily);
             } else {
-                root.style.removeProperty("--custom-font-family");
+                // The "editor" preset: unset, so the CSS falls back to the
+                // VS Code editor font (--vscode-editor-font-family).
+                root.style.removeProperty("--content-font-family");
             }
             topbarTb?.setFontPreset(msg.preset, msg.stacks);
         },

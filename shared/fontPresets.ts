@@ -6,12 +6,12 @@
 import type { FontPreset, FontStacks } from "./messages";
 
 /**
- * The default content-font preset. Must stay in sync with the
- * `markdownWysiwyg.fontPreset` default declared in package.json. Import this in
- * every `getConfiguration().get("fontPreset", …)` call so the code fallback
- * can never diverge from the contributed default.
+ * The default content-font preset: follow the VS Code editor font. Must stay
+ * in sync with the `markdownWysiwyg.fontPreset` default declared in
+ * package.json. Import this in every `getConfiguration().get("fontPreset", …)`
+ * call so the code fallback can never diverge from the contributed default.
  */
-export const DEFAULT_FONT_PRESET: FontPreset = "sans";
+export const DEFAULT_FONT_PRESET: FontPreset = "editor";
 
 /**
  * Content font size, as a percentage of the VS Code editor font size.
@@ -64,21 +64,13 @@ export function resolveFontStacks(overrides: Partial<Record<keyof FontStacks, st
 }
 
 /**
- * Resolve the effective content font-family for a preset.
- *
- * A non-default preset always wins over the user's custom `fontFamily` string
- * (otherwise the toolbar picker would silently do nothing for users who set a
- * custom font). "default" falls back to the custom family when set, else null
- * — meaning "inherit the VS Code editor font".
+ * Resolve the effective content font-family for a preset: the preset's stack,
+ * or null for "editor" — meaning "inherit the VS Code editor font" (the
+ * webview CSS falls back to --vscode-editor-font-family).
  */
 export function resolveFontFamily(
     preset: FontPreset,
-    customFontFamily: string,
     stacks: FontStacks = FONT_PRESET_STACKS,
 ): string | null {
-    if (preset !== "default") {
-        return stacks[preset];
-    }
-    const trimmed = customFontFamily.trim();
-    return trimmed ? trimmed : null;
+    return preset === "editor" ? null : stacks[preset];
 }

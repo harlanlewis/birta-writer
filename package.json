@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.59",
+  "version": "0.2.60",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -918,28 +918,22 @@
           },
           "description": "%config.customJs.description%"
         },
-        "markdownWysiwyg.fontFamily": {
-          "order": 6,
-          "type": "string",
-          "default": "",
-          "description": "%config.fontFamily.description%"
-        },
         "markdownWysiwyg.fontPreset": {
           "order": 7,
           "type": "string",
           "enum": [
-            "default",
+            "editor",
             "sans",
             "serif",
             "mono"
           ],
           "enumDescriptions": [
-            "%config.fontPreset.default%",
+            "%config.fontPreset.editor%",
             "%config.fontPreset.sans%",
             "%config.fontPreset.serif%",
             "%config.fontPreset.mono%"
           ],
-          "default": "sans",
+          "default": "editor",
           "description": "%config.fontPreset.description%"
         },
         "markdownWysiwyg.fontFamilySans": {

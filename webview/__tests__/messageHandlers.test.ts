@@ -148,12 +148,12 @@ describe("requestSwitchToTextEditor handler", () => {
 describe("setFontFamily handler", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        document.documentElement.style.removeProperty("--custom-font-family");
+        document.documentElement.style.removeProperty("--content-font-family");
     });
 
     const container = document.createElement("div");
 
-    it("a resolved font family should set the --custom-font-family variable", () => {
+    it("a resolved font family should set the --content-font-family variable", () => {
         // Arrange
         const setFontPreset = vi.fn();
         const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig() {}, setFontPreset, setFontSize() {} } };
@@ -166,23 +166,23 @@ describe("setFontFamily handler", () => {
         );
 
         // Assert
-        expect(document.documentElement.style.getPropertyValue("--custom-font-family").trim()).toBe("Georgia, serif");
+        expect(document.documentElement.style.getPropertyValue("--content-font-family").trim()).toBe("Georgia, serif");
         expect(setFontPreset).toHaveBeenCalledWith("serif", FONT_PRESET_STACKS);
     });
 
-    it("a null font family should remove the --custom-font-family variable", () => {
+    it("a null font family should remove the --content-font-family variable", () => {
         // Arrange: set it first, then clear it
-        document.documentElement.style.setProperty("--custom-font-family", "Georgia, serif");
+        document.documentElement.style.setProperty("--content-font-family", "Georgia, serif");
         const handlers = createMessageHandlers(stubDeps());
 
         // Act
         handlers.setFontFamily?.(
-            { type: "setFontFamily", fontFamily: null, preset: "default", stacks: FONT_PRESET_STACKS },
+            { type: "setFontFamily", fontFamily: null, preset: "editor", stacks: FONT_PRESET_STACKS },
             container,
         );
 
         // Assert
-        expect(document.documentElement.style.getPropertyValue("--custom-font-family")).toBe("");
+        expect(document.documentElement.style.getPropertyValue("--content-font-family")).toBe("");
     });
 });
 

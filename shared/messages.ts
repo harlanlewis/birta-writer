@@ -66,7 +66,9 @@ export type ToolbarConfig = {
 };
 
 /** Editor content font preset selected from the toolbar font picker. */
-export type FontPreset = "default" | "sans" | "serif" | "mono";
+// "editor" inherits the VS Code editor font (editor.fontFamily) — no stack of
+// its own; the other three render the corresponding user-editable stack.
+export type FontPreset = "editor" | "sans" | "serif" | "mono";
 
 /** Effective font-family stack per non-default preset (user override or built-in). */
 export type FontStacks = { sans: string; serif: string; mono: string };

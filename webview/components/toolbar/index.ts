@@ -786,6 +786,9 @@ export function initToolbar(
     // The picker button's "A" glyph, rendered in the active preset's stack so
     // the control previews its own choice.
     let fontLabelEl: HTMLElement | null = null;
+    // The "editor" preset has no stack of its own — previews render in the
+    // VS Code editor font it inherits.
+    const EDITOR_FONT = "var(--vscode-editor-font-family, monospace)";
     function setFontActive(preset: FontPreset, stacks?: FontStacks): void {
         currentFontPreset = preset;
         if (stacks) {
@@ -793,13 +796,11 @@ export function initToolbar(
         }
         for (const { preset: p, item } of fontEntries) {
             item.setChecked(p === preset);
-            if (p !== "default") {
-                item.label.style.fontFamily = currentFontStacks[p];
-            }
+            item.label.style.fontFamily = p === "editor" ? EDITOR_FONT : currentFontStacks[p];
         }
         if (fontLabelEl) {
             fontLabelEl.style.fontFamily =
-                preset === "default" ? "" : currentFontStacks[preset];
+                preset === "editor" ? EDITOR_FONT : currentFontStacks[preset];
         }
     }
     // ── Font size state ──
@@ -851,11 +852,11 @@ export function initToolbar(
         fontMenu.className = "tb-fmt-menu tb-font-menu";
         fontMenu.style.display = "none";
 
-        // The picker offers the three preset stacks (user-customizable via the
-        // fontFamilySans/Serif/Mono settings); "default" (inherit the VS Code
-        // font / the Font Family setting) stays a valid setting value for
-        // power users, just not a menu item. Sans serif is the default preset.
+        // "Editor font" (the default) follows the VS Code editor font; the
+        // other presets use their stack, user-customizable via the
+        // fontFamilySans/Serif/Mono settings. Each row previews its own font.
         const choices: { preset: FontPreset; label: string; stack: string }[] = [
+            { preset: "editor", label: t("Editor font"), stack: EDITOR_FONT },
             { preset: "sans", label: t("Sans serif"), stack: currentFontStacks.sans },
             { preset: "serif", label: t("Serif"), stack: currentFontStacks.serif },
             { preset: "mono", label: t("Monospace"), stack: currentFontStacks.mono },

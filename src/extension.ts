@@ -334,21 +334,16 @@ export function activate(context: vscode.ExtensionContext) {
                     config: MarkdownEditorProvider.getToolbarConfig(),
                 });
             }
-            // "markdownWysiwyg.fontFamily" does not prefix-match the
-            // fontFamilySans/Serif/Mono keys (matching is per-segment), so the
-            // per-preset stack settings are listed explicitly.
             if (e.affectsConfiguration("markdownWysiwyg.fontPreset")
-                || e.affectsConfiguration("markdownWysiwyg.fontFamily")
                 || e.affectsConfiguration("markdownWysiwyg.fontFamilySans")
                 || e.affectsConfiguration("markdownWysiwyg.fontFamilySerif")
                 || e.affectsConfiguration("markdownWysiwyg.fontFamilyMono")) {
                 const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
                 const preset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
-                const fontFamily = cfg.get<string>("fontFamily", "");
                 const stacks = MarkdownEditorProvider.getFontStacks(cfg);
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setFontFamily",
-                    fontFamily: resolveFontFamily(preset, fontFamily, stacks),
+                    fontFamily: resolveFontFamily(preset, stacks),
                     preset,
                     stacks,
                 });

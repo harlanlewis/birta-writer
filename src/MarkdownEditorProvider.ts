@@ -846,10 +846,9 @@ export class MarkdownEditorProvider
         const tocWidth = this._getNumberSettingValue(this.context.globalState.get<number>("tocWidth"), 220, 150, 600);
         const tocRight = cfg.get<string>("tocPosition", "right") === "right";
         const isAutoWidth = editorMaxWidth === "none";
-        const fontFamily = cfg.get<string>("fontFamily", "");
         const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
         const fontStacks = MarkdownEditorProvider.getFontStacks(cfg);
-        const resolvedFont = resolveFontFamily(fontPreset, fontFamily, fontStacks);
+        const resolvedFont = resolveFontFamily(fontPreset, fontStacks);
         const fontSize = clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT));
         const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
@@ -907,7 +906,7 @@ export class MarkdownEditorProvider
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
 	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --custom-font-family: ${resolvedFont};` : ''} --content-font-scale: ${fontSize / 100}; --image-selection-color: ${imageSelectionColor}; }</style>
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --content-font-family: ${resolvedFont};` : ''} --content-font-scale: ${fontSize / 100}; --image-selection-color: ${imageSelectionColor}; }</style>
 	</head>
 	<body class="${bodyClasses}">
 	  <div class="editor-topbar"></div>

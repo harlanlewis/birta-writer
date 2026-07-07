@@ -61,7 +61,7 @@ body {
    and window zoom still flow through. */
 #editor {
     font-family: var(
-        --custom-font-family,
+        --content-font-family,
         var(
             --vscode-editor-font-family,
             -apple-system,
@@ -822,7 +822,7 @@ body.editor-width-auto {
        in explicitly so a stuck heading matches the heading it mirrors instead of
        switching to the chrome/UI font. */
     font-family: var(
-        --custom-font-family,
+        --content-font-family,
         var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)
     );
     font-weight: 600;

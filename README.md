@@ -117,7 +117,11 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | `markdownWysiwyg.defaultMode`        | string  | `"preview"` | Default mode when opening `.md`: `preview` (WYSIWYG) or `markdown` (text editor)          |
 | `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
 | `markdownWysiwyg.editorMaxWidth`     | number  | `900`       | Maximum editor content width in pixels                                                    |
-| `markdownWysiwyg.fontFamily`         | string  | `""`        | Editor font family; leave empty to inherit VS Code editor font. Example: `Georgia, serif` |
+| `markdownWysiwyg.fontPreset`         | string  | `"editor"`  | Content font: `editor` (follow the VS Code editor font), `sans`, `serif`, or `mono`; also switchable from the toolbar font picker |
+| `markdownWysiwyg.fontFamilySans`     | string  | system sans stack | Font-family stack used by the Sans serif preset                                     |
+| `markdownWysiwyg.fontFamilySerif`    | string  | serif stack | Font-family stack used by the Serif preset                                                |
+| `markdownWysiwyg.fontFamilyMono`     | string  | mono stack  | Font-family stack used by the Monospace preset                                            |
+| `markdownWysiwyg.fontSize`           | number  | `100`       | Content font size as a percentage of the VS Code editor font size (50–200)                |
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
 | `markdownWysiwyg.confirmExternalLinks` | boolean | `true`    | Ask for confirmation before opening an external link in your browser; images are always stored locally and never uploaded off your machine |
 | `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | Color theme: `auto` follows VS Code, or set a theme ID                                   |
