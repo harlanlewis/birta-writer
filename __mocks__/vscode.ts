@@ -255,6 +255,12 @@ export const workspace = {
     })),
     getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: URI }),
     workspaceFolders: undefined as undefined | Array<{ uri: URI }>,
+    /** Resolves to the registered fake document; rejects for unknown URIs (like the real API on a missing file). */
+    openTextDocument: vi.fn(async (uri: URI) => {
+        const doc = fakeTextDocuments.get(uri.toString());
+        if (!doc) throw new Error(`openTextDocument: no fake document for ${uri.toString()}`);
+        return doc;
+    }),
     createFileSystemWatcher: vi.fn(makeFakeFileSystemWatcher),
     findFiles: vi.fn(async (): Promise<URI[]> => []),
     onDidChangeTextDocument: vi.fn(

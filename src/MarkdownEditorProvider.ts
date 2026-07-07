@@ -8,6 +8,9 @@ import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
 import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
+import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
+import { scanHeadings } from "./utils/headingScan";
+import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
 import { resolveThemeColors } from "./themeManager";
@@ -434,79 +437,26 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "openUrl":
+                        // Scheme allowlist only — VS Code itself shows the
+                        // trusted-domains confirmation on openExternal.
                         if (message.url && isSafeExternalUrl(message.url)) {
-                            this._openExternalUrl(document, message.url);
+                            void vscode.env.openExternal(vscode.Uri.parse(message.url));
                         }
                         break;
                     case "openFile": {
                         if (!message.path) break;
-
-                        // If the current tab is in preview state (italic), pin the current file first
-                        let currentIsPreview = false;
-                        for (const group of vscode.window.tabGroups.all) {
-                            for (const tab of group.tabs) {
-                                if (
-                                    tab.input instanceof vscode.TabInputCustom &&
-                                    (tab.input as vscode.TabInputCustom).uri.toString() === document.uri.toString()
-                                ) {
-                                    currentIsPreview = tab.isPreview;
-                                    break;
-                                }
-                            }
-                        }
-                        if (currentIsPreview) {
-                            this._pinnedDocuments.add(uriKey);
-                            vscode.commands.executeCommand('workbench.action.keepEditor');
-                        }
-
-                        // Separate the path from the line-number fragment (e.g. ./file.md#27-30)
-                        const hashIdx = message.path.indexOf("#");
-                        const filePath = hashIdx >= 0 ? message.path.slice(0, hashIdx) : message.path;
-                        const fragment = hashIdx >= 0 ? message.path.slice(hashIdx + 1) : undefined;
-                        const lineMatch = fragment?.match(/^(\d+)(-\d+)?$/);
-                        const lineNumber = lineMatch ? parseInt(lineMatch[1], 10) : undefined;
-
-                        let absPath: string;
-                        if (filePath.startsWith("@/")) {
-                            // @/ denotes the workspace root: find the workspace folder containing the current document
-                            const docFsPath = document.uri.fsPath;
-                            const sep = path.sep;
-                            const containingFolder = vscode.workspace.workspaceFolders?.find(
-                                f => docFsPath.startsWith(f.uri.fsPath + sep),
-                            );
-                            const workspaceRoot =
-                                containingFolder?.uri.fsPath ??
-                                vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                            absPath = workspaceRoot
-                                ? path.join(workspaceRoot, filePath.slice(2))
-                                : path.resolve(path.dirname(docFsPath), "..", filePath.slice(2));
-                        } else {
-                            const docDir = path.dirname(document.uri.fsPath);
-                            absPath = path.resolve(docDir, filePath);
-                        }
-
-                        const targetUri = vscode.Uri.file(absPath);
-                        if (/\.(md|markdown)$/i.test(absPath)) {
-                            // .md file: open with WYSIWYG preview; the line number is passed via setPendingNavigation
-                            if (lineNumber !== undefined) {
-                                this.setPendingNavigation(absPath, lineNumber);
-                            }
-                            await vscode.commands.executeCommand(
-                                "vscode.openWith",
-                                targetUri,
-                                MarkdownEditorProvider.viewType,
-                                { preview: true },
-                            );
-                        } else if (lineNumber !== undefined) {
-                            // Non-.md with a line number: use showTextDocument to jump to the given line
-                            const doc = await vscode.workspace.openTextDocument(targetUri);
-                            await vscode.window.showTextDocument(doc, {
-                                selection: new vscode.Range(lineNumber - 1, 0, lineNumber - 1, 0),
-                                preview: true,
-                            });
-                        } else {
-                            vscode.commands.executeCommand("vscode.open", targetUri);
-                        }
+                        await this._handleOpenFile(document, uriKey, message.path, message.wiki === true)
+                            .catch(() => { /* open failures surface via VS Code's own UI */ });
+                        break;
+                    }
+                    case "resolveLinkTarget": {
+                        await this._handleResolveLinkTarget(
+                            document,
+                            webviewPanel,
+                            message.id,
+                            message.path,
+                            message.wiki === true,
+                        ).catch(() => { /* hint is best-effort */ });
                         break;
                     }
                     case "switchToTextEditor": {
@@ -810,31 +760,216 @@ export class MarkdownEditorProvider
     }
 
     /**
-     * Open an external URL from the document. Gated by the
-     * `markdownWysiwyg.confirmExternalLinks` setting (default true): when enabled,
-     * the user must confirm before the link is handed to the OS, so a document can
-     * never navigate anywhere without an explicit extra confirmation.
+     * openFile: resolve a document's local link to a real file and open it.
+     * Smart mode (`markdownWysiwyg.smartLinks`, default on) runs the resolver
+     * chain in linkResolver.ts — workspace-root paths, ancestor content roots,
+     * markdown suffix inference, wikilink filename matching — and warns
+     * non-modally when nothing matches. Non-smart mode is pure path math with
+     * no existence checks (the pre-smart behavior, minus the old
+     * leading-`/` → filesystem-root bug).
      */
-    private async _openExternalUrl(
+    private async _handleOpenFile(
         document: vscode.TextDocument,
-        url: string,
+        uriKey: string,
+        rawPath: string,
+        wiki: boolean,
     ): Promise<void> {
-        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
-        const confirm = cfg.get<boolean>('confirmExternalLinks', true);
-
-        if (confirm) {
-            const open = vscode.l10n.t('Open');
-            const choice = await vscode.window.showWarningMessage(
-                vscode.l10n.t('Open external link?'),
-                { modal: true, detail: url },
-                open,
-            );
-            if (choice !== open) {
-                return;
+        // If the current tab is in preview state (italic), pin the current file first
+        let currentIsPreview = false;
+        for (const group of vscode.window.tabGroups.all) {
+            for (const tab of group.tabs) {
+                if (
+                    tab.input instanceof vscode.TabInputCustom &&
+                    (tab.input as vscode.TabInputCustom).uri.toString() === document.uri.toString()
+                ) {
+                    currentIsPreview = tab.isPreview;
+                    break;
+                }
             }
         }
+        if (currentIsPreview) {
+            this._pinnedDocuments.add(uriKey);
+            vscode.commands.executeCommand('workbench.action.keepEditor');
+        }
 
-        await vscode.env.openExternal(vscode.Uri.parse(url));
+        // Separate the path from the fragment. A wikilink fragment is always a
+        // heading; otherwise a numeric fragment is a line number (./file.md#27-30).
+        const hashIdx = rawPath.indexOf("#");
+        const filePath = hashIdx >= 0 ? rawPath.slice(0, hashIdx) : rawPath;
+        const fragment = hashIdx >= 0 ? rawPath.slice(hashIdx + 1) : undefined;
+        const lineMatch = wiki ? undefined : fragment?.match(/^(\d+)(-\d+)?$/);
+        const lineNumber = lineMatch ? parseInt(lineMatch[1], 10) : undefined;
+
+        const absPath = await this._resolveLinkTargetPath(document, filePath, wiki);
+        if (!absPath) {
+            void vscode.window.showWarningMessage(
+                vscode.l10n.t('Could not find "{0}" in this workspace.', rawPath),
+            );
+            return;
+        }
+
+        const targetUri = vscode.Uri.file(absPath);
+        if (/\.(md|markdown)$/i.test(absPath)) {
+            // .md file: open with WYSIWYG preview; the line number is passed via
+            // setPendingNavigation. A non-numeric fragment (file.md#some-heading,
+            // [[page#Heading]]) resolves to the matching heading's line; no match
+            // just opens the file without scrolling.
+            let navLine = lineNumber;
+            if (navLine === undefined && fragment) {
+                navLine = await this._findHeadingLine(targetUri, fragment);
+            }
+            if (navLine !== undefined) {
+                this.setPendingNavigation(absPath, navLine);
+            }
+            await vscode.commands.executeCommand(
+                "vscode.openWith",
+                targetUri,
+                MarkdownEditorProvider.viewType,
+                { preview: true },
+            );
+        } else if (lineNumber !== undefined) {
+            // Non-.md with a line number: use showTextDocument to jump to the given line
+            const doc = await vscode.workspace.openTextDocument(targetUri);
+            await vscode.window.showTextDocument(doc, {
+                selection: new vscode.Range(lineNumber - 1, 0, lineNumber - 1, 0),
+                preview: true,
+            });
+        } else {
+            vscode.commands.executeCommand("vscode.open", targetUri);
+        }
+    }
+
+    /**
+     * The absolute file a link's path portion (fragment already stripped)
+     * points at, via the linkResolver chain — shared by the openFile handler
+     * and the popup's resolved-target hint so the hint always tells the truth
+     * about where a click will go. Null only in smart mode when nothing
+     * matches (non-smart mode returns the computed path unchecked, exactly
+     * like the click does).
+     */
+    private async _resolveLinkTargetPath(
+        document: vscode.TextDocument,
+        filePath: string,
+        wiki: boolean,
+    ): Promise<string | null> {
+        const docFsPath = document.uri.fsPath;
+        const containingFolder = vscode.workspace.workspaceFolders?.find(
+            f => docFsPath.startsWith(f.uri.fsPath + path.sep),
+        );
+        const workspaceRoot =
+            containingFolder?.uri.fsPath ??
+            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+
+        const smartLinks = vscode.workspace
+            .getConfiguration("markdownWysiwyg", document.uri)
+            .get<boolean>("smartLinks", true);
+
+        const ctx = { docFsPath, workspaceRootFsPath: workspaceRoot, smartLinks };
+        const io: ResolverIo = {
+            isFile: async (absPath) => {
+                try {
+                    const st = await vscode.workspace.fs.stat(vscode.Uri.file(absPath));
+                    return (st.type & vscode.FileType.File) !== 0;
+                } catch {
+                    return false;
+                }
+            },
+            getFileIndex: async () => (await this._getLinkFileIndex()).map((u) => u.fsPath),
+        };
+
+        // A wikilink without smart resolution degrades to a plain path lookup
+        // ("visible but safe" — the chip still opens whatever the bytes name).
+        return wiki && smartLinks
+            ? resolveWikiTarget(filePath, ctx, io)
+            : resolveLinkPath(filePath, ctx, io);
+    }
+
+    /**
+     * Replies to the popup's resolved-target hint request: where would this
+     * link open right now? The reply is the workspace-relative path (posix,
+     * for display), the absolute path when the target sits outside the
+     * workspace, or null for a smart-mode miss.
+     */
+    private async _handleResolveLinkTarget(
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        id: string,
+        rawPath: string,
+        wiki: boolean,
+    ): Promise<void> {
+        const hashIdx = rawPath.indexOf("#");
+        const filePath = hashIdx >= 0 ? rawPath.slice(0, hashIdx) : rawPath;
+        const absPath = filePath
+            ? await this._resolveLinkTargetPath(document, filePath, wiki)
+            : null;
+
+        let resolved: string | null = null;
+        if (absPath) {
+            const docFsPath = document.uri.fsPath;
+            const root = (vscode.workspace.workspaceFolders?.find(
+                f => docFsPath.startsWith(f.uri.fsPath + path.sep),
+            ) ?? vscode.workspace.workspaceFolders?.[0])?.uri.fsPath;
+            if (root) {
+                const rel = path.relative(root, absPath);
+                resolved = rel.startsWith("..") || path.isAbsolute(rel)
+                    ? absPath
+                    : rel.split(path.sep).join("/");
+            } else {
+                resolved = absPath;
+            }
+        }
+        try {
+            panel.webview.postMessage({ type: "linkTargetResolved", id, resolved });
+        } catch {
+            // Panel disposed while the resolver awaited stat/findFiles.
+        }
+    }
+
+    /**
+     * 1-based line of the heading a link fragment names, or undefined. The
+     * fragment may be a ready slug (`#some-heading`, possibly percent-encoded)
+     * or raw heading text (a wikilink's `#Some Heading`); both are matched
+     * against the target's headings slugged EXACTLY the way the webview slugs
+     * its in-page anchors (shared/slug.ts + the same duplicate suffixing), so
+     * cross-file and in-page navigation always agree.
+     */
+    private async _findHeadingLine(
+        targetUri: vscode.Uri,
+        fragment: string,
+    ): Promise<number | undefined> {
+        let text: string;
+        try {
+            const doc = await vscode.workspace.openTextDocument(targetUri);
+            text = doc.getText();
+        } catch {
+            return undefined;
+        }
+        let decoded = fragment;
+        try {
+            decoded = decodeURIComponent(fragment);
+        } catch { /* keep raw */ }
+        const wanted = new Set([decoded.toLowerCase(), slugify(decoded)]);
+
+        // The webview slugs RENDERED heading text; scanHeadings yields raw
+        // markdown. Reduce the inline constructs whose source bytes differ
+        // from their rendering (links/images keep only their text, code
+        // drops its backticks) so both sides produce the same slug.
+        const rendered = (raw: string): string =>
+            raw
+                .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+                .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+                .replace(/`([^`]*)`/g, "$1");
+
+        const counts = new Map<string, number>();
+        for (const h of scanHeadings(text)) {
+            const base = slugify(rendered(h.text));
+            if (!base) continue;
+            const count = counts.get(base) ?? 0;
+            counts.set(base, count + 1);
+            const slug = count === 0 ? base : `${base}-${count}`;
+            if (wanted.has(slug)) return h.line;
+        }
+        return undefined;
     }
 
     private _getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
@@ -875,6 +1010,7 @@ export class MarkdownEditorProvider
         const translations: Record<string, string> = {};
         const debugMode = cfg.get<boolean>("debugMode", false);
         const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
+        const smartLinks = cfg.get<boolean>("smartLinks", true);
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
@@ -885,7 +1021,7 @@ export class MarkdownEditorProvider
         // optional-chained so a stripped-down test context still resolves.
         const productName =
             (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "WYSIWYG Markdown Editor";
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, fontStacks, fontSize, documentUri, productName })};`;
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, fontStacks, fontSize, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -1501,7 +1637,10 @@ export class MarkdownEditorProvider
         const post = (items: ReturnType<typeof rankLinkTargets>) =>
             panel.webview.postMessage({ type: 'linkTargetSuggestions', id, items });
 
-        if (!isLocalPathQuery(query) || document.uri.scheme !== 'file') {
+        // An EMPTY query is allowed (the wikilink completer's bare `[[` —
+        // ranking returns everything, markdown first, capped); a non-empty
+        // query must still be a local path, never a URL/#anchor.
+        if ((query.trim() !== "" && !isLocalPathQuery(query)) || document.uri.scheme !== 'file') {
             post([]);
             return;
         }
@@ -1512,6 +1651,22 @@ export class MarkdownEditorProvider
             return;
         }
 
+        const uris = await this._getLinkFileIndex();
+
+        const candidates = buildLinkTargetItems(
+            uris.map((u) => u.fsPath),
+            document.uri.fsPath,
+            workspaceRoot,
+        );
+        post(rankLinkTargets(candidates, query));
+    }
+
+    /**
+     * Workspace file index shared by link-target autocomplete and smart link
+     * resolution: one findFiles sweep, cached briefly so a click or keystroke
+     * burst never pays it twice.
+     */
+    private async _getLinkFileIndex(): Promise<readonly vscode.Uri[]> {
         const now = Date.now();
         if (!this._linkFileCache || now >= this._linkFileCache.expires) {
             const uris = await vscode.workspace.findFiles(
@@ -1521,13 +1676,7 @@ export class MarkdownEditorProvider
             );
             this._linkFileCache = { uris, expires: now + MarkdownEditorProvider._LINK_FILE_TTL_MS };
         }
-
-        const candidates = buildLinkTargetItems(
-            this._linkFileCache.uris.map((u) => u.fsPath),
-            document.uri.fsPath,
-            workspaceRoot,
-        );
-        post(rankLinkTargets(candidates, query));
+        return this._linkFileCache.uris;
     }
 
     private _handleResolveImagePath(

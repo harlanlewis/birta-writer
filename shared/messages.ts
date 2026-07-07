@@ -149,7 +149,10 @@ export type ToExtensionMessage =
     | { type: "ready" }
     | { type: "update"; content: string; baseSyncVersion: number }
     | { type: "openUrl"; url: string }
-    | { type: "openFile"; path: string }
+    // `wiki` marks a wikilink target: the fragment (if any) is always a
+    // heading, never a line number, and bare names resolve by filename
+    // across the workspace instead of as document-relative paths.
+    | { type: "openFile"; path: string; wiki?: true }
     | { type: "debug"; message: string }
     | { type: "switchToTextEditor"; line?: number }
     // `query` optionally narrows the native Settings UI filter (e.g. to the
@@ -161,6 +164,9 @@ export type ToExtensionMessage =
     | { type: "renameImage"; id: string; webviewUri: string; newBasename: string }
     | { type: "getPathSuggestions"; id: string; query: string }
     | { type: "getLinkTargetSuggestions"; id: string; query: string }
+    // Popup hint: where would this link path open right now? (same resolver
+    // as openFile, no side effects)
+    | { type: "resolveLinkTarget"; id: string; path: string; wiki?: true }
     | { type: "resolveImagePath"; id: string; relPath: string }
     | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
@@ -215,6 +221,9 @@ export type ToWebviewMessage =
     | { type: "requestSwitchToTextEditor" }
     | { type: "pathSuggestions"; id: string; items: PathSuggestionItem[] }
     | { type: "linkTargetSuggestions"; id: string; items: LinkTargetSuggestionItem[] }
+    // Reply to resolveLinkTarget: workspace-relative display path (posix),
+    // absolute when outside the workspace, null for a smart-mode miss.
+    | { type: "linkTargetResolved"; id: string; resolved: string | null }
     | { type: "imagePathResolved"; id: string; webviewUri: string }
     | { type: "setTheme"; colors: Record<string, string> }
     | { type: "setTableWrap"; wrap: TableWrapMode }
