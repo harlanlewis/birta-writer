@@ -9,6 +9,7 @@ export function createButton(options: {
     icon?: string;
     label?: string;
     title?: string;
+    ariaLabel?: string;
     tabIndex?: number;
     tooltipPlacement?: 'above' | 'below';
     onClick?: () => void;
@@ -18,6 +19,15 @@ export function createButton(options: {
     if (options.tabIndex !== undefined) btn.tabIndex = options.tabIndex;
     if (options.icon) btn.innerHTML = options.icon;
     if (options.label) btn.textContent = options.label;
+
+    // Accessible name: an explicit ariaLabel wins; otherwise icon-only
+    // buttons take the tooltip title minus any trailing "(⌘K)"-style
+    // shortcut hint (a visible label already names the button).
+    const ariaLabel = options.ariaLabel ??
+        (!options.label && options.title
+            ? options.title.replace(/\s*\([^()]*\)\s*$/, '')
+            : undefined);
+    if (ariaLabel) btn.setAttribute('aria-label', ariaLabel);
 
     const tipText = options.title ?? options.label;
     if (tipText) {

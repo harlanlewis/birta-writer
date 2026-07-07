@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Link fragments survive modifier-click**: the click handler stripped `#…` from the href before messaging the host, which broke `file.md#27` line navigation and dropped anchors from external URLs.
 - **Find bar tab order**: Tab in the Find field jumps straight to Replace when the replace row is open (Shift+Tab returns), matching VS Code's find widget, and the cycle wraps after Replace All back to the navigation buttons so every control stays keyboard-reachable; Escape still exits to the editor.
+- **Inline math in a code block no longer crashes**: with the caret inside a code block (or a block node selected), the math toolbar button threw `Cannot read properties of null (reading 'nodeSize')`; the command now refuses cleanly where inline math cannot live.
+- **Screen-reader names for toolbar buttons**: every toolbar button and dropdown trigger (Format, Font, Checks, Settings, overflow, Debug) now carries an `aria-label`; icon-only buttons derive it from their tooltip automatically, minus the shortcut hint.
 
 ### Added
 

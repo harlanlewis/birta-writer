@@ -857,6 +857,7 @@ export function initToolbar(
 
         const fontBtn = createMenuTrigger({
             html: `<span class="tb-fmt-label tb-fmt-label--font">A</span>${IconChevronDown}`,
+            ariaLabel: t("Font"),
         });
         fontLabelEl = fontBtn.querySelector(".tb-fmt-label--font");
 
@@ -967,7 +968,10 @@ export function initToolbar(
     const fmtWrap = document.createElement("div");
     fmtWrap.className = "tb-fmt-wrap";
 
-    const fmtBtn = createMenuTrigger({ html: `<span class="tb-fmt-label">P</span>${IconChevronDown}` });
+    const fmtBtn = createMenuTrigger({
+        html: `<span class="tb-fmt-label">P</span>${IconChevronDown}`,
+        ariaLabel: t("Format"),
+    });
 
     const fmtMenu = document.createElement("div");
     fmtMenu.className = "tb-fmt-menu";
@@ -1218,6 +1222,7 @@ export function initToolbar(
         const dbgBtn = document.createElement("button");
         dbgBtn.className = "tb-btn tb-fmt-btn";
         dbgBtn.innerHTML = IconList + IconChevronDown;
+        dbgBtn.setAttribute("aria-label", t("Debug"));
         // No tooltip: it would overlap the dropdown menu (see the font picker).
         dbgBtn.addEventListener("mousedown", (e) => {
             e.preventDefault();
@@ -1438,7 +1443,10 @@ export function initToolbar(
         const wrapEl = document.createElement("div");
         wrapEl.className = "tb-fmt-wrap";
 
-        const gearBtn = createMenuTrigger({ html: IconSettings + IconChevronDown });
+        const gearBtn = createMenuTrigger({
+            html: IconSettings + IconChevronDown,
+            ariaLabel: t("Settings"),
+        });
 
         const menu = document.createElement("div");
         menu.className = "tb-fmt-menu tb-settings-menu";
@@ -1494,7 +1502,11 @@ export function initToolbar(
     moreWrap.className = "tb-fmt-wrap tb-more-wrap";
     moreWrap.style.display = "none";
 
-    const moreBtn = createMenuTrigger({ text: "⋯", className: "tb-btn tb-more-btn" });
+    const moreBtn = createMenuTrigger({
+        text: "⋯",
+        className: "tb-btn tb-more-btn",
+        ariaLabel: t("More"),
+    });
 
     const moreMenu = document.createElement("div");
     moreMenu.className = "tb-more-menu";

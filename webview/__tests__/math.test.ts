@@ -6,10 +6,12 @@ import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
+import { TextSelection } from "@milkdown/prose/state";
 import { INLINE_MATH_RULE_REGEX, isRealInlineMath } from "../plugins/math";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 import { normalizeCodeLanguage } from "../codeLanguages";
+import { runEditorCommand } from "../editorCommands";
 
 // The rule fires on the just-typed text before the caret, so simulate that by
 // matching the text that would sit before the closing `$`.
@@ -74,20 +76,21 @@ describe("isRealInlineMath (parse-time currency guard)", () => {
     });
 });
 
+async function makeEditor(markdown: string): Promise<Editor> {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    return Editor.make()
+        .config((ctx) => {
+            ctx.set(rootCtx, root);
+            ctx.set(defaultValueCtx, markdown);
+            configureSerialization(ctx);
+        })
+        .use(pureCommonmark)
+        .use(gfm)
+        .create();
+}
+
 describe("inline math parsing in a real editor (currency guard)", () => {
-    async function makeEditor(markdown: string): Promise<Editor> {
-        const root = document.createElement("div");
-        document.body.appendChild(root);
-        return Editor.make()
-            .config((ctx) => {
-                ctx.set(rootCtx, root);
-                ctx.set(defaultValueCtx, markdown);
-                configureSerialization(ctx);
-            })
-            .use(pureCommonmark)
-            .use(gfm)
-            .create();
-    }
 
     function mathNodeCount(editor: Editor): number {
         let count = 0;
@@ -119,6 +122,50 @@ describe("inline math parsing in a real editor (currency guard)", () => {
         const protection = computeRoundTripProtection(src, serialized);
         const merged = applyMinimalChanges(src, serialized, protection);
         expect(merged).toBe(src);
+    });
+});
+
+describe("insertInlineMathCommand where inline math cannot live", () => {
+    // Regression: with the caret inside a code block (content `text*`),
+    // replaceSelectionWith cannot place the math node at selection.from and
+    // NodeSelection.create then threw "Cannot read properties of null
+    // (reading 'nodeSize')". Reproduced via toolbar: insert code block, then
+    // the math button. The command must refuse instead.
+    it("with the caret inside a code block should be a safe no-op", async () => {
+        const editor = await makeEditor("```js\nlet x = 1\n```");
+        editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            let inside = -1;
+            view.state.doc.descendants((n, pos) => {
+                if (n.type.name === "code_block") {
+                    inside = pos + 1;
+                }
+                return inside < 0;
+            });
+            expect(inside).toBeGreaterThan(-1);
+            view.dispatch(
+                view.state.tr.setSelection(TextSelection.create(view.state.doc, inside + 2)),
+            );
+        });
+        const before = editor.action(getMarkdown());
+        // the exact toolbar/command-palette path
+        expect(() => runEditorCommand("insertMath", () => editor)).not.toThrow();
+        expect(editor.action(getMarkdown())).toBe(before);
+    });
+
+    it("in a paragraph the command should still wrap the selection as math", async () => {
+        const editor = await makeEditor("energy is E = mc^2 here\n");
+        editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            // select "E = mc^2": paragraph starts at 0, text at 1
+            view.dispatch(
+                view.state.tr.setSelection(
+                    TextSelection.create(view.state.doc, 11, 19),
+                ),
+            );
+        });
+        runEditorCommand("insertMath", () => editor);
+        expect(editor.action(getMarkdown())).toContain("$E = mc^2$");
     });
 });
 

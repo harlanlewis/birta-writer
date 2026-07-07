@@ -220,14 +220,24 @@ export const insertInlineMathCommand = $command(
 
         const { selection, doc, tr } = state;
         if (!hasMath) {
+            // Refuse where inline math cannot live (e.g. inside a code
+            // block, or with a block node selected): replaceSelectionWith
+            // would re-fit the content elsewhere and NodeSelection.create
+            // on selection.from would throw on the missing node.
+            const { $from, $to } = selection;
+            const toIndex = $to.sameParent($from) ? $to.index() : $from.index();
+            if (!$from.parent.canReplaceWith($from.index(), toIndex, mathType)) {
+                return false;
+            }
             const text = doc.textBetween(selection.from, selection.to);
             const next = tr.replaceSelectionWith(mathType.create({ value: text }));
             if (dispatch) {
-                dispatch(
-                    next.setSelection(
-                        NodeSelection.create(next.doc, selection.from),
-                    ),
-                );
+                // Belt and braces: only node-select the insertion if it
+                // actually landed at selection.from.
+                if (next.doc.nodeAt(selection.from)?.type === mathType) {
+                    next.setSelection(NodeSelection.create(next.doc, selection.from));
+                }
+                dispatch(next);
             }
             return true;
         }
