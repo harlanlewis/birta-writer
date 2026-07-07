@@ -103,6 +103,7 @@ const HIDDEN_IN_TABLE_CELL = [
     "blockquote",
     "divider",
     "codeBlock",
+    "mermaid",
     "table",
 ] as const;
 

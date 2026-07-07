@@ -323,7 +323,9 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleOrderedList: (getEditor) => toggleWrap(getEditor, "ordered_list", wrapInOrderedListCommand),
     toggleTaskList: (getEditor) => toggleTaskList(getEditor),
     toggleBlockquote: (getEditor) => toggleWrap(getEditor, "blockquote", wrapInBlockquoteCommand),
-    insertCodeBlock: (getEditor) => callCmd(getEditor, createCodeBlockCommand),
+    // Optional string arg = fence language ("mermaid" from the slash menu)
+    insertCodeBlock: (getEditor, args) =>
+        callCmd(getEditor, createCodeBlockCommand, typeof args === "string" ? args : undefined),
     insertHorizontalRule: (getEditor) => callCmd(getEditor, insertHrCommand),
     insertTable: (getEditor) => callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
     insertLink: () => host.openLinkPrompt?.(),

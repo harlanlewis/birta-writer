@@ -147,6 +147,16 @@ describe("slash command menu plugin", () => {
         expect(first.textContent).toBe("");
     });
 
+    it("picking Mermaid Diagram should create a mermaid-language code block", () => {
+        typeText(v, "/mer");
+
+        press(v, "Enter");
+
+        const first = v.state.doc.child(0);
+        expect(first.type.name).toBe("code_block");
+        expect(first.attrs["language"]).toBe("mermaid");
+    });
+
     it("Tab should apply the highlighted item like Enter", () => {
         typeText(v, "/bullet");
 
