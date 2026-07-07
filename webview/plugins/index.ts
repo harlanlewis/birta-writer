@@ -1,3 +1,5 @@
+export { insertCalloutCommand } from "./callouts";
+export { toggleHighlightCommand } from "./highlight";
 export { caretScrollMarginPlugin } from "./caretScrollMargin";
 export { codeBlockBackspacePlugin } from "./codeBlockBackspace";
 export { codeBlockSelectAllPlugin } from "./codeBlockSelectAll";

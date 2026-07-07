@@ -406,6 +406,19 @@ body.editor-width-auto {
            links — same color, no underline until hover — via the shared `a`
            rule below; they need no distinct styling. */
 
+        /* Highlight (==mark==) — theme-aware translucent wash so the text
+           color stays readable in light and dark themes alike. */
+        mark.md-highlight {
+            background: color-mix(
+                in srgb,
+                var(--vscode-charts-yellow, #cca700) 32%,
+                transparent
+            );
+            color: inherit;
+            padding: 0 0.08em;
+            border-radius: 2px;
+        }
+
         /* Wikilinks ([[target]]) — an inline atom that reads as a link; the
            shared `a` rule below colors it, this only adds the selection ring
            and a pointer (the atom is contenteditable=false). */

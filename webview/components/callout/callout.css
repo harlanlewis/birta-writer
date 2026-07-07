@@ -1,0 +1,174 @@
+/* Callout chrome (components/callout) — accent colors per kind via
+   --vscode-charts-* so light/dark themes both work. The accent drives the
+   left border, the title tint, and a translucent background wash. */
+
+.milkdown .callout {
+    --callout-accent: var(--vscode-charts-blue, #3794ff);
+    position: relative;
+    border-left: 3px solid var(--callout-accent);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--callout-accent) 8%, transparent);
+    margin: 0 0 1em;
+
+    &[data-kind="tip"] {
+        --callout-accent: var(--vscode-charts-green, #89d185);
+    }
+    &[data-kind="success"],
+    &[data-kind="todo"] {
+        --callout-accent: var(--vscode-charts-green, #89d185);
+    }
+    &[data-kind="important"] {
+        --callout-accent: var(--vscode-charts-purple, #b180d7);
+    }
+    &[data-kind="warning"] {
+        --callout-accent: var(--vscode-charts-yellow, #cca700);
+    }
+    &[data-kind="caution"],
+    &[data-kind="danger"],
+    &[data-kind="failure"],
+    &[data-kind="bug"] {
+        --callout-accent: var(--vscode-charts-red, #f14c4c);
+    }
+    &[data-kind="abstract"],
+    &[data-kind="info"] {
+        --callout-accent: var(--vscode-charts-blue, #3794ff);
+    }
+    &[data-kind="question"] {
+        --callout-accent: var(--vscode-charts-orange, #d18616);
+    }
+    &[data-kind="example"] {
+        --callout-accent: var(--vscode-charts-purple, #b180d7);
+    }
+    &[data-kind="quote"] {
+        --callout-accent: var(--vscode-descriptionForeground, #999);
+    }
+
+    .callout-title {
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        padding: 0.5em 0.9em 0;
+        color: var(--callout-accent);
+        font-weight: 600;
+        user-select: none;
+    }
+
+    .callout-kind {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45em;
+        border: none;
+        background: none;
+        padding: 0;
+        margin: 0;
+        color: inherit;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        border-radius: 3px;
+
+        &:hover {
+            opacity: 0.85;
+        }
+    }
+
+    .callout-icon {
+        display: inline-flex;
+
+        svg {
+            width: 16px;
+            height: 16px;
+        }
+    }
+
+    .callout-fold {
+        display: inline-flex;
+        border: none;
+        background: none;
+        padding: 2px;
+        margin-left: auto;
+        color: inherit;
+        cursor: pointer;
+        border-radius: 3px;
+        transition: transform 0.15s ease;
+
+        svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        &:hover {
+            background: color-mix(in srgb, var(--callout-accent) 15%, transparent);
+        }
+    }
+
+    .callout-body {
+        padding: 0.25em 0.9em 0.5em;
+
+        > p:last-child {
+            padding-bottom: 0;
+        }
+    }
+
+    &.collapsed {
+        .callout-body {
+            display: none;
+        }
+
+        .callout-fold {
+            transform: rotate(-90deg);
+        }
+    }
+
+    /* Kind-picker dropdown, anchored to the title bar */
+    .callout-menu {
+        position: absolute;
+        top: 100%;
+        left: 0.5em;
+        z-index: 30;
+        display: flex;
+        flex-direction: column;
+        min-width: 150px;
+        max-height: 280px;
+        overflow-y: auto;
+        padding: 4px;
+        border-radius: 6px;
+        background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+        border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .callout-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        border: none;
+        background: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        color: var(--vscode-editor-foreground);
+        font: inherit;
+        font-size: 0.9em;
+        text-align: left;
+        cursor: pointer;
+
+        svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        &:hover {
+            background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+        }
+
+        &.active {
+            color: var(--callout-accent);
+            font-weight: 600;
+        }
+    }
+}
+
+/* A selected callout node shows the standard focus ring. */
+.milkdown .callout.ProseMirror-selectednode {
+    outline: 2px solid var(--vscode-focusBorder);
+}

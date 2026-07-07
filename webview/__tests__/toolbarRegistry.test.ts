@@ -37,7 +37,7 @@ describe("computeZones", () => {
             "clearFormatting",
         ]);
         expect(zones.right).toEqual(["viewSource", "find", "styleCheck", "fontPreset", "settings"]);
-        expect(zones.hidden).toEqual(["footnote"]);
+        expect(zones.hidden).toEqual(["highlight", "footnote"]);
     });
 
     it("hidden items should be omitted from every zone and listed under hidden", () => {

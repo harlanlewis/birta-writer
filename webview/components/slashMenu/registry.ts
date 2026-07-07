@@ -13,6 +13,7 @@
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { t } from "@/i18n";
 import {
+    IconAlertCircle,
     IconCheckSquare,
     IconFootnote,
     IconImage,
@@ -72,6 +73,7 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "orderedList", group: "basic", label: t("Ordered List"), icon: IconListOrdered, hint: "1.", keywords: ["ol", "numbered", "list"], commandId: "toggleOrderedList" },
     { id: "taskList", group: "basic", label: t("Task List"), icon: IconCheckSquare, hint: "[ ]", keywords: ["todo", "checkbox", "check", "list"], commandId: "toggleTaskList" },
     { id: "blockquote", group: "basic", label: t("Blockquote"), icon: IconQuote, hint: ">", keywords: ["quote", "cite"], commandId: "toggleBlockquote" },
+    { id: "callout", group: "basic", label: t("Callout"), icon: IconAlertCircle, hint: "> [!]", keywords: ["callout", "admonition", "alert", "note", "warning", "tip", "aside"], commandId: "insertCallout" },
     { id: "divider", group: "basic", label: t("Horizontal Rule"), icon: IconMinus, hint: "---", keywords: ["hr", "divider", "rule", "line", "separator"], commandId: "insertHorizontalRule" },
     { id: "codeBlock", group: "advanced", label: t("Code Block"), icon: IconTerminal, hint: "```", keywords: ["code", "fence", "snippet", "pre"], commandId: "insertCodeBlock" },
     { id: "mermaid", group: "advanced", label: t("Mermaid Diagram"), icon: IconNetwork, keywords: ["mermaid", "diagram", "flowchart", "graph", "chart"], commandId: "insertCodeBlock", args: "mermaid" },

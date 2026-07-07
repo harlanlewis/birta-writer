@@ -1,0 +1,66 @@
+/* Container-directive chrome (components/directive) — neutral labeled
+   container; known admonition names pick up callout-style accents. */
+
+.milkdown .container-directive {
+    --directive-accent: var(--vscode-descriptionForeground, #999);
+    border: 1px solid color-mix(in srgb, var(--directive-accent) 35%, transparent);
+    border-left: 3px solid var(--directive-accent);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--directive-accent) 6%, transparent);
+    margin: 0 0 1em;
+
+    &[data-name="note"],
+    &[data-name="info"] {
+        --directive-accent: var(--vscode-charts-blue, #3794ff);
+    }
+    &[data-name="tip"],
+    &[data-name="success"] {
+        --directive-accent: var(--vscode-charts-green, #89d185);
+    }
+    &[data-name="important"] {
+        --directive-accent: var(--vscode-charts-purple, #b180d7);
+    }
+    &[data-name="warning"],
+    &[data-name="caution"] {
+        --directive-accent: var(--vscode-charts-yellow, #cca700);
+    }
+    &[data-name="danger"],
+    &[data-name="error"] {
+        --directive-accent: var(--vscode-charts-red, #f14c4c);
+    }
+
+    .directive-header {
+        display: flex;
+        align-items: baseline;
+        gap: 0.6em;
+        padding: 0.4em 0.9em 0;
+        user-select: none;
+    }
+
+    .directive-name {
+        color: var(--directive-accent);
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: 0.78em;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .directive-title {
+        color: var(--vscode-editor-foreground);
+        font-weight: 600;
+        font-size: 0.9em;
+    }
+
+    .directive-body {
+        padding: 0.25em 0.9em 0.5em;
+
+        > p:last-child {
+            padding-bottom: 0;
+        }
+    }
+}
+
+.milkdown .container-directive.ProseMirror-selectednode {
+    outline: 2px solid var(--vscode-focusBorder);
+}

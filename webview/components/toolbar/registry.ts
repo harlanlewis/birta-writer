@@ -17,6 +17,7 @@ export const TOOLBAR_ITEM_IDS = [
     "bold",
     "italic",
     "strikethrough",
+    "highlight",
     "inlineCode",
     "link",
     "bulletList",
@@ -51,6 +52,9 @@ export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     bold: "left",
     italic: "left",
     strikethrough: "left",
+    // Highlight ships hidden (like footnote): opt-in via settings, the
+    // ==…== input rule and command palette are always available.
+    highlight: "hidden",
     inlineCode: "left",
     link: "left",
     bulletList: "left",

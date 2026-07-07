@@ -101,6 +101,7 @@ const HIDDEN_IN_TABLE_CELL = [
     "orderedList",
     "taskList",
     "blockquote",
+    "callout",
     "divider",
     "codeBlock",
     "mermaid",
@@ -121,6 +122,10 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
                 break;
             case "blockquote":
                 hidden.add("blockquote");
+                break;
+            case "callout":
+                // insertCallout is the same lift-out toggle as blockquote.
+                hidden.add("callout");
                 break;
             case "list_item":
             case "task_list_item":

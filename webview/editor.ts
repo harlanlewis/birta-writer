@@ -11,7 +11,9 @@ import { prism, prismConfig } from "@milkdown/plugin-prism";
 import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import DOMPurify from "dompurify";
+import { createCalloutView } from "./components/callout";
 import { createCodeBlockView } from "./components/codeBlock";
+import { createDirectiveView } from "./components/directive";
 import {
     createFootnoteDefinitionView,
     createFootnoteReferenceView,
@@ -43,6 +45,7 @@ import {
     historyPlugin,
     horizontalRuleKeymapPlugin,
     horizontalRulePlugin,
+    insertCalloutCommand,
     insertFootnoteCommand,
     linkInputRule,
     linkUrlCompletePlugin,
@@ -55,6 +58,7 @@ import {
     slashMenuPlugin,
     tabKeymapPlugin,
     tableKeymapPlugin,
+    toggleHighlightCommand,
     trailingHrParagraphPlugin,
 } from "./plugins";
 
@@ -265,6 +269,8 @@ export async function createEditor(
             // Register the code_block NodeView (top language picker + copy button)
             ctx.set(nodeViewCtx, [
                 ["code_block", createCodeBlockView],
+                ["callout", createCalloutView],
+                ["container_directive", createDirectiveView],
                 ["footnote_reference", createFootnoteReferenceView],
                 ["footnote_definition", createFootnoteDefinitionView],
                 ["math_inline", createMathInlineView],
@@ -305,6 +311,8 @@ export async function createEditor(
         .use(headingStickyPlugin)
         .use(caretScrollMarginPlugin)
         .use(formatKeymapPlugin)
+        .use(insertCalloutCommand)
+        .use(toggleHighlightCommand)
         .use(insertFootnoteCommand)
         .use(footnoteReferenceInputRule)
         .use(footnoteNumberingPlugin)

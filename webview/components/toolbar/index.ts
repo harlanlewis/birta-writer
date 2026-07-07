@@ -6,6 +6,7 @@ import {
     IconBold,
     IconItalic,
     IconStrikethrough,
+    IconHighlighter,
     IconCode,
     IconLink,
     IconImage,
@@ -1020,6 +1021,9 @@ export function initToolbar(
         IconStrikethrough,
         t("Strikethrough") + " " + kbd("Mod-Shift-x"),
         () => runEditorCommand("toggleStrikethrough", getEditor),
+    ));
+    items.highlight = wrap("highlight", btn(IconHighlighter, t("Highlight"), () =>
+        runEditorCommand("toggleHighlight", getEditor),
     ));
     items.inlineCode = wrap("inlineCode", btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () =>
         runEditorCommand("toggleInlineCode", getEditor),

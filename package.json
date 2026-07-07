@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.67",
+  "version": "0.2.68",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -99,6 +99,11 @@
       {
         "command": "markdownWysiwyg.editor.toggleStrikethrough",
         "title": "%command.editor.toggleStrikethrough.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.toggleHighlight",
+        "title": "%command.editor.toggleHighlight.title%",
         "category": "WYSIWYG Markdown Editor"
       },
       {
@@ -199,6 +204,11 @@
       {
         "command": "markdownWysiwyg.editor.insertFootnote",
         "title": "%command.editor.insertFootnote.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.insertCallout",
+        "title": "%command.editor.insertCallout.title%",
         "category": "WYSIWYG Markdown Editor"
       },
       {
@@ -419,6 +429,10 @@
           "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
         },
         {
+          "command": "markdownWysiwyg.editor.toggleHighlight",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
           "command": "markdownWysiwyg.editor.toggleInlineCode",
           "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
         },
@@ -496,6 +510,10 @@
         },
         {
           "command": "markdownWysiwyg.editor.insertFootnote",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.insertCallout",
           "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
         },
         {
@@ -1028,6 +1046,17 @@
           "default": "left",
           "description": "Strikethrough button: pick a toolbar zone or hide it."
         },
+        "markdownWysiwyg.toolbar.items.highlight": {
+          "order": 35.5,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "right"
+          ],
+          "default": "hidden",
+          "description": "Highlight (==mark==) button: pick a toolbar zone or hide it."
+        },
         "markdownWysiwyg.toolbar.items.inlineCode": {
           "order": 36,
           "type": "string",
@@ -1211,7 +1240,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `bulletList`, `orderedList`, `taskList`, `blockquote`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
+          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `bulletList`, `orderedList`, `taskList`, `blockquote`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
         },
         "markdownWysiwyg.tocAutoHideThreshold": {
           "order": 11,

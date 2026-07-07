@@ -31,6 +31,7 @@ export const EDITOR_COMMANDS = [
     { id: "toggleBold", title: "Bold", palette: true, sections: [] },
     { id: "toggleItalic", title: "Italic", palette: true, sections: [] },
     { id: "toggleStrikethrough", title: "Strikethrough", palette: true, sections: [] },
+    { id: "toggleHighlight", title: "Highlight", palette: true, sections: [] },
     { id: "toggleInlineCode", title: "Inline Code", palette: true, sections: [] },
     { id: "clearFormatting", title: "Clear Formatting", palette: true, sections: [] },
     { id: "setParagraph", title: "Paragraph", palette: true, sections: [] },
@@ -51,6 +52,7 @@ export const EDITOR_COMMANDS = [
     { id: "insertImage", title: "Insert Image", palette: true, sections: [] },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
+    { id: "insertCallout", title: "Insert Callout", palette: true, sections: [] },
     { id: "openFind", title: "Find", palette: true, sections: [] },
     { id: "openFindReplace", title: "Replace", palette: true, sections: [] },
     // Find navigation is contributed (rather than handled as hardcoded webview

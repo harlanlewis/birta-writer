@@ -164,6 +164,13 @@ export const listSpreadNormalizePlugin = $prose((ctx) => {
                     });
                 }
             }
+            // Per-step coordinates are NOT mapped through later steps, so a
+            // multi-step transaction that shrinks the doc (a mark input rule
+            // deleting its `**`/`==` markers near the end) can leave maxTo
+            // past the final doc — clamp before nodesBetween or it throws.
+            const docSize = newState.doc.content.size;
+            minFrom = Math.max(0, Math.min(minFrom, docSize));
+            maxTo = Math.min(maxTo, docSize);
             if (minFrom > maxTo) return null;
 
             const tr = newState.tr;

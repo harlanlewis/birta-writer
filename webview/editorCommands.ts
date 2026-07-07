@@ -28,7 +28,11 @@ import {
     wrapInOrderedListCommand,
 } from "@milkdown/preset-commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
-import { insertFootnoteCommand } from "@/plugins";
+import {
+    insertCalloutCommand,
+    insertFootnoteCommand,
+    toggleHighlightCommand,
+} from "@/plugins";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { lift } from "@milkdown/prose/commands";
 import { TextSelection } from "@milkdown/prose/state";
@@ -214,6 +218,25 @@ function insertFootnote(getEditor: GetEditor): void {
     getEditor()?.action((ctx) => ctx.get(editorViewCtx).focus());
 }
 
+/** Callout toggle: lifts out when already inside one, wraps otherwise
+ * (mirrors toggleWrap, with the kind carried through to the command). */
+function insertCallout(getEditor: GetEditor, args?: unknown): void {
+    const editor = getEditor();
+    if (!editor) { return; }
+    editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        if (isInNode(view, "callout")) {
+            lift(view.state, view.dispatch);
+            return;
+        }
+        ctx.get(commandsCtx).call(
+            insertCalloutCommand.key as never,
+            typeof args === "string" ? args : undefined,
+        );
+        view.focus();
+    });
+}
+
 /**
  * Runs a ProseMirror table command against the live view. When `args` carries a
  * `cellPos` (the document position of a right-clicked cell, passed through the
@@ -310,6 +333,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleBold: (getEditor) => callCmd(getEditor, toggleStrongCommand),
     toggleItalic: (getEditor) => callCmd(getEditor, toggleEmphasisCommand),
     toggleStrikethrough: (getEditor) => callCmd(getEditor, toggleStrikethroughCommand),
+    toggleHighlight: (getEditor) => callCmd(getEditor, toggleHighlightCommand),
     toggleInlineCode: (getEditor) => toggleInlineCode(getEditor),
     clearFormatting: (getEditor) => clearFormatting(getEditor),
     setParagraph: (getEditor) => callCmd(getEditor, turnIntoTextCommand),
@@ -332,6 +356,8 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),
     insertFootnote: (getEditor) => insertFootnote(getEditor),
+    // Optional string arg = callout kind ("warning" from the slash menu / picker)
+    insertCallout: (getEditor, args) => insertCallout(getEditor, args),
     openFind: () => host.openFind?.(),
     openFindReplace: () => host.openFindReplace?.(),
     findNext: () => host.findNext?.(),

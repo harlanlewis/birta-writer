@@ -4,7 +4,10 @@
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
+import { calloutsPlugin } from "./plugins/callouts";
+import { directivesPlugin } from "./plugins/directives";
 import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
+import { highlightPlugin } from "./plugins/highlight";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
@@ -74,6 +77,25 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * byte spelling), and a remark visitor rewrites `<br>` html atoms inside cells
  * into real, editable break nodes. The serializer side lives in
  * `serializeTableNoAlign` below.
+ *
+ * `calloutsPlugin` (plugins/callouts.ts) adds GitHub/Obsidian callouts
+ * (MAR-27): a parse-time tree transform rewrites blockquotes whose first line
+ * is a `[!TYPE]` marker into `callout` nodes carrying the RAW marker-line
+ * bytes, and a toMarkdown handler re-emits them through the stock blockquote
+ * machinery — byte-identical round-trip by construction. Registered
+ * unconditionally, like wikilinks: round-trip behavior never depends on
+ * configuration.
+ *
+ * `directivesPlugin` (plugins/directives.ts) adds `:::name` container
+ * directives (Docusaurus admonitions) the same way — a tree transform over
+ * fence-line paragraphs with raw fence bytes preserved. Deliberately NOT
+ * remark-directive: its text-directive syntax swallows `:word` in ordinary
+ * prose, a fidelity hazard.
+ *
+ * `highlightPlugin` (plugins/highlight.ts) adds `==highlight==` (Obsidian):
+ * a custom micromark text construct with a strict grammar (no `=` inside, no
+ * edge spaces), a `highlight` PM mark, and a stringify handler that re-emits
+ * the source bytes verbatim.
  */
 export const pureCommonmark = [
     ...commonmark.filter((plugin) => {
@@ -90,6 +112,9 @@ export const pureCommonmark = [
     }),
     ...referenceLinksPlugin,
     ...wikiLinksPlugin,
+    ...calloutsPlugin,
+    ...directivesPlugin,
+    ...highlightPlugin,
     ...mathPlugin,
     ...sourceStylePlugin,
     ...tableBreaksPlugin,
