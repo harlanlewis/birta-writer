@@ -11,6 +11,7 @@
  * text, so the editor keeps focus and the controller mirrors the highlight
  * through aria-activedescendant on the editor DOM.
  */
+import { t } from "@/i18n";
 import {
     filterSlashItems,
     SLASH_GROUPS,
@@ -79,6 +80,20 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
     const list = document.createElement("div");
     list.className = "slash-menu-list";
     root.appendChild(list);
+
+    // Discoverability footer (Notion convention). Decorative for AT — the
+    // keyboard model is announced through the combobox aria wiring.
+    const footer = document.createElement("div");
+    footer.className = "slash-menu-footer";
+    footer.setAttribute("aria-hidden", "true");
+    const footerHint = document.createElement("span");
+    footerHint.textContent = t("Type to filter");
+    const footerEsc = document.createElement("span");
+    footerEsc.className = "slash-menu-footer-key";
+    footerEsc.textContent = "esc";
+    footer.appendChild(footerHint);
+    footer.appendChild(footerEsc);
+    root.appendChild(footer);
 
     let visible: SlashMenuItem[] = [];
     let rows: HTMLElement[] = [];

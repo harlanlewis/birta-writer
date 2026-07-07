@@ -8,10 +8,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { gfm } from "@milkdown/preset-gfm";
-import { TextSelection } from "@milkdown/prose/state";
+import { Selection, TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { configureSerialization, pureCommonmark } from "../serialization";
-import { setSlashMenuHost, slashMenuPlugin } from "../plugins/slashMenu";
+import {
+    contextHiddenItemIds,
+    opensSlashMenu,
+    setSlashMenuHost,
+    slashMenuPlugin,
+} from "../plugins/slashMenu";
 import { runEditorCommand } from "../editorCommands";
 import { SLASH_MENU_DOM_ID, slashRowDomId } from "../components/slashMenu";
 import { SLASH_MENU_ITEMS } from "../components/slashMenu/registry";
@@ -297,6 +302,49 @@ describe("slash command menu plugin", () => {
         expect(v.dom.hasAttribute("aria-activedescendant")).toBe(false);
     });
 
+    it("picking should never steal focus (host panels focus their own inputs)", () => {
+        // The /link and /image items open host panels that focus a text
+        // input; a view.focus() after the pick would yank it back.
+        const focusSpy = vi.spyOn(v, "focus");
+        typeText(v, "/quo");
+
+        press(v, "Enter");
+
+        expect(v.state.doc.child(0).type.name).toBe("blockquote");
+        expect(focusSpy).not.toHaveBeenCalled();
+    });
+
+    it("an undo/redo transaction restoring /query should not re-open the menu", () => {
+        // Simulate what prosemirror-history dispatches: a doc change
+        // carrying its history meta.
+        const tr = v.state.tr.insertText("/he", v.state.selection.from);
+        tr.setMeta("history$", { redo: false });
+        v.dispatch(tr);
+
+        expect(v.state.doc.textContent).toBe("/he");
+        expect(menuEl()).toBeNull();
+    });
+
+    it("an external rewrite (addToHistory: false) should not open the menu", () => {
+        const tr = v.state.tr.insertText("/he", v.state.selection.from);
+        tr.setMeta("addToHistory", false);
+        v.dispatch(tr);
+
+        expect(menuEl()).toBeNull();
+    });
+
+    it("pasted text ending in /word should not open the menu", () => {
+        const tr = v.state.tr.insertText("pasted /tab", v.state.selection.from);
+        tr.setMeta("uiEvent", "paste");
+        v.dispatch(tr);
+
+        expect(v.state.doc.textContent).toBe("pasted /tab");
+        expect(menuEl()).toBeNull();
+        // …but typing right after (inside the construct) does open it.
+        typeText(v, "l");
+        expect(menuVisible()).toBe(true);
+    });
+
     it("blur should close the menu", () => {
         typeText(v, "/");
         expect(menuVisible()).toBe(true);
@@ -315,5 +363,105 @@ describe("slash command menu plugin", () => {
         );
 
         expect(menuEl()).toBeNull();
+    });
+});
+
+describe("context-aware item filtering (toggles hidden where they would remove)", () => {
+    let editor: Editor;
+    let v: EditorView;
+
+    async function openIn(markdown: string): Promise<string[]> {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        editor = await makeEditor(markdown);
+        v = view(editor);
+        // Last valid cursor position — inside the deepest trailing textblock
+        // (placeCursorAtEndOfBlock lands on node boundaries in nested lists).
+        v.dispatch(v.state.tr.setSelection(Selection.atEnd(v.state.doc)));
+        typeText(v, " /");
+        return rowLabels();
+    }
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    it("inside a bullet list the Bullet List item should be hidden", async () => {
+        const labels = await openIn("- item one\n");
+        expect(labels).not.toContain("Bullet List");
+        expect(labels).toContain("Ordered List"); // cross-type stays: converts
+        expect(labels).toContain("Task List");
+    });
+
+    it("inside an ordered list the Ordered List item should be hidden", async () => {
+        const labels = await openIn("1. item one\n");
+        expect(labels).not.toContain("Ordered List");
+        expect(labels).toContain("Bullet List");
+    });
+
+    it("inside a task list both Task List and Bullet List should be hidden", async () => {
+        const labels = await openIn("- [ ] todo\n");
+        expect(labels).not.toContain("Task List");
+        // A task item lives in a bullet_list; toggling either would lift it.
+        expect(labels).not.toContain("Bullet List");
+        expect(labels).toContain("Ordered List");
+    });
+
+    it("inside a blockquote the Blockquote item should be hidden", async () => {
+        const labels = await openIn("> quoted\n");
+        expect(labels).not.toContain("Blockquote");
+        expect(labels).toContain("Heading 1");
+    });
+
+    it("in a plain paragraph every item should show", async () => {
+        const labels = await openIn("plain\n");
+        expect(labels).toContain("Bullet List");
+        expect(labels).toContain("Ordered List");
+        expect(labels).toContain("Task List");
+        expect(labels).toContain("Blockquote");
+    });
+});
+
+describe("pure gates", () => {
+    let editor: Editor;
+    let v: EditorView;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        editor = await makeEditor("x\n");
+        v = view(editor);
+        placeCursorAtEndOfBlock(v, 0);
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    it("opensSlashMenu should accept plain typing and reject everything else", () => {
+        const typing = v.state.tr.insertText("/");
+        expect(opensSlashMenu(typing)).toBe(true);
+
+        const noDocChange = v.state.tr.setMeta("x", 1);
+        expect(opensSlashMenu(noDocChange)).toBe(false);
+
+        const undo = v.state.tr.insertText("/").setMeta("history$", {});
+        expect(opensSlashMenu(undo)).toBe(false);
+
+        const external = v.state.tr.insertText("/").setMeta("addToHistory", false);
+        expect(opensSlashMenu(external)).toBe(false);
+
+        const paste = v.state.tr.insertText("/").setMeta("uiEvent", "paste");
+        expect(opensSlashMenu(paste)).toBe(false);
+
+        const drop = v.state.tr.insertText("/").setMeta("uiEvent", "drop");
+        expect(opensSlashMenu(drop)).toBe(false);
+
+        const cut = v.state.tr.insertText("/").setMeta("uiEvent", "cut");
+        expect(opensSlashMenu(cut)).toBe(true); // cut changes the doc by typing intent
+    });
+
+    it("contextHiddenItemIds should be empty at the top level", () => {
+        expect(contextHiddenItemIds(v.state.selection.$from)).toEqual(new Set());
     });
 });

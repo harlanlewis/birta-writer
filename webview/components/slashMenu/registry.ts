@@ -33,7 +33,11 @@ export interface SlashMenuItem {
     /** Stable id — aria row ids (`md-slash-item-<id>`) and test hooks. */
     readonly id: string;
     readonly group: SlashMenuGroup;
-    /** Display label (English literal through t(), like the toolbar). */
+    /**
+     * Display label (English literal through t(), like the toolbar). Bare
+     * block nouns ("Table", not the palette's "Insert Table") — a slash menu
+     * names what the block IS; the verb is implied by the menu itself.
+     */
     readonly label: string;
     /** Inline SVG markup, or "" when `badge` renders instead. */
     readonly icon: string;
@@ -69,11 +73,11 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "blockquote", group: "basic", label: t("Blockquote"), icon: IconQuote, hint: ">", keywords: ["quote", "cite"], commandId: "toggleBlockquote" },
     { id: "divider", group: "basic", label: t("Horizontal Rule"), icon: IconMinus, hint: "---", keywords: ["hr", "divider", "rule", "line", "separator"], commandId: "insertHorizontalRule" },
     { id: "codeBlock", group: "advanced", label: t("Code Block"), icon: IconTerminal, hint: "```", keywords: ["code", "fence", "snippet", "pre"], commandId: "insertCodeBlock" },
-    { id: "table", group: "advanced", label: t("Insert Table"), icon: IconTable, keywords: ["table", "grid", "rows", "columns"], commandId: "insertTable" },
-    { id: "image", group: "advanced", label: t("Insert Image"), icon: IconImage, hint: "![]", keywords: ["image", "picture", "photo", "figure"], commandId: "insertImage" },
-    { id: "link", group: "advanced", label: t("Insert/Edit Link"), icon: IconLink, hint: "[]()", keywords: ["link", "url", "anchor"], commandId: "insertLink" },
-    { id: "math", group: "advanced", label: t("Insert Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula"], commandId: "insertMath" },
-    { id: "footnote", group: "advanced", label: t("Insert Footnote"), icon: IconFootnote, hint: "[^]", keywords: ["footnote", "reference", "note"], commandId: "insertFootnote" },
+    { id: "table", group: "advanced", label: t("Table"), icon: IconTable, keywords: ["table", "grid", "rows", "columns"], commandId: "insertTable" },
+    { id: "image", group: "advanced", label: t("Image"), icon: IconImage, hint: "![]", keywords: ["image", "picture", "photo", "figure"], commandId: "insertImage" },
+    { id: "link", group: "advanced", label: t("Link"), icon: IconLink, hint: "[]()", keywords: ["link", "url", "anchor"], commandId: "insertLink" },
+    { id: "math", group: "advanced", label: t("Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula"], commandId: "insertMath" },
+    { id: "footnote", group: "advanced", label: t("Footnote"), icon: IconFootnote, hint: "[^]", keywords: ["footnote", "reference", "note"], commandId: "insertFootnote" },
 ];
 
 /**

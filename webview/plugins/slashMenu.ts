@@ -22,7 +22,8 @@
  * consumers and a value import back would create a cycle.
  */
 import { Plugin, PluginKey } from "@milkdown/prose/state";
-import type { EditorState } from "@milkdown/prose/state";
+import type { EditorState, Transaction } from "@milkdown/prose/state";
+import type { ResolvedPos } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
 import { $prose } from "@milkdown/utils";
 import type { EditorCommandId } from "../../shared/editorCommands";
@@ -31,7 +32,10 @@ import {
     SLASH_MENU_DOM_ID,
     type SlashMenuHandle,
 } from "../components/slashMenu";
-import type { SlashMenuItem } from "../components/slashMenu/registry";
+import {
+    SLASH_MENU_ITEMS,
+    type SlashMenuItem,
+} from "../components/slashMenu/registry";
 
 /**
  * A slash construct ending at the caret: "/" at block start or after
@@ -46,6 +50,64 @@ export const SLASH_CONTEXT_REGEX = /(?:^|\s)\/([^\s/]*)$/;
 export function slashContext(textBefore: string): { query: string } | null {
     const m = SLASH_CONTEXT_REGEX.exec(textBefore);
     return m ? { query: m[1] ?? "" } : null;
+}
+
+/**
+ * True when a transaction is the kind of edit that should OPEN the menu:
+ * actual typing. Undo/redo restoring a "/query" (history meta), external
+ * file-sync rewrites (addToHistory: false), and paste/drop that happen to
+ * end in "/word" must not pop the menu — the user didn't ask for it.
+ * Exported for tests.
+ */
+export function opensSlashMenu(tr: Transaction): boolean {
+    if (!tr.docChanged) {
+        return false;
+    }
+    if (tr.getMeta("history$")) {
+        return false; // undo/redo
+    }
+    if (tr.getMeta("addToHistory") === false) {
+        return false; // external/synthetic rewrite
+    }
+    const uiEvent = tr.getMeta("uiEvent") as string | undefined;
+    if (uiEvent === "paste" || uiEvent === "drop") {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Registry item ids hidden for the caret's current ancestors. The menu's
+ * vocabulary is "insert/turn into", but the list/quote actions are TOGGLES —
+ * picking "Bullet List" while already in one would REMOVE it. Hiding the
+ * same-type item keeps every visible row an insertion. (Cross-type rows
+ * stay: "Ordered List" inside a bullet list genuinely converts.)
+ * Exported for tests.
+ */
+export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
+    const hidden = new Set<string>();
+    for (let depth = $from.depth; depth > 0; depth--) {
+        const node = $from.node(depth);
+        switch (node.type.name) {
+            case "bullet_list":
+                // Lifting out is the toolbar's job, in task lists too.
+                hidden.add("bulletList");
+                break;
+            case "ordered_list":
+                hidden.add("orderedList");
+                break;
+            case "blockquote":
+                hidden.add("blockquote");
+                break;
+            case "list_item":
+            case "task_list_item":
+                if (node.attrs["checked"] != null) {
+                    hidden.add("taskList");
+                }
+                break;
+        }
+    }
+    return hidden;
 }
 
 export interface SlashMenuHost {
@@ -69,7 +131,7 @@ interface MatchContext {
     query: string;
 }
 
-const slashMenuKey = new PluginKey("MD_SLASH_MENU");
+const slashMenuKey = new PluginKey<{ openEligible: boolean }>("MD_SLASH_MENU");
 
 class SlashMenuController {
     private view: EditorView;
@@ -130,12 +192,15 @@ class SlashMenuController {
         }
 
         if (!this.menu) {
-            // Open only when this update actually changed the document:
-            // clicking the caret into pre-existing "/text" must not open
-            // the menu; typing inside it must.
+            // Open only when (a) THIS update changed the document — clicking
+            // the caret into pre-existing "/text" must not open — and (b)
+            // the change was real typing (see opensSlashMenu) — undoing back
+            // to "/query" or pasting text ending in "/word" must not either.
+            // (a) compares across the whole update; (b) reads the plugin
+            // state written by the batch's last doc-changing transaction.
             const docChanged =
                 prevState !== undefined && !prevState.doc.eq(view.state.doc);
-            if (!docChanged) {
+            if (!docChanged || !slashMenuKey.getState(view.state)?.openEligible) {
                 return;
             }
             this.openMenu(match);
@@ -198,7 +263,11 @@ class SlashMenuController {
 
     private openMenu(match: MatchContext): void {
         this.lastQuery = match.query;
+        // Block-level context can't change while the query is typed within
+        // the same block, so the visible item set is fixed per open.
+        const hidden = contextHiddenItemIds(this.view.state.selection.$from);
         this.menu = createSlashMenu({
+            items: SLASH_MENU_ITEMS.filter((it) => !hidden.has(it.id)),
             onPick: (item) => this.apply(item),
             onActiveChange: (id) => {
                 if (id) {
@@ -272,11 +341,14 @@ class SlashMenuController {
         }
         // Delete the "/query" text FIRST so the block command acts on a
         // clean block ("/head" must never end up inside the new heading),
-        // then run the same registry action the toolbar would.
+        // then run the same registry action the toolbar would. No
+        // view.focus() afterwards: the editor is necessarily focused at
+        // pick time (blur closes the menu; row mousedown preventDefaults),
+        // and host-panel commands (link, image) focus their own inputs —
+        // grabbing focus back would break them.
         const { state } = this.view;
         this.view.dispatch(state.tr.delete(match.slashPos, match.caret));
         _host.runCommand(item.commandId, item.args);
-        this.view.focus();
     }
 
     // ── Keyboard ─────────────────────────────────────────────────────────
@@ -324,8 +396,18 @@ class SlashMenuController {
  * the caret context on every transaction and owns the menu DOM/listeners.
  */
 export const slashMenuPlugin = $prose(() =>
-    new Plugin({
+    new Plugin<{ openEligible: boolean }>({
         key: slashMenuKey,
+        // Per-transaction gate the view update reads: was the last DOC
+        // change real typing? (The plugin view has no access to
+        // transactions.) Selection-only transactions preserve the previous
+        // verdict — other plugins append fix-up transactions to the same
+        // dispatch batch, and the view updates once at the end.
+        state: {
+            init: () => ({ openEligible: false }),
+            apply: (tr, prev) =>
+                tr.docChanged ? { openEligible: opensSlashMenu(tr) } : prev,
+        },
         view: (editorView) => {
             const controller = new SlashMenuController(editorView);
             return {

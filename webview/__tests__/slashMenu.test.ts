@@ -149,6 +149,25 @@ describe("createSlashMenu", () => {
         gbcr.mockRestore();
     });
 
+    it("the footer hint should render, marked decorative for AT", () => {
+        const footer = document.querySelector(".slash-menu-footer");
+        expect(footer).not.toBeNull();
+        expect(footer!.getAttribute("aria-hidden")).toBe("true");
+        expect(footer!.textContent).toContain("Type to filter");
+        expect(footer!.querySelector(".slash-menu-footer-key")?.textContent).toBe("esc");
+    });
+
+    it("an items override should limit what renders and what picks resolve to", () => {
+        menu.destroy();
+        const subset = SLASH_MENU_ITEMS.filter((i) => i.id !== "bulletList");
+        menu = createSlashMenu({ onPick, onActiveChange, items: subset });
+
+        expect(document.getElementById(slashRowDomId("bulletList"))).toBeNull();
+        expect(rowEls()).toHaveLength(SLASH_MENU_ITEMS.length - 1);
+        menu.setQuery("bullet"); // only the excluded item would match its label
+        expect(rowLabels()).not.toContain("Bullet List");
+    });
+
     it("destroy should remove the menu DOM", () => {
         menu.destroy();
         expect(document.getElementById(SLASH_MENU_DOM_ID)).toBeNull();

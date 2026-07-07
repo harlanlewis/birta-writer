@@ -71,20 +71,12 @@ describe("filterSlashItems", () => {
     });
 
     it("keyword-prefix matches should rank above bare substring matches", () => {
-        // "li": Link? no — label "Insert/Edit Link" doesn't start with "li";
-        // keywords "link"/"list" prefix-match; "line" (divider) too. All
-        // prefix matches rank above any substring-only match.
-        const results = filterSlashItems(SLASH_MENU_ITEMS, "li");
-        const ids = label(results);
-        // bulletList/orderedList/taskList via keyword "list", link via
-        // keyword "link", divider via keyword "line"
-        expect(ids).toEqual(
-            expect.arrayContaining(["bulletList", "orderedList", "taskList", "link", "divider"]),
-        );
-        // substring-only: none of these have a "li"-prefixed label
-        for (const item of results) {
-            expect(item.label.toLowerCase().startsWith("li")).toBe(false);
-        }
+        // "li": "Link" is the only label-prefix match (tier 1); the lists
+        // and the divider match via keyword prefixes "list"/"line" (tier 2),
+        // ranking above anything that merely CONTAINS "li".
+        const ids = label(filterSlashItems(SLASH_MENU_ITEMS, "li"));
+        expect(ids[0]).toBe("link");
+        expect(ids.slice(1)).toEqual(["bulletList", "orderedList", "taskList", "divider"]);
     });
 
     it("matching should be case-insensitive", () => {
