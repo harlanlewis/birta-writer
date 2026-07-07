@@ -18,6 +18,7 @@ export {
 } from "./horizontalRule";
 export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
+export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export { listEnterPlugin, listLiftPlugin, listSpreadNormalizePlugin } from "./list";
 export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";

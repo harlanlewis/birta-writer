@@ -15,7 +15,7 @@ import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
-import { dispatchLinkTargetSuggestions } from "./components/pathLink/linkTargetComplete";
+import { dispatchLinkTargetSuggestions, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setLogTableSel, syncExternalContent } from "./editor";
 import { setProofreadConfig } from "./plugins";
@@ -252,6 +252,9 @@ export function createMessageHandlers(
         },
         linkTargetSuggestions(msg) {
             dispatchLinkTargetSuggestions(msg.id, msg.items);
+        },
+        linkTargetResolved(msg) {
+            dispatchLinkTargetResolved(msg.id, msg.resolved);
         },
         imagePathResolved(msg) {
             dispatchImagePathResolved(msg.id, msg.webviewUri);

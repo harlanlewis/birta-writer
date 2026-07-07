@@ -1,0 +1,36 @@
+/* ─── Link format switch (markdown / wikilink segmented control) ─── */
+
+.lfs-root {
+    display: inline-flex;
+    gap: 0;
+    border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 5px;
+    overflow: hidden;
+    align-self: flex-start;
+}
+
+.lfs-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    line-height: 1;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+.lfs-btn + .lfs-btn {
+    border-left: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+}
+
+.lfs-btn--active {
+    background: var(--vscode-button-background, rgba(128, 128, 128, 0.25));
+    color: var(--vscode-button-foreground, var(--vscode-editor-foreground));
+}
+
+.lfs-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}

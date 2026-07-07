@@ -2,7 +2,6 @@ import "./linkPopup.css";
 import type { EditorView } from "@milkdown/prose/view";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
 import {
-    IconCheck,
     IconExternalLink,
     IconFileText,
     IconHash,
@@ -14,7 +13,12 @@ import { t } from "@/i18n";
 import { applyTooltip } from "@/ui/tooltip";
 import { slugify } from "@/utils/slug";
 import { attachInputUndo } from "@/utils/inputUndo";
-import { attachLinkTargetComplete } from "@/components/pathLink/linkTargetComplete";
+import {
+    attachLinkTargetComplete,
+    requestLinkTargetResolve,
+} from "@/components/pathLink/linkTargetComplete";
+import { createLinkFormatSwitch, wikiAllowedFor } from "@/ui/formatSwitch";
+import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -26,6 +30,9 @@ interface LinkInfo {
     /** A reference link ([text][ref]): openable but not editable in the popup —
      * editing would apply a `link` mark and destroy the reference form. */
     readOnly?: boolean;
+    /** A wikilink atom ([[target]]): opens through the host's wiki resolution
+     * (filename match) instead of path resolution. */
+    wiki?: boolean;
 }
 
 type LinkKind = "anchor" | "file" | "external";
@@ -110,8 +117,63 @@ export function resolveReferenceUrl(
     return url;
 }
 
+/**
+ * Bounds of the inline atom node rendered by `anchor` (wikilinks are nodes,
+ * not marks, so markBoundsAt doesn't apply). posAtDOM may land at or just
+ * after the atom depending on which DOM child was hit; try both.
+ */
+function nodeBoundsAt(
+    view: EditorView,
+    anchor: Element,
+    nodeName: string,
+): { from: number; to: number } | null {
+    let domPos: number;
+    try {
+        domPos = view.posAtDOM(anchor, 0);
+    } catch {
+        return null;
+    }
+    if (domPos < 0) return null;
+    const { state } = view;
+    for (const pos of [domPos, domPos - 1]) {
+        if (pos < 0) continue;
+        const node = state.doc.nodeAt(pos);
+        if (node && node.type.name === nodeName) {
+            return { from: pos, to: pos + node.nodeSize };
+        }
+    }
+    return null;
+}
+
+/** The href-equivalent a wikilink anchor routes with (see wikiLinks.ts). */
+function wikiHrefOf(anchor: Element): string {
+    const el = anchor as HTMLElement;
+    const target = el.dataset["target"] ?? "";
+    const heading = el.dataset["heading"] ?? "";
+    if (!target) return heading ? `#${slugify(heading)}` : "";
+    return heading ? `${target}#${heading}` : target;
+}
+
 function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
     const text = anchor.textContent ?? "";
+
+    // Wikilink atom: openable and editable through the format switch. The
+    // same-page form ([[#heading]]) stays read-only — its target field would
+    // show a derived slug, not anything the user wrote.
+    if (anchor.getAttribute("data-type") === "wiki-link") {
+        const href = wikiHrefOf(anchor);
+        if (!href) return null;
+        const bounds = nodeBoundsAt(view, anchor, "wiki_link");
+        if (!bounds) return null;
+        return {
+            href,
+            text,
+            from: bounds.from,
+            to: bounds.to,
+            readOnly: href.startsWith("#"),
+            wiki: true,
+        };
+    }
 
     // Reference link: resolve the URL from its definition and treat as read-only.
     if (anchor.getAttribute("data-type") === "link-ref") {
@@ -218,6 +280,13 @@ export function setupLinkPopup(
     const anchorHint = document.createElement("div");
     anchorHint.className = "lp-anchor-hint";
 
+    // Resolved-target hint: where the link actually opens, straight from the
+    // host's openFile resolver. Rests under the header URL; while editing it
+    // moves under the URL input and follows the typed value live.
+    const resolvedHint = document.createElement("div");
+    resolvedHint.className = "lp-resolved";
+    resolvedHint.style.display = "none";
+
     // Body (edit mode, collapsed by default)
     const body = document.createElement("div");
     body.className = "lp-body";
@@ -235,29 +304,34 @@ export function setupLinkPopup(
     inputUrl.className = "lp-input lp-url-input";
     inputUrl.placeholder = t("URL https://...");
 
+    // Format choice: standard markdown by default; an existing link opens on
+    // its own format. Switching converts the link in place on apply.
+    const formatSwitch = createLinkFormatSwitch("markdown", (format) => {
+        // Resolution differs by format (bare wiki names match by filename).
+        updateResolvedHint(inputUrl.value, format === "wikilink");
+    });
+
+    // No confirm button: edits apply on Enter and on input blur (the panel
+    // stays open on blur, so a focus trip elsewhere never loses a change).
     const bodyActions = document.createElement("div");
     bodyActions.className = "lp-body-actions";
-
-    const btnConfirm = document.createElement("button");
-    btnConfirm.className = "lp-btn lp-btn-confirm";
-    btnConfirm.title = t("Confirm");
-    btnConfirm.innerHTML = IconCheck;
 
     const btnRemove = document.createElement("button");
     btnRemove.className = "lp-btn lp-btn-remove";
     btnRemove.title = t("Remove Link");
     btnRemove.innerHTML = IconTrash2;
 
-    bodyActions.appendChild(btnConfirm);
     bodyActions.appendChild(btnRemove);
 
     body.appendChild(divider);
     body.appendChild(inputText);
     body.appendChild(inputUrl);
+    body.appendChild(formatSwitch.el);
     body.appendChild(bodyActions);
 
     popup.appendChild(header);
     popup.appendChild(anchorHint);
+    popup.appendChild(resolvedHint);
     popup.appendChild(body);
 
     // ── State ─────────────────────────────────────────────────────────
@@ -266,6 +340,12 @@ export function setupLinkPopup(
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let currentLink: LinkInfo | null = null;
     let isEditMode = false;
+    // The last values applied to the document — blur/Enter apply only real
+    // changes, never a no-op transaction per focus move.
+    let lastApplied: { text: string; href: string; format: string } | null = null;
+    // Stale-reply guard + debounce for the resolved-target hint.
+    let resolveGeneration = 0;
+    let resolveDebounce: ReturnType<typeof setTimeout> | null = null;
 
     function clearHoverTimer(): void {
         if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
@@ -279,8 +359,36 @@ export function setupLinkPopup(
         body.classList.toggle("expanded", on);
         btnEdit.classList.toggle("lp-btn-active", on);
         if (on) {
+            // The hint follows the editing surface: under the URL input.
+            body.insertBefore(resolvedHint, bodyActions);
             requestAnimationFrame(() => inputText.focus());
+        } else {
+            popup.insertBefore(resolvedHint, body);
         }
+    }
+
+    /**
+     * Shows where `pathText` opens right now (host resolver, no side
+     * effects) — hidden for anchors and external URLs, "not found" styled
+     * muted for a smart-mode miss.
+     */
+    function updateResolvedHint(pathText: string, wiki: boolean): void {
+        const gen = ++resolveGeneration;
+        const p = pathText.trim();
+        const kind = p.startsWith("#") ? "anchor" : getLinkKind(p.split("#")[0] || "#");
+        if (!p || kind !== "file") {
+            resolvedHint.style.display = "none";
+            resolvedHint.textContent = "";
+            return;
+        }
+        requestLinkTargetResolve(p, wiki, (resolved) => {
+            if (gen !== resolveGeneration || !currentLink) { return; }
+            resolvedHint.textContent = resolved
+                ? `→ ${resolved}`
+                : t("not found in workspace");
+            resolvedHint.classList.toggle("lp-resolved--miss", !resolved);
+            resolvedHint.style.display = "";
+        });
     }
 
     function updatePopupContent(link: LinkInfo): void {
@@ -311,9 +419,21 @@ export function setupLinkPopup(
             btnOpenTooltip.setText(openHint);
         }
 
-        // Pre-fill the edit fields
+        // Pre-fill the edit fields. An existing wikilink's own format is
+        // always allowed regardless of what its target looks like; and
+        // lastApplied records the switch's SETTLED state (setWikiAllowed may
+        // flip it), so the no-op guard can never see a phantom change and
+        // rewrite an untouched link on a stray click.
         inputText.value = link.text;
         inputUrl.value = link.href;
+        formatSwitch.set(link.wiki ? "wikilink" : "markdown");
+        formatSwitch.setWikiAllowed(link.wiki ? true : wikiAllowedFor(link.href));
+        lastApplied = {
+            text: link.text,
+            href: link.href,
+            format: formatSwitch.get(),
+        };
+        updateResolvedHint(link.href, !!link.wiki);
     }
 
     function showPopup(link: LinkInfo, anchorEl: Element): void {
@@ -322,6 +442,7 @@ export function setupLinkPopup(
         isEditMode = false;
         body.classList.remove("expanded");
         btnEdit.classList.remove("lp-btn-active");
+        popup.insertBefore(resolvedHint, body);
         // Reference links are openable but not editable (editing would convert
         // them to inline links and destroy the reference form).
         btnEdit.style.display = link.readOnly ? "none" : "";
@@ -360,8 +481,11 @@ export function setupLinkPopup(
     function hidePopup(): void {
         clearHideTimer();
         clearHoverTimer();
+        resolveGeneration++;
+        if (resolveDebounce) { clearTimeout(resolveDebounce); resolveDebounce = null; }
         popup.style.display = "none";
         currentLink = null;
+        lastApplied = null;
         isEditMode = false;
         body.classList.remove("expanded");
         btnEdit.classList.remove("lp-btn-active");
@@ -377,6 +501,10 @@ export function setupLinkPopup(
     container.addEventListener("mouseover", (e) => {
         const anchor = (e.target as Element).closest("a");
         if (!anchor) return;
+        // Never retarget the popup while an edit is in progress — rebinding
+        // would overwrite the fields and silently discard the unsaved edit
+        // (blur/outside-click are the save points, not a passing pointer).
+        if (isEditMode) return;
 
         clearHoverTimer();
         clearHideTimer();
@@ -418,6 +546,14 @@ export function setupLinkPopup(
             if (!me.metaKey && !me.ctrlKey) return;
             const anchor = (me.target as Element).closest("a");
             if (!anchor) return;
+            if (anchor.getAttribute("data-type") === "wiki-link") {
+                const wikiHref = wikiHrefOf(anchor);
+                if (!wikiHref || wikiHref.startsWith("#")) return; // same-page: click handler jumps
+                e.stopPropagation();
+                notifyOpenFile(wikiHref, { wiki: true });
+                scheduleHide(50);
+                return;
+            }
             let href: string;
             if (anchor.getAttribute("data-type") === "link-ref") {
                 // Resolve the reference's definition URL (link_ref carries no href).
@@ -435,11 +571,13 @@ export function setupLinkPopup(
             }
             if (href.startsWith("#")) return; // anchors are handled by click
             e.stopPropagation();
-            const cleanHref = href.split("#")[0];
-            if (getLinkKind(cleanHref) === "external") {
-                notifyOpenUrl(cleanHref);
+            // Classify on the fragment-less form, but send the full href — the
+            // host parses `file.md#27` line fragments, and external URLs keep
+            // their anchors.
+            if (getLinkKind(href.split("#")[0]) === "external") {
+                notifyOpenUrl(href);
             } else {
-                notifyOpenFile(cleanHref);
+                notifyOpenFile(href);
             }
             scheduleHide(50);
         },
@@ -455,10 +593,14 @@ export function setupLinkPopup(
             e.preventDefault();
             e.stopPropagation();
 
-            const href = anchor.getAttribute("href") ?? "";
+            const href =
+                anchor.getAttribute("data-type") === "wiki-link"
+                    ? wikiHrefOf(anchor)
+                    : (anchor.getAttribute("href") ?? "");
 
             if (href.startsWith("#")) {
-                // In-page anchor: jump directly, no modifier key needed
+                // In-page anchor (incl. same-page [[#heading]]): jump directly,
+                // no modifier key needed
                 scrollToAnchor(href.slice(1));
                 scheduleHide(50);
             }
@@ -473,13 +615,12 @@ export function setupLinkPopup(
         const { href } = currentLink;
         if (href.startsWith("#")) {
             scrollToAnchor(href.slice(1));
+        } else if (currentLink.wiki) {
+            notifyOpenFile(href, { wiki: true });
+        } else if (getLinkKind(href.split("#")[0]) === "external") {
+            notifyOpenUrl(href);
         } else {
-            const cleanHref = href.split("#")[0];
-            if (getLinkKind(cleanHref) === "external") {
-                notifyOpenUrl(cleanHref);
-            } else {
-                notifyOpenFile(cleanHref);
-            }
+            notifyOpenFile(href);
         }
         hidePopup();
     }
@@ -505,28 +646,67 @@ export function setupLinkPopup(
         setEditMode(!isEditMode);
     });
 
-    // ── Confirm button ────────────────────────────────────────────
+    // ── Applying edits (Enter and input blur — no confirm button) ─
 
-    btnConfirm.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    /**
+     * Applies the edit fields to the document if anything actually changed.
+     * Keeps `currentLink` coherent (bounds, values) so the editing session
+     * can continue — blur saves without closing the panel.
+     */
+    function applyEdit(): void {
         const view = getView();
-        if (!view || !currentLink) { hidePopup(); return; }
-        // Reference links are read-only here: applying a `link` mark would
-        // destroy the reference form. The edit UI is hidden for them, but guard
-        // the action too in case it is reached another way.
-        if (currentLink.readOnly) { hidePopup(); return; }
+        if (!view || !currentLink || currentLink.readOnly) { return; }
 
         const { state } = view;
         const linkType = state.schema.marks["link"];
-        if (!linkType) { hidePopup(); return; }
+        if (!linkType) { return; }
 
         const newHref = inputUrl.value.trim();
         const newText = inputText.value;
+        const format = formatSwitch.get();
+        if (
+            lastApplied &&
+            lastApplied.href === newHref &&
+            lastApplied.text === newText &&
+            lastApplied.format === format
+        ) { return; }
+
         const { from, to } = currentLink;
         let tr = state.tr;
+        let newTo = to;
+        let isWiki = false;
 
-        if (newText && newText !== currentLink.text) {
+        if (format === "wikilink") {
+            // Wikilink form: URL field is the target(#heading), text field the
+            // alias (omitted when empty or equal to the target). Replaces
+            // either an existing wiki atom or a markdown link's text run —
+            // an explicit edit, so rewriting this one link is correct.
+            const wikiType = state.schema.nodes[wikiLinkId];
+            if (!newHref || !wikiType) { return; }
+            const raw =
+                newText.trim() && newText.trim() !== newHref
+                    ? `${newHref}|${newText.trim()}`
+                    : newHref;
+            // Bytes that can't live inside [[…]] would silently change the
+            // document's structure on the next parse — refuse the apply.
+            if (/\[\[|\]\]|[\r\n]/.test(raw)) { return; }
+            tr = tr.replaceWith(from, to, wikiType.create(attrsFromRaw(raw)));
+            newTo = from + 1; // inline atom
+            isWiki = true;
+        } else if (currentLink.wiki) {
+            // Wiki → markdown conversion: the atom becomes linked text.
+            const text = newText.trim() || newHref;
+            if (!text) { return; }
+            tr = tr.replaceWith(from, to, state.schema.text(text));
+            if (newHref) {
+                tr = tr.addMark(
+                    from,
+                    from + text.length,
+                    linkType.create({ href: newHref, title: null }),
+                );
+            }
+            newTo = from + text.length;
+        } else if (newText && newText !== currentLink.text) {
             tr = tr.replaceWith(from, to, state.schema.text(newText));
             if (newHref) {
                 tr = tr.addMark(
@@ -535,6 +715,7 @@ export function setupLinkPopup(
                     linkType.create({ href: newHref, title: null }),
                 );
             }
+            newTo = from + newText.length;
         } else {
             tr = tr.removeMark(from, to, linkType);
             if (newHref) {
@@ -547,9 +728,19 @@ export function setupLinkPopup(
         }
 
         view.dispatch(tr);
-        view.focus();
-        hidePopup();
-    });
+
+        // The link just changed under the popup: keep the session coherent.
+        currentLink = {
+            ...currentLink,
+            href: newHref || currentLink.href,
+            text: newText || currentLink.text,
+            to: newTo,
+            wiki: isWiki || undefined,
+        };
+        lastApplied = { text: newText, href: newHref, format };
+        urlEl.textContent = currentLink.href;
+        urlEl.title = currentLink.href;
+    }
 
     // ── Remove button ─────────────────────────────────────────────
 
@@ -564,7 +755,18 @@ export function setupLinkPopup(
         const linkType = state.schema.marks["link"];
         if (!linkType) { hidePopup(); return; }
 
-        view.dispatch(state.tr.removeMark(currentLink.from, currentLink.to, linkType));
+        if (currentLink.wiki) {
+            // Removing a wikilink leaves its display text as plain prose.
+            view.dispatch(
+                state.tr.replaceWith(
+                    currentLink.from,
+                    currentLink.to,
+                    state.schema.text(currentLink.text || " "),
+                ),
+            );
+        } else {
+            view.dispatch(state.tr.removeMark(currentLink.from, currentLink.to, linkType));
+        }
         view.focus();
         hidePopup();
     });
@@ -577,6 +779,18 @@ export function setupLinkPopup(
     // dropdown is open.
     attachLinkTargetComplete(inputUrl);
 
+    // The wikilink option follows the URL live: an external target (scheme,
+    // #anchor) can never be a wikilink. The resolved-target hint follows the
+    // typed value on the input-field debounce cadence.
+    inputUrl.addEventListener("input", () => {
+        formatSwitch.setWikiAllowed(wikiAllowedFor(inputUrl.value));
+        if (resolveDebounce) { clearTimeout(resolveDebounce); }
+        resolveDebounce = setTimeout(() => {
+            resolveDebounce = null;
+            updateResolvedHint(inputUrl.value, formatSwitch.get() === "wikilink");
+        }, 200);
+    });
+
     [inputText, inputUrl].forEach((inp) => {
         // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
         attachInputUndo(inp);
@@ -586,7 +800,9 @@ export function setupLinkPopup(
             if (e.key === "Enter") {
                 e.preventDefault();
                 e.stopPropagation();
-                btnConfirm.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+                applyEdit();
+                hidePopup();
+                getView()?.focus();
             } else if (e.key === "Escape") {
                 e.preventDefault();
                 e.stopPropagation();
@@ -594,18 +810,24 @@ export function setupLinkPopup(
                 getView()?.focus();
             }
         });
-        inp.addEventListener("blur", () => {
-            requestAnimationFrame(() => {
-                if (popup.style.display !== "none" && !popup.matches(":hover")) {
-                    hidePopup();
-                }
-            });
+        // Blur SAVES instead of closing: a focus trip elsewhere commits the
+        // edit and the panel stays until a normal close (outside click,
+        // mouseleave, Escape). Moves within the panel are not a save point.
+        inp.addEventListener("blur", (e) => {
+            const next = (e as FocusEvent).relatedTarget as Node | null;
+            if (next && popup.contains(next)) { return; }
+            applyEdit();
         });
     });
 
     // ── Click outside the popup to close it ──────────────────────
 
     document.addEventListener("mousedown", (e) => {
-        if (!popup.contains(e.target as Node)) hidePopup();
+        if (!popup.contains(e.target as Node)) {
+            // mousedown lands before the input's blur would — save first so
+            // the click-away never eats an edit.
+            applyEdit();
+            hidePopup();
+        }
     });
 }

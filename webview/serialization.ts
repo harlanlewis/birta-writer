@@ -6,6 +6,7 @@ import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
 import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
+import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
 import {
     sourceStyleHandlers,
@@ -50,6 +51,14 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * after the base preset so the `code_block` extendSchema overrides the stock
  * commonmark definition.
  *
+ * `wikiLinksPlugin` (plugins/wikiLinks.ts) adds `[[wikilink]]` support: a
+ * custom micromark text construct (strict `[[…]]` grammar, so footnotes,
+ * task markers, and normal links are untouched), a `wiki_link` inline atom,
+ * and a stringify handler that re-emits the source bytes between the
+ * brackets verbatim — byte-identical round-trip by construction. Registered
+ * unconditionally: round-trip behavior must never depend on configuration
+ * (the smartLinks setting gates navigation and autocomplete, not parsing).
+ *
  * `sourceStylePlugin` (plugins/sourceStyle.ts) preserves cosmetic Markdown
  * style (MAR-16): the stock `hr` / `heading` schemas are filtered out and
  * replaced with extended copies that carry the original thematic-break marker
@@ -80,6 +89,7 @@ export const pureCommonmark = [
         return !(displayName?.includes("remarkInlineLinkPlugin"));
     }),
     ...referenceLinksPlugin,
+    ...wikiLinksPlugin,
     ...mathPlugin,
     ...sourceStylePlugin,
     ...tableBreaksPlugin,

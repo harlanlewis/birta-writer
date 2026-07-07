@@ -68,6 +68,27 @@
     line-height: 1.4;
 }
 
+/* ─── Resolved-target hint (→ where the link opens) ─── */
+.lp-resolved {
+    padding: 0 10px 7px 32px;
+    font-size: 11px;
+    color: var(--vscode-editor-foreground);
+    opacity: 0.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+}
+
+/* In edit mode the hint sits inside the body, under the URL input. */
+.lp-body .lp-resolved {
+    padding: 0 2px 2px;
+}
+
+.lp-resolved--miss {
+    font-style: italic;
+}
+
 /* ─── Generic buttons ─── */
 .lp-btn {
     display: inline-flex;
@@ -94,13 +115,6 @@
 .lp-btn-edit.lp-btn-active {
     opacity: 1;
     background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
-}
-
-/* Confirm button hover */
-.lp-btn-confirm:hover {
-    opacity: 1;
-    background: var(--vscode-button-background, #007acc);
-    color: var(--vscode-button-foreground, #fff);
 }
 
 /* Remove button hover */

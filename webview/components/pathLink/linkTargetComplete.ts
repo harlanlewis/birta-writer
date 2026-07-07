@@ -21,7 +21,7 @@
  * autocomplete plugin (webview/plugins/linkUrlComplete.ts), which shows the
  * same dropdown anchored at the editor caret instead of under an <input>.
  */
-import { notifyGetLinkTargetSuggestions } from "@/messaging";
+import { notifyGetLinkTargetSuggestions, notifyResolveLinkTarget } from "@/messaging";
 import type { LinkTargetSuggestionItem } from "../../../shared/messages";
 import {
     isLocalPathQuery,
@@ -62,6 +62,37 @@ export function requestLinkTargetSuggestions(
     setTimeout(() => { _pendingSuggestions.delete(id); }, 5000);
 }
 
+type ResolveCallback = (resolved: string | null) => void;
+
+// Reply callback registry for resolveLinkTarget (ids unique per request).
+const _pendingResolves = new Map<string, ResolveCallback>();
+
+/** Called by messageHandlers.ts to route a linkTargetResolved reply. */
+export function dispatchLinkTargetResolved(id: string, resolved: string | null): void {
+    const cb = _pendingResolves.get(id);
+    if (cb) {
+        _pendingResolves.delete(id);
+        cb(resolved);
+    }
+}
+
+/**
+ * Asks the host where a link path would open right now (the openFile
+ * resolver, no side effects). Same contract as
+ * requestLinkTargetSuggestions: the callback is dropped after 5s, staleness
+ * handling stays the caller's job.
+ */
+export function requestLinkTargetResolve(
+    path: string,
+    wiki: boolean,
+    cb: ResolveCallback,
+): void {
+    const id = `ltr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    _pendingResolves.set(id, cb);
+    notifyResolveLinkTarget(id, path, wiki ? true : undefined);
+    setTimeout(() => { _pendingResolves.delete(id); }, 5000);
+}
+
 /** A rendered suggestion dropdown (see createLinkSuggestMenu). */
 export interface LinkSuggestMenu {
     /** The menu root, appended to document.body. */
@@ -76,37 +107,59 @@ export interface LinkSuggestMenu {
     destroy(): void;
 }
 
+/** Anchor geometry shared by every suggest-menu placement. */
+export interface SuggestMenuAnchor {
+    left: number;
+    /** Menu top (viewport y) when placed below the anchor. */
+    top: number;
+    /**
+     * Viewport y the menu's BOTTOM edge should sit at when flipped above
+     * the anchor (the anchor's top edge minus the gap). When provided,
+     * the menu flips above whenever it would overflow the viewport
+     * bottom and there is more room above the anchor than below it.
+     */
+    flipTop?: number;
+    minWidth?: number;
+}
+
 /**
  * Renders the anchored workspace-file dropdown shared by the link URL
  * inputs and the caret autocomplete: ranks `items` against `query`
  * (re-ranking a possibly stale reply against the CURRENT query), renders
  * them in the form the user is reaching for, and wires mouse pick/hover.
- * Returns null when there is nothing to suggest. Rows start with no
- * highlight so plain Enter keeps its normal meaning until an arrow key or
- * hover selects a row.
+ * Returns null when there is nothing to suggest.
  */
 export function createLinkSuggestMenu(
     items: readonly LinkTargetSuggestionItem[],
     query: string,
-    anchor: {
-        left: number;
-        /** Menu top (viewport y) when placed below the anchor. */
-        top: number;
-        /**
-         * Viewport y the menu's BOTTOM edge should sit at when flipped above
-         * the anchor (the anchor's top edge minus the gap). When provided,
-         * the menu flips above whenever it would overflow the viewport
-         * bottom and there is more room above the anchor than below it.
-         */
-        flipTop?: number;
-        minWidth?: number;
-    },
+    anchor: SuggestMenuAnchor,
     onPick: (text: string) => void,
 ): LinkSuggestMenu | null {
     const trimmed = query.trim();
     if (!isLocalPathQuery(trimmed)) { return null; }
     const ranked = rankLinkTargets(items, trimmed);
-    const rows = ranked.map((item) => preferredLinkForm(item, trimmed));
+    return createSuggestMenuFromRows(
+        ranked.map((item) => ({
+            text: preferredLinkForm(item, trimmed),
+            title: item.rootRelative,
+        })),
+        anchor,
+        onPick,
+    );
+}
+
+/**
+ * The DOM half of the suggest menu, decoupled from path ranking so callers
+ * with their own row shapes (the wikilink caret autocomplete) can reuse the
+ * exact widget. Rows start with no highlight so plain Enter keeps its normal
+ * meaning until an arrow key or hover selects a row.
+ */
+export function createSuggestMenuFromRows(
+    rowDefs: ReadonlyArray<{ text: string; title?: string }>,
+    anchor: SuggestMenuAnchor,
+    onPick: (text: string) => void,
+): LinkSuggestMenu | null {
+    const rows = rowDefs.map((r) => r.text);
     if (rows.length === 0) { return null; }
 
     let activeIndex = -1;
@@ -144,7 +197,7 @@ export function createLinkSuggestMenu(
         const li = document.createElement("li");
         li.className = "fm-suggest-item";
         li.textContent = text;
-        li.title = ranked[i].rootRelative;
+        if (rowDefs[i].title) { li.title = rowDefs[i].title; }
         li.addEventListener("mousedown", () => onPick(text));
         li.addEventListener("mouseover", () => {
             activeIndex = i;

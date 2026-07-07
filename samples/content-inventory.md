@@ -58,6 +58,49 @@ A hard line break ends this line here →<br>and continues on the next.
 
 [spec]: https://example.com/spec "Reference definition"
 
+Hover any link for the popup: it shows **where the link actually opens**
+(`→ path`, straight from the resolver), an open button (or Cmd/Ctrl+click the
+link itself), and a pencil to edit — text, URL, and a **format switch**
+(`markdown` ⇄ `[[wiki]]`) that converts the link in place. Edits **save on
+blur**; there is no confirm button. External links open through VS Code's own
+trusted-domains prompt.
+
+### Smart local links
+
+With `markdownWysiwyg.smartLinks` (default on) local links resolve the way a
+site generator publishes them — every link below opens a real file in this
+repo when clicked:
+
+- Workspace-root path, extension inferred: [the README](/README)
+- Nested root path: [custom themes](/docs/en/custom-themes)
+- Document-relative, `..` and suffix inference: [changelog](../CHANGELOG)
+- `@/` workspace prefix: [package manifest](@/package.json)
+- Heading fragment (scrolls after opening): [README → Features](../README.md#features)
+- Line-number fragment: [README line 24](../README.md#24)
+- A miss shows a quiet warning: [no such page](/write/nonexistent)
+
+---
+
+## Wikilinks
+
+Obsidian-style wikilinks parse, navigate, and round-trip **byte-identically**.
+Typing `[[` opens file-name autocompletion. Bare names match by filename
+across the workspace:
+
+- Bare name: [[README]]
+- With an alias: [[custom-themes|the theming guide]]
+- To a heading in another file: [[README#Features]]
+- Same-page heading: [[#wikilinks]]
+- Colon in a title is just a title, never a URL scheme: [[note: plan]]
+- Citation shape stays a normal CommonMark link, never a wikilink: [[1]](https://example.com)
+
+In a table cell the alias pipe is escaped (`\|`), and it still reads as one
+cell:
+
+| form | rendered |
+| --- | --- |
+| escaped alias | [[custom-themes\|aliased]] |
+
 ---
 
 ## Lists
@@ -217,6 +260,10 @@ Callouts in the GitHub and Obsidian style parse as an ordinary blockquote whose 
 ### Videos / embeds
 
 No `<video>` / `<iframe>` handling; such tags fall through to the read-only sanitized HTML preview (and iframes are stripped).
+
+### Wikilink embeds
+
+Obsidian's transclusion form `![[page]]` is not parsed — it stays literal plain text (and round-trips untouched): ![[image-target]]
 
 ### Definition lists
 

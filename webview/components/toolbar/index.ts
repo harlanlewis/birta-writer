@@ -36,6 +36,8 @@ import { createButton } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
 import { attachLinkTargetComplete } from '../pathLink/linkTargetComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
+import { createLinkFormatSwitch, wikiAllowedFor, type LinkFormat } from "@/ui/formatSwitch";
+import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
 import { createOverflowController } from './overflow';
 import type { OverflowController, OverflowGroup } from './overflow';
 import { computeZones } from './registry';
@@ -136,7 +138,7 @@ function showInlineLinkPrompt(
     near: HTMLElement,
     defaultText: string,
     defaultHref: string,
-    onConfirm: (text: string, href: string) => void,
+    onConfirm: (text: string, href: string, format: LinkFormat) => void,
 ): void {
     const overlay = document.createElement("div");
     overlay.className = "tb-prompt-overlay";
@@ -164,8 +166,17 @@ function showInlineLinkPrompt(
     cancelBtn.innerHTML = IconX;
     cancelBtn.title = t("Cancel");
 
+    // Format choice — new links default to standard markdown; the wikilink
+    // option disables while the URL is an external target.
+    const formatSwitch = createLinkFormatSwitch("markdown");
+    formatSwitch.setWikiAllowed(wikiAllowedFor(defaultHref));
+    urlInput.addEventListener("input", () => {
+        formatSwitch.setWikiAllowed(wikiAllowedFor(urlInput.value));
+    });
+
     overlay.appendChild(textInput);
     overlay.appendChild(urlInput);
+    overlay.appendChild(formatSwitch.el);
     overlay.appendChild(okBtn);
     overlay.appendChild(cancelBtn);
     document.body.appendChild(overlay);
@@ -192,8 +203,9 @@ function showInlineLinkPrompt(
     function confirm(): void {
         const text = textInput.value.trim();
         const href = urlInput.value.trim();
+        const format = formatSwitch.get();
         cleanup();
-        onConfirm(text, href);
+        onConfirm(text, href, format);
     }
 
     function cleanup(): void {
@@ -1067,7 +1079,7 @@ export function initToolbar(
             linkBtnEl.isConnected ? linkBtnEl : toolbar,
             selectedText,
             existingHref,
-            (text, href) => {
+            (text, href, format) => {
                 editor.action((ctx) => {
                     const view = ctx.get(editorViewCtx);
                     const { state } = view;
@@ -1076,7 +1088,24 @@ export function initToolbar(
                         return;
                     }
                     let tr = state.tr;
-                    if (capturedFrom === capturedTo) {
+                    if (format === "wikilink") {
+                        // Wikilink form: URL field is the target, text the
+                        // alias (omitted when empty or equal to the target).
+                        const wikiType = state.schema.nodes[wikiLinkId];
+                        if (!href || !wikiType) {
+                            return;
+                        }
+                        const raw = text && text !== href ? `${href}|${text}` : href;
+                        // Bytes that can't live inside [[…]] would change the
+                        // document's structure on the next parse (see linkPopup).
+                        if (/\[\[|\]\]|[\r\n]/.test(raw)) {
+                            return;
+                        }
+                        const node = wikiType.create(attrsFromRaw(raw));
+                        tr = capturedFrom === capturedTo
+                            ? tr.insert(capturedFrom, node)
+                            : tr.replaceWith(capturedFrom, capturedTo, node);
+                    } else if (capturedFrom === capturedTo) {
                         // No selection: insert new text and link it
                         const insertText = text || href;
                         if (!insertText) {

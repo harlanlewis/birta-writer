@@ -7,6 +7,8 @@ declare global {
             isMac: boolean;
             debugMode?: boolean;
             codeBlockAutoConvert?: boolean;
+            /** Smart link resolution + wikilink autocomplete (markdownWysiwyg.smartLinks). */
+            smartLinks?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
             proofread?: ProofreadConfig;

@@ -396,6 +396,17 @@ body.editor-width-auto {
            links — same color, no underline until hover — via the shared `a`
            rule below; they need no distinct styling. */
 
+        /* Wikilinks ([[target]]) — an inline atom that reads as a link; the
+           shared `a` rule below colors it, this only adds the selection ring
+           and a pointer (the atom is contenteditable=false). */
+        .wiki-link {
+            cursor: pointer;
+
+            &.ProseMirror-selectednode {
+                outline: 2px solid var(--vscode-focusBorder);
+            }
+        }
+
         /* Image references (![alt][ref]) — inline chip */
         .image-ref {
             display: inline-block;

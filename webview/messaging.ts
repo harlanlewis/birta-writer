@@ -36,8 +36,12 @@ export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }
 
-export function notifyOpenFile(relativePath: string): void {
-    vscode.postMessage({ type: "openFile", path: relativePath });
+export function notifyOpenFile(relativePath: string, opts?: { wiki?: true }): void {
+    vscode.postMessage({
+        type: "openFile",
+        path: relativePath,
+        ...(opts?.wiki ? { wiki: true as const } : {}),
+    });
 }
 
 export function notifySwitchToTextEditor(line?: number): void {
@@ -74,6 +78,10 @@ export function notifyGetProjectImages(id: string): void {
 
 export function notifyGetPathSuggestions(id: string, query: string): void {
     vscode.postMessage({ type: "getPathSuggestions", id, query });
+}
+
+export function notifyResolveLinkTarget(id: string, path: string, wiki?: true): void {
+    vscode.postMessage({ type: "resolveLinkTarget", id, path, ...(wiki ? { wiki } : {}) });
 }
 
 export function notifyGetLinkTargetSuggestions(id: string, query: string): void {

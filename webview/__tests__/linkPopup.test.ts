@@ -49,9 +49,11 @@ function getPopup(): HTMLElement {
     return popup!;
 }
 
-function clickConfirm(): void {
-    const btn = document.querySelector<HTMLElement>(".lp-btn-confirm")!;
-    btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+/** Commits the edit fields via Enter on the URL input (no confirm button —
+ * edits apply on Enter and on input blur). */
+function commitEdit(): void {
+    const input = document.querySelector<HTMLInputElement>(".lp-url-input")!;
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 }
 
 // A paragraph containing both a real inline link and a reference link, plus
@@ -91,14 +93,14 @@ describe("link popup with reference links", () => {
         expect(url).toBe("https://example.com/b");
     });
 
-    it("hover + Confirm on a link_ref must not modify the document", async () => {
+    it("hover + commit on a link_ref must not modify the document", async () => {
         const before = editor.action(getMarkdown());
         const refAnchor = container.querySelector('a[data-type="link-ref"]')!;
 
         await hover(refAnchor);
-        clickConfirm();
+        commitEdit();
 
-        // Read-only guard: Confirm must never apply a `link` mark to a reference,
+        // Read-only guard: a commit must never apply a `link` mark to a reference,
         // which would strip marks across the paragraph and destroy the ref form.
         expect(editor.action(getMarkdown())).toBe(before);
         expect(editor.action(getMarkdown())).toContain("[inline](https://example.com/a)");
@@ -121,11 +123,353 @@ describe("link popup with reference links", () => {
 
         const inputUrl = document.querySelector<HTMLInputElement>(".lp-url-input")!;
         inputUrl.value = "https://new.example.com";
-        clickConfirm();
+        commitEdit();
 
         const after = editor.action(getMarkdown());
         expect(after).toContain("[inline](https://new.example.com)");
         expect(after).toContain("[the docs][docs]");
         expect(after).toContain("[docs]: https://example.com/b");
+    });
+});
+
+// ─── Fragment routing on modifier-click ─────────────────────────────────────
+// Regression: the mousedown handler used to strip `#…` from the href before
+// notifying the host, which killed `file.md#27` line navigation and dropped
+// anchors from external URLs. Classification uses the fragment-less form;
+// the message must carry the full href.
+import { mockVscodeApi } from "./setup";
+
+describe("link click fragment routing", () => {
+    const DOC =
+        "[notes](./notes.md#27) and [ext](https://example.com/page#frag)\n";
+    let editor: Editor;
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container } = await makeEditor(DOC));
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    function metaMousedown(anchor: Element): void {
+        anchor.dispatchEvent(
+            new MouseEvent("mousedown", { bubbles: true, metaKey: true }),
+        );
+    }
+
+    it("a file link keeps its line-number fragment", () => {
+        metaMousedown(container.querySelector('a[href="./notes.md#27"]')!);
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "openFile",
+            path: "./notes.md#27",
+        });
+    });
+
+    it("an external link keeps its anchor", () => {
+        metaMousedown(
+            container.querySelector('a[href="https://example.com/page#frag"]')!,
+        );
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "openUrl",
+            url: "https://example.com/page#frag",
+        });
+    });
+});
+
+// ─── Wikilink routing ───────────────────────────────────────────────────────
+
+describe("wikilink popup and click routing", () => {
+    const DOC = "See [[my page#head|shown]] and [[#local heading]] here.\n\n# local heading\n";
+    let editor: Editor;
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container } = await makeEditor(DOC));
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    it("hovering a wikilink opens an editable popup showing target#heading, on wikilink format", async () => {
+        vi.useFakeTimers();
+        const anchor = container.querySelector('a[data-type="wiki-link"]')!;
+        await hover(anchor);
+
+        expect(getPopup().style.display).toBe("flex");
+        expect(document.querySelector(".lp-url")?.textContent).toBe("my page#head");
+        // Editable (the format switch owns conversions), resting on wikilink.
+        expect(document.querySelector<HTMLElement>(".lp-btn-edit")?.style.display).toBe("");
+        const active = document.querySelector(".lfs-btn--active");
+        expect(active?.textContent).toBe("[[wiki]]");
+    });
+
+    it("modifier-click sends openFile with the wiki flag", () => {
+        const anchor = container.querySelector('a[data-type="wiki-link"]')!;
+        anchor.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, metaKey: true }));
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "openFile",
+            path: "my page#head",
+            wiki: true,
+        });
+    });
+
+    it("a same-page [[#heading]] never messages the host on modifier-click", () => {
+        // The handler deliberately lets this mousedown propagate (the click
+        // handler does the jump), so ProseMirror's own mousedown runs too —
+        // stub the API jsdom lacks.
+        (document as unknown as { elementFromPoint?: unknown }).elementFromPoint ??= () => null;
+        const anchors = container.querySelectorAll('a[data-type="wiki-link"]');
+        const samePage = anchors[1]!;
+        samePage.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, metaKey: true }));
+
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "openFile" }),
+        );
+    });
+});
+
+// ─── Link format switch (markdown ⇄ wikilink) ───────────────────────────────
+
+describe("link format switch", () => {
+    const DOC = "A [md](page.md) and [[target|alias]] pair, plus [ext](https://example.com/x).\n";
+    let editor: Editor;
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container } = await makeEditor(DOC));
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    function lfsButton(label: string): HTMLButtonElement {
+        const btn = Array.from(
+            document.querySelectorAll<HTMLButtonElement>(".lfs-btn"),
+        ).find((b) => b.textContent === label);
+        expect(btn).toBeDefined();
+        return btn!;
+    }
+
+    function clickEdit(): void {
+        document.querySelector<HTMLElement>(".lp-btn-edit")!
+            .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }
+
+    it("converts a markdown link to a wikilink in place", async () => {
+        await hover(container.querySelector('a[href="page.md"]')!);
+        clickEdit();
+        lfsButton("[[wiki]]").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        commitEdit();
+
+        const out = editor.action(getMarkdown());
+        expect(out).toContain("A [[page.md|md]] and");
+        expect(out).toContain("[[target|alias]]");
+    });
+
+    it("converts a wikilink to a markdown link in place", async () => {
+        await hover(container.querySelector('a[data-type="wiki-link"]')!);
+        clickEdit();
+        lfsButton("markdown").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        commitEdit();
+
+        const out = editor.action(getMarkdown());
+        expect(out).toContain("[alias](target)");
+        expect(out).toContain("[md](page.md)");
+    });
+
+    it("disables the wikilink option for external URLs", async () => {
+        await hover(container.querySelector('a[href="https://example.com/x"]')!);
+        clickEdit();
+
+        expect(lfsButton("[[wiki]]").disabled).toBe(true);
+        expect(lfsButton("markdown").classList.contains("lfs-btn--active")).toBe(true);
+    });
+
+    it("defaults an existing markdown link to markdown format", async () => {
+        await hover(container.querySelector('a[href="page.md"]')!);
+        clickEdit();
+
+        expect(lfsButton("markdown").classList.contains("lfs-btn--active")).toBe(true);
+        expect(lfsButton("[[wiki]]").disabled).toBe(false);
+    });
+});
+
+// ─── Save on blur + resolved-target hint ────────────────────────────────────
+import { dispatchLinkTargetResolved } from "../components/pathLink/linkTargetComplete";
+
+describe("save on blur and resolved-target hint", () => {
+    const DOC = "See [inline](notes.md) here.\n";
+    let editor: Editor;
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container } = await makeEditor(DOC));
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    function openEdit(): void {
+        document.querySelector<HTMLElement>(".lp-btn-edit")!
+            .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }
+
+    it("input blur applies the edit and keeps the panel open", async () => {
+        await hover(container.querySelector('a[href="notes.md"]')!);
+        openEdit();
+
+        const inputUrl = document.querySelector<HTMLInputElement>(".lp-url-input")!;
+        inputUrl.value = "other.md";
+        inputUrl.dispatchEvent(new Event("input", { bubbles: true }));
+        inputUrl.dispatchEvent(new FocusEvent("blur"));
+
+        expect(editor.action(getMarkdown())).toContain("[inline](other.md)");
+        expect(getPopup().style.display).toBe("flex");
+    });
+
+    it("blur without changes dispatches nothing", async () => {
+        const before = editor.action(getMarkdown());
+        await hover(container.querySelector('a[href="notes.md"]')!);
+        openEdit();
+
+        const inputUrl = document.querySelector<HTMLInputElement>(".lp-url-input")!;
+        inputUrl.dispatchEvent(new FocusEvent("blur"));
+
+        expect(editor.action(getMarkdown())).toBe(before);
+    });
+
+    it("there is no confirm button", async () => {
+        await hover(container.querySelector('a[href="notes.md"]')!);
+        expect(document.querySelector(".lp-btn-confirm")).toBeNull();
+        expect(document.querySelector(".lp-btn-remove")).not.toBeNull();
+    });
+
+    it("hover requests the resolved target and shows the reply as help text", async () => {
+        await hover(container.querySelector('a[href="notes.md"]')!);
+
+        const req = mockVscodeApi.postMessage.mock.calls
+            .map(([m]) => m as { type: string; id?: string; path?: string })
+            .find((m) => m.type === "resolveLinkTarget");
+        expect(req).toBeDefined();
+        expect(req!.path).toBe("notes.md");
+
+        dispatchLinkTargetResolved(req!.id!, "content/write/notes.md");
+        const hint = document.querySelector<HTMLElement>(".lp-resolved")!;
+        expect(hint.textContent).toBe("→ content/write/notes.md");
+        expect(hint.style.display).toBe("");
+    });
+
+    it("a smart-mode miss reads as not found", async () => {
+        await hover(container.querySelector('a[href="notes.md"]')!);
+        const req = mockVscodeApi.postMessage.mock.calls
+            .map(([m]) => m as { type: string; id?: string })
+            .find((m) => m.type === "resolveLinkTarget")!;
+
+        dispatchLinkTargetResolved(req.id!, null);
+        const hint = document.querySelector<HTMLElement>(".lp-resolved")!;
+        expect(hint.textContent).toBe("not found in workspace");
+    });
+});
+
+// ─── Critique regressions: phantom rewrites + mid-edit hover ────────────────
+
+describe("popup never rewrites an untouched link", () => {
+    it("hover + click-away on a colon-titled wikilink is a no-op", async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        const { editor, container } = await makeEditor("See [[note: plan]] here.\n");
+        vi.useFakeTimers();
+        const before = editor.action(getMarkdown());
+
+        await hover(container.querySelector('a[data-type="wiki-link"]')!);
+        // A stray click anywhere outside the popup (the save-on-close path).
+        document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+        expect(editor.action(getMarkdown())).toBe(before);
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+});
+
+describe("mid-edit safety", () => {
+    let editor: Editor;
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container } = await makeEditor(
+            "Two links: [alpha](a.md) and [beta](b.md).\n",
+        ));
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    function openEdit(): void {
+        document.querySelector<HTMLElement>(".lp-btn-edit")!
+            .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }
+
+    it("hovering another link while editing never rebinds the popup", async () => {
+        await hover(container.querySelector('a[href="a.md"]')!);
+        openEdit();
+        const inputUrl = document.querySelector<HTMLInputElement>(".lp-url-input")!;
+        inputUrl.value = "EDITED.md";
+        inputUrl.dispatchEvent(new Event("input", { bubbles: true }));
+
+        await hover(container.querySelector('a[href="b.md"]')!);
+
+        // The dirty field survives; blur still saves it to the right link.
+        expect(inputUrl.value).toBe("EDITED.md");
+        inputUrl.dispatchEvent(new FocusEvent("blur"));
+        const out = editor.action(getMarkdown());
+        expect(out).toContain("[alpha](EDITED.md)");
+        expect(out).toContain("[beta](b.md)");
+    });
+
+    it("repeated blur-applies keep the bounds coherent", async () => {
+        await hover(container.querySelector('a[href="a.md"]')!);
+        openEdit();
+        const inputText = document.querySelector<HTMLInputElement>(".lp-text-input")!;
+        const inputUrl = document.querySelector<HTMLInputElement>(".lp-url-input")!;
+
+        inputText.value = "alphabet";
+        inputText.dispatchEvent(new FocusEvent("blur"));
+        expect(editor.action(getMarkdown())).toContain("[alphabet](a.md)");
+
+        inputText.value = "al";
+        inputText.dispatchEvent(new FocusEvent("blur"));
+        expect(editor.action(getMarkdown())).toContain("[al](a.md)");
+
+        inputUrl.value = "c.md";
+        inputUrl.dispatchEvent(new FocusEvent("blur"));
+        const out = editor.action(getMarkdown());
+        expect(out).toContain("[al](c.md)");
+        expect(out).toContain("[beta](b.md)");
     });
 });

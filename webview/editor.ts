@@ -46,6 +46,7 @@ import {
     insertFootnoteCommand,
     linkInputRule,
     linkUrlCompletePlugin,
+    wikiLinkCompletePlugin,
     listEnterPlugin,
     listLiftPlugin,
     listSpreadNormalizePlugin,
@@ -309,6 +310,7 @@ export async function createEditor(
         .use(footnoteNumberingPlugin)
         .use(linkInputRule)
         .use(linkUrlCompletePlugin)
+        .use(wikiLinkCompletePlugin)
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
         .use(cellClickFixPlugin)
