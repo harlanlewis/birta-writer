@@ -168,6 +168,33 @@ export function markerWithKind(marker: string, kind: CalloutKind): string {
     return `[!${type}]${parts.fold}${parts.rest}`;
 }
 
+/**
+ * Backslash-escapes the characters that would give a typed title inline
+ * meaning on reparse (emphasis, code, links/wikilinks, autolink/html, math,
+ * highlight, strikethrough, escapes, references). A formatted marker line is
+ * deliberately NOT a callout (see blockquoteToCallout), so an unescaped
+ * `*x*` in a title would silently downgrade the callout to a blockquote on
+ * the next load. parseCalloutMarker's display unescape is the exact inverse,
+ * so what the user typed is what the title bar shows again.
+ */
+export function escapeCalloutTitle(title: string): string {
+    return title.replace(/([\\`*_[\]<>~$=&])/g, "\\$1");
+}
+
+/**
+ * The marker line for a title edit: type, case, and fold preserved; the new
+ * title replaces the raw title bytes (escaped — see escapeCalloutTitle).
+ * An empty title drops the title segment entirely.
+ */
+export function markerWithTitle(marker: string, title: string): string {
+    const parts = parseCalloutMarker(marker);
+    const head = parts
+        ? `[!${parts.rawType}]${parts.fold}`
+        : marker.trimEnd() || "[!NOTE]";
+    const trimmed = title.trim();
+    return trimmed === "" ? head : `${head} ${escapeCalloutTitle(trimmed)}`;
+}
+
 // ─── Parse: blockquote → callout tree transform ─────────────────────────────
 
 /** Minimal shape of the mdast nodes the transform inspects. */

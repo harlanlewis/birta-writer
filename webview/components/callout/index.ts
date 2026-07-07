@@ -1,15 +1,19 @@
 /**
  * Callout NodeView (MAR-27) — the visual chrome for `callout` nodes
- * (plugins/callouts.ts): kind icon + accent color, title bar, optional
- * fold chevron, and a kind-picker dropdown.
+ * (plugins/callouts.ts): kind icon + accent color, an editable title, an
+ * optional fold chevron, and a keyboard-accessible kind-picker menu.
  *
- * Two invariants:
+ * Invariants:
  *   - Folding is VISUAL ONLY. Collapsing/expanding toggles a class; the
  *     document (and the `[!type]-` marker) is never touched, so reading a
  *     file can never dirty it.
- *   - Changing the kind IS a document edit: the marker attr is re-synthesized
- *     (fold + raw title bytes preserved, case convention kept) and dispatched
- *     as a setNodeMarkup transaction.
+ *   - Changing the kind or title IS a document edit: the marker attr is
+ *     re-synthesized (markerWithKind / markerWithTitle — case, fold, and
+ *     raw bytes preserved where untouched) and dispatched as one
+ *     setNodeMarkup transaction.
+ *   - The title editor writes back through escapeCalloutTitle, so a typed
+ *     `*x*` can never silently downgrade the callout to a blockquote on the
+ *     next load (formatted marker lines are deliberately not callouts).
  */
 import "./callout.css";
 import type { Node as PMNode } from "@milkdown/prose/model";
@@ -19,6 +23,7 @@ import {
     CALLOUT_KINDS,
     attrsFromMarker,
     markerWithKind,
+    markerWithTitle,
     type CalloutKind,
 } from "@/plugins/callouts";
 import {
@@ -60,8 +65,9 @@ export const CALLOUT_ICONS: Record<CalloutKind, string> = {
 };
 
 /**
- * The title-bar label: the explicit title when present, else the raw type
- * capitalized (`[!note]` → "Note"), preserving an all-caps type as typed.
+ * The title bar's display text: the explicit title when present, else the
+ * raw type capitalized (`[!note]` → "Note"), preserving an all-caps type as
+ * typed. Editing this text sets an explicit title; clearing it falls back.
  */
 export function calloutLabel(node: PMNode): string {
     const title = (node.attrs["title"] as string) ?? "";
@@ -77,6 +83,7 @@ interface CalloutView {
     dom: HTMLElement;
     contentDOM: HTMLElement;
     update(node: PMNode): boolean;
+    stopEvent(event: Event): boolean;
     ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Element }): boolean;
     destroy(): void;
 }
@@ -96,29 +103,53 @@ export function createCalloutView(
     titleBar.className = "callout-title";
     titleBar.contentEditable = "false";
 
+    // ── Kind button: the icon itself, click/Enter/Space → kind menu ─────────
     const kindButton = document.createElement("button");
     kindButton.type = "button";
     kindButton.className = "callout-kind";
     kindButton.title = t("Change callout type");
+    kindButton.setAttribute("aria-label", t("Change callout type"));
+    kindButton.setAttribute("aria-haspopup", "menu");
+    kindButton.setAttribute("aria-expanded", "false");
 
-    const iconSpan = document.createElement("span");
-    iconSpan.className = "callout-icon";
-    const labelSpan = document.createElement("span");
-    labelSpan.className = "callout-label";
-    kindButton.append(iconSpan, labelSpan);
+    // ── Title: an inline plain-text editor committing to the marker attr ────
+    const titleSpan = document.createElement("span");
+    titleSpan.className = "callout-title-text";
+    titleSpan.setAttribute("role", "textbox");
+    titleSpan.setAttribute("aria-label", t("Callout title"));
+    titleSpan.spellcheck = false;
+    try {
+        // Chromium/Electron; jsdom throws on unknown values.
+        titleSpan.contentEditable = "plaintext-only";
+    } catch {
+        titleSpan.contentEditable = "true";
+    }
 
     const foldButton = document.createElement("button");
     foldButton.type = "button";
     foldButton.className = "callout-fold";
     foldButton.innerHTML = IconChevronDown;
     foldButton.title = t("Collapse / expand");
+    foldButton.setAttribute("aria-label", t("Collapse / expand"));
 
-    titleBar.append(kindButton, foldButton);
+    titleBar.append(kindButton, titleSpan, foldButton);
 
     const content = document.createElement("div");
     content.className = "callout-body";
 
     dom.append(titleBar, content);
+
+    const dispatchMarker = (marker: string): void => {
+        const pos = getPos();
+        if (pos === undefined) return;
+        view.dispatch(
+            view.state.tr.setNodeMarkup(
+                pos,
+                null,
+                attrsFromMarker(marker, node.attrs["attached"] as boolean),
+            ),
+        );
+    };
 
     // ── Fold (visual only — never rewrites the marker) ──────────────────────
     let collapsed = ((node.attrs["fold"] as string) ?? "") === "-";
@@ -126,25 +157,29 @@ export function createCalloutView(
         dom.classList.toggle("collapsed", collapsed);
         foldButton.setAttribute("aria-expanded", String(!collapsed));
     };
-    foldButton.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    foldButton.addEventListener("mousedown", (e) => e.preventDefault());
+    foldButton.addEventListener("click", () => {
         collapsed = !collapsed;
         renderCollapsed();
     });
 
-    // ── Kind picker ─────────────────────────────────────────────────────────
+    // ── Kind picker menu ────────────────────────────────────────────────────
     let menu: HTMLElement | null = null;
-    const closeMenu = (): void => {
-        menu?.remove();
+    const closeMenu = (refocus = false): void => {
+        if (!menu) return;
+        menu.remove();
         menu = null;
+        kindButton.setAttribute("aria-expanded", "false");
         document.removeEventListener("mousedown", onOutside, true);
+        if (refocus) kindButton.focus();
     };
     const onOutside = (e: MouseEvent): void => {
         if (menu && !menu.contains(e.target as Node) && e.target !== kindButton) {
             closeMenu();
         }
     };
+    const menuItems = (): HTMLButtonElement[] =>
+        menu ? Array.from(menu.querySelectorAll("button")) : [];
     const openMenu = (): void => {
         if (menu) {
             closeMenu();
@@ -152,11 +187,13 @@ export function createCalloutView(
         }
         menu = document.createElement("div");
         menu.className = "callout-menu";
+        menu.setAttribute("role", "menu");
         for (const kind of CALLOUT_KINDS) {
             const item = document.createElement("button");
             item.type = "button";
             item.className = "callout-menu-item";
             item.dataset["kind"] = kind;
+            item.setAttribute("role", "menuitem");
             item.innerHTML = CALLOUT_ICONS[kind];
             const name = document.createElement("span");
             name.textContent = kind.charAt(0).toUpperCase() + kind.slice(1);
@@ -164,40 +201,80 @@ export function createCalloutView(
             if (kind === (node.attrs["kind"] as string)) {
                 item.classList.add("active");
             }
-            item.addEventListener("mousedown", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                closeMenu();
-                const pos = getPos();
-                if (pos === undefined) return;
-                const marker = markerWithKind(
-                    (node.attrs["marker"] as string) ?? "[!NOTE]",
-                    kind,
-                );
-                view.dispatch(
-                    view.state.tr.setNodeMarkup(
-                        pos,
-                        null,
-                        attrsFromMarker(marker, node.attrs["attached"] as boolean),
-                    ),
-                );
+            item.addEventListener("mousedown", (e) => e.preventDefault());
+            item.addEventListener("click", () => {
+                closeMenu(true);
+                dispatchMarker(markerWithKind((node.attrs["marker"] as string) ?? "[!NOTE]", kind));
             });
             menu.appendChild(item);
         }
+        menu.addEventListener("keydown", (e) => {
+            const items = menuItems();
+            const at = items.indexOf(document.activeElement as HTMLButtonElement);
+            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const delta = e.key === "ArrowDown" ? 1 : -1;
+                items[(at + delta + items.length) % items.length]?.focus();
+            } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                closeMenu(true);
+            }
+        });
         titleBar.appendChild(menu);
         document.addEventListener("mousedown", onOutside, true);
+        kindButton.setAttribute("aria-expanded", "true");
+        (menu.querySelector(".active") as HTMLButtonElement | null ?? menuItems()[0])?.focus();
     };
-    kindButton.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openMenu();
+    kindButton.addEventListener("mousedown", (e) => e.preventDefault());
+    kindButton.addEventListener("click", () => openMenu());
+    kindButton.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" && !menu) {
+            e.preventDefault();
+            openMenu();
+        }
     });
+
+    // ── Title editing ────────────────────────────────────────────────────────
+    const commitTitle = (): void => {
+        const typed = (titleSpan.textContent ?? "").trim();
+        if (typed === calloutLabel(node)) return; // untouched → zero churn
+        dispatchMarker(markerWithTitle((node.attrs["marker"] as string) ?? "[!NOTE]", typed));
+    };
+    titleSpan.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            titleSpan.blur(); // blur commits
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            titleSpan.textContent = calloutLabel(node); // revert, then leave
+            titleSpan.blur();
+        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+            // Keep select-all inside the title island — the native behavior
+            // escapes into the surrounding contenteditable and selects the
+            // whole document.
+            e.preventDefault();
+            const range = document.createRange();
+            range.selectNodeContents(titleSpan);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+        }
+    });
+    titleSpan.addEventListener("blur", commitTitle);
 
     const render = (): void => {
         const kind = (node.attrs["kind"] as CalloutKind) ?? "note";
         dom.dataset["kind"] = kind;
-        iconSpan.innerHTML = CALLOUT_ICONS[kind] ?? IconPencil;
-        labelSpan.textContent = calloutLabel(node);
+        kindButton.innerHTML = CALLOUT_ICONS[kind] ?? IconPencil;
+        // Never clobber the text mid-edit; commit/Escape settle it on blur.
+        if (document.activeElement !== titleSpan) {
+            titleSpan.textContent = calloutLabel(node);
+        }
+        titleSpan.classList.toggle(
+            "placeholder",
+            ((node.attrs["title"] as string) ?? "") === "",
+        );
         const hasFold = ((node.attrs["fold"] as string) ?? "") !== "";
         foldButton.style.display = hasFold ? "" : "none";
     };
@@ -212,6 +289,11 @@ export function createCalloutView(
             node = updated;
             render();
             return true;
+        },
+        stopEvent(event: Event): boolean {
+            // Chrome interactions (title typing, menu keys, buttons) never
+            // reach ProseMirror's keymaps/selection handling.
+            return titleBar.contains(event.target as Node);
         },
         ignoreMutation(mutation): boolean {
             if (mutation.type === "selection") return false;

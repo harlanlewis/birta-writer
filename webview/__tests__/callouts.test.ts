@@ -19,7 +19,6 @@ import {
     markerWithKind,
     parseCalloutMarker,
 } from "../plugins/callouts";
-import { calloutLabel } from "../components/callout";
 
 async function makeEditor(markdown: string): Promise<{
     editor: Editor;
@@ -109,13 +108,37 @@ describe("markerWithKind", () => {
     });
 });
 
-describe("calloutLabel", () => {
-    const fake = (attrs: Record<string, unknown>): PMNode => ({ attrs } as unknown as PMNode);
+describe("fixture parse census", () => {
+    // Byte round-trips CANNOT catch a mis-parse that serializes identically
+    // (a callout and a plain blockquote emit the same bytes), so the corpus
+    // fixture is additionally pinned to its exact expected parse.
+    it("callouts.md parses to exactly the expected callouts and blockquotes", async () => {
+        const { readFileSync } = await import("node:fs");
+        const { join } = await import("node:path");
+        const content = readFileSync(join(__dirname, "fixtures", "callouts.md"), "utf8");
+        const { editor, view } = await makeEditor(content);
 
-    it("prefers the title, else the capitalized raw type", () => {
-        expect(calloutLabel(fake({ title: "Custom", rawType: "NOTE" }))).toBe("Custom");
-        expect(calloutLabel(fake({ title: "", rawType: "NOTE" }))).toBe("Note");
-        expect(calloutLabel(fake({ title: "", rawType: "faq" }))).toBe("Faq");
+        const kinds: string[] = [];
+        let blockquotes = 0;
+        view.state.doc.descendants((node) => {
+            if (node.type.name === "callout") kinds.push(node.attrs["kind"] as string);
+            if (node.type.name === "blockquote") blockquotes++;
+            return true;
+        });
+        expect(kinds).toEqual([
+            "note", "tip", "important", "warning", "caution",
+            "note",           // [!note] with title
+            "tip",            // [!tip]- folded
+            "question",       // [!faq]+ (alias)
+            "abstract",       // blank-line separated
+            "note",           // [!custom-type] → neutral fallback
+            "note",           // bare [!NOTE]
+            "success", "bug", // nested pair
+        ]);
+        // The three deliberate degradations stay plain blockquotes:
+        // formatted marker line, escaped marker, and the regular quote.
+        expect(blockquotes).toBe(3);
+        await editor.destroy();
     });
 });
 

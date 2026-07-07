@@ -121,6 +121,45 @@ describe("highlight round-trip byte-identity", () => {
     }
 });
 
+describe("fixture parse census", () => {
+    // Byte round-trips can't catch a mis-parse (==x== serializes the same
+    // whether it's a highlight or plain text), so the fixture is pinned to
+    // the exact set of highlighted ranges, in document order.
+    it("highlight.md parses to exactly the expected highlighted ranges", async () => {
+        const { readFileSync } = await import("node:fs");
+        const { join } = await import("node:path");
+        const content = readFileSync(join(__dirname, "fixtures", "highlight.md"), "utf8");
+        const { editor, view } = await makeEditor(content);
+        expect(highlightedTexts(view)).toEqual([
+            "highlighted text",
+            "tight",
+            "inside bold",
+            "first",
+            "second",
+            "höhere Café ☕",
+            "Starts a line",
+            "line",
+            "highlight", // list item
+            "highlight", // blockquote
+            "one",       // table header cell
+            "y",         // table body cell
+        ]);
+        await editor.destroy();
+    });
+});
+
+describe("cross-matching between adjacent rejected forms (documented behavior)", () => {
+    it("the tail == of one rejected form pairs with the head of the next", async () => {
+        // Paired-delimiter reality check, pinned deliberately: this is why
+        // the fixture and the content inventory keep one rejected form per
+        // line. If this test starts failing, the grammar changed — update
+        // the docs alongside it.
+        const { editor, view } = await makeEditor("x ==a=b==, and 2==2.\n");
+        expect(highlightedTexts(view)).toEqual([", and 2"]);
+        await editor.destroy();
+    });
+});
+
 describe("typing ==text== should apply the mark (input rule)", () => {
     function typeWithInputRules(v: EditorView, text: string): void {
         for (const ch of text) {

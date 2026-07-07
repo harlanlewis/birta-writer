@@ -64,6 +64,10 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "bails out when modifiers are held — typing-level Backspace handling, not a chord",
         "webview/plugins/codeBlockSelectAll.ts":
             "scopes the editor's Mod+A inside code blocks — typing-level, must run synchronously",
+        "webview/components/callout/index.ts":
+            "scopes Mod+A inside the title's contenteditable island — native select-all escapes into the document",
+        "webview/components/directive/index.ts":
+            "scopes Mod+A inside the title's contenteditable island — native select-all escapes into the document",
         "webview/plugins/tableCellClickFix.ts":
             "mouse-modifier check (Ctrl/Cmd+click), not a keybinding",
         "webview/components/codeBlock/index.ts":

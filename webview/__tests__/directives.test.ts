@@ -85,6 +85,35 @@ describe("parseOpenFence / closeFenceColons / directiveTitle", () => {
     });
 });
 
+describe("fixture parse census", () => {
+    // Pins directives.md to its exact expected parse — byte round-trips
+    // can't distinguish a directive from the same lines as plain paragraphs.
+    it("directives.md parses to exactly the expected directives", async () => {
+        const { readFileSync } = await import("node:fs");
+        const { join } = await import("node:path");
+        const content = readFileSync(join(__dirname, "fixtures", "directives.md"), "utf8");
+        const { editor, view } = await makeEditor(content);
+
+        const names: string[] = [];
+        view.state.doc.descendants((node) => {
+            if (node.type.name === "container_directive") {
+                names.push(node.attrs["name"] as string);
+            }
+            return true;
+        });
+        expect(names).toEqual([
+            "note", "tip", "warning", "info",
+            "danger", "note",   // nested pair (outer 4-colon, inner 3)
+            "note",             // multi-block body
+            "caution",
+        ]);
+        // The unclosed fence and the spaced name stay ordinary text.
+        expect(names).not.toContain("unclosed");
+        expect(view.state.doc.textContent).toContain(":::unclosed");
+        await editor.destroy();
+    });
+});
+
 describe("directive parsing", () => {
     it("a single-paragraph directive parses with attached fences", async () => {
         const { editor, view } = await makeEditor(":::note\nBody text.\n:::\n");

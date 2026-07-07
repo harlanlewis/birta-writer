@@ -38,9 +38,25 @@ Setext headings round-trip in their original form too:
 
 ## Inline text
 
-The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~strikethrough~~, and `inline code`.
+The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~strikethrough~~, ==highlight==, and `inline code`.
 
 Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
+
+### Highlight
+
+`==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==`
+applies it live; a Highlight command lives in the palette, and an opt-in
+toolbar button ships hidden by default. The grammar is deliberately strict —
+each of these stays plain text, byte-preserved:
+
+- spaces at the edges: == spaced ==
+- an `=` inside: ==a=b==
+- no closer: 2==2
+
+(One rejected form per line: adjacent forms on a single line can
+legitimately cross-match, the tail `==` of one pairing with the head of the
+next — the same behavior as any paired-delimiter syntax.) Nested formatting
+inside a highlight renders literally.
 
 A hard line break ends this line here →<br>and continues on the next.
 
@@ -136,6 +152,92 @@ cell:
 > A multi-line blockquote
 > that spans several lines,
 > and can contain **formatting** and `code`.
+
+---
+
+## Callouts
+
+GitHub alerts and Obsidian callouts render with a per-kind icon and accent
+color. The icon is a button — click it (or Enter/Space when focused) to
+switch the kind; the title text is editable in place (Enter or click away
+saves, Escape reverts). The marker line's exact source bytes round-trip.
+
+> [!NOTE]
+> The five GitHub types: NOTE, TIP, IMPORTANT, WARNING, CAUTION.
+
+> [!TIP]
+> Green, with a lightbulb.
+
+> [!IMPORTANT]
+> Purple, for the load-bearing stuff.
+
+> [!WARNING]
+> Yellow triangle.
+
+> [!CAUTION]
+> Red octagon.
+
+> [!note] Obsidian style with an editable title
+> Lowercase types and titles are the Obsidian convention.
+
+> [!faq] Aliases resolve
+> `faq`/`help` → question, `hint` → tip, `error` → danger, `tldr` → abstract…
+
+> [!tip]- A folded callout (click the chevron)
+> Folding is **visual only** — expanding/collapsing never edits the file.
+> `[!tip]-` starts collapsed, `[!tip]+` starts open.
+
+> [!success] Callouts nest
+> Outer body.
+>
+> > [!bug] Inner callout
+> > With its own kind and accent.
+
+> [!custom-kind] Unknown types are kept
+> Styled neutrally, raw type preserved verbatim.
+
+Deliberate degradations (still byte-preserved, render as plain blockquotes):
+a marker line with inline **formatting**, or an escaped marker:
+
+> [!WARNING] a **formatted** title stays a plain blockquote
+
+> \[!NOTE] an escaped marker stays a plain blockquote
+
+---
+
+## Container directives
+
+`:::name` fenced blocks (the Docusaurus admonition syntax) render as labeled
+containers with an editable body and title. Known names pick up callout-style
+accents; `{attrs}` are preserved raw; `::::` nests. Typing `:::name ` in an
+empty paragraph creates one.
+
+:::note
+A basic directive. The body is ordinary editable markdown: **bold**, `code`,
+[links](https://example.com), lists…
+:::
+
+:::tip An editable title
+Click the title in the header to edit it.
+:::
+
+:::info{title="Attributes survive"}
+The `{…}` block never renders, but round-trips byte-identically.
+:::
+
+::::danger Nesting
+Outer body.
+
+:::note Inner
+Fewer colons inside more colons.
+:::
+
+::::
+
+An unclosed fence deliberately stays ordinary text:
+
+:::unclosed
+this line and the fence above render as plain paragraphs.
 
 ---
 
@@ -249,22 +351,18 @@ get a table UI; complex/nested YAML preserved verbatim.
 
 If and when support lands for these common content types, move up into the body of this document with a real example.
 
-### Callouts
-
-Callouts in the GitHub and Obsidian style parse as an ordinary blockquote whose first line is the literal `[!NOTE]` text.
-
-> [!NOTE] Hello
-
-> [!WARNING] Hello
-
 ### Videos / embeds
 
 No `<video>` / `<iframe>` handling; such tags fall through to the read-only sanitized HTML preview (and iframes are stripped).
 
 ### Wikilink embeds
 
-Obsidian's transclusion form `![[page]]` is not parsed — it stays literal plain text (and round-trips untouched): ![[image-target]]
+Obsidian's transclusion form `![[page]]` is not treated as an embed — it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched (MAR-45): ![[image-target]]
+
+### Emoji shortcodes
+
+`:smile:` stays literal text; a byte-preserving renderer is planned (MAR-46).
 
 ### Definition lists
 
-`term` / `: definition` syntax is not parsed.
+`term` / `: definition` syntax is not parsed (parked with sub/superscript, `%%comments%%`, `[TOC]`, and `#tags` — MAR-47).

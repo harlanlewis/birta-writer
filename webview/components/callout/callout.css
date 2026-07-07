@@ -53,31 +53,43 @@
         user-select: none;
     }
 
+    /* The kind button IS the icon: click (or Enter/Space/ArrowDown) opens
+       the kind menu. Hover shows an accent chip; the keyboard focus ring
+       comes from the global button:focus-visible rule. */
     .callout-kind {
         display: inline-flex;
         align-items: center;
-        gap: 0.45em;
         border: none;
         background: none;
-        padding: 0;
-        margin: 0;
+        padding: 3px;
+        margin: -3px 0;
         color: inherit;
-        font: inherit;
-        font-weight: 600;
         cursor: pointer;
         border-radius: 3px;
-
-        &:hover {
-            opacity: 0.85;
-        }
-    }
-
-    .callout-icon {
-        display: inline-flex;
 
         svg {
             width: 16px;
             height: 16px;
+        }
+
+        &:hover {
+            background: color-mix(in srgb, var(--callout-accent) 18%, transparent);
+        }
+    }
+
+    /* Inline title editor. Editing sets an explicit title; clearing it falls
+       back to the kind label. contenteditable is excluded from the global
+       focus-visible rule, so it gets its own focus outline. */
+    .callout-title-text {
+        flex: 1;
+        min-width: 3ch;
+        border-radius: 2px;
+        outline: none;
+        cursor: text;
+
+        &:focus {
+            outline: 1px solid var(--vscode-focusBorder, #007fd4);
+            outline-offset: 2px;
         }
     }
 

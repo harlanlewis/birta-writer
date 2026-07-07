@@ -60,6 +60,32 @@ export function directiveTitle(rest: string): string {
     return rest.replace(/\{[^}]*\}\s*$/, "").trim();
 }
 
+/**
+ * Strips the characters a directive title cannot carry. Unlike callout
+ * titles, fence bytes can't be backslash-escaped: the fence guard rejects
+ * `\`/`&` (decoded==raw invariant), and inline-construct characters would
+ * make the fence line parse as formatted text — no longer a lone text node,
+ * so the whole directive would downgrade to paragraphs on the next load.
+ */
+export function sanitizeDirectiveTitle(title: string): string {
+    return title.replace(/[\\&`*_[\]<>~$={}]/g, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The opening fence for a title edit: colons + name preserved, the new
+ * (sanitized) title replaces the old one, and a trailing `{attrs}` block —
+ * which the title editor never shows — survives verbatim.
+ */
+export function openFenceWithTitle(openFence: string, title: string): string {
+    const parts = parseOpenFence(openFence);
+    if (!parts) return openFence;
+    const attrs = /\{[^}]*\}\s*$/.exec(parts.rest)?.[0]?.trim() ?? "";
+    const clean = sanitizeDirectiveTitle(title);
+    const segments = [clean, attrs].filter((s) => s !== "");
+    const head = `${":".repeat(parts.colons)}${parts.name}`;
+    return segments.length > 0 ? `${head} ${segments.join(" ")}` : head;
+}
+
 /** PM attrs for a directive from its two fence lines. */
 export function attrsFromFences(
     openFence: string,
