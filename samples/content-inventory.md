@@ -4,7 +4,9 @@ description: A living showcase of every content type the editor supports. Open i
 tags: [reference, showcase, regression]
 ---
 
-> # Content inventory
+# Content inventory
+
+
 
 This document is a **living reference** of every content type WYSIWYG Markdown Editor supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
 
@@ -26,6 +28,8 @@ This document is a **living reference** of every content type WYSIWYG Markdown E
 
 Setext headings round-trip in their original form too:
 
+
+
 # Setext H1
 
 ## Setext H2
@@ -34,13 +38,11 @@ Setext headings round-trip in their original form too:
 
 ## Inline text
 
-The supported inline text styles are **bold**, _italic_, **_bold italic_**, ~~strikethrough~~, and `inline code`. That is the complete set — Markdown has no underline, highlight, superscript, or subscript (those need raw HTML, which renders read-only).
+The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~strikethrough~~, and `inline code`.
 
 Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
 
 A hard line break ends this line here →<br>and continues on the next.
-
-(Links, inline math, and footnotes are inline too — see their own sections.)
 
 ---
 
