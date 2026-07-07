@@ -84,6 +84,28 @@ export function opensSlashMenu(tr: Transaction): boolean {
  * stay: "Ordered List" inside a bullet list genuinely converts.)
  * Exported for tests.
  */
+/**
+ * Block-conversion items that cannot apply inside a table cell: the cell
+ * schema only allows paragraph content, so setBlockType/wrap commands
+ * silently no-op — AFTER the pick has consumed the "/query" text. Table
+ * and divider technically "work" by inserting after the whole table,
+ * which reads as an accident from inside a cell; the inline insertions
+ * (image, link, math, footnote) genuinely apply and stay offered.
+ */
+const HIDDEN_IN_TABLE_CELL = [
+    "paragraph",
+    "heading1",
+    "heading2",
+    "heading3",
+    "bulletList",
+    "orderedList",
+    "taskList",
+    "blockquote",
+    "divider",
+    "codeBlock",
+    "table",
+] as const;
+
 export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
     const hidden = new Set<string>();
     for (let depth = $from.depth; depth > 0; depth--) {
@@ -103,6 +125,12 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
             case "task_list_item":
                 if (node.attrs["checked"] != null) {
                     hidden.add("taskList");
+                }
+                break;
+            case "table_cell":
+            case "table_header":
+                for (const id of HIDDEN_IN_TABLE_CELL) {
+                    hidden.add(id);
                 }
                 break;
         }
@@ -213,6 +241,7 @@ class SlashMenuController {
         if (match.query !== this.lastQuery) {
             this.lastQuery = match.query;
             this.menu.setQuery(match.query);
+            this.syncAriaExpanded();
         }
         this.positionMenu();
     }
@@ -281,8 +310,8 @@ class SlashMenuController {
         this.positionMenu();
 
         this.view.dom.setAttribute("aria-haspopup", "listbox");
-        this.view.dom.setAttribute("aria-expanded", "true");
         this.view.dom.setAttribute("aria-controls", SLASH_MENU_DOM_ID);
+        this.syncAriaExpanded();
 
         document.addEventListener("mousedown", this.onDocMousedown, true);
         window.addEventListener("blur", this.onWindowBlur);
@@ -308,6 +337,16 @@ class SlashMenuController {
         this.view.dom.removeAttribute("aria-expanded");
         this.view.dom.removeAttribute("aria-controls");
         this.view.dom.removeAttribute("aria-activedescendant");
+    }
+
+    /** aria-expanded must track real visibility — the zero-match state
+     *  keeps the menu alive but display:none, which AT must not hear as
+     *  an expanded popup. */
+    private syncAriaExpanded(): void {
+        this.view.dom.setAttribute(
+            "aria-expanded",
+            String(this.menu?.isVisible() ?? false),
+        );
     }
 
     private positionMenu(): void {

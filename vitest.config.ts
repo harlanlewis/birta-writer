@@ -25,8 +25,10 @@ export default defineConfig({
                 "webview/plugins/linkInputRule.ts",
                 "webview/plugins/linkUrlComplete.ts",
                 "webview/plugins/list.ts",
+                "webview/plugins/slashMenu.ts",
                 "webview/components/pathLink/linkTargetComplete.ts",
                 "webview/components/frontmatter/**/*.ts",
+                "webview/components/slashMenu/**/*.ts",
             ],
             thresholds: {
                 lines: 70,

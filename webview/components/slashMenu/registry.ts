@@ -69,7 +69,7 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "heading3", group: "basic", label: t("Heading 3"), icon: "", badge: "H3", hint: "###", keywords: ["h3", "heading"], commandId: "setHeading3" },
     { id: "bulletList", group: "basic", label: t("Bullet List"), icon: IconList, hint: "-", keywords: ["ul", "unordered", "list"], commandId: "toggleBulletList" },
     { id: "orderedList", group: "basic", label: t("Ordered List"), icon: IconListOrdered, hint: "1.", keywords: ["ol", "numbered", "list"], commandId: "toggleOrderedList" },
-    { id: "taskList", group: "basic", label: t("Task List"), icon: IconCheckSquare, hint: "[]", keywords: ["todo", "checkbox", "check", "list"], commandId: "toggleTaskList" },
+    { id: "taskList", group: "basic", label: t("Task List"), icon: IconCheckSquare, hint: "[ ]", keywords: ["todo", "checkbox", "check", "list"], commandId: "toggleTaskList" },
     { id: "blockquote", group: "basic", label: t("Blockquote"), icon: IconQuote, hint: ">", keywords: ["quote", "cite"], commandId: "toggleBlockquote" },
     { id: "divider", group: "basic", label: t("Horizontal Rule"), icon: IconMinus, hint: "---", keywords: ["hr", "divider", "rule", "line", "separator"], commandId: "insertHorizontalRule" },
     { id: "codeBlock", group: "advanced", label: t("Code Block"), icon: IconTerminal, hint: "```", keywords: ["code", "fence", "snippet", "pre"], commandId: "insertCodeBlock" },

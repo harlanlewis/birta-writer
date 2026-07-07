@@ -302,6 +302,19 @@ describe("slash command menu plugin", () => {
         expect(v.dom.hasAttribute("aria-activedescendant")).toBe(false);
     });
 
+    it("aria-expanded should track visibility through the zero-match state", () => {
+        typeText(v, "/zz");
+        expect(menuVisible()).toBe(false);
+        expect(v.dom.getAttribute("aria-expanded")).toBe("false");
+
+        const caret = v.state.selection.from;
+        v.dispatch(v.state.tr.delete(caret - 1, caret)); // "/zz" → "/z"… still none
+        v.dispatch(v.state.tr.delete(caret - 2, caret - 1)); // → "/"
+
+        expect(menuVisible()).toBe(true);
+        expect(v.dom.getAttribute("aria-expanded")).toBe("true");
+    });
+
     it("picking should never steal focus (host panels focus their own inputs)", () => {
         // The /link and /image items open host panels that focus a text
         // input; a view.focus() after the pick would yank it back.
@@ -419,6 +432,14 @@ describe("context-aware item filtering (toggles hidden where they would remove)"
         expect(labels).toContain("Ordered List");
         expect(labels).toContain("Task List");
         expect(labels).toContain("Blockquote");
+    });
+
+    it("inside a table cell only the inline insertions should show", async () => {
+        // Cells only allow paragraph content: block conversions would
+        // silently no-op after eating the "/query" text, and table/divider
+        // insert after the whole table — accidental from inside a cell.
+        const labels = await openIn("| a | b |\n| - | - |\n| c | d |\n");
+        expect(labels).toEqual(["Image", "Link", "Math", "Footnote"]);
     });
 });
 
