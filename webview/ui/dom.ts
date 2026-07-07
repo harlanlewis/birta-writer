@@ -31,6 +31,16 @@ export function createButton(options: {
             e.stopPropagation();
             handler();
         });
+        // Enter/Space synthesize a click with detail 0 and never fire
+        // mousedown, so without this branch the button is keyboard-dead.
+        // Real mouse clicks (detail ≥ 1) were already handled above.
+        btn.addEventListener('click', (e) => {
+            if (e.detail === 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                handler();
+            }
+        });
     }
 
     return btn;

@@ -23,6 +23,12 @@ export interface HoverMenuOptions {
  * Wire `wrap`'s hover to open/close `menu`, positioned relative to `button`.
  * `wrap` must contain both `button` and `menu` in the DOM. Returns a disposer
  * that removes the listeners and clears any pending timer.
+ *
+ * Keyboard: Enter/Space toggles the menu from the trigger (ArrowDown/ArrowUp
+ * always open), arrows rove focus over the menu's rows, Enter/Space activates
+ * the focused row by replaying the mousedown its handlers listen for, and
+ * Escape (or tabbing out of the wrap) closes and restores trigger focus.
+ * Hover-opening never moves focus — the editor selection stays untouched.
  */
 export function wireHoverMenu(
     wrap: HTMLElement,
@@ -39,25 +45,98 @@ export function wireHoverMenu(
             hideTimer = null;
         }
     };
+    const isOpen = (): boolean => menu.style.display === "flex";
     const open = (): void => {
         cancelHide();
         options.onOpen?.();
         menu.style.display = "flex";
         placeMenu(button, menu);
+        button.setAttribute("aria-expanded", "true");
+    };
+    const close = (): void => {
+        cancelHide();
+        menu.style.display = "none";
+        button.setAttribute("aria-expanded", "false");
     };
     const scheduleHide = (): void => {
         cancelHide();
-        hideTimer = setTimeout(() => { menu.style.display = "none"; }, hideDelay);
+        hideTimer = setTimeout(close, hideDelay);
+    };
+
+    button.setAttribute("aria-haspopup", "menu");
+    button.setAttribute("aria-expanded", "false");
+
+    // Activatable rows: menu items are mousedown-wired divs, plus any real
+    // buttons a menu embeds (e.g. the font-size stepper, overflowed tb-btns).
+    const rows = (): HTMLElement[] =>
+        Array.from(menu.querySelectorAll<HTMLElement>(".tb-fmt-item, button"))
+            .filter((el) => !el.hidden && el.style.display !== "none");
+    const focusRow = (el: HTMLElement | undefined): void => {
+        if (el) {
+            el.tabIndex = -1;
+            el.focus();
+        }
+    };
+
+    const onButtonKeydown = (e: KeyboardEvent): void => {
+        if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            e.stopPropagation();
+            if (isOpen() && (e.key === "Enter" || e.key === " ")) {
+                close();
+            } else {
+                open();
+                focusRow(rows()[e.key === "ArrowUp" ? rows().length - 1 : 0]);
+            }
+        } else if (e.key === "Escape" && isOpen()) {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+        }
+    };
+    const onMenuKeydown = (e: KeyboardEvent): void => {
+        const list = rows();
+        const idx = list.indexOf(e.target as HTMLElement);
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            e.stopPropagation();
+            const delta = e.key === "ArrowDown" ? 1 : -1;
+            focusRow(list[(idx + delta + list.length) % list.length]);
+        } else if (e.key === "Enter" || e.key === " ") {
+            // preventDefault also suppresses the native keyboard click a
+            // focused <button> row would fire, so the action runs once.
+            e.preventDefault();
+            e.stopPropagation();
+            (e.target as HTMLElement).dispatchEvent(
+                new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+            );
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+            button.focus();
+        }
+    };
+    const onWrapFocusout = (e: FocusEvent): void => {
+        if (isOpen() && !(e.relatedTarget instanceof Node && wrap.contains(e.relatedTarget))) {
+            close();
+        }
     };
 
     wrap.addEventListener("mouseenter", open);
     wrap.addEventListener("mouseleave", scheduleHide);
     menu.addEventListener("mouseenter", cancelHide);
+    button.addEventListener("keydown", onButtonKeydown);
+    menu.addEventListener("keydown", onMenuKeydown);
+    wrap.addEventListener("focusout", onWrapFocusout);
 
     return (): void => {
         cancelHide();
         wrap.removeEventListener("mouseenter", open);
         wrap.removeEventListener("mouseleave", scheduleHide);
         menu.removeEventListener("mouseenter", cancelHide);
+        button.removeEventListener("keydown", onButtonKeydown);
+        menu.removeEventListener("keydown", onMenuKeydown);
+        wrap.removeEventListener("focusout", onWrapFocusout);
     };
 }
