@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Schema } from "@milkdown/prose/model";
-import { computeDecorations } from "../plugins/proofread";
+import { computeDecorations, DEFAULT_CONFIG } from "../plugins/proofread";
 import type { ProofreadConfig } from "../../shared/messages";
 
 /**
@@ -51,6 +51,19 @@ function decoratedTexts(doc: import("@milkdown/prose/model").Node, config = CONF
     const set = computeDecorations(doc, config);
     return set.find().map((d) => doc.textBetween(d.from, d.to));
 }
+
+describe("DEFAULT_CONFIG fallback", () => {
+    it("every check should default ON, matching the contributed setting defaults", () => {
+        // Drift guard for the webview-side fallback (used when the injected
+        // __i18n.proofread snapshot is missing): package.json defaults every
+        // check to true, so the fallback must agree.
+        for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
+            if (typeof value === "boolean") {
+                expect(value, `DEFAULT_CONFIG.${key} should default true`).toBe(true);
+            }
+        }
+    });
+});
 
 describe("computeDecorations", () => {
     it("a filler in a paragraph should be decorated at the exact document range", () => {

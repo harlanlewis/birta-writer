@@ -26,6 +26,7 @@
   "config.fontPreset.sans": "Sans-serif stack (system UI fonts).",
   "config.fontPreset.serif": "Serif stack (Iowan Old Style, Palatino, Georgia...).",
   "config.fontPreset.mono": "Monospace stack (Cascadia Code, Menlo, Consolas...).",
+  "config.fontSize.description": "Content font size, as a percentage of the VS Code editor font size (50–200). Scales the rendered markdown and frontmatter only, not the surrounding UI; 100 matches the editor font size. Also adjustable from the toolbar font picker.",
   "command.debugModeEnable.title": "Debug Mode",
   "command.debugModeDisable.title": "✓ Debug Mode",
   "config.debugMode.description": "Show debug overlays (e.g. table insert trigger zones). Intended for development use.",

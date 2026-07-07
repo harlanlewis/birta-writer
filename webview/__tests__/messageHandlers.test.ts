@@ -155,7 +155,7 @@ describe("setFontFamily handler", () => {
     it("a resolved font family should set the --custom-font-family variable", () => {
         // Arrange
         const setFontPreset = vi.fn();
-        const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig() {}, setFontPreset } };
+        const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig() {}, setFontPreset, setFontSize() {} } };
         const handlers = createMessageHandlers(deps);
 
         // Act
@@ -185,13 +185,55 @@ describe("setFontFamily handler", () => {
     });
 });
 
+describe("setFontSize handler", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.documentElement.style.removeProperty("--content-font-scale");
+    });
+
+    const container = document.createElement("div");
+
+    it("a size message should set --content-font-scale as a ratio and update the toolbar", () => {
+        // Arrange
+        const setFontSize = vi.fn();
+        const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig() {}, setFontPreset() {}, setFontSize } };
+        const handlers = createMessageHandlers(deps);
+
+        // Act
+        handlers.setFontSize?.({ type: "setFontSize", size: 125 }, container);
+
+        // Assert
+        expect(document.documentElement.style.getPropertyValue("--content-font-scale").trim()).toBe("1.25");
+        expect(setFontSize).toHaveBeenCalledWith(125);
+    });
+
+    it("an out-of-range size should be clamped before it is applied", () => {
+        const setFontSize = vi.fn();
+        const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig() {}, setFontPreset() {}, setFontSize } };
+        const handlers = createMessageHandlers(deps);
+
+        handlers.setFontSize?.({ type: "setFontSize", size: 9999 }, container);
+
+        expect(document.documentElement.style.getPropertyValue("--content-font-scale").trim()).toBe("2");
+        expect(setFontSize).toHaveBeenCalledWith(200);
+    });
+
+    it("without a toolbar controller it should still set the CSS variable", () => {
+        const handlers = createMessageHandlers(stubDeps());
+
+        handlers.setFontSize?.({ type: "setFontSize", size: 90 }, container);
+
+        expect(document.documentElement.style.getPropertyValue("--content-font-scale").trim()).toBe("0.9");
+    });
+});
+
 describe("toolbarConfig handler", () => {
     beforeEach(() => vi.clearAllMocks());
 
     it("a toolbarConfig message should forward the config to the toolbar controller", () => {
         // Arrange
         const applyConfig = vi.fn();
-        const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig, setFontPreset() {} } };
+        const deps = { ...stubDeps(), topbarTb: { onSelectionChange() {}, setDebugMode() {}, applyConfig, setFontPreset() {}, setFontSize() {} } };
         const handlers = createMessageHandlers(deps);
 
         // Act

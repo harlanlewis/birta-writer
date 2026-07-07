@@ -163,6 +163,10 @@ export type ToExtensionMessage =
     // Font picker choice from the toolbar; the extension persists it to the
     // `fontPreset` setting, which round-trips back as a `setFontFamily` message.
     | { type: "setFontPreset"; preset: FontPreset }
+    // Font-size stepper choice from the toolbar; the extension persists it to
+    // the `fontSize` setting, which round-trips back as a `setFontSize` message.
+    // `size` is a percentage of the VS Code editor font size.
+    | { type: "setFontSize"; size: number }
     // Drag-and-drop layout change from customize mode. `item` is set only when
     // the dragged item changed placement (zone, or shown/hidden via the tray);
     // `order` is the left-to-right order of the visible items.
@@ -215,6 +219,8 @@ export type ToWebviewMessage =
     // or null to inherit the VS Code editor font; `preset` drives the picker's
     // active state.
     | { type: "setFontFamily"; fontFamily: string | null; preset: FontPreset }
+    // Live content font-size update, as a percentage of the editor font size.
+    | { type: "setFontSize"; size: number }
     | { type: "lintResults"; id: number; results: LintBlockResult[] }
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).

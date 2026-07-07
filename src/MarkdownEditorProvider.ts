@@ -13,7 +13,7 @@ import { lintBlocks } from "./utils/harperService";
 import { resolveThemeColors } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
 import type { EditorCommandId } from "../shared/editorCommands";
-import { resolveFontFamily, DEFAULT_FONT_PRESET } from "../shared/fontPresets";
+import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -615,6 +615,9 @@ export class MarkdownEditorProvider
                     case "setFontPreset":
                         MarkdownEditorProvider.setFontPreset(message.preset);
                         break;
+                    case "setFontSize":
+                        MarkdownEditorProvider.setFontSize(message.size);
+                        break;
                     case "setToolbarLayout":
                         if (message.item) {
                             MarkdownEditorProvider.updateSettingRespectingScope(
@@ -841,6 +844,7 @@ export class MarkdownEditorProvider
         const fontFamily = cfg.get<string>("fontFamily", "");
         const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
         const resolvedFont = resolveFontFamily(fontPreset, fontFamily);
+        const fontSize = clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT));
         const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
         const customJsUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customJs", []));
@@ -876,7 +880,7 @@ export class MarkdownEditorProvider
         // optional-chained so a stripped-down test context still resolves.
         const productName =
             (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "WYSIWYG Markdown Editor";
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, documentUri, productName })};`;
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, fontSize, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -897,7 +901,7 @@ export class MarkdownEditorProvider
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
 	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --custom-font-family: ${resolvedFont};` : ''} --image-selection-color: ${imageSelectionColor}; }</style>
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --custom-font-family: ${resolvedFont};` : ''} --content-font-scale: ${fontSize / 100}; --image-selection-color: ${imageSelectionColor}; }</style>
 	</head>
 	<body class="${bodyClasses}">
 	  <div class="editor-topbar"></div>
@@ -1006,6 +1010,11 @@ export class MarkdownEditorProvider
     /** Persist the font-picker choice (toolbar → settings write-back). */
     public static setFontPreset(preset: FontPreset): void {
         MarkdownEditorProvider.updateSettingRespectingScope("fontPreset", preset);
+    }
+
+    /** Persist the font-size stepper choice (toolbar → settings write-back). */
+    public static setFontSize(size: number): void {
+        MarkdownEditorProvider.updateSettingRespectingScope("fontSize", clampFontSizePercent(size));
     }
 
     /**

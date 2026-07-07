@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { FONT_PRESET_STACKS, resolveFontFamily } from "../fontPresets";
+import * as fs from "fs";
+import * as path from "path";
+import {
+    FONT_PRESET_STACKS,
+    resolveFontFamily,
+    DEFAULT_FONT_SIZE_PERCENT,
+    MIN_FONT_SIZE_PERCENT,
+    MAX_FONT_SIZE_PERCENT,
+    FONT_SIZE_STEP_PERCENT,
+    clampFontSizePercent,
+    stepFontSizePercent,
+} from "../fontPresets";
 
 describe("resolveFontFamily", () => {
     it("a non-default preset should win over a custom font family", () => {
@@ -30,5 +41,55 @@ describe("resolveFontFamily", () => {
 
     it("the default preset with an empty family should return null (inherit editor font)", () => {
         expect(resolveFontFamily("default", "")).toBeNull();
+    });
+});
+
+describe("clampFontSizePercent", () => {
+    it("a value inside the range should be returned rounded to a whole percent", () => {
+        expect(clampFontSizePercent(110)).toBe(110);
+        expect(clampFontSizePercent(112.4)).toBe(112);
+    });
+
+    it("values outside the range should clamp to the min/max bounds", () => {
+        expect(clampFontSizePercent(MIN_FONT_SIZE_PERCENT - 1)).toBe(MIN_FONT_SIZE_PERCENT);
+        expect(clampFontSizePercent(MAX_FONT_SIZE_PERCENT + 500)).toBe(MAX_FONT_SIZE_PERCENT);
+    });
+
+    it("a non-numeric or non-finite value should fall back to the default", () => {
+        expect(clampFontSizePercent(undefined)).toBe(DEFAULT_FONT_SIZE_PERCENT);
+        expect(clampFontSizePercent("120")).toBe(DEFAULT_FONT_SIZE_PERCENT);
+        expect(clampFontSizePercent(NaN)).toBe(DEFAULT_FONT_SIZE_PERCENT);
+        expect(clampFontSizePercent(Infinity)).toBe(DEFAULT_FONT_SIZE_PERCENT);
+    });
+});
+
+describe("stepFontSizePercent", () => {
+    it("a step up/down should move by the step size", () => {
+        expect(stepFontSizePercent(100, 1)).toBe(100 + FONT_SIZE_STEP_PERCENT);
+        expect(stepFontSizePercent(100, -1)).toBe(100 - FONT_SIZE_STEP_PERCENT);
+    });
+
+    it("a step at the bounds should stay clamped", () => {
+        expect(stepFontSizePercent(MAX_FONT_SIZE_PERCENT, 1)).toBe(MAX_FONT_SIZE_PERCENT);
+        expect(stepFontSizePercent(MIN_FONT_SIZE_PERCENT, -1)).toBe(MIN_FONT_SIZE_PERCENT);
+    });
+
+    it("an invalid current value should step from the default", () => {
+        expect(stepFontSizePercent(NaN, 1)).toBe(DEFAULT_FONT_SIZE_PERCENT + FONT_SIZE_STEP_PERCENT);
+    });
+});
+
+describe("fontSize contributed defaults", () => {
+    it("code constants should match the markdownWysiwyg.fontSize contribution", () => {
+        // Drift guard: the Settings UI shows package.json's default/min/max;
+        // the code constants must agree or the toolbar stepper and the
+        // Settings UI would disagree about the valid range.
+        const root = path.resolve(__dirname, "../..");
+        const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+        const prop = pkg.contributes.configuration.properties["markdownWysiwyg.fontSize"];
+        expect(prop).toBeDefined();
+        expect(prop.default).toBe(DEFAULT_FONT_SIZE_PERCENT);
+        expect(prop.minimum).toBe(MIN_FONT_SIZE_PERCENT);
+        expect(prop.maximum).toBe(MAX_FONT_SIZE_PERCENT);
     });
 });

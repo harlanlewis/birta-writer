@@ -14,6 +14,8 @@ declare global {
             toolbar?: ToolbarConfig;
             /** Editor content font preset (drives the toolbar font picker). */
             fontPreset?: FontPreset;
+            /** Content font size as a percentage of the editor font size. */
+            fontSize?: number;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */
             documentUri?: string;
             /** The extension's display name (package.json), for UI that names the product. */

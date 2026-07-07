@@ -12,6 +12,7 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
 import { editorViewCtx } from "@milkdown/core";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
+import { clampFontSizePercent } from "../shared/fontPresets";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions } from "./components/pathLink/linkTargetComplete";
@@ -69,6 +70,8 @@ export interface ToolbarController {
     applyConfig(config: import("../shared/messages").ToolbarConfig): void;
     /** Update the font picker's active-preset indicator. */
     setFontPreset(preset: import("../shared/messages").FontPreset): void;
+    /** Update the font picker's size-stepper display (percent). */
+    setFontSize(size: number): void;
 }
 
 /** Editor state-management interface. */
@@ -290,6 +293,11 @@ export function createMessageHandlers(
                 root.style.removeProperty("--custom-font-family");
             }
             topbarTb?.setFontPreset(msg.preset);
+        },
+        setFontSize(msg) {
+            const size = clampFontSizePercent(msg.size);
+            document.documentElement.style.setProperty("--content-font-scale", String(size / 100));
+            topbarTb?.setFontSize(size);
         },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);

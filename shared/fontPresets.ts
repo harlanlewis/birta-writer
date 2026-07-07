@@ -13,6 +13,32 @@ import type { FontPreset } from "./messages";
  */
 export const DEFAULT_FONT_PRESET: FontPreset = "mono";
 
+/**
+ * Content font size, as a percentage of the VS Code editor font size.
+ * A relative scale (rather than a fixed px value) keeps the content tracking
+ * the user's `editor.fontSize` and window zoom; 100 means "same as the editor".
+ * The default must stay in sync with the `markdownWysiwyg.fontSize` default
+ * declared in package.json.
+ */
+export const DEFAULT_FONT_SIZE_PERCENT = 100;
+export const MIN_FONT_SIZE_PERCENT = 50;
+export const MAX_FONT_SIZE_PERCENT = 200;
+/** Step used by the toolbar's A− / A+ buttons. */
+export const FONT_SIZE_STEP_PERCENT = 10;
+
+/** Clamp any config/message value to a valid whole font-size percentage. */
+export function clampFontSizePercent(value: unknown): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return DEFAULT_FONT_SIZE_PERCENT;
+    }
+    return Math.min(MAX_FONT_SIZE_PERCENT, Math.max(MIN_FONT_SIZE_PERCENT, Math.round(value)));
+}
+
+/** One A− / A+ step from `current`, clamped to the valid range. */
+export function stepFontSizePercent(current: number, direction: 1 | -1): number {
+    return clampFontSizePercent(clampFontSizePercent(current) + direction * FONT_SIZE_STEP_PERCENT);
+}
+
 /** Font-family stacks for the non-default presets. */
 export const FONT_PRESET_STACKS: Record<Exclude<FontPreset, "default">, string> = {
     sans: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',

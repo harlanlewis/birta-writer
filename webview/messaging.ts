@@ -118,6 +118,11 @@ export function notifySetFontPreset(preset: import("../shared/messages").FontPre
     vscode.postMessage({ type: "setFontPreset", preset });
 }
 
+/** Persist the content font size (percent of the editor font size). */
+export function notifySetFontSize(size: number): void {
+    vscode.postMessage({ type: "setFontSize", size });
+}
+
 export function notifySetToolbarLayout(
     item: { id: string; placement: import("../shared/messages").ToolbarPlacement } | undefined,
     order: string[],

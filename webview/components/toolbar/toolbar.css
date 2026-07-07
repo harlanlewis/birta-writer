@@ -138,6 +138,65 @@
     white-space: nowrap;
 }
 
+/* ─── Font menu size stepper (A− <percent> A+) ─── */
+.tb-font-size-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    padding: 3px 8px 5px;
+}
+
+.tb-font-size-btn,
+.tb-font-size-value {
+    background: none;
+    border: none;
+    border-radius: 3px;
+    padding: 0;
+    color: var(--vscode-editorHoverWidget-foreground, #ccc);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+        background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+    }
+}
+
+.tb-font-size-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 22px;
+    font-weight: 700;
+    line-height: 1;
+
+    &:disabled {
+        opacity: 0.35;
+        cursor: default;
+    }
+}
+
+/* The two "A" glyphs read as smaller/larger; align on the shared baseline. */
+.tb-font-size-btn--dec {
+    font-size: 10px;
+    align-items: flex-end;
+    padding-bottom: 4px;
+}
+
+.tb-font-size-btn--inc {
+    font-size: 14px;
+    align-items: flex-end;
+    padding-bottom: 2px;
+}
+
+.tb-font-size-value {
+    min-width: 42px;
+    height: 22px;
+    text-align: center;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
 .tb-fmt-label {
     font-size: 11px;
     font-weight: 700;

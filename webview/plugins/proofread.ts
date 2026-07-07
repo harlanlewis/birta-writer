@@ -56,26 +56,26 @@ type ProofreadMeta =
 
 export const proofreadPluginKey = new PluginKey<ProofreadState>("proofread");
 
-const DEFAULT_CONFIG: ProofreadConfig = {
-    styleCheck: false,
-    // Phrase categories — high-signal, on by default.
+// Fallback when the injected __i18n.proofread snapshot is missing. Every check
+// defaults ON (maintainer decision), matching the contributed setting defaults
+// in package.json — see shared/__tests__/proofreadDefaultsContributions.test.ts.
+export const DEFAULT_CONFIG: ProofreadConfig = {
+    styleCheck: true,
     fillers: true,
     redundancies: true,
     cliches: true,
     wordiness: true,
     aiVocabulary: true,
     aiArtifacts: true,
-    // Structural — passive + negative parallelism are high-signal; the noisier
-    // or more opinionated checks default off.
     passive: true,
     negativeParallelism: true,
-    longSentences: false,
-    ruleOfThree: false,
-    emDash: false,
-    nonAsciiPunct: false,
+    longSentences: true,
+    ruleOfThree: true,
+    emDash: true,
+    nonAsciiPunct: true,
     styleExceptions: [],
-    spellCheck: false,
-    grammarCheck: false,
+    spellCheck: true,
+    grammarCheck: true,
     userWords: [],
 };
 

@@ -29,7 +29,7 @@ import {
 } from "@/ui/icons";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetToolbarLayout } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetToolbarLayout } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
@@ -43,7 +43,14 @@ import type { ToolbarItemId } from './registry';
 import { enterEditMode } from './dnd';
 import { wireHoverMenu } from './hoverMenu';
 import type { ToolbarConfig, FontPreset, ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
-import { FONT_PRESET_STACKS } from "../../../shared/fontPresets";
+import {
+    FONT_PRESET_STACKS,
+    DEFAULT_FONT_SIZE_PERCENT,
+    MIN_FONT_SIZE_PERCENT,
+    MAX_FONT_SIZE_PERCENT,
+    clampFontSizePercent,
+    stepFontSizePercent,
+} from "../../../shared/fontPresets";
 import './toolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -732,6 +739,8 @@ export function initToolbar(
     applyConfig: (config: ToolbarConfig) => void;
     /** Update the font picker's active-preset indicator. */
     setFontPreset: (preset: FontPreset) => void;
+    /** Update the font picker's size-stepper display (percent). */
+    setFontSize: (size: number) => void;
     /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
     openLinkPrompt: () => void;
 } {
@@ -782,6 +791,42 @@ export function initToolbar(
                 preset === "default" ? "" : FONT_PRESET_STACKS[preset];
         }
     }
+    // ── Font size state ──
+    // Percent of the VS Code editor font size (100 = same). Like the preset,
+    // the persisted value is echoed back by the extension after the settings
+    // write, which re-syncs the stepper via setFontSize() on the controller.
+    let currentFontSize: number = clampFontSizePercent(
+        window.__i18n?.fontSize ?? DEFAULT_FONT_SIZE_PERCENT,
+    );
+    let sizeValueEl: HTMLElement | null = null;
+    let sizeDecBtn: HTMLButtonElement | null = null;
+    let sizeIncBtn: HTMLButtonElement | null = null;
+    function setFontSizeActive(size: number): void {
+        currentFontSize = clampFontSizePercent(size);
+        if (sizeValueEl) {
+            sizeValueEl.textContent = `${currentFontSize}%`;
+        }
+        if (sizeDecBtn) {
+            sizeDecBtn.disabled = currentFontSize <= MIN_FONT_SIZE_PERCENT;
+        }
+        if (sizeIncBtn) {
+            sizeIncBtn.disabled = currentFontSize >= MAX_FONT_SIZE_PERCENT;
+        }
+    }
+    function pickFontSize(size: number): void {
+        if (size === currentFontSize) {
+            return;
+        }
+        setFontSizeActive(size);
+        // Apply immediately so repeated clicks give live feedback; the settings
+        // round-trip re-broadcasts the same value to every open editor.
+        document.documentElement.style.setProperty(
+            "--content-font-scale",
+            String(currentFontSize / 100),
+        );
+        notifySetFontSize(currentFontSize);
+    }
+
     function createFontPicker(): HTMLElement {
         const fontWrap = document.createElement("div");
         fontWrap.className = "tb-fmt-wrap";
@@ -820,6 +865,54 @@ export function initToolbar(
             fontEntries.push({ preset, item });
         }
         setFontActive(currentFontPreset);
+
+        // ── Size stepper: A− <percent> A+ ──
+        // Scales the document content (and frontmatter) relative to the VS Code
+        // editor font size; clicking the percent resets to the default. Clicks
+        // keep the menu open, like the checks menu, so steps can be repeated.
+        const sizeSep = document.createElement("div");
+        sizeSep.className = "tb-menu-sep";
+        sizeSep.setAttribute("role", "separator");
+        fontMenu.appendChild(sizeSep);
+
+        const sizeRow = document.createElement("div");
+        sizeRow.className = "tb-font-size-row";
+        const sizeBtn = (
+            cls: string,
+            label: string,
+            onPick: () => void,
+        ): HTMLButtonElement => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = `tb-font-size-btn ${cls}`;
+            b.textContent = "A";
+            b.title = label;
+            b.setAttribute("aria-label", label);
+            b.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onPick();
+            });
+            return b;
+        };
+        sizeDecBtn = sizeBtn("tb-font-size-btn--dec", t("Decrease font size"), () =>
+            pickFontSize(stepFontSizePercent(currentFontSize, -1)),
+        );
+        sizeIncBtn = sizeBtn("tb-font-size-btn--inc", t("Increase font size"), () =>
+            pickFontSize(stepFontSizePercent(currentFontSize, 1)),
+        );
+        sizeValueEl = document.createElement("button");
+        sizeValueEl.setAttribute("type", "button");
+        sizeValueEl.className = "tb-font-size-value";
+        sizeValueEl.title = t("Reset font size");
+        sizeValueEl.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            pickFontSize(DEFAULT_FONT_SIZE_PERCENT);
+        });
+        sizeRow.append(sizeDecBtn, sizeValueEl, sizeIncBtn);
+        fontMenu.appendChild(sizeRow);
+        setFontSizeActive(currentFontSize);
 
         wireHoverMenu(fontWrap, fontBtn, fontMenu);
 
@@ -1567,6 +1660,9 @@ export function initToolbar(
         },
         setFontPreset(preset: FontPreset): void {
             setFontActive(preset);
+        },
+        setFontSize(size: number): void {
+            setFontSizeActive(size);
         },
         openLinkPrompt,
     };

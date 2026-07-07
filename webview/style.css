@@ -55,7 +55,10 @@ body {
 }
 
 /* The editor content — the reader-facing document. This is the only surface
-   that honors the content-font preset and the content type scale. */
+   that honors the content-font preset and the content type scale.
+   --content-font-scale is the fontSize setting as a ratio (100% → 1): a
+   multiplier over the VS Code editor font size, so editor.fontSize changes
+   and window zoom still flow through. */
 #editor {
     font-family: var(
         --custom-font-family,
@@ -67,7 +70,7 @@ body {
             sans-serif
         )
     );
-    font-size: var(--vscode-editor-font-size, 14px);
+    font-size: calc(var(--vscode-editor-font-size, 14px) * var(--content-font-scale, 1));
     line-height: 1.6;
 }
 
@@ -86,6 +89,9 @@ html {
     margin: 0 auto;
     padding: 56px 48px 0;
     --editor-content-left-padding: 48px;
+    /* Document surface, like #editor: keeps the UI font but follows the
+       content font-size scale (1em = the body's UI font size). */
+    font-size: calc(1em * var(--content-font-scale, 1));
 }
 
 .frontmatter-table {
