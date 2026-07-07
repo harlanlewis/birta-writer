@@ -1,5 +1,11 @@
 let tooltipEl: HTMLElement | null = null;
 
+// Element the visible tooltip belongs to. Hover and keyboard focus share the
+// one tooltip element, so dismissal must be owner-checked: without it, the
+// mouse leaving button A would hide the tooltip keyboard focus just opened
+// on button B.
+let ownerEl: HTMLElement | null = null;
+
 function getTooltip(): HTMLElement {
     if (!tooltipEl) {
         tooltipEl = document.createElement("div");
@@ -63,6 +69,7 @@ function position(
 
 /** Immediately hide the currently visible tooltip (e.g. to clear it after a click interaction) */
 export function hideTooltip(): void {
+    ownerEl = null;
     if (tooltipEl) {
         tooltipEl.style.display = "none";
     }
@@ -77,6 +84,18 @@ export function showTooltipAt(
     const tip = getTooltip();
     tip.textContent = text;
     position(tip, el as HTMLElement, placement);
+    ownerEl = el as HTMLElement;
+}
+
+// True when focus should surface hover affordances, i.e. keyboard focus.
+// Falls back to showing where the selector engine lacks :focus-visible
+// (jsdom in tests).
+function isKeyboardFocus(el: HTMLElement): boolean {
+    try {
+        return el.matches(":focus-visible");
+    } catch {
+        return true;
+    }
 }
 
 /** Replace the native title with a VSCode-style custom tooltip */
@@ -90,7 +109,7 @@ export function applyTooltip(
 
     el.removeAttribute("title");
 
-    el.addEventListener("mouseenter", () => {
+    const show = () => {
         if (!currentText) {
             return;
         }
@@ -100,11 +119,31 @@ export function applyTooltip(
         const tip = getTooltip();
         tip.textContent = currentText;
         position(tip, el, placement);
-    });
+        ownerEl = el;
+    };
+    const hideIfOwner = () => {
+        if (ownerEl === el) {
+            hideTooltip();
+        }
+    };
 
-    el.addEventListener("mouseleave", () => {
-        if (tooltipEl) {
-            tooltipEl.style.display = "none";
+    el.addEventListener("mouseenter", show);
+    el.addEventListener("mouseleave", hideIfOwner);
+
+    // Keyboard parity with hover: tabbing onto the control surfaces the
+    // tooltip, leaving hides it. Click focus stays silent (not
+    // :focus-visible) — mouse users already get the hover path. Escape
+    // dismisses without claiming the key, so overlays underneath (e.g.
+    // the find bar's own Escape-to-close) still see it.
+    el.addEventListener("focus", () => {
+        if (isKeyboardFocus(el)) {
+            show();
+        }
+    });
+    el.addEventListener("blur", hideIfOwner);
+    el.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            hideIfOwner();
         }
     });
 
@@ -119,6 +158,7 @@ export function applyTooltip(
             const tip = getTooltip();
             tip.textContent = currentText;
             position(tip, el, placement);
+            ownerEl = el;
         },
     };
 }
