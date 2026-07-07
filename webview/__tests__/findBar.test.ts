@@ -399,6 +399,168 @@ describe("initFindBar editor-focused navigation (findNext/findPrev)", () => {
     });
 });
 
+describe("initFindBar tab order", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    const tab = (shiftKey = false) =>
+        new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+
+    it("Tab in the find input with the replace row visible should focus the replace input", () => {
+        const { findBar, findInput, replaceInput } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true });
+        const e = tab();
+        findInput.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(replaceInput);
+    });
+
+    it("Tab in the find input should select the replace input's existing text", () => {
+        const { findBar, findInput, replaceInput } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true });
+        replaceInput.value = "baz";
+        findInput.dispatchEvent(tab());
+        expect(replaceInput.selectionStart).toBe(0);
+        expect(replaceInput.selectionEnd).toBe(3);
+    });
+
+    it("Tab in the find input with the replace row hidden should fall through to the browser", () => {
+        const { findBar, findInput } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo");
+        const e = tab();
+        findInput.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(false);
+        expect(document.activeElement).toBe(findInput);
+    });
+
+    it("Shift+Tab in the find input should fall through to the browser", () => {
+        const { findBar, findInput } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true });
+        const e = tab(true);
+        findInput.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(false);
+    });
+
+    it("Shift+Tab in the replace input should focus the find input", () => {
+        const { findBar, findInput, replaceInput } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true, focusReplace: true });
+        const e = tab(true);
+        replaceInput.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(findInput);
+    });
+
+    it("Tab in the replace input should fall through to the replace buttons", () => {
+        const { findBar, replaceInput } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true, focusReplace: true });
+        const e = tab();
+        replaceInput.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(false);
+    });
+
+    it("Tab on the Replace All button should wrap to the Previous Match button", () => {
+        const { findBar, btnReplaceAll, btnPrev } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true });
+        btnReplaceAll.focus();
+        const e = tab();
+        btnReplaceAll.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(btnPrev);
+    });
+
+    it("Shift+Tab on the Previous Match button should wrap to the Replace All button", () => {
+        const { findBar, btnReplaceAll, btnPrev } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true });
+        btnPrev.focus();
+        const e = tab(true);
+        btnPrev.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(btnReplaceAll);
+    });
+
+    it("Shift+Tab on the Previous Match button with replace hidden should fall through", () => {
+        const { findBar, btnPrev } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo");
+        btnPrev.focus();
+        const e = tab(true);
+        btnPrev.dispatchEvent(e);
+        expect(e.defaultPrevented).toBe(false);
+    });
+
+    it("every row control should be keyboard-reachable with the replace row open", () => {
+        // Walk the widget's forward Tab cycle by combining the custom jumps
+        // with DOM-order traversal (jsdom does not move focus on Tab
+        // natively, so default-untouched events advance to the next tabbable
+        // sibling). The toggle-replace chevron precedes the find input in
+        // DOM order and is reached by Shift+Tab instead (asserted above), so
+        // it is excluded from the forward cycle.
+        const { findBar, bar, findInput, btnToggle } = setup(mkDoc(p("foo bar foo")));
+        findBar.open("foo", { showReplace: true });
+        const order = Array.from(bar.querySelectorAll<HTMLElement>("input, button"));
+        const visited = new Set<HTMLElement>();
+        let el: HTMLElement = findInput;
+        for (let i = 0; i < 20 && !visited.has(el); i++) {
+            visited.add(el);
+            el.focus();
+            const e = tab();
+            el.dispatchEvent(e);
+            el = e.defaultPrevented
+                ? (document.activeElement as HTMLElement)
+                : order[(order.indexOf(el) + 1) % order.length];
+        }
+        for (const control of order) {
+            if (control === btnToggle) { continue; }
+            expect(visited, `unreachable: ${control.getAttribute("aria-label")}`).toContain(control);
+        }
+    });
+});
+
+describe("initFindBar toggle accelerators", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    // jsdom is a non-mac platform, so the chord is plain Alt+letter
+    const alt = (code: string) =>
+        new KeyboardEvent("keydown", { code, altKey: true, bubbles: true, cancelable: true });
+
+    it("Alt+C should toggle case-sensitive matching", () => {
+        const { findBar, findInput, btnCase, count } = setup(mkDoc(p("Foo bar foo")));
+        findBar.open("foo");
+        expect(count.textContent).toBe("1/2");
+        findInput.dispatchEvent(alt("KeyC"));
+        expect(btnCase.getAttribute("aria-pressed")).toBe("true");
+        expect(count.textContent).toBe("1/1");
+    });
+
+    it("Alt+W should toggle whole-word matching", () => {
+        const { findBar, findInput, btnWord } = setup(mkDoc(p("cat concatenate")));
+        findBar.open("cat");
+        findInput.dispatchEvent(alt("KeyW"));
+        expect(btnWord.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("Alt+R should toggle regex matching", () => {
+        const { findBar, replaceInput, btnRegex } = setup(mkDoc(p("foo123")));
+        findBar.open("[a-z]+\\d+", { showReplace: true, focusReplace: true });
+        // works from the replace input too: the listener sits on the bar
+        replaceInput.dispatchEvent(alt("KeyR"));
+        expect(btnRegex.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("a plain letter without the chord should not toggle", () => {
+        const { findBar, findInput, btnCase } = setup(mkDoc(p("foo")));
+        findBar.open("foo");
+        findInput.dispatchEvent(
+            new KeyboardEvent("keydown", { code: "KeyC", bubbles: true, cancelable: true }),
+        );
+        expect(btnCase.getAttribute("aria-pressed")).toBe("false");
+    });
+});
+
 describe("initFindBar source-based matching", () => {
     beforeEach(() => {
         vi.clearAllMocks();

@@ -159,10 +159,16 @@ export function initFindBar(
     const sep = document.createElement("div");
     sep.className = "find-bar__sep";
 
+    // Toggle accelerators follow VS Code's find widget: Alt+C/W/R, except on
+    // macOS where a bare Option chord types a dead character, so ⌘⌥ instead.
+    const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
+    const toggleKbd = (letter: string) =>
+        kbd(isMac ? `Mod-Alt-${letter}` : `Alt-${letter}`);
+
     const btnCase = createButton({
         className: "find-bar__btn",
         label: "Aa",
-        title: t("Match Case"),
+        title: `${t("Match Case")} (${toggleKbd("C")})`,
     });
     btnCase.setAttribute("aria-label", t("Match Case"));
     btnCase.setAttribute("aria-pressed", "false");
@@ -170,7 +176,7 @@ export function initFindBar(
     const btnWord = createButton({
         className: "find-bar__btn",
         label: "ab",
-        title: t("Match Whole Word"),
+        title: `${t("Match Whole Word")} (${toggleKbd("W")})`,
     });
     btnWord.setAttribute("aria-label", t("Match Whole Word"));
     btnWord.setAttribute("aria-pressed", "false");
@@ -178,7 +184,7 @@ export function initFindBar(
     const btnRegex = createButton({
         className: "find-bar__btn",
         label: ".*",
-        title: t("Use Regular Expression"),
+        title: `${t("Use Regular Expression")} (${toggleKbd("R")})`,
     });
     btnRegex.setAttribute("aria-label", t("Use Regular Expression"));
     btnRegex.setAttribute("aria-pressed", "false");
@@ -737,6 +743,13 @@ export function initFindBar(
             close();
         } else if ((e.metaKey || e.ctrlKey) && e.code === "KeyF") {
             e.preventDefault();
+        } else if (e.key === "Tab" && !e.shiftKey && replaceVisible) {
+            // VS Code find-widget convention: Tab jumps straight to the
+            // replace input, skipping the find row's buttons.
+            e.preventDefault();
+            e.stopPropagation();
+            replaceInput.focus();
+            replaceInput.select();
         }
     });
 
@@ -748,6 +761,33 @@ export function initFindBar(
         } else if (e.key === "Escape") {
             e.preventDefault();
             close();
+        } else if (e.key === "Tab" && e.shiftKey) {
+            // Mirror of Tab-from-find: back to the find input, not the
+            // close button that precedes this row in DOM order.
+            e.preventDefault();
+            e.stopPropagation();
+            input.focus();
+            input.select();
+        }
+    });
+
+    // The input shortcuts above skip the find row's buttons, so close the
+    // Tab loop at the widget's edges or those buttons become unreachable
+    // by keyboard while the replace row is open: forward wraps after
+    // Replace All to the first find-row button, backward mirrors it.
+    // Escape remains the way out (it returns focus to the editor).
+    btnReplaceAll.addEventListener("keydown", (e) => {
+        if (e.key === "Tab" && !e.shiftKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            btnPrev.focus();
+        }
+    });
+    btnPrev.addEventListener("keydown", (e) => {
+        if (e.key === "Tab" && e.shiftKey && replaceVisible) {
+            e.preventDefault();
+            e.stopPropagation();
+            btnReplaceAll.focus();
         }
     });
 
@@ -772,6 +812,24 @@ export function initFindBar(
     bindToggle(btnCase, () => caseSensitive, (v) => { caseSensitive = v; });
     bindToggle(btnWord, () => wholeWord, (v) => { wholeWord = v; });
     bindToggle(btnRegex, () => regexMode, (v) => { regexMode = v; });
+
+    // Toggle accelerators (see toggleKbd above) work from anywhere in the
+    // bar, mirroring VS Code's find widget.
+    bar.addEventListener("keydown", (e) => {
+        const chord = isMac
+            ? e.metaKey && e.altKey && !e.ctrlKey
+            : e.altKey && !e.ctrlKey && !e.metaKey;
+        if (!chord || e.shiftKey) { return; }
+        const btn = e.code === "KeyC" ? btnCase
+            : e.code === "KeyW" ? btnWord
+            : e.code === "KeyR" ? btnRegex
+            : null;
+        if (btn) {
+            e.preventDefault();
+            e.stopPropagation();
+            btn.click();
+        }
+    });
 
     // Stop mousedown inside the bar from bubbling into the editor
     bar.addEventListener("mousedown", (e) => e.stopPropagation());
