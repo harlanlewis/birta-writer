@@ -13,7 +13,7 @@ import { lintBlocks } from "./utils/harperService";
 import { resolveThemeColors } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
 import type { EditorCommandId } from "../shared/editorCommands";
-import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
+import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -548,7 +548,12 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "openSettings":
-                        vscode.commands.executeCommand('workbench.action.openSettings', 'markdownWysiwyg');
+                        // An optional query narrows the filter (e.g. the font
+                        // settings); anything outside our namespace is ignored.
+                        vscode.commands.executeCommand(
+                            'workbench.action.openSettings',
+                            message.query?.startsWith('markdownWysiwyg') ? message.query : 'markdownWysiwyg',
+                        );
                         break;
                     case "openKeybindings":
                         // Filtered to this extension's commands; shows the
@@ -843,7 +848,8 @@ export class MarkdownEditorProvider
         const isAutoWidth = editorMaxWidth === "none";
         const fontFamily = cfg.get<string>("fontFamily", "");
         const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
-        const resolvedFont = resolveFontFamily(fontPreset, fontFamily);
+        const fontStacks = MarkdownEditorProvider.getFontStacks(cfg);
+        const resolvedFont = resolveFontFamily(fontPreset, fontFamily, fontStacks);
         const fontSize = clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT));
         const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
@@ -880,7 +886,7 @@ export class MarkdownEditorProvider
         // optional-chained so a stripped-down test context still resolves.
         const productName =
             (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "WYSIWYG Markdown Editor";
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, fontSize, documentUri, productName })};`;
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, fontStacks, fontSize, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -1010,6 +1016,16 @@ export class MarkdownEditorProvider
     /** Persist the font-picker choice (toolbar → settings write-back). */
     public static setFontPreset(preset: FontPreset): void {
         MarkdownEditorProvider.updateSettingRespectingScope("fontPreset", preset);
+    }
+
+    /** The effective per-preset font stacks (user overrides over the built-ins). */
+    public static getFontStacks(cfg?: vscode.WorkspaceConfiguration): import("../shared/messages").FontStacks {
+        const c = cfg ?? vscode.workspace.getConfiguration("markdownWysiwyg");
+        return resolveFontStacks({
+            sans: c.get<string>("fontFamilySans", ""),
+            serif: c.get<string>("fontFamilySerif", ""),
+            mono: c.get<string>("fontFamilyMono", ""),
+        });
     }
 
     /** Persist the font-size stepper choice (toolbar → settings write-back). */

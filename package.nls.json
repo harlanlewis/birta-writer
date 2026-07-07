@@ -21,11 +21,14 @@
   "config.customCss.description": "Custom CSS files to load in the Markdown preview editor. Use absolute paths, workspace-relative paths, or ~/ paths.",
   "config.customJs.description": "Custom JavaScript files to load in the Markdown preview editor. Use absolute paths, workspace-relative paths, or ~/ paths.",
   "config.fontFamily.description": "Font family for the editor body text. Leave empty to inherit the VS Code editor font. Example: Georgia, serif or PingFang SC, sans-serif. Only applies when Font Preset is 'default'.",
-  "config.fontPreset.description": "Editor content font. Defaults to monospace. Pick sans-serif, serif, or monospace from the toolbar font picker, or set this to 'default' to use the Font Family setting (or the VS Code editor font when that is empty).",
+  "config.fontPreset.description": "Editor content font. Defaults to sans-serif. Pick sans-serif, serif, or monospace from the toolbar font picker, or set this to 'default' to use the Font Family setting (or the VS Code editor font when that is empty).",
   "config.fontPreset.default": "Use the Font Family setting, or the VS Code editor font.",
   "config.fontPreset.sans": "Sans-serif stack (system UI fonts).",
   "config.fontPreset.serif": "Serif stack (Iowan Old Style, Palatino, Georgia...).",
   "config.fontPreset.mono": "Monospace stack (Cascadia Code, Menlo, Consolas...).",
+  "config.fontFamilySans.description": "Font-family stack used by the 'Sans serif' preset. Edit to define your own sans-serif stack.",
+  "config.fontFamilySerif.description": "Font-family stack used by the 'Serif' preset. Edit to define your own serif stack.",
+  "config.fontFamilyMono.description": "Font-family stack used by the 'Monospace' preset. Edit to define your own monospace stack.",
   "config.fontSize.description": "Content font size, as a percentage of the VS Code editor font size (50–200). Scales the rendered markdown and frontmatter only, not the surrounding UI; 100 matches the editor font size. Also adjustable from the toolbar font picker.",
   "command.debugModeEnable.title": "Debug Mode",
   "command.debugModeDisable.title": "✓ Debug Mode",
@@ -105,6 +108,6 @@
   "command.editor.copyAsMarkdown.title": "Copy as Markdown",
   "command.editor.editRawMarkdown.title": "Edit Raw Markdown",
   "command.editor.customizeToolbar.title": "Customize Toolbar",
-  "command.editor.openExtensionSettings.title": "Extension Settings",
+  "command.editor.openExtensionSettings.title": "WYSIWYG Markdown Editor Settings",
   "command.editor.openKeyboardShortcuts.title": "Keyboard Shortcuts"
 }

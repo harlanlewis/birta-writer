@@ -1,4 +1,4 @@
-import type { ProofreadConfig, ToolbarConfig, FontPreset } from "../../shared/messages";
+import type { ProofreadConfig, ToolbarConfig, FontPreset, FontStacks } from "../../shared/messages";
 
 declare global {
     interface Window {
@@ -14,6 +14,8 @@ declare global {
             toolbar?: ToolbarConfig;
             /** Editor content font preset (drives the toolbar font picker). */
             fontPreset?: FontPreset;
+            /** Effective per-preset font stacks (user overrides applied). */
+            fontStacks?: FontStacks;
             /** Content font size as a percentage of the editor font size. */
             fontSize?: number;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */

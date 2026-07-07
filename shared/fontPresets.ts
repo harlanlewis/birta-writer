@@ -3,7 +3,7 @@
  * Editor content font presets shared by the extension (startup injection +
  * live config broadcast) and the webview (toolbar font picker).
  */
-import type { FontPreset } from "./messages";
+import type { FontPreset, FontStacks } from "./messages";
 
 /**
  * The default content-font preset. Must stay in sync with the
@@ -11,7 +11,7 @@ import type { FontPreset } from "./messages";
  * every `getConfiguration().get("fontPreset", …)` call so the code fallback
  * can never diverge from the contributed default.
  */
-export const DEFAULT_FONT_PRESET: FontPreset = "mono";
+export const DEFAULT_FONT_PRESET: FontPreset = "sans";
 
 /**
  * Content font size, as a percentage of the VS Code editor font size.
@@ -39,12 +39,29 @@ export function stepFontSizePercent(current: number, direction: 1 | -1): number 
     return clampFontSizePercent(clampFontSizePercent(current) + direction * FONT_SIZE_STEP_PERCENT);
 }
 
-/** Font-family stacks for the non-default presets. */
-export const FONT_PRESET_STACKS: Record<Exclude<FontPreset, "default">, string> = {
+/**
+ * Built-in font-family stacks for the non-default presets. These are also the
+ * contributed defaults of the `markdownWysiwyg.fontFamilySans/Serif/Mono`
+ * settings (drift-guarded by a test), so users see — and can edit — the real
+ * stack in the Settings UI rather than an empty field.
+ */
+export const FONT_PRESET_STACKS: FontStacks = {
     sans: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
     serif: '"Iowan Old Style", "Palatino", Charter, ui-serif, Georgia, serif',
     mono: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace',
 };
+
+/**
+ * The effective per-preset stacks: the user's `fontFamilySans/Serif/Mono`
+ * setting when non-blank, else the built-in stack.
+ */
+export function resolveFontStacks(overrides: Partial<Record<keyof FontStacks, string>>): FontStacks {
+    const pick = (key: keyof FontStacks): string => {
+        const custom = overrides[key]?.trim();
+        return custom ? custom : FONT_PRESET_STACKS[key];
+    };
+    return { sans: pick("sans"), serif: pick("serif"), mono: pick("mono") };
+}
 
 /**
  * Resolve the effective content font-family for a preset.
@@ -54,9 +71,13 @@ export const FONT_PRESET_STACKS: Record<Exclude<FontPreset, "default">, string> 
  * custom font). "default" falls back to the custom family when set, else null
  * — meaning "inherit the VS Code editor font".
  */
-export function resolveFontFamily(preset: FontPreset, customFontFamily: string): string | null {
+export function resolveFontFamily(
+    preset: FontPreset,
+    customFontFamily: string,
+    stacks: FontStacks = FONT_PRESET_STACKS,
+): string | null {
     if (preset !== "default") {
-        return FONT_PRESET_STACKS[preset];
+        return stacks[preset];
     }
     const trimmed = customFontFamily.trim();
     return trimmed ? trimmed : null;

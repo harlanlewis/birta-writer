@@ -12,7 +12,13 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
-import { EDITOR_COMMANDS, EDITOR_COMMAND_PREFIX, editorCommandName } from "../editorCommands";
+import {
+    EDITOR_COMMANDS,
+    EDITOR_COMMAND_PREFIX,
+    editorCommandName,
+    TOOLBAR_MENU_COMMANDS,
+    SETTINGS_TITLE_TEMPLATE,
+} from "../editorCommands";
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -72,6 +78,30 @@ describe("editor command contributions", () => {
                 expect(entry!.when).toContain("webviewId == 'markdownWysiwyg.editor'");
             }
         }
+    });
+
+    it("the settings entry title should be '<displayName> Settings' (gear menu renders the same template)", () => {
+        // The gear dropdown renders SETTINGS_TITLE_TEMPLATE with the runtime
+        // product name; the contributed command bakes the name in at authoring
+        // time. All three must agree or the two menus diverge on a rename.
+        const expected = SETTINGS_TITLE_TEMPLATE.replace("{product}", pkg.displayName);
+        const meta = EDITOR_COMMANDS.find((m) => m.id === "openExtensionSettings");
+        expect(meta?.title).toBe(expected);
+        expect(nls["command.editor.openExtensionSettings.title"]).toBe(expected);
+    });
+
+    it("the native toolbar context menu order should match the shared table order", () => {
+        // The gear dropdown is built straight from TOOLBAR_MENU_COMMANDS; the
+        // native right-click menu orders by the `1_toolbar@N` group suffix.
+        // Sorting the contributed items by that suffix must reproduce the
+        // table order, so the two menus list the same items in the same order.
+        const contributed = webviewContext
+            .filter((c) => c.when?.includes("webviewSection == 'toolbar'"))
+            .sort((a, b) =>
+                Number(a.group?.split("@")[1] ?? 0) - Number(b.group?.split("@")[1] ?? 0));
+        expect(contributed.map((c) => c.command)).toEqual(
+            TOOLBAR_MENU_COMMANDS.map((m) => editorCommandName(m.id)),
+        );
     });
 
     it("every webview/context item should belong to a table entry that declares that section", () => {

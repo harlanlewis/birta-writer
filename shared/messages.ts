@@ -68,6 +68,9 @@ export type ToolbarConfig = {
 /** Editor content font preset selected from the toolbar font picker. */
 export type FontPreset = "default" | "sans" | "serif" | "mono";
 
+/** Effective font-family stack per non-default preset (user override or built-in). */
+export type FontStacks = { sans: string; serif: string; mono: string };
+
 /**
  * Per-check style-check options (all nested under the `styleCheck` master).
  * Each maps to a `markdownWysiwyg.styleCheck.<key>` boolean setting and to one
@@ -147,7 +150,9 @@ export type ToExtensionMessage =
     | { type: "openFile"; path: string }
     | { type: "debug"; message: string }
     | { type: "switchToTextEditor"; line?: number }
-    | { type: "openSettings" }
+    // `query` optionally narrows the native Settings UI filter (e.g. to the
+    // font settings); it must stay within this extension's namespace.
+    | { type: "openSettings"; query?: string }
     | { type: "openKeybindings" }
     | { type: "uploadImage"; id: string; data: Uint8Array; mimeType: string; altText: string }
     | { type: "getProjectImages"; id: string }
@@ -217,8 +222,9 @@ export type ToWebviewMessage =
     | { type: "toolbarConfig"; config: ToolbarConfig }
     // Live editor content font update. `fontFamily` is the resolved CSS stack,
     // or null to inherit the VS Code editor font; `preset` drives the picker's
-    // active state.
-    | { type: "setFontFamily"; fontFamily: string | null; preset: FontPreset }
+    // active state; `stacks` are the effective per-preset stacks (user
+    // overrides applied) so the picker's row previews match.
+    | { type: "setFontFamily"; fontFamily: string | null; preset: FontPreset; stacks: FontStacks }
     // Live content font-size update, as a percentage of the editor font size.
     | { type: "setFontSize"; size: number }
     | { type: "lintResults"; id: number; results: LintBlockResult[] }

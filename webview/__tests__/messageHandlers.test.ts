@@ -7,6 +7,7 @@ import { mockVscodeApi } from "./setup";
 import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
 import { setEditorCommandHost } from "../editorCommands";
 import type { ToWebviewMessage, ToolbarConfig } from "../../shared/messages";
+import { FONT_PRESET_STACKS } from "../../shared/fontPresets";
 
 /** Minimal deps: the editorCommand handler only reaches state.getEditor. */
 function stubDeps(): MessageHandlerDeps {
@@ -160,13 +161,13 @@ describe("setFontFamily handler", () => {
 
         // Act
         handlers.setFontFamily?.(
-            { type: "setFontFamily", fontFamily: "Georgia, serif", preset: "serif" },
+            { type: "setFontFamily", fontFamily: "Georgia, serif", preset: "serif", stacks: FONT_PRESET_STACKS },
             container,
         );
 
         // Assert
         expect(document.documentElement.style.getPropertyValue("--custom-font-family").trim()).toBe("Georgia, serif");
-        expect(setFontPreset).toHaveBeenCalledWith("serif");
+        expect(setFontPreset).toHaveBeenCalledWith("serif", FONT_PRESET_STACKS);
     });
 
     it("a null font family should remove the --custom-font-family variable", () => {
@@ -176,7 +177,7 @@ describe("setFontFamily handler", () => {
 
         // Act
         handlers.setFontFamily?.(
-            { type: "setFontFamily", fontFamily: null, preset: "default" },
+            { type: "setFontFamily", fontFamily: null, preset: "default", stacks: FONT_PRESET_STACKS },
             container,
         );
 

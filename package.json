@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.58",
+  "version": "0.2.59",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -939,11 +939,29 @@
             "%config.fontPreset.serif%",
             "%config.fontPreset.mono%"
           ],
-          "default": "mono",
+          "default": "sans",
           "description": "%config.fontPreset.description%"
         },
-        "markdownWysiwyg.fontSize": {
+        "markdownWysiwyg.fontFamilySans": {
           "order": 8,
+          "type": "string",
+          "default": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, \"Noto Sans\", sans-serif",
+          "description": "%config.fontFamilySans.description%"
+        },
+        "markdownWysiwyg.fontFamilySerif": {
+          "order": 9,
+          "type": "string",
+          "default": "\"Iowan Old Style\", \"Palatino\", Charter, ui-serif, Georgia, serif",
+          "description": "%config.fontFamilySerif.description%"
+        },
+        "markdownWysiwyg.fontFamilyMono": {
+          "order": 10,
+          "type": "string",
+          "default": "ui-monospace, \"Cascadia Code\", \"Source Code Pro\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace",
+          "description": "%config.fontFamilyMono.description%"
+        },
+        "markdownWysiwyg.fontSize": {
+          "order": 11,
           "type": "number",
           "default": 100,
           "minimum": 50,

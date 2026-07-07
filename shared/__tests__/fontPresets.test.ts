@@ -4,6 +4,8 @@ import * as path from "path";
 import {
     FONT_PRESET_STACKS,
     resolveFontFamily,
+    resolveFontStacks,
+    DEFAULT_FONT_PRESET,
     DEFAULT_FONT_SIZE_PERCENT,
     MIN_FONT_SIZE_PERCENT,
     MAX_FONT_SIZE_PERCENT,
@@ -11,6 +13,10 @@ import {
     clampFontSizePercent,
     stepFontSizePercent,
 } from "../fontPresets";
+
+const root = path.resolve(__dirname, "../..");
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const props: Record<string, { default?: unknown }> = pkg.contributes.configuration.properties;
 
 describe("resolveFontFamily", () => {
     it("a non-default preset should win over a custom font family", () => {
@@ -41,6 +47,40 @@ describe("resolveFontFamily", () => {
 
     it("the default preset with an empty family should return null (inherit editor font)", () => {
         expect(resolveFontFamily("default", "")).toBeNull();
+    });
+
+    it("a custom stacks argument should win over the built-in stack", () => {
+        const stacks = { ...FONT_PRESET_STACKS, serif: "My Serif, serif" };
+        expect(resolveFontFamily("serif", "", stacks)).toBe("My Serif, serif");
+        expect(resolveFontFamily("sans", "", stacks)).toBe(FONT_PRESET_STACKS.sans);
+    });
+});
+
+describe("resolveFontStacks", () => {
+    it("a non-blank override should replace the built-in stack for that preset only", () => {
+        const stacks = resolveFontStacks({ serif: "My Serif, serif" });
+        expect(stacks.serif).toBe("My Serif, serif");
+        expect(stacks.sans).toBe(FONT_PRESET_STACKS.sans);
+        expect(stacks.mono).toBe(FONT_PRESET_STACKS.mono);
+    });
+
+    it("blank or missing overrides should fall back to the built-in stacks", () => {
+        expect(resolveFontStacks({})).toEqual(FONT_PRESET_STACKS);
+        expect(resolveFontStacks({ sans: "   ", serif: "", mono: undefined })).toEqual(FONT_PRESET_STACKS);
+    });
+});
+
+describe("font contributed defaults", () => {
+    it("the fontPreset default should match DEFAULT_FONT_PRESET", () => {
+        expect(props["markdownWysiwyg.fontPreset"]?.default).toBe(DEFAULT_FONT_PRESET);
+    });
+
+    it("the per-preset stack defaults should match the built-in stacks", () => {
+        // The settings ship pre-populated with the real stacks (not blank), so
+        // users can see and edit them; they must not drift from the code.
+        expect(props["markdownWysiwyg.fontFamilySans"]?.default).toBe(FONT_PRESET_STACKS.sans);
+        expect(props["markdownWysiwyg.fontFamilySerif"]?.default).toBe(FONT_PRESET_STACKS.serif);
+        expect(props["markdownWysiwyg.fontFamilyMono"]?.default).toBe(FONT_PRESET_STACKS.mono);
     });
 });
 

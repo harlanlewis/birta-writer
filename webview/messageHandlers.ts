@@ -68,8 +68,8 @@ export interface ToolbarController {
     setDebugMode(enabled: boolean): void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig(config: import("../shared/messages").ToolbarConfig): void;
-    /** Update the font picker's active-preset indicator. */
-    setFontPreset(preset: import("../shared/messages").FontPreset): void;
+    /** Update the font picker's active-preset indicator (and, when provided, its per-preset stack previews). */
+    setFontPreset(preset: import("../shared/messages").FontPreset, stacks?: import("../shared/messages").FontStacks): void;
     /** Update the font picker's size-stepper display (percent). */
     setFontSize(size: number): void;
 }
@@ -292,7 +292,7 @@ export function createMessageHandlers(
             } else {
                 root.style.removeProperty("--custom-font-family");
             }
-            topbarTb?.setFontPreset(msg.preset);
+            topbarTb?.setFontPreset(msg.preset, msg.stacks);
         },
         setFontSize(msg) {
             const size = clampFontSizePercent(msg.size);

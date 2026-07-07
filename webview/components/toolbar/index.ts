@@ -42,15 +42,17 @@ import { computeZones } from './registry';
 import type { ToolbarItemId } from './registry';
 import { enterEditMode } from './dnd';
 import { wireHoverMenu } from './hoverMenu';
-import type { ToolbarConfig, FontPreset, ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
+import type { ToolbarConfig, FontPreset, FontStacks, ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
 import {
     FONT_PRESET_STACKS,
+    DEFAULT_FONT_PRESET,
     DEFAULT_FONT_SIZE_PERCENT,
     MIN_FONT_SIZE_PERCENT,
     MAX_FONT_SIZE_PERCENT,
     clampFontSizePercent,
     stepFontSizePercent,
 } from "../../../shared/fontPresets";
+import { TOOLBAR_MENU_COMMANDS, SETTINGS_TITLE_TEMPLATE } from "../../../shared/editorCommands";
 import './toolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -737,8 +739,8 @@ export function initToolbar(
     setDebugMode: (enabled: boolean) => void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig: (config: ToolbarConfig) => void;
-    /** Update the font picker's active-preset indicator. */
-    setFontPreset: (preset: FontPreset) => void;
+    /** Update the font picker's active-preset indicator (and optional stack previews). */
+    setFontPreset: (preset: FontPreset, stacks?: FontStacks) => void;
     /** Update the font picker's size-stepper display (percent). */
     setFontSize: (size: number) => void;
     /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
@@ -776,19 +778,28 @@ export function initToolbar(
     // ── Font picker state ──
     // The active preset is echoed back from the extension after a settings
     // write, which updates the checkmark via setFontPreset() on the controller.
-    let currentFontPreset: FontPreset = window.__i18n?.fontPreset ?? "mono";
+    let currentFontPreset: FontPreset = window.__i18n?.fontPreset ?? DEFAULT_FONT_PRESET;
+    // Effective per-preset stacks (user's fontFamilySans/Serif/Mono overrides
+    // applied by the extension) — used for the row previews and button glyph.
+    let currentFontStacks: FontStacks = window.__i18n?.fontStacks ?? FONT_PRESET_STACKS;
     const fontEntries: { preset: FontPreset; item: CheckItem }[] = [];
     // The picker button's "A" glyph, rendered in the active preset's stack so
     // the control previews its own choice.
     let fontLabelEl: HTMLElement | null = null;
-    function setFontActive(preset: FontPreset): void {
+    function setFontActive(preset: FontPreset, stacks?: FontStacks): void {
         currentFontPreset = preset;
+        if (stacks) {
+            currentFontStacks = stacks;
+        }
         for (const { preset: p, item } of fontEntries) {
             item.setChecked(p === preset);
+            if (p !== "default") {
+                item.label.style.fontFamily = currentFontStacks[p];
+            }
         }
         if (fontLabelEl) {
             fontLabelEl.style.fontFamily =
-                preset === "default" ? "" : FONT_PRESET_STACKS[preset];
+                preset === "default" ? "" : currentFontStacks[preset];
         }
     }
     // ── Font size state ──
@@ -840,13 +851,14 @@ export function initToolbar(
         fontMenu.className = "tb-fmt-menu tb-font-menu";
         fontMenu.style.display = "none";
 
-        // The picker offers the three built-in font stacks; "default" (inherit the
-        // VS Code font / the Font Family setting) stays a valid setting value for
-        // power users, just not a menu item. Monospace is the default preset.
+        // The picker offers the three preset stacks (user-customizable via the
+        // fontFamilySans/Serif/Mono settings); "default" (inherit the VS Code
+        // font / the Font Family setting) stays a valid setting value for
+        // power users, just not a menu item. Sans serif is the default preset.
         const choices: { preset: FontPreset; label: string; stack: string }[] = [
-            { preset: "sans", label: t("Sans serif"), stack: FONT_PRESET_STACKS.sans },
-            { preset: "serif", label: t("Serif"), stack: FONT_PRESET_STACKS.serif },
-            { preset: "mono", label: t("Monospace"), stack: FONT_PRESET_STACKS.mono },
+            { preset: "sans", label: t("Sans serif"), stack: currentFontStacks.sans },
+            { preset: "serif", label: t("Serif"), stack: currentFontStacks.serif },
+            { preset: "mono", label: t("Monospace"), stack: currentFontStacks.mono },
         ];
         for (const { preset, label, stack } of choices) {
             const item = createCheckItem(label);
@@ -913,6 +925,23 @@ export function initToolbar(
         sizeRow.append(sizeDecBtn, sizeValueEl, sizeIncBtn);
         fontMenu.appendChild(sizeRow);
         setFontSizeActive(currentFontSize);
+
+        // Jump to the native Settings UI filtered to the font settings, where
+        // the per-preset stacks (fontFamilySans/Serif/Mono) can be customized.
+        const settingsSep = document.createElement("div");
+        settingsSep.className = "tb-menu-sep";
+        settingsSep.setAttribute("role", "separator");
+        fontMenu.appendChild(settingsSep);
+        const fontSettingsEntry = document.createElement("div");
+        fontSettingsEntry.className = "tb-fmt-item";
+        fontSettingsEntry.textContent = t("Font settings");
+        fontSettingsEntry.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            fontMenu.style.display = "none";
+            notifyOpenSettings("markdownWysiwyg.font");
+        });
+        fontMenu.appendChild(fontSettingsEntry);
 
         wireHoverMenu(fontWrap, fontBtn, fontMenu);
 
@@ -1397,15 +1426,28 @@ export function initToolbar(
             });
             menu.appendChild(entry);
         };
-        addEntry(t("Customize toolbar"), () => startCustomize());
-        // Discoverability for the rebindable shortcuts: opens the native
-        // Keyboard Shortcuts UI filtered to this extension, where the user's
-        // effective bindings are always accurate (tooltips deliberately
-        // don't print defaults that a rebind would make wrong).
-        addEntry(t("Keyboard shortcuts"), () => notifyOpenKeybindings());
-        // Names the product so it's clear which settings open (t()-templated for
-        // future translation); the name is the single package.json value.
-        addEntry(t("{product} settings").replace("{product}", productName), () => notifyOpenSettings());
+        // The entries mirror the toolbar right-click menu exactly: both are
+        // built from TOOLBAR_MENU_COMMANDS (shared/editorCommands.ts), so ids,
+        // order, and labels can't drift. The settings label names the product
+        // (t()-templated for future translation); the runtime productName and
+        // the title baked into the contributed command are the same
+        // package.json displayName, drift-guarded by the contributions test.
+        // Keyboard Shortcuts opens the native UI filtered to this extension,
+        // where the user's effective (possibly rebound) bindings are accurate.
+        const menuActions: Record<string, () => void> = {
+            customizeToolbar: () => startCustomize(),
+            openKeyboardShortcuts: () => notifyOpenKeybindings(),
+            openExtensionSettings: () => notifyOpenSettings(),
+        };
+        for (const meta of TOOLBAR_MENU_COMMANDS) {
+            const label = meta.id === "openExtensionSettings"
+                ? t(SETTINGS_TITLE_TEMPLATE).replace("{product}", productName)
+                : t(meta.title);
+            const action = menuActions[meta.id];
+            if (action) {
+                addEntry(label, action);
+            }
+        }
 
         wireHoverMenu(wrapEl, gearBtn, menu);
 
@@ -1658,8 +1700,8 @@ export function initToolbar(
                 render(config);
             }
         },
-        setFontPreset(preset: FontPreset): void {
-            setFontActive(preset);
+        setFontPreset(preset: FontPreset, stacks?: FontStacks): void {
+            setFontActive(preset, stacks);
         },
         setFontSize(size: number): void {
             setFontSizeActive(size);

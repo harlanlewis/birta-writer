@@ -73,11 +73,27 @@ export const EDITOR_COMMANDS = [
     // Bottom "9_view" group of every content menu; same switch path as the
     // toolbar button (carries the first visible line to preserve the viewport).
     { id: "editRawMarkdown", title: "Edit Raw Markdown", palette: false, sections: ["editor", "table", "link"] },
-    // Toolbar (chrome) right-click menu — mirrors the settings-gear dropdown.
+    // Toolbar (chrome) right-click menu. The settings-gear dropdown is built
+    // from these same entries (filtered by the "toolbar" section, in this
+    // order), so the two menus can never diverge. The settings title bakes in
+    // package.json's displayName — SETTINGS_TITLE_TEMPLATE is the runtime
+    // template and a drift test keeps all three in sync.
     { id: "customizeToolbar", title: "Customize Toolbar", palette: true, sections: ["toolbar"] },
-    { id: "openExtensionSettings", title: "Extension Settings", palette: false, sections: ["toolbar"] },
     { id: "openKeyboardShortcuts", title: "Keyboard Shortcuts", palette: false, sections: ["toolbar"] },
+    { id: "openExtensionSettings", title: "WYSIWYG Markdown Editor Settings", palette: false, sections: ["toolbar"] },
 ] as const satisfies readonly EditorCommandMeta[];
+
+/**
+ * Title template for the open-settings entry. The webview renders it with the
+ * runtime product name; package.json/nls bake the same name in at authoring
+ * time (the contributions drift test asserts they agree with displayName).
+ */
+export const SETTINGS_TITLE_TEMPLATE = "{product} Settings";
+
+/** The toolbar-chrome menu entries, in display order (right-click and gear menu). */
+export const TOOLBAR_MENU_COMMANDS = EDITOR_COMMANDS.filter((m) =>
+    (m.sections as readonly WebviewSection[]).includes("toolbar"),
+);
 
 export type EditorCommandId = typeof EDITOR_COMMANDS[number]["id"];
 

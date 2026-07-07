@@ -44,8 +44,9 @@ export function notifySwitchToTextEditor(line?: number): void {
     vscode.postMessage({ type: "switchToTextEditor", ...(line !== undefined ? { line } : {}) });
 }
 
-export function notifyOpenSettings(): void {
-    vscode.postMessage({ type: "openSettings" });
+/** Opens the native Settings UI; `query` optionally narrows the filter. */
+export function notifyOpenSettings(query?: string): void {
+    vscode.postMessage({ type: "openSettings", ...(query ? { query } : {}) });
 }
 
 /**
