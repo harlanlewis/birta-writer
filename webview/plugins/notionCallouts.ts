@@ -41,11 +41,14 @@ export const notionCalloutId = "notion_callout";
 
 /**
  * A leading emoji (pictographic base, optional variation selectors / ZWJ
- * sequences) followed by whitespace. `⚠️` is U+26A0 U+FE0F; `💡` is a single
+ * sequences) followed by whitespace OR the end of the segment — the
+ * end-of-segment alternative keeps the icon an ICON when a callout's body
+ * has been emptied in the editor (`<aside>\n💡\n\n</aside>` reloads with
+ * 💡 as the icon, not as body text). `⚠️` is U+26A0 U+FE0F; `💡` is a single
  * pictographic; keycaps like `1️⃣` start with an ASCII digit and never match.
  */
 const ICON_RE =
-    /^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*\uFE0F?)[ \t]+/u;
+    /^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*\uFE0F?)(?:[ \t]+|$)/u;
 
 /** Splits a leading `💡 ` icon off a raw first-segment string. */
 export function extractIcon(raw: string): { icon: string; rest: string } {

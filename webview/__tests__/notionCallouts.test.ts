@@ -180,6 +180,59 @@ describe("aside round-trip byte-identity", () => {
 });
 
 describe("editing inside an aside", () => {
+    it("an emptied body keeps the emoji as the ICON across a save/reload cycle", async () => {
+        // Regression (critique round): the saved form of an emptied callout
+        // is `<aside>\n💡\n\n</aside>`; without the end-of-segment
+        // alternative in ICON_RE the reload demoted 💡 to body text and the
+        // accent was lost — bytes identical, semantics silently changed.
+        const first = await makeEditor("<aside>\n💡 Body.\n\n</aside>\n");
+        let from = -1, to = -1;
+        first.view.state.doc.descendants((node, pos) => {
+            if (node.isText && node.text === "Body.") { from = pos; to = pos + node.nodeSize; }
+            return true;
+        });
+        first.view.dispatch(first.view.state.tr.delete(from, to));
+        const saved = first.editor.action(getMarkdown());
+        expect(saved).toBe("<aside>\n💡\n\n</aside>\n");
+        await first.editor.destroy();
+
+        const second = await makeEditor(saved);
+        const [node] = findAsides(second.view);
+        expect(node!.attrs["icon"]).toBe("💡");
+        expect(node!.attrs["kind"]).toBe("tip");
+        expect(second.editor.action(getMarkdown())).toBe(saved); // stable
+        await second.editor.destroy();
+    });
+
+    it("our dialect syntax works inside the sub-parsed first segment", async () => {
+        // The sub-parse runs on the SAME processor, so highlight marks and
+        // wikilinks parse inside asides and round-trip byte-identically.
+        const doc = "<aside>\n💡 A ==mark== and a [[wiki]] link.\n\n</aside>\n";
+        const { editor, view } = await makeEditor(doc);
+        let highlights = 0, wikilinks = 0;
+        view.state.doc.descendants((node) => {
+            if (node.isText && node.marks.some((m) => m.type.name === "highlight")) highlights++;
+            if (node.type.name === "wiki_link") wikilinks++;
+            return true;
+        });
+        expect(highlights).toBe(1);
+        expect(wikilinks).toBe(1);
+        expect(editor.action(getMarkdown())).toBe(doc);
+        await editor.destroy();
+    });
+
+    it("an aside indented inside a list item stays inert (documented degradation)", async () => {
+        // The html-block values carry the list indentation context; pairing
+        // them is out of the verified grammar. (The blank-line indentation
+        // churn in a strict re-serialization is the pre-existing stock list
+        // behavior, pinned by minimalDiff protection at runtime.)
+        const { editor, view } = await makeEditor(
+            "- Toggle title\n    \n    <aside>\n    💡 Nested.\n    \n    </aside>\n",
+        );
+        expect(findAsides(view)).toHaveLength(0);
+        await editor.destroy();
+    });
+
     it("body edits serialize inside the aside without touching its shape", async () => {
         const { editor, view } = await makeEditor("<aside>\n💡 Body.\n\n</aside>\n");
         let textEnd = -1;
