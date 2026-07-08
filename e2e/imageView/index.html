@@ -1,0 +1,71 @@
+<!-- e2e harness page: mirrors the provider template (src/MarkdownEditorProvider.ts)
+     with acquireVsCodeApi stubbed. The --vscode-* variables below stand in for the
+     set VS Code injects natively; add any variable a new check depends on. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-activeSelectionBackground: #094771;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-errorForeground: #f48771;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const ORIGIN = location.origin;
+  const IMG_MAP = {
+    [ORIGIN + "/img/cats.jpeg"]: "img/cats.jpeg",
+    [ORIGIN + "/img/other.jpeg"]: "img/other.jpeg",
+  };
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: "# Sample\n\n![two cats](img/cats.jpeg \"Sleepy tabbies\")\n\n![](img/other.jpeg)\n\ntail text\n",
+          imageUriMap: IMG_MAP,
+          syncVersion: 1,
+        }, "*");
+      }
+      if (msg.type === "getPathSuggestions") {
+        window.postMessage({
+          type: "pathSuggestions",
+          id: msg.id,
+          items: [
+            { path: "img/cats.jpeg", isDir: false, webviewUri: ORIGIN + "/img/cats.jpeg" },
+            { path: "img/other.jpeg", isDir: false, webviewUri: ORIGIN + "/img/other.jpeg" },
+          ],
+        }, "*");
+      }
+      if (msg.type === "resolveImagePath") {
+        window.postMessage({
+          type: "imagePathResolved",
+          id: msg.id,
+          webviewUri: ORIGIN + "/" + msg.relPath.replace(/^\.\//, ""),
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

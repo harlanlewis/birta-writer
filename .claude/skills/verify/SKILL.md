@@ -10,7 +10,22 @@ Extension Development Host takes over the user's screen, so verify against
 the **real built bundle** in headless Chromium instead: everything except
 VS Code's chrome and message host is production code.
 
-## Recipe
+## Check the in-repo e2e suites FIRST
+
+`e2e/` holds committed, rerunnable suites driven by `pnpm build && pnpm
+test:e2e` (one suite: `node e2e/run.mjs <name>`). Each suite is a directory
+with an `index.html` harness page, a `checks.mjs` exporting
+`run({ page, check, baseUrl })`, and any fixtures; `e2e/run.mjs` serves
+`dist/` plus the suite dir and runs Playwright against it.
+
+- If a suite already covers the surface you changed (e.g. `e2e/imageView/`),
+  extend it with new checks instead of building a scratchpad harness — the
+  checks then guard the change forever.
+- For a brand-new surface, create `e2e/<name>/` following the same shape.
+- Fall back to the scratchpad recipe below only for one-off exploration you
+  genuinely don't want to keep (screenshot probes, throwaway comparisons).
+
+## Recipe (scratchpad one-offs)
 
 1. `pnpm build` — the harness loads `dist/webview.js` + `dist/webview.css`.
 2. Create a harness dir (scratchpad), symlink the bundle: `ln -sfn <repo>/dist dist`.

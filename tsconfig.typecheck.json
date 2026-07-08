@@ -1,0 +1,7 @@
+// App-code-only typecheck for the extension side (`pnpm typecheck`).
+// Test files stay in tsconfig.json for IDE support but are excluded here:
+// their mock typing is looser than the app code and vitest runs them anyway.
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "webview", "**/__tests__/**", "__mocks__"]
+}

@@ -84,7 +84,7 @@ interface CalloutView {
     contentDOM: HTMLElement;
     update(node: PMNode): boolean;
     stopEvent(event: Event): boolean;
-    ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Element }): boolean;
+    ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Node }): boolean;
     destroy(): void;
 }
 
@@ -99,7 +99,7 @@ export function createNotionCalloutView(initialNode: PMNode): {
     dom: HTMLElement;
     contentDOM: HTMLElement;
     update(node: PMNode): boolean;
-    ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Element }): boolean;
+    ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Node }): boolean;
 } {
     let node = initialNode;
 

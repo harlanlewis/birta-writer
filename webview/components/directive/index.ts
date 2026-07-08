@@ -22,7 +22,7 @@ interface DirectiveView {
     contentDOM: HTMLElement;
     update(node: PMNode): boolean;
     stopEvent(event: Event): boolean;
-    ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Element }): boolean;
+    ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Node }): boolean;
 }
 
 export function createDirectiveView(

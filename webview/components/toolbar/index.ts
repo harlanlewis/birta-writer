@@ -756,6 +756,12 @@ export function initToolbar(
     setFontPreset: (preset: FontPreset, stacks?: FontStacks) => void;
     /** Update the font picker's size-stepper display (percent). */
     setFontSize: (size: number) => void;
+    /** Apply + persist a font preset (slash-menu action; works with the bar hidden). */
+    chooseFontPreset: (preset: FontPreset) => void;
+    /** Step the content font size up/down (slash-menu action; works with the bar hidden). */
+    stepFontSize: (delta: 1 | -1) => void;
+    /** Toggle a proofread option (slash-menu action; works with the bar hidden). */
+    toggleProofread: (key: ProofreadOptionKey) => void;
     /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
     openLinkPrompt: () => void;
 } {
