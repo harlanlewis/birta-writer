@@ -8,6 +8,7 @@ import { calloutsPlugin } from "./plugins/callouts";
 import { directivesPlugin } from "./plugins/directives";
 import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { highlightPlugin } from "./plugins/highlight";
+import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
@@ -96,8 +97,18 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * a custom micromark text construct with a strict grammar (no `=` inside, no
  * edge spaces), a `highlight` PM mark, and a stringify handler that re-emits
  * the source bytes verbatim.
+ *
+ * `notionCalloutRemark` + `notionCalloutNodes` (plugins/notionCallouts.ts)
+ * render Notion-export `<aside>` callouts as editable blocks. The remark
+ * transform is spread FIRST because it sub-parses the aside's raw first
+ * segment and injects the result into the tree — the preset's own
+ * transforms (remarkLineBreak, remarkMarker, …), registered after, then
+ * process those children exactly like normally parsed content. The SCHEMA
+ * registers after the preset: createAndFill picks the first block-group
+ * type to fill `block+`, which must stay `paragraph`.
  */
 export const pureCommonmark = [
+    ...notionCalloutRemark,
     ...commonmark.filter((plugin) => {
         if (
             plugin === remarkPreserveEmptyLinePlugin.plugin ||
@@ -113,6 +124,7 @@ export const pureCommonmark = [
     ...referenceLinksPlugin,
     ...wikiLinksPlugin,
     ...calloutsPlugin,
+    ...notionCalloutNodes,
     ...directivesPlugin,
     ...highlightPlugin,
     ...mathPlugin,

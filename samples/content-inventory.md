@@ -203,6 +203,26 @@ a marker line with inline **formatting**, or an escaped marker:
 
 > \[!NOTE] an escaped marker stays a plain blockquote
 
+### Notion export asides
+
+Notion's markdown export writes callouts as `<aside>` HTML ("there is no
+Markdown equivalent" — Notion's own docs). The emoji maps to an accent
+color, the body is fully editable markdown, and the exact byte shape
+round-trips:
+
+<aside>
+💡 A Notion callout: emoji icon, editable body, **markdown inside**.
+
+</aside>
+
+<aside>
+⚠️ Warning emoji → warning accent. Unknown emoji or none → neutral.
+
+</aside>
+
+The `<img>`-icon variant and unclosed asides stay as the read-only
+sanitized HTML preview, byte-preserved.
+
 ---
 
 ## Container directives

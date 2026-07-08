@@ -11,7 +11,7 @@ import { prism, prismConfig } from "@milkdown/plugin-prism";
 import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import DOMPurify from "dompurify";
-import { createCalloutView } from "./components/callout";
+import { createCalloutView, createNotionCalloutView } from "./components/callout";
 import { createCodeBlockView } from "./components/codeBlock";
 import { createDirectiveView } from "./components/directive";
 import {
@@ -270,6 +270,7 @@ export async function createEditor(
             ctx.set(nodeViewCtx, [
                 ["code_block", createCodeBlockView],
                 ["callout", createCalloutView],
+                ["notion_callout", createNotionCalloutView],
                 ["container_directive", createDirectiveView],
                 ["footnote_reference", createFootnoteReferenceView],
                 ["footnote_definition", createFootnoteDefinitionView],

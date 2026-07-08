@@ -88,6 +88,59 @@ interface CalloutView {
     destroy(): void;
 }
 
+/**
+ * Notion-aside callout NodeView (plugins/notionCallouts.ts) — much lighter
+ * than the marker-callout view: Notion callouts have no kind marker, title,
+ * or fold, so the chrome is just the emoji icon beside an editable body.
+ * The emoji is document content (it serializes back as the line prefix), so
+ * it renders read-only here; the kind accent comes from the emoji mapping.
+ */
+export function createNotionCalloutView(initialNode: PMNode): {
+    dom: HTMLElement;
+    contentDOM: HTMLElement;
+    update(node: PMNode): boolean;
+    ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Element }): boolean;
+} {
+    let node = initialNode;
+
+    const dom = document.createElement("div");
+    dom.className = "callout callout-aside";
+    dom.dataset["type"] = "notion-callout";
+
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "callout-aside-icon";
+    iconSpan.contentEditable = "false";
+    iconSpan.setAttribute("aria-hidden", "true");
+
+    const content = document.createElement("div");
+    content.className = "callout-body callout-aside-body";
+
+    dom.append(iconSpan, content);
+
+    const render = (): void => {
+        dom.dataset["kind"] = (node.attrs["kind"] as string) ?? "note";
+        const icon = (node.attrs["icon"] as string) ?? "";
+        iconSpan.textContent = icon;
+        iconSpan.style.display = icon === "" ? "none" : "";
+    };
+    render();
+
+    return {
+        dom,
+        contentDOM: content,
+        update(updated: PMNode): boolean {
+            if (updated.type !== node.type) return false;
+            node = updated;
+            render();
+            return true;
+        },
+        ignoreMutation(mutation): boolean {
+            if (mutation.type === "selection") return false;
+            return !content.contains(mutation.target as Node) && mutation.target !== content;
+        },
+    };
+}
+
 export function createCalloutView(
     initialNode: PMNode,
     view: EditorView,
