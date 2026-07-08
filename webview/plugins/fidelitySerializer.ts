@@ -16,6 +16,19 @@
  *     so every segment of a formatted link serializes as
  *     `link{...formatting...}` and `#maybeMergeChildren` can rejoin them.
  *
+ * (c) `spread` is coerced to a real boolean on `list` / `listItem` mdast
+ *     nodes. Milkdown's list schemas store the ProseMirror `spread` attr as a
+ *     STRING ("true"/"false") — the parse runner does `` `${node.spread}` ``
+ *     and the toMarkdown runner passes that straight through as the mdast
+ *     node's `spread` prop. mdast-util-to-markdown's `joinDefaults` only
+ *     tightens list output when `typeof parent.spread === 'boolean'` (see
+ *     `mdast-util-to-markdown/lib/join.js`); a string skips that branch and the
+ *     items fall back to the loose `\n\n` separator. So a tight list
+ *     (`- a\n- b`) loosened to `- a\n\n- b` on every raw round trip — top-level,
+ *     inside blockquotes, and inside directives/asides alike. Coercing the
+ *     prop back to a boolean here keeps tight lists tight and loose lists loose
+ *     by construction (MAR-48), instead of relying on minimalDiff protection.
+ *
  * (b) Edge-space trimming is deferred until after merging. The stock
  *     `#closeMark` hoists leading/trailing spaces out of EVERY mark's
  *     first/last text child at close time (`#moveSpaces`). That trim is
@@ -250,6 +263,17 @@ export class FidelitySerializerState extends Stack<
         if (element.children) node.children = element.children;
 
         if (element.value) node.value = element.value;
+
+        // Delta (c): `list` / `listItem` carry `spread` as a STRING from
+        // Milkdown's schemas; mdast-util-to-markdown only tightens output when
+        // it is a real boolean, so coerce it here (MAR-48).
+        if (
+            (element.type === "list" || element.type === "listItem") &&
+            typeof (node as { spread?: unknown }).spread === "string"
+        ) {
+            (node as { spread?: boolean }).spread =
+                (node as { spread?: string }).spread === "true";
+        }
 
         return node;
     };

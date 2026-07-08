@@ -196,6 +196,9 @@ describe("directive round-trip byte-identity", () => {
         ":::warning\n\nDetached body.\n\n:::\n",
         ':::info{title="Attrs"}\nBody.\n:::\n',
         ":::note\nFirst.\n\nSecond with **bold**.\n\n:::\n",
+        // Tight list inside a directive body stays tight (MAR-48): no blank
+        // lines appear between the list items on a raw round trip.
+        ":::note\n\n- item\n- item two\n\n:::\n",
         // Fence adjacent to a non-paragraph block (no blank lines anywhere).
         ":::note\n```js\ncode();\n```\n:::\n",
         "::::danger Outer\nOuter.\n\n:::note Inner\nInner.\n:::\n\n::::\n",

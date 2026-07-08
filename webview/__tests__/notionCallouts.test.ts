@@ -158,9 +158,9 @@ describe("aside round-trip byte-identity", () => {
         "<aside>\n💡 Canonical shape with **bold**.\n\n</aside>\n",
         "<aside>\n⚠️ Variation-selector emoji.\n\n</aside>\n",
         "<aside>\n🐛 Self-contained, no blank before closer.\n</aside>\n",
-        // (No tight list here: the pre-existing loose-list serializer churn
-        // is covered by minimalDiff protection at runtime, same stance as
-        // directives.test.ts; the fixture keeps a list via the corpus.)
+        // Tight list inside an aside body stays tight (MAR-48): no blank lines
+        // appear between the list items on a raw round trip.
+        "<aside>\n💡 Lead.\n\n- item\n- item two\n\n</aside>\n",
         "<aside>\n📝 Lead.\n\nSecond paragraph with a [link](https://example.com).\n\n> and a quote\n\n</aside>\n",
         "<aside>\nNo emoji at all.\n\n</aside>\n",
         "<aside>\n💡 Two raw lines\nbefore any blank.\n\n</aside>\n",
