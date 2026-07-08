@@ -21,6 +21,7 @@ The maintainer reads and writes **English only**. This project is being migrated
 - **Syntax level**: modern JS/CSS is fine (native CSS nesting, `:has()`, optional chaining, top-level `await`, etc.). No need to down-level for old browsers/runtimes — the only runtimes are Electron (VS Code) and Node 18, and esbuild (`target: es2020`) transpiles as needed at build time. Prefer concise modern syntax such as nesting.
 - **Packaging/release**: the VSIX must be written to `releases/`. Command: `pnpm run package`.
 - **Git commit convention**: keep the English type prefix (`feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`, `release:`) and write the description in **English**. e.g. `feat: add image upload`, `fix: correct table drag offset`.
+  - **Cite the Linear issue when a commit closes tracked work.** End the commit body with a `Closes MAR-NN` line (one per issue; use `Closes MAR-NN, MAR-MM` or several lines for a commit that lands more than one). This is the commit→issue link that keeps the backlog honest — without it a shipped fix can sit `In Progress` indefinitely because nothing points from the code back to the ticket. **Never bury a tracked fix inside a large omnibus commit without naming its issue** — that is exactly how MAR-36's already-shipped DnD rewrite went unnoticed for days inside a multi-feature `feat:` commit.
 
 ### End-of-work handoff (ALWAYS)
 
@@ -94,7 +95,8 @@ All bugs and planned work live in **Linear** (team "Markdown Editor", `MAR-` pre
 
 Keeping the backlog honest is as important as filing it. Close the loop when work ships:
 
-- **When a commit ships tracked work, move its issue to `Done`** and leave a one-line comment citing the commit SHA(s). Never leave completed work sitting in `In Progress` or `Backlog`.
+- **When a commit ships tracked work, move its issue to `Done`** and leave a one-line comment citing the commit SHA(s). Never leave completed work sitting in `In Progress` or `Backlog`. Put a `Closes MAR-NN` line in the commit body too (see the Git commit convention above), so the link exists in both directions — the SHA in Linear, the issue id in git.
+- **Audit for silently-shipped work.** When reviewing the backlog or picking up an `In Progress` issue, first check whether it already shipped — cross-reference recent large `feat:`/omnibus commits against open tickets (`git log --oneline` + read the diff, not just the subject). A tracked fix bundled into an unrelated commit is the classic way work gets done but never closed.
 - **Verify against the code before closing — not the CHANGELOG alone.** A feature can ship with a different implementation than the ticket described; confirm the actual behavior/settings/files exist in the working tree.
 - **The CHANGELOG and Linear are complementary, not a single source of truth.** The CHANGELOG records what *shipped* (including untracked work); Linear tracks *planned* work and bugs. When you ship a tracked feature, do both: close the issue **and** add the CHANGELOG entry. "Not in Linear" never means "not shipped."
 - **Sequencing signal**: the `phase-*` labels are the roadmap spine (`phase-0-fidelity` is existential — round-trip trust — and comes first; then `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`). Within a phase, order by `priority`. `phase-1-vscode-parity` is largely retired (shipped in 0.2.3).
