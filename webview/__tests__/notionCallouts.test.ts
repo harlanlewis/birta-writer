@@ -65,8 +65,11 @@ describe("extractIcon / kindForIcon", () => {
         expect(extractIcon("💡 Tip text")).toEqual({ icon: "💡", rest: "Tip text" });
         expect(extractIcon("⚠️ Watch out")).toEqual({ icon: "⚠️", rest: "Watch out" });
         expect(extractIcon("No emoji here")).toEqual({ icon: "", rest: "No emoji here" });
-        // Emoji without a following space is content, not an icon.
+        // Emoji without a following space is content, not an icon…
         expect(extractIcon("💡Tight")).toEqual({ icon: "", rest: "💡Tight" });
+        // …but an emoji ALONE is the icon of an emptied callout (regression:
+        // without this, a saved empty callout demoted its icon to body text).
+        expect(extractIcon("💡")).toEqual({ icon: "💡", rest: "" });
     });
 
     it("maps known icons to kinds and unknown/none to note", () => {
@@ -266,6 +269,54 @@ describe("NodeView chrome", () => {
         const { editor, container } = await makeEditor("<aside>\nPlain.\n\n</aside>\n");
         const icon = container.querySelector(".callout-aside-icon") as HTMLElement;
         expect(icon.style.display).toBe("none");
+        await editor.destroy();
+    });
+});
+
+describe("cross-feature nesting inside asides", () => {
+    // The between-blocks are ordinary parsed mdast, so the other dialect
+    // transforms (registered after this one) must see and convert them —
+    // and everything must still round-trip byte-identically.
+    it("a GitHub marker callout nests inside an aside", async () => {
+        const doc =
+            "<aside>\n💡 Lead.\n\n> [!WARNING] Nested marker callout\n> Body.\n\n</aside>\n";
+        const { editor, view } = await makeEditor(doc);
+        let callouts = 0;
+        view.state.doc.descendants((n) => {
+            if (n.type.name === "callout") callouts++;
+            return true;
+        });
+        expect(findAsides(view)).toHaveLength(1);
+        expect(callouts).toBe(1);
+        expect(editor.action(getMarkdown())).toBe(doc);
+        await editor.destroy();
+    });
+
+    it("a container directive nests inside an aside", async () => {
+        const doc = "<aside>\n💡 Lead.\n\n:::note Inner\nDirective body.\n:::\n\n</aside>\n";
+        const { editor, view } = await makeEditor(doc);
+        let directives = 0;
+        view.state.doc.descendants((n) => {
+            if (n.type.name === "container_directive") directives++;
+            return true;
+        });
+        expect(findAsides(view)).toHaveLength(1);
+        expect(directives).toBe(1);
+        expect(editor.action(getMarkdown())).toBe(doc);
+        await editor.destroy();
+    });
+
+    it("a block-math $$ nests inside an aside (verified Notion shape)", async () => {
+        const doc = "<aside>\n💡 With math.\n\n$$\nE = mc^2\n$$\n\n</aside>\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("adjacent asides pair with their own closers, never across", async () => {
+        const doc =
+            "<aside>\n💡 First box.\n\n</aside>\n\n<aside>\n🐛 Second box.\n\n</aside>\n";
+        const { editor, view } = await makeEditor(doc);
+        expect(findAsides(view).map((n) => n.attrs["icon"])).toEqual(["💡", "🐛"]);
+        expect(editor.action(getMarkdown())).toBe(doc);
         await editor.destroy();
     });
 });
