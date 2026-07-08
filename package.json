@@ -783,13 +783,13 @@
         "markdownWysiwyg.styleCheck.passive": {
           "order": 120,
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "%config.styleCheck.passive.description%"
         },
         "markdownWysiwyg.styleCheck.negativeParallelism": {
           "order": 121,
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "%config.styleCheck.negativeParallelism.description%"
         },
         "markdownWysiwyg.styleCheck.longSentences": {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { compileStyleMatcher, findRepeatedWords, parseEntry, type StyleCategory } from "../utils/styleMatcher";
+import { DEFAULT_CONFIG } from "../plugins/proofread";
 import {
     AI_ARTIFACTS,
     AI_VOCABULARY,
@@ -294,5 +295,22 @@ describe("new categories through compileStyleMatcher", () => {
     it("repeated words still flag independently of the toggles", () => {
         const matcher = compileStyleMatcher(LISTS, {});
         expect(matcher("the the end").some((h) => h.category === "repeated")).toBe(true);
+    });
+
+    // With the shipped defaults, the passive and negativeParallelism checks are
+    // off, so their known over-flags never surface as an on-by-default warning.
+    it("the default config should not flag correct 'not only ... but also' or copular 'was born'", () => {
+        const matcher = compileStyleMatcher(LISTS, {
+            passive: DEFAULT_CONFIG.passive,
+            negativeParallelism: DEFAULT_CONFIG.negativeParallelism,
+        });
+        expect(DEFAULT_CONFIG.passive).toBe(false);
+        expect(DEFAULT_CONFIG.negativeParallelism).toBe(false);
+        expect(matcher("The API is not only fast but also safe.")
+            .filter((h) => h.category === "negativeParallelism")).toHaveLength(0);
+        expect(matcher("She was born in 1990.")
+            .filter((h) => h.category === "passive")).toHaveLength(0);
+        expect(matcher("The file is located in /tmp.")
+            .filter((h) => h.category === "passive")).toHaveLength(0);
     });
 });

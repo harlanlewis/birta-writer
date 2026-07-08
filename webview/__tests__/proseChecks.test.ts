@@ -38,6 +38,15 @@ describe("findPassiveVoice", () => {
         expect(findPassiveVoice("She is interested.")).toHaveLength(0);
         expect(findPassiveVoice("We are pleased.")).toHaveLength(0);
     });
+
+    // The raw regex still over-flags correct copular/locative English — a flat
+    // pattern can't tell these from real passives. This documented over-flag is
+    // why the passive check ships OFF by default (see styleMatcher.test.ts for
+    // the on-by-default guarantee).
+    it("over-flags copular/locative English at the raw-function level", () => {
+        expect(flagged("She was born in 1990.", findPassiveVoice)).toEqual(["was born"]);
+        expect(flagged("The file is located in /tmp.", findPassiveVoice)).toEqual(["is located"]);
+    });
 });
 
 describe("findLongSentences", () => {
@@ -80,6 +89,15 @@ describe("findNegativeParallelism", () => {
     it("de-duplicates overlapping matches", () => {
         // Only one construction; must not double-count.
         expect(findNegativeParallelism("It is not just X but Y.")).toHaveLength(1);
+    });
+
+    // Pattern 1 has no echo guard, so the raw regex over-flags the ordinary
+    // correlative conjunction "not only X but also Y". This documented over-flag
+    // is why the check ships OFF by default (see styleMatcher.test.ts for the
+    // on-by-default guarantee).
+    it("over-flags the correct correlative 'not only ... but also' at the raw-function level", () => {
+        expect(flagged("The API is not only fast but also safe.", findNegativeParallelism))
+            .toEqual(["not only fast but also"]);
     });
 });
 

@@ -49,8 +49,12 @@ const BE_VERB = /\b(?:am|are|were|being|is|been|was|be)\b/gi;
 /**
  * Passive voice: a "to be" verb followed (past an optional adverb) by a past
  * participle — "was written", "is being reviewed". Flags the be-verb -> participle
- * span. Same heuristic write-good uses; it over-flags adjectival "-ed" ("was
- * tired"), which the user can silence per-phrase via the exceptions list.
+ * span. Same heuristic write-good uses; a flat regex can't tell a passive verb
+ * from an adjectival participle, so it over-flags correct English: adjectival
+ * "-ed" ("was tired"), and copular/locative forms ("was born", "is located",
+ * "is based on"). The small stoplists below cut the most frequent adjectival
+ * cases, but the space is unbounded, so this check ships OFF by default; a user
+ * who turns it on can silence a remaining phrase via the exceptions list.
  */
 export function findPassiveVoice(text: string): StyleMatch[] {
     const matches: StyleMatch[] = [];
@@ -93,19 +97,27 @@ export function findLongSentences(text: string, maxWords = 30): StyleMatch[] {
 }
 
 const NEGATIVE_PARALLELISM: readonly RegExp[] = [
-    // "not just / only / merely X but (also) Y"
+    // "not just / only / merely X but (also) Y". NOTE: this has no echo guard,
+    // so it also matches the ordinary correlative conjunction "not only X but
+    // also Y" ("the API is not only fast but also safe") — standard English, not
+    // an AI tell. This false positive is why the whole check ships OFF by
+    // default; see findNegativeParallelism.
     /\bnot (?:just|only|merely|simply)\b[^.!?;:\n]{1,80}?\bbut\b(?:\s+also\b)?/gi,
     // "it's not X, it's Y" — the reframe negation. The tell is the *echo* of the
     // subject-copula ("it's … it's"), so this deliberately does NOT accept a
     // trailing "but": "it's not ready, but we ship" is ordinary contrast, which
-    // pattern 1 already covers when it's the "not just … but" form.
+    // pattern 1 already covers when it's the "not just … but" form. Only this
+    // pattern carries the reframe echo that keeps its false-positive rate low.
     /\b(?:it'?s|it is|this is|that'?s|that is)\s+not\b[^,.!?;:\n]{1,60},\s+(?:it'?s|it is)\b/gi,
 ];
 
 /**
  * Negative parallelism: the "not just X, but Y" / "it's not X, it's Y" reframe —
  * one of the most-catalogued AI cadences. Flags the whole construction;
- * overlapping matches from the two patterns are de-duplicated.
+ * overlapping matches from the two patterns are de-duplicated. Only pattern 2
+ * has the subject-copula echo that makes it low-false-positive; pattern 1 also
+ * catches the correct correlative "not only X but also Y", so the check is off
+ * by default.
  */
 export function findNegativeParallelism(text: string): StyleMatch[] {
     const matches: StyleMatch[] = [];

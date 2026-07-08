@@ -53,13 +53,17 @@ function decoratedTexts(doc: import("@milkdown/prose/model").Node, config = CONF
 }
 
 describe("DEFAULT_CONFIG fallback", () => {
-    it("every check should default ON, matching the contributed setting defaults", () => {
-        // Drift guard for the webview-side fallback (used when the injected
-        // __i18n.proofread snapshot is missing): package.json defaults every
-        // check to true, so the fallback must agree.
+    // The webview-side fallback (used when the injected __i18n.proofread snapshot
+    // is missing) must agree with the package.json setting defaults. Every check
+    // defaults ON except `passive` and `negativeParallelism`, which ship OFF
+    // because they over-flag ordinary correct English.
+    const OFF_BY_DEFAULT = new Set(["passive", "negativeParallelism"]);
+
+    it("boolean defaults should match the contributed setting defaults", () => {
         for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
             if (typeof value === "boolean") {
-                expect(value, `DEFAULT_CONFIG.${key} should default true`).toBe(true);
+                const expected = !OFF_BY_DEFAULT.has(key);
+                expect(value, `DEFAULT_CONFIG.${key} should default ${expected}`).toBe(expected);
             }
         }
     });

@@ -56,9 +56,12 @@ type ProofreadMeta =
 
 export const proofreadPluginKey = new PluginKey<ProofreadState>("proofread");
 
-// Fallback when the injected __i18n.proofread snapshot is missing. Every check
-// defaults ON (maintainer decision), matching the contributed setting defaults
-// in package.json — see shared/__tests__/proofreadDefaultsContributions.test.ts.
+// Fallback when the injected __i18n.proofread snapshot is missing. Most checks
+// default ON (maintainer decision); `passive` and `negativeParallelism` default
+// OFF because they over-flag ordinary correct English (copular/locative "was
+// born"/"is located" and the correlative "not only X but also Y"). Kept in sync
+// with the contributed setting defaults in package.json — see
+// shared/__tests__/proofreadDefaultsContributions.test.ts.
 export const DEFAULT_CONFIG: ProofreadConfig = {
     styleCheck: true,
     fillers: true,
@@ -67,8 +70,8 @@ export const DEFAULT_CONFIG: ProofreadConfig = {
     wordiness: true,
     aiVocabulary: true,
     aiArtifacts: true,
-    passive: true,
-    negativeParallelism: true,
+    passive: false,
+    negativeParallelism: false,
     longSentences: true,
     ruleOfThree: true,
     emDash: true,

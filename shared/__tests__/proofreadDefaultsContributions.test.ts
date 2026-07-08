@@ -54,10 +54,19 @@ describe("proofread defaults", () => {
         }
     });
 
-    it("every style check should default ON (maintainer decision)", () => {
+    // `passive` and `negativeParallelism` ship OFF because they over-flag
+    // ordinary correct English (copular/locative "was born"/"is located" and the
+    // correlative "not only X but also Y"); every other style check ships ON.
+    const OFF_BY_DEFAULT = new Set([
+        "markdownWysiwyg.styleCheck.passive",
+        "markdownWysiwyg.styleCheck.negativeParallelism",
+    ]);
+
+    it("style checks should default ON except the known over-flagging ones", () => {
         for (const [key, prop] of Object.entries(props)) {
             if (key.startsWith("markdownWysiwyg.styleCheck.") && typeof prop.default === "boolean") {
-                expect(prop.default, `${key} should default true`).toBe(true);
+                const expected = !OFF_BY_DEFAULT.has(key);
+                expect(prop.default, `${key} should default ${expected}`).toBe(expected);
             }
         }
     });
