@@ -233,9 +233,17 @@ let currentFmEntries: FmEntry[] = [];
 /** The raw frontmatter block the panel was rendered from (basis for lossless serialization). */
 let currentFmRaw = "";
 
-/** Reads the persisted collapsed state of the frontmatter panel. */
+/**
+ * The panel's collapsed state: a per-tab toggle (persisted so it survives tab
+ * switches and reloads) wins; a fresh open falls back to the
+ * frontmatterExpanded setting (default expanded).
+ */
 function isFmCollapsed(): boolean {
-    return getWebviewState()?.['fmCollapsed'] === true;
+    const persisted = getWebviewState()?.['fmCollapsed'];
+    if (typeof persisted === "boolean") {
+        return persisted;
+    }
+    return window.__i18n?.frontmatterExpanded === false;
 }
 
 /** Persists the collapsed state so it survives tab switches and reloads. */

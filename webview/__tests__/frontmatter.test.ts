@@ -426,6 +426,7 @@ describe("renderFrontmatterPanel collapse toggle", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockVscodeApi.getState.mockReturnValue(null);
+        window.__i18n = undefined;
         setupDom();
     });
 
@@ -474,6 +475,22 @@ describe("renderFrontmatterPanel collapse toggle", () => {
         renderFrontmatterPanel(FM);
         const panel = document.getElementById("frontmatter-panel")!;
         expect(panel.classList.contains("collapsed")).toBe(true);
+    });
+
+    it("frontmatterExpanded: false should render a fresh open collapsed", () => {
+        window.__i18n = { frontmatterExpanded: false } as unknown as typeof window.__i18n;
+        renderFrontmatterPanel(FM);
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.classList.contains("collapsed")).toBe(true);
+        expect(panel.querySelector(".fm-toggle-btn")?.textContent).toContain("Show metadata");
+    });
+
+    it("a per-tab persisted state should win over the frontmatterExpanded setting", () => {
+        window.__i18n = { frontmatterExpanded: false } as unknown as typeof window.__i18n;
+        mockVscodeApi.getState.mockReturnValue({ fmCollapsed: false });
+        renderFrontmatterPanel(FM);
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.classList.contains("collapsed")).toBe(false);
     });
 
     it("persisting the collapsed state should not clobber other webview state keys", () => {
