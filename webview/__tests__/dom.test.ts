@@ -5,7 +5,7 @@
  * never covers.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createButton, setupInputKeyboard, onOutsideMousedown } from "../ui/dom";
+import { createButton, setupApplyOnBlur } from "../ui/dom";
 
 describe("createButton onClick", () => {
     beforeEach(() => {
@@ -80,11 +80,21 @@ describe("createButton accessible name", () => {
     });
 });
 
-describe("setupInputKeyboard", () => {
+describe("setupApplyOnBlur", () => {
     const press = (input: HTMLInputElement, key: string, init: KeyboardEventInit = {}) => {
         const e = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
         input.dispatchEvent(e);
         return e;
+    };
+
+    const setup = () => {
+        const input = document.createElement("input");
+        document.body.appendChild(input);
+        const commit = vi.fn();
+        const revert = vi.fn();
+        const onClose = vi.fn();
+        setupApplyOnBlur(input, { commit, revert, onClose });
+        return { input, commit, revert, onClose };
     };
 
     beforeEach(() => {
@@ -92,103 +102,40 @@ describe("setupInputKeyboard", () => {
         document.body.innerHTML = "";
     });
 
-    it("Enter should call onEnter and claim the event", () => {
-        const input = document.createElement("input");
-        const onEnter = vi.fn();
-        const onEscape = vi.fn();
-        setupInputKeyboard(input, onEnter, onEscape);
+    it("blur should commit", () => {
+        const { input, commit, revert } = setup();
+        input.dispatchEvent(new FocusEvent("blur"));
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(revert).not.toHaveBeenCalled();
+    });
+
+    it("Enter should commit, claim the event, and call onClose", () => {
+        const { input, commit, onClose } = setup();
         const e = press(input, "Enter");
-        expect(onEnter).toHaveBeenCalledTimes(1);
-        expect(onEscape).not.toHaveBeenCalled();
+        expect(commit).toHaveBeenCalledTimes(1);
+        expect(onClose).toHaveBeenCalledTimes(1);
         expect(e.defaultPrevented).toBe(true);
     });
 
-    it("Escape should call onEscape", () => {
-        const input = document.createElement("input");
-        const onEnter = vi.fn();
-        const onEscape = vi.fn();
-        setupInputKeyboard(input, onEnter, onEscape);
+    it("Escape should revert without committing, and call onClose", () => {
+        const { input, commit, revert, onClose } = setup();
         press(input, "Escape");
-        expect(onEscape).toHaveBeenCalledTimes(1);
-        expect(onEnter).not.toHaveBeenCalled();
-    });
-
-    it("Enter during IME composition should be ignored", () => {
-        const input = document.createElement("input");
-        const onEnter = vi.fn();
-        setupInputKeyboard(input, onEnter, vi.fn());
-        press(input, "Enter", { isComposing: true });
-        expect(onEnter).not.toHaveBeenCalled();
-    });
-
-    it("other keys should not trigger either callback", () => {
-        const input = document.createElement("input");
-        const onEnter = vi.fn();
-        const onEscape = vi.fn();
-        setupInputKeyboard(input, onEnter, onEscape);
-        const e = press(input, "a");
-        expect(onEnter).not.toHaveBeenCalled();
-        expect(onEscape).not.toHaveBeenCalled();
-        expect(e.defaultPrevented).toBe(false);
-    });
-});
-
-describe("onOutsideMousedown", () => {
-    const mousedownOn = (el: Node) =>
-        el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        document.body.innerHTML = "";
-    });
-    afterEach(() => {
-        vi.useRealTimers();
-    });
-
-    it("a mousedown outside the targets should close once and detach", () => {
-        const popup = document.createElement("div");
-        const outside = document.createElement("div");
-        document.body.append(popup, outside);
-        const onClose = vi.fn();
-        onOutsideMousedown([popup], onClose);
-        mousedownOn(outside);
-        mousedownOn(outside);
-        expect(onClose).toHaveBeenCalledTimes(1); // listener removed after firing
-    });
-
-    it("a mousedown inside a target should not close", () => {
-        const popup = document.createElement("div");
-        const inner = document.createElement("button");
-        popup.appendChild(inner);
-        document.body.appendChild(popup);
-        const onClose = vi.fn();
-        onOutsideMousedown([popup], onClose);
-        mousedownOn(inner);
-        expect(onClose).not.toHaveBeenCalled();
-    });
-
-    it("with delayMs the listener should not be active until the delay elapses", () => {
-        vi.useFakeTimers();
-        const popup = document.createElement("div");
-        const outside = document.createElement("div");
-        document.body.append(popup, outside);
-        const onClose = vi.fn();
-        onOutsideMousedown([popup], onClose, 10);
-        mousedownOn(outside); // still inside the registration delay
-        expect(onClose).not.toHaveBeenCalled();
-        vi.advanceTimersByTime(10);
-        mousedownOn(outside);
+        expect(revert).toHaveBeenCalledTimes(1);
+        expect(commit).not.toHaveBeenCalled();
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it("the disposer should remove the listener", () => {
-        const popup = document.createElement("div");
-        const outside = document.createElement("div");
-        document.body.append(popup, outside);
-        const onClose = vi.fn();
-        const dispose = onOutsideMousedown([popup], onClose);
-        dispose();
-        mousedownOn(outside);
-        expect(onClose).not.toHaveBeenCalled();
+    it("Enter during IME composition should be ignored", () => {
+        const { input, commit } = setup();
+        press(input, "Enter", { isComposing: true });
+        expect(commit).not.toHaveBeenCalled();
+    });
+
+    it("other keys should bubble untouched (VS Code clipboard relies on it)", () => {
+        const { input, commit, revert } = setup();
+        const e = press(input, "a");
+        expect(commit).not.toHaveBeenCalled();
+        expect(revert).not.toHaveBeenCalled();
+        expect(e.defaultPrevented).toBe(false);
     });
 });
