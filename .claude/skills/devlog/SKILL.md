@@ -1,28 +1,31 @@
 ---
 name: devlog
-description: Record a known bug or feature request as a Linear issue; triggers: record a bug, known bug, feature request, record a feature request, /devlog
-version: 2.0.0
+description: Record, close, update, or audit Linear issues; triggers: record a bug, known bug, feature request, record a feature request, close an issue, audit the backlog, /devlog
+version: 3.0.0
 ---
-# Devlog — Linear issue recording skill
+# Devlog — Linear issue lifecycle skill
 
 ## Purpose
 
-File two kinds of entries as Linear issues (team: **Markdown Editor**, `MAR-` prefix), using the Linear MCP tools (`mcp__claude_ai_Linear__save_issue` etc. — load via ToolSearch if deferred):
+Manage the full lifecycle of Linear issues (team: **Markdown Editor**, `MAR-` prefix), using the Linear MCP tools (`mcp__claude_ai_Linear__save_issue`, `save_comment`, `get_issue`, `list_issues` etc. — load via ToolSearch if deferred):
 
-1. **Known Bug**: a bug left unfixed this session, or a pre-existing one (do not record bugs already fixed during development).
-2. **Feature Request**: a planned feature that has not been started yet.
+1. **File** — a Known Bug (a bug left unfixed this session, or pre-existing; never record bugs already fixed during development) or a Feature Request (planned work not yet started).
+2. **Close / update** — move a shipped issue to `Done`, or re-scope one the code has outgrown.
+3. **Audit** — reconcile the backlog against the CHANGELOG and git history, closing what's shipped and re-scoping stale tickets.
 
 Issue tracking lives ONLY in Linear. Never create GitHub issues for this project.
 
 ***
 
-## Step 1: Confirm the entry type
+## Step 1: Confirm the action
 
-Ask with AskUserQuestion:
+Ask with AskUserQuestion (skip if the user's request already makes the action unambiguous):
 
-- Known Bug (unfixed)
-- Feature Request
-- Both
+- File → Known Bug (unfixed)
+- File → Feature Request
+- File → Both
+- Close / update an existing issue → **§ Closing & updating**
+- Audit the backlog → **§ Auditing the backlog**
 
 ***
 
@@ -119,7 +122,7 @@ Call `save_issue` with:
 - `#Improvement` — new functionality, enhancements
 - `#Chore` — maintenance, tooling, process
 - `phase-0-fidelity` — round-trip fidelity & trust (existential)
-- `phase-1-vscode-parity` — restore native VS Code capabilities in the webview
+- `phase-1-vscode-parity` — restore native VS Code capabilities in the webview (largely retired — shipped in 0.2.3)
 - `phase-2-syntax` — markdown syntax coverage
 - `phase-3-interaction` — interaction patterns that make the editor preferred
 - `phase-4-differentiators` — ambitious power-user differentiators
@@ -128,20 +131,63 @@ Use existing labels only; do not create new ones without asking.
 
 ***
 
-## Step 3: Report the result
+## Closing & updating
 
-After the issue is created, print its identifier and URL so the user can click through:
+Filing is only half the loop. When work ships or a ticket drifts out of date, keep the backlog honest.
+
+### Verify before you close — the code, not the CHANGELOG alone
+
+A feature can ship with a **different implementation** than the ticket described (e.g. MAR-26 shipped a self-contained offline spell checker, not the "forward cSpell diagnostics" the ticket sketched). Before closing:
+
+1. `get_issue` for the full description and its acceptance criteria.
+2. Confirm the behavior actually exists in the working tree — grep for the settings / plugin / files it promised, and check the CHANGELOG and `git log` for the shipping commit(s).
+3. Only close on confirmation. If it's *partly* done, re-scope instead (below), don't close.
+
+### Close a shipped issue
+
+- `save_issue` with `id` and `state: "Done"`.
+- `save_comment` (`issueId`) with a one-line completion note that **cites the commit SHA(s)** and the concrete evidence (settings keys, files, CHANGELOG entry). Note any divergence from the original plan.
+- Never leave completed work in `In Progress` or `Backlog` — that was the MAR-34 failure mode (fully shipped, left In Progress).
+
+### Re-scope a stale issue
+
+When the code has outgrown a ticket's premise (e.g. MAR-35's three-zone design after the center zone was removed):
+
+- `save_issue` with `id` and a rewritten `description` that opens with a dated `## Status: … — re-scoped <date>` note, states current reality (verified against named files/lines), and narrows the remaining work + acceptance criteria. **Retain the original analysis at the bottom** under a "for history" heading.
+- `save_comment` summarizing what changed and why, citing the commit that made it stale.
+- If a ticket is already correctly scoped to the remaining work, don't rewrite it — just add a confirmation comment that you verified it against current code.
+
+***
+
+## Auditing the backlog
+
+Triggered by "audit the backlog", "what's next", or a completeness review. Goal: the open list reflects reality, and next work is obvious.
+
+1. `list_issues` (team: Markdown Editor) across `backlog`, `unstarted`, and `started` states.
+2. Cross-check each against the **CHANGELOG** ("Unreleased" = shipped-but-untagged) and `git log`. Remember the two are complementary: the CHANGELOG lists shipped work (including untracked features), Linear lists planned work — "not in Linear" never means "not shipped."
+3. For anything that looks shipped, **verify in code** (above) before acting, then close or re-scope.
+4. Report a prioritized "do next" using the `phase-*` spine (`phase-0-fidelity` first — it's existential; then `2-syntax`, `3-interaction`, `4-differentiators`), ordered by `priority` within a phase, and honoring dependency/`blockedBy` links.
+5. Summarize the net effect (X open → Y open, what closed, what re-scoped).
+
+***
+
+## Report the result
+
+Print identifiers and URLs so the user can click through:
 
 ```
-✅ Created MAR-XX: https://linear.app/harlan/issue/MAR-XX
+✅ Created  MAR-XX: https://linear.app/harlan/issue/MAR-XX
+✅ Closed   MAR-YY: https://linear.app/harlan/issue/MAR-YY
+♻️  Re-scoped MAR-ZZ: https://linear.app/harlan/issue/MAR-ZZ
 ```
 
-If several issues are created, list every URL.
+If several issues are touched, list every one.
 
 ***
 
 ## Notes
 
 - If the user's information is insufficient, proactively follow up so the issue has enough context.
-- Do not modify any local files; planned work lives only in Linear.
+- **Filing** planned work touches only Linear — do not modify local files for it. **Closing/auditing** may read local files and git to verify, but still records outcomes only in Linear (plus the CHANGELOG when you also ship the feature).
 - Check for duplicates first with `list_issues` (team: Markdown Editor) before creating.
+- Prefer batching independent Linear calls (multiple `save_issue` / `save_comment`) in one step.

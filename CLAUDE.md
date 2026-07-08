@@ -27,9 +27,10 @@ The maintainer reads and writes **English only**. This project is being migrated
 Whenever a work session changes extension or webview source (`src/`, `webview/`, `shared/`, `package.json`), finish by making the build testable in the user's own editor with zero extra steps for them:
 
 1. `pnpm test` — all green.
-2. `pnpm run package`
-3. `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force`
-4. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
+2. **Update `CHANGELOG.md`** if the change added, altered, or removed any user-visible behavior or setting: add or amend an entry under `## [Unreleased]`, in the correct Keep a Changelog section (`Added` / `Changed` / `Deprecated` / `Removed` / `Fixed`). Write it for a user of the editor — describe the observable behavior and any setting keys, not the internal plugins or APIs involved. Skip only for changes with no user-facing effect (refactors, tests, tooling, comments). This is the one step you can't reconstruct later, so do it while the change is fresh.
+3. `pnpm run package`
+4. `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force`
+5. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
 Do this by default, without being asked, before handing control back. Bump the patch version when it helps the user confirm they're on the new build.
 
@@ -87,7 +88,17 @@ All bugs and planned work live in **Linear** (team "Markdown Editor", `MAR-` pre
 
 - **Known bug**: `#Bug` label; only for issues still unfixed after development.
 - **Feature request**: `#Improvement` label; record maturity, implementation approach, and affected files.
-- Filed via the `/devlog` skill (`.claude/skills/devlog/SKILL.md`); triggers: "record a bug", "record a feature request", `/devlog`.
+- Filed via the `/devlog` skill (`.claude/skills/devlog/SKILL.md`), which also covers **closing, updating, and auditing** issues — triggers: "record a bug", "record a feature request", "close an issue", "audit the backlog", `/devlog`.
+
+### Lifecycle (not just filing)
+
+Keeping the backlog honest is as important as filing it. Close the loop when work ships:
+
+- **When a commit ships tracked work, move its issue to `Done`** and leave a one-line comment citing the commit SHA(s). Never leave completed work sitting in `In Progress` or `Backlog`.
+- **Verify against the code before closing — not the CHANGELOG alone.** A feature can ship with a different implementation than the ticket described; confirm the actual behavior/settings/files exist in the working tree.
+- **The CHANGELOG and Linear are complementary, not a single source of truth.** The CHANGELOG records what *shipped* (including untracked work); Linear tracks *planned* work and bugs. When you ship a tracked feature, do both: close the issue **and** add the CHANGELOG entry. "Not in Linear" never means "not shipped."
+- **Sequencing signal**: the `phase-*` labels are the roadmap spine (`phase-0-fidelity` is existential — round-trip trust — and comes first; then `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`). Within a phase, order by `priority`. `phase-1-vscode-parity` is largely retired (shipped in 0.2.3).
+- **Periodically reconcile**: when asked what's next or to review the backlog, cross-check open issues against the CHANGELOG and git history, close anything already shipped, and re-scope tickets whose premise the code has outgrown.
 
 Project intent and ordering principles live in `README.md` ("Why this fork").
 
