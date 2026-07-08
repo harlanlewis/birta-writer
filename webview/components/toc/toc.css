@@ -1,10 +1,10 @@
 /* ─── TOC panel ──────────────────────────────────────── */
 .toc-panel {
     position: fixed;
-    top: 40px;
+    top: var(--editor-topbar-height, 40px);
     left: 0;
     width: var(--toc-width, 220px);
-    height: calc(100vh - 40px);
+    height: calc(100vh - var(--editor-topbar-height, 40px));
     background: var(
         --vscode-sideBar-background,
         var(--vscode-editor-background)
@@ -15,7 +15,8 @@
     display: flex;
     flex-direction: column;
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    /* top/height follow the toolbar's 0.2s slide so the panel moves in sync */
+    transition: transform 0.2s ease, top 0.2s ease, height 0.2s ease;
     overflow: hidden;
 }
 
@@ -158,7 +159,8 @@ body.toc-resizing {
     user-select: none;
     z-index: 100;
     padding: 0;
-    transition: left 0.2s ease; /* in sync with the panel transform animation */
+    /* left in sync with the panel transform, top with the toolbar slide */
+    transition: left 0.2s ease, top 0.2s ease;
 }
 
 /* Right-docked variant: mirror the tab onto the right edge */
@@ -166,7 +168,7 @@ body.toc-right .toc-toggle-tab {
     border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
     border-right: none;
     border-radius: 4px 0 0 4px;
-    transition: right 0.2s ease;
+    transition: right 0.2s ease, top 0.2s ease;
 }
 
 .toc-toggle-tab:hover {

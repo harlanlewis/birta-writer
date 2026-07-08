@@ -1,6 +1,7 @@
 import "./linkPopup.css";
 import type { EditorView } from "@milkdown/prose/view";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
+import { scrollElementBelowTopbar } from "@/utils/headingUtils";
 import {
     IconExternalLink,
     IconFileText,
@@ -233,10 +234,7 @@ export function setupLinkPopup(
     function scrollToAnchor(id: string): void {
         const target = findHeadingElement(id, container);
         if (!target) return;
-        const topbar = document.querySelector(".editor-topbar") as HTMLElement | null;
-        const topbarH = topbar?.getBoundingClientRect().height ?? 40;
-        const top = target.getBoundingClientRect().top + window.scrollY - topbarH - 8;
-        window.scrollTo({ top, behavior: "smooth" });
+        scrollElementBelowTopbar(target);
     }
 
     // ── Build the popup DOM ────────────────────────────────────────

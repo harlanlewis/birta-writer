@@ -53,6 +53,53 @@ describe("initToc dock side", () => {
     });
 });
 
+describe("TOC panel position vs toolbar visibility", () => {
+    function addTopbar(rect: { height: number; bottom: number }): void {
+        const topbar = document.createElement("div");
+        topbar.className = "editor-topbar";
+        topbar.getBoundingClientRect = () =>
+            ({ x: 0, y: 0, top: 0, left: 0, right: 0, width: 0, ...rect }) as DOMRect;
+        document.body.appendChild(topbar);
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+            cb(0);
+            return 0;
+        });
+        document.body.className = "";
+        document.body.innerHTML = "";
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it("a visible toolbar should align the panel below the bar's height", () => {
+        addTopbar({ height: 40, bottom: 40 });
+        const { panel } = initToc(fakeEventManager, () => null);
+        expect(panel.style.top).toBe("40px");
+        expect(panel.style.height).toBe("calc(100vh - 40px)");
+    });
+
+    it("body.toolbar-hidden should pin the panel flush to the viewport top", () => {
+        // The bar hides via a translateY transition, so its rect still reports
+        // the old geometry at measurement time — the class is the truth.
+        addTopbar({ height: 40, bottom: 40 });
+        document.body.classList.add("toolbar-hidden");
+        const { panel } = initToc(fakeEventManager, () => null);
+        expect(panel.style.top).toBe("0px");
+        expect(panel.style.height).toBe("calc(100vh - 0px)");
+    });
+
+    it("a toolbar still sliding in (stale rect bottom) should not push the panel under it", () => {
+        addTopbar({ height: 40, bottom: 0 });
+        const { panel } = initToc(fakeEventManager, () => null);
+        expect(panel.style.top).toBe("40px");
+    });
+});
+
 describe("TOC drag-to-resize", () => {
     beforeEach(() => {
         vi.clearAllMocks();

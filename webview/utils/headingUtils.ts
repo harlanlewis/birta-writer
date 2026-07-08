@@ -14,9 +14,36 @@ import type { EditorView } from "@milkdown/prose/view";
 
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
 
-/** Get the bottom position of the top toolbar */
+/**
+ * Get the bottom position of the top toolbar (0 when hidden via toolbar.visible).
+ *
+ * The bar hides through a translateY slide transition, so its rect reports
+ * stale geometry while animating: body.toolbar-hidden is the source of truth
+ * (mirroring the --editor-topbar-height: 0px CSS contract), and when visible
+ * we read the rect's height — the bar is fixed at top: 0, so its settled
+ * bottom equals its height, and height is immune to the transform.
+ */
 export function getTopbarBottom(): number {
-    return document.querySelector(".editor-topbar")?.getBoundingClientRect().bottom ?? 40;
+    if (document.body.classList.contains("toolbar-hidden")) {
+        return 0;
+    }
+    const topbar = document.querySelector(".editor-topbar");
+    return topbar ? topbar.getBoundingClientRect().height : 40;
+}
+
+/**
+ * Scroll the window so `el` sits `margin` px below the topbar (or below the
+ * viewport top when the toolbar is hidden). The single place for this offset
+ * math — TOC clicks, anchor links, footnote jumps, find matches, and sticky
+ * headings must all reserve the same space for the bar.
+ */
+export function scrollElementBelowTopbar(
+    el: HTMLElement,
+    margin: number = 8,
+    behavior: ScrollBehavior = "smooth",
+): void {
+    const top = el.getBoundingClientRect().top + window.scrollY - getTopbarBottom() - margin;
+    window.scrollTo({ top: Math.max(0, top), behavior });
 }
 
 /** Get all visible heading elements (excluding those hidden by folding) */

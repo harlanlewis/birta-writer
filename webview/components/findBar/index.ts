@@ -12,6 +12,7 @@ import {
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
 import { attachInputUndo } from "@/utils/inputUndo";
+import { getTopbarBottom, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
 import {
@@ -456,10 +457,10 @@ export function initFindBar(
         }
         const el = matchElement(view, matches[idx]);
         if (el) {
-            const topbarH = document.querySelector(".editor-topbar")?.getBoundingClientRect().height ?? 40;
+            const topbarH = getTopbarBottom();
             const rect = el.getBoundingClientRect();
             if (rect.top < topbarH + 8 || rect.bottom > window.innerHeight - 8) {
-                window.scrollTo({ top: rect.top + window.scrollY - topbarH - 60 });
+                scrollElementBelowTopbar(el, 60, "auto");
             }
         }
     }

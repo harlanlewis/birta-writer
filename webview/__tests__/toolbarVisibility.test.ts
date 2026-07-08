@@ -4,9 +4,11 @@
  * setToolbarVisible write, and the toolbarConfig echo path (applyConfig).
  * acquireVsCodeApi is injected globally by setup.ts.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import { initToolbar } from "../components/toolbar";
+import { initToc } from "../components/toc";
+import { EventManager } from "../eventManager";
 import { runEditorCommand } from "../editorCommands";
 import type { ToolbarConfig } from "../../shared/messages";
 
@@ -45,6 +47,10 @@ describe("toolbar visibility", () => {
         document.body.innerHTML = "";
         document.body.className = "";
         window.__i18n = undefined;
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
     });
 
     it("by default should render visible with the expand tab present but CSS-hidden", () => {
@@ -143,6 +149,39 @@ describe("toolbar visibility", () => {
         tb.applyConfig(config(true));
         expect(topbar.classList.contains("editor-topbar--hidden")).toBe(false);
         expect(visibleMessages()).toHaveLength(0);
+    });
+
+    it("toggling visibility should reposition the TOC panel via the synchronous resize dispatch", () => {
+        // Arrange — a topbar whose rect stays stale during the slide transition,
+        // and a TOC wired to a real EventManager so it hears the resize event
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+            cb(0);
+            return 0;
+        });
+        const { topbar } = buildToolbar();
+        topbar.getBoundingClientRect = () =>
+            ({ x: 0, y: 0, top: 0, left: 0, right: 0, width: 0, height: 40, bottom: 40 }) as DOMRect;
+        const em = new EventManager();
+        const { panel } = initToc(em, () => null);
+        expect(panel.style.top).toBe("40px");
+
+        // Act — hide from the gear menu (applyVisibility dispatches resize synchronously)
+        gearMenuEntry(topbar, "Hide Toolbar")!.dispatchEvent(
+            new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+        );
+
+        // Assert — the panel pins to the top despite the still-animating bar
+        expect(panel.style.top).toBe("0px");
+        expect(panel.style.height).toBe("calc(100vh - 0px)");
+
+        // Act — show again while the bar is still translated up (bottom reads 0)
+        topbar.getBoundingClientRect = () =>
+            ({ x: 0, y: 0, top: 0, left: 0, right: 0, width: 0, height: 40, bottom: 0 }) as DOMRect;
+        expandTab()!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+        // Assert — the panel realigns below the bar, not underneath it
+        expect(panel.style.top).toBe("40px");
+        em.dispose();
     });
 
     it("the hideToolbar and showToolbar editor commands should be idempotent state setters", () => {

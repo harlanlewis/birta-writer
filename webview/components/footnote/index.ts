@@ -2,6 +2,7 @@ import "./footnote.css";
 import type { Node as PMNode } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
 import { t } from "@/i18n";
+import { scrollElementBelowTopbar } from "@/utils/headingUtils";
 
 // ── Pure helpers (unit-tested) ─────────────────────────────────────────────
 
@@ -91,10 +92,7 @@ export function nextFreeLabel(doc: PMNode): string {
 // ── Shared jump/scroll + hover popover ─────────────────────────────────────
 
 function scrollDomIntoView(el: HTMLElement): void {
-    const topbar = document.querySelector(".editor-topbar") as HTMLElement | null;
-    const topbarH = topbar?.getBoundingClientRect().height ?? 40;
-    const top = el.getBoundingClientRect().top + window.scrollY - topbarH - 12;
-    window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    scrollElementBelowTopbar(el, 12);
     el.classList.add("footnote-flash");
     setTimeout(() => el.classList.remove("footnote-flash"), 1200);
 }

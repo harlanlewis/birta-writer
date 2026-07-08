@@ -6,6 +6,7 @@ import { notifyTocWidth } from "@/messaging";
 import type { EventManager } from "@/eventManager";
 import {
     getTopbarBottom,
+    scrollElementBelowTopbar,
     getAllHeadings,
     findHeadingPos,
     findActiveHeading,
@@ -259,19 +260,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                         el = el.parentElement;
                     }
                     if (el) {
-                        const topbar = document.querySelector(
-                            ".editor-topbar",
-                        ) as HTMLElement | null;
-                        const topbarH =
-                            topbar?.getBoundingClientRect().height ?? 40;
-                        const top =
-                            el.getBoundingClientRect().top +
-                            window.scrollY -
-                            topbarH -
-                            8;
                         // Update the TOC active state immediately
                         setActiveHeadingPos(pos);
-                        window.scrollTo({ top, behavior: "smooth" });
+                        scrollElementBelowTopbar(el);
                     }
                 } catch {
                     /* ignore when the document structure is unexpected */
@@ -362,10 +353,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     // ── Dynamically align to the bottom of the topbar and sync the tab's vertical position ──────────
     function updatePanelPosition(): void {
-        const topbar = document.querySelector(
-            ".editor-topbar",
-        ) as HTMLElement | null;
-        const topbarBottom = topbar?.getBoundingClientRect().bottom ?? 40;
+        const topbarBottom = getTopbarBottom();
         panel.style.top = `${topbarBottom}px`;
         panel.style.height = `calc(100vh - ${topbarBottom}px)`;
         // Center the tab vertically on the panel

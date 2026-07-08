@@ -31,6 +31,7 @@ import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, onMessage } from "./messaging";
 import type { ToWebviewMessage } from "../shared/messages";
 import { computeLineMap } from "../shared/lineMap";
+import { getTopbarBottom } from "./utils/headingUtils";
 
 import { setupLinkPopup } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
@@ -125,9 +126,7 @@ function getFirstVisibleSourceLine(
     if (!lineMap.length) {
         return 1;
     }
-    const topbarH =
-        document.querySelector(".editor-topbar")?.getBoundingClientRect()
-            .height ?? 40;
+    const topbarH = getTopbarBottom();
     const children = view.dom.children;
     const viewportHeight = window.innerHeight;
     const viewportCenter = topbarH + (viewportHeight - topbarH) / 2;

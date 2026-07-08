@@ -7,6 +7,7 @@ import { headingFoldPluginKey, type HeadingFoldMeta } from "./headingFold";
 import { t } from "../i18n";
 import {
     getTopbarBottom,
+    scrollElementBelowTopbar,
     getHeadingLevel,
     getVisibleHeadings,
     getHeadingText,
@@ -43,8 +44,7 @@ function scrollHeadingIntoStickyPosition(view: EditorView, headingPos: number): 
         if (!(heading instanceof HTMLElement)) {
             return;
         }
-        const top = heading.getBoundingClientRect().top + window.scrollY - getTopbarBottom() - 8;
-        window.scrollTo({ top });
+        scrollElementBelowTopbar(heading, 8, "auto");
     });
 }
 
