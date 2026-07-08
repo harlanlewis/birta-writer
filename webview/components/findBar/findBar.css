@@ -86,7 +86,7 @@
 }
 
 .find-bar__input:focus {
-    border-color: var(--vscode-focusBorder, #007fd4);
+    border-color: var(--vscode-focusBorder);
 }
 
 .find-bar--no-results .find-bar__input {
@@ -213,7 +213,7 @@
 }
 
 .find-match-el--current {
-    outline: 2px solid var(--vscode-editor-findMatchBorder, var(--vscode-focusBorder, #f6b94d));
+    outline: 2px solid var(--vscode-editor-findMatchBorder, var(--vscode-focusBorder));
     animation: find-match-flash 0.5s ease;
 }
 

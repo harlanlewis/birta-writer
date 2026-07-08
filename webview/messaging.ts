@@ -92,14 +92,6 @@ export function notifyResolveImagePath(id: string, relPath: string): void {
     vscode.postMessage({ type: "resolveImagePath", id, relPath });
 }
 
-export function notifyRenameImage(
-    id: string,
-    webviewUri: string,
-    newBasename: string,
-): void {
-    vscode.postMessage({ type: "renameImage", id, webviewUri, newBasename });
-}
-
 export function notifyFrontmatterUpdate(frontmatter: string): void {
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
 }
@@ -142,6 +134,11 @@ export function notifySetToolbarLayout(
 /** Persist whole-toolbar visibility (gear menu / right-click / expand tab). */
 export function notifySetToolbarVisible(visible: boolean): void {
     vscode.postMessage({ type: "setToolbarVisible", visible });
+}
+
+/** Persist the TOC dock side (header flip button); echoes back as setTocPosition. */
+export function notifySetTocPosition(position: import("../shared/messages").TocPosition): void {
+    vscode.postMessage({ type: "setTocPosition", position });
 }
 
 export function notifyLintBlocks(id: number, blocks: import("../shared/messages").LintBlock[]): void {

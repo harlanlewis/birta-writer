@@ -47,7 +47,6 @@ import { runEditorCommand, setEditorCommandHost } from "./editorCommands";
 import { setSlashMenuHost } from "./plugins";
 import { initContextMenu } from "./components/contextMenu";
 import {
-    handleRenameImage,
     handleGetProjectImages,
     handleImageFile,
     insertImageNode,
@@ -205,7 +204,6 @@ async function initEditor(
             notifyUpdate(updated);
             toc.refresh();
         },
-        handleRenameImage,
     );
     toc.refresh();
 }
@@ -477,6 +475,7 @@ const handlers = createMessageHandlers({
         retryScroll,
         getEditorView,
         refreshToc: () => toc.refresh(),
+        setTocPosition: (position) => toc.setPosition(position),
     },
     topbarTb,
     themeOverrides: _themeOverrides,

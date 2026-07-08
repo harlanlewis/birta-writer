@@ -20,8 +20,8 @@
 }
 
 .image-wrapper--selected {
-    border-color: var(--image-selection-color, rgba(52, 211, 153, 0.6));
-    box-shadow: 0 0 0 1px var(--image-selection-color, rgba(52, 211, 153, 0.6));
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
 }
 
 /* Override ProseMirror's default NodeSelection outline */
@@ -29,15 +29,16 @@
     outline: none;
 }
 
-/* ─── Image toolbar ──────────────────────────────────── */
+/* ─── Image toolbar: controls row + always-visible title row ─── */
 .image-toolbar {
     display: none;
     position: absolute;
     bottom: calc(100% + 6px);
     left: 0;
     z-index: 600;
-    align-items: center;
-    gap: 2px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
     padding: 3px 5px;
     background: var(--vscode-editorHoverWidget-background, #252526);
     border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
@@ -46,6 +47,12 @@
     white-space: nowrap;
     user-select: none;
     line-height: 1;
+}
+
+.image-toolbar-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
 }
 
 .image-toolbar--below {
@@ -85,18 +92,72 @@
     flex-shrink: 0;
 }
 
-/* Filename + alt info bar */
-.img-tb-info {
-    max-width: 200px;
-    padding: 0 4px;
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex-shrink: 1;
+/* File-name chip (click to edit the image path): name text + pencil glyph */
+.img-tb-path {
+    max-width: 220px;
     min-width: 0;
-    user-select: none;
+    flex-shrink: 1;
+    gap: 6px;
+
+    .img-tb-path-name {
+        color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+
+    .img-tb-path-pencil {
+        display: inline-flex;
+        flex-shrink: 0;
+        opacity: 0.75;
+    }
+
+    &:hover .img-tb-path-name,
+    &:hover .img-tb-path-pencil {
+        color: var(--vscode-editorHoverWidget-foreground, #ccc);
+        opacity: 1;
+    }
+}
+
+/* Shared base for the caption and title row: an input that reads as quiet
+   text until hovered/focused, applying edits on blur. The two consumers keep
+   deliberately different type: the caption is document-adjacent (12px,
+   italic, centered), the title row is toolbar chrome (11px, left-aligned). */
+.img-quiet-input {
+    box-sizing: border-box;
+    background: transparent;
+    color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
+    border: 1px solid transparent;
+    border-radius: 3px;
+    font-family: inherit;
+    outline: none;
+    cursor: text;
+
+    &:hover:not(:focus) {
+        border-color: var(--vscode-editorHoverWidget-border, #454545);
+    }
+
+    &:focus {
+        background: var(--vscode-input-background, rgba(128, 128, 128, 0.15));
+        border-color: var(--vscode-focusBorder);
+        color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
+    }
+
+    /* While the image node is selected, the browser paints this text as part
+       of the node's selection — but keystrokes replace the whole image. Hide
+       the misleading paint whenever the input isn't the focused target. */
+    &:not(:focus)::selection {
+        background: transparent;
+    }
+}
+
+/* Title row: edits the markdown title (the image's hover tooltip) */
+.img-tb-title {
+    width: 100%;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 11px;
 }
 
 /* Inline rename input */
@@ -105,7 +166,7 @@
     padding: 0 5px;
     background: var(--vscode-input-background, rgba(128, 128, 128, 0.15));
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
-    border: 1px solid var(--vscode-focusBorder, #007acc);
+    border: 1px solid var(--vscode-focusBorder);
     border-radius: 3px;
     font-size: 11px;
     font-family: inherit;
@@ -113,31 +174,29 @@
     width: 130px;
 }
 
-/* Editable input in the info area (local image filename) */
-.img-tb-info--input {
-    max-width: 160px;
-    min-width: 40px;
-    height: 20px;
-    padding: 0 4px;
-    background: transparent;
-    color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
-    border: 1px solid transparent;
-    border-radius: 3px;
-    font-size: 11px;
-    font-family: inherit;
-    outline: none;
-    flex-shrink: 1;
-    cursor: text;
+/* Alt-text caption under the image: always visible when non-empty,
+   revealed on selection when empty; edits apply to the document on blur */
+.image-caption {
+    display: none;
+    width: 100%;
+    padding: 3px 4px;
+    font-size: 12px;
+    font-style: italic;
+    line-height: 1.4;
+    text-align: center;
+
+    &.image-caption--filled {
+        display: block;
+    }
+
+    &:focus {
+        display: block;
+        font-style: normal;
+    }
 }
 
-.img-tb-info--input:hover:not(:focus) {
-    border-color: var(--vscode-editorHoverWidget-border, #454545);
-}
-
-.img-tb-info--input:focus {
-    background: var(--vscode-input-background, rgba(128, 128, 128, 0.15));
-    border-color: var(--vscode-focusBorder, #007acc);
-    color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
+.image-wrapper--selected .image-caption {
+    display: block;
 }
 
 /* Image load-failure placeholder */

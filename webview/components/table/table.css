@@ -6,8 +6,8 @@
  * grips and the "+" buttons do, and those sit in the OUTER gutters / on the
  * gridlines so they never block clicking or selecting cell text.
  *
- * Accent: the project's table green (rgba(52, 211, 153, …)) with
- * --vscode-focusBorder as the theme-aware fallback.
+ * Accent: --vscode-focusBorder (follows the active theme). No fallbacks —
+ * the --vscode-* variables always exist in the webview.
  * ─────────────────────────────────────────────────────────────────────────── */
 
 /* Wrapper is the positioning frame for the overlay. The <table> inside keeps
@@ -71,8 +71,8 @@
 }
 .mw-grip:hover .mw-grip-handle,
 .mw-grip--active .mw-grip-handle {
-    background: rgba(52, 211, 153, 0.85);
-    border-color: var(--vscode-focusBorder, rgba(52, 211, 153, 0.9));
+    background: var(--vscode-focusBorder);
+    border-color: var(--vscode-focusBorder);
 }
 
 /* ─── Insert bars ("+") ─────────────────────────────────────────────────────
@@ -88,7 +88,7 @@
 
 .mw-insert-line {
     position: absolute;
-    background: var(--vscode-focusBorder, rgba(52, 211, 153, 0.85));
+    background: var(--vscode-focusBorder);
     opacity: 0;
     transition: opacity 0.1s ease;
     pointer-events: none;
@@ -117,9 +117,9 @@
     height: 20px;
     padding: 0;
     border-radius: 50%;
-    border: 1px solid var(--vscode-focusBorder, rgba(52, 211, 153, 0.6));
+    border: 1px solid var(--vscode-focusBorder);
     background: var(--vscode-editor-background);
-    color: var(--vscode-focusBorder, rgba(52, 211, 153, 0.9));
+    color: var(--vscode-focusBorder);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -140,7 +140,7 @@
 }
 .mw-insert-btn:hover {
     opacity: 1;
-    background: var(--vscode-focusBorder, rgba(52, 211, 153, 0.9));
+    background: var(--vscode-focusBorder);
     color: var(--vscode-editor-background, #1e1e1e);
 }
 /* Button sits on the gridline, centered in the gutter just outside the table. */
@@ -167,7 +167,7 @@
 .mw-drop-line {
     position: absolute;
     z-index: 5;
-    background: var(--vscode-focusBorder, rgba(52, 211, 153, 0.95));
+    background: var(--vscode-focusBorder);
     pointer-events: none;
 }
 .mw-drop-line--h {
@@ -181,9 +181,6 @@
     position: absolute;
     z-index: 4;
     pointer-events: none;
-    background: var(
-        --vscode-editor-selectionBackground,
-        rgba(52, 211, 153, 0.18)
-    );
-    border: 1px solid var(--vscode-focusBorder, rgba(52, 211, 153, 0.5));
+    background: var(--vscode-editor-selectionBackground);
+    border: 1px solid var(--vscode-focusBorder);
 }

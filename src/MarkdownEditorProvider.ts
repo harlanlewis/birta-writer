@@ -526,16 +526,6 @@ export class MarkdownEditorProvider
                             this._handleGetProjectImages(document, panel, uriKey, message.id).catch(() => {});
                         }
                         break;
-                    case "renameImage":
-                        if (message.id && message.webviewUri && message.newBasename) {
-                            this._handleImageRename(
-                                document, panel, uriKey,
-                                message.id,
-                                message.webviewUri,
-                                message.newBasename,
-                            ).catch(() => {});
-                        }
-                        break;
                     case "getPathSuggestions":
                         if (message.id && message.query !== undefined) {
                             this._handleGetPathSuggestions(document, panel, message.id, message.query).catch(() => {});
@@ -584,6 +574,9 @@ export class MarkdownEditorProvider
                         break;
                     case "setToolbarVisible":
                         MarkdownEditorProvider.updateSettingRespectingScope("toolbar.visible", message.visible);
+                        break;
+                    case "setTocPosition":
+                        MarkdownEditorProvider.updateSettingRespectingScope("tocPosition", message.position);
                         break;
                     case "spellAddWord":
                         this._handleSpellAddWord(message.word);
@@ -988,7 +981,6 @@ export class MarkdownEditorProvider
         const fontStacks = MarkdownEditorProvider.getFontStacks(cfg);
         const resolvedFont = resolveFontFamily(fontPreset, fontStacks);
         const fontSize = clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT));
-        const imageSelectionColor = cfg.get<string>("imageSelectionColor", "rgba(52, 211, 153, 0.6)");
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
         const customJsUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customJs", []));
         const scriptUri = webview.asWebviewUri(
@@ -1046,7 +1038,7 @@ export class MarkdownEditorProvider
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
 	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --content-font-family: ${resolvedFont};` : ''} --content-font-scale: ${fontSize / 100}; --image-selection-color: ${imageSelectionColor}; }</style>
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --content-font-family: ${resolvedFont};` : ''} --content-font-scale: ${fontSize / 100}; }</style>
 	</head>
 	<body class="${bodyClasses}">
 	  <div class="editor-topbar"></div>
@@ -1438,76 +1430,6 @@ export class MarkdownEditorProvider
         }
 
         panel.webview.postMessage({ type: 'projectImagesList', id, images });
-    }
-
-    private async _handleImageRename(
-        document: vscode.TextDocument,
-        panel: vscode.WebviewPanel,
-        uriKey: string,
-        id: string,
-        webviewUri: string,
-        newBasename: string,
-    ): Promise<void> {
-        const uriMap = this._imageUriMaps.get(uriKey);
-        if (!uriMap) {
-            panel.webview.postMessage({ type: 'imageRenameError', id, error: 'URI map not found' });
-            return;
-        }
-
-        const oldRelPath = uriMap.get(webviewUri);
-        if (!oldRelPath) {
-            panel.webview.postMessage({ type: 'imageRenameError', id, error: 'Image not found in URI map' });
-            return;
-        }
-
-        try {
-            const mdDir = path.dirname(document.uri.fsPath);
-            const oldAbsPath = path.resolve(mdDir, oldRelPath);
-            const oldUri = vscode.Uri.file(oldAbsPath);
-
-            // Verify the file exists
-            await vscode.workspace.fs.stat(oldUri);
-
-            // Sanitize the new filename: strip illegal characters, keep the original extension
-            const oldExt = path.extname(oldAbsPath);
-            const safeBasename = newBasename
-                .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
-                .replace(/\.+$/, '')
-                .trim();
-            if (!safeBasename) {
-                panel.webview.postMessage({ type: 'imageRenameError', id, error: 'Invalid filename' });
-                return;
-            }
-
-            const dir = path.dirname(oldAbsPath);
-            let targetUri = vscode.Uri.file(path.join(dir, safeBasename + oldExt));
-
-            // Check whether the target file already exists; if so, warn the user and don't overwrite automatically
-            try {
-                await vscode.workspace.fs.stat(targetUri);
-                // A successful stat means the file already exists
-                const errMsg = vscode.l10n.t('A file named "{0}" already exists.', safeBasename + oldExt);
-                panel.webview.postMessage({ type: 'imageRenameError', id, error: errMsg });
-                vscode.window.showErrorMessage(errMsg);
-                return;
-            } catch { /* File doesn't exist, continue normally */ }
-
-            await vscode.workspace.fs.rename(oldUri, targetUri);
-
-            // Update the URI mapping
-            const rel = path.relative(mdDir, targetUri.fsPath).replace(/\\/g, '/');
-            const newRelPath = rel.startsWith('.') ? rel : './' + rel;
-            const newWebviewUri = panel.webview.asWebviewUri(targetUri).toString();
-
-            uriMap.delete(webviewUri);
-            uriMap.set(newWebviewUri, newRelPath);
-
-            panel.webview.postMessage({ type: 'imageRenamed', id, oldWebviewUri: webviewUri, newWebviewUri });
-        } catch (e) {
-            const errMsg = e instanceof Error ? e.message : String(e);
-            panel.webview.postMessage({ type: 'imageRenameError', id, error: errMsg });
-            vscode.window.showErrorMessage(vscode.l10n.t('Image rename failed: {0}', errMsg));
-        }
     }
 
     /**

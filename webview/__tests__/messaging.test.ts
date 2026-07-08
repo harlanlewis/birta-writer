@@ -17,7 +17,6 @@ const {
     notifyGetProjectImages,
     notifyGetPathSuggestions,
     notifyResolveImagePath,
-    notifyRenameImage,
     notifyOpenSettings,
     notifyOpenKeybindings,
     notifySetToolbarVisible,
@@ -116,16 +115,6 @@ describe("messaging — postMessage format", () => {
             type: "resolveImagePath",
             id: "resolve-1",
             relPath: "./images/photo.png",
-        });
-    });
-
-    it("notifyRenameImage should carry id/webviewUri/newBasename", () => {
-        notifyRenameImage("rename-1", "vscode-resource://img.png", "new-name.png");
-        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
-            type: "renameImage",
-            id: "rename-1",
-            webviewUri: "vscode-resource://img.png",
-            newBasename: "new-name.png",
         });
     });
 

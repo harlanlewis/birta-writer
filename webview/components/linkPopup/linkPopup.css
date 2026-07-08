@@ -160,7 +160,7 @@
     transition: border-color 0.1s;
 
     &:focus {
-        border-color: var(--vscode-focusBorder, #007acc);
+        border-color: var(--vscode-focusBorder);
     }
 }
 

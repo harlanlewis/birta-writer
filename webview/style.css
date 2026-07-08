@@ -9,7 +9,7 @@
    :is() wrapper lifts specificity to (0,2,0) so this wins over per-component
    element rules. :focus-visible keeps mouse clicks ring-free. */
 :is(button, select, [role="button"]):focus-visible {
-    outline: 1px solid var(--vscode-focusBorder, #007fd4);
+    outline: 1px solid var(--vscode-focusBorder);
     outline-offset: -1px;
 }
 
@@ -216,7 +216,7 @@ html {
 
     &:hover {
         color: var(--vscode-editor-foreground);
-        border-color: var(--vscode-focusBorder, #007acc);
+        border-color: var(--vscode-focusBorder);
         background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
     }
 }
@@ -246,7 +246,7 @@ html {
     min-height: 3em;
 
     &:focus {
-        outline: 1px solid var(--vscode-focusBorder, #007acc);
+        outline: 1px solid var(--vscode-focusBorder);
         outline-offset: -1px;
     }
 
@@ -755,9 +755,9 @@ body.editor-width-auto {
             outline-offset: 2px;
 
             &.ProseMirror-selectednode {
-                border-top-color: var(--image-selection-color, rgba(52, 211, 153, 0.6));
-                outline-color: var(--image-selection-color, rgba(52, 211, 153, 0.6));
-                box-shadow: 0 0 0 1px var(--image-selection-color, rgba(52, 211, 153, 0.6));
+                border-top-color: var(--vscode-focusBorder);
+                outline-color: var(--vscode-focusBorder);
+                box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
             }
         }
 
@@ -808,13 +808,13 @@ body.editor-width-auto {
         /* ─── Table cell range selection (prosemirror-tables CellSelection) ─── */
         .selectedCell {
             position: relative;
-            background: rgba(52, 211, 153, 0.15) !important;
+            background: color-mix(in srgb, var(--vscode-focusBorder) 15%, transparent) !important;
 
             &::after {
                 content: "";
                 position: absolute;
                 inset: -1px;
-                border: 2px solid rgba(52, 211, 153, 0.6);
+                border: 2px solid color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent);
                 pointer-events: none;
                 z-index: 1;
             }
@@ -827,7 +827,7 @@ body.editor-width-auto {
             top: 0;
             bottom: 0;
             width: 4px;
-            background: var(--vscode-focusBorder, #007acc);
+            background: var(--vscode-focusBorder);
             cursor: col-resize;
             z-index: 20;
         }
@@ -1027,7 +1027,7 @@ body.toolbar-hidden::before {
         min-width: 1ch;
 
         &:focus {
-            text-decoration: underline dotted var(--vscode-focusBorder, #007acc);
+            text-decoration: underline dotted var(--vscode-focusBorder);
         }
     }
 
@@ -1077,7 +1077,7 @@ body.toolbar-hidden::before {
 
     &:hover {
         color: var(--vscode-editor-foreground);
-        border-color: var(--vscode-focusBorder, #007acc);
+        border-color: var(--vscode-focusBorder);
     }
 }
 
@@ -1093,7 +1093,7 @@ body.toolbar-hidden::before {
         var(--vscode-dropdown-background, var(--vscode-editor-background))
     );
     border: 1px solid
-        var(--vscode-editorSuggestWidget-border, var(--vscode-focusBorder, #007acc));
+        var(--vscode-editorSuggestWidget-border, var(--vscode-focusBorder));
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }

@@ -1,13 +1,12 @@
 /**
  * imageUpload.ts
  *
- * Responsibility: manage the async operations for image upload, fetching the
- * project's image list, and image rename.
+ * Responsibility: manage the async operations for image upload and fetching
+ * the project's image list.
  *
  * This module wraps the Promise bookkeeping for talking to the Extension, including:
  * - Image file upload (with timeout and error handling)
  * - Fetching the project's image list
- * - Image rename
  * - Inserting/updating image nodes in the ProseMirror editor
  */
 
@@ -16,7 +15,6 @@ import { editorViewCtx } from "@milkdown/core";
 import {
     notifyUploadImage,
     notifyGetProjectImages,
-    notifyRenameImage,
 } from "./messaging";
 
 // ── Image upload: pending promise map ────────────────────
@@ -38,44 +36,6 @@ type GetImagesCallbacks = {
     reject: (e: Error) => void;
 };
 const _pendingGetImages = new Map<string, GetImagesCallbacks>();
-
-// ── Image rename: pending promise map ──────────────────
-type RenameCallbacks = { resolve: () => void; reject: (e: Error) => void };
-const _pendingRenames = new Map<string, RenameCallbacks>();
-
-export async function handleRenameImage(
-    webviewUri: string,
-    newBasename: string,
-): Promise<void> {
-    const id = `rename_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    return new Promise((resolve, reject) => {
-        let settled = false;
-        const timeoutId = setTimeout(() => {
-            if (!settled) {
-                settled = true;
-                _pendingRenames.delete(id);
-                reject(new Error("Rename timed out"));
-            }
-        }, 15000);
-        _pendingRenames.set(id, {
-            resolve: () => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timeoutId);
-                    resolve();
-                }
-            },
-            reject: (e) => {
-                if (!settled) {
-                    settled = true;
-                    clearTimeout(timeoutId);
-                    reject(e);
-                }
-            },
-        });
-        notifyRenameImage(id, webviewUri, newBasename);
-    });
-}
 
 export async function handleGetProjectImages(
     _unusedId: string,
@@ -183,20 +143,3 @@ export function handleProjectImagesList(id: string, images: Array<{ relPath: str
     }
 }
 
-/** Handle the image rename response */
-export function handleImageRenamed(id: string): void {
-    const cb = _pendingRenames.get(id);
-    if (cb) {
-        _pendingRenames.delete(id);
-        cb.resolve();
-    }
-}
-
-/** Handle an image rename error */
-export function handleImageRenameError(id: string, error: string): void {
-    const cb = _pendingRenames.get(id);
-    if (cb) {
-        _pendingRenames.delete(id);
-        cb.reject(new Error(error));
-    }
-}

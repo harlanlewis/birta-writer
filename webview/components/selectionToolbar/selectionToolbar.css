@@ -90,7 +90,7 @@
 }
 
 .sel-tb-fmt-item--active {
-    color: var(--vscode-focusBorder, #007acc);
+    color: var(--vscode-focusBorder);
     font-weight: 600;
 }
 

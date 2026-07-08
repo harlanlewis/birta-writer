@@ -186,7 +186,6 @@ export async function createEditor(
     container: HTMLElement,
     initialMarkdown: string,
     onUpdate: (markdown: string) => void,
-    onRenameImage?: (webviewUri: string, newBasename: string) => Promise<void>,
 ): Promise<Editor> {
     // Milkdown's listener delivers updates asynchronously after create()
     // completes (RAF/microtask), by which point isSettled is already true and
@@ -279,15 +278,7 @@ export async function createEditor(
                 ["html", (node: { attrs: Record<string, string> }) => createHtmlView(node)],
                 [
                     "image",
-                    (node, view, getPos) =>
-                        createImageView(
-                            node,
-                            view,
-                            getPos,
-                            undefined,
-                            undefined,
-                            onRenameImage,
-                        ),
+                    (node, view, getPos) => createImageView(node, view, getPos),
                 ],
             ]);
         })

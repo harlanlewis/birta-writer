@@ -31,6 +31,9 @@ export type LinkTargetSuggestionItem = {
 /** Table line-wrapping mode */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
+/** TOC dock side, matching the `markdownWysiwyg.tocPosition` enum. */
+export type TocPosition = "left" | "right";
+
 /** One text block sent for grammar/spell linting (key = block position). */
 export type LintBlock = { key: number; text: string };
 
@@ -163,7 +166,6 @@ export type ToExtensionMessage =
     | { type: "openKeybindings" }
     | { type: "uploadImage"; id: string; data: Uint8Array; mimeType: string; altText: string }
     | { type: "getProjectImages"; id: string }
-    | { type: "renameImage"; id: string; webviewUri: string; newBasename: string }
     | { type: "getPathSuggestions"; id: string; query: string }
     | { type: "getLinkTargetSuggestions"; id: string; query: string }
     // Popup hint: where would this link path open right now? (same resolver
@@ -190,6 +192,9 @@ export type ToExtensionMessage =
     // the extension persists it to `toolbar.visible`, which round-trips back
     // as a `toolbarConfig` message.
     | { type: "setToolbarVisible"; visible: boolean }
+    // TOC dock-side flip from the panel header button; the extension persists it
+    // to `tocPosition`, which round-trips back as a `setTocPosition` message.
+    | { type: "setTocPosition"; position: TocPosition }
     | { type: "lintBlocks"; id: number; blocks: LintBlock[] }
     // Selection serialized in the webview (copy-as-HTML / copy-as-Markdown from
     // the right-click menu); the extension writes `data` to the system clipboard.
@@ -222,8 +227,6 @@ export type ToWebviewMessage =
     | { type: "imageUploaded"; id: string; url: string }
     | { type: "imageUploadError"; id: string; error: string }
     | { type: "projectImagesList"; id: string; images: ProjectImage[] }
-    | { type: "imageRenamed"; id: string; oldWebviewUri: string; newWebviewUri: string }
-    | { type: "imageRenameError"; id: string; error: string }
     | { type: "requestSwitchToTextEditor" }
     | { type: "pathSuggestions"; id: string; items: PathSuggestionItem[] }
     | { type: "linkTargetSuggestions"; id: string; items: LinkTargetSuggestionItem[] }
@@ -244,6 +247,8 @@ export type ToWebviewMessage =
     | { type: "setFontFamily"; fontFamily: string | null; preset: FontPreset; stacks: FontStacks }
     // Live content font-size update, as a percentage of the editor font size.
     | { type: "setFontSize"; size: number }
+    // Live TOC dock-side update (left/right), echoed after `tocPosition` changes.
+    | { type: "setTocPosition"; position: TocPosition }
     | { type: "lintResults"; id: number; results: LintBlockResult[] }
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).

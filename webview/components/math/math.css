@@ -67,5 +67,5 @@
 }
 
 .math-popover-input:focus {
-    border-color: var(--vscode-focusBorder, #007fd4);
+    border-color: var(--vscode-focusBorder);
 }

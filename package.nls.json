@@ -35,7 +35,6 @@
   "config.debugMode.description": "Show debug overlays (e.g. table insert trigger zones). Intended for development use.",
   "config.imageLocalPath.description": "Local folder for saving images (relative or absolute path). Leave empty to auto-detect (images/, imgs/, assets/images/, assets/). Images are always stored locally and are never uploaded off your machine.",
   "config.smartLinks.description": "Resolve local links the way your site generator does: workspace-root paths, ancestor content roots (e.g. Hugo's content/), .md and index.md suffixes, and [[wikilink]] targets. When disabled, links resolve relative to the document only.",
-  "config.imageSelectionColor.description": "Border color when an image is selected in the editor (CSS color value). Default matches the table cell selection color.",
   "config.colorTheme.description": "Color theme for the Markdown editor. 'auto' follows VS Code's current theme. Set a theme ID to override (use the 'Select Color Theme' command to browse available themes).",
   "config.customThemes.description": "Custom color themes defined as an array of objects with 'name' and 'colors' properties. Colors use VS Code color IDs as keys.",
   "config.tableWrap.description": "Controls how text wraps inside table cells. 'normal' avoids mid-word breaks (may cause narrower columns). 'aggressive' allows breaking long words to keep columns wider. 'none' disables wrapping entirely.",

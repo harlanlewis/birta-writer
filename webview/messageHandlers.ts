@@ -10,7 +10,6 @@
 
 import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
-import { editorViewCtx } from "@milkdown/core";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
 import { setImageUriMap } from "./components/imageView";
@@ -28,8 +27,6 @@ import {
     handleImageUploaded,
     handleImageUploadError,
     handleProjectImagesList,
-    handleImageRenamed,
-    handleImageRenameError,
 } from "./imageUpload";
 
 // ── Global table wrap mode ─────────────────────────────────
@@ -93,6 +90,8 @@ export interface EditorActions {
     getEditorView: () => EditorView | null;
     /** Refreshes the table-of-contents panel after an inbound diff sync. */
     refreshToc: () => void;
+    /** Flips the table-of-contents panel to the given dock side. */
+    setTocPosition: (position: import("../shared/messages").TocPosition) => void;
 }
 
 /** Message-handler dependencies. */
@@ -111,7 +110,7 @@ export function createMessageHandlers(
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb, themeOverrides } = deps;
     const { getEditor, setEditor, getLineMap, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc } = actions;
+    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition } = actions;
 
     return {
         async init(msg, container) {
@@ -216,36 +215,6 @@ export function createMessageHandlers(
         projectImagesList(msg) {
             handleProjectImagesList(msg.id, msg.images);
         },
-        imageRenamed(msg) {
-            handleImageRenamed(msg.id);
-            const editor = getEditor();
-            if (editor) {
-                editor.action((ctx) => {
-                    const view = ctx.get(editorViewCtx);
-                    const { state } = view;
-                    const tr = state.tr;
-                    let changed = false;
-                    state.doc.descendants((node, pos) => {
-                        if (
-                            node.type.name === "image" &&
-                            node.attrs["src"] === msg.oldWebviewUri
-                        ) {
-                            tr.setNodeMarkup(pos, null, {
-                                ...node.attrs,
-                                src: msg.newWebviewUri,
-                            });
-                            changed = true;
-                        }
-                    });
-                    if (changed) {
-                        view.dispatch(tr);
-                    }
-                });
-            }
-        },
-        imageRenameError(msg) {
-            handleImageRenameError(msg.id, msg.error);
-        },
         pathSuggestions(msg) {
             dispatchPathSuggestions(msg.id, msg.items);
             dispatchImgPathSuggestions(msg.id, msg.items);
@@ -303,6 +272,9 @@ export function createMessageHandlers(
             const size = clampFontSizePercent(msg.size);
             document.documentElement.style.setProperty("--content-font-scale", String(size / 100));
             topbarTb?.setFontSize(size);
+        },
+        setTocPosition(msg) {
+            setTocPosition(msg.position);
         },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);

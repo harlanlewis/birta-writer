@@ -47,7 +47,7 @@
 }
 
 .lang-picker-btn--open {
-    border-color: var(--vscode-focusBorder, #007acc);
+    border-color: var(--vscode-focusBorder);
 }
 
 .lang-picker-dropdown {
@@ -58,7 +58,7 @@
         --vscode-dropdown-background,
         var(--vscode-editor-background)
     );
-    border: 1px solid var(--vscode-focusBorder, #007acc);
+    border: 1px solid var(--vscode-focusBorder);
     border-radius: 4px;
     min-width: 160px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -131,7 +131,7 @@
 }
 
 .code-block-resize-handle:hover {
-    background: var(--vscode-focusBorder, #007acc);
+    background: var(--vscode-focusBorder);
     opacity: 0.3;
 }
 

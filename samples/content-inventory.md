@@ -7,8 +7,6 @@ tags: [reference, showcase, regression]
 
 # Content inventory
 
-
-
 This document is a **living reference** of every content type WYSIWYG Markdown Editor supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
 
 ---
@@ -29,8 +27,6 @@ This document is a **living reference** of every content type WYSIWYG Markdown E
 
 Setext headings round-trip in their original form too:
 
-
-
 # Setext H1
 
 ## Setext H2
@@ -45,10 +41,7 @@ Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example
 
 ### Highlight
 
-`==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==`
-applies it live; a Highlight command lives in the palette, and an opt-in
-toolbar button ships hidden by default. The grammar is deliberately strict —
-each of these stays plain text, byte-preserved:
+`==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict — each of these stays plain text, byte-preserved:
 
 - spaces at the edges: == spaced ==
 - an `=` inside: ==a=b==
@@ -115,7 +108,7 @@ In a table cell the alias pipe is escaped (`\|`), and it still reads as one
 cell:
 
 | form | rendered |
-| --- | --- |
+|---|---|
 | escaped alias | [[custom-themes\|aliased]] |
 
 ---
@@ -125,15 +118,19 @@ cell:
 ### Bullet list
 
 - First item
+
 - Second item
+
     - Nested item
     - Another nested item
+
 - Third item with `code` and a [link](https://example.com)
 
 ### Ordered list
 
 1. First step
 2. Second step
+
     1. Sub-step a
     2. Sub-step b
 3. Third step
@@ -287,11 +284,11 @@ no highlighting here
 
 ## Tables
 
-| Feature     | Supported | Notes                           |
-| ----------- | :-------: | ------------------------------- |
-| Alignment   |    yes    | left / center / right           |
+| Feature | Supported | Notes |
+|---|:---:|---|
+| Alignment | yes | left / center / right |
 | Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
-| Line breaks |    yes    | first line<br>second line       |
+| Line breaks | yes | first line<br>second line |
 
 ---
 
@@ -318,9 +315,14 @@ A sentence with a footnote reference.[^note] Footnotes are auto-numbered and the
 
 ## Images
 
-Inline image (replace with a real path to see it render):
+Inline image with a relative path and a title. The alt text is the editable
+caption under the image (revealed on selection when empty); the title is the
+hover tooltip, as in published HTML. Click the image for the toolbar — a
+file-name chip that edits the path (autocompletes workspace images), zoom,
+delete, and the editable title on its own row. Edits apply on Enter or
+click-away, Escape cancels.
 
-![Alt text](https://example.com/image.png "Optional title")
+![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
 
 ---
 
@@ -382,8 +384,8 @@ Obsidian's transclusion form `![[page]]` is not treated as an embed — it rende
 
 ### Emoji shortcodes
 
-`:smile:` stays literal text; a byte-preserving renderer is planned (MAR-46).
+`:smile:` stays literal text; a byte-preserving renderer is under consideration (MAR-46).
 
 ### Definition lists
 
-`term` / `: definition` syntax is not parsed (parked with sub/superscript, `%%comments%%`, `[TOC]`, and `#tags` — MAR-47).
+`term` / `: definition` syntax is not parsed. parked with sub/superscript, `%%comments%%`, `[TOC]`, and `#tags`. Under consideration (MAR-47)

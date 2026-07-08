@@ -9,12 +9,12 @@ import {
     IconZoomIn,
     IconPencil,
     IconTrash2,
-    IconCheck,
     IconX,
     IconImageOff,
 } from "@/ui/icons";
 import { t } from "@/i18n";
-import { createButton, createSeparator, setupInputKeyboard } from "@/ui/dom";
+import { createButton, createSeparator, setupApplyOnBlur } from "@/ui/dom";
+import { applyTooltip } from "@/ui/tooltip";
 import { attachImgPathComplete, resolveToWebviewUri } from './imgPathComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
 import './imageView.css';
@@ -116,13 +116,6 @@ function isolateInput(input: HTMLInputElement): void {
     // the VS Code WebView relies on keydown bubbling to window to trigger native clipboard actions
 }
 
-// ─── Helper: extract the file name (without extension) from src ───────────────
-function basenameNoExt(src: string): string {
-    const name = src.split("/").pop() ?? src;
-    const dot = name.lastIndexOf(".");
-    return dot > 0 ? name.slice(0, dot) : name;
-}
-
 // ─── Toolbar button factory ────────────────────────────────
 function makeBtn(icon: string, label: string): HTMLButtonElement {
     return createButton({ className: "img-tb-btn", icon, tabIndex: -1, title: label, tooltipPlacement: "above" });
@@ -139,7 +132,6 @@ export function createImageView(
     getPos: () => number | undefined,
     _decorations?: readonly Decoration[],
     _innerDecorations?: DecorationSource,
-    onRenameImage?: (webviewUri: string, newBasename: string) => Promise<void>,
 ): {
     dom: HTMLElement;
     update: (n: PMNode) => boolean;
@@ -160,6 +152,9 @@ export function createImageView(
     img.className = "image-node";
     img.src = (node.attrs["src"] as string) ?? "";
     img.alt = (node.attrs["alt"] as string) ?? "";
+    // The markdown title (`![alt](src "title")`) is a hover tooltip in
+    // published HTML — surface it the same way here
+    img.title = (node.attrs["title"] as string) ?? "";
     img.draggable = false;
 
     // ── Image load-failure placeholder ────────────────────────
@@ -183,10 +178,63 @@ export function createImageView(
         }
     });
 
-    // ── Toolbar ───────────────────────────────────────────────
+    // ── Alt-text caption (always visible when non-empty; edits apply to the doc on blur) ──
+    const caption = document.createElement("input");
+    caption.type = "text";
+    caption.className = "image-caption img-quiet-input";
+    caption.placeholder = t("Alt text");
+    caption.setAttribute("aria-label", t("Alt text"));
+    isolateInput(caption);
+    const detachCaptionUndo = attachInputUndo(caption);
+
+    function updateCaption(alt: string): void {
+        // Sync only when the input isn't focused (to avoid overwriting what the user is editing)
+        if (document.activeElement !== caption) {
+            caption.value = alt;
+        }
+        caption.classList.toggle("image-caption--filled", alt.length > 0);
+    }
+
+    /** Commit an input's trimmed value into one node attr (no-op if unchanged). */
+    function commitAttr(
+        input: HTMLInputElement,
+        attr: "alt" | "title",
+        sync: (value: string) => void,
+    ): void {
+        const newValue = input.value.trim();
+        const oldValue = (currentNode.attrs[attr] as string) ?? "";
+        if (newValue === oldValue) {
+            sync(oldValue);
+            return;
+        }
+        const pos = getPos();
+        if (pos === undefined) {
+            sync(oldValue);
+            return;
+        }
+        view.dispatch(
+            view.state.tr.setNodeMarkup(pos, null, {
+                ...currentNode.attrs,
+                [attr]: newValue,
+            }),
+        );
+    }
+
+    setupApplyOnBlur(caption, {
+        commit: () => commitAttr(caption, "alt", updateCaption),
+        revert: () => {
+            caption.value = (currentNode.attrs["alt"] as string) ?? "";
+        },
+        onClose: () => view.focus(),
+    });
+
+    // ── Toolbar: a controls row + an always-visible title row ─
     const toolbar = document.createElement("div");
     toolbar.className = "image-toolbar";
     toolbar.contentEditable = "false";
+
+    const toolbarRow = document.createElement("div");
+    toolbarRow.className = "image-toolbar-row";
 
     // Zoom button
     const zoomBtn = makeBtn(IconZoomIn, t("View Full Size"));
@@ -196,20 +244,20 @@ export function createImageView(
         showGlobalLightbox(img.src, img.alt);
     });
 
-    // Alt text editing
-    const altBtn = createButton({
-        className: "img-tb-btn",
-        tabIndex: -1,
-        label: "ALT",
-        title: t("Edit Alt Text"),
-        tooltipPlacement: "above",
-        onClick: () => startAltEdit(),
-    });
-    altBtn.style.fontWeight = "600";
-
-    // Pencil icon: always shown; click to edit the image path (src attribute)
-    const renameBtn = makeBtn(IconPencil, t("Edit Image Path"));
-    renameBtn.addEventListener("mousedown", (e) => {
+    // File-name chip with a pencil: click to edit the image path (src attribute)
+    const editPathBtn = document.createElement("button");
+    editPathBtn.className = "img-tb-btn img-tb-path";
+    editPathBtn.tabIndex = -1;
+    editPathBtn.setAttribute("aria-label", t("Edit Image Path"));
+    const pathName = document.createElement("span");
+    pathName.className = "img-tb-path-name";
+    editPathBtn.appendChild(pathName);
+    const pathPencil = document.createElement("span");
+    pathPencil.className = "img-tb-path-pencil";
+    pathPencil.innerHTML = IconPencil;
+    editPathBtn.appendChild(pathPencil);
+    const pathTooltip = applyTooltip(editPathBtn, t("Edit Image Path"), { placement: "above" });
+    editPathBtn.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
         startSrcEdit();
@@ -229,173 +277,56 @@ export function createImageView(
         view.focus();
     });
 
-    // ── Info area: span (read-only, remote images) + input (editable file name, local images) ──
-    const infoSpan = document.createElement("span");
-    infoSpan.className = "img-tb-info";
-
-    const infoInput = document.createElement("input");
-    infoInput.type = "text";
-    infoInput.className = "img-tb-info img-tb-info--input";
-    isolateInput(infoInput);
-    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
-    const detachInfoUndo = attachInputUndo(infoInput);
-
-    let currentInfoEl: HTMLElement = infoSpan;
-
-    function updateInfo(src: string, alt: string): void {
+    function updateInfo(src: string): void {
         const name = src.split("/").pop() ?? src;
-        const display = alt ? `${name} · ${alt}` : name;
-        infoSpan.textContent = display;
-        infoSpan.title = display;
+        pathName.textContent = name;
+        pathTooltip.setText(`${toDisplayPath(src)} — ${t("Edit Image Path")}`);
+    }
+
+    // ── Title row: always visible in the toolbar; edits the markdown
+    //    title (`![alt](src "title")`), which renders as the hover tooltip ──
+    const titleInput = document.createElement("input");
+    titleInput.type = "text";
+    titleInput.className = "img-tb-title img-quiet-input";
+    titleInput.placeholder = t("Title (shown on hover)");
+    titleInput.setAttribute("aria-label", t("Image title"));
+    isolateInput(titleInput);
+    const detachTitleUndo = attachInputUndo(titleInput);
+
+    function updateTitleField(title: string): void {
         // Sync only when the input isn't focused (to avoid overwriting what the user is editing)
-        if (document.activeElement !== infoInput) {
-            infoInput.value = basenameNoExt(src);
-            infoInput.title = name;
+        if (document.activeElement !== titleInput) {
+            titleInput.value = title;
         }
     }
 
-    // Local-image detection: vscode-webview-resource: (old) or vscode-cdn.net / vscode-resource (new)
-    function isLocalImage(src: string): boolean {
-        return /vscode-resource|vscode-cdn\.net/.test(src);
-    }
-
-    function updateInfoElement(src: string): void {
-        const shouldUseInput = isLocalImage(src) && !!onRenameImage;
-        const newEl = shouldUseInput ? infoInput : infoSpan;
-        if (currentInfoEl !== newEl && currentInfoEl.parentElement) {
-            currentInfoEl.parentElement.replaceChild(newEl, currentInfoEl);
-            currentInfoEl = newEl;
-        }
-    }
-
-    // infoInput keyboard events (rename the local image's file name)
-    infoInput.addEventListener("keydown", (e) => {
-        if (e.isComposing) {
-            return;
-        }
-        if (e.key === "Enter") {
-            e.stopPropagation();
-            e.preventDefault();
-            const newBasename = infoInput.value.trim();
-            const orig = basenameNoExt(rawSrc);
-            if (newBasename && newBasename !== orig && onRenameImage) {
-                onRenameImage(rawSrc, newBasename).catch(() => {});
-            } else {
-                infoInput.value = orig;
-            }
-            infoInput.blur();
-            view.focus();
-        } else if (e.key === "Escape") {
-            e.stopPropagation();
-            e.preventDefault();
-            infoInput.value = basenameNoExt(rawSrc);
-            infoInput.blur();
-            view.focus();
-        }
+    setupApplyOnBlur(titleInput, {
+        commit: () => commitAttr(titleInput, "title", updateTitleField),
+        revert: () => {
+            titleInput.value = (currentNode.attrs["title"] as string) ?? "";
+        },
+        onClose: () => view.focus(),
     });
 
-    infoInput.addEventListener("blur", () => {
-        // Restore the original value if blur happens without a commit
-        infoInput.value = basenameNoExt(rawSrc);
-    });
-
-    infoInput.addEventListener("focus", () => {
-        infoInput.select();
-    });
-
-    // ── Assemble the toolbar (fixed layout; renameBtn always present) ────────────────
-    toolbar.appendChild(currentInfoEl); // initially infoSpan
-    toolbar.appendChild(makeSep());
-    toolbar.appendChild(zoomBtn);
-    toolbar.appendChild(makeSep());
-    toolbar.appendChild(altBtn);
-    toolbar.appendChild(makeSep());
-    toolbar.appendChild(renameBtn);     // always present
-    toolbar.appendChild(makeSep());
-    toolbar.appendChild(deleteBtn);
+    // ── Assemble the toolbar ──────────────────────────────────
+    toolbarRow.appendChild(editPathBtn);
+    toolbarRow.appendChild(makeSep());
+    toolbarRow.appendChild(zoomBtn);
+    toolbarRow.appendChild(makeSep());
+    toolbarRow.appendChild(deleteBtn);
+    toolbar.appendChild(toolbarRow);
+    toolbar.appendChild(titleInput);
 
     wrapper.appendChild(img);
     wrapper.appendChild(errorPlaceholder);
+    wrapper.appendChild(caption);
     wrapper.appendChild(toolbar);
 
-    // ── Initialize the info area ──────────────────────────────
+    // ── Initialize the info area, caption, and title row ──────
     let rawSrc = (node.attrs["src"] as string) ?? "";
-    updateInfo(rawSrc, img.alt);
-    updateInfoElement(rawSrc); // may replace infoSpan with infoInput
-
-    // ── Inline Alt-text editing ───────────────────────────────
-    let isEditingAlt = false;
-
-    function startAltEdit(): void {
-        if (isEditingAlt) {
-            return;
-        }
-        isEditingAlt = true;
-
-        const input = document.createElement("input");
-        input.className = "img-rename-input";
-        input.value = img.alt;
-        input.placeholder = t("Alt text");
-        input.style.width = "160px";
-        isolateInput(input);
-        const detachAltUndo = attachInputUndo(input);
-
-        const confirmBtn = createButton({ className: "img-tb-btn", tabIndex: -1, icon: IconCheck, onClick: confirm });
-        confirmBtn.style.color = "var(--vscode-charts-green, #4caf50)";
-        const cancelBtn = createButton({ className: "img-tb-btn", tabIndex: -1, icon: IconX, onClick: cancel });
-
-        // Temporarily hide the other buttons
-        Array.from(toolbar.children).forEach((el) => {
-            (el as HTMLElement).style.display = "none";
-        });
-
-        toolbar.appendChild(input);
-        toolbar.appendChild(confirmBtn);
-        toolbar.appendChild(cancelBtn);
-        input.focus();
-        input.select();
-        setupInputKeyboard(input, confirm, cancel);
-
-        function confirm(): void {
-            if (!isEditingAlt) {
-                return;
-            }
-            isEditingAlt = false;
-            const newAlt = input.value.trim();
-            cleanupAlt();
-            if (newAlt !== currentNode.attrs["alt"]) {
-                const pos = getPos();
-                if (pos !== undefined) {
-                    view.dispatch(
-                        view.state.tr.setNodeMarkup(pos, null, {
-                            ...currentNode.attrs,
-                            alt: newAlt,
-                        }),
-                    );
-                }
-            }
-            view.focus();
-        }
-
-        function cancel(): void {
-            if (!isEditingAlt) {
-                return;
-            }
-            isEditingAlt = false;
-            cleanupAlt();
-            view.focus();
-        }
-
-        function cleanupAlt(): void {
-            detachAltUndo();
-            toolbar.removeChild(input);
-            toolbar.removeChild(confirmBtn);
-            toolbar.removeChild(cancelBtn);
-            Array.from(toolbar.children).forEach((el) => {
-                (el as HTMLElement).style.display = "";
-            });
-        }
-    }
+    updateInfo(rawSrc);
+    updateCaption(img.alt);
+    updateTitleField(img.title);
 
     // ── Edit the image path (src attribute) ───────────────────
     let isEditingSrc = false;
@@ -407,7 +338,8 @@ export function createImageView(
         isEditingSrc = true;
 
         const input = document.createElement("input");
-        input.className = "img-rename-input";
+        // img-path-input is a selector hook for tests only; img-rename-input styles it
+        input.className = "img-rename-input img-path-input";
         // Show the relative path (rawSrc may be a webviewUri, which is more readable once converted)
         input.value = toDisplayPath(rawSrc);
         input.placeholder = t("Image path or URL");
@@ -415,22 +347,27 @@ export function createImageView(
         isolateInput(input);
         const detachSrcUndo = attachInputUndo(input);
 
-        const confirmBtn = createButton({ className: "img-tb-btn", tabIndex: -1, icon: IconCheck, onClick: confirm });
-        confirmBtn.style.color = "var(--vscode-charts-green, #4caf50)";
-        const cancelBtn = createButton({ className: "img-tb-btn", tabIndex: -1, icon: IconX, onClick: cancel });
-
-        Array.from(toolbar.children).forEach((el) => {
+        Array.from(toolbarRow.children).forEach((el) => {
             (el as HTMLElement).style.display = "none";
         });
 
-        toolbar.appendChild(input);
-        toolbar.appendChild(confirmBtn);
-        toolbar.appendChild(cancelBtn);
+        toolbarRow.appendChild(input);
         input.focus();
         input.select();
-        const detachComplete = attachImgPathComplete(input, confirm, cancel);
+        const detachComplete = attachImgPathComplete(input, () => confirm(true), cancel);
+        input.addEventListener("blur", onBlur);
 
-        function confirm(): void {
+        function onBlur(): void {
+            // Delay so a dropdown selection (which keeps focus on the input)
+            // never commits a half-applied value
+            setTimeout(() => {
+                if (isEditingSrc && document.activeElement !== input) {
+                    confirm(false);
+                }
+            }, 150);
+        }
+
+        function confirm(refocus: boolean): void {
             if (!isEditingSrc) { return; }
             const displayVal = input.value.trim();
             // 1. The webviewUri stored in dataset during completion is the most reliable
@@ -441,9 +378,15 @@ export function createImageView(
             cleanup();
 
             const applyUri = (newSrc: string) => {
-                if (!newSrc || newSrc === rawSrc) { view.focus(); return; }
+                if (!newSrc || newSrc === rawSrc) {
+                    if (refocus) { view.focus(); }
+                    return;
+                }
                 const pos = getPos();
-                if (pos === undefined) { view.focus(); return; }
+                if (pos === undefined) {
+                    if (refocus) { view.focus(); }
+                    return;
+                }
                 const nodeSize = currentNode.nodeSize;
                 const tr = view.state.tr.setNodeMarkup(pos, null, { ...currentNode.attrs, src: newSrc });
                 const afterPos = pos + nodeSize;
@@ -451,7 +394,7 @@ export function createImageView(
                     try { tr.setSelection(TextSelection.near(tr.doc.resolve(afterPos), 1)); } catch { /* ignore */ }
                 }
                 view.dispatch(tr);
-                view.focus();
+                if (refocus) { view.focus(); }
             };
 
             if (datasetUri) {
@@ -460,9 +403,11 @@ export function createImageView(
             } else if (mappedUri !== displayVal) {
                 // Mapping hit (mappedUri is a webviewUri, different from displayVal)
                 applyUri(mappedUri);
-            } else if (displayVal) {
+            } else if (displayVal && displayVal !== toDisplayPath(rawSrc)) {
                 // A new path typed manually: ask the Extension to resolve it
                 resolveToWebviewUri(displayVal).then(applyUri);
+            } else if (refocus) {
+                view.focus();
             }
         }
 
@@ -478,10 +423,9 @@ export function createImageView(
         function cleanup(): void {
             detachComplete();
             detachSrcUndo();
-            if (toolbar.contains(input)) toolbar.removeChild(input);
-            if (toolbar.contains(confirmBtn)) toolbar.removeChild(confirmBtn);
-            if (toolbar.contains(cancelBtn)) toolbar.removeChild(cancelBtn);
-            Array.from(toolbar.children).forEach((el) => {
+            input.removeEventListener("blur", onBlur);
+            if (toolbarRow.contains(input)) toolbarRow.removeChild(input);
+            Array.from(toolbarRow.children).forEach((el) => {
                 (el as HTMLElement).style.display = "";
             });
         }
@@ -506,12 +450,17 @@ export function createImageView(
                     img.style.display = "";
                     errorPlaceholder.style.display = "none";
                 }
-                updateInfoElement(newSrc);
             }
             if (img.alt !== newAlt) {
                 img.alt = newAlt;
             }
-            updateInfo(rawSrc, newAlt);
+            const newTitle = (updatedNode.attrs["title"] as string) ?? "";
+            if (img.title !== newTitle) {
+                img.title = newTitle;
+            }
+            updateInfo(rawSrc);
+            updateCaption(newAlt);
+            updateTitleField(newTitle);
             currentNode = updatedNode;
             return true;
         },
@@ -520,13 +469,12 @@ export function createImageView(
             wrapper.classList.add("image-wrapper--selected");
             toolbar.style.display = "flex";
 
-            // Check whether the toolbar extends past the top of the viewport; if so, show it below the image instead
+            // If the toolbar would extend past the top of the viewport, show
+            // it below the image instead. Measured, not hardcoded: the
+            // toolbar is two rows tall and grows if more rows are added.
             const rect = wrapper.getBoundingClientRect();
-            if (rect.top < 60) {
-                toolbar.classList.add("image-toolbar--below");
-            } else {
-                toolbar.classList.remove("image-toolbar--below");
-            }
+            const clearance = toolbar.offsetHeight + 10; // 6px gap + margin
+            toolbar.classList.toggle("image-toolbar--below", rect.top < clearance);
         },
 
         deselectNode(): void {
@@ -535,8 +483,9 @@ export function createImageView(
         },
 
         stopEvent(e: Event): boolean {
-            // Events inside the toolbar (buttons, inputs) are kept from ProseMirror
-            return toolbar.contains(e.target as Node);
+            // Events inside the toolbar (buttons, inputs) and the caption are kept from ProseMirror
+            const target = e.target as Node;
+            return toolbar.contains(target) || caption.contains(target);
         },
 
         ignoreMutation(_m: ViewMutationRecord): boolean {
@@ -545,7 +494,8 @@ export function createImageView(
         },
 
         destroy(): void {
-            detachInfoUndo();
+            detachCaptionUndo();
+            detachTitleUndo();
             // Clean up the lightbox (if the one triggered by this image is still showing)
             if (activeLightbox && document.body.contains(activeLightbox)) {
                 const lbImg = activeLightbox.querySelector("img");
