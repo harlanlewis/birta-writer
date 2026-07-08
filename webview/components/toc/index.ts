@@ -41,6 +41,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     toggle: () => void;
     refresh: () => void;
     setPosition: (position: "left" | "right") => void;
+    /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
+    isOpen: () => boolean;
+    isRight: () => boolean;
 } {
     // Initial side comes from the markdownWysiwyg.tocPosition setting via a
     // server-rendered body class; the header flip button mutates it live.
@@ -380,6 +383,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     }
 
+
     // Tab click: always call toggle
     tabEl.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -489,5 +493,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // Listen for scroll events to update the TOC active state independently
     eventManager.onWindow("scroll", scheduleScrollUpdate, { passive: true });
 
-    return { panel, toggle, refresh, setPosition };
+    return {
+        panel,
+        toggle,
+        refresh,
+        setPosition,
+        isOpen: () => isOpen,
+        isRight: () => tocRight,
+    };
 }

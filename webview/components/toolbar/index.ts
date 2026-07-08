@@ -762,6 +762,8 @@ export function initToolbar(
     stepFontSize: (delta: 1 | -1) => void;
     /** Toggle a proofread option (slash-menu action; works with the bar hidden). */
     toggleProofread: (key: ProofreadOptionKey) => void;
+    /** Whether the bar is currently shown (drives the slash toggle's label). */
+    isVisible: () => boolean;
     /** Opens the Insert/Edit Link prompt (toolbar button and Cmd/Ctrl+K). */
     openLinkPrompt: () => void;
 } {
@@ -1761,6 +1763,15 @@ export function initToolbar(
         customizeToolbar: startCustomize,
         openExtensionSettings: () => notifyOpenSettings(),
         openKeyboardShortcuts: () => notifyOpenKeybindings(),
+        // Font/proofread controls — the same code paths as the toolbar rows and
+        // the slash menu, reachable from the palette even with the bar hidden.
+        chooseFontPreset: (preset) => {
+            setFontActive(preset);
+            notifySetFontPreset(preset);
+        },
+        stepFontSize: (delta) => pickFontSize(stepFontSizePercent(currentFontSize, delta)),
+        toggleProofread,
+        toggleToolbar: () => setToolbarVisible(!toolbarVisible),
     });
 
     return {
@@ -1826,6 +1837,7 @@ export function initToolbar(
             pickFontSize(stepFontSizePercent(currentFontSize, delta));
         },
         toggleProofread,
+        isVisible: () => toolbarVisible,
         openLinkPrompt,
     };
 }

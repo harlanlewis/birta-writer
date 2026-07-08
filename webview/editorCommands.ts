@@ -51,6 +51,7 @@ import {
 import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
 import type { EditorCommandId } from "../shared/editorCommands";
+import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
 import { notifyClipboardWrite } from "@/messaging";
 
 export type GetEditor = () => Editor | null;
@@ -77,6 +78,14 @@ export interface EditorCommandHost {
     customizeToolbar(): void;
     openExtensionSettings(): void;
     openKeyboardShortcuts(): void;
+    // View controls owned by the toolbar controller / TOC panel. Wired the same
+    // way as the toolbar's own hooks, so the palette reaches the exact code
+    // paths the toolbar and slash menu use — and they work with the bar hidden.
+    chooseFontPreset(preset: FontPreset): void;
+    stepFontSize(delta: 1 | -1): void;
+    toggleProofread(key: ProofreadOptionKey): void;
+    toggleToolbar(): void;
+    swapTocSide(): void;
 }
 
 let host: Partial<EditorCommandHost> = {};
@@ -382,6 +391,17 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     customizeToolbar: () => host.customizeToolbar?.(),
     openExtensionSettings: () => host.openExtensionSettings?.(),
     openKeyboardShortcuts: () => host.openKeyboardShortcuts?.(),
+    fontEditor: () => host.chooseFontPreset?.("editor"),
+    fontSans: () => host.chooseFontPreset?.("sans"),
+    fontSerif: () => host.chooseFontPreset?.("serif"),
+    fontMono: () => host.chooseFontPreset?.("mono"),
+    increaseFontSize: () => host.stepFontSize?.(1),
+    decreaseFontSize: () => host.stepFontSize?.(-1),
+    toggleSpellCheck: () => host.toggleProofread?.("spellCheck"),
+    toggleGrammarCheck: () => host.toggleProofread?.("grammarCheck"),
+    toggleStyleCheck: () => host.toggleProofread?.("styleCheck"),
+    toggleToolbar: () => host.toggleToolbar?.(),
+    swapTocSide: () => host.swapTocSide?.(),
 };
 
 /** Dispatches an editor command by id; an unknown id is a safe no-op. */

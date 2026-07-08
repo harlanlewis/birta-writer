@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.90",
+  "version": "0.2.93",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -320,6 +320,61 @@
         "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
         "title": "%command.editor.openKeyboardShortcuts.title%",
         "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.fontEditor",
+        "title": "%command.editor.fontEditor.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.fontSans",
+        "title": "%command.editor.fontSans.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.fontSerif",
+        "title": "%command.editor.fontSerif.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.fontMono",
+        "title": "%command.editor.fontMono.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.increaseFontSize",
+        "title": "%command.editor.increaseFontSize.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.decreaseFontSize",
+        "title": "%command.editor.decreaseFontSize.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.toggleSpellCheck",
+        "title": "%command.editor.toggleSpellCheck.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.toggleGrammarCheck",
+        "title": "%command.editor.toggleGrammarCheck.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.toggleStyleCheck",
+        "title": "%command.editor.toggleStyleCheck.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.toggleToolbar",
+        "title": "%command.editor.toggleToolbar.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.swapTocSide",
+        "title": "%command.editor.swapTocSide.title%",
+        "category": "WYSIWYG Markdown Editor"
       }
     ],
     "keybindings": [
@@ -600,11 +655,11 @@
         },
         {
           "command": "markdownWysiwyg.editor.hideToolbar",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+          "when": "false"
         },
         {
           "command": "markdownWysiwyg.editor.showToolbar",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+          "when": "false"
         },
         {
           "command": "markdownWysiwyg.editor.openExtensionSettings",
@@ -613,6 +668,50 @@
         {
           "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
           "when": "false"
+        },
+        {
+          "command": "markdownWysiwyg.editor.fontEditor",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.fontSans",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.fontSerif",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.fontMono",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.increaseFontSize",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.decreaseFontSize",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.toggleSpellCheck",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.toggleGrammarCheck",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.toggleStyleCheck",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.toggleToolbar",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.swapTocSide",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
         }
       ],
       "webview/context": [

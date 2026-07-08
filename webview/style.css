@@ -1263,3 +1263,13 @@ body.toolbar-hidden::before {
 .slash-menu-footer-key {
     font-family: var(--vscode-editor-font-family, monospace);
 }
+
+/* The left slot becomes a "Show all commands" button on the unfiltered list. */
+.slash-menu-footer-action {
+    cursor: pointer;
+    color: var(--vscode-textLink-foreground);
+
+    &:hover {
+        text-decoration: underline;
+    }
+}

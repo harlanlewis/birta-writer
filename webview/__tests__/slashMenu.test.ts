@@ -52,12 +52,13 @@ describe("createSlashMenu", () => {
     it("mounting should render every browsable item with group headers", () => {
         expect(document.getElementById(SLASH_MENU_DOM_ID)).not.toBeNull();
         expect(rowEls()).toHaveLength(BROWSABLE_ITEMS.length);
-        // The parity groups (formatting/actions) are entirely search-only, so
-        // their headers never show in the browsable view.
+        // The formatting/view/actions groups are entirely search-only, so
+        // their headers never show in the browsable view — only the content
+        // groups render headers.
         const headers = Array.from(
             document.querySelectorAll(".slash-menu-group-label"),
         ).map((el) => el.textContent);
-        expect(headers).toEqual(["Basic blocks", "Advanced"]);
+        expect(headers).toEqual(["Text", "Lists", "Insert"]);
     });
 
     it("rows should carry listbox/option aria roles and stable ids", () => {
@@ -163,12 +164,49 @@ describe("createSlashMenu", () => {
         gbcr.mockRestore();
     });
 
-    it("the footer hint should render, marked decorative for AT", () => {
+    it("the footer should render, marked decorative for AT", () => {
         const footer = document.querySelector(".slash-menu-footer");
         expect(footer).not.toBeNull();
         expect(footer!.getAttribute("aria-hidden")).toBe("true");
-        expect(footer!.textContent).toContain("Type to filter");
+        // Unfiltered list: the left slot is the "Show all commands" toggle.
+        expect(footer!.querySelector(".slash-menu-footer-hint")?.textContent).toBe(
+            "Show all commands",
+        );
         expect(footer!.querySelector(".slash-menu-footer-key")?.textContent).toBe("esc");
+    });
+
+    it("filtering should revert the footer to the plain type-to-filter hint", () => {
+        menu.setQuery("head");
+        const hint = document.querySelector(".slash-menu-footer-hint");
+        expect(hint?.textContent).toBe("Type to filter");
+        expect(hint?.classList.contains("slash-menu-footer-action")).toBe(false);
+    });
+
+    it("clicking Show all commands should reveal the search-only rows and their headers", () => {
+        const hint = document.querySelector<HTMLElement>(".slash-menu-footer-hint");
+        hint!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        const headers = Array.from(
+            document.querySelectorAll(".slash-menu-group-label"),
+        ).map((el) => el.textContent);
+        expect(headers).toEqual(["Text", "Lists", "Insert", "Formatting", "View", "Actions"]);
+        expect(hint!.textContent).toBe("Show fewer");
+    });
+
+    it("labelFor should override the displayed label (dynamic toggle rows)", () => {
+        menu.destroy();
+        document.body.innerHTML = "";
+        const items = [
+            { id: "toc", group: "view", label: "Toggle Table of Contents", icon: "i", keywords: ["toc"], commandId: "toggleToc" },
+        ] as unknown as Parameters<typeof createSlashMenu>[0]["items"];
+        const m = createSlashMenu({
+            onPick,
+            items,
+            labelFor: (item) => (item.id === "toc" ? "Hide Table of Contents" : item.label),
+        });
+        m.setQuery("toc");
+        const label = document.querySelector(".slash-menu-item-label");
+        expect(label?.textContent).toBe("Hide Table of Contents");
+        m.destroy();
     });
 
     it("an items override should limit what renders and what picks resolve to", () => {

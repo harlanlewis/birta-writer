@@ -294,6 +294,8 @@ no highlighting here
 
 ## Math
 
+
+
 Inline math renders in place: $E = mc^2$. Currency like $5 and $10 stays as
 plain text.
 

@@ -74,8 +74,7 @@ describe("filterSlashItems", () => {
     it("a query should surface searchOnly items ranked like any other", () => {
         expect(label(filterSlashItems(SLASH_MENU_ITEMS, "h4"))[0]).toBe("heading4");
         expect(label(filterSlashItems(SLASH_MENU_ITEMS, "bold"))[0]).toBe("bold");
-        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "toolbar"))).toContain("hideToolbar");
-        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "toolbar"))).toContain("showToolbar");
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "toolbar"))).toContain("toolbarToggle");
         expect(label(filterSlashItems(SLASH_MENU_ITEMS, "font"))).toContain("fontSerif");
     });
 
@@ -121,17 +120,12 @@ describe("filterSlashItems", () => {
 });
 
 describe("registry drift guards", () => {
-    it("every item should carry exactly one dispatch: a known commandId or an action", () => {
+    it("every item should dispatch a known editor command", () => {
         const known = new Set(EDITOR_COMMANDS.map((c) => c.id));
         for (const item of SLASH_MENU_ITEMS) {
-            if (item.commandId !== undefined) {
-                expect(known, `unknown commandId for item "${item.id}"`).toContain(
-                    item.commandId,
-                );
-                expect(item.action, `item "${item.id}" has both dispatches`).toBeUndefined();
-            } else {
-                expect(item.action, `item "${item.id}" has no dispatch`).toBeDefined();
-            }
+            expect(known, `unknown commandId for item "${item.id}"`).toContain(
+                item.commandId,
+            );
         }
     });
 

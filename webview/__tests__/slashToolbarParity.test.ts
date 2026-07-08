@@ -37,7 +37,7 @@ const SLASH_COVERAGE: Record<ToolbarItemId, readonly string[]> = {
     find: ["find"],
     styleCheck: ["spellCheck", "grammarCheck", "styleCheck"],
     fontPreset: ["fontEditor", "fontSans", "fontSerif", "fontMono", "fontSizeIncrease", "fontSizeDecrease"],
-    settings: ["customizeToolbar", "hideToolbar", "showToolbar", "keyboardShortcuts", "settings"],
+    settings: ["customizeToolbar", "toolbarToggle", "keyboardShortcuts", "settings"],
 };
 
 describe("toolbar ↔ slash menu parity", () => {

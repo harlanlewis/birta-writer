@@ -34,8 +34,8 @@ import {
 } from "../components/slashMenu";
 import {
     SLASH_MENU_ITEMS,
-    type SlashMenuAction,
     type SlashMenuItem,
+    type SlashMenuState,
 } from "../components/slashMenu/registry";
 
 /**
@@ -109,6 +109,7 @@ const HIDDEN_IN_TABLE_CELL = [
     "divider",
     "codeBlock",
     "mermaid",
+    "mathBlock",
     "table",
 ] as const;
 
@@ -151,8 +152,8 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
 export interface SlashMenuHost {
     /** Executes a registry editor command (webview/editorCommands.ts). */
     runCommand(id: EditorCommandId, args?: unknown): void;
-    /** Executes a toolbar-controller behavior (font, checks) — see registry. */
-    runAction(action: SlashMenuAction): void;
+    /** Snapshot of toggleable UI state for dynamic toggle-row labels. */
+    getState?(): SlashMenuState;
 }
 
 let _host: SlashMenuHost | null = null;
@@ -307,8 +308,14 @@ class SlashMenuController {
         // Block-level context can't change while the query is typed within
         // the same block, so the visible item set is fixed per open.
         const hidden = contextHiddenItemIds(this.view.state.selection.$from);
+        // Snapshot the toggle state once per open — it can't change while the
+        // query is typed, so dynamic labels resolve against this fixed state.
+        const state = _host?.getState?.();
         this.menu = createSlashMenu({
             items: SLASH_MENU_ITEMS.filter((it) => !hidden.has(it.id)),
+            labelFor: state
+                ? (item) => item.dynamicLabel?.(state) ?? item.label
+                : undefined,
             onPick: (item) => this.apply(item),
             onActiveChange: (id) => {
                 if (id) {
@@ -392,18 +399,14 @@ class SlashMenuController {
         }
         // Delete the "/query" text FIRST so the block command acts on a
         // clean block ("/head" must never end up inside the new heading),
-        // then run the same registry action the toolbar would. No
+        // then run the same registry command the toolbar/palette would. No
         // view.focus() afterwards: the editor is necessarily focused at
         // pick time (blur closes the menu; row mousedown preventDefaults),
         // and host-panel commands (link, image) focus their own inputs —
         // grabbing focus back would break them.
         const { state } = this.view;
         this.view.dispatch(state.tr.delete(match.slashPos, match.caret));
-        if (item.commandId !== undefined) {
-            _host.runCommand(item.commandId, item.args);
-        } else {
-            _host.runAction(item.action);
-        }
+        _host.runCommand(item.commandId, item.args);
     }
 
     // ── Keyboard ─────────────────────────────────────────────────────────

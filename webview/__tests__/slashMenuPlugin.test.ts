@@ -104,7 +104,7 @@ function pressReachesDocument(v: EditorView, key: string): boolean {
 describe("slash command menu plugin", () => {
     let editor: Editor;
     let v: EditorView;
-    let runAction: ReturnType<typeof vi.fn>;
+    let runCommand: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
         vi.clearAllMocks();
@@ -112,11 +112,13 @@ describe("slash command menu plugin", () => {
         editor = await makeEditor("");
         v = view(editor);
         placeCursorAtEndOfBlock(v, 0);
-        runAction = vi.fn();
-        setSlashMenuHost({
-            runCommand: (id, args) => runEditorCommand(id, () => editor, args),
-            runAction,
-        });
+        // Spy that still delegates to the real registry, so block-converting
+        // picks mutate the doc while non-content picks (font/TOC) are asserted
+        // by the id they dispatch.
+        runCommand = vi.fn((id: string, args?: unknown) =>
+            runEditorCommand(id, () => editor, args),
+        );
+        setSlashMenuHost({ runCommand });
     });
 
     afterEach(async () => {
@@ -142,12 +144,12 @@ describe("slash command menu plugin", () => {
         ]);
     });
 
-    it("picking an action item should route through runAction and eat the /query", () => {
+    it("picking a view-control item should dispatch its command and eat the /query", () => {
         typeText(v, "/serif");
 
         press(v, "Enter");
 
-        expect(runAction).toHaveBeenCalledWith({ type: "fontPreset", preset: "serif" });
+        expect(runCommand).toHaveBeenCalledWith("fontSerif", undefined);
         expect(v.state.doc.textContent).toBe("");
     });
 
@@ -466,7 +468,7 @@ describe("context-aware item filtering (toggles hidden where they would remove)"
         // silently no-op after eating the "/query" text, and table/divider
         // insert after the whole table — accidental from inside a cell.
         const labels = await openIn("| a | b |\n| - | - |\n| c | d |\n");
-        expect(labels).toEqual(["Image", "Link", "Math", "Footnote"]);
+        expect(labels).toEqual(["Image", "Inline Math", "Link", "Footnote"]);
     });
 });
 

@@ -28,7 +28,7 @@ import {
 import type { EditorView } from "@milkdown/prose/view";
 import { TextSelection } from "@milkdown/prose/state";
 import { t } from "./i18n";
-import { notifyReady, notifyUpdate, notifySwitchToTextEditor, onMessage } from "./messaging";
+import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifySetTocPosition, onMessage } from "./messaging";
 import type { ToWebviewMessage } from "../shared/messages";
 import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
@@ -257,29 +257,29 @@ setEditorCommandHost({
         });
     },
     toggleToc: () => toc.toggle(),
+    // Side-switch: flip to the opposite edge, mirroring the panel's own flip
+    // button (optimistic apply + persist the tocPosition setting).
+    swapTocSide: () => {
+        const next = toc.isRight() ? "left" : "right";
+        toc.setPosition(next);
+        notifySetTocPosition(next);
+    },
     editFrontmatter: () => focusFrontmatterPanel(),
     editRawMarkdown: switchToSource,
 });
 
-// The slash menu executes picks through the same registry the toolbar and
-// command palette use, so every insertable behaves identically everywhere.
-// Toolbar-controller behaviors (font, checks) that aren't editor commands
-// route through runAction to the same handlers as the toolbar menu rows.
+// The slash menu executes every pick through the same editor-command registry
+// the toolbar and command palette use, so each row behaves identically on all
+// three surfaces (font/proofread/TOC included — they are now real commands).
+// getState feeds the dynamic labels of the toggle rows (a fresh snapshot is
+// read each time the menu opens).
 setSlashMenuHost({
     runCommand: (id, args) => runEditorCommand(id, () => currentEditor, args),
-    runAction: (action) => {
-        switch (action.type) {
-            case "fontPreset":
-                topbarTb?.chooseFontPreset(action.preset);
-                break;
-            case "fontSizeStep":
-                topbarTb?.stepFontSize(action.delta);
-                break;
-            case "proofreadToggle":
-                topbarTb?.toggleProofread(action.key);
-                break;
-        }
-    },
+    getState: () => ({
+        tocOpen: toc.isOpen(),
+        tocRight: toc.isRight(),
+        toolbarVisible: topbarTb?.isVisible() ?? false,
+    }),
 });
 
 if (topbar) {

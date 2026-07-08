@@ -84,10 +84,34 @@ export const EDITOR_COMMANDS = [
     // expand tab — stamped with its own "toolbarTab" section — offers only
     // "Show Toolbar".
     { id: "customizeToolbar", title: "Customize Toolbar", palette: true, sections: ["toolbar"] },
-    { id: "hideToolbar", title: "Hide Toolbar", palette: true, sections: ["toolbar"] },
+    // Hide/Show are per-surface labels for the right-click and gear menus (each
+    // shows the one that matches its state); the palette and slash menu use the
+    // single `toggleToolbar` below instead, so they are palette:false here.
+    { id: "hideToolbar", title: "Hide Toolbar", palette: false, sections: ["toolbar"] },
     { id: "openKeyboardShortcuts", title: "Keyboard Shortcuts", palette: false, sections: ["toolbar"] },
     { id: "openExtensionSettings", title: "Settings", palette: false, sections: ["toolbar"] },
-    { id: "showToolbar", title: "Show Toolbar", palette: true, sections: ["toolbarTab"] },
+    { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
+    // View controls — the font picker, size stepper, proofread toggles, and TOC
+    // side/visibility. Previously reachable only from the toolbar (and, for a
+    // few, the slash menu's bespoke action dispatch); contributed here so the
+    // command palette — the standard surface for editor-chrome actions — can
+    // reach them too. Each preset/direction is its own id because a palette
+    // entry carries no argument.
+    { id: "fontEditor", title: "Editor Font", palette: true, sections: [] },
+    { id: "fontSans", title: "Sans-Serif Font", palette: true, sections: [] },
+    { id: "fontSerif", title: "Serif Font", palette: true, sections: [] },
+    { id: "fontMono", title: "Monospace Font", palette: true, sections: [] },
+    { id: "increaseFontSize", title: "Increase Font Size", palette: true, sections: [] },
+    { id: "decreaseFontSize", title: "Decrease Font Size", palette: true, sections: [] },
+    { id: "toggleSpellCheck", title: "Check Spelling", palette: true, sections: [] },
+    { id: "toggleGrammarCheck", title: "Check Grammar", palette: true, sections: [] },
+    { id: "toggleStyleCheck", title: "Check Style", palette: true, sections: [] },
+    // A single toggle each for the toolbar and the TOC — the state is binary,
+    // so two idempotent show/hide palette entries would always leave one that
+    // does nothing. `toggleToc` (above) covers TOC visibility; these cover the
+    // toolbar and the TOC dock side (mirroring the panel's own flip button).
+    { id: "toggleToolbar", title: "Toggle Toolbar", palette: true, sections: [] },
+    { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

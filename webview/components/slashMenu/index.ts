@@ -53,6 +53,8 @@ export interface SlashMenuOptions {
     onActiveChange?(id: string | null): void;
     /** Registry override for tests. */
     items?: readonly SlashMenuItem[];
+    /** Display label for a row (dynamic toggle labels); falls back to item.label. */
+    labelFor?(item: SlashMenuItem): string;
 }
 
 export const SLASH_MENU_DOM_ID = "md-slash-menu";
@@ -82,12 +84,15 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
     root.appendChild(list);
 
     // Discoverability footer (Notion convention). Decorative for AT — the
-    // keyboard model is announced through the combobox aria wiring.
+    // keyboard model is announced through the combobox aria wiring. The left
+    // slot is a "Show all commands" toggle on the unfiltered list (reveals the
+    // search-only rows — fonts, checks, view controls — for mouse browsers);
+    // while filtering it reverts to the plain "Type to filter" hint.
     const footer = document.createElement("div");
     footer.className = "slash-menu-footer";
     footer.setAttribute("aria-hidden", "true");
     const footerHint = document.createElement("span");
-    footerHint.textContent = t("Type to filter");
+    footerHint.className = "slash-menu-footer-hint";
     const footerEsc = document.createElement("span");
     footerEsc.className = "slash-menu-footer-key";
     footerEsc.textContent = "esc";
@@ -99,6 +104,30 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
     let rows: HTMLElement[] = [];
     let activeIndex = -1;
     let lastAnchor: SlashMenuAnchor | null = null;
+    let lastQuery = "";
+    // Sticky (until the menu closes) reveal of the search-only rows in the
+    // unfiltered view — the "Show all commands" footer toggle.
+    let showAll = false;
+
+    function updateFooter(grouped: boolean): void {
+        if (grouped) {
+            footerHint.textContent = showAll ? t("Show fewer") : t("Show all commands");
+            footerHint.classList.add("slash-menu-footer-action");
+        } else {
+            footerHint.textContent = t("Type to filter");
+            footerHint.classList.remove("slash-menu-footer-action");
+        }
+    }
+    // Toggle on mousedown (preventDefault keeps editor focus; the query is
+    // necessarily empty here, so re-render the unfiltered list and reposition).
+    footerHint.addEventListener("mousedown", (e) => {
+        if (lastQuery.trim() !== "") { return; }
+        e.preventDefault();
+        e.stopPropagation();
+        showAll = !showAll;
+        render("");
+        if (lastAnchor) { positionMenu(lastAnchor); }
+    });
 
     function setActive(index: number): void {
         activeIndex = index;
@@ -135,7 +164,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
 
         const label = document.createElement("span");
         label.className = "slash-menu-item-label";
-        label.textContent = item.label;
+        label.textContent = opts.labelFor?.(item) ?? item.label;
         row.appendChild(label);
 
         if (item.hint) {
@@ -151,7 +180,16 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
     }
 
     function render(query: string): void {
-        visible = filterSlashItems(items, query);
+        lastQuery = query;
+        // Group headers only in the unfiltered view; a filtered view is a flat
+        // ranked list (Notion behavior — ranking beats grouping). "Show all"
+        // widens the unfiltered view to include the search-only rows.
+        const grouped = query.trim() === "";
+        if (grouped) {
+            visible = showAll ? [...items] : items.filter((it) => !it.searchOnly);
+        } else {
+            visible = filterSlashItems(items, query);
+        }
         list.textContent = "";
         rows = [];
 
@@ -160,13 +198,12 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
             // and the controller stays anchored to the same slash context.
             root.style.display = "none";
             setActive(-1);
+            updateFooter(grouped);
             return;
         }
         root.style.display = "";
 
-        // Group headers only in the unfiltered view; a filtered view is a
-        // flat ranked list (Notion behavior — ranking beats grouping).
-        if (query.trim() === "") {
+        if (grouped) {
             for (const group of SLASH_GROUPS) {
                 const groupItems = visible.filter((it) => it.group === group.id);
                 if (groupItems.length === 0) {
@@ -199,6 +236,31 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         // First row highlighted on open and after every re-filter: Enter
         // always does something (command-palette semantics).
         setActive(0);
+        updateFooter(grouped);
+    }
+
+    function positionMenu(anchor: SlashMenuAnchor): void {
+        lastAnchor = anchor;
+        if (visible.length === 0) {
+            return;
+        }
+        root.style.top = `${anchor.top}px`;
+        root.style.left = `${Math.max(
+            8,
+            Math.min(
+                anchor.left,
+                window.innerWidth - root.getBoundingClientRect().width - 8,
+            ),
+        )}px`;
+        // Measured after placement (height depends on the rendered rows):
+        // flip above the anchor when the menu would overflow the bottom
+        // edge and there is more room above (createLinkSuggestMenu rule).
+        const height = root.getBoundingClientRect().height;
+        const overflowsBottom = anchor.top + height > window.innerHeight;
+        const spaceBelow = window.innerHeight - anchor.top;
+        if (overflowsBottom && anchor.flipTop > spaceBelow) {
+            root.style.top = `${Math.max(0, anchor.flipTop - height)}px`;
+        }
     }
 
     render("");
@@ -209,7 +271,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
         setQuery(query: string): void {
             render(query);
             if (lastAnchor) {
-                this.position(lastAnchor);
+                positionMenu(lastAnchor);
             }
         },
         moveActive(delta: 1 | -1): void {
@@ -236,27 +298,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
             return activeIndex >= 0 ? slashRowDomId(visible[activeIndex].id) : null;
         },
         position(anchor: SlashMenuAnchor): void {
-            lastAnchor = anchor;
-            if (visible.length === 0) {
-                return;
-            }
-            root.style.top = `${anchor.top}px`;
-            root.style.left = `${Math.max(
-                8,
-                Math.min(
-                    anchor.left,
-                    window.innerWidth - root.getBoundingClientRect().width - 8,
-                ),
-            )}px`;
-            // Measured after placement (height depends on the rendered rows):
-            // flip above the anchor when the menu would overflow the bottom
-            // edge and there is more room above (createLinkSuggestMenu rule).
-            const height = root.getBoundingClientRect().height;
-            const overflowsBottom = anchor.top + height > window.innerHeight;
-            const spaceBelow = window.innerHeight - anchor.top;
-            if (overflowsBottom && anchor.flipTop > spaceBelow) {
-                root.style.top = `${Math.max(0, anchor.flipTop - height)}px`;
-            }
+            positionMenu(anchor);
         },
         destroy(): void {
             root.remove();
