@@ -5,12 +5,11 @@
     left: 0;
     width: var(--toc-width, 220px);
     height: calc(100vh - var(--editor-topbar-height, 40px));
-    background: var(
-        --vscode-sideBar-background,
-        var(--vscode-editor-background)
-    );
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-    border-width: 0 1px;
+    /* Editor background (not the sidebar shade), and no borders: the docked
+       drawer blends into the editor gutter with no differentiated chrome. The
+       solid fill still covers document text in overlay mode. The only edge
+       treatment is the resize handle's accent line on hover (below). */
+    background: var(--vscode-editor-background);
     z-index: 99;
     display: flex;
     flex-direction: column;
@@ -32,21 +31,42 @@
 }
 
 /* ─── Drag-to-resize handle (VS Code sash style) ─────── */
+/* The 8px band is the (transparent) hit area — wide enough to grab without much
+   precision; the ::after pseudo-element paints a crisp 2px line on the panel's
+   inner edge. Hovering anywhere in the drawer reveals a faint neutral edge
+   border; hovering the edge itself (or dragging) lights it up with the theme
+   accent, matching VS Code's sash. */
 .toc-resize-handle {
     position: absolute;
     top: 0;
     bottom: 0;
     right: 0;
-    width: 4px;
+    width: 8px;
     z-index: 1;
     background: transparent;
-    transition: background-color 0.1s ease;
+}
 
-    /* Highlight after a short delay, matching VS Code's sash hover behavior */
-    &:hover {
-        background: var(--vscode-sash-hoverBorder, rgba(128, 128, 128, 0.35));
-        transition-delay: 0.3s;
-    }
+.toc-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 2px;
+    background: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    opacity: 0;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+/* Hovering the drawer reveals a faint edge border… */
+.toc-panel:hover .toc-resize-handle::after {
+    opacity: 1;
+}
+
+/* …and hovering the edge itself brightens it to the theme accent. */
+.toc-resize-handle:hover::after {
+    opacity: 1;
+    background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
 }
 
 .toc-panel--right .toc-resize-handle {
@@ -54,10 +74,16 @@
     left: 0;
 }
 
-.toc-resize-handle--active,
-.toc-resize-handle--active:hover {
-    background: var(--vscode-sash-hoverBorder, rgba(128, 128, 128, 0.35));
-    transition-delay: 0s;
+.toc-panel--right .toc-resize-handle::after {
+    right: auto;
+    left: 0;
+}
+
+/* While actively dragging: keep the accent line lit. */
+.toc-resize-handle--active::after,
+.toc-resize-handle--active:hover::after {
+    opacity: 1;
+    background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
 }
 
 /* While dragging: suppress text selection */
@@ -65,20 +91,61 @@ body.toc-resizing {
     user-select: none;
 }
 
-.toc-header {
-    padding: 8px 12px 6px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(
-        --vscode-sideBarSectionHeader-foreground,
-        var(--vscode-foreground)
-    );
-    border-bottom: 1px solid
-        var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-    flex-shrink: 0;
-    user-select: none;
+/* Controls float in the drawer's top trailing corner (absolute, so the list
+   scrolls beneath them). The top/right insets match TAB_EDGE_INSET/TAB_TOP_INSET
+   in index.ts so the hide glyph and the closed reveal glyph coincide exactly. An
+   editor-background fill lets list text scroll cleanly out of sight underneath. */
+.toc-controls {
+    position: absolute;
+    /* Nudged so the glyph optically centers on the first heading row's text;
+       matches TAB_TOP_INSET in index.ts (keeps the closed reveal glyph aligned). */
+    top: 7px;
+    /* Panel's trailing edge for both dock sides: the outer edge when docked
+       right (over the closed reveal tab), the inner edge when docked left. */
+    right: 7px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    /* Editor-background fill (rounded, so it reads as a chip over an active row)
+       lets list text scroll cleanly out of sight underneath the controls. */
+    background: var(--vscode-editor-background);
+    border-radius: 5px;
+}
+
+/* Icon-button feel: faint until the panel is hovered, brighter on hover */
+.toc-control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--vscode-icon-foreground, var(--vscode-foreground));
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+
+    & svg {
+        width: 15px;
+        height: 15px;
+    }
+
+    &:hover {
+        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+    }
+}
+
+.toc-panel:hover .toc-control-btn,
+.toc-control-btn:focus-visible {
+    opacity: 0.75;
+}
+
+.toc-panel .toc-control-btn:hover {
+    opacity: 1;
 }
 
 .toc-list {
@@ -137,50 +204,62 @@ body.toc-resizing {
     text-align: center;
 }
 
-/* ─── TOC collapse/expand tab on the side (standalone fixed element, unaffected by the panel's overflow:hidden) ─── */
+/* ─── TOC reveal tab: standalone fixed icon button shown only while the panel is
+   closed. It is a visual clone of the header's hide button (same 22px box, 15px
+   dock-side glyph) positioned by JS to land exactly over it, so toggling the
+   panel never shifts the glyph. At rest it is just the glyph — no background or
+   border; chrome appears only on hover/active/focus. Unaffected by the panel's
+   overflow:hidden since it is appended to <body>. ─── */
 .toc-toggle-tab {
     position: fixed;
-    /* left / top set dynamically by JS */
-    width: var(--toc-tab-width, 20px);
-    height: 48px;
-    background: var(
-        --vscode-sideBar-background,
-        var(--vscode-editor-background)
-    );
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-    border-left: none;
-    border-radius: 0 4px 4px 0;
-    cursor: pointer;
+    /* left|right / top set dynamically by JS to match the header hide button */
+    width: 22px;
+    height: 22px;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--vscode-foreground);
-    font-size: 12px;
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    color: var(--vscode-icon-foreground, var(--vscode-foreground));
+    cursor: pointer;
     user-select: none;
     z-index: 100;
-    padding: 0;
-    /* left in sync with the panel transform, top with the toolbar slide */
-    transition: left 0.2s ease, top 0.2s ease;
+    opacity: 0.6;
+    /* left/right settle with the panel transform, top with the toolbar slide */
+    transition: left 0.2s ease, right 0.2s ease, top 0.2s ease, opacity 0.1s ease,
+        background-color 0.1s ease;
+
+    & svg {
+        width: 15px;
+        height: 15px;
+    }
+
+    &:hover {
+        opacity: 1;
+        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+    }
+
+    &:active {
+        opacity: 1;
+        background: var(
+            --vscode-toolbar-activeBackground,
+            var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.28))
+        );
+    }
+
+    &:focus-visible {
+        opacity: 1;
+    }
 }
 
-/* Right-docked variant: mirror the tab onto the right edge */
-body.toc-right .toc-toggle-tab {
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-    border-right: none;
-    border-radius: 4px 0 0 4px;
-    transition: right 0.2s ease, top 0.2s ease;
-}
-
-.toc-toggle-tab:hover {
-    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
-}
-
-/* While dragging the resize handle the tab must track the panel edge 1:1;
-   placed after the side-specific transition rules above so it wins the cascade */
 body.toc-resizing .toc-toggle-tab {
     transition: none;
 }
 
+/* Hidden while the panel is open — the header's hide button is the control then */
+body.toc-open .toc-toggle-tab,
 body.toc-overlay-open .toc-toggle-tab {
     display: none;
 }

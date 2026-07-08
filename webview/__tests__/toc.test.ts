@@ -25,31 +25,128 @@ describe("initToc dock side", () => {
         vi.unstubAllGlobals();
     });
 
-    it("default (left) should dock the toggle tab at the left edge", () => {
+    it("default (left) should pin the reveal tab to the left edge", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         expect(panel.classList.contains("toc-panel--right")).toBe(false);
-        expect(tab.style.left).toBe("0px");
-        expect(tab.textContent).toBe("›");
+        expect(tab.style.left).toBe("7px");
+        // Carries the dock-side glyph, not a chevron
+        expect(tab.querySelector("svg")).not.toBeNull();
     });
 
-    it("toc-right body class should dock the toggle tab at the right edge", () => {
+    it("toc-right body class should pin the reveal tab to the right edge", () => {
         document.body.classList.add("toc-right");
         const { panel } = initToc(fakeEventManager, () => null);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         expect(panel.classList.contains("toc-panel--right")).toBe(true);
-        expect(tab.style.right).toBe("0px");
+        expect(tab.style.right).toBe("7px");
         expect(tab.style.left).toBe("auto");
-        expect(tab.textContent).toBe("‹");
+        expect(tab.querySelector("svg")).not.toBeNull();
     });
 
-    it("opening a right-docked TOC should move the tab beside the panel", () => {
+    it("opening the TOC should keep the reveal tab pinned to the outer edge (the header hide button takes over)", () => {
         document.body.classList.add("toc-right");
-        const { toggle } = initToc(fakeEventManager, () => null);
+        const { panel, toggle } = initToc(fakeEventManager, () => null);
         toggle();
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
-        expect(tab.style.right).toBe("220px");
-        expect(tab.textContent).toBe("›");
+        // The reveal tab no longer slides beside the panel — it stays at the
+        // corner; CSS hides it while open, and the header carries a hide button.
+        expect(tab.style.right).toBe("7px");
+        expect(panel.querySelector(".toc-hide-btn")).not.toBeNull();
+    });
+});
+
+describe("TOC header controls (side-switch, hide, reveal)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+            cb(0);
+            return 0;
+        });
+        document.body.className = "";
+        document.body.innerHTML = "";
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    function getFlip(panel: HTMLElement): HTMLElement {
+        return panel.querySelector(".toc-flip-btn") as HTMLElement;
+    }
+
+    it("the header should render a side-switch and a hide button", () => {
+        const { panel } = initToc(fakeEventManager, () => null);
+        expect(getFlip(panel)).not.toBeNull();
+        expect(panel.querySelector(".toc-hide-btn")).not.toBeNull();
+        // Both are icon buttons
+        expect(getFlip(panel).querySelector("svg")).not.toBeNull();
+        expect(panel.querySelector(".toc-hide-btn svg")).not.toBeNull();
+    });
+
+    it("clicking the flip button on a left-docked panel should move it right and persist the choice", () => {
+        const { panel } = initToc(fakeEventManager, () => null);
+        expect(panel.classList.contains("toc-panel--right")).toBe(false);
+
+        getFlip(panel).dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
+
+        expect(panel.classList.contains("toc-panel--right")).toBe(true);
+        expect(document.body.classList.contains("toc-right")).toBe(true);
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "setTocPosition", position: "right" });
+    });
+
+    it("clicking the flip button on a right-docked panel should move it left and persist the choice", () => {
+        document.body.classList.add("toc-right");
+        const { panel } = initToc(fakeEventManager, () => null);
+
+        getFlip(panel).dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
+
+        expect(panel.classList.contains("toc-panel--right")).toBe(false);
+        expect(document.body.classList.contains("toc-right")).toBe(false);
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "setTocPosition", position: "left" });
+    });
+
+    it("setPosition should flip the panel and the tab side without a fresh init", () => {
+        const { panel, setPosition } = initToc(fakeEventManager, () => null);
+        const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
+        // Left-docked initially: reveal tab pinned near the left edge
+        expect(tab.style.left).toBe("7px");
+
+        setPosition("right");
+
+        expect(panel.classList.contains("toc-panel--right")).toBe(true);
+        expect(tab.style.right).toBe("7px");
+        expect(tab.style.left).toBe("auto");
+    });
+
+    it("setPosition to the current side should be a no-op that posts nothing", () => {
+        const { panel, setPosition } = initToc(fakeEventManager, () => null);
+        setPosition("left");
+        expect(panel.classList.contains("toc-panel--right")).toBe(false);
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "setTocPosition" }),
+        );
+    });
+
+    it("clicking the header hide button should collapse an open panel", () => {
+        const { panel, toggle } = initToc(fakeEventManager, () => null);
+        toggle(); // open
+        expect(panel.classList.contains("toc-panel--open")).toBe(true);
+
+        panel.querySelector(".toc-hide-btn")!
+            .dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
+
+        expect(panel.classList.contains("toc-panel--open")).toBe(false);
+    });
+
+    it("clicking the reveal tab should open a closed panel", () => {
+        const { panel } = initToc(fakeEventManager, () => null);
+        expect(panel.classList.contains("toc-panel--open")).toBe(false);
+
+        document.querySelector(".toc-toggle-tab")!
+            .dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
+
+        expect(panel.classList.contains("toc-panel--open")).toBe(true);
     });
 });
 
@@ -196,11 +293,12 @@ describe("TOC drag-to-resize", () => {
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "tocWidth", width: 220 });
     });
 
-    it("resizing while open should move the toggle tab along with the panel edge", () => {
+    it("resizing should keep the reveal tab pinned to the outer edge, not tracking the width", () => {
         const { panel, toggle } = initToc(fakeEventManager, () => null);
         toggle();
         drag(getHandle(panel), 220, 340);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
-        expect(tab.style.left).toBe("340px");
+        // The reveal tab sits at the docked corner regardless of panel width
+        expect(tab.style.left).toBe("7px");
     });
 });

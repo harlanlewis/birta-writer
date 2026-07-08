@@ -355,6 +355,12 @@ export function activate(context: vscode.ExtensionContext) {
                     size: clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT)),
                 });
             }
+            if (e.affectsConfiguration("markdownWysiwyg.tocPosition")) {
+                const position = vscode.workspace
+                    .getConfiguration("markdownWysiwyg")
+                    .get<string>("tocPosition", "right") === "left" ? "left" : "right";
+                MarkdownEditorProvider.current?.postToAll({ type: "setTocPosition", position });
+            }
         }),
     );
 

@@ -48,6 +48,14 @@ export const IconSettings = svg(`<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 
 export const IconSearch = svg(`<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>`);
 export const IconKeyboard = svg(`<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01"/><path d="M10 10h.01"/><path d="M14 10h.01"/><path d="M18 10h.01"/><path d="M8 14h8"/>`);
 export const IconPanelTop = svg(`<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/>`);
+// Sidebar-side glyphs (VS Code layout-sidebar codicons): a framed pane with the
+// docked column marked. Used by the TOC hide/reveal control — the filled edge
+// signals which side the panel is docked to, mirroring VS Code's side-bar
+// toggle buttons.
+export const IconPanelLeft = svg(`<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>`);
+export const IconPanelRight = svg(`<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/>`);
+// Two-way horizontal arrows: "swap sides". Used by the TOC dock-side switch.
+export const IconArrowLeftRight = svg(`<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>`);
 export const IconReplace    = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/>`);
 export const IconReplaceAll = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/><path d="M14 14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2"/>`);
 export const IconHeading = svg(`<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/><path d="m17 12 3-2v8"/>`);
