@@ -104,6 +104,7 @@ function pressReachesDocument(v: EditorView, key: string): boolean {
 describe("slash command menu plugin", () => {
     let editor: Editor;
     let v: EditorView;
+    let runAction: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
         vi.clearAllMocks();
@@ -111,8 +112,10 @@ describe("slash command menu plugin", () => {
         editor = await makeEditor("");
         v = view(editor);
         placeCursorAtEndOfBlock(v, 0);
+        runAction = vi.fn();
         setSlashMenuHost({
             runCommand: (id, args) => runEditorCommand(id, () => editor, args),
+            runAction,
         });
     });
 
@@ -120,18 +123,32 @@ describe("slash command menu plugin", () => {
         await editor.destroy();
     });
 
-    it("typing / in an empty paragraph should open the full menu", () => {
+    it("typing / in an empty paragraph should open the browsable menu", () => {
         typeText(v, "/");
 
         expect(menuVisible()).toBe(true);
-        expect(rowLabels()).toHaveLength(SLASH_MENU_ITEMS.length);
+        expect(rowLabels()).toHaveLength(
+            SLASH_MENU_ITEMS.filter((i) => !i.searchOnly).length,
+        );
     });
 
     it("typing a query after / should narrow the menu", () => {
         typeText(v, "/");
         typeText(v, "hea");
 
-        expect(rowLabels()).toEqual(["Heading 1", "Heading 2", "Heading 3"]);
+        expect(rowLabels()).toEqual([
+            "Heading 1", "Heading 2", "Heading 3",
+            "Heading 4", "Heading 5", "Heading 6",
+        ]);
+    });
+
+    it("picking an action item should route through runAction and eat the /query", () => {
+        typeText(v, "/serif");
+
+        press(v, "Enter");
+
+        expect(runAction).toHaveBeenCalledWith({ type: "fontPreset", preset: "serif" });
+        expect(v.state.doc.textContent).toBe("");
     });
 
     it("Enter should convert the block and remove the /query text", () => {

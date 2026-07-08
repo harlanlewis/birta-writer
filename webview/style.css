@@ -954,6 +954,35 @@ body.editor-width-auto {
     border-bottom: 1px solid
         var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
     user-select: none;
+    /* Whole-bar hide (toolbar.visible): slide up like the TOC panel slides
+       sideways; visibility flips after the slide so it can't grab focus or
+       clicks while off screen (and instantly on the way back in). */
+    transition: transform 0.2s ease, visibility 0s;
+
+    body.toolbar-hidden & {
+        transform: translateY(-100%);
+        visibility: hidden;
+        transition: transform 0.2s ease, visibility 0s 0.2s;
+    }
+}
+
+/* With the bar gone, consumers of the measured topbar height (find bar
+   offset, heading scroll margins) must see 0 — the JS measurement keeps
+   reporting the bar's box height since translateY doesn't change it. */
+body.toolbar-hidden {
+    --editor-topbar-height: 0px;
+}
+
+/* Collapsed: keep the expanded bar's bottom hairline as a full-width line at
+   the top edge; the expand tab hangs from it. */
+body.toolbar-hidden::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    z-index: 1198;
 }
 
 /* ─── Custom tooltip ─── */

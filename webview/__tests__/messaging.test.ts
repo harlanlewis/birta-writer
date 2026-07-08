@@ -20,6 +20,7 @@ const {
     notifyRenameImage,
     notifyOpenSettings,
     notifyOpenKeybindings,
+    notifySetToolbarVisible,
 } = await import("../../webview/messaging");
 
 describe("messaging — postMessage format", () => {
@@ -30,6 +31,14 @@ describe("messaging — postMessage format", () => {
     it("notifyReady should send { type: 'ready' }", () => {
         notifyReady();
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "ready" });
+    });
+
+    it("notifySetToolbarVisible should carry the visibility flag", () => {
+        notifySetToolbarVisible(false);
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "setToolbarVisible",
+            visible: false,
+        });
     });
 
     it("notifyUpdate should carry the content and the current baseSyncVersion", () => {

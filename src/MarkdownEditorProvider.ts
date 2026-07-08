@@ -582,6 +582,9 @@ export class MarkdownEditorProvider
                         }
                         MarkdownEditorProvider.updateSettingRespectingScope("toolbar.order", message.order);
                         break;
+                    case "setToolbarVisible":
+                        MarkdownEditorProvider.updateSettingRespectingScope("toolbar.visible", message.visible);
+                        break;
                     case "spellAddWord":
                         this._handleSpellAddWord(message.word);
                         break;
@@ -1013,6 +1016,7 @@ export class MarkdownEditorProvider
         const smartLinks = cfg.get<boolean>("smartLinks", true);
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
+        const frontmatterExpanded = cfg.get<boolean>("frontmatterExpanded", true);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
         const toolbar = MarkdownEditorProvider.getToolbarConfig();
         const documentUri = document.uri.toString();
@@ -1021,7 +1025,7 @@ export class MarkdownEditorProvider
         // optional-chained so a stripped-down test context still resolves.
         const productName =
             (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "WYSIWYG Markdown Editor";
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, proofread, toolbar, fontPreset, fontStacks, fontSize, documentUri, productName })};`;
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, fontPreset, fontStacks, fontSize, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -1145,6 +1149,7 @@ export class MarkdownEditorProvider
         return {
             placements: cfg.get("toolbar.items", {}),
             order: cfg.get<string[]>("toolbar.order", []),
+            visible: cfg.get<boolean>("toolbar.visible", true),
         };
     }
 

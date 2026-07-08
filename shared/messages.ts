@@ -63,6 +63,8 @@ export type ToolbarPlacements = Record<string, ToolbarPlacement>;
 export type ToolbarConfig = {
     placements: ToolbarPlacements;
     order: string[];
+    /** Whole-bar visibility (`markdownWysiwyg.toolbar.visible`); defaults to shown. */
+    visible?: boolean;
 };
 
 /** Editor content font preset selected from the toolbar font picker. */
@@ -184,6 +186,10 @@ export type ToExtensionMessage =
     // the dragged item changed placement (zone, or shown/hidden via the tray);
     // `order` is the left-to-right order of the visible items.
     | { type: "setToolbarLayout"; item?: { id: string; placement: ToolbarPlacement }; order: string[] }
+    // Whole-bar show/hide from the gear menu, right-click menu, or expand tab;
+    // the extension persists it to `toolbar.visible`, which round-trips back
+    // as a `toolbarConfig` message.
+    | { type: "setToolbarVisible"; visible: boolean }
     | { type: "lintBlocks"; id: number; blocks: LintBlock[] }
     // Selection serialized in the webview (copy-as-HTML / copy-as-Markdown from
     // the right-click menu); the extension writes `data` to the system clipboard.

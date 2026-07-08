@@ -14,7 +14,7 @@
  * message protocol carries the bare `<id>` as `EditorCommandId`.
  */
 
-export type WebviewSection = "editor" | "table" | "link" | "toolbar";
+export type WebviewSection = "editor" | "table" | "link" | "toolbar" | "toolbarTab";
 
 export interface EditorCommandMeta {
     /** Stable id; also the message payload and the command-name suffix. */
@@ -77,20 +77,25 @@ export const EDITOR_COMMANDS = [
     { id: "editRawMarkdown", title: "Edit Raw Markdown", palette: false, sections: ["editor", "table", "link"] },
     // Toolbar (chrome) right-click menu. The settings-gear dropdown is built
     // from these same entries (filtered by the "toolbar" section, in this
-    // order), so the two menus can never diverge. The settings title bakes in
-    // package.json's displayName — SETTINGS_TITLE_TEMPLATE is the runtime
-    // template and a drift test keeps all three in sync.
+    // order) under a product-name group header, so the two menus can never
+    // diverge. Hide/Show are separate idempotent commands rather than one
+    // toggle so every surface shows the label that matches its state: the
+    // visible bar (and gear menu) offers "Hide Toolbar", while the collapsed
+    // expand tab — stamped with its own "toolbarTab" section — offers only
+    // "Show Toolbar".
     { id: "customizeToolbar", title: "Customize Toolbar", palette: true, sections: ["toolbar"] },
+    { id: "hideToolbar", title: "Hide Toolbar", palette: true, sections: ["toolbar"] },
     { id: "openKeyboardShortcuts", title: "Keyboard Shortcuts", palette: false, sections: ["toolbar"] },
-    { id: "openExtensionSettings", title: "WYSIWYG Markdown Editor Settings", palette: false, sections: ["toolbar"] },
+    { id: "openExtensionSettings", title: "Settings", palette: false, sections: ["toolbar"] },
+    { id: "showToolbar", title: "Show Toolbar", palette: true, sections: ["toolbarTab"] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**
- * Title template for the open-settings entry. The webview renders it with the
- * runtime product name; package.json/nls bake the same name in at authoring
- * time (the contributions drift test asserts they agree with displayName).
+ * Title template for the open-settings entry. The gear menu names the product
+ * in its group header instead of the row label, so the template is the bare
+ * word; a drift test keeps it in lockstep with package.json/nls.
  */
-export const SETTINGS_TITLE_TEMPLATE = "{product} Settings";
+export const SETTINGS_TITLE_TEMPLATE = "Settings";
 
 /** The toolbar-chrome menu entries, in display order (right-click and gear menu). */
 export const TOOLBAR_MENU_COMMANDS = EDITOR_COMMANDS.filter((m) =>

@@ -80,10 +80,10 @@ describe("editor command contributions", () => {
         }
     });
 
-    it("the settings entry title should be '<displayName> Settings' (gear menu renders the same template)", () => {
-        // The gear dropdown renders SETTINGS_TITLE_TEMPLATE with the runtime
-        // product name; the contributed command bakes the name in at authoring
-        // time. All three must agree or the two menus diverge on a rename.
+    it("the settings entry title should match the shared template (gear menu renders the same rows)", () => {
+        // The product name lives in the gear menu's group header, so the row
+        // title is the bare template. Table, nls, and template must agree or
+        // the two menus diverge on a rename.
         const expected = SETTINGS_TITLE_TEMPLATE.replace("{product}", pkg.displayName);
         const meta = EDITOR_COMMANDS.find((m) => m.id === "openExtensionSettings");
         expect(meta?.title).toBe(expected);

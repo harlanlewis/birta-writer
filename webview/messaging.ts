@@ -139,6 +139,11 @@ export function notifySetToolbarLayout(
     vscode.postMessage({ type: "setToolbarLayout", ...(item ? { item } : {}), order });
 }
 
+/** Persist whole-toolbar visibility (gear menu / right-click / expand tab). */
+export function notifySetToolbarVisible(visible: boolean): void {
+    vscode.postMessage({ type: "setToolbarVisible", visible });
+}
+
 export function notifyLintBlocks(id: number, blocks: import("../shared/messages").LintBlock[]): void {
     vscode.postMessage({ type: "lintBlocks", id, blocks });
 }

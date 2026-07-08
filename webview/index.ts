@@ -266,8 +266,23 @@ setEditorCommandHost({
 
 // The slash menu executes picks through the same registry the toolbar and
 // command palette use, so every insertable behaves identically everywhere.
+// Toolbar-controller behaviors (font, checks) that aren't editor commands
+// route through runAction to the same handlers as the toolbar menu rows.
 setSlashMenuHost({
     runCommand: (id, args) => runEditorCommand(id, () => currentEditor, args),
+    runAction: (action) => {
+        switch (action.type) {
+            case "fontPreset":
+                topbarTb?.chooseFontPreset(action.preset);
+                break;
+            case "fontSizeStep":
+                topbarTb?.stepFontSize(action.delta);
+                break;
+            case "proofreadToggle":
+                topbarTb?.toggleProofread(action.key);
+                break;
+        }
+    },
 });
 
 if (topbar) {

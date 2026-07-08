@@ -11,6 +11,8 @@ declare global {
             smartLinks?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
+            /** Frontmatter panel expanded on open (markdownWysiwyg.frontmatterExpanded). */
+            frontmatterExpanded?: boolean;
             proofread?: ProofreadConfig;
             /** Per-item toolbar placement config (see the toolbar registry). */
             toolbar?: ToolbarConfig;

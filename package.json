@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.69",
+  "version": "0.2.72",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -302,6 +302,16 @@
         "category": "WYSIWYG Markdown Editor"
       },
       {
+        "command": "markdownWysiwyg.editor.hideToolbar",
+        "title": "%command.editor.hideToolbar.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.editor.showToolbar",
+        "title": "%command.editor.showToolbar.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
         "command": "markdownWysiwyg.editor.openExtensionSettings",
         "title": "%command.editor.openExtensionSettings.title%",
         "category": "WYSIWYG Markdown Editor"
@@ -589,6 +599,14 @@
           "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
         },
         {
+          "command": "markdownWysiwyg.editor.hideToolbar",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
+          "command": "markdownWysiwyg.editor.showToolbar",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
           "command": "markdownWysiwyg.editor.openExtensionSettings",
           "when": "false"
         },
@@ -689,14 +707,24 @@
           "group": "1_toolbar@1"
         },
         {
-          "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
+          "command": "markdownWysiwyg.editor.hideToolbar",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
           "group": "1_toolbar@2"
         },
         {
-          "command": "markdownWysiwyg.editor.openExtensionSettings",
+          "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
           "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
           "group": "1_toolbar@3"
+        },
+        {
+          "command": "markdownWysiwyg.editor.openExtensionSettings",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
+          "group": "1_toolbar@4"
+        },
+        {
+          "command": "markdownWysiwyg.editor.showToolbar",
+          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbarTab'",
+          "group": "1_toolbar@1"
         }
       ]
     },
@@ -918,6 +946,12 @@
             "%config.tocPosition.right%"
           ]
         },
+        "markdownWysiwyg.frontmatterExpanded": {
+          "order": 6,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.frontmatterExpanded.description%"
+        },
         "markdownWysiwyg.customCss": {
           "order": 12,
           "type": "array",
@@ -979,6 +1013,12 @@
           "minimum": 50,
           "maximum": 200,
           "description": "%config.fontSize.description%"
+        },
+        "markdownWysiwyg.toolbar.visible": {
+          "order": 29,
+          "type": "boolean",
+          "default": true,
+          "description": "Show the toolbar. When off, a small tab at the top edge (or the Toggle Toolbar command) brings it back."
         },
         "markdownWysiwyg.toolbar.items.format": {
           "order": 30,

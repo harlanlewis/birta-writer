@@ -58,9 +58,25 @@ describe("slashContext", () => {
 describe("filterSlashItems", () => {
     const label = (items: SlashMenuItem[]): string[] => items.map((i) => i.id);
 
-    it("an empty query should return every item in registry order", () => {
-        expect(filterSlashItems(SLASH_MENU_ITEMS, "")).toEqual([...SLASH_MENU_ITEMS]);
-        expect(filterSlashItems(SLASH_MENU_ITEMS, "  ")).toEqual([...SLASH_MENU_ITEMS]);
+    it("an empty query should return the browsable items in registry order", () => {
+        const browsable = SLASH_MENU_ITEMS.filter((i) => !i.searchOnly);
+        expect(filterSlashItems(SLASH_MENU_ITEMS, "")).toEqual(browsable);
+        expect(filterSlashItems(SLASH_MENU_ITEMS, "  ")).toEqual(browsable);
+    });
+
+    it("an empty query should exclude every searchOnly item", () => {
+        const ids = label(filterSlashItems(SLASH_MENU_ITEMS, ""));
+        for (const item of SLASH_MENU_ITEMS.filter((i) => i.searchOnly)) {
+            expect(ids).not.toContain(item.id);
+        }
+    });
+
+    it("a query should surface searchOnly items ranked like any other", () => {
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "h4"))[0]).toBe("heading4");
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "bold"))[0]).toBe("bold");
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "toolbar"))).toContain("hideToolbar");
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "toolbar"))).toContain("showToolbar");
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "font"))).toContain("fontSerif");
     });
 
     it("label-prefix matches should rank above keyword-prefix matches", () => {
@@ -73,10 +89,13 @@ describe("filterSlashItems", () => {
     it("keyword-prefix matches should rank above bare substring matches", () => {
         // "li": "Link" is the only label-prefix match (tier 1); the lists
         // and the divider match via keyword prefixes "list"/"line" (tier 2),
-        // ranking above anything that merely CONTAINS "li".
+        // ranking above anything that merely CONTAINS "li" (tier 3 — e.g.
+        // Italic and Highlight via their labels).
         const ids = label(filterSlashItems(SLASH_MENU_ITEMS, "li"));
         expect(ids[0]).toBe("link");
-        expect(ids.slice(1)).toEqual(["bulletList", "orderedList", "taskList", "divider"]);
+        expect(ids.slice(1, 5)).toEqual(["bulletList", "orderedList", "taskList", "divider"]);
+        // Substring-only matches stay behind the prefix tiers.
+        expect(ids.indexOf("italic")).toBeGreaterThan(ids.indexOf("divider"));
     });
 
     it("matching should be case-insensitive", () => {
@@ -102,12 +121,17 @@ describe("filterSlashItems", () => {
 });
 
 describe("registry drift guards", () => {
-    it("every commandId should exist in shared EDITOR_COMMANDS", () => {
+    it("every item should carry exactly one dispatch: a known commandId or an action", () => {
         const known = new Set(EDITOR_COMMANDS.map((c) => c.id));
         for (const item of SLASH_MENU_ITEMS) {
-            expect(known, `unknown commandId for item "${item.id}"`).toContain(
-                item.commandId,
-            );
+            if (item.commandId !== undefined) {
+                expect(known, `unknown commandId for item "${item.id}"`).toContain(
+                    item.commandId,
+                );
+                expect(item.action, `item "${item.id}" has both dispatches`).toBeUndefined();
+            } else {
+                expect(item.action, `item "${item.id}" has no dispatch`).toBeDefined();
+            }
         }
     });
 

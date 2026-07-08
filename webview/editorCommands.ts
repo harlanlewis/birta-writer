@@ -72,6 +72,8 @@ export interface EditorCommandHost {
     toggleToc(): void;
     editFrontmatter(): void;
     editRawMarkdown(): void;
+    hideToolbar(): void;
+    showToolbar(): void;
     customizeToolbar(): void;
     openExtensionSettings(): void;
     openKeyboardShortcuts(): void;
@@ -375,6 +377,8 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     copyAsHtml: (getEditor, args) => copySelection(getEditor, "html", args),
     copyAsMarkdown: (getEditor, args) => copySelection(getEditor, "markdown", args),
     editRawMarkdown: () => host.editRawMarkdown?.(),
+    hideToolbar: () => host.hideToolbar?.(),
+    showToolbar: () => host.showToolbar?.(),
     customizeToolbar: () => host.customizeToolbar?.(),
     openExtensionSettings: () => host.openExtensionSettings?.(),
     openKeyboardShortcuts: () => host.openKeyboardShortcuts?.(),

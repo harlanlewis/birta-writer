@@ -34,6 +34,7 @@ import {
 } from "../components/slashMenu";
 import {
     SLASH_MENU_ITEMS,
+    type SlashMenuAction,
     type SlashMenuItem,
 } from "../components/slashMenu/registry";
 
@@ -97,6 +98,9 @@ const HIDDEN_IN_TABLE_CELL = [
     "heading1",
     "heading2",
     "heading3",
+    "heading4",
+    "heading5",
+    "heading6",
     "bulletList",
     "orderedList",
     "taskList",
@@ -147,6 +151,8 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
 export interface SlashMenuHost {
     /** Executes a registry editor command (webview/editorCommands.ts). */
     runCommand(id: EditorCommandId, args?: unknown): void;
+    /** Executes a toolbar-controller behavior (font, checks) — see registry. */
+    runAction(action: SlashMenuAction): void;
 }
 
 let _host: SlashMenuHost | null = null;
@@ -393,7 +399,11 @@ class SlashMenuController {
         // grabbing focus back would break them.
         const { state } = this.view;
         this.view.dispatch(state.tr.delete(match.slashPos, match.caret));
-        _host.runCommand(item.commandId, item.args);
+        if (item.commandId !== undefined) {
+            _host.runCommand(item.commandId, item.args);
+        } else {
+            _host.runAction(item.action);
+        }
     }
 
     // ── Keyboard ─────────────────────────────────────────────────────────

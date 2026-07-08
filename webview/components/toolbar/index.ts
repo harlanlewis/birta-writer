@@ -30,7 +30,7 @@ import {
 } from "@/ui/icons";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetToolbarLayout } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
@@ -55,7 +55,7 @@ import {
     clampFontSizePercent,
     stepFontSizePercent,
 } from "../../../shared/fontPresets";
-import { TOOLBAR_MENU_COMMANDS, SETTINGS_TITLE_TEMPLATE } from "../../../shared/editorCommands";
+import { TOOLBAR_MENU_COMMANDS } from "../../../shared/editorCommands";
 import './toolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -1333,6 +1333,16 @@ export function initToolbar(
         // own checkmarks are the source of truth.
     };
 
+    /** Flip one proofread toggle — shared by the Checks rows and slash menu. */
+    function toggleProofread(key: ProofreadOptionKey): void {
+        const view = getEditorView();
+        if (!view) { return; }
+        const cfg = getProofreadConfig(view);
+        const value = !cfg[key];
+        setProofreadConfig(view, { ...cfg, [key]: value });
+        notifySetProofreadOption(key, value);
+    }
+
     function createChecksControl(): HTMLElement {
         const wrapEl = document.createElement("div");
         wrapEl.className = "tb-fmt-wrap tb-checks-wrap";
@@ -1348,12 +1358,7 @@ export function initToolbar(
             item.el.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const view = getEditorView();
-                if (!view) { return; }
-                const cfg = getProofreadConfig(view);
-                const value = !cfg[key];
-                setProofreadConfig(view, { ...cfg, [key]: value });
-                notifySetProofreadOption(key, value);
+                toggleProofread(key);
                 // Menu stays open so several checks can be toggled in a row.
             });
             menu.appendChild(item.el);
@@ -1456,6 +1461,13 @@ export function initToolbar(
         menu.className = "tb-fmt-menu tb-settings-menu";
         menu.style.display = "none";
 
+        // Group header naming the product (the rows themselves stay short —
+        // "Settings", not "<product> Settings").
+        const header = document.createElement("div");
+        header.className = "tb-fmt-header";
+        header.textContent = productName;
+        menu.appendChild(header);
+
         const addEntry = (label: string, onSelect: () => void): void => {
             const entry = document.createElement("div");
             entry.className = "tb-fmt-item";
@@ -1470,24 +1482,20 @@ export function initToolbar(
         };
         // The entries mirror the toolbar right-click menu exactly: both are
         // built from TOOLBAR_MENU_COMMANDS (shared/editorCommands.ts), so ids,
-        // order, and labels can't drift. The settings label names the product
-        // (t()-templated for future translation); the runtime productName and
-        // the title baked into the contributed command are the same
-        // package.json displayName, drift-guarded by the contributions test.
-        // Keyboard Shortcuts opens the native UI filtered to this extension,
-        // where the user's effective (possibly rebound) bindings are accurate.
+        // order, and labels can't drift (the contributions test guards the
+        // package.json side). Keyboard Shortcuts opens the native UI filtered
+        // to this extension, where the user's effective (possibly rebound)
+        // bindings are accurate.
         const menuActions: Record<string, () => void> = {
             customizeToolbar: () => startCustomize(),
+            hideToolbar: () => setToolbarVisible(false),
             openKeyboardShortcuts: () => notifyOpenKeybindings(),
             openExtensionSettings: () => notifyOpenSettings(),
         };
         for (const meta of TOOLBAR_MENU_COMMANDS) {
-            const label = meta.id === "openExtensionSettings"
-                ? t(SETTINGS_TITLE_TEMPLATE).replace("{product}", productName)
-                : t(meta.title);
             const action = menuActions[meta.id];
             if (action) {
-                addEntry(label, action);
+                addEntry(t(meta.title), action);
             }
         }
 
@@ -1534,6 +1542,47 @@ export function initToolbar(
     // they don't tear down the drag state mid-session.
     let latestConfig: ToolbarConfig | undefined = window.__i18n?.toolbar;
     let editing = false;
+
+    // ── Whole-bar visibility (markdownWysiwyg.toolbar.visible) ──
+    // Hiding slides the fixed topbar up (a body class the CSS keys off) and
+    // shows a slim expand tab at the top edge (the TOC toggle tab, rotated to
+    // the horizontal axis). The bar is hidden, not destroyed, so its host
+    // hooks (link prompt, image panel, find) keep serving the slash menu and
+    // command palette while it is off screen.
+    let toolbarVisible = latestConfig?.visible !== false;
+
+    const showTab = createButton({
+        className: "toolbar-toggle-tab",
+        icon: IconChevronDown,
+        title: t("Show toolbar"),
+        onClick: () => setToolbarVisible(true),
+    });
+    // The tab carries its own context section so its right-click menu offers
+    // exactly "Show Toolbar" — the hidden state must never read "Hide Toolbar".
+    showTab.dataset["vscodeContext"] = JSON.stringify({
+        webviewSection: "toolbarTab",
+        preventDefaultContextMenuItems: true,
+    });
+    document.body.appendChild(showTab);
+
+    function applyVisibility(visible: boolean): void {
+        toolbarVisible = visible;
+        topbar.classList.toggle("editor-topbar--hidden", !visible);
+        document.body.classList.toggle("toolbar-hidden", !visible);
+        // The TOC anchors its panel and tab to the topbar's bottom edge;
+        // nudge it (and anything else geometry-bound) to re-measure.
+        window.dispatchEvent(new Event("resize"));
+    }
+
+    /** Optimistic write-through; the setting echo arrives as a toolbarConfig. */
+    function setToolbarVisible(visible: boolean): void {
+        if (visible === toolbarVisible) {
+            return;
+        }
+        applyVisibility(visible);
+        notifySetToolbarVisible(visible);
+    }
+
 
     function startCustomize(): void {
         if (editing) {
@@ -1689,6 +1738,9 @@ export function initToolbar(
     }
 
     render(window.__i18n?.toolbar);
+    if (!toolbarVisible) {
+        applyVisibility(false);
+    }
 
     // Expose the toolbar-owned actions to the shared editor-command registry so
     // the command palette / context menu reach the exact same code paths.
@@ -1698,6 +1750,8 @@ export function initToolbar(
         openImagePanel,
         ...(onOpenFind ? { openFind: onOpenFind } : {}),
         // Toolbar right-click menu entries (mirroring the settings gear).
+        hideToolbar: () => setToolbarVisible(false),
+        showToolbar: () => setToolbarVisible(true),
         customizeToolbar: startCustomize,
         openExtensionSettings: () => notifyOpenSettings(),
         openKeyboardShortcuts: () => notifyOpenKeybindings(),
@@ -1740,6 +1794,10 @@ export function initToolbar(
         },
         applyConfig(config: ToolbarConfig): void {
             latestConfig = config;
+            const visible = config.visible !== false;
+            if (visible !== toolbarVisible) {
+                applyVisibility(visible);
+            }
             // Defer while dragging: the DOM already reflects the change, and a
             // rebuild would drop the edit-mode decorations. Applied on exit.
             if (!editing) {
@@ -1752,6 +1810,16 @@ export function initToolbar(
         setFontSize(size: number): void {
             setFontSizeActive(size);
         },
+        // Slash-menu action hooks — the same code paths as the menu rows,
+        // usable while the bar itself is hidden.
+        chooseFontPreset(preset: FontPreset): void {
+            setFontActive(preset);
+            notifySetFontPreset(preset);
+        },
+        stepFontSize(delta: 1 | -1): void {
+            pickFontSize(stepFontSizePercent(currentFontSize, delta));
+        },
+        toggleProofread,
         openLinkPrompt,
     };
 }

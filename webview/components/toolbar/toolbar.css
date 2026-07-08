@@ -831,3 +831,48 @@
 .tb-edit-done:hover {
     background: var(--vscode-button-hoverBackground, #1177bb);
 }
+
+/* ─── Whole-bar expand tab (shown only while toolbar.visible is off) ───
+   The TOC's .toc-toggle-tab rotated to the top edge: a slim centered pill
+   that slides the toolbar back in. Kept low-contrast until hover so a
+   hidden toolbar actually reads as gone. */
+.toolbar-toggle-tab {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 50%;
+    translate: -50%;
+    width: 48px;
+    height: 18px;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    background: var(
+        --vscode-sideBar-background,
+        var(--vscode-editor-background)
+    );
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    color: var(--vscode-foreground);
+    opacity: 0.55;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1199;
+
+    & svg {
+        width: 14px;
+        height: 14px;
+        display: block;
+    }
+}
+
+body.toolbar-hidden .toolbar-toggle-tab {
+    display: flex;
+}
+
+.toolbar-toggle-tab:hover,
+.toolbar-toggle-tab:focus-visible {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+}

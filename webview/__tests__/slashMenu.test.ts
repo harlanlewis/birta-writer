@@ -13,6 +13,9 @@ import {
 } from "../components/slashMenu";
 import { SLASH_MENU_ITEMS } from "../components/slashMenu/registry";
 
+/** The unfiltered view: searchOnly items surface only by typing a query. */
+const BROWSABLE_ITEMS = SLASH_MENU_ITEMS.filter((i) => !i.searchOnly);
+
 function rowEls(): HTMLElement[] {
     return Array.from(document.querySelectorAll(".slash-menu-item"));
 }
@@ -46,9 +49,11 @@ describe("createSlashMenu", () => {
         menu = createSlashMenu({ onPick, onActiveChange });
     });
 
-    it("mounting should render every registry item with group headers", () => {
+    it("mounting should render every browsable item with group headers", () => {
         expect(document.getElementById(SLASH_MENU_DOM_ID)).not.toBeNull();
-        expect(rowEls()).toHaveLength(SLASH_MENU_ITEMS.length);
+        expect(rowEls()).toHaveLength(BROWSABLE_ITEMS.length);
+        // The parity groups (formatting/actions) are entirely search-only, so
+        // their headers never show in the browsable view.
         const headers = Array.from(
             document.querySelectorAll(".slash-menu-group-label"),
         ).map((el) => el.textContent);
@@ -59,11 +64,17 @@ describe("createSlashMenu", () => {
         expect(
             document.getElementById(SLASH_MENU_DOM_ID)?.getAttribute("role"),
         ).toBe("listbox");
-        for (const item of SLASH_MENU_ITEMS) {
+        for (const item of BROWSABLE_ITEMS) {
             const row = document.getElementById(slashRowDomId(item.id));
             expect(row, `row for "${item.id}"`).not.toBeNull();
             expect(row!.getAttribute("role")).toBe("option");
         }
+    });
+
+    it("searchOnly items should be absent until a query surfaces them", () => {
+        expect(document.getElementById(slashRowDomId("bold"))).toBeNull();
+        menu.setQuery("bold");
+        expect(document.getElementById(slashRowDomId("bold"))).not.toBeNull();
     });
 
     it("a heading row should render its text badge and markdown hint", () => {
@@ -83,7 +94,10 @@ describe("createSlashMenu", () => {
     it("filtering should suppress group headers (flat ranked list)", () => {
         menu.setQuery("head");
         expect(document.querySelectorAll(".slash-menu-group-label")).toHaveLength(0);
-        expect(rowLabels()).toEqual(["Heading 1", "Heading 2", "Heading 3"]);
+        expect(rowLabels()).toEqual([
+            "Heading 1", "Heading 2", "Heading 3",
+            "Heading 4", "Heading 5", "Heading 6",
+        ]);
     });
 
     it("a zero-match query should hide the menu but keep it alive", () => {
@@ -102,9 +116,9 @@ describe("createSlashMenu", () => {
     });
 
     it("moveActive should wrap in both directions", () => {
-        menu.setQuery("head"); // 3 rows, first highlighted
+        menu.setQuery("head"); // 6 heading rows, first highlighted
         menu.moveActive(-1);
-        expect(focusedRow()?.id).toBe(slashRowDomId("heading3"));
+        expect(focusedRow()?.id).toBe(slashRowDomId("heading6"));
         menu.moveActive(1);
         expect(focusedRow()?.id).toBe(slashRowDomId("heading1"));
     });
@@ -163,7 +177,7 @@ describe("createSlashMenu", () => {
         menu = createSlashMenu({ onPick, onActiveChange, items: subset });
 
         expect(document.getElementById(slashRowDomId("bulletList"))).toBeNull();
-        expect(rowEls()).toHaveLength(SLASH_MENU_ITEMS.length - 1);
+        expect(rowEls()).toHaveLength(BROWSABLE_ITEMS.length - 1);
         menu.setQuery("bullet"); // only the excluded item would match its label
         expect(rowLabels()).not.toContain("Bullet List");
     });

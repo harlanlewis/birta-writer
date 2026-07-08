@@ -17,6 +17,8 @@ export const Uri = {
 
 export const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 } as const;
 
+export const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 } as const;
+
 /**
  * Mirrors vscode.RelativePattern: accepts a base Uri, WorkspaceFolder, or path string
  * plus a glob pattern relative to that base.
