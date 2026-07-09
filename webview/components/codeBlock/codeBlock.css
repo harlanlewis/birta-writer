@@ -3,7 +3,7 @@
     margin: 0 0 1em;
     border-radius: 6px;
     /* keep overflow visible to avoid clipping the language dropdown menu */
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+    border: 1px solid var(--vscode-panel-border);
 }
 
 .code-block-header {
@@ -11,12 +11,9 @@
     align-items: center;
     /* dropped justify-content:space-between; use a spacer with flex:1 to push the right-side buttons */
     padding: 4px 8px;
-    background: var(
-        --vscode-editor-lineHighlightBackground,
-        rgba(128, 128, 128, 0.12)
-    );
+    background: var(--vscode-editor-lineHighlightBackground);
     border-bottom: 1px solid
-        var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+        var(--vscode-panel-border);
     gap: 4px;
     border-radius: 6px 6px 0 0;
 }
@@ -30,8 +27,8 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: var(--vscode-input-background, rgba(128, 128, 128, 0.1));
-    border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
     border-radius: 4px;
     padding: 2px 6px;
@@ -43,7 +40,7 @@
 }
 
 .lang-picker-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+    background: var(--vscode-toolbar-hoverBackground);
 }
 
 .lang-picker-btn--open {
@@ -54,10 +51,7 @@
     position: fixed;
     /* top / left / bottom set by JS */
     z-index: 1000;
-    background: var(
-        --vscode-dropdown-background,
-        var(--vscode-editor-background)
-    );
+    background: var(--vscode-dropdown-background, var(--vscode-editor-background));
     border: 1px solid var(--vscode-focusBorder);
     border-radius: 4px;
     min-width: 160px;
@@ -70,7 +64,7 @@
     padding: 6px 8px;
     border: none;
     border-bottom: 1px solid
-        var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+        var(--vscode-widget-border, var(--vscode-panel-border));
     background: transparent;
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
     font-size: 12px;
@@ -106,7 +100,7 @@
 
 .lang-picker-item:hover,
 .lang-picker-item--focused {
-    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+    background: var(--vscode-list-hoverBackground);
 }
 
 /* Current language: marked with the shared leading check glyph (like the toolbar
@@ -124,7 +118,7 @@
        background (which looked like a doubled bottom border, worst on the
        mermaid preview). It also provides the rounded bottom corners — the
        code/preview elements above square theirs off. */
-    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-textCodeBlock-background);
     cursor: ns-resize;
     border-radius: 0 0 6px 6px;
     transition: background 0.15s;
@@ -160,14 +154,14 @@
 .copy-btn:hover,
 .code-wrap-toggle-btn:hover {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
-    border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    background: var(--vscode-toolbar-hoverBackground);
+    border-color: var(--vscode-panel-border);
 }
 
 .code-wrap-toggle-btn--active {
     opacity: 1;
-    background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.25));
-    border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.4));
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+    border-color: var(--vscode-panel-border);
 }
 
 .code-wrap-toggle-btn svg {
@@ -177,7 +171,7 @@
 
 .copy-btn--done {
     opacity: 1;
-    color: var(--vscode-charts-green, #4caf50);
+    color: var(--vscode-charts-green);
 }
 
 /* Higher specificity (overrides .milkdown .editor pre) to ensure padding:0 and the flex layout take effect */
@@ -187,10 +181,7 @@
     align-items: flex-start; /* let children grow to their content height instead of being stretched to the container height (so overflow-y works) */
     margin: 0;
     padding: 0;
-    background: var(
-        --vscode-textCodeBlock-background,
-        rgba(128, 128, 128, 0.1)
-    );
+    background: var(--vscode-textCodeBlock-background);
     /* The resize handle below provides the rounded bottom; keep this square so
        there's no corner gap between them. */
     border-radius: 0;
@@ -210,8 +201,8 @@
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 0.9em;
     line-height: 1.5;
-    color: var(--vscode-editorLineNumber-foreground, rgba(128, 128, 128, 0.6));
-    border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    color: var(--vscode-editorLineNumber-foreground);
+    border-right: 1px solid var(--vscode-panel-border);
     pointer-events: none; /* prevent the line-number column from intercepting mouse events and disrupting drag-selection in the code area */
 }
 
@@ -262,7 +253,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 :is(.milkdown .editor, .code-lightbox-pre) .token.prolog,
 :is(.milkdown .editor, .code-lightbox-pre) .token.doctype,
 :is(.milkdown .editor, .code-lightbox-pre) .token.cdata {
-    color: var(--vscode-terminal-ansiGreen, #6a9955);
+    color: var(--vscode-terminal-ansiGreen);
     font-style: italic;
 }
 
@@ -276,12 +267,12 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 :is(.milkdown .editor, .code-lightbox-pre) .token.constant,
 :is(.milkdown .editor, .code-lightbox-pre) .token.symbol,
 :is(.milkdown .editor, .code-lightbox-pre) .token.deleted {
-    color: var(--vscode-terminal-ansiRed, #f44747);
+    color: var(--vscode-terminal-ansiRed);
 }
 
 :is(.milkdown .editor, .code-lightbox-pre) .token.boolean,
 :is(.milkdown .editor, .code-lightbox-pre) .token.number {
-    color: var(--vscode-terminal-ansiBlue, #b5cea8);
+    color: var(--vscode-terminal-ansiBlue);
 }
 
 :is(.milkdown .editor, .code-lightbox-pre) .token.selector,
@@ -290,7 +281,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 :is(.milkdown .editor, .code-lightbox-pre) .token.char,
 :is(.milkdown .editor, .code-lightbox-pre) .token.builtin,
 :is(.milkdown .editor, .code-lightbox-pre) .token.inserted {
-    color: var(--vscode-terminal-ansiYellow, #ce9178);
+    color: var(--vscode-terminal-ansiYellow);
 }
 
 :is(.milkdown .editor, .code-lightbox-pre) .token.operator,
@@ -304,18 +295,18 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 :is(.milkdown .editor, .code-lightbox-pre) .token.atrule,
 :is(.milkdown .editor, .code-lightbox-pre) .token.attr-value,
 :is(.milkdown .editor, .code-lightbox-pre) .token.keyword {
-    color: var(--vscode-terminal-ansiCyan, #569cd6);
+    color: var(--vscode-terminal-ansiCyan);
 }
 
 :is(.milkdown .editor, .code-lightbox-pre) .token.function,
 :is(.milkdown .editor, .code-lightbox-pre) .token.class-name {
-    color: var(--vscode-terminal-ansiMagenta, #dcdcaa);
+    color: var(--vscode-terminal-ansiMagenta);
 }
 
 :is(.milkdown .editor, .code-lightbox-pre) .token.regex,
 :is(.milkdown .editor, .code-lightbox-pre) .token.important,
 :is(.milkdown .editor, .code-lightbox-pre) .token.variable {
-    color: var(--vscode-terminal-ansiYellow, #d7ba7d);
+    color: var(--vscode-terminal-ansiYellow);
 }
 
 :is(.milkdown .editor, .code-lightbox-pre) .token.important,
@@ -342,7 +333,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     position: relative;
     /* Height is set dynamically by JS from the SVG's natural size after rendering; CSS only provides a minimum for the loading placeholder */
     min-height: 300px;
-    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-textCodeBlock-background);
     /* Square bottom; the resize handle below provides the rounded corners. */
     border-radius: 0;
     cursor: grab;
@@ -375,7 +366,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+    color: var(--vscode-descriptionForeground);
     font-size: 13px;
 }
 
@@ -385,7 +376,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     align-items: center;
     gap: 8px;
     padding: 16px 24px;
-    color: var(--vscode-errorForeground, #f48771);
+    color: var(--vscode-errorForeground);
     max-width: 100%;
     overflow: auto;
 }
@@ -424,15 +415,15 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 .mermaid-zoom-btn:hover,
 .code-view-toggle-btn:hover {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
-    border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    background: var(--vscode-toolbar-hoverBackground);
+    border-color: var(--vscode-panel-border);
 }
 
 /* Active state: indicate via background color while keeping the foreground consistent (avoids the focusBorder blue darkening the icon) */
 .code-view-toggle-btn--active {
     opacity: 1;
-    background: var(--vscode-toolbar-activeBackground, rgba(128, 128, 128, 0.25));
-    border-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.4));
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+    border-color: var(--vscode-panel-border);
 }
 
 /* ─── Top-right zoom overlay (floating over the preview area) ─── */
@@ -445,8 +436,8 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     align-items: center;
     gap: 1px;
     pointer-events: none;
-    background: var(--vscode-editorHoverWidget-background, rgba(30, 30, 30, 0.75));
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-panel-border);
     border-radius: 4px;
     padding: 1px 2px;
 }
@@ -575,9 +566,9 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     justify-content: center;
     width: 22px;
     height: 22px;
-    background: var(--vscode-editorHoverWidget-background, rgba(30, 30, 30, 0.85));
+    background: var(--vscode-editorHoverWidget-background);
     color: var(--vscode-editor-foreground);
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border: 1px solid var(--vscode-panel-border);
     border-radius: 3px;
     cursor: pointer;
     opacity: 0.55;
@@ -587,7 +578,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 
 .mermaid-pan-btn:hover {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.3));
+    background: var(--vscode-toolbar-hoverBackground);
 }
 
 /* Middle reset button: slightly larger, to distinguish it from the directional buttons */
@@ -632,7 +623,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     overflow: hidden;
     min-height: 0;
     cursor: default;
-    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-textCodeBlock-background);
 }
 
 /* ─── Fullscreen code lightbox — editable editor ─── */
@@ -650,9 +641,9 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
 .code-lightbox-gutter {
     padding: 1em 0.75em;
     min-width: 2.5em;
-    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
-    border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-    color: var(--vscode-editorLineNumber-foreground, rgba(128, 128, 128, 0.6));
+    background: var(--vscode-textCodeBlock-background);
+    border-right: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-editorLineNumber-foreground);
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 14px;
     line-height: 1.5;
@@ -676,7 +667,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-textCodeBlock-background);
 }
 
 /* pre (highlight layer) and textarea (input layer) share the same size/font */
@@ -718,7 +709,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
 .code-lightbox-pre {
     pointer-events: none;
     z-index: 0;
-    color: var(--vscode-editor-foreground, #d4d4d4);
+    color: var(--vscode-editor-foreground);
     background: transparent;
     border: 0;
 }
@@ -735,7 +726,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
 .code-lightbox-textarea {
     z-index: 1;
     color: transparent;
-    caret-color: var(--vscode-editor-foreground, #d4d4d4);
+    caret-color: var(--vscode-editor-foreground);
     background: transparent;
     border: 0;
     outline: none;
@@ -744,27 +735,27 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
 }
 
 .code-lightbox-textarea::selection {
-    background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.7));
+    background: var(--vscode-editor-selectionBackground);
     -webkit-text-fill-color: transparent;
 }
 
 /* ─── Fullscreen code editor (VSCode theme colors) ─── */
 .mermaid-lightbox.code-editor-lightbox {
-    background: var(--vscode-editor-background, #1e1e1e);
+    background: var(--vscode-editor-background);
 }
 
 .mermaid-lightbox.code-editor-lightbox .mermaid-lightbox-header {
     background: var(--vscode-editor-background, var(--vscode-textCodeBlock-background));
-    border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-    color: var(--vscode-editor-foreground, #cccccc);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-editor-foreground);
 }
 
 .mermaid-lightbox.code-editor-lightbox .mermaid-zoom-btn {
-    color: var(--vscode-editor-foreground, #cccccc);
+    color: var(--vscode-editor-foreground);
 }
 
 .mermaid-lightbox.code-editor-lightbox .mermaid-zoom-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+    background: var(--vscode-toolbar-hoverBackground);
     border-color: transparent;
 }
 
@@ -777,7 +768,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     overflow: auto;
     padding: 20px 16px;
     min-height: 80px;
-    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-textCodeBlock-background);
     border-radius: 0 0 6px 6px;
     user-select: none;
 }

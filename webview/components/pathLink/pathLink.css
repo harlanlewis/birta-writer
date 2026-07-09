@@ -2,7 +2,7 @@
 
 /* Active state: Cmd held + mouse hovering over the path code */
 .milkdown .editor code.path-link--active {
-    color: var(--vscode-textLink-foreground, #4ea6ea);
+    color: var(--vscode-textLink-foreground);
     text-decoration: underline;
     cursor: pointer;
 }
@@ -19,7 +19,7 @@
     max-width: 480px;
     max-height: 240px;
     overflow-y: auto;
-    border: 1px solid var(--vscode-editorSuggestWidget-border, rgba(128, 128, 128, 0.4));
+    border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-panel-border));
     border-radius: 4px;
     background: var(--vscode-editorSuggestWidget-background, var(--vscode-editor-background));
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);

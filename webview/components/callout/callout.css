@@ -3,7 +3,7 @@
    left border, the title tint, and a translucent background wash. */
 
 .milkdown .callout {
-    --callout-accent: var(--vscode-charts-blue, #3794ff);
+    --callout-accent: var(--vscode-charts-blue);
     position: relative;
     border-left: 3px solid var(--callout-accent);
     border-radius: 4px;
@@ -11,36 +11,36 @@
     margin: 0 0 1em;
 
     &[data-kind="tip"] {
-        --callout-accent: var(--vscode-charts-green, #89d185);
+        --callout-accent: var(--vscode-charts-green);
     }
     &[data-kind="success"],
     &[data-kind="todo"] {
-        --callout-accent: var(--vscode-charts-green, #89d185);
+        --callout-accent: var(--vscode-charts-green);
     }
     &[data-kind="important"] {
-        --callout-accent: var(--vscode-charts-purple, #b180d7);
+        --callout-accent: var(--vscode-charts-purple);
     }
     &[data-kind="warning"] {
-        --callout-accent: var(--vscode-charts-yellow, #cca700);
+        --callout-accent: var(--vscode-charts-yellow);
     }
     &[data-kind="caution"],
     &[data-kind="danger"],
     &[data-kind="failure"],
     &[data-kind="bug"] {
-        --callout-accent: var(--vscode-charts-red, #f14c4c);
+        --callout-accent: var(--vscode-charts-red);
     }
     &[data-kind="abstract"],
     &[data-kind="info"] {
-        --callout-accent: var(--vscode-charts-blue, #3794ff);
+        --callout-accent: var(--vscode-charts-blue);
     }
     &[data-kind="question"] {
-        --callout-accent: var(--vscode-charts-orange, #d18616);
+        --callout-accent: var(--vscode-charts-orange);
     }
     &[data-kind="example"] {
-        --callout-accent: var(--vscode-charts-purple, #b180d7);
+        --callout-accent: var(--vscode-charts-purple);
     }
     &[data-kind="quote"] {
-        --callout-accent: var(--vscode-descriptionForeground, #999);
+        --callout-accent: var(--vscode-descriptionForeground);
     }
 
     .callout-title {
@@ -177,7 +177,7 @@
         padding: 4px;
         border-radius: 6px;
         background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-        border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+        border: 1px solid var(--vscode-editorWidget-border);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     }
 
@@ -201,7 +201,7 @@
         }
 
         &:hover {
-            background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+            background: var(--vscode-list-hoverBackground);
         }
 
         &.active {

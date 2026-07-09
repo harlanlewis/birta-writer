@@ -265,7 +265,7 @@ export function createImageView(
 
     // Delete button
     const deleteBtn = makeBtn(IconTrash2, t("Delete"));
-    deleteBtn.style.color = "var(--vscode-errorForeground, #f44)";
+    deleteBtn.style.color = "var(--vscode-errorForeground)";
     deleteBtn.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();

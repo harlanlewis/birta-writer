@@ -23,8 +23,8 @@
     gap: 8px;
     align-items: flex-start;
     padding: 4px 6px;
-    border-left: 2px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
-    background-color: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.06));
+    border-left: 2px solid var(--vscode-panel-border);
+    background-color: var(--vscode-textBlockQuote-background);
     border-radius: 0 4px 4px 0;
 }
 
@@ -47,7 +47,7 @@
     font-size: 0.82em;
     font-weight: 600;
     color: var(--vscode-textLink-foreground);
-    background-color: var(--vscode-badge-background, rgba(128, 128, 128, 0.18));
+    background-color: var(--vscode-badge-background);
     border-radius: 3px;
 }
 
@@ -61,7 +61,7 @@
 }
 .footnote-def-backlink:hover {
     color: var(--vscode-textLink-activeForeground);
-    background-color: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+    background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 .footnote-def-content {
@@ -76,7 +76,7 @@
     animation: footnote-flash-anim 1.2s ease;
 }
 @keyframes footnote-flash-anim {
-    0%, 40% { background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)); }
+    0%, 40% { background-color: var(--vscode-editor-findMatchHighlightBackground); }
     100% { background-color: transparent; }
 }
 

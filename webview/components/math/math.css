@@ -9,19 +9,19 @@
 }
 
 .math-inline:hover {
-    background: var(--vscode-editor-hoverHighlightBackground, rgba(128, 128, 128, 0.18));
+    background: var(--vscode-editor-hoverHighlightBackground);
 }
 
 .math-inline--selected {
-    background: var(--vscode-editor-selectionBackground, rgba(64, 128, 255, 0.35));
+    background: var(--vscode-editor-selectionBackground);
 }
 
 /* Empty formula placeholder */
 .math-inline--empty {
     min-width: 1.4em;
     min-height: 1em;
-    background: var(--vscode-editor-hoverHighlightBackground, rgba(128, 128, 128, 0.18));
-    border: 1px dashed var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.5));
+    background: var(--vscode-editor-hoverHighlightBackground);
+    border: 1px dashed var(--vscode-editorWidget-border);
 }
 
 .math-inline--empty::after {
@@ -47,7 +47,7 @@
     display: flex;
     padding: 6px;
     background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-    border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
+    border: 1px solid var(--vscode-editorWidget-border);
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.28);
     animation: math-pop-fadein 120ms ease;
@@ -61,7 +61,7 @@
     font-size: 13px;
     color: var(--vscode-input-foreground);
     background: var(--vscode-input-background);
-    border: 1px solid var(--vscode-input-border, transparent);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     border-radius: 5px;
     outline: none;
 }

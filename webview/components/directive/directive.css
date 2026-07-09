@@ -2,7 +2,7 @@
    container; known admonition names pick up callout-style accents. */
 
 .milkdown .container-directive {
-    --directive-accent: var(--vscode-descriptionForeground, #999);
+    --directive-accent: var(--vscode-descriptionForeground);
     border: 1px solid color-mix(in srgb, var(--directive-accent) 35%, transparent);
     border-left: 3px solid var(--directive-accent);
     border-radius: 4px;
@@ -11,22 +11,22 @@
 
     &[data-name="note"],
     &[data-name="info"] {
-        --directive-accent: var(--vscode-charts-blue, #3794ff);
+        --directive-accent: var(--vscode-charts-blue);
     }
     &[data-name="tip"],
     &[data-name="success"] {
-        --directive-accent: var(--vscode-charts-green, #89d185);
+        --directive-accent: var(--vscode-charts-green);
     }
     &[data-name="important"] {
-        --directive-accent: var(--vscode-charts-purple, #b180d7);
+        --directive-accent: var(--vscode-charts-purple);
     }
     &[data-name="warning"],
     &[data-name="caution"] {
-        --directive-accent: var(--vscode-charts-yellow, #cca700);
+        --directive-accent: var(--vscode-charts-yellow);
     }
     &[data-name="danger"],
     &[data-name="error"] {
-        --directive-accent: var(--vscode-charts-red, #f14c4c);
+        --directive-accent: var(--vscode-charts-red);
     }
 
     .directive-header {
