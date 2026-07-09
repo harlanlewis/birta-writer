@@ -89,6 +89,20 @@ webview/components/imageView/index.ts         — Image NodeView (selection/ligh
 - CSS must use `--vscode-*` variables so light/dark themes both work. **No custom colors**: accents (selection, focus, drag chrome) use `var(--vscode-focusBorder)` with **no literal fallback** — inside VS Code the variable always exists (pinned/custom themes only *override* the native set, never remove it). Literal fallbacks for other `--vscode-*` variables are legacy; don't add new ones (repo-wide removal is tracked in Linear).
 - Don't keep global state outside modules (singletons like the editor view are the exception).
 
+## Launch performance
+
+Webview cold-start (open `.md` → editor painted) is a first-class concern — it's also the cost of switching back from the raw editor, since VS Code disposes the webview on switch-away. Keep it fast:
+
+- **Keep the launch bundle lean.** Anything not needed to render the *first paint* loads lazily, the moment the document actually needs it — mirror `webview/utils/katexLoader.ts` / `mermaidLoader.ts` (cached dynamic `import()`) and the lazy grammar chunk (`webview/highlighterLanguages.ts`). Don't add a static `import` of a heavy dependency into the eager graph.
+- **Keep decoration/analysis work off the mount path.** Proofreading, and anything like it, is decoration only: it must never block the editor becoming interactive, and it should settle in *after* first paint (`requestIdleCallback`), never synchronously during create and never as a reaction to the user's first touch. A feature the user has disabled must cost nothing — no scan, no lazy dependency loaded.
+- **Resolve bundled sibling assets against the entry `<script>`, not `import.meta.url`** — esbuild chunk splitting shifts modules between `dist/` and `dist/chunks/`, which silently breaks relative URLs (see `katexCssHref` in `katexLoader.ts`).
+
+**Measure before and after — don't guess.** The harness (`e2e/perf/`, see its README) drives the real production bundle in headless Chromium and reads the `mdw:` User-Timing marks (`webview/perf.ts`):
+
+- `pnpm perf` — median-of-9 launch spans per fixture (build `node esbuild.mjs --production --metafile` first).
+- `pnpm perf:bundle` — zero-variance eager-bytes metric (the deterministic gate).
+- The launch A/B is **same-session** (`pnpm perf --compare before.json after.json`) with a warmup run discarded — absolute ms drift on a laptop, so a `before.json` captured earlier is untrustworthy; stash the change, rebuild, capture `before`, restore, capture `after`. Treat a delta under ~3% (the noise floor) as neutral and lean on the eager-bytes metric instead.
+
 ## Issue tracking
 
 All bugs and planned work live in **Linear** (team "Markdown Editor", `MAR-` prefix) — never GitHub Issues, and never local files.

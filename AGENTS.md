@@ -30,6 +30,10 @@ Write strict TypeScript. Follow `.editorconfig`: UTF-8, LF, spaces, 4-space inde
 
 Vitest is the test runner. Extension tests run in Node; webview tests run in jsdom with `webview/__tests__/setup.ts`. Name files `*.test.ts`, for example `src/__tests__/markdownDocument.test.ts` or `webview/__tests__/slug.test.ts`. Coverage targets `src/utils/**/*.ts`, `src/MarkdownDocument.ts`, and `webview/utils/**/*.ts`, with 70% line and function thresholds.
 
+## Launch Performance
+
+Webview cold-start (open `.md` → editor painted) is a first-class concern. Keep the launch bundle lean: anything not needed for first paint loads lazily the moment the document needs it (mirror `webview/utils/katexLoader.ts` / `mermaidLoader.ts` and the lazy grammar chunk), and keep decoration/analysis work (e.g. proofreading) off the mount path — deferred to `requestIdleCallback`, never synchronous during create, and costing nothing when disabled. Measure with `pnpm perf` (median launch spans) and `pnpm perf:bundle` (eager bytes) against the real production build; the launch A/B is same-session with a warmup discard (absolute ms drift on a laptop). See `e2e/perf/README.md`.
+
 ## Commit & Pull Request Guidelines
 
 Git history uses English type prefixes; older commits have Chinese descriptions, but **new commits must use English descriptions** (see the Language Policy). Prefer concise conventional prefixes such as `feat:`, `fix:`, `chore:`, `test:`, and `release:`, e.g. `fix: resolve workflow pnpm version conflict`, `chore: bump version to 0.1.0`, `release: v0.1.6`. Create branches from `dev` when contributing. Pull requests should target `dev`, describe the user-facing change, list verification commands such as `pnpm build` and `pnpm test`, link issues when relevant, and include screenshots or GIFs for webview UI changes.
