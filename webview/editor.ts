@@ -10,6 +10,7 @@ import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import { prism, prismConfig } from "@milkdown/plugin-prism";
 import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
+import type { Node as ProseNode } from "@milkdown/prose/model";
 import DOMPurify from "dompurify";
 import { createCalloutView, createNotionCalloutView } from "./components/callout";
 import { createCodeBlockView } from "./components/codeBlock";
@@ -103,12 +104,52 @@ let _savedMarkdown = '';
 
 // Round-trip protection for the current file: change regions a ZERO-EDIT
 // parse→serialize cycle produces on its own (dropped reference-link
-// definitions, setext→ATX rewrites, escaping churn, ...). Computed once per
-// createEditor() from the freshly loaded document; applyMinimalChanges pins
-// these regions to their saved bytes so an edit elsewhere in the file can
+// definitions, setext→ATX rewrites, escaping churn, ...). applyMinimalChanges
+// pins these regions to their saved bytes so an edit elsewhere in the file can
 // never silently destroy them. Constructs pasted AFTER load are not covered
 // until the next reload — by then they are part of the saved baseline.
+//
+// On load this is DEFERRED off the launch path: a large file's zero-edit
+// re-serialization can cost tens of ms, so createEditor() stashes the pristine
+// document + its baseline (`_protectionSnapshot`) and precomputes during idle.
+// getProtection() forces the computation on demand if the first save beats
+// idle. The ProseMirror doc is immutable and the serializer pure, so the
+// deferred result is byte-for-byte identical to computing it eagerly at load.
 let _protection: RoundTripProtection | null = null;
+let _protectionSnapshot: { baseline: string; doc: ProseNode; editor: Editor } | null = null;
+
+/**
+ * Return the current round-trip protection, computing it from the pristine
+ * snapshot on first demand (and caching it). Called before every save so an
+ * edit that arrives before the idle precompute still diffs against the correct,
+ * pristine-derived protection. The snapshot is bound to its editor instance, so
+ * a deferred callback that fires after the editor was destroyed or replaced is a
+ * no-op (guarded, since ctx access on a torn-down editor throws).
+ */
+function getProtection(): RoundTripProtection | null {
+    if (_protection) return _protection;
+    const snap = _protectionSnapshot;
+    if (snap && snap.editor === _editor) {
+        try {
+            const serialized = snap.editor.action((ctx) => ctx.get(serializerCtx)(snap.doc));
+            _protection = computeRoundTripProtection(snap.baseline, serialized);
+        } catch {
+            // Editor torn down before the deferred compute ran — no live save
+            // path to protect, so leave protection unset.
+        }
+        _protectionSnapshot = null;
+    }
+    return _protection;
+}
+
+/** Precompute the deferred protection during idle, off the launch path. */
+function scheduleProtection(): void {
+    const ric = (globalThis as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void;
+    }).requestIdleCallback;
+    if (ric) ric(() => getProtection(), { timeout: 2000 });
+    else setTimeout(() => getProtection(), 0);
+}
 
 // Whether the user has interacted with the editor yet (keyboard/mouse/paste/...)
 // Reset to false on every createEditor() so that "just opening a file" never triggers an autosave.
@@ -177,6 +218,9 @@ function _applyExternalNow(newMarkdown: string): boolean {
     // is recomputed because a different file may have different round-trip
     // trouble spots (reference links, setext headings, ...).
     _savedMarkdown = newMarkdown;
+    // Recompute eagerly here (not a launch path) and drop any deferred load
+    // snapshot so getProtection() returns this fresh, authoritative protection.
+    _protectionSnapshot = null;
     _protection = computeRoundTripProtection(
         newMarkdown,
         _editor.action(getMarkdown()),
@@ -267,7 +311,7 @@ export async function createEditor(
                 if (!isSettled) return;          // skip the synchronous trigger during init
                 if (!_hasUserInteracted) return; // skip async init triggers (RAF/microtask delivery)
                 const markdown = innerCtx.get(serializerCtx)(doc);
-                const toSave = applyMinimalChanges(_savedMarkdown, markdown, _protection);
+                const toSave = applyMinimalChanges(_savedMarkdown, markdown, getProtection());
                 if (toSave === _savedMarkdown) return; // no substantive change — no save
                 _savedMarkdown = toSave;
                 debouncedUpdate(toSave);
@@ -333,16 +377,17 @@ export async function createEditor(
     mark("create-end");
     measure("create", "create-start", "create-end");
 
-    // Compare the loaded file against its own zero-edit serialization to
-    // learn which regions the round trip cannot reproduce; those get pinned
-    // to their saved bytes on every future save.
-    mark("rtp-start");
-    _protection = computeRoundTripProtection(
-        initialMarkdown,
-        _editor.action(getMarkdown()),
-    );
-    mark("rtp-end");
-    measure("rtp", "rtp-start", "rtp-end");
+    // Snapshot the pristine document and defer its round-trip protection off the
+    // critical path (see _protectionSnapshot above): the zero-edit
+    // re-serialization used to learn which regions the round trip cannot
+    // reproduce would otherwise block first paint on large files.
+    _protection = null;
+    _protectionSnapshot = {
+        baseline: initialMarkdown,
+        doc: _editor.action((ctx) => ctx.get(editorViewCtx).state.doc),
+        editor: _editor,
+    };
+    scheduleProtection();
 
     isSettled = true;
     return _editor;

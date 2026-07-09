@@ -148,6 +148,33 @@ describe("webview save pipeline (edit → markdownUpdated → minimal diff → b
         );
     });
 
+    it("deferred round-trip protection still pins protected regions when the first edit beats the idle precompute", async () => {
+        // Round-trip protection is computed LAZILY from a snapshot of the
+        // pristine document (deferred off the launch path). This guards that an
+        // edit which lands before the idle precompute still forces the
+        // computation from the pristine snapshot: the setext heading must not be
+        // rewritten to ATX and the reference-link definition ([1]: …) — which a
+        // zero-edit round trip would otherwise drop — must survive verbatim,
+        // proving protection was derived from the loaded file, not the post-edit
+        // doc.
+        const v = view(editor);
+        v.dispatch(
+            v.state.tr.insertText(" later", posAfterText(v, "Some paragraph.")),
+        );
+        await vi.advanceTimersByTimeAsync(600);
+
+        const saved = postedUpdates();
+        expect(saved).toHaveLength(1);
+        // Full-file equality: only the edited paragraph changed; the setext
+        // "=====" underline and the "[1]: https://example.com/" definition are
+        // byte-identical.
+        expect(saved[0]).toBe(
+            INITIAL.replace("Some paragraph.", "Some paragraph. later"),
+        );
+        expect(saved[0]).toContain("=====");
+        expect(saved[0]).toContain("[1]: https://example.com/");
+    });
+
     it("before any user interaction the pipeline must not post an update", async () => {
         // Arrange — a fresh editor with NO simulated interaction
         await editor.destroy();
