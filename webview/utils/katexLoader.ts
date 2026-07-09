@@ -35,9 +35,23 @@ function ensureKatexCss(): void {
     katexCssInjected = true;
     const link = document.createElement("link");
     link.rel = "stylesheet";
-    link.href = new URL("katex.css", import.meta.url).href;
+    link.href = katexCssHref();
     link.dataset.katexCss = "";
     document.head.appendChild(link);
+}
+
+/**
+ * Resolve dist/katex.css robustly. `import.meta.url` is NOT reliable here:
+ * esbuild may place this module in dist/chunks/ (chunk splitting shifts with the
+ * import graph), and a relative "katex.css" from there resolves to
+ * dist/chunks/katex.css — a 404, since katex.css sits in dist/. The entry
+ * <script>'s src always points at dist/webview.js — the stable sibling of
+ * katex.css — so resolve against that, falling back to import.meta.url only if
+ * the tag is somehow absent (e.g. a bare jsdom test).
+ */
+function katexCssHref(): string {
+    const entry = document.querySelector<HTMLScriptElement>('script[src$="dist/webview.js"]');
+    return new URL("katex.css", entry?.src || import.meta.url).href;
 }
 
 /** Load (and cache) the KaTeX module, injecting its stylesheet on first use. */
