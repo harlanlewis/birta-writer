@@ -35,6 +35,14 @@ export async function run({ page, check, baseUrl }) {
     const tags = () => page.$$eval(`${POPUP} .pf-popup-tag`, (els) => els.map((e) => e.textContent));
     const buttons = () => page.$$eval(`${POPUP} .pf-popup-item`, (els) => els.map((e) => e.textContent));
     const docText = () => page.$eval(".milkdown .ProseMirror", (el) => el.textContent ?? "");
+    /** Per-finding sections: { tag, message (excl. chip), items[] }. */
+    const groups = () => page.$$eval(`${POPUP} .pf-popup-group`, (els) => els.map((g) => {
+        const tagEl = g.querySelector(".pf-popup-tag");
+        const tag = tagEl?.textContent ?? "";
+        const message = (g.querySelector(".pf-popup-message")?.textContent ?? "").replace(tag, "").trim();
+        const items = [...g.querySelectorAll(".pf-popup-item")].map((b) => b.textContent);
+        return { tag, message, items };
+    }));
 
     // ── 1. A style hit is now clickable and opens the popup ──────────
     await load();
@@ -50,10 +58,13 @@ export async function run({ page, check, baseUrl }) {
     check("popup also stacks the Long sentence section", t.includes("Long sentence"), JSON.stringify(t));
     check("the filler (smaller span) is listed first", t[0] === "Filler", JSON.stringify(t));
 
-    const b = await buttons();
-    check("the filler offers a Remove action", b.includes("Remove"), JSON.stringify(b));
-    check("every finding offers Ignore", b.filter((x) => x === "Ignore").length >= 2, JSON.stringify(b));
-    check("a judgment-only flag (long sentence) offers no Fix/Remove beyond Ignore", !b.includes("Fix"), JSON.stringify(b));
+    const g = await groups();
+    const fillerGroup = g.find((x) => x.tag === "Filler");
+    const longGroup = g.find((x) => x.tag === "Long sentence");
+    check("the filler section offers Remove + Ignore", JSON.stringify(fillerGroup?.items) === JSON.stringify(["Remove", "Ignore"]), JSON.stringify(fillerGroup));
+    check("the long-sentence section offers only Ignore (a judgment call)", JSON.stringify(longGroup?.items) === JSON.stringify(["Ignore"]), JSON.stringify(longGroup));
+    // The chip already names the category, so the message must not repeat it.
+    check("the message does not repeat the category chip", !/\bFiller\b/i.test(fillerGroup?.message ?? "Filler"), JSON.stringify(fillerGroup));
 
     // ── 3. Remove deletes the flagged span and closes the popup ──────
     await page.locator(`${POPUP} .pf-popup-item`, { hasText: "Remove" }).first().click();

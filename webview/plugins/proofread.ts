@@ -152,11 +152,7 @@ function enabledMap(c: ProofreadConfig): Partial<Record<StyleCategory, boolean>>
         aiVocabulary: c.aiVocabulary,
         aiArtifacts: c.aiArtifacts,
         passive: c.passive,
-        // Harper's grammar pass emits its own "Long Sentences" lint with a word
-        // count and a click popup — a strictly richer surface. So the webview's
-        // blunter long-sentence flag stands down whenever grammar check is on,
-        // and only provides coverage when Harper isn't running.
-        longSentences: c.longSentences && !c.grammarCheck,
+        longSentences: c.longSentences,
         negativeParallelism: c.negativeParallelism,
         ruleOfThree: c.ruleOfThree,
         emDash: c.emDash,
@@ -249,6 +245,30 @@ function styleTag(category: string): string {
     }
 }
 
+/**
+ * Advice-only clause for the popup body — the category chip (styleTag) already
+ * names the finding, so this must NOT repeat it. (styleHitTitle stays the full
+ * "category — advice" hover hint.)
+ */
+function styleAdvice(category: string): string {
+    switch (category) {
+        case "fillers": return t("Consider removing.");
+        case "redundancies": return t("Consider shortening.");
+        case "cliches": return t("Consider rephrasing.");
+        case "wordiness": return t("Consider tightening.");
+        case "aiVocabulary": return t("Consider a plainer word.");
+        case "aiArtifacts": return t("Reads as AI boilerplate — consider removing.");
+        case "passive": return t("Consider the active voice.");
+        case "longSentences": return t("Consider splitting.");
+        case "negativeParallelism": return t("The “not X, but Y” reframe reads as an AI cadence.");
+        case "ruleOfThree": return t("Three stacked adjectives — consider varying.");
+        case "emDash": return t("Use a spaced hyphen.");
+        case "nonAsciiPunct": return t("Normalize to ASCII.");
+        case "repeated": return t("Delete the duplicate.");
+        default: return "";
+    }
+}
+
 // Deterministic ASCII replacements for the non-ASCII-punctuation flag, so the
 // popup can offer a one-click normalization instead of only a nudge. Keyed by
 // the single flagged glyph (see findNonAsciiPunct); zero-width marks map to ""
@@ -277,13 +297,25 @@ function styleSuggestion(category: StyleCategory, flagged: string): string | nul
         case "aiArtifacts":
         case "repeated":
             return "";
-        case "emDash":
-            return "-";
         case "nonAsciiPunct":
             return ASCII_NORMALIZATION[flagged] ?? "";
         default:
-            return null; // longSentences, passive, ruleOfThree, negativeParallelism
+            // emDash is resolved in computeDecorations (needs the neighbouring
+            // chars); longSentences/passive/ruleOfThree/negativeParallelism are
+            // judgment calls with no auto-fix.
+            return null;
     }
+}
+
+/**
+ * The spaced-hyphen replacement for a dash glyph, matched to its context so it
+ * never doubles a space: "a — b" → "a - b" and "a—b" → "a - b" both land on the
+ * author's spaced-hyphen convention.
+ */
+function emDashReplacement(text: string, start: number, end: number): string {
+    const leftSpace = text[start - 1] === " ";
+    const rightSpace = text[end] === " ";
+    return `${leftSpace ? "" : " "}-${rightSpace ? "" : " "}`;
 }
 
 /**
@@ -331,13 +363,17 @@ export function computeDecorations(doc: ProseNode, config: ProofreadConfig): Dec
             if (isStyleSuppressed(match.category, flagged)) { continue; }
             const cls = "pf-style-hit"
                 + (FLAG_CATEGORIES.has(match.category) ? " pf-style-hit--flag" : "");
-            const message = styleHitTitle(match.category);
+            const suggestion = match.category === "emDash"
+                ? emDashReplacement(text, match.start, match.end)
+                : styleSuggestion(match.category, flagged);
             const spec: StyleSpec = {
                 class: cls,
-                style: { category: match.category, message, suggestion: styleSuggestion(match.category, flagged) },
+                // Popup body = advice only (the chip names the category); the
+                // hover title keeps the full "category — advice" hint.
+                style: { category: match.category, message: styleAdvice(match.category), suggestion },
             };
             decorations.push(Decoration.inline(base + match.start, base + match.end,
-                { class: cls, title: message }, spec));
+                { class: cls, title: styleHitTitle(match.category) }, spec));
         }
     });
 
@@ -385,11 +421,32 @@ function buildLintDecorations(
     return DecorationSet.create(doc, decorations);
 }
 
-function combine(doc: ProseNode, styleSet: DecorationSet, lintSet: DecorationSet): DecorationSet {
-    const style = styleSet.find();
+/** Harper's long-sentence lint carries a word count ("… is 44 words long."). */
+function isHarperLongSentence(spec: DecoSpec): boolean {
+    return /\bwords long\b/i.test(spec.lint?.message ?? "");
+}
+
+/**
+ * Merge the style and Harper decoration sets. Overlaps are stacked (both marks
+ * render, and clicking surfaces all findings), except for the one true
+ * duplicate: the webview long-sentence flag is dropped where Harper's own
+ * long-sentence lint already covers it (Harper carries the word count + a
+ * popup). Harper only fires above ~40 words while the webview flag starts at
+ * 30, so this is an overlap test, not a blanket disable — 31–40-word sentences
+ * Harper never reaches keep their flag. Exported for unit testing.
+ */
+export function combine(doc: ProseNode, styleSet: DecorationSet, lintSet: DecorationSet): DecorationSet {
+    let style = styleSet.find();
     const lints = lintSet.find();
     if (style.length === 0) { return lintSet; }
     if (lints.length === 0) { return styleSet; }
+    const harperLong = lints.filter((d) => isHarperLongSentence(d.spec as DecoSpec));
+    if (harperLong.length > 0) {
+        style = style.filter((d) => {
+            if ((d.spec as DecoSpec).style?.category !== "longSentences") { return true; }
+            return !harperLong.some((h) => d.from < h.to && d.to > h.from);
+        });
+    }
     return DecorationSet.create(doc, [...style, ...lints]);
 }
 
@@ -408,9 +465,32 @@ function decorationAt(
         : null;
 }
 
-/** Replace the flagged span with `text` ("" deletes it). */
+/** Replace the flagged span with `text`. */
 function replaceRange(view: EditorView, from: number, to: number, text: string): void {
     view.dispatch(view.state.tr.insertText(text, from, to));
+}
+
+/**
+ * Delete the flagged span, swallowing one adjacent space so the surrounding
+ * words don't collide into a double space: "is really good" → "is good", not
+ * "is  good". Prefers the leading space (mid-sentence words) and falls back to
+ * the trailing one (sentence-initial words).
+ */
+function deleteRange(view: EditorView, from: number, to: number): void {
+    const doc = view.state.doc;
+    let start = from;
+    let end = to;
+    if (start > 0 && doc.textBetween(start - 1, start) === " ") {
+        start -= 1;
+    } else if (end < doc.content.size && doc.textBetween(end, end + 1) === " ") {
+        end += 1;
+    }
+    view.dispatch(view.state.tr.delete(start, end));
+}
+
+/** Apply a suggestion: "" deletes (space-aware), anything else replaces. */
+function applySuggestion(view: EditorView, from: number, to: number, suggestion: string): void {
+    if (suggestion === "") { deleteRange(view, from, to); } else { replaceRange(view, from, to, suggestion); }
 }
 
 /** Build the popup section for a Harper spelling/grammar finding. */
@@ -420,7 +500,7 @@ function lintFinding(view: EditorView, from: number, to: number, lint: HarperLin
     for (const suggestion of lint.suggestions) {
         buttons.push({
             label: suggestion === "" ? t("Remove") : suggestion,
-            run: () => replaceRange(view, from, to, suggestion),
+            run: () => applySuggestion(view, from, to, suggestion),
         });
     }
     if (lint.kind === "Spelling") {
@@ -435,9 +515,10 @@ function styleFinding(view: EditorView, from: number, to: number, style: StyleFi
     const word = view.state.doc.textBetween(from, to);
     const buttons: PopupButton[] = [];
     if (style.suggestion !== null) {
+        const suggestion = style.suggestion;
         buttons.push({
-            label: style.suggestion === "" ? t("Remove") : t("Fix"),
-            run: () => replaceRange(view, from, to, style.suggestion as string),
+            label: suggestion === "" ? t("Remove") : t("Fix"),
+            run: () => applySuggestion(view, from, to, suggestion),
         });
     }
     buttons.push({ label: t("Ignore"), dismiss: true, run: () => { ignoreStyleSession(style.category, word); refreshProofread(view); } });
