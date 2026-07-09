@@ -91,7 +91,7 @@ repo when clicked:
 
 ---
 
-## Wikilinks
+### Wikilinks
 
 Obsidian-style wikilinks parse, navigate, and round-trip **byte-identically**.
 Typing `[[` opens file-name autocompletion. Bare names match by filename
