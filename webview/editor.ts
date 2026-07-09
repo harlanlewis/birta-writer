@@ -53,6 +53,7 @@ import {
     listEnterPlugin,
     listLiftPlugin,
     listSpreadNormalizePlugin,
+    pendingRangePlugin,
     proofreadPlugin,
     selectionPlugin,
     slashMenuPlugin,
@@ -299,6 +300,7 @@ export async function createEditor(
         .use(codeBlockSelectAllPlugin)
         .use(headingEmptyDeletePlugin)
         .use(selectionPlugin)
+        .use(pendingRangePlugin)
         .use(headingFoldPlugin)
         .use(headingStickyPlugin)
         .use(caretScrollMarginPlugin)

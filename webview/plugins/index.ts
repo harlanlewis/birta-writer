@@ -22,6 +22,7 @@ export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export { listEnterPlugin, listLiftPlugin, listSpreadNormalizePlugin } from "./list";
+export { pendingRangePlugin, setPendingRange } from "./pendingRange";
 export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";
 export { setSlashMenuHost, slashMenuPlugin } from "./slashMenu";

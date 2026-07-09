@@ -3,7 +3,7 @@
  * parsing/serialization, the panel collapse toggle, and the raw editor.
  * acquireVsCodeApi is injected globally by setup.ts.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import {
     isFlatFrontmatter,
@@ -813,5 +813,439 @@ describe("tabular list editing — chip UI", () => {
         });
         // No chip is added until a value is chosen from the menu (3 tags + 3 related + 2 keywords)
         expect(document.querySelectorAll(".fm-chip-text")).toHaveLength(8);
+    });
+});
+
+/** Table rows of the rendered panel. */
+function panelRows(): NodeListOf<HTMLTableRowElement> {
+    return document.querySelectorAll<HTMLTableRowElement>(".frontmatter-table tr");
+}
+
+/** Dispatches an undo/redo chord keydown on the given element. */
+function dispatchChord(target: Element, opts: { shift?: boolean } = {}): void {
+    target.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "z",
+        metaKey: true,
+        shiftKey: opts.shift === true,
+        bubbles: true,
+        cancelable: true,
+    }));
+}
+
+describe("frontmatter panel keyboard activation and ARIA", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        window.__i18n = undefined;
+        setupDom();
+    });
+
+    it("a detail-0 click on the toggle should collapse and expand the panel", () => {
+        renderFrontmatterPanel(FM);
+        const panel = document.getElementById("frontmatter-panel")!;
+        const toggle = panel.querySelector<HTMLButtonElement>(".fm-toggle-btn")!;
+
+        // element.click() fires with detail 0 — the keyboard (Enter/Space) branch
+        toggle.click();
+        expect(panel.classList.contains("collapsed")).toBe(true);
+
+        toggle.click();
+        expect(panel.classList.contains("collapsed")).toBe(false);
+    });
+
+    it("toggling should flip aria-expanded on the toggle button", () => {
+        renderFrontmatterPanel(FM);
+        const toggle = document.querySelector<HTMLButtonElement>(".fm-toggle-btn")!;
+        expect(toggle.getAttribute("aria-expanded")).toBe("true");
+
+        toggle.click();
+
+        expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("the toggle should point aria-controls at the collapsible content", () => {
+        renderFrontmatterPanel(FM);
+        const toggle = document.querySelector(".fm-toggle-btn")!;
+
+        const id = toggle.getAttribute("aria-controls")!;
+
+        expect(id).toBeTruthy();
+        expect(document.getElementById(id)?.classList.contains("frontmatter-table")).toBe(true);
+    });
+
+    it("the raw-mode toggle should point aria-controls at the raw editor", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        const toggle = document.querySelector(".fm-toggle-btn")!;
+
+        const id = toggle.getAttribute("aria-controls")!;
+
+        expect(document.getElementById(id)?.classList.contains("fm-raw-editor")).toBe(true);
+    });
+
+    it("the trash button should be the first row cell with an aria-label naming the key", () => {
+        renderFrontmatterPanel(FM);
+        const row = panelRows()[0]!;
+
+        const firstCell = row.firstElementChild!;
+
+        expect(firstCell.className).toBe("fm-action");
+        const btn = firstCell.querySelector(".fm-delete-btn")!;
+        expect(btn.getAttribute("aria-label")).toContain('"title"');
+        // The custom tooltip replaces the native title attribute
+        expect(btn.getAttribute("title")).toBeNull();
+    });
+
+    it("a detail-0 click on the trash button should delete the row", () => {
+        renderFrontmatterPanel(FM);
+
+        document.querySelector<HTMLButtonElement>(".fm-delete-btn")!.click();
+
+        expect(panelRows()).toHaveLength(2);
+        expect(postedFrontmatters()).toEqual([
+            "---\ndate: 2026-01-01\ndraft: true\n---\n",
+        ]);
+    });
+
+    it("deleting a row should move focus to the row that took its index", () => {
+        renderFrontmatterPanel(FM);
+
+        document.querySelector<HTMLButtonElement>(".fm-delete-btn")!.click();
+
+        const firstKey = panelRows()[0]!.querySelector(".fm-key")!;
+        expect(document.activeElement).toBe(firstKey);
+    });
+
+    it("renaming a key should refresh the trash button's aria-label", () => {
+        renderFrontmatterPanel(FM);
+        const keyTd = document.querySelector<HTMLElement>(".fm-key")!;
+
+        keyTd.textContent = "headline";
+        keyTd.dispatchEvent(new Event("blur"));
+
+        const btn = document.querySelector(".fm-delete-btn")!;
+        expect(btn.getAttribute("aria-label")).toContain('"headline"');
+    });
+
+    it("editable cells should expose textbox semantics with names and placeholders", () => {
+        renderFrontmatterPanel(FM);
+        const row = panelRows()[0]!;
+
+        const keyTd = row.querySelector(".fm-key")!;
+        const valTd = row.querySelector(".fm-val")!;
+
+        expect(keyTd.getAttribute("role")).toBe("textbox");
+        expect(keyTd.getAttribute("aria-multiline")).toBe("false");
+        expect(keyTd.getAttribute("aria-label")).toBe("Field name");
+        expect(keyTd.getAttribute("aria-placeholder")).toBe("key");
+        expect(valTd.getAttribute("role")).toBe("textbox");
+        expect(valTd.getAttribute("aria-label")).toBe("title");
+        expect(valTd.getAttribute("aria-placeholder")).toBe("value");
+    });
+
+    it("chip text and remove buttons should carry accessible names for their value", () => {
+        renderFrontmatterPanel(FM_RICH);
+
+        const chipText = document.querySelector(".fm-chip-text")!;
+        const removeBtn = document.querySelector(".fm-chip-remove")!;
+
+        expect(chipText.getAttribute("role")).toBe("textbox");
+        expect(chipText.getAttribute("aria-label")).toBe("think");
+        expect(removeBtn.getAttribute("aria-label")).toContain('"think"');
+    });
+
+    it("a detail-0 click on a chip remove button should delete the item", () => {
+        renderFrontmatterPanel(FM_RICH);
+
+        document.querySelectorAll<HTMLButtonElement>(".fm-chip-remove")[3]!.click();
+
+        const posted = postedFrontmatters()[0]!;
+        expect(posted).not.toContain("/write/notion");
+        expect(posted).toContain('    "/write/anthropic",');
+    });
+
+    it("deleting the last field should keep the panel and post an empty frontmatter", () => {
+        renderFrontmatterPanel("---\ntitle: Hello\n---\n");
+
+        document.querySelector<HTMLButtonElement>(".fm-delete-btn")!.click();
+
+        expect(document.getElementById("frontmatter-panel")).not.toBeNull();
+        expect(panelRows()).toHaveLength(0);
+        expect(postedFrontmatters()).toEqual([""]);
+        // Focus falls back to the Add-field button so the keyboard flow survives
+        expect(document.activeElement?.className).toBe("fm-add-btn");
+    });
+});
+
+describe("frontmatter panel cell commit behavior", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    it("Enter in a value cell should commit in place without losing focus", () => {
+        renderFrontmatterPanel(FM);
+        const cell = panelRows()[2]!.querySelector<HTMLElement>(".fm-val")!;
+        cell.focus();
+        cell.textContent = "false";
+
+        cell.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+        expect(postedFrontmatters()).toEqual([
+            '---\ntitle: "Hello"\ndate: 2026-01-01\ndraft: false\n---\n',
+        ]);
+        expect(document.activeElement).toBe(cell);
+    });
+
+    it("a blur after an Enter commit should not post a duplicate update", () => {
+        renderFrontmatterPanel(FM);
+        const cell = panelRows()[2]!.querySelector<HTMLElement>(".fm-val")!;
+        cell.focus();
+        cell.textContent = "false";
+
+        cell.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        cell.dispatchEvent(new Event("blur"));
+
+        expect(postedFrontmatters()).toHaveLength(1);
+    });
+});
+
+describe("frontmatter panel Tab navigation", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    const tab = (el: Element, shift = false) =>
+        el.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: shift, bubbles: true, cancelable: true }));
+
+    it("Tab from a key cell should move to the value cell of the same row", () => {
+        renderFrontmatterPanel(FM);
+        const row = panelRows()[1]!;
+        const keyCell = row.querySelector<HTMLElement>(".fm-key")!;
+        keyCell.focus();
+
+        tab(keyCell);
+
+        expect(document.activeElement).toBe(row.querySelector(".fm-val"));
+    });
+
+    it("Tab from a value cell should move to the next row's key cell", () => {
+        renderFrontmatterPanel(FM);
+        const valCell = panelRows()[1]!.querySelector<HTMLElement>(".fm-val")!;
+        valCell.focus();
+
+        tab(valCell);
+
+        expect(document.activeElement).toBe(panelRows()[2]!.querySelector(".fm-key"));
+    });
+
+    it("Shift+Tab from a value cell should move back to its key cell, not add a row", () => {
+        // The reported bug: Shift+Tab on a value cell (last row, empty value)
+        // created a new metadata row instead of returning to the key cell.
+        renderFrontmatterPanel(FM);
+        const rowsBefore = panelRows().length;
+        const lastRow = panelRows()[rowsBefore - 1]!;
+        const valCell = lastRow.querySelector<HTMLElement>(".fm-val")!;
+        valCell.focus();
+
+        tab(valCell, true);
+
+        expect(panelRows()).toHaveLength(rowsBefore);
+        expect(document.activeElement).toBe(lastRow.querySelector(".fm-key"));
+    });
+
+    it("Shift+Tab from a key cell should move to the previous row's value cell", () => {
+        renderFrontmatterPanel(FM);
+        const keyCell = panelRows()[2]!.querySelector<HTMLElement>(".fm-key")!;
+        keyCell.focus();
+
+        tab(keyCell, true);
+
+        expect(document.activeElement).toBe(panelRows()[1]!.querySelector(".fm-val"));
+    });
+
+    it("Tab from the last row's value cell should add a new row", () => {
+        renderFrontmatterPanel(FM);
+        const rowsBefore = panelRows().length;
+        const valCell = panelRows()[rowsBefore - 1]!.querySelector<HTMLElement>(".fm-val")!;
+        valCell.focus();
+
+        tab(valCell);
+
+        expect(panelRows()).toHaveLength(rowsBefore + 1);
+    });
+});
+
+describe("frontmatter panel undo/redo", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+    });
+
+    const FM_EDITED = '---\ntitle: "Hello"\ndate: 2026-01-01\ndraft: false\n---\n';
+
+    /** Commits draft: true → false through the value cell and returns the cell. */
+    function commitDraftEdit(): HTMLElement {
+        const cell = panelRows()[2]!.querySelector<HTMLElement>(".fm-val")!;
+        cell.textContent = "false";
+        cell.dispatchEvent(new Event("blur"));
+        return cell;
+    }
+
+    it("Cmd+Z after a committed edit should post the previous raw and restore the cell", () => {
+        renderFrontmatterPanel(FM);
+        const cell = commitDraftEdit();
+        expect(postedFrontmatters()).toEqual([FM_EDITED]);
+
+        dispatchChord(cell);
+
+        expect(postedFrontmatters()).toEqual([FM_EDITED, FM]);
+        expect(panelRows()[2]!.querySelector(".fm-val")!.textContent).toBe("true");
+    });
+
+    it("Cmd+Shift+Z after an undo should re-apply the edit", () => {
+        renderFrontmatterPanel(FM);
+        const cell = commitDraftEdit();
+        dispatchChord(cell);
+
+        dispatchChord(document.getElementById("frontmatter-panel")!, { shift: true });
+
+        expect(postedFrontmatters()).toEqual([FM_EDITED, FM, FM_EDITED]);
+        expect(panelRows()[2]!.querySelector(".fm-val")!.textContent).toBe("false");
+    });
+
+    it("Cmd+Z with uncommitted typing should revert the cell locally without posting", () => {
+        renderFrontmatterPanel(FM);
+        const cell = panelRows()[2]!.querySelector<HTMLElement>(".fm-val")!;
+        cell.textContent = "maybe"; // typed, not committed
+
+        dispatchChord(cell);
+
+        expect(cell.textContent).toBe("true");
+        expect(postedFrontmatters()).toEqual([]);
+        expect(cell.isConnected).toBe(true); // no re-render happened
+    });
+
+    it("Cmd+Z after a row delete should restore the row", () => {
+        renderFrontmatterPanel(FM);
+        document.querySelector<HTMLButtonElement>(".fm-delete-btn")!.click();
+        expect(panelRows()).toHaveLength(2);
+
+        dispatchChord(document.getElementById("frontmatter-panel")!);
+
+        expect(panelRows()).toHaveLength(3);
+        expect(postedFrontmatters().at(-1)).toBe(FM);
+        expect(panelRows()[0]!.querySelector(".fm-key")!.textContent).toBe("title");
+    });
+
+    it("Cmd+Z after deleting the last field should bring the table back", () => {
+        renderFrontmatterPanel("---\ntitle: Hello\n---\n");
+        document.querySelector<HTMLButtonElement>(".fm-delete-btn")!.click();
+        expect(panelRows()).toHaveLength(0);
+
+        dispatchChord(document.getElementById("frontmatter-panel")!);
+
+        expect(panelRows()).toHaveLength(1);
+        expect(postedFrontmatters()).toEqual(["", "---\ntitle: Hello\n---\n"]);
+    });
+
+    it("the panel should be focusable so a chord from blank panel space is not lost", () => {
+        // A click on empty panel chrome must land focus on the panel itself
+        // (tabIndex -1) rather than <body>, or the undo chord below never
+        // reaches the panel-level listener. Regression guard for the
+        // click-blank-space-then-Cmd+Z gap found in runtime testing.
+        renderFrontmatterPanel(FM);
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.tabIndex).toBe(-1);
+
+        commitDraftEdit();
+        expect(postedFrontmatters()).toEqual([FM_EDITED]);
+        panel.focus();
+        dispatchChord(panel);
+
+        expect(postedFrontmatters().at(-1)).toBe(FM);
+    });
+
+    it("an external re-render should reset the undo history", () => {
+        renderFrontmatterPanel(FM);
+        commitDraftEdit();
+        expect(postedFrontmatters()).toEqual([FM_EDITED]);
+
+        renderFrontmatterPanel(FM_EDITED); // e.g. echo of an external update
+        dispatchChord(document.getElementById("frontmatter-panel")!);
+
+        // Nothing to undo: no additional frontmatterUpdate is posted
+        expect(postedFrontmatters()).toEqual([FM_EDITED]);
+    });
+
+    it("a committed raw-editor edit should be undoable from the panel", () => {
+        renderFrontmatterPanel(FM_NESTED);
+        const ta = document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!;
+        ta.value = "author:\n  name: Someone Else";
+        ta.dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters()).toEqual([
+            "---\nauthor:\n  name: Someone Else\n---\n",
+        ]);
+
+        dispatchChord(document.getElementById("frontmatter-panel")!);
+
+        expect(postedFrontmatters().at(-1)).toBe(FM_NESTED);
+        expect(document.querySelector<HTMLTextAreaElement>(".fm-raw-editor")!.value)
+            .toBe("author:\n  name: Jane\n  email: jane@example.com");
+    });
+});
+
+describe("frontmatter panel ghost row cleanup", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        setupDom();
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("a freshly added empty row should be removed once focus leaves it", () => {
+        renderFrontmatterPanel(FM);
+        document.querySelector<HTMLButtonElement>(".fm-add-btn")!.click();
+        expect(panelRows()).toHaveLength(4);
+
+        document.querySelector<HTMLButtonElement>(".fm-toggle-btn")!.focus();
+        vi.runAllTimers();
+
+        expect(panelRows()).toHaveLength(3);
+        expect(postedFrontmatters()).toEqual([]); // nothing was ever committed
+    });
+
+    it("repeated Add field clicks should not accumulate ghost rows", () => {
+        renderFrontmatterPanel(FM);
+        const addBtn = document.querySelector<HTMLButtonElement>(".fm-add-btn")!;
+
+        addBtn.click();
+        addBtn.click();
+        vi.runAllTimers();
+
+        // The abandoned first ghost is gone; the freshly focused row survives
+        expect(panelRows()).toHaveLength(4);
+        expect(document.activeElement).toBe(panelRows()[3]!.querySelector(".fm-key"));
+    });
+
+    it("a new row with typed content should survive focus leaving it", () => {
+        renderFrontmatterPanel(FM);
+        document.querySelector<HTMLButtonElement>(".fm-add-btn")!.click();
+        const keyTd = panelRows()[3]!.querySelector<HTMLElement>(".fm-key")!;
+        keyTd.textContent = "layout";
+        keyTd.dispatchEvent(new Event("blur")); // commits the key
+
+        document.querySelector<HTMLButtonElement>(".fm-toggle-btn")!.focus();
+        vi.runAllTimers();
+
+        expect(panelRows()).toHaveLength(4);
+        expect(panelRows()[3]!.querySelector(".fm-key")!.textContent).toBe("layout");
     });
 });

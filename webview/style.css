@@ -148,21 +148,24 @@ html {
         color: var(--vscode-editor-foreground);
     }
 
+    /* Per-row delete column: first cell, kept narrow so the key column reads
+       as the visual start of the row */
     .fm-action {
         width: 1%;
-        padding: 4px 4px;
+        padding: 4px 0 4px 6px;
         text-align: center;
         vertical-align: middle;
     }
 }
 
-/* Row delete button */
+/* Row delete button (trash can, left of the key) */
 .fm-delete-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
     border: none;
     border-radius: 4px;
     background: transparent;
@@ -180,6 +183,11 @@ html {
         color: var(--vscode-errorForeground, #f44747);
         background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
     }
+
+    /* Keyboard parity with the row-hover reveal */
+    &:focus-visible {
+        opacity: 1;
+    }
 }
 
 /* Show the delete button when the row is hovered */
@@ -195,13 +203,14 @@ html {
     gap: 8px;
 }
 
+/* The toggle and "Add field" buttons share one quiet ghost style */
 .fm-add-btn,
 .fm-toggle-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     padding: 3px 10px;
-    border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
     border-radius: 4px;
     background: transparent;
     color: var(--vscode-descriptionForeground);
@@ -219,11 +228,6 @@ html {
         border-color: var(--vscode-focusBorder);
         background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
     }
-}
-
-/* Collapse/expand toggle uses a solid border to read as a mode switch, not an action */
-.fm-toggle-btn {
-    border-style: solid;
 }
 
 /* Raw YAML editor for non-flat frontmatter (nested maps, lists, comments, ...) */
@@ -1064,7 +1068,7 @@ body.toolbar-hidden::before {
     width: 20px;
     height: 20px;
     padding: 0;
-    border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
     border-radius: 10px;
     background: transparent;
     color: var(--vscode-descriptionForeground);

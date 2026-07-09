@@ -23,11 +23,12 @@ import {
     setPendingToolbarPos,
 } from "../components/selectionToolbar";
 import { initToolbar } from "../components/toolbar";
+import { setupLinkPopup } from "../components/linkPopup";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
     document.body.appendChild(root);
-    return Editor.make()
+    const editor = await Editor.make()
         .config((ctx) => {
             ctx.set(rootCtx, root);
             ctx.set(defaultValueCtx, markdown);
@@ -36,6 +37,11 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfm)
         .create();
+    // The link button routes through the shared link editor (the hover popup
+    // singleton); wire it to this editor's view.
+    const v = editor.action((ctx) => ctx.get(editorViewCtx));
+    setupLinkPopup(root, () => v);
+    return editor;
 }
 
 function view(editor: Editor): EditorView {
@@ -165,15 +171,17 @@ describe("selection toolbar link button", () => {
         setPendingToolbarPos(100, 100);
         selTb.onSelectionChange(v);
 
-        // Act — click the link button, confirm the prompt
+        // Act — click the link button, confirm the prompt in the popup
         mousedown(linkButton());
-        const overlay = document.querySelector(".tb-prompt-overlay");
-        expect(overlay).not.toBeNull();
-        const inputs = overlay!.querySelectorAll("input");
-        expect(inputs).toHaveLength(2);
-        expect(inputs[0].value).toBe("two"); // clamped pre-fill
-        inputs[1].value = "x";
-        inputs[1].dispatchEvent(
+        const popup = Array.from(
+            document.querySelectorAll<HTMLElement>(".lp-root"),
+        ).find((p) => p.style.display !== "none");
+        expect(popup).toBeTruthy();
+        const textInput = popup!.querySelector<HTMLInputElement>(".lp-text-input")!;
+        const urlInput = popup!.querySelector<HTMLInputElement>(".lp-url-input")!;
+        expect(textInput.value).toBe("two"); // clamped pre-fill
+        urlInput.value = "x";
+        urlInput.dispatchEvent(
             new KeyboardEvent("keydown", {
                 key: "Enter",
                 bubbles: true,

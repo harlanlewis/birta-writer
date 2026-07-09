@@ -1,12 +1,13 @@
 /**
- * Link format switch — the two-option segmented control (markdown / wikilink)
- * shared by the link popup's edit body and the toolbar's insert-link prompt.
- * A document legitimately mixes both forms, so creation and editing offer the
- * format as an explicit choice; standard markdown is always the default for
- * new links, an existing link starts on its own current format.
+ * Link format switch — the labeled "Format" dropdown (markdown / wikilink)
+ * shared by the link popup's edit body. A document legitimately mixes both
+ * forms, so creation and editing offer the format as an explicit choice;
+ * standard markdown is always the default for new links, an existing link
+ * starts on its own current format.
  *
  * The wikilink option disables for external targets (scheme URLs, #anchors) —
- * a wikilink names a workspace file, never a URL.
+ * a wikilink names a workspace file, never a URL. A native <select> is used
+ * so keyboard and screen-reader interaction come for free.
  */
 import "./formatSwitch.css";
 import { t } from "@/i18n";
@@ -39,57 +40,50 @@ export function createLinkFormatSwitch(
     initial: LinkFormat = "markdown",
     onChange?: (format: LinkFormat) => void,
 ): FormatSwitch {
-    let format: LinkFormat = initial;
-    let wikiAllowed = true;
-
     const root = document.createElement("div");
     root.className = "lfs-root";
-    root.setAttribute("role", "radiogroup");
-    root.setAttribute("aria-label", t("Link format"));
 
-    const make = (value: LinkFormat, label: string): HTMLButtonElement => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "lfs-btn";
-        b.textContent = label;
-        b.setAttribute("role", "radio");
-        b.addEventListener("mousedown", (e) => {
-            // preventDefault keeps focus in the hosting input (a blur would
-            // close the popup/prompt before the choice lands).
-            e.preventDefault();
-            e.stopPropagation();
-            if (b.disabled || format === value) { return; }
-            format = value;
-            paint();
-            onChange?.(value);
-        });
-        return b;
-    };
+    // Visual prefix ("Format:"); the accessible name lives on the select.
+    const label = document.createElement("span");
+    label.className = "lfs-label";
+    label.textContent = t("Format");
+    label.setAttribute("aria-hidden", "true");
 
-    const btnMd = make("markdown", t("markdown"));
-    const btnWiki = make("wikilink", t("[[wiki]]"));
-    root.append(btnMd, btnWiki);
+    const select = document.createElement("select");
+    select.className = "lfs-select";
+    select.setAttribute("aria-label", t("Link format"));
 
-    function paint(): void {
-        btnMd.classList.toggle("lfs-btn--active", format === "markdown");
-        btnMd.setAttribute("aria-checked", format === "markdown" ? "true" : "false");
-        btnWiki.classList.toggle("lfs-btn--active", format === "wikilink");
-        btnWiki.setAttribute("aria-checked", format === "wikilink" ? "true" : "false");
-        btnWiki.disabled = !wikiAllowed;
-    }
-    paint();
+    const optMarkdown = document.createElement("option");
+    optMarkdown.value = "markdown";
+    optMarkdown.textContent = t("Markdown");
+
+    const optWiki = document.createElement("option");
+    optWiki.value = "wikilink";
+    optWiki.textContent = t("[[wiki]]");
+
+    select.append(optMarkdown, optWiki);
+    select.value = initial;
+
+    root.append(label, select);
+
+    // Native change only fires on a real user choice — programmatic set()
+    // and setWikiAllowed() below never dispatch it, so an untouched link is
+    // never rewritten on a stray reposition.
+    select.addEventListener("change", () => {
+        onChange?.(select.value as LinkFormat);
+    });
 
     return {
         el: root,
-        get: () => format,
-        set(f: LinkFormat): void {
-            format = f;
-            paint();
+        get: () => select.value as LinkFormat,
+        set(format: LinkFormat): void {
+            select.value = format;
         },
         setWikiAllowed(allowed: boolean): void {
-            wikiAllowed = allowed;
-            if (!allowed && format === "wikilink") { format = "markdown"; }
-            paint();
+            optWiki.disabled = !allowed;
+            if (!allowed && select.value === "wikilink") {
+                select.value = "markdown";
+            }
         },
     };
 }

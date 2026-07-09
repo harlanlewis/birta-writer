@@ -35,10 +35,8 @@ import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
-import { attachLinkTargetComplete } from '../pathLink/linkTargetComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
-import { createLinkFormatSwitch, wikiAllowedFor, type LinkFormat } from "@/ui/formatSwitch";
-import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
+import { openLinkEditor } from "../linkPopup";
 import { createOverflowController } from './overflow';
 import type { OverflowController, OverflowGroup } from './overflow';
 import { computeZones } from './registry';
@@ -132,128 +130,6 @@ function createCheckItem(label: string): CheckItem {
             el.setAttribute("aria-checked", on ? "true" : "false");
         },
     };
-}
-
-// Custom inline link prompt (two inputs: link text + URL)
-function showInlineLinkPrompt(
-    near: HTMLElement,
-    defaultText: string,
-    defaultHref: string,
-    onConfirm: (text: string, href: string, format: LinkFormat) => void,
-): void {
-    const overlay = document.createElement("div");
-    overlay.className = "tb-prompt-overlay";
-    overlay.addEventListener("mousedown", (e) => e.stopPropagation());
-
-    const textInput = document.createElement("input");
-    textInput.type = "text";
-    textInput.className = "tb-prompt-input tb-prompt-input--short";
-    textInput.placeholder = t("Link text");
-    textInput.value = defaultText;
-
-    const urlInput = document.createElement("input");
-    urlInput.type = "text";
-    urlInput.className = "tb-prompt-input";
-    urlInput.placeholder = "https://...";
-    urlInput.value = defaultHref;
-
-    const okBtn = document.createElement("button");
-    okBtn.className = "tb-prompt-ok";
-    okBtn.innerHTML = IconCheck;
-    okBtn.title = t("Confirm");
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "tb-prompt-cancel";
-    cancelBtn.innerHTML = IconX;
-    cancelBtn.title = t("Cancel");
-
-    // Format choice — new links default to standard markdown; the wikilink
-    // option disables while the URL is an external target.
-    const formatSwitch = createLinkFormatSwitch("markdown");
-    formatSwitch.setWikiAllowed(wikiAllowedFor(defaultHref));
-    urlInput.addEventListener("input", () => {
-        formatSwitch.setWikiAllowed(wikiAllowedFor(urlInput.value));
-    });
-
-    overlay.appendChild(textInput);
-    overlay.appendChild(urlInput);
-    overlay.appendChild(formatSwitch.el);
-    overlay.appendChild(okBtn);
-    overlay.appendChild(cancelBtn);
-    document.body.appendChild(overlay);
-
-    // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
-    const detachUndoFns = [attachInputUndo(textInput), attachInputUndo(urlInput)];
-
-    // Workspace file autocompletion on the URL field (local link targets)
-    const detachLinkComplete = attachLinkTargetComplete(urlInput);
-
-    // Position the overlay below the toolbar button
-    const rect = near.getBoundingClientRect();
-    overlay.style.top = `${rect.bottom + 4}px`;
-    overlay.style.left = `${rect.left}px`;
-
-    // Focus the URL field if there's pre-filled text, otherwise focus the text field
-    if (defaultText) {
-        urlInput.focus();
-        urlInput.select();
-    } else {
-        textInput.focus();
-    }
-
-    function confirm(): void {
-        const text = textInput.value.trim();
-        const href = urlInput.value.trim();
-        const format = formatSwitch.get();
-        cleanup();
-        onConfirm(text, href, format);
-    }
-
-    function cleanup(): void {
-        detachUndoFns.forEach((detach) => detach());
-        detachLinkComplete();
-        if (document.body.contains(overlay)) {
-            document.body.removeChild(overlay);
-        }
-        document.removeEventListener("mousedown", outsideClick);
-    }
-
-    function outsideClick(e: MouseEvent): void {
-        const active = document.activeElement;
-        if (
-            !overlay.contains(e.target as Node) &&
-            active !== textInput &&
-            active !== urlInput
-        ) {
-            cleanup();
-        }
-    }
-
-    okBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        confirm();
-    });
-    cancelBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        cleanup();
-    });
-    [textInput, urlInput].forEach((inp) => {
-        inp.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") {
-                e.stopPropagation();
-                e.preventDefault();
-                confirm();
-            } else if (e.key === "Escape") {
-                e.stopPropagation();
-                e.preventDefault();
-                cleanup();
-            }
-        });
-    });
-
-    setTimeout(() => {
-        document.addEventListener("mousedown", outsideClick);
-    }, 0);
 }
 
 /**
@@ -1042,9 +918,10 @@ export function initToolbar(
 
     // ── Insert ────────────────────────────────────────
     // Link: capture the current selection text and any existing link first,
-    // then collect text and URL through the two-input prompt. Also invoked
-    // by the Cmd/Ctrl+K shortcut (webview/keyboardShortcuts.ts), so it is
-    // exposed on the returned controller as openLinkPrompt.
+    // then collect text and URL through the link palette, anchored at the
+    // captured range itself. Also invoked by the Cmd/Ctrl+K shortcut
+    // (webview/keyboardShortcuts.ts), so it is exposed on the returned
+    // controller as openLinkPrompt.
     let linkBtnEl: HTMLButtonElement;
     const openLinkPrompt = (): void => {
         const editor = getEditor();
@@ -1052,107 +929,74 @@ export function initToolbar(
             return;
         }
 
-        let capturedFrom = 0;
-        let capturedTo = 0;
+        const view = editor.action((ctx) => ctx.get(editorViewCtx));
+        const { state } = view;
+        const linkType = state.schema.marks["link"];
+        if (!linkType) {
+            return;
+        }
+
+        const capturedFrom = state.selection.from;
+        let capturedTo = state.selection.to;
         let existingHref = "";
         let selectedText = "";
 
-        editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx);
-            const { state } = view;
-            const linkType = state.schema.marks["link"];
-            if (!linkType) {
-                return;
+        // A selection spanning several textblocks (paragraphs, headings,
+        // list items, ...) cannot become ONE inline link without fusing
+        // the blocks' texts together. Clamp to the portion inside the
+        // first textblock: the editor pre-fills and the apply covers
+        // that range only, leaving the other blocks untouched.
+        const $from = state.selection.$from;
+        if ($from.parent.isTextblock) {
+            const firstBlockEnd = $from.end();
+            if (capturedTo > firstBlockEnd) {
+                capturedTo = firstBlockEnd;
             }
-            capturedFrom = state.selection.from;
-            capturedTo = state.selection.to;
-            // A selection spanning several textblocks (paragraphs, headings,
-            // list items, ...) cannot become ONE inline link without fusing
-            // the blocks' texts together. Clamp to the portion inside the
-            // first textblock: the prompt pre-fills and the confirm applies
-            // to that range only, leaving the other blocks untouched.
-            const $from = state.selection.$from;
-            if ($from.parent.isTextblock) {
-                const firstBlockEnd = $from.end();
-                if (capturedTo > firstBlockEnd) {
-                    capturedTo = firstBlockEnd;
-                }
+        }
+        if (capturedFrom !== capturedTo) {
+            selectedText = state.doc.textBetween(capturedFrom, capturedTo);
+        }
+        state.doc.nodesBetween(capturedFrom, capturedTo, (node) => {
+            const mark = linkType.isInSet(node.marks);
+            if (mark) {
+                existingHref =
+                    (mark.attrs as Record<string, string>)["href"] ?? "";
             }
-            if (capturedFrom !== capturedTo) {
-                selectedText = state.doc.textBetween(capturedFrom, capturedTo);
-            }
-            state.doc.nodesBetween(capturedFrom, capturedTo, (node) => {
-                const mark = linkType.isInSet(node.marks);
-                if (mark) {
-                    existingHref =
-                        (mark.attrs as Record<string, string>)["href"] ?? "";
-                }
-            });
         });
 
-        showInlineLinkPrompt(
-            // The link button may be hidden; fall back to anchoring on the toolbar.
-            linkBtnEl.isConnected ? linkBtnEl : toolbar,
-            selectedText,
-            existingHref,
-            (text, href, format) => {
-                editor.action((ctx) => {
-                    const view = ctx.get(editorViewCtx);
-                    const { state } = view;
-                    const lType = state.schema.marks["link"];
-                    if (!lType) {
-                        return;
-                    }
-                    let tr = state.tr;
-                    if (format === "wikilink") {
-                        // Wikilink form: URL field is the target, text the
-                        // alias (omitted when empty or equal to the target).
-                        const wikiType = state.schema.nodes[wikiLinkId];
-                        if (!href || !wikiType) {
-                            return;
-                        }
-                        const raw = text && text !== href ? `${href}|${text}` : href;
-                        // Bytes that can't live inside [[…]] would change the
-                        // document's structure on the next parse (see linkPopup).
-                        if (/\[\[|\]\]|[\r\n]/.test(raw)) {
-                            return;
-                        }
-                        const node = wikiType.create(attrsFromRaw(raw));
-                        tr = capturedFrom === capturedTo
-                            ? tr.insert(capturedFrom, node)
-                            : tr.replaceWith(capturedFrom, capturedTo, node);
-                    } else if (capturedFrom === capturedTo) {
-                        // No selection: insert new text and link it
-                        const insertText = text || href;
-                        if (!insertText) {
-                            return;
-                        }
-                        tr = tr.insertText(insertText, capturedFrom);
-                        if (href) {
-                            tr = tr.addMark(
-                                capturedFrom,
-                                capturedFrom + insertText.length,
-                                lType.create({ href, title: null }),
-                            );
-                        }
-                    } else {
-                        // Selection: replace the text and update the link
-                        const newText = text || selectedText;
-                        tr = tr.removeMark(capturedFrom, capturedTo, lType);
-                        tr = tr.insertText(newText, capturedFrom, capturedTo);
-                        if (href && newText) {
-                            tr = tr.addMark(
-                                capturedFrom,
-                                capturedFrom + newText.length,
-                                lType.create({ href, title: null }),
-                            );
-                        }
-                    }
-                    view.dispatch(tr);
-                    view.focus();
-                });
-            },
-        );
+        // Anchor the editor at the captured range (coordsAtPos returns
+        // viewport coordinates, matching the popup's positioning). When
+        // measurement fails (jsdom, detached view) fall back to the link
+        // button / toolbar.
+        let anchorRect: { left: number; right: number; top: number; bottom: number };
+        try {
+            const start = view.coordsAtPos(capturedFrom);
+            const end = view.coordsAtPos(capturedTo, -1);
+            anchorRect = {
+                left: Math.min(start.left, end.left),
+                right: Math.max(start.right, end.right),
+                top: Math.min(start.top, end.top),
+                bottom: Math.max(start.bottom, end.bottom),
+            };
+        } catch {
+            const near = linkBtnEl.isConnected ? linkBtnEl : toolbar;
+            const r = near.getBoundingClientRect();
+            anchorRect = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        }
+
+        // Open the single link editor (the hover popup) at the captured
+        // range. The popup owns the transaction, the pending-range highlight,
+        // and returning focus to the editor on close. It is a singleton, so a
+        // second open (Cmd/Ctrl+K twice, or the button while it is up) simply
+        // re-anchors the same editor rather than stacking a second one.
+        openLinkEditor({
+            view,
+            anchorRect,
+            from: capturedFrom,
+            to: capturedTo,
+            text: selectedText,
+            href: existingHref,
+        });
     };
     // No shortcut label: insert-link is a user-rebindable contributed
     // keybinding and the webview cannot query its effective binding.

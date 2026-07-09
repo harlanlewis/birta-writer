@@ -47,8 +47,12 @@ function applySnapshot(input: UndoableInput, snap: Snapshot): void {
     }
 }
 
-/** Is this keydown an undo/redo chord? Accept meta OR ctrl as the modifier. */
-function chordOf(e: KeyboardEvent): "undo" | "redo" | null {
+/**
+ * Is this keydown an undo/redo chord? Accept meta OR ctrl as the modifier.
+ * Exported for components (e.g. the frontmatter panel) that keep their own
+ * committed-state history rather than a per-input one.
+ */
+export function undoChordOf(e: KeyboardEvent): "undo" | "redo" | null {
     if (!(e.metaKey || e.ctrlKey) || e.altKey) {
         return null;
     }
@@ -152,7 +156,7 @@ export function attachInputUndo(input: UndoableInput): () => void {
         // value has already mutated and staleness is undetectable).
         resyncIfStale();
 
-        const chord = chordOf(e);
+        const chord = undoChordOf(e);
         if (!chord) {
             return;
         }

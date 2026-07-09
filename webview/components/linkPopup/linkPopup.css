@@ -14,7 +14,7 @@
     background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
     border: 1px solid var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35));
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 4px 20px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.28));
     overflow: hidden;
     animation: lp-fadein 120ms ease;
 }
@@ -170,4 +170,11 @@
     justify-content: flex-end;
     gap: 4px;
     padding-top: 2px;
+}
+
+/* The range the link editor will act on stays visibly "selected" while the
+   editor is open — focus lives in the popup's inputs, so the editor's native
+   selection paint is gone (see plugins/pendingRange.ts). */
+.ProseMirror .pending-range {
+    background: var(--vscode-editor-selectionBackground);
 }

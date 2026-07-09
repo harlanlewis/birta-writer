@@ -13,8 +13,10 @@
  *   whose content is written back verbatim. No line is ever dropped.
  */
 
-import { IconChevronDown, IconChevronUp, IconPlus, IconX } from "../../ui/icons";
+import { IconChevronDown, IconChevronUp, IconPlus, IconTrash2, IconX } from "../../ui/icons";
 import { t } from "../../i18n";
+import { createButton } from "../../ui/dom";
+import { attachInputUndo, undoChordOf } from "../../utils/inputUndo";
 import { getWebviewState, notifyFrontmatterUpdate, setWebviewState } from "../../messaging";
 import {
     FLOW_ITEM_RE,
@@ -233,6 +235,66 @@ let currentFmEntries: FmEntry[] = [];
 /** The raw frontmatter block the panel was rendered from (basis for lossless serialization). */
 let currentFmRaw = "";
 
+/** id of the collapsible content element (table or raw editor), for aria-controls. */
+const FM_CONTENT_ID = "frontmatter-content";
+
+/**
+ * Panel-local undo/redo history of COMMITTED frontmatter states.
+ *
+ * VS Code's Electron layer swallows Cmd+Z before the webview sees it, and the
+ * ProseMirror history knows nothing about this panel, so metadata edits would
+ * otherwise be un-undoable. Each stack entry is a full serialized block; the
+ * public renderFrontmatterPanel (init / external update / revert) resets the
+ * stacks, while undo/redo re-render through renderFmContent, which does not.
+ */
+let fmUndoStack: string[] = [];
+let fmRedoStack: string[] = [];
+let lastCommittedFm = "";
+
+/** Routes a committed raw block through the history bookkeeping, then notifies. */
+function recordFmCommit(raw: string): void {
+    if (raw === lastCommittedFm) { return; }
+    fmUndoStack.push(lastCommittedFm);
+    fmRedoStack.length = 0;
+    lastCommittedFm = raw;
+    notifyFrontmatterUpdate(raw);
+}
+
+/** After an undo/redo re-render, park focus where repeated chords keep working. */
+function focusAfterFmHistory(): void {
+    const panel = document.getElementById("frontmatter-panel");
+    if (!panel) { return; }
+    const target = panel.querySelector(".fm-key, .fm-raw-editor, .fm-add-btn, .fm-toggle-btn") as HTMLElement | null;
+    target?.focus();
+}
+
+/** Undoes the last committed metadata change (no-op when there is none). */
+function performFmUndo(): void {
+    const prev = fmUndoStack.pop();
+    if (prev === undefined) { return; }
+    fmRedoStack.push(lastCommittedFm);
+    lastCommittedFm = prev;
+    notifyFrontmatterUpdate(prev);
+    renderFmContent(prev);
+    focusAfterFmHistory();
+}
+
+/** Re-applies the last undone metadata change (no-op when there is none). */
+function performFmRedo(): void {
+    const next = fmRedoStack.pop();
+    if (next === undefined) { return; }
+    fmUndoStack.push(lastCommittedFm);
+    lastCommittedFm = next;
+    notifyFrontmatterUpdate(next);
+    renderFmContent(next);
+    focusAfterFmHistory();
+}
+
+/** Runs the committed-state undo/redo for a chord; the chord is already consumed. */
+function handleFmHistoryChord(chord: "undo" | "redo"): void {
+    if (chord === "undo") { performFmUndo(); } else { performFmRedo(); }
+}
+
 /**
  * The panel's collapsed state: a per-tab toggle (persisted so it survives tab
  * switches and reloads) wins; a fresh open falls back to the
@@ -254,22 +316,46 @@ function setFmCollapsed(collapsed: boolean): void {
 /** Applies the collapsed state to the panel and updates the toggle button icon/label. */
 function applyFmCollapsed(panel: HTMLElement, toggleBtn: HTMLElement, collapsed: boolean): void {
     panel.classList.toggle('collapsed', collapsed);
+    toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     toggleBtn.innerHTML = collapsed
         ? `${IconChevronDown} <span>${t('Show metadata')}</span>`
         : `${IconChevronUp} <span>${t('Hide metadata')}</span>`;
 }
 
-/** Syncs the edited table back to the Extension. */
+/**
+ * Syncs the edited table back to the Extension (through the undo history).
+ * When the last entry is deleted the panel stays (empty table + bottom row):
+ * an empty raw still tells the extension to drop the block, but the panel
+ * must survive so the user can undo the delete or add a new field.
+ */
 function commitFrontmatterChange(): void {
-    const raw = serializeFrontmatter(currentFmEntries, currentFmRaw);
-    notifyFrontmatterUpdate(raw);
-    // If everything was deleted, remove the panel
-    if (currentFmEntries.length === 0) {
-        const existing = document.getElementById('frontmatter-panel');
-        existing?.remove();
-        const editorEl = document.getElementById('editor');
-        if (editorEl) { editorEl.style.paddingTop = ''; }
-    }
+    recordFmCommit(serializeFrontmatter(currentFmEntries, currentFmRaw));
+}
+
+/** Accessible name for a row's delete button, naming the field it removes. */
+function deleteFieldAriaLabel(key: string): string {
+    return `${t('Delete field')}: "${key}"`;
+}
+
+/** Focuses a row's key cell. Returns true when a target was found. */
+function focusRowKey(row: Element | undefined): boolean {
+    const keyTd = row?.querySelector('.fm-key') as HTMLElement | null;
+    if (keyTd) { keyTd.focus(); return true; }
+    return false;
+}
+
+/**
+ * Focuses a row's value: the editable value cell, or a chip-list cell's add
+ * button (a chip cell isn't a caret target). Returns false when the row has
+ * no focusable value, so the caller can fall back to the key cell.
+ */
+function focusRowValue(row: Element | undefined): boolean {
+    if (!row) { return false; }
+    const valTd = row.querySelector('.fm-val') as HTMLElement | null;
+    if (valTd?.contentEditable === 'true') { valTd.focus(); return true; }
+    const addChip = row.querySelector('.fm-chip-add') as HTMLElement | null;
+    if (addChip) { addChip.focus(); return true; }
+    return false;
 }
 
 /** Binds editing behavior to a contenteditable td. */
@@ -281,43 +367,26 @@ function bindFmCell(
     panel: HTMLElement,
 ): void {
     td.contentEditable = 'true';
+    // Set the attribute explicitly as well: jsdom does not reflect the
+    // contentEditable property, and without the attribute the cell is not
+    // focusable there (browsers reflect it either way).
+    td.setAttribute('contenteditable', 'true');
     td.textContent = entry[field];
     td.dataset['orig'] = entry[field];
-    td.dataset['placeholder'] = field === 'key' ? 'key' : 'value';
+    const placeholder = field === 'key' ? 'key' : 'value';
+    td.dataset['placeholder'] = placeholder;
+    td.setAttribute('role', 'textbox');
+    td.setAttribute('aria-multiline', 'false');
+    td.setAttribute('aria-label', field === 'key'
+        ? t('Field name')
+        : (entry.key || t('Field value')));
+    td.setAttribute('aria-placeholder', placeholder);
 
-    // Enter commits (Shift+Enter allows a newline)
-    td.addEventListener('keydown', (e) => {
-        if (e.isComposing) { return; }
-        e.stopPropagation();
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            td.blur();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            td.textContent = td.dataset['orig'] ?? '';
-            td.blur();
-        } else if (e.key === 'Tab') {
-            e.preventDefault();
-            td.blur();
-            const idx = currentFmEntries.indexOf(entry);
-            if (field === 'key') {
-                // Move to the value cell of the same row
-                const valTd = td.nextElementSibling as HTMLElement | null;
-                if (valTd?.contentEditable === 'true') { valTd.focus(); }
-            } else {
-                // Move to the next row's key cell, or add a new row
-                const nextRow = tbody.children[idx + 1] as HTMLElement | undefined;
-                if (nextRow) {
-                    const nextKeyTd = nextRow.querySelector('.fm-key') as HTMLElement | null;
-                    nextKeyTd?.focus();
-                } else {
-                    addNewRow(tbody, panel);
-                }
-            }
-        }
-    });
-
-    td.addEventListener('blur', () => {
+    /**
+     * Commits the cell's current text. Idempotent for unchanged values, so
+     * Enter (commit in place) followed by blur (commit again) is safe.
+     */
+    const commitCell = (): void => {
         const newVal = (td.textContent ?? '').trim();
         if (field === 'key' && newVal.length === 0) {
             // Keys must not be empty; restore the previous value
@@ -326,10 +395,76 @@ function bindFmCell(
         }
         if (newVal !== entry[field]) {
             entry[field] = newVal;
+            if (field === 'key') {
+                // Keep the row's dynamic accessible names in sync with the rename
+                const tr = td.closest('tr');
+                tr?.querySelector('.fm-delete-btn')?.setAttribute('aria-label', deleteFieldAriaLabel(entry.key));
+                const valTd = tr?.querySelector('.fm-val[role="textbox"]');
+                valTd?.setAttribute('aria-label', entry.key || t('Field value'));
+            }
             commitFrontmatterChange();
         }
         td.dataset['orig'] = entry[field];
+    };
+
+    td.addEventListener('keydown', (e) => {
+        if (e.isComposing) { return; }
+        // Undo/redo chords come first and are always swallowed (VS Code /
+        // ProseMirror must never see them). Uncommitted local typing reverts
+        // to the last committed cell value before the shared history engages.
+        const chord = undoChordOf(e);
+        if (chord) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (chord === 'undo' && (td.textContent ?? '') !== (td.dataset['orig'] ?? '')) {
+                td.textContent = td.dataset['orig'] ?? '';
+                return; // local revert only; stay focused
+            }
+            handleFmHistoryChord(chord);
+            return;
+        }
+        e.stopPropagation();
+        if (e.key === 'Enter' && !e.shiftKey) {
+            // Enter commits in place (focus stays, so Cmd+Z keeps working)
+            e.preventDefault();
+            commitCell();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            td.textContent = td.dataset['orig'] ?? '';
+            td.blur();
+        } else if (e.key === 'Tab') {
+            e.preventDefault();
+            const idx = currentFmEntries.indexOf(entry);
+            if (e.shiftKey) {
+                // Backward: value → key (same row); key → the previous row's
+                // value. Shift+Tab must NEVER create a row (that was the bug:
+                // it fell through to the forward branch and added one).
+                if (field === 'value') {
+                    (td.previousElementSibling as HTMLElement | null)?.focus();
+                } else {
+                    const prevRow = tbody.children[idx - 1] as HTMLElement | undefined;
+                    focusRowValue(prevRow) || focusRowKey(prevRow);
+                    // First row's key has nowhere to go back to: stay put.
+                }
+            } else {
+                // Forward: key → value (same row); value → next row's key, or a
+                // new row when this is the last one (a metadata-editor nicety).
+                if (field === 'key') {
+                    const valTd = td.nextElementSibling as HTMLElement | null;
+                    if (valTd?.contentEditable === 'true') { valTd.focus(); }
+                } else {
+                    const nextRow = tbody.children[idx + 1] as HTMLElement | undefined;
+                    if (nextRow) {
+                        focusRowKey(nextRow);
+                    } else {
+                        addNewRow(tbody, panel);
+                    }
+                }
+            }
+        }
     });
+
+    td.addEventListener('blur', commitCell);
 }
 
 /** Builds one editable list chip (click to edit, × to remove, empty commit removes). */
@@ -346,8 +481,12 @@ function createFmChip(
     text.className = 'fm-chip-text';
     text.textContent = item.value;
     text.contentEditable = 'true';
+    text.setAttribute('contenteditable', 'true'); // jsdom focusability, see bindFmCell
     text.spellcheck = false;
     text.dataset['orig'] = item.value;
+    text.setAttribute('role', 'textbox');
+    text.setAttribute('aria-multiline', 'false');
+    text.setAttribute('aria-label', item.value || t('Field value'));
 
     // Suggestion dropdown while the chip text is being edited: opened on
     // focus, live-filtered by the chip's current text, closed on blur/Escape.
@@ -404,6 +543,21 @@ function createFmChip(
 
     text.addEventListener('keydown', (e) => {
         if (e.isComposing) { return; }
+        // Undo/redo chords first (always swallowed): uncommitted chip typing
+        // reverts locally; otherwise the shared committed-state history runs.
+        const chord = undoChordOf(e);
+        if (chord) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (chord === 'undo' && (text.textContent ?? '') !== (text.dataset['orig'] ?? '')) {
+                text.textContent = text.dataset['orig'] ?? '';
+                suggest?.setQuery((text.textContent ?? '').trim());
+                return; // local revert only; stay focused
+            }
+            suggest?.close();
+            handleFmHistoryChord(chord);
+            return;
+        }
         e.stopPropagation();
         const menuOpen = suggest !== null && suggest.isOpen();
         if (e.key === 'Enter') {
@@ -442,16 +596,17 @@ function createFmChip(
     // the focus really left the chip.
     text.addEventListener('blur', () => commitChip());
 
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'fm-chip-remove';
-    removeBtn.innerHTML = IconX;
-    removeBtn.title = t('Delete');
-    removeBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        entry.list!.items = entry.list!.items.filter((it) => it !== item);
-        commitFrontmatterChange();
-        rebuildFmTable(tbody, panel);
+    const removeBtn = createButton({
+        className: 'fm-chip-remove',
+        icon: IconX,
+        title: t('Remove item'),
+        ariaLabel: `${t('Remove item')}: "${item.value}"`,
+        tooltipPlacement: 'above',
+        onClick: () => {
+            entry.list!.items = entry.list!.items.filter((it) => it !== item);
+            commitFrontmatterChange();
+            rebuildFmTable(tbody, panel);
+        },
     });
 
     chip.appendChild(text);
@@ -473,35 +628,65 @@ function bindFmListCell(
         chips.appendChild(createFmChip(item, entry, tbody, panel));
     }
 
-    const addBtn = document.createElement('button');
-    addBtn.className = 'fm-chip-add';
-    addBtn.innerHTML = IconPlus;
-    addBtn.title = t('Add item');
-    addBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openFmSuggestMenu({
-            anchor: addBtn,
-            key: entry.key,
-            existing: entry.list!.items.map((it) => it.value),
-            onSelect: (value) => {
-                // The panel may have been re-rendered (e.g. an external revert)
-                // while the menu was open; a pick against an entry that is no
-                // longer part of the current panel must not commit anything.
-                if (!currentFmEntries.includes(entry)) { return; }
-                entry.list!.items.push({ value });
-                commitFrontmatterChange();
-                rebuildFmTable(tbody, panel);
-            },
-        });
+    const addBtn = createButton({
+        className: 'fm-chip-add',
+        icon: IconPlus,
+        title: t('Add item'),
+        tooltipPlacement: 'above',
+        onClick: () => {
+            openFmSuggestMenu({
+                anchor: addBtn,
+                key: entry.key,
+                existing: entry.list!.items.map((it) => it.value),
+                onSelect: (value) => {
+                    // The panel may have been re-rendered (e.g. an external revert)
+                    // while the menu was open; a pick against an entry that is no
+                    // longer part of the current panel must not commit anything.
+                    if (!currentFmEntries.includes(entry)) { return; }
+                    entry.list!.items.push({ value });
+                    commitFrontmatterChange();
+                    rebuildFmTable(tbody, panel);
+                },
+            });
+        },
     });
     chips.appendChild(addBtn);
     td.appendChild(chips);
 }
 
 /** Creates one editable table row (contenteditable td, direct typing). */
-function createFmRow(entry: FmEntry, index: number, tbody: HTMLElement, panel: HTMLElement): HTMLTableRowElement {
+function createFmRow(entry: FmEntry, tbody: HTMLElement, panel: HTMLElement): HTMLTableRowElement {
     const tr = document.createElement('tr');
+
+    // delete button (first cell, left of the key)
+    const tdDel = document.createElement('td');
+    tdDel.className = 'fm-action';
+    const delBtn = createButton({
+        className: 'fm-delete-btn',
+        icon: IconTrash2,
+        title: t('Delete field'),
+        ariaLabel: deleteFieldAriaLabel(entry.key),
+        tooltipPlacement: 'above',
+        onClick: () => {
+            const idx = currentFmEntries.indexOf(entry);
+            if (idx === -1) { return; }
+            currentFmEntries.splice(idx, 1);
+            commitFrontmatterChange();
+            rebuildFmTable(tbody, panel);
+            // Keep keyboard flow (and a follow-up Cmd+Z) from being stranded:
+            // focus the row that took this index, else the previous row's key
+            // cell, else the "Add field" button when the table emptied.
+            const rows = tbody.children;
+            const nextRow = rows[Math.min(idx, rows.length - 1)];
+            const nextKey = nextRow?.querySelector('.fm-key') as HTMLElement | null;
+            if (nextKey) {
+                nextKey.focus();
+            } else {
+                (panel.querySelector('.fm-add-btn') as HTMLElement | null)?.focus();
+            }
+        },
+    });
+    tdDel.appendChild(delBtn);
 
     // key cell
     const tdKey = document.createElement('td');
@@ -517,41 +702,45 @@ function createFmRow(entry: FmEntry, index: number, tbody: HTMLElement, panel: H
         bindFmCell(tdVal, entry, 'value', tbody, panel);
     }
 
-    // delete button
-    const tdDel = document.createElement('td');
-    tdDel.className = 'fm-action';
-    const delBtn = document.createElement('button');
-    delBtn.className = 'fm-delete-btn';
-    delBtn.innerHTML = IconX;
-    delBtn.title = t('Delete');
-    delBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        currentFmEntries.splice(index, 1);
-        commitFrontmatterChange();
-        rebuildFmTable(tbody, panel);
-    });
-    tdDel.appendChild(delBtn);
-
+    tr.appendChild(tdDel);
     tr.appendChild(tdKey);
     tr.appendChild(tdVal);
-    tr.appendChild(tdDel);
+
+    // A freshly added row abandoned while still fully empty is discarded once
+    // focus leaves the row (mirrors abandoned chips), so repeated "Add field"
+    // clicks never accumulate ghost rows. The blur commit runs synchronously
+    // before focusout, so by timeout time entry.key/value reflect any typing.
+    if (entry.origLine === undefined && !entry.list) {
+        tr.addEventListener('focusout', () => {
+            setTimeout(() => {
+                if (!tr.isConnected || tr.contains(document.activeElement)) { return; }
+                if (entry.key !== '' || entry.value !== '') { return; }
+                const idx = currentFmEntries.indexOf(entry);
+                if (idx === -1) { return; }
+                currentFmEntries.splice(idx, 1);
+                // The entry was never serialized, so nothing to commit; remove
+                // the row in place (a rebuild would steal focus from siblings).
+                tr.remove();
+            }, 0);
+        });
+    }
+
     return tr;
 }
 
 /** Rebuilds the table tbody content. */
 function rebuildFmTable(tbody: HTMLElement, panel: HTMLElement): void {
     tbody.innerHTML = '';
-    currentFmEntries.forEach((entry, i) => {
-        tbody.appendChild(createFmRow(entry, i, tbody, panel));
-    });
+    for (const entry of currentFmEntries) {
+        tbody.appendChild(createFmRow(entry, tbody, panel));
+    }
 }
 
 /** Adds a new row. */
 function addNewRow(tbody: HTMLElement, panel: HTMLElement): void {
     const newEntry: FmEntry = { key: '', value: '' };
     currentFmEntries.push(newEntry);
-    const tr = createFmRow(newEntry, currentFmEntries.length - 1, tbody, panel);
+    const tr = createFmRow(newEntry, tbody, panel);
     tbody.appendChild(tr);
     // Focus the key cell automatically
     const keyTd = tr.querySelector('.fm-key') as HTMLElement | null;
@@ -581,10 +770,15 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
 
     const textarea = document.createElement('textarea');
     textarea.className = 'fm-raw-editor';
+    textarea.id = FM_CONTENT_ID;
     textarea.value = committed;
     textarea.spellcheck = false;
     textarea.setAttribute('aria-label', t('Edit metadata as YAML'));
     textarea.rows = Math.max(committed.split('\n').length, 2);
+    // Local typing undo (VS Code swallows Cmd+Z before the textarea sees it).
+    // Its chord handler swallows the chord first; the panel's committed-state
+    // undo remains reachable once focus moves to the toggle/panel.
+    attachInputUndo(textarea);
 
     const setInvalid = (message: string | null): void => {
         if (message !== null) {
@@ -626,36 +820,76 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
         setInvalid(null);
         committed = restoreEol(textarea.value);
         textarea.rows = Math.max(toLf(committed).split('\n').length, 2);
-        notifyFrontmatterUpdate(prefix + committed + suffix);
+        // Same history bookkeeping as the table path, so raw edits are undoable
+        recordFmCommit(prefix + committed + suffix);
     });
     return textarea;
 }
 
-/** Renders the frontmatter panel before #editor; removes it when there is no frontmatter. */
+/**
+ * Renders the frontmatter panel before #editor; removes it when there is no
+ * frontmatter. This is the external entry point (init / external update /
+ * revert), so it also resets the panel-local undo/redo history.
+ */
 export function renderFrontmatterPanel(frontmatter: string | undefined): void {
+    fmUndoStack = [];
+    fmRedoStack = [];
+    lastCommittedFm = frontmatter ?? '';
+
+    // No frontmatter → clear state and remove the panel
+    if (!frontmatter) {
+        closeActiveFmSuggestMenu();
+        currentFmEntries = [];
+        currentFmRaw = '';
+        document.getElementById('frontmatter-panel')?.remove();
+        const editorEl = document.getElementById('editor');
+        if (editorEl) { editorEl.style.paddingTop = ''; }
+        return;
+    }
+
+    renderFmContent(frontmatter);
+}
+
+/**
+ * (Re)builds the panel content from a raw block WITHOUT touching the undo
+ * history — undo/redo re-render through this. An empty raw renders an empty
+ * table (the panel survives a delete-all so the user can undo or re-add).
+ */
+function renderFmContent(frontmatter: string): void {
     // A re-render replaces every row: any open suggest menu would be left
     // anchored to a detached element and its pick would target stale entries.
     closeActiveFmSuggestMenu();
     const existing = document.getElementById('frontmatter-panel');
     const editorEl = document.getElementById('editor');
 
-    // No frontmatter → clear state and remove the panel
-    if (!frontmatter) {
-        currentFmEntries = [];
-        currentFmRaw = '';
-        existing?.remove();
-        if (editorEl) { editorEl.style.paddingTop = ''; }
-        return;
-    }
-
     currentFmRaw = frontmatter;
     // Tabular = flat scalars plus simple lists; anything richer edits as raw YAML.
-    const tabular = parseTabularFrontmatter(frontmatter);
+    const tabular = frontmatter === '' ? [] : parseTabularFrontmatter(frontmatter);
 
     const panel = existing ?? document.createElement('div');
     panel.id = 'frontmatter-panel';
     panel.className = 'frontmatter-panel';
+    // Focusable so a click on empty panel chrome lands focus on the panel
+    // itself (not <body>), keeping the undo/redo chord below reachable. Cells
+    // and buttons are more specific click targets, so this only catches blank
+    // space; -1 keeps it out of the Tab order.
+    panel.tabIndex = -1;
     panel.innerHTML = '';
+
+    // Undo/redo chords anywhere on the panel (e.g. focus on its buttons) run
+    // the committed-state history. Cells, chips, and the raw textarea consume
+    // the chord themselves before it can bubble here. Bind once per element:
+    // re-renders reuse the panel node, and a duplicate listener would double-pop.
+    if (!panel.dataset['fmChordBound']) {
+        panel.dataset['fmChordBound'] = 'true';
+        panel.addEventListener('keydown', (e) => {
+            const chord = undoChordOf(e);
+            if (!chord) { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            handleFmHistoryChord(chord);
+        });
+    }
 
     if (tabular !== null) {
         // Keep the panel even when entries are empty (lets the user add rows later)
@@ -663,10 +897,11 @@ export function renderFrontmatterPanel(frontmatter: string | undefined): void {
 
         const table = document.createElement('table');
         table.className = 'frontmatter-table';
+        table.id = FM_CONTENT_ID;
         const tbody = document.createElement('tbody');
-        tabular.forEach((entry, i) => {
-            tbody.appendChild(createFmRow(entry, i, tbody, panel));
-        });
+        for (const entry of tabular) {
+            tbody.appendChild(createFmRow(entry, tbody, panel));
+        }
         table.appendChild(tbody);
         panel.appendChild(table);
 
@@ -675,14 +910,11 @@ export function renderFrontmatterPanel(frontmatter: string | undefined): void {
         addRow.className = 'fm-add-row';
         addRow.appendChild(createToggleButton(panel));
 
-        const addBtn = document.createElement('button');
-        addBtn.className = 'fm-add-btn';
-        addBtn.innerHTML = `${IconPlus} <span>${t('Add field')}</span>`;
-        addBtn.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            addNewRow(tbody, panel);
+        const addBtn = createButton({
+            className: 'fm-add-btn',
+            onClick: () => addNewRow(tbody, panel),
         });
+        addBtn.innerHTML = `${IconPlus} <span>${t('Add field')}</span>`;
         addRow.appendChild(addBtn);
         panel.appendChild(addRow);
     } else {
@@ -711,8 +943,9 @@ export function focusFrontmatterPanel(): void {
     if (!panel) { return; }
     if (panel.classList.contains("collapsed")) {
         const toggle = panel.querySelector(".fm-toggle-btn") as HTMLElement | null;
-        // The toggle flips the collapsed state on mousedown (see createToggleButton).
-        toggle?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        // element.click() fires with detail 0, which createButton's keyboard
+        // branch handles (no synthetic mouse events needed).
+        toggle?.click();
     }
     panel.scrollIntoView({ block: "nearest" });
     const first = panel.querySelector(".fm-key, .fm-raw-editor") as HTMLElement | null;
@@ -721,15 +954,15 @@ export function focusFrontmatterPanel(): void {
 
 /** Creates the collapse/expand toggle button and applies the persisted state. */
 function createToggleButton(panel: HTMLElement): HTMLButtonElement {
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'fm-toggle-btn';
-    toggleBtn.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const collapsed = !panel.classList.contains('collapsed');
-        setFmCollapsed(collapsed);
-        applyFmCollapsed(panel, toggleBtn, collapsed);
+    const toggleBtn = createButton({
+        className: 'fm-toggle-btn',
+        onClick: () => {
+            const collapsed = !panel.classList.contains('collapsed');
+            setFmCollapsed(collapsed);
+            applyFmCollapsed(panel, toggleBtn, collapsed);
+        },
     });
+    toggleBtn.setAttribute('aria-controls', FM_CONTENT_ID);
     applyFmCollapsed(panel, toggleBtn, isFmCollapsed());
     return toggleBtn;
 }

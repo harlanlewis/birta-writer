@@ -209,8 +209,8 @@ describe("wikilink popup and click routing", () => {
         expect(document.querySelector(".lp-url")?.textContent).toBe("my page#head");
         // Editable (the format switch owns conversions), resting on wikilink.
         expect(document.querySelector<HTMLElement>(".lp-btn-edit")?.style.display).toBe("");
-        const active = document.querySelector(".lfs-btn--active");
-        expect(active?.textContent).toBe("[[wiki]]");
+        const select = document.querySelector<HTMLSelectElement>(".lfs-select");
+        expect(select?.value).toBe("wikilink");
     });
 
     it("modifier-click sends openFile with the wiki flag", () => {
@@ -258,12 +258,25 @@ describe("link format switch", () => {
         await editor.destroy();
     });
 
-    function lfsButton(label: string): HTMLButtonElement {
-        const btn = Array.from(
-            document.querySelectorAll<HTMLButtonElement>(".lfs-btn"),
-        ).find((b) => b.textContent === label);
-        expect(btn).toBeDefined();
-        return btn!;
+    function formatSelect(): HTMLSelectElement {
+        const sel = document.querySelector<HTMLSelectElement>(".lfs-select");
+        expect(sel).not.toBeNull();
+        return sel!;
+    }
+
+    function wikiOption(): HTMLOptionElement {
+        const opt = Array.from(formatSelect().options).find(
+            (o) => o.value === "wikilink",
+        );
+        expect(opt).toBeDefined();
+        return opt!;
+    }
+
+    /** Choose a format the way a user would: set the value and fire change. */
+    function chooseFormat(value: "markdown" | "wikilink"): void {
+        const sel = formatSelect();
+        sel.value = value;
+        sel.dispatchEvent(new Event("change", { bubbles: true }));
     }
 
     function clickEdit(): void {
@@ -274,7 +287,7 @@ describe("link format switch", () => {
     it("converts a markdown link to a wikilink in place", async () => {
         await hover(container.querySelector('a[href="page.md"]')!);
         clickEdit();
-        lfsButton("[[wiki]]").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        chooseFormat("wikilink");
         commitEdit();
 
         const out = editor.action(getMarkdown());
@@ -285,7 +298,7 @@ describe("link format switch", () => {
     it("converts a wikilink to a markdown link in place", async () => {
         await hover(container.querySelector('a[data-type="wiki-link"]')!);
         clickEdit();
-        lfsButton("markdown").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        chooseFormat("markdown");
         commitEdit();
 
         const out = editor.action(getMarkdown());
@@ -297,16 +310,16 @@ describe("link format switch", () => {
         await hover(container.querySelector('a[href="https://example.com/x"]')!);
         clickEdit();
 
-        expect(lfsButton("[[wiki]]").disabled).toBe(true);
-        expect(lfsButton("markdown").classList.contains("lfs-btn--active")).toBe(true);
+        expect(wikiOption().disabled).toBe(true);
+        expect(formatSelect().value).toBe("markdown");
     });
 
     it("defaults an existing markdown link to markdown format", async () => {
         await hover(container.querySelector('a[href="page.md"]')!);
         clickEdit();
 
-        expect(lfsButton("markdown").classList.contains("lfs-btn--active")).toBe(true);
-        expect(lfsButton("[[wiki]]").disabled).toBe(false);
+        expect(formatSelect().value).toBe("markdown");
+        expect(wikiOption().disabled).toBe(false);
     });
 });
 

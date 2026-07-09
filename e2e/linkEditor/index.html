@@ -1,0 +1,56 @@
+<!-- e2e harness page for the link editor (the hover popup opened for insert).
+     Mirrors the provider template (src/MarkdownEditorProvider.ts) with
+     acquireVsCodeApi stubbed. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-input-placeholderForeground: #888888;
+    --vscode-input-border: rgba(128, 128, 128, 0.4);
+    --vscode-dropdown-background: #3c3c3c;
+    --vscode-dropdown-foreground: #cccccc;
+    --vscode-dropdown-border: #3c3c3c;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-button-background: #0e639c;
+    --vscode-button-foreground: #ffffff;
+    --vscode-widget-shadow: rgba(0, 0, 0, 0.36);
+    --vscode-list-activeSelectionBackground: #094771;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, smartLinks: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: "# Sample\n\nThe quick brown fox jumps over.\n",
+          syncVersion: 1,
+        }, "*");
+      }
+      // Link-target autocomplete: return nothing so the dropdown stays out of the way.
+      if (msg.type === "getLinkTargetSuggestions") {
+        window.postMessage({ type: "linkTargetSuggestions", id: msg.id, items: [] }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

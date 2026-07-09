@@ -1,10 +1,10 @@
 /**
- * Toolbar Insert/Edit Link prompt tests: the openLinkPrompt controller
- * method (behind the toolbar link button and the routed insertLink editor
- * command, whose contributed Cmd/Ctrl+K keybinding is user-rebindable)
- * opens the two-input prompt against the REAL Milkdown editor — with a
- * selection it pre-fills the link text and links the selected range, without
- * one it inserts new linked text at the caret.
+ * Toolbar Insert/Edit Link tests: the openLinkPrompt controller method
+ * (behind the toolbar link button and the routed insertLink editor command,
+ * whose contributed Cmd/Ctrl+K keybinding is user-rebindable) opens the
+ * single link editor (the hover popup) against the REAL Milkdown editor —
+ * with a selection it pre-fills the link text and links the selected range,
+ * without one it inserts new linked text at the caret.
  * acquireVsCodeApi is injected globally by setup.ts.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -15,12 +15,13 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { Mark } from "@milkdown/prose/model";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";
+import { setupLinkPopup } from "../components/linkPopup";
 import { runEditorCommand } from "../editorCommands";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
     document.body.appendChild(root);
-    return Editor.make()
+    const editor = await Editor.make()
         .config((ctx) => {
             ctx.set(rootCtx, root);
             ctx.set(defaultValueCtx, markdown);
@@ -29,18 +30,40 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfm)
         .create();
+    // The toolbar's openLinkPrompt routes through the shared link editor (the
+    // hover popup singleton); wire it to this editor's view.
+    const v = editor.action((ctx) => ctx.get(editorViewCtx));
+    setupLinkPopup(root, () => v);
+    return editor;
 }
 
 function view(editor: Editor): EditorView {
     return editor.action((ctx) => ctx.get(editorViewCtx));
 }
 
+/** The currently-shown link editor popup (the latest open one). */
+function linkPopup(): HTMLElement {
+    const shown = Array.from(
+        document.querySelectorAll<HTMLElement>(".lp-root"),
+    ).find((p) => p.style.display !== "none");
+    expect(shown).toBeTruthy();
+    return shown!;
+}
+
+/** True when no link editor popup is visible. */
+function popupClosed(): boolean {
+    return !Array.from(
+        document.querySelectorAll<HTMLElement>(".lp-root"),
+    ).some((p) => p.style.display !== "none");
+}
+
 function promptInputs(): { text: HTMLInputElement; url: HTMLInputElement } {
-    const overlay = document.querySelector(".tb-prompt-overlay");
-    expect(overlay).not.toBeNull();
-    const inputs = overlay!.querySelectorAll("input");
-    expect(inputs).toHaveLength(2);
-    return { text: inputs[0], url: inputs[1] };
+    const popup = linkPopup();
+    const text = popup.querySelector<HTMLInputElement>(".lp-text-input");
+    const url = popup.querySelector<HTMLInputElement>(".lp-url-input");
+    expect(text).not.toBeNull();
+    expect(url).not.toBeNull();
+    return { text: text!, url: url! };
 }
 
 function pressEnter(input: HTMLInputElement): void {
@@ -94,7 +117,7 @@ describe("toolbar openLinkPrompt", () => {
         pressEnter(url);
 
         // Assert — the selected text now carries the link
-        expect(document.querySelector(".tb-prompt-overlay")).toBeNull();
+        expect(popupClosed()).toBe(true);
         expect(v.state.doc.textContent).toBe("hello world");
         expect(linkedTexts(v)).toEqual([
             { text: "hello", href: "https://example.com" },
@@ -230,7 +253,7 @@ describe("toolbar openLinkPrompt", () => {
         );
 
         // Assert
-        expect(document.querySelector(".tb-prompt-overlay")).toBeNull();
+        expect(popupClosed()).toBe(true);
         expect(linkedTexts(v)).toEqual([]);
         expect(v.state.doc.textContent).toBe("hello world");
     });

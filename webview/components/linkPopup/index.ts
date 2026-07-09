@@ -20,8 +20,40 @@ import {
 } from "@/components/pathLink/linkTargetComplete";
 import { createLinkFormatSwitch, wikiAllowedFor } from "@/ui/formatSwitch";
 import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
+import { setPendingRange } from "@/plugins/pendingRange";
 
 // ── Types ─────────────────────────────────────────────────────────────
+
+/** Viewport rect of the target range (matches DOMRect's edges). */
+export interface LinkEditorAnchorRect {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+}
+
+/** Options for opening the popup as an insert/edit-link editor (see openLinkEditor). */
+export interface OpenLinkEditorOpts {
+    view: EditorView;
+    anchorRect: LinkEditorAnchorRect;
+    from: number;
+    to: number;
+    text: string;
+    href: string;
+    wiki?: boolean;
+}
+
+/**
+ * Opens the single link editor (the hover popup) as an insert/edit surface,
+ * anchored at `anchorRect`. Wired by setupLinkPopup below; a no-op until the
+ * popup has been set up. This is the entry point the toolbar link button,
+ * Cmd/Ctrl+K, and the slash menu all route through.
+ */
+export function openLinkEditor(opts: OpenLinkEditorOpts): void {
+    linkEditorHandle?.(opts);
+}
+
+let linkEditorHandle: ((opts: OpenLinkEditorOpts) => void) | null = null;
 
 interface LinkInfo {
     href: string;
@@ -338,6 +370,13 @@ export function setupLinkPopup(
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     let currentLink: LinkInfo | null = null;
     let isEditMode = false;
+    // True while the popup was opened as an insert/edit editor (toolbar,
+    // Cmd/Ctrl+K, slash menu) rather than by a hover — drives the pending-range
+    // highlight lifecycle and the return-focus-to-editor on close.
+    let insertMode = false;
+    // Whether a pending-range highlight is currently painted (so a close that
+    // never entered edit mode never dispatches a needless clearing transaction).
+    let pendingActive = false;
     // The last values applied to the document — blur/Enter apply only real
     // changes, never a no-op transaction per focus move.
     let lastApplied: { text: string; href: string; format: string } | null = null;
@@ -359,10 +398,42 @@ export function setupLinkPopup(
         if (on) {
             // The hint follows the editing surface: under the URL input.
             body.insertBefore(resolvedHint, bodyActions);
+            // Highlight the target range so it stays visibly marked while
+            // focus lives in the popup's inputs (a caret insert has from===to,
+            // which the plugin treats as "nothing to highlight").
+            highlightPending();
             requestAnimationFrame(() => inputText.focus());
         } else {
             popup.insertBefore(resolvedHint, body);
+            clearPending();
         }
+    }
+
+    /**
+     * getView(), but only when its editor DOM is still connected. A torn-down
+     * editing session (afterEach destroy in tests) leaves a stale singleton
+     * whose view must never be dispatched to.
+     */
+    function liveView(): EditorView | null {
+        const view = getView();
+        return view && view.dom.isConnected ? view : null;
+    }
+
+    /** Paint the pending-range highlight over the current link's bounds. */
+    function highlightPending(): void {
+        if (!currentLink) { return; }
+        const view = liveView();
+        if (!view) { return; }
+        setPendingRange(view, { from: currentLink.from, to: currentLink.to });
+        pendingActive = true;
+    }
+
+    /** Clear the pending-range highlight (no-op when nothing is pending). */
+    function clearPending(): void {
+        if (!pendingActive) { return; }
+        pendingActive = false;
+        const view = liveView();
+        if (view) { setPendingRange(view, null); }
     }
 
     /**
@@ -444,36 +515,81 @@ export function setupLinkPopup(
         // Reference links are openable but not editable (editing would convert
         // them to inline links and destroy the reference form).
         btnEdit.style.display = link.readOnly ? "none" : "";
+        btnOpen.style.display = ""; // reset from any prior insert open
 
         updatePopupContent(link);
 
-        // Position
-        const rect = anchorEl.getBoundingClientRect();
+        // Position (viewport rect of the hovered anchor).
+        popup.style.display = "flex";
+        positionPopupAt(anchorEl.getBoundingClientRect());
+    }
+
+    /**
+     * Flip/clamp the popup against a viewport `rect`, keeping it on screen.
+     * Shared by hover-show and insert-open; requires the popup already
+     * displayed so its height/width can be measured.
+     */
+    function positionPopupAt(rect: LinkEditorAnchorRect): void {
+        // Synchronous, not deferred to a frame: the insert path focuses an input
+        // right after this, which scrolls an unplaced popup (sitting at the
+        // bottom of the flow) into view — a later frame would then read the
+        // bumped window.scrollY and place the popup far below its anchor. The
+        // caller sets display:flex first, so offsetHeight is measurable now.
+        const popupH = popup.offsetHeight;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        let top: number;
+        if (spaceBelow >= popupH + 8 || spaceBelow >= spaceAbove) {
+            top = rect.bottom + window.scrollY + 6;
+        } else {
+            top = rect.top + window.scrollY - popupH - 6;
+        }
+
+        let left = rect.left + window.scrollX;
+        const popupW = popup.offsetWidth;
+        if (left + popupW > window.innerWidth - 8) {
+            left = window.innerWidth - popupW - 8;
+        }
+        if (left < 8) left = 8;
+
+        popup.style.top = `${top}px`;
+        popup.style.left = `${left}px`;
+    }
+
+    /**
+     * Opens the popup as an insert/edit-link editor at `anchorRect`, in edit
+     * mode with the fields prefilled. A caret open (from === to) has nothing
+     * to open yet, so the header's open button is hidden and the URL shows a
+     * neutral "New link" until a target is applied.
+     */
+    function openForInsert(opts: OpenLinkEditorOpts): void {
+        clearHideTimer();
+        clearHoverTimer();
+        insertMode = true;
+        currentLink = {
+            from: opts.from,
+            to: opts.to,
+            text: opts.text,
+            href: opts.href,
+            wiki: opts.wiki || undefined,
+            readOnly: false,
+        };
+        btnEdit.style.display = "";
         popup.style.display = "flex";
 
-        // Show it first so the popup height can be measured
-        requestAnimationFrame(() => {
-            const popupH = popup.offsetHeight;
-            const spaceBelow = window.innerHeight - rect.bottom;
-            const spaceAbove = rect.top;
+        updatePopupContent(currentLink);
+        setEditMode(true); // expands the body, highlights the range, focuses text
 
-            let top: number;
-            if (spaceBelow >= popupH + 8 || spaceBelow >= spaceAbove) {
-                top = rect.bottom + window.scrollY + 6;
-            } else {
-                top = rect.top + window.scrollY - popupH - 6;
-            }
+        // A fresh insert has no target to open yet.
+        const hasHref = currentLink.href.trim().length > 0;
+        btnOpen.style.display = hasHref ? "" : "none";
+        if (!hasHref) {
+            urlEl.textContent = t("New link");
+            urlEl.title = "";
+        }
 
-            let left = rect.left + window.scrollX;
-            const popupW = popup.offsetWidth;
-            if (left + popupW > window.innerWidth - 8) {
-                left = window.innerWidth - popupW - 8;
-            }
-            if (left < 8) left = 8;
-
-            popup.style.top = `${top}px`;
-            popup.style.left = `${left}px`;
-        });
+        positionPopupAt(opts.anchorRect);
     }
 
     function hidePopup(): void {
@@ -481,6 +597,12 @@ export function setupLinkPopup(
         clearHoverTimer();
         resolveGeneration++;
         if (resolveDebounce) { clearTimeout(resolveDebounce); resolveDebounce = null; }
+        // Clear the pending-range highlight and, for an insert-opened editor,
+        // hand focus back to the editor. Runs on every close path (Escape,
+        // outside-click, blur, mouseleave) exactly once.
+        clearPending();
+        if (insertMode) { liveView()?.focus(); }
+        insertMode = false;
         popup.style.display = "none";
         currentLink = null;
         lastApplied = null;
@@ -704,6 +826,20 @@ export function setupLinkPopup(
                 );
             }
             newTo = from + text.length;
+        } else if (from === to) {
+            // Markdown insert at a caret: new linked text (the text field, or
+            // the URL itself when no text was given) inserted at `from`.
+            const insertText = newText || newHref;
+            if (!insertText) { return; }
+            tr = tr.replaceWith(from, to, state.schema.text(insertText));
+            if (newHref) {
+                tr = tr.addMark(
+                    from,
+                    from + insertText.length,
+                    linkType.create({ href: newHref, title: null }),
+                );
+            }
+            newTo = from + insertText.length;
         } else if (newText && newText !== currentLink.text) {
             tr = tr.replaceWith(from, to, state.schema.text(newText));
             if (newHref) {
@@ -828,4 +964,8 @@ export function setupLinkPopup(
             hidePopup();
         }
     });
+
+    // Expose the insert/edit entry point for the toolbar, Cmd/Ctrl+K, and the
+    // slash menu (see openLinkEditor above).
+    linkEditorHandle = openForInsert;
 }
