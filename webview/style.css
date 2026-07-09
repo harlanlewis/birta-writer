@@ -101,7 +101,7 @@ html {
        keys tracking the body column in every docked/collapsed state. The table
        has no frame border, so the key text sits `--fm-key-inset` in from this
        padding edge, landing at the content column; the per-row trash button and
-       the "#H1" heading badges share the gutter line to the left of it. */
+       the `#`/`##` heading markers share the gutter line to the left of it. */
     --editor-content-left-padding: 76px;
     --fm-key-inset: 9px;
     padding-left: calc(var(--editor-content-left-padding) - var(--fm-key-inset));
@@ -187,7 +187,7 @@ html {
 
 /* Row delete button (trash can) — lifted into the left gutter, right-aligned so
    its right edge lands on the ~66px gutter line shared by the key column's left
-   edge and the "#H1" heading badges, and vertically centered on its row.
+   edge and the `#`/`##` heading markers, and vertically centered on its row.
    `right: 100%` pushes it fully left of the zero-width anchor cell; `margin-right`
    nudges the right edge onto the gutter/badge line. */
 .fm-delete-btn {
@@ -561,7 +561,10 @@ body.editor-width-auto {
             align-items: center;
             justify-content: flex-end;
             gap: 4px;
-            width: 58px;
+            /* Wide enough for the deepest marker (`######` + the fold chevron).
+               The box is right-aligned against the text, so the extra room
+               extends leftward into the margin. */
+            width: 66px;
             height: 1.3em;
             color: var(--vscode-descriptionForeground);
             font-weight: 600;
@@ -576,7 +579,11 @@ body.editor-width-auto {
         }
 
         .heading-fold-marker {
-            font-size: 1rem;
+            /* Monospace so the hashes read as literal Markdown source and stay
+               compact/predictable in width (a proportional font makes six
+               hashes run long). Fixed size regardless of heading level. */
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.95rem;
             line-height: 1;
             opacity: 0.55;
         }
@@ -632,7 +639,7 @@ body.editor-width-auto {
         @media (max-width: 720px) {
             .heading-fold-gutter {
                 left: -6px;
-                width: 46px;
+                width: 56px;
                 gap: 2px;
             }
         }
@@ -916,7 +923,8 @@ body.editor-width-auto {
     align-items: center;
     justify-content: flex-end;
     gap: 4px;
-    width: 58px;
+    /* Matches the in-document gutter — wide enough for `######` + the chevron. */
+    width: 66px;
     height: 1.3em;
     color: var(--vscode-descriptionForeground);
     line-height: 1;
@@ -959,7 +967,9 @@ body.editor-width-auto {
 }
 
 .heading-sticky-marker {
-    font-size: 1rem;
+    /* Monospace literal hashes, matching the in-document gutter marker. */
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.95rem;
     line-height: 1;
     opacity: 0.75;
 }
@@ -974,7 +984,7 @@ body.editor-width-auto {
 @media (max-width: 720px) {
     .heading-sticky-gutter {
         left: -6px;
-        width: 46px;
+        width: 56px;
     }
 }
 

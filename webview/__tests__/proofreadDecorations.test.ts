@@ -56,9 +56,9 @@ function decoratedTexts(doc: import("@milkdown/prose/model").Node, config = CONF
 describe("DEFAULT_CONFIG fallback", () => {
     // The webview-side fallback (used when the injected __i18n.proofread snapshot
     // is missing) must agree with the package.json setting defaults. Every check
-    // defaults ON except `passive` and `negativeParallelism`, which ship OFF
-    // because they over-flag ordinary correct English.
-    const OFF_BY_DEFAULT = new Set(["passive", "negativeParallelism"]);
+    // now defaults ON — including the noisier `passive` and `negativeParallelism`
+    // — with the "Turn off proofreading" go-clean toggle as the escape hatch.
+    const OFF_BY_DEFAULT = new Set<string>([]);
 
     it("boolean defaults should match the contributed setting defaults", () => {
         for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {

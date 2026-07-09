@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.113",
+  "version": "0.2.116",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -77,6 +77,11 @@
       {
         "command": "markdownWysiwyg.toggleStyleCheck",
         "title": "%command.toggleStyleCheck.title%",
+        "category": "WYSIWYG Markdown Editor"
+      },
+      {
+        "command": "markdownWysiwyg.toggleAllChecks",
+        "title": "%command.toggleAllChecks.title%",
         "category": "WYSIWYG Markdown Editor"
       },
       {
@@ -476,6 +481,10 @@
       ],
       "commandPalette": [
         {
+          "command": "markdownWysiwyg.toggleAllChecks",
+          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+        },
+        {
           "command": "markdownWysiwyg.gotoSymbol",
           "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
         },
@@ -873,13 +882,13 @@
         "markdownWysiwyg.styleCheck.passive": {
           "order": 120,
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.styleCheck.passive.description%"
         },
         "markdownWysiwyg.styleCheck.negativeParallelism": {
           "order": 121,
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.styleCheck.negativeParallelism.description%"
         },
         "markdownWysiwyg.styleCheck.longSentences": {

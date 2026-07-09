@@ -84,6 +84,7 @@ webview/components/imageView/index.ts         — Image NodeView (selection/ligh
 
 ## Architecture constraints
 
+- **UI/UX principles live in `docs/DESIGN_PRINCIPLES.md`** — decoration semantics (strikethrough = "delete this", dotted underline = "reconsider", color = source), the "annotation is advisory, reversible, and quiet" rules, and gutter/theming conventions. Check a new affordance against it before adding a visual channel.
 - WebView ↔ Extension communication goes **only through** the wrappers in `webview/messaging.ts`.
 - The webview side never `import`s the VS Code API directly; it gets a handle via `acquireVsCodeApi()`.
 - CSS must use `--vscode-*` variables so light/dark themes both work. **No custom colors**: accents (selection, focus, drag chrome) use `var(--vscode-focusBorder)` with **no literal fallback** — inside VS Code the variable always exists (pinned/custom themes only *override* the native set, never remove it). Literal fallbacks for other `--vscode-*` variables are legacy; don't add new ones (repo-wide removal is tracked in Linear).

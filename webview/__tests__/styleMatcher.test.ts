@@ -297,15 +297,17 @@ describe("new categories through compileStyleMatcher", () => {
         expect(matcher("the the end").some((h) => h.category === "repeated")).toBe(true);
     });
 
-    // With the shipped defaults, the passive and negativeParallelism checks are
-    // off, so their known over-flags never surface as an on-by-default warning.
-    it("the default config should not flag correct 'not only ... but also' or copular 'was born'", () => {
-        const matcher = compileStyleMatcher(LISTS, {
-            passive: DEFAULT_CONFIG.passive,
-            negativeParallelism: DEFAULT_CONFIG.negativeParallelism,
-        });
-        expect(DEFAULT_CONFIG.passive).toBe(false);
-        expect(DEFAULT_CONFIG.negativeParallelism).toBe(false);
+    // passive and negativeParallelism now ship ON. They knowingly over-flag some
+    // correct English (the correlative "not only X but also Y", copular/locative
+    // "was born"/"is located"); turning them off silences those — the behavior
+    // behind the "Turn off proofreading" go-clean toggle.
+    it("the shipped defaults enable passive and negativeParallelism", () => {
+        expect(DEFAULT_CONFIG.passive).toBe(true);
+        expect(DEFAULT_CONFIG.negativeParallelism).toBe(true);
+    });
+
+    it("turning passive/negativeParallelism off should silence their known over-flags", () => {
+        const matcher = compileStyleMatcher(LISTS, { passive: false, negativeParallelism: false });
         expect(matcher("The API is not only fast but also safe.")
             .filter((h) => h.category === "negativeParallelism")).toHaveLength(0);
         expect(matcher("She was born in 1990.")

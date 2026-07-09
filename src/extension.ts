@@ -188,6 +188,34 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
+    // "Go clean": toggle spelling + grammar + style off (or back on) in one
+    // step. The config listener below broadcasts each change to open editors.
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "markdownWysiwyg.toggleAllChecks",
+            () => MarkdownEditorProvider.toggleAllChecks(),
+        ),
+    );
+
+    // Coalesce a burst of proofread setting writes into a single broadcast.
+    // "Turn off/on proofreading" writes three settings back-to-back
+    // (styleCheck.enabled, spellCheck.enabled, spellCheck.grammar); broadcasting
+    // on each write echoed a *partial* config to the webview, so the Checks
+    // menu's checkmarks flickered through intermediate states before settling.
+    // A trailing-edge debounce fires once writes stop and reads the settled
+    // config, so it can never broadcast a half-applied state.
+    let proofreadBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
+    const broadcastProofreadConfig = (): void => {
+        if (proofreadBroadcastTimer) { clearTimeout(proofreadBroadcastTimer); }
+        proofreadBroadcastTimer = setTimeout(() => {
+            proofreadBroadcastTimer = undefined;
+            MarkdownEditorProvider.current?.postToAll({
+                type: "proofreadConfig",
+                config: MarkdownEditorProvider.getProofreadConfig(),
+            });
+        }, 80);
+    };
+
     // Listen for manual setting changes (sync when modified from the VSCode settings UI)
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
@@ -218,10 +246,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
             if (e.affectsConfiguration("markdownWysiwyg.styleCheck")
                 || e.affectsConfiguration("markdownWysiwyg.spellCheck")) {
-                MarkdownEditorProvider.current?.postToAll({
-                    type: "proofreadConfig",
-                    config: MarkdownEditorProvider.getProofreadConfig(),
-                });
+                broadcastProofreadConfig();
             }
             if (e.affectsConfiguration("markdownWysiwyg.toolbar")) {
                 MarkdownEditorProvider.current?.postToAll({

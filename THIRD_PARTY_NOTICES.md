@@ -5,8 +5,12 @@ This extension bundles data and code from the following open-source projects.
 ## Harper
 
 Offline grammar and spell checker (`harper.js` + `harper_wasm_bg.wasm`,
-bundled into the extension host).
-https://github.com/Automattic/harper — Apache License 2.0, © Automattic.
+bundled into the extension host — the WASM binary carries Harper's curated
+dictionary). https://github.com/Automattic/harper — Apache License 2.0,
+Copyright 2024 Elijah Potter (a project of Automattic). Harper is bundled
+unmodified. A verbatim copy of its Apache-2.0 license, including the copyright
+notice, ships with this extension at `licenses/harper.js-Apache-2.0.txt`; the
+full text is also at https://www.apache.org/licenses/LICENSE-2.0.
 
 ## no-cliches
 

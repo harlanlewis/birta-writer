@@ -1317,10 +1317,19 @@ export function initToolbar(
     // ancestor's. Both refs are assigned when the menu is built.
     let checksMenuEl: HTMLElement | null = null;
     let styleChildrenEl: HTMLElement | null = null;
+    // The "go clean" row's label flips with state: it silences every check when
+    // any is on, and restores them when all are off.
+    let goCleanLabelEl: HTMLElement | null = null;
 
     const repaintChecks = (cfg: ProofreadConfig): void => {
         for (const { key, item } of checkRows) {
             item.setChecked(Boolean(cfg[key]));
+        }
+        if (goCleanLabelEl) {
+            const anyOn = Boolean(cfg.styleCheck || cfg.spellCheck || cfg.grammarCheck);
+            // Name the domain ("proofreading") in the action itself — the toolbar
+            // button is icon-only, so "all checks" had no referent.
+            goCleanLabelEl.textContent = anyOn ? t("Turn off proofreading") : t("Turn on proofreading");
         }
         // Reveal the style sub-checks only while their parent master is on.
         if (checksMenuEl && styleChildrenEl) {
@@ -1344,6 +1353,23 @@ export function initToolbar(
         const value = !cfg[key];
         setProofreadConfig(view, { ...cfg, [key]: value });
         notifySetProofreadOption(key, value);
+    }
+
+    /**
+     * "Go clean": flip spelling, grammar, and style together — off when any is
+     * on, back on when all are off. Sub-checks are left as-is, so restoring the
+     * masters brings back whatever per-check config was already set. Mirrors the
+     * `markdownWysiwyg.toggleAllChecks` command; both converge on the same state.
+     */
+    function toggleAllChecks(): void {
+        const view = getEditorView();
+        if (!view) { return; }
+        const cfg = getProofreadConfig(view);
+        const value = !(cfg.styleCheck || cfg.spellCheck || cfg.grammarCheck);
+        setProofreadConfig(view, { ...cfg, styleCheck: value, spellCheck: value, grammarCheck: value });
+        for (const key of ["styleCheck", "spellCheck", "grammarCheck"] as const) {
+            notifySetProofreadOption(key, value);
+        }
     }
 
     function createChecksControl(): HTMLElement {
@@ -1374,6 +1400,27 @@ export function initToolbar(
             header.textContent = title;
             parent.appendChild(header);
         };
+
+        // "Go clean" — the top-level action: one row silences (or restores)
+        // every check at once, so the writer can turn off the underlines for a
+        // clean drafting pass without hunting through the individual toggles.
+        // Its label reflects state, so it reads as a switch, not a command.
+        const goClean = document.createElement("div");
+        goClean.className = "tb-fmt-item tb-checks-goclean";
+        goClean.setAttribute("role", "menuitem");
+        const goCleanLabel = document.createElement("span");
+        goCleanLabel.textContent = t("Turn off proofreading");
+        goClean.appendChild(goCleanLabel);
+        goCleanLabelEl = goCleanLabel;
+        goClean.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleAllChecks();
+        });
+        menu.appendChild(goClean);
+        const goCleanSep = document.createElement("div");
+        goCleanSep.className = "tb-menu-sep";
+        menu.appendChild(goCleanSep);
 
         // Masters
         addRow(menu, "spellCheck", t("Check spelling"));

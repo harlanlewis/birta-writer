@@ -54,15 +54,13 @@ describe("proofread defaults", () => {
         }
     });
 
-    // `passive` and `negativeParallelism` ship OFF because they over-flag
-    // ordinary correct English (copular/locative "was born"/"is located" and the
-    // correlative "not only X but also Y"); every other style check ships ON.
-    const OFF_BY_DEFAULT = new Set([
-        "markdownWysiwyg.styleCheck.passive",
-        "markdownWysiwyg.styleCheck.negativeParallelism",
-    ]);
+    // Every style check ships ON — including the noisier `passive` and
+    // `negativeParallelism` heuristics. The escape hatch is the "Turn off all
+    // checks" go-clean toggle, not a quiet default-off. This set stays empty as a
+    // deliberate marker: adding a key here re-hides a check by default.
+    const OFF_BY_DEFAULT = new Set<string>([]);
 
-    it("style checks should default ON except the known over-flagging ones", () => {
+    it("every boolean style check should default ON", () => {
         for (const [key, prop] of Object.entries(props)) {
             if (key.startsWith("markdownWysiwyg.styleCheck.") && typeof prop.default === "boolean") {
                 const expected = !OFF_BY_DEFAULT.has(key);

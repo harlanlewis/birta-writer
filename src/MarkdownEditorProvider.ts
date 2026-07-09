@@ -1074,8 +1074,8 @@ export class MarkdownEditorProvider
             wordiness: cfg.get<boolean>("styleCheck.wordiness", true),
             aiVocabulary: cfg.get<boolean>("styleCheck.aiVocabulary", true),
             aiArtifacts: cfg.get<boolean>("styleCheck.aiArtifacts", true),
-            passive: cfg.get<boolean>("styleCheck.passive", false),
-            negativeParallelism: cfg.get<boolean>("styleCheck.negativeParallelism", false),
+            passive: cfg.get<boolean>("styleCheck.passive", true),
+            negativeParallelism: cfg.get<boolean>("styleCheck.negativeParallelism", true),
             longSentences: cfg.get<boolean>("styleCheck.longSentences", true),
             ruleOfThree: cfg.get<boolean>("styleCheck.ruleOfThree", true),
             emDash: cfg.get<boolean>("styleCheck.emDash", true),
@@ -1182,6 +1182,31 @@ export class MarkdownEditorProvider
             "styleCheck.enabled",
             !cfg.get<boolean>("styleCheck.enabled", false),
         );
+    }
+
+    /**
+     * The three master switches, for the "go clean" all-checks toggle.
+     * Sub-checks are intentionally untouched: turning the masters back on
+     * restores whatever per-check config the writer already had.
+     */
+    private static readonly CHECK_MASTERS = [
+        "styleCheck.enabled",
+        "spellCheck.enabled",
+        "spellCheck.grammar",
+    ] as const;
+
+    /**
+     * "Go clean" — flip every check (spelling, grammar, style) at once. If any
+     * master is on, turn all three off for a distraction-free pass; if all are
+     * off, turn them back on. One quiet keystroke to silence the underlines.
+     */
+    public static toggleAllChecks(): void {
+        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const anyOn = MarkdownEditorProvider.CHECK_MASTERS.some((key) => cfg.get<boolean>(key, true));
+        const next = !anyOn;
+        for (const key of MarkdownEditorProvider.CHECK_MASTERS) {
+            MarkdownEditorProvider.updateSettingRespectingScope(key, next);
+        }
     }
 
     private _handleSpellAddWord(word: string): void {

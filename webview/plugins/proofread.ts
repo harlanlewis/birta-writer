@@ -106,11 +106,11 @@ type ProofreadMeta =
 
 export const proofreadPluginKey = new PluginKey<ProofreadState>("proofread");
 
-// Fallback when the injected __i18n.proofread snapshot is missing. Most checks
-// default ON (maintainer decision); `passive` and `negativeParallelism` default
-// OFF because they over-flag ordinary correct English (copular/locative "was
-// born"/"is located" and the correlative "not only X but also Y"). Kept in sync
-// with the contributed setting defaults in package.json — see
+// Fallback when the injected __i18n.proofread snapshot is missing. Every style
+// check defaults ON (maintainer decision): the two noisier heuristics, `passive`
+// and `negativeParallelism`, still ship on, paired with the "Turn off proofreading"
+// go-clean toggle for when the underlines get in the way. Kept in sync with the
+// contributed setting defaults in package.json — see
 // shared/__tests__/proofreadDefaultsContributions.test.ts.
 export const DEFAULT_CONFIG: ProofreadConfig = {
     styleCheck: true,
@@ -120,8 +120,8 @@ export const DEFAULT_CONFIG: ProofreadConfig = {
     wordiness: true,
     aiVocabulary: true,
     aiArtifacts: true,
-    passive: false,
-    negativeParallelism: false,
+    passive: true,
+    negativeParallelism: true,
     longSentences: true,
     ruleOfThree: true,
     emDash: true,
@@ -205,28 +205,36 @@ function styleMatcherFor(config: ProofreadConfig): StyleMatcher {
     return cachedMatcher.matcher;
 }
 
-/** Hover explanations, one clause each — quiet middle ground between iA (nothing) and Hemingway (popups). */
+/**
+ * Hover explanations, one clause each - a quiet middle ground between iA
+ * (nothing) and Hemingway (popups). Each must teach the actual move, never
+ * restate the category name back at the reader ("passive voice -> consider
+ * active" earns its interruption only if it says what to *do* instead). These
+ * strings are deliberately ASCII-clean (straight quotes, spaced hyphens, no
+ * ellipsis glyph) so the proofreading copy passes its own emDash / nonAsciiPunct
+ * checks - the tool eats its own dog food.
+ */
 function styleHitTitle(category: string): string {
     switch (category) {
-        case "fillers": return t("Filler — consider removing");
-        case "redundancies": return t("Redundancy — consider shortening");
-        case "cliches": return t("Cliché — consider rephrasing");
-        case "wordiness": return t("Wordy — consider tightening");
-        case "aiVocabulary": return t("AI vocabulary — consider a plainer word");
-        case "aiArtifacts": return t("AI boilerplate — consider removing");
-        case "passive": return t("Passive voice — consider active");
-        case "longSentences": return t("Long sentence — consider splitting");
-        case "negativeParallelism": return t("AI cadence — 'not X, but Y'");
-        case "ruleOfThree": return t("Rule of three — consider varying");
-        case "emDash": return t("Em dash — use a spaced hyphen");
-        case "nonAsciiPunct": return t("Non-ASCII punctuation — normalize to ASCII");
-        case "repeated": return t("Repeated word");
+        case "fillers": return t("Filler - no meaning lost if you cut it");
+        case "redundancies": return t("Redundancy - one word already implies the other");
+        case "cliches": return t("Cliche - say it in your own words");
+        case "wordiness": return t("Wordy - fewer words say the same thing");
+        case "aiVocabulary": return t("AI vocabulary - prefer a plainer, specific word");
+        case "aiArtifacts": return t("AI boilerplate - delete it");
+        case "passive": return t("Passive voice - lead with who acts");
+        case "longSentences": return t("Long sentence - break it at a natural pause");
+        case "negativeParallelism": return t("AI cadence - state Y on its own");
+        case "ruleOfThree": return t("Rule of three - one precise word does more");
+        case "emDash": return t("Em dash - a spaced hyphen is safer everywhere");
+        case "nonAsciiPunct": return t("Curly punctuation - ASCII is more portable");
+        case "repeated": return t("Repeated word - delete one");
         default: return "";
     }
 }
 
 /** Short category chip shown in the popup (and reused for grouping). */
-function styleTag(category: string): string {
+export function styleTag(category: string): string {
     switch (category) {
         case "fillers": return t("Filler");
         case "redundancies": return t("Redundancy");
@@ -246,25 +254,29 @@ function styleTag(category: string): string {
 }
 
 /**
- * Advice-only clause for the popup body — the category chip (styleTag) already
- * names the finding, so this must NOT repeat it. (styleHitTitle stays the full
- * "category — advice" hover hint.)
+ * Advice-only clause for the popup body - the category chip (styleTag) already
+ * names the finding, so this must NOT repeat it. Each line has to earn the
+ * popup: name *why* it's flagged and *what to do*, with a concrete before/after
+ * where one fits. "Consider the active voice" is the anti-pattern this replaces
+ * - it told the reader nothing they didn't already see in the chip. Kept
+ * ASCII-clean (straight quotes, spaced hyphens, "->" arrows) so the copy passes
+ * its own emDash / nonAsciiPunct checks.
  */
-function styleAdvice(category: string): string {
+export function styleAdvice(category: string): string {
     switch (category) {
-        case "fillers": return t("Consider removing.");
-        case "redundancies": return t("Consider shortening.");
-        case "cliches": return t("Consider rephrasing.");
-        case "wordiness": return t("Consider tightening.");
-        case "aiVocabulary": return t("Consider a plainer word.");
-        case "aiArtifacts": return t("Reads as AI boilerplate — consider removing.");
-        case "passive": return t("Consider the active voice.");
-        case "longSentences": return t("Consider splitting.");
-        case "negativeParallelism": return t("The “not X, but Y” reframe reads as an AI cadence.");
-        case "ruleOfThree": return t("Three stacked adjectives — consider varying.");
-        case "emDash": return t("Use a spaced hyphen.");
-        case "nonAsciiPunct": return t("Normalize to ASCII.");
-        case "repeated": return t("Delete the duplicate.");
+        case "fillers": return t("Adds emphasis but no information - the sentence means the same without it.");
+        case "redundancies": return t("One word already implies the other - keep just one.");
+        case "cliches": return t("A worn phrase readers skim past - say it plainly, in your own words.");
+        case "wordiness": return t("Several words doing one word's job, e.g. \"due to the fact that\" -> \"because\".");
+        case "aiVocabulary": return t("Reads as LLM filler - a plainer, more specific word lands harder.");
+        case "aiArtifacts": return t("Leftover chatbot phrasing - delete it so the prose sounds like you.");
+        case "passive": return t("The doer is hidden or trailing - lead with who acts: \"mistakes were made\" -> \"we made mistakes\".");
+        case "longSentences": return t("Past ~30 words the reader loses the thread - break it at a natural pause.");
+        case "negativeParallelism": return t("\"Not X, but Y\" is a stock AI cadence - state Y on its own.");
+        case "ruleOfThree": return t("Three stacked adjectives read as cadence, not content - one precise word does more.");
+        case "emDash": return t("An em dash renders inconsistently outside the editor - a spaced hyphen is safe everywhere.");
+        case "nonAsciiPunct": return t("Curly quotes and ellipses can garble in code, terminals, and diffs - ASCII stays portable.");
+        case "repeated": return t("The same word appears twice in a row — delete one.");
         default: return "";
     }
 }
@@ -320,16 +332,21 @@ function emDashReplacement(text: string, start: number, end: number): string {
 
 /**
  * Flatten one textblock into plain text where offsets map 1:1 to document
- * positions (blockPos + 1 + offset): inline-code text is masked with spaces
- * and non-text inline nodes become placeholder characters of equal size.
- * Exported for unit testing.
+ * positions (blockPos + 1 + offset): inline-code text and non-text inline nodes
+ * are both masked with placeholder characters of equal size. Masking code with
+ * the placeholder (not spaces) is load-bearing — a run of spaces looks to Harper
+ * like real prose, so masking `markdownWysiwyg.smartLinks` as 28 spaces made it
+ * emit "There are 28 spaces where there should be only one" and underline the
+ * code span. The placeholder carries no such meaning and is recognized as masked
+ * content by isTechSpan / the whitespace guard in harperService. Exported for
+ * unit testing.
  */
 export function blockPlainText(block: ProseNode): string {
     let text = "";
     block.forEach((child) => {
         if (child.isText) {
             const isCode = child.marks.some((m) => m.type.name === "inlineCode");
-            text += isCode ? " ".repeat(child.text?.length ?? 0) : (child.text ?? "");
+            text += isCode ? INLINE_PLACEHOLDER.repeat(child.text?.length ?? 0) : (child.text ?? "");
         } else {
             text += INLINE_PLACEHOLDER.repeat(child.nodeSize);
         }

@@ -3,7 +3,7 @@ import { Plugin, TextSelection } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
-import { headingFoldPluginKey, type HeadingFoldMeta } from "./headingFold";
+import { headingFoldPluginKey, headingMarker, type HeadingFoldMeta } from "./headingFold";
 import { t } from "../i18n";
 import {
     getTopbarBottom,
@@ -114,7 +114,8 @@ function setStickyContent(
 
     const marker = document.createElement("span");
     marker.className = "heading-sticky-marker";
-    marker.textContent = `#H${level}`;
+    // Literal Markdown hashes, matching the in-document gutter (headingFold).
+    marker.textContent = headingMarker(level);
     gutter.appendChild(marker);
 
     const label = document.createElement("span");

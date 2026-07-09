@@ -11,7 +11,7 @@ import * as path from "path";
 import { pathToFileURL } from "url";
 import * as vscode from "vscode";
 import type { HarperLint, LintBlock, LintBlockResult } from "../../shared/messages";
-import { isTechSpan } from "../../shared/proofreadFilter";
+import { INLINE_PLACEHOLDER, isTechSpan } from "../../shared/proofreadFilter";
 
 type HarperLinter = {
     setup(): Promise<void>;
@@ -72,6 +72,12 @@ export async function lintBlocks(blocks: LintBlock[]): Promise<LintBlockResult[]
             const span = lint.span();
             const spanText = block.text.slice(span.start, span.end);
             const kind = lint.lint_kind_pretty();
+            // Any lint touching a masked span (inline code, images, escaped
+            // pipes → placeholder chars) is about content the reader can't see
+            // as prose, so it's noise regardless of kind — Harper's "N spaces"
+            // and whitespace lints landed here before inline code was masked
+            // with the placeholder instead of spaces. Drop them unconditionally.
+            if (spanText.includes(INLINE_PLACEHOLDER)) { continue; }
             if (TOKEN_KINDS.has(kind) && isTechSpan(block.text, span.start, span.end)) { continue; }
             if (kind === "Spelling" && dictionary.has(spanText.toLowerCase())) { continue; }
             lints.push({

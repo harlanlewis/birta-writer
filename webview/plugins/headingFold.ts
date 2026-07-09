@@ -26,6 +26,14 @@ function getHeadingLevel(node: { attrs?: Record<string, unknown> }): number {
     return typeof level === "number" ? level : 1;
 }
 
+/**
+ * The gutter label for a heading: its literal Markdown hashes (`#`..`######`).
+ * A level cue that reads as source, iA-Writer-style. Exported for unit testing.
+ */
+export function headingMarker(level: number): string {
+    return "#".repeat(Math.min(Math.max(level, 1), 6));
+}
+
 function findHeadingFoldRange(doc: any, headingPos: number, headingLevel: number): HeadingFoldRange | null {
     const headingNode = doc.nodeAt(headingPos);
     if (!isHeadingNode(headingNode)) {
@@ -69,7 +77,13 @@ function createHeadingFoldGutter(
 
     const marker = document.createElement("span");
     marker.className = "heading-fold-marker";
-    marker.textContent = `#H${level}`;
+    // Show the literal Markdown hashes (`#`, `##`, … `######`) as a dimmed
+    // level indicator, iA-Writer-style. The widget key encodes `level`, so this
+    // repaints live as the heading level changes (e.g. via the heading commands
+    // or a typed `#`-space). Setext headings carry no hashes in their source but
+    // still show `#`/`##` here — the gutter is a level cue in this WYSIWYG view,
+    // not a byte mirror, and their source round-trips as setext untouched.
+    marker.textContent = headingMarker(level);
 
     if (!foldable) {
         gutter.appendChild(marker);

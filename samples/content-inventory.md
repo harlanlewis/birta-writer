@@ -386,6 +386,63 @@ get a table UI; complex/nested YAML preserved verbatim.
 
 ---
 
+## Proofreading
+
+The editor proofreads prose in three layers, each with its own decoration so
+you can tell them apart at a glance:
+
+- **Spelling** (Harper) — dotted underline in the warning color.
+- **Grammar** (Harper) — dotted underline in the info color.
+- **Style check** (built in) — deletable hits show a dimmed **strikethrough**;
+  judgment-call "flags" show a plain dotted underline.
+
+Every line below is written to trip **one** check, so you can eyeball its
+decoration during manual review. Only prose is scanned — code blocks, inline
+code, links, and paths are skipped — which is why the triggers here are
+deliberately bare words. (The rest of this document already contains plenty of
+incidental hits, so the checker lights up outside this section too.) Two
+categories ship **off by default**, noted inline; enable them to see their flags.
+
+### Spelling — `markdownWysiwyg.spellCheck.enabled`
+
+- teh quick brown fox
+- please recieve this note
+- the error occured twice
+- a small mispeling slips through
+
+### Grammar — `markdownWysiwyg.spellCheck.grammar`
+
+Harper owns these; a couple of classic rules:
+
+- I ate a apple. (article agreement: "a" should be "an")
+- i walked home alone. (the pronoun and the sentence start need capitals)
+
+### Style check — `markdownWysiwyg.styleCheck.enabled`
+
+The master switch above governs every category below; each also has its own
+`styleCheck.<name>` toggle.
+
+**Deletable hits — dimmed strikethrough:**
+
+- Fillers (`fillers`): This is basically fine.
+- Redundancies (`redundancies`): The end result looked great. (only "end" is struck)
+- Clichés (`cliches`): Let's grab the low-hanging fruit.
+- Wordiness (`wordiness`): There is a faster way to do this.
+- AI vocabulary (`aiVocabulary`): Let's delve into the details.
+- AI artifacts (`aiArtifacts`): I hope this helps.
+- Repeated words (`repeated`, part of the master switch): We shipped the the fix. (the second "the" is struck)
+
+**Judgment flags — dotted underline:**
+
+- Long sentences (`longSentences`): This lengthy sentence keeps adding clause after clause with ordinary words and no other traps at all, purely so that it sails past the thirty word limit that the sentence length checker quietly watches for during review.
+- Rule of three (`ruleOfThree`): The build is fast, cheap, and reliable.
+- Em dash (`emDash`): The plan is simple — ship it. (offers an ASCII fix)
+- Non-ASCII punctuation (`nonAsciiPunct`): She called it “clever,” then trailed off… (curly quotes and an ellipsis glyph)
+- Passive voice (`passive`, **off by default**): The report was written overnight.
+- Negative parallelism (`negativeParallelism`, **off by default**): It's not a bug, it's a feature.
+
+---
+
 ## Not supported
 
 > [!WARNING]

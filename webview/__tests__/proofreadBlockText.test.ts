@@ -38,7 +38,7 @@ describe("blockPlainText", () => {
         expect(blockPlainText(block)).toBe("Hello world");
     });
 
-    it("inline-code text should be masked with spaces of equal length", () => {
+    it("inline-code text should be masked with placeholder chars of equal length", () => {
         const block = fakeBlock([
             textChild("run "),
             textChild("pnpm", ["inlineCode"]),
@@ -47,8 +47,12 @@ describe("blockPlainText", () => {
 
         const text = blockPlainText(block);
 
-        expect(text).toBe("run      now");
+        // Masked with the placeholder, NOT spaces: a run of spaces looks like
+        // real prose to Harper and produced "N spaces where there should be one"
+        // lints on the code span. Length is preserved so offsets still map 1:1.
+        expect(text).toBe(`run ${INLINE_PLACEHOLDER.repeat(4)} now`);
         expect(text.length).toBe("run pnpm now".length);
+        expect(text).not.toContain("  "); // no space run for Harper to flag
     });
 
     it("a non-text inline node should become placeholder chars matching its nodeSize", () => {

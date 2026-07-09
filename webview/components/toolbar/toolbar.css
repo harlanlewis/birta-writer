@@ -295,12 +295,21 @@
     background: var(--vscode-editorHoverWidget-border);
 }
 
-/* The style sub-checks, nested under the "Check style" master: indented with a
-   left rail so they read as belonging to it. Only present in the DOM while
-   Check style is on (see repaintChecks). */
+/* "Go clean": the top-level all-checks toggle. It has no check column — it's an
+   action, not a checkbox — so it's emphasized and reads distinct from the master
+   rows below it. */
+.tb-checks-goclean {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+/* The style sub-checks, nested under the "Check style" master. A light indent
+   plus the group headers (PHRASES / AI TELLS / PROSE) are enough to read them as
+   belonging to it — a deep inset + a hard rail was over the top. Only present in
+   the DOM while Check style is on (see repaintChecks). */
 .tb-checks-children {
-    margin: 4px 0 2px 18px;
-    border-left: 1px solid var(--vscode-editorHoverWidget-border);
+    margin: 2px 0 2px 8px;
+    border-left: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border) 55%, transparent);
 }
 
 .tb-fmt-header {
