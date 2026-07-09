@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.102",
+  "version": "0.2.103",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -1301,6 +1301,17 @@
           "default": "left",
           "description": "Blockquote button: pick a toolbar zone or hide it."
         },
+        "markdownWysiwyg.toolbar.items.callouts": {
+          "order": 45.5,
+          "type": "string",
+          "enum": [
+            "hidden",
+            "left",
+            "right"
+          ],
+          "default": "left",
+          "description": "Callouts dropdown (GitHub alert types: Note, Tip, Important, Warning, Caution): pick a toolbar zone or hide it."
+        },
         "markdownWysiwyg.toolbar.items.codeBlock": {
           "order": 46,
           "type": "string",
@@ -1374,7 +1385,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `bulletList`, `orderedList`, `taskList`, `blockquote`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
+          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `bulletList`, `orderedList`, `taskList`, `blockquote`, `callouts`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
         },
         "markdownWysiwyg.tocAutoHideThreshold": {
           "order": 11,

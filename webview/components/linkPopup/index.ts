@@ -8,7 +8,7 @@ import {
     IconHash,
     IconLink,
     IconPencil,
-    IconTrash2,
+    IconUnlink,
 } from "@/ui/icons";
 import { t } from "@/i18n";
 import { applyTooltip } from "@/ui/tooltip";
@@ -299,8 +299,17 @@ export function setupLinkPopup(
     btnEdit.innerHTML = IconPencil;
     applyTooltip(btnEdit, t("Edit link"), { placement: "above" });
 
+    // Unlink (destructive but text-preserving): strips the link mark / replaces
+    // a wikilink atom with its text. A link-level verb, so it lives in the
+    // header beside Open/Edit — last, and visually separated (see CSS).
+    const btnRemove = document.createElement("button");
+    btnRemove.className = "lp-btn lp-btn-remove";
+    btnRemove.title = t("Remove Link");
+    btnRemove.innerHTML = IconUnlink;
+
     headerActions.appendChild(btnOpen);
     headerActions.appendChild(btnEdit);
+    headerActions.appendChild(btnRemove);
 
     header.appendChild(iconEl);
     header.appendChild(urlEl);
@@ -343,21 +352,10 @@ export function setupLinkPopup(
 
     // No confirm button: edits apply on Enter and on input blur (the panel
     // stays open on blur, so a focus trip elsewhere never loses a change).
-    const bodyActions = document.createElement("div");
-    bodyActions.className = "lp-body-actions";
-
-    const btnRemove = document.createElement("button");
-    btnRemove.className = "lp-btn lp-btn-remove";
-    btnRemove.title = t("Remove Link");
-    btnRemove.innerHTML = IconTrash2;
-
-    bodyActions.appendChild(btnRemove);
-
     body.appendChild(divider);
     body.appendChild(inputText);
     body.appendChild(inputUrl);
     body.appendChild(formatSwitch.el);
-    body.appendChild(bodyActions);
 
     popup.appendChild(header);
     popup.appendChild(anchorHint);
@@ -396,8 +394,8 @@ export function setupLinkPopup(
         body.classList.toggle("expanded", on);
         btnEdit.classList.toggle("lp-btn-active", on);
         if (on) {
-            // The hint follows the editing surface: under the URL input.
-            body.insertBefore(resolvedHint, bodyActions);
+            // The hint follows the editing surface: appended after the fields.
+            body.appendChild(resolvedHint);
             // Highlight the target range so it stays visibly marked while
             // focus lives in the popup's inputs (a caret insert has from===to,
             // which the plugin treats as "nothing to highlight").
@@ -513,8 +511,10 @@ export function setupLinkPopup(
         btnEdit.classList.remove("lp-btn-active");
         popup.insertBefore(resolvedHint, body);
         // Reference links are openable but not editable (editing would convert
-        // them to inline links and destroy the reference form).
+        // them to inline links and destroy the reference form). Read-only links
+        // (reference / same-page wiki) also can't be unlinked.
         btnEdit.style.display = link.readOnly ? "none" : "";
+        btnRemove.style.display = link.readOnly ? "none" : "";
         btnOpen.style.display = ""; // reset from any prior insert open
 
         updatePopupContent(link);
@@ -576,6 +576,8 @@ export function setupLinkPopup(
             readOnly: false,
         };
         btnEdit.style.display = "";
+        // A brand-new link has nothing to unlink; cancel is Escape / click-away.
+        btnRemove.style.display = "none";
         popup.style.display = "flex";
 
         updatePopupContent(currentLink);

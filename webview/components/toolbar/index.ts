@@ -27,7 +27,10 @@ import {
     IconSearch,
     IconSettings,
     IconFileCode,
+    IconAlertCircle,
 } from "@/ui/icons";
+import { CALLOUT_ICONS } from "../callout";
+import type { CalloutKind } from "@/plugins/callouts";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
 import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
@@ -1147,6 +1150,58 @@ export function initToolbar(
     items.horizontalRule = wrap("horizontalRule", btn(IconMinus, t("Horizontal Rule"), () =>
         runEditorCommand("insertHorizontalRule", getEditor),
     ));
+
+    // ── Callouts dropdown (GitHub alert types) ──
+    // Mirrors the Format dropdown: a hover menu with one row per GitHub type,
+    // each inserting a callout of that kind (insertCallout takes a kind arg).
+    function createCalloutPicker(): HTMLElement {
+        const calloutWrap = document.createElement("div");
+        calloutWrap.className = "tb-fmt-wrap";
+
+        const calloutBtn = createMenuTrigger({
+            html: IconAlertCircle + IconChevronDown,
+            ariaLabel: t("Callout"),
+        });
+
+        const calloutMenu = document.createElement("div");
+        calloutMenu.className = "tb-fmt-menu tb-callout-menu";
+        calloutMenu.style.display = "none";
+        calloutMenu.setAttribute("role", "menu");
+
+        const calloutKinds: [CalloutKind, string][] = [
+            ["note", t("Note")],
+            ["tip", t("Tip")],
+            ["important", t("Important")],
+            ["warning", t("Warning")],
+            ["caution", t("Caution")],
+        ];
+        for (const [kind, label] of calloutKinds) {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "tb-fmt-item tb-callout-item";
+            row.setAttribute("role", "menuitem");
+            row.innerHTML = CALLOUT_ICONS[kind];
+            const name = document.createElement("span");
+            name.textContent = label;
+            row.appendChild(name);
+            // mousedown (not click): wireHoverMenu activates rows via a
+            // synthetic mousedown, matching the callout kind-picker.
+            row.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                runEditorCommand("insertCallout", getEditor, kind);
+                calloutMenu.style.display = "none";
+            });
+            calloutMenu.appendChild(row);
+        }
+
+        wireHoverMenu(calloutWrap, calloutBtn, calloutMenu);
+
+        calloutWrap.appendChild(calloutBtn);
+        calloutWrap.appendChild(calloutMenu);
+        return calloutWrap;
+    }
+    items.callouts = wrap("callouts", createCalloutPicker());
 
     // ── Debug tools (dev-only dropdown, gated by debugMode; pinned before
     //    Settings in the right zone, not user-placeable) ──

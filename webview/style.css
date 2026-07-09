@@ -98,7 +98,17 @@ html {
     max-width: var(--editor-max-width, none);
     margin: 0 auto;
     padding: 56px 48px 0;
-    --editor-content-left-padding: 48px;
+    /* Mirror #editor's content inset so the field labels line up with the body
+       content column at ~76px. `--editor-content-left-padding` is the CONTENT
+       (key-text) inset — kept equal to #editor's so the TOC offset math keeps the
+       keys tracking the body column in every docked/collapsed state. The table
+       FRAME itself is pulled one heading-gutter left of that content edge
+       (`- 1px` table border `- --fm-key-inset` key padding), so the frame's left
+       border, the per-row trash button, and the "#H1" heading badges all share
+       the same gutter line (~66px). */
+    --editor-content-left-padding: 76px;
+    --fm-key-inset: 9px;
+    padding-left: calc(var(--editor-content-left-padding) - 1px - var(--fm-key-inset));
     /* The panel BOX adopts #editor's font family + size **only** so its
        `ch`-based --editor-max-width resolves to the same width as #editor (ch
        depends on the element's own font). The box has no direct text of its
@@ -126,13 +136,19 @@ html {
 
 .frontmatter-table {
     width: 100%;
-    border-collapse: collapse;
+    /* `separate` (not `collapse`) so the rounded outer border renders WITHOUT
+       `overflow: hidden` — the per-row trash button is absolutely positioned into
+       the gutter LEFT of the table, and an `overflow: hidden` clip would cut it
+       off. With no cell backgrounds and no left/right/top cell borders, only the
+       rounded outer frame + horizontal row dividers show, so nothing squares the
+       corners. */
+    border-collapse: separate;
+    border-spacing: 0;
     /* Pinned to the UI-font basis (not `em`, which would follow the panel box's
        editor-size font set for the ch-width trick above). */
     font-size: calc(0.85 * var(--vscode-font-size, 13px) * var(--content-font-scale, 1));
     border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
     border-radius: 4px;
-    overflow: hidden;
 
     td {
         padding: 5px 10px;
@@ -160,6 +176,9 @@ html {
     .fm-key {
         white-space: nowrap;
         width: 1%;
+        /* Together with the table's 1px left border this puts the key text at the
+           content edge (~76px), while the frame border sits in the gutter. */
+        padding-left: var(--fm-key-inset, 9px);
         padding-right: 16px;
         color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-descriptionForeground));
         font-family: var(--vscode-editor-font-family, monospace);
@@ -170,18 +189,28 @@ html {
         color: var(--vscode-editor-foreground);
     }
 
-    /* Per-row delete column: first cell, kept narrow so the key column reads
-       as the visual start of the row */
+    /* Per-row delete column: a zero-width anchor so the key column is the row's
+       visual start. The trash button is lifted out of flow into the left gutter
+       via absolute positioning relative to this cell (see .fm-delete-btn). */
     .fm-action {
-        width: 1%;
-        padding: 4px 0 4px 6px;
-        text-align: center;
-        vertical-align: middle;
+        position: relative;
+        width: 0;
+        min-width: 0;
+        padding: 0;
     }
 }
 
-/* Row delete button (trash can, left of the key) */
+/* Row delete button (trash can) — lifted into the left gutter, right-aligned so
+   its right edge lands on the ~66px gutter line shared by the table's left border
+   and the "#H1" heading badges, and vertically centered on its row. `right: 100%`
+   pushes it fully left of the zero-width anchor cell; `margin-right` nudges the
+   right edge onto the frame/badge line. */
 .fm-delete-btn {
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    margin-right: 1px;
+    transform: translateY(-50%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -341,6 +370,14 @@ body.editor-width-auto {
             padding-left: 48px;
             --editor-content-left-padding: 48px;
         }
+
+        /* Keep the panel tracking #editor into the collapsed gutter. Room is
+           tight here, so the trash effectively hugs the content edge — it stays
+           left of the key text and is not clipped (the table no longer uses
+           overflow: hidden). */
+        .frontmatter-panel {
+            --editor-content-left-padding: 48px;
+        }
     }
 
     /* Right-docked TOC: mirror the offsets onto the right side */
@@ -376,6 +413,14 @@ body.editor-width-auto {
     #editor {
         padding-left: 60px;
         --editor-content-left-padding: 60px;
+    }
+
+    /* Mirror the narrower gutter: content at 60px, and a 6px gutter gap to match
+       the heading badges (`.heading-fold-gutter { left: -6px }`). The panel's
+       padding-left recomputes from these vars via the base calc. */
+    .frontmatter-panel {
+        --editor-content-left-padding: 60px;
+        --fm-key-inset: 5px;
     }
 }
 

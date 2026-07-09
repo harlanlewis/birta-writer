@@ -14,7 +14,7 @@ import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "@milkdown/prose/view";
 import { configureSerialization, pureCommonmark } from "../serialization";
-import { setupLinkPopup } from "../components/linkPopup";
+import { setupLinkPopup, openLinkEditor } from "../components/linkPopup";
 
 async function makeEditor(markdown: string): Promise<{
     editor: Editor;
@@ -420,6 +420,106 @@ describe("popup never rewrites an untouched link", () => {
         document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 
         expect(editor.action(getMarkdown())).toBe(before);
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+});
+
+// ─── Unlink button lives in the header (text-preserving) ────────────────────
+
+describe("unlink button in the header", () => {
+    let editor: Editor;
+    let container: HTMLElement;
+    let view: EditorView;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container, view } = await makeEditor("See [inline](notes.md) here.\n"));
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    function clickRemove(): void {
+        document.querySelector<HTMLElement>(".lp-btn-remove")!
+            .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }
+
+    it("hovering a link should place the unlink button in the header, not the body", async () => {
+        await hover(container.querySelector('a[href="notes.md"]')!);
+
+        const btnRemove = document.querySelector<HTMLElement>(".lp-btn-remove")!;
+        expect(btnRemove.closest(".lp-header-actions")).not.toBeNull();
+        expect(btnRemove.closest(".lp-body")).toBeNull();
+    });
+
+    it("the header actions should be ordered open, edit, then unlink last", async () => {
+        await hover(container.querySelector('a[href="notes.md"]')!);
+
+        const btns = Array.from(
+            document.querySelectorAll<HTMLElement>(".lp-header-actions .lp-btn"),
+        );
+        expect(btns[0]?.classList.contains("lp-btn-open")).toBe(true);
+        expect(btns[1]?.classList.contains("lp-btn-edit")).toBe(true);
+        expect(btns[2]?.classList.contains("lp-btn-remove")).toBe(true);
+    });
+
+    it("clicking unlink should strip the link mark while preserving the text", async () => {
+        await hover(container.querySelector('a[href="notes.md"]')!);
+        clickRemove();
+
+        const out = editor.action(getMarkdown());
+        // The link syntax is gone but the display text survives as plain prose.
+        expect(out).not.toContain("](notes.md)");
+        expect(out).toContain("See inline here.");
+    });
+
+    it("opening the editor for insert should hide the unlink button", async () => {
+        openLinkEditor({
+            view,
+            anchorRect: { left: 0, right: 0, top: 0, bottom: 0 },
+            from: 1,
+            to: 1,
+            text: "",
+            href: "",
+        });
+
+        const btnRemove = document.querySelector<HTMLElement>(".lp-btn-remove")!;
+        expect(btnRemove.style.display).toBe("none");
+    });
+});
+
+describe("unlink button hidden for read-only links", () => {
+    it("hovering a read-only reference link should hide the unlink button", async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        const { editor, container } = await makeEditor(SAVED);
+        vi.useFakeTimers();
+
+        await hover(container.querySelector('a[data-type="link-ref"]')!);
+        const btnRemove = document.querySelector<HTMLElement>(".lp-btn-remove")!;
+        expect(btnRemove.style.display).toBe("none");
+
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    it("hovering a same-page wikilink should hide the unlink button", async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        const { editor, container } = await makeEditor(
+            "See [[#local heading]] here.\n\n# local heading\n",
+        );
+        vi.useFakeTimers();
+
+        await hover(container.querySelector('a[data-type="wiki-link"]')!);
+        const btnRemove = document.querySelector<HTMLElement>(".lp-btn-remove")!;
+        expect(btnRemove.style.display).toBe("none");
+
         vi.useRealTimers();
         await editor.destroy();
     });

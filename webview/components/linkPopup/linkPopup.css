@@ -117,7 +117,14 @@
     background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
 }
 
-/* Remove button hover */
+/* Unlink button: destructive, so set apart from Open/Edit in the header with a
+   subtle divider and gap on its left. */
+.lp-btn-remove {
+    margin-left: 5px;
+    border-left: 1px solid var(--vscode-editorWidget-border);
+}
+
+/* Unlink button hover */
 .lp-btn-remove:hover {
     opacity: 1;
     background: var(--vscode-inputValidation-errorBackground, rgba(200, 50, 50, 0.18));
@@ -162,14 +169,6 @@
     &:focus {
         border-color: var(--vscode-focusBorder);
     }
-}
-
-/* Button row */
-.lp-body-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 4px;
-    padding-top: 2px;
 }
 
 /* The range the link editor will act on stays visibly "selected" while the
