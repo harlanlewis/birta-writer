@@ -124,15 +124,22 @@ async function loadPlaywright() {
     }
 }
 
-async function measureFixture(chromium, baseUrl, content, runs) {
+async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
     const samples = [];
     const browser = await chromium.launch();
     try {
         for (let i = 0; i < runs; i++) {
             const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
             const errors = [];
-            page.on("pageerror", (e) => errors.push(String(e)));
-            page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+            // Any console/page error or failed resource aborts the run — a bad
+            // chunk URL or thrown init is exactly the kind of regression the perf
+            // harness must not silently average over (this is what caught the
+            // katex.css 404). Capture the offending URL so the abort is
+            // diagnosable without a second script.
+            page.on("pageerror", (e) => errors.push(`pageerror: ${e}`));
+            page.on("console", (m) => { if (m.type() === "error") errors.push(`console: ${m.text()}`); });
+            page.on("requestfailed", (r) => errors.push(`requestfailed: ${r.url()} (${r.failure()?.errorText ?? "?"})`));
+            page.on("response", (r) => { if (r.status() >= 400) errors.push(`http ${r.status()}: ${r.url()}`); });
             // Inject BEFORE any page script so the stub's ready handler has it.
             await page.addInitScript((c) => { window.__perfInit = { content: c, lineMap: [] }; }, content);
             await page.goto(baseUrl, { waitUntil: "commit" });
@@ -149,7 +156,8 @@ async function measureFixture(chromium, baseUrl, content, runs) {
             });
             await page.close();
             if (errors.length) {
-                console.error(`  page error on run ${i}: ${errors.slice(0, 3).join(" | ")}`);
+                console.error(`\n  aborted on fixture "${fixture}" run ${i}:`);
+                for (const e of [...new Set(errors)].slice(0, 6)) console.error(`    ${e}`);
                 process.exit(3);
             }
             samples.push(spans(marks));
@@ -189,7 +197,7 @@ async function measureMode(only, runs, jsonOut) {
     const header = ["fixture", ...SPANS.map(([l]) => l)];
     const rows = [];
     for (const name of names) {
-        const agg = await measureFixture(chromium, baseUrl, FIXTURES[name], runs);
+        const agg = await measureFixture(chromium, baseUrl, FIXTURES[name], runs, name);
         report.fixtures[name] = agg;
         rows.push([name, ...SPANS.map(([l]) => (agg.median[l] == null ? "–" : String(agg.median[l])))]);
     }
