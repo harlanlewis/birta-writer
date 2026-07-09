@@ -306,20 +306,27 @@ describe("link format switch", () => {
         expect(out).toContain("[md](page.md)");
     });
 
-    it("disables the wikilink option for external URLs", async () => {
+    function formatRoot(): HTMLElement {
+        const root = document.querySelector<HTMLElement>(".lfs-root");
+        expect(root).not.toBeNull();
+        return root!;
+    }
+
+    it("hides the whole format control for external URLs and forces markdown", async () => {
         await hover(container.querySelector('a[href="https://example.com/x"]')!);
         clickEdit();
 
-        expect(wikiOption().disabled).toBe(true);
+        expect(formatRoot().style.display).toBe("none");
         expect(formatSelect().value).toBe("markdown");
     });
 
-    it("defaults an existing markdown link to markdown format", async () => {
+    it("shows the format control for a workspace-file target", async () => {
         await hover(container.querySelector('a[href="page.md"]')!);
         clickEdit();
 
+        expect(formatRoot().style.display).toBe("");
         expect(formatSelect().value).toBe("markdown");
-        expect(wikiOption().disabled).toBe(false);
+        expect(wikiOption()).toBeDefined();
     });
 });
 
@@ -457,15 +464,25 @@ describe("unlink button in the header", () => {
         expect(btnRemove.closest(".lp-body")).toBeNull();
     });
 
-    it("the header actions should be ordered open, edit, then unlink last", async () => {
+    it("the header actions should be ordered open, copy, unlink, then edit", async () => {
         await hover(container.querySelector('a[href="notes.md"]')!);
 
         const btns = Array.from(
             document.querySelectorAll<HTMLElement>(".lp-header-actions .lp-btn"),
         );
         expect(btns[0]?.classList.contains("lp-btn-open")).toBe(true);
-        expect(btns[1]?.classList.contains("lp-btn-edit")).toBe(true);
+        expect(btns[1]?.classList.contains("lp-btn-copy")).toBe(true);
         expect(btns[2]?.classList.contains("lp-btn-remove")).toBe(true);
+        expect(btns[3]?.classList.contains("lp-btn-edit")).toBe(true);
+    });
+
+    it("the unlink button should use the link-off (slashed) icon", async () => {
+        await hover(container.querySelector('a[href="notes.md"]')!);
+
+        const btnRemove = document.querySelector<HTMLElement>(".lp-btn-remove")!;
+        // IconLinkOff carries a diagonal slash line (2,2)→(22,22).
+        expect(btnRemove.innerHTML).toContain('x1="2"');
+        expect(btnRemove.innerHTML).toContain('y2="22"');
     });
 
     it("clicking unlink should strip the link mark while preserving the text", async () => {
@@ -490,6 +507,67 @@ describe("unlink button in the header", () => {
 
         const btnRemove = document.querySelector<HTMLElement>(".lp-btn-remove")!;
         expect(btnRemove.style.display).toBe("none");
+    });
+
+    it("opening the editor for insert should hide the edit toggle", async () => {
+        // A new link is already being edited, so the edit toggle is redundant.
+        openLinkEditor({
+            view,
+            anchorRect: { left: 0, right: 0, top: 0, bottom: 0 },
+            from: 1,
+            to: 1,
+            text: "",
+            href: "",
+        });
+
+        const btnEdit = document.querySelector<HTMLElement>(".lp-btn-edit")!;
+        expect(btnEdit.style.display).toBe("none");
+    });
+});
+
+// ─── Copy-link button ───────────────────────────────────────────────────────
+
+describe("copy link button", () => {
+    let editor: Editor;
+    let container: HTMLElement;
+    let writeText: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, "clipboard", {
+            configurable: true,
+            value: { writeText },
+        });
+        ({ editor, container } = await makeEditor(SAVED));
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    function clickCopy(): void {
+        document.querySelector<HTMLElement>(".lp-btn-copy")!
+            .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }
+
+    it("clicking copy should write the link href to the clipboard", async () => {
+        await hover(container.querySelector('a[href="https://example.com/a"]')!);
+        clickCopy();
+
+        expect(writeText).toHaveBeenCalledWith("https://example.com/a");
+    });
+
+    it("the copy button should be present for a read-only reference link", async () => {
+        await hover(container.querySelector('a[data-type="link-ref"]')!);
+
+        const btnCopy = document.querySelector<HTMLElement>(".lp-btn-copy")!;
+        expect(btnCopy.style.display).toBe("");
+        clickCopy();
+        expect(writeText).toHaveBeenCalledWith("https://example.com/b");
     });
 });
 
@@ -522,6 +600,70 @@ describe("unlink button hidden for read-only links", () => {
 
         vi.useRealTimers();
         await editor.destroy();
+    });
+});
+
+// ─── Click-to-pin (Google-Docs link-chip behavior) ─────────────────────────
+
+describe("click to pin the link popup", () => {
+    let editor: Editor;
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container } = await makeEditor("See [inline](notes.md) here.\n"));
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+    });
+
+    function clickLink(anchor: Element): void {
+        anchor.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }
+
+    it("a plain click on a link should reveal its popup", () => {
+        clickLink(container.querySelector('a[href="notes.md"]')!);
+        expect(getPopup().style.display).toBe("flex");
+        expect(document.querySelector(".lp-url")?.textContent).toBe("notes.md");
+    });
+
+    it("a pinned popup should survive a mouseleave", () => {
+        clickLink(container.querySelector('a[href="notes.md"]')!);
+        const popup = getPopup();
+        expect(popup.style.display).toBe("flex");
+
+        // A hover-opened popup hides on mouseleave; a pinned one stays put.
+        popup.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+        expect(popup.style.display).toBe("flex");
+    });
+
+    it("Escape should dismiss a pinned popup", () => {
+        clickLink(container.querySelector('a[href="notes.md"]')!);
+        expect(getPopup().style.display).toBe("flex");
+
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        expect(getPopup().style.display).toBe("none");
+    });
+
+    it("a click outside both the popup and any link should dismiss a pinned popup", () => {
+        clickLink(container.querySelector('a[href="notes.md"]')!);
+        expect(getPopup().style.display).toBe("flex");
+
+        document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(getPopup().style.display).toBe("none");
+    });
+
+    it("a mousedown on a link anchor should not dismiss the popup before the click re-anchors", () => {
+        clickLink(container.querySelector('a[href="notes.md"]')!);
+        expect(getPopup().style.display).toBe("flex");
+
+        // Re-pointing to the same (or a different) link: the mousedown must not
+        // hide it — the click-show handler re-anchors instead.
+        const anchor = container.querySelector('a[href="notes.md"]')!;
+        anchor.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(getPopup().style.display).toBe("flex");
     });
 });
 

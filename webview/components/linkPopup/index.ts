@@ -3,12 +3,13 @@ import type { EditorView } from "@milkdown/prose/view";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
 import { scrollElementBelowTopbar } from "@/utils/headingUtils";
 import {
+    IconCopy,
     IconExternalLink,
     IconFileText,
     IconHash,
     IconLink,
+    IconLinkOff,
     IconPencil,
-    IconUnlink,
 } from "@/ui/icons";
 import { t } from "@/i18n";
 import { applyTooltip } from "@/ui/tooltip";
@@ -289,27 +290,42 @@ export function setupLinkPopup(
     const headerActions = document.createElement("div");
     headerActions.className = "lp-header-actions";
 
+    // Icon-only header buttons: applyTooltip strips the native title, so each
+    // carries an explicit aria-label for its accessible name (screen readers).
     const btnOpen = document.createElement("button");
     btnOpen.className = "lp-btn lp-btn-open";
     btnOpen.innerHTML = IconExternalLink;
+    btnOpen.setAttribute("aria-label", t("Open link"));
     const btnOpenTooltip = applyTooltip(btnOpen, openHint, { placement: "above" });
+
+    // Copy the link's href to the clipboard (Docs/Slack link-chip convention).
+    const btnCopy = document.createElement("button");
+    btnCopy.className = "lp-btn lp-btn-copy";
+    btnCopy.innerHTML = IconCopy;
+    btnCopy.setAttribute("aria-label", t("Copy link"));
+    const btnCopyTooltip = applyTooltip(btnCopy, t("Copy link"), { placement: "above" });
+
+    // Unlink (destructive but text-preserving): strips the link mark / replaces
+    // a wikilink atom with its text. A link-level verb, so it lives in the
+    // header beside Open/Copy/Edit; its icon carries a slash so the "remove"
+    // meaning is unambiguous, and only its hover uses the error color (see CSS).
+    const btnRemove = document.createElement("button");
+    btnRemove.className = "lp-btn lp-btn-remove";
+    btnRemove.setAttribute("aria-label", t("Remove Link"));
+    btnRemove.innerHTML = IconLinkOff;
+    applyTooltip(btnRemove, t("Remove Link"), { placement: "above" });
 
     const btnEdit = document.createElement("button");
     btnEdit.className = "lp-btn lp-btn-edit";
     btnEdit.innerHTML = IconPencil;
+    btnEdit.setAttribute("aria-label", t("Edit link"));
     applyTooltip(btnEdit, t("Edit link"), { placement: "above" });
 
-    // Unlink (destructive but text-preserving): strips the link mark / replaces
-    // a wikilink atom with its text. A link-level verb, so it lives in the
-    // header beside Open/Edit — last, and visually separated (see CSS).
-    const btnRemove = document.createElement("button");
-    btnRemove.className = "lp-btn lp-btn-remove";
-    btnRemove.title = t("Remove Link");
-    btnRemove.innerHTML = IconUnlink;
-
+    // Order: [open][copy][unlink][edit].
     headerActions.appendChild(btnOpen);
-    headerActions.appendChild(btnEdit);
+    headerActions.appendChild(btnCopy);
     headerActions.appendChild(btnRemove);
+    headerActions.appendChild(btnEdit);
 
     header.appendChild(iconEl);
     header.appendChild(urlEl);
@@ -372,6 +388,11 @@ export function setupLinkPopup(
     // Cmd/Ctrl+K, slash menu) rather than by a hover — drives the pending-range
     // highlight lifecycle and the return-focus-to-editor on close.
     let insertMode = false;
+    // True while the popup was opened by clicking a link (Google-Docs link-chip
+    // behavior): it stays put on mouseleave and dismisses only on Escape or a
+    // click outside both the popup and any link. A hover-opened popup is not
+    // pinned and keeps its auto-hide.
+    let pinned = false;
     // Whether a pending-range highlight is currently painted (so a close that
     // never entered edit mode never dispatches a needless clearing transaction).
     let pendingActive = false;
@@ -506,6 +527,10 @@ export function setupLinkPopup(
     function showPopup(link: LinkInfo, anchorEl: Element): void {
         clearHideTimer();
         currentLink = link;
+        // Default to an unpinned (hover) popup; the click-to-pin path sets
+        // `pinned` after this call. A hover over another link thus reverts a
+        // previously pinned popup to normal auto-hide behavior.
+        pinned = false;
         isEditMode = false;
         body.classList.remove("expanded");
         btnEdit.classList.remove("lp-btn-active");
@@ -516,6 +541,9 @@ export function setupLinkPopup(
         btnEdit.style.display = link.readOnly ? "none" : "";
         btnRemove.style.display = link.readOnly ? "none" : "";
         btnOpen.style.display = ""; // reset from any prior insert open
+        // Copy is available for any link with an href, read-only ones included.
+        btnCopy.style.display = link.href.trim() ? "" : "none";
+        btnCopyTooltip.setText(t("Copy link"));
 
         updatePopupContent(link);
 
@@ -575,17 +603,20 @@ export function setupLinkPopup(
             wiki: opts.wiki || undefined,
             readOnly: false,
         };
-        btnEdit.style.display = "";
-        // A brand-new link has nothing to unlink; cancel is Escape / click-away.
+        // In insert mode the link is already being edited: the header reads just
+        // "[icon] New link", so hide the edit toggle. A brand-new link has
+        // nothing to unlink either; cancel is Escape / click-away.
+        btnEdit.style.display = "none";
         btnRemove.style.display = "none";
         popup.style.display = "flex";
 
         updatePopupContent(currentLink);
         setEditMode(true); // expands the body, highlights the range, focuses text
 
-        // A fresh insert has no target to open yet.
+        // A fresh insert has no target to open or copy yet.
         const hasHref = currentLink.href.trim().length > 0;
         btnOpen.style.display = hasHref ? "" : "none";
+        btnCopy.style.display = hasHref ? "" : "none";
         if (!hasHref) {
             urlEl.textContent = t("New link");
             urlEl.title = "";
@@ -605,6 +636,7 @@ export function setupLinkPopup(
         clearPending();
         if (insertMode) { liveView()?.focus(); }
         insertMode = false;
+        pinned = false;
         popup.style.display = "none";
         currentLink = null;
         lastApplied = null;
@@ -614,6 +646,9 @@ export function setupLinkPopup(
     }
 
     function scheduleHide(delay = 180): void {
+        // A pinned popup never auto-hides — it dismisses only on Escape or a
+        // click outside both the popup and any link.
+        if (pinned) { return; }
         clearHideTimer();
         hideTimer = setTimeout(hidePopup, delay);
     }
@@ -654,6 +689,8 @@ export function setupLinkPopup(
 
     popup.addEventListener("mouseenter", () => clearHideTimer());
     popup.addEventListener("mouseleave", () => {
+        // A pinned popup stays put on mouseleave (Docs link-chip behavior).
+        if (pinned) return;
         if (popup.contains(document.activeElement)) return;
         hidePopup();
     });
@@ -706,11 +743,14 @@ export function setupLinkPopup(
         true,
     );
 
-    // click capture: only handle anchor jumps (external/file links are handled in mousedown)
+    // click capture: in-page anchors jump; a plain click on any other link
+    // reveals and PINS its popup (Docs/Slack link-chip behavior). Modifier-open
+    // is handled in mousedown above.
     container.addEventListener(
         "click",
         (e) => {
-            const anchor = (e.target as Element).closest("a");
+            const me = e as MouseEvent;
+            const anchor = (me.target as Element).closest("a");
             if (!anchor) return;
             e.preventDefault();
             e.stopPropagation();
@@ -725,6 +765,23 @@ export function setupLinkPopup(
                 // no modifier key needed
                 scrollToAnchor(href.slice(1));
                 scheduleHide(50);
+                return;
+            }
+
+            // Modifier-click opened the target already (mousedown); don't pin.
+            if (me.metaKey || me.ctrlKey) return;
+            // Never rebind mid-edit — the unsaved fields would be lost.
+            if (isEditMode) return;
+
+            // Plain click: show this link's popup, pinned so it stays put until
+            // Escape or a click outside both the popup and any link. Clicking a
+            // different link re-points the pinned popup to it.
+            const view = getView();
+            if (!view) return;
+            const link = findLinkAt(view, anchor);
+            if (link) {
+                showPopup(link, anchor);
+                pinned = true;
             }
         },
         true,
@@ -758,6 +815,38 @@ export function setupLinkPopup(
         e.preventDefault();
         e.stopPropagation();
         openCurrentLink();
+    });
+
+    // ── Copy button: href → clipboard ─────────────────────────────
+
+    let copyRestoreTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /** Copy `text` to the clipboard; fall back to a hidden textarea + execCommand. */
+    function copyToClipboard(text: string): void {
+        navigator.clipboard?.writeText(text).catch(() => {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            try { document.execCommand("copy"); } catch { /* ignore */ }
+            document.body.removeChild(ta);
+        });
+    }
+
+    btnCopy.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const href = currentLink?.href?.trim();
+        if (!href) return;
+        copyToClipboard(href);
+        // Brief "Copied" feedback, then restore the tooltip.
+        btnCopyTooltip.setText(t("Copied"));
+        if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
+        copyRestoreTimer = setTimeout(() => {
+            btnCopyTooltip.setText(t("Copy link"));
+            copyRestoreTimer = null;
+        }, 1000);
     });
 
     // ── Edit button: toggle edit mode ─────────────────────────────
@@ -959,12 +1048,26 @@ export function setupLinkPopup(
     // ── Click outside the popup to close it ──────────────────────
 
     document.addEventListener("mousedown", (e) => {
-        if (!popup.contains(e.target as Node)) {
-            // mousedown lands before the input's blur would — save first so
-            // the click-away never eats an edit.
-            applyEdit();
-            hidePopup();
-        }
+        const target = e.target as Element | null;
+        if (popup.contains(target as Node)) return;
+        // A mousedown on a link anchor is a click-to-pin (or a re-point to a
+        // different link): let the capture-phase click handler re-anchor the
+        // popup instead of dismissing it here.
+        if (target?.closest?.("a")) return;
+        // mousedown lands before the input's blur would — save first so the
+        // click-away never eats an edit.
+        applyEdit();
+        hidePopup();
+    });
+
+    // Escape closes an open (esp. pinned) popup when focus isn't in the edit
+    // inputs — those handle Escape themselves and refocus the editor.
+    document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        if (popup.style.display === "none") return;
+        if (popup.contains(document.activeElement)) return;
+        hidePopup();
+        getView()?.focus();
     });
 
     // Expose the insert/edit entry point for the toolbar, Cmd/Ctrl+K, and the
