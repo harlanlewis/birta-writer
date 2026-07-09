@@ -30,12 +30,33 @@ import {
     WORDINESS,
 } from "../proofread/wordlists";
 import { isLintSuppressed, setUserWords } from "../proofread/engine";
-import { onFirstUserInteraction } from "../editor";
 import { hideLintPopup, showLintPopup } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { t } from "../i18n";
 
 const SCAN_DEBOUNCE_MS = 350;
+// Upper bound on how long after first paint the initial proofread pass may wait
+// for an idle window before it runs anyway.
+const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
+
+/** True when any proofreading check is on. All off ⇒ the plugin does no work. */
+function anyProofreadEnabled(c: ProofreadConfig): boolean {
+    return c.styleCheck || c.spellCheck || c.grammarCheck;
+}
+
+/** requestIdleCallback if the runtime has it (webview does; jsdom does not). */
+function requestIdle(cb: () => void): { cancel: () => void } {
+    const ric = (globalThis as {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+        cancelIdleCallback?: (h: number) => void;
+    }).requestIdleCallback;
+    if (ric) {
+        const h = ric(cb, { timeout: FIRST_PASS_IDLE_TIMEOUT_MS });
+        return { cancel: () => (globalThis as { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback?.(h) };
+    }
+    const t = setTimeout(cb, 0);
+    return { cancel: () => clearTimeout(t) };
+}
 
 /** Spec attached to a Harper decoration so the popup can render it. */
 export type LintSpec = {
@@ -355,13 +376,15 @@ export const proofreadPlugin = $prose(() => {
             let destroyed = false;
             let lintRequestId = 0;
             let lintRequestDoc: ProseNode | null = null;
-            // Proofreading (style, spelling, grammar) is deferred off the
-            // read-only open path: opening a file to read it must never trigger
-            // the first scan, which would load Harper's ~18 MB WASM (~380 ms +
-            // ~300 MB, extension side) for grammar/spell. The first scan waits
-            // for the first user interaction; a deliberate config toggle counts
-            // as interaction too.
-            let interacted = false;
+            // The first proofread pass is deferred off the mount/paint path and
+            // run on idle AFTER the editor is visible (see below): proofreading
+            // is decoration only and must never block interactivity, nor appear
+            // as a jarring change the instant the user touches a ready-looking
+            // editor — annotations settle in on their own. `firstPassReady` gates
+            // the scan closed until that idle arm (or a deliberate config toggle)
+            // opens it, so a transaction fired during mount can't run it early.
+            let firstPassReady = false;
+            let firstPassIdle: { cancel: () => void } | null = null;
 
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
@@ -382,7 +405,7 @@ export const proofreadPlugin = $prose(() => {
             const scan = () => {
                 scanTimer = null;
                 if (destroyed || view.isDestroyed) { return; }
-                if (!interacted) { return; } // deferred until first interaction — reading a file never scans
+                if (!firstPassReady) { return; } // gated until the idle arm (or a config toggle)
                 if (view.composing) { schedule(); return; } // don't disturb IME composition
                 const state = proofreadPluginKey.getState(view.state);
                 if (!state) { return; }
@@ -414,7 +437,7 @@ export const proofreadPlugin = $prose(() => {
                 const state = proofreadPluginKey.getState(view.state);
                 if (!state) { return; }
                 if (state.config !== lastConfig) {
-                    interacted = true; // a deliberate config toggle is engagement enough to run
+                    firstPassReady = true; // a deliberate config toggle runs immediately
                     schedule(0); // config toggles should feel instant
                 } else if (view.state.doc !== lastDoc) {
                     hideLintPopup(); // edits invalidate the popup's captured range
@@ -428,19 +451,25 @@ export const proofreadPlugin = $prose(() => {
             lastDoc = view.state.doc;
             lastConfig = proofreadPluginKey.getState(view.state)?.config ?? null;
             emitConfigChanged(proofreadPluginKey.getState(view.state)?.config ?? { ...DEFAULT_CONFIG });
-            // Arm the first scan on the first user interaction (fires immediately
-            // if the user has already interacted, e.g. an editor rebuild mid-edit).
-            const unsubscribeInteraction = onFirstUserInteraction(() => {
-                interacted = true;
-                schedule(0);
-            });
+            // Arm the first pass on idle, after the editor has painted — so
+            // annotations settle in without blocking mount or reacting to the
+            // user's first touch. Skipped entirely when every check is off: a
+            // fully-disabled feature schedules nothing, walks nothing, and never
+            // loads the grammar engine. Enabling a check later runs it via the
+            // config-change path in maybeSchedule.
+            if (lastConfig && anyProofreadEnabled(lastConfig)) {
+                firstPassIdle = requestIdle(() => {
+                    firstPassReady = true;
+                    schedule(0);
+                });
+            }
 
             return {
                 update: maybeSchedule,
                 destroy() {
                     destroyed = true;
                     currentApplier = null;
-                    unsubscribeInteraction();
+                    firstPassIdle?.cancel();
                     hideLintPopup();
                     if (scanTimer !== null) { clearTimeout(scanTimer); }
                 },

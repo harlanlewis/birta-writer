@@ -1,12 +1,14 @@
 /**
- * Proofreading is deferred off the read-only open path: opening a file to read
- * it must not run the first proofread scan, because a grammar/spell scan posts
- * `lintBlocks` to the extension, which loads Harper's ~18 MB WASM (~380 ms +
- * ~300 MB). The scan is armed on the first user interaction instead. These tests
- * drive the real createEditor (full plugin stack) and assert on the messages
- * that actually cross to the extension via the production messaging layer.
+ * The proofread pass is deferred off the mount/paint path and run on idle after
+ * the editor is visible: it must not run synchronously during create (it would
+ * block the paint), it settles in on its own without needing a user interaction,
+ * and — crucially — it does nothing at all when every check is disabled (no scan,
+ * no `lintBlocks`, so Harper's ~18 MB WASM never loads). These tests drive the
+ * real createEditor and assert on the messages that cross to the extension.
  *
- * acquireVsCodeApi is injected globally by setup.ts.
+ * acquireVsCodeApi is injected globally by setup.ts. jsdom has no
+ * requestIdleCallback, so the plugin's idle arm falls back to setTimeout(0),
+ * which fake timers advance.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
@@ -39,7 +41,7 @@ function lintBlockPosts(): number {
         .filter((msg) => msg.type === "lintBlocks").length;
 }
 
-describe("proofread scan is deferred until first interaction", () => {
+describe("proofread pass is deferred to idle after paint", () => {
     let editor: Editor;
 
     beforeEach(() => {
@@ -49,37 +51,55 @@ describe("proofread scan is deferred until first interaction", () => {
 
     afterEach(async () => {
         vi.useRealTimers();
+        delete window.__i18n;
         await editor.destroy();
     });
 
-    it("opening a file to read it (no interaction) should post no lintBlocks", async () => {
-        // Arrange — a fresh editor, NO simulated interaction
+    it("should not run synchronously during create (nothing posted before idle)", async () => {
+        // Arrange — fake timers BEFORE create so the idle arm is on the fake clock
+        vi.useFakeTimers();
         const container = document.createElement("div");
         document.body.appendChild(container);
         editor = await createEditor(container, DOC, vi.fn());
-        vi.useFakeTimers();
 
-        // Act — let well past the scan debounce elapse
-        await vi.advanceTimersByTimeAsync(2000);
+        // Act — flush microtasks only; the idle arm (a macrotask) has not fired
+        await Promise.resolve();
 
-        // Assert — the grammar/spell engine is never triggered on a read-only open
+        // Assert — the scan never runs on the paint-critical path
         expect(lintBlockPosts()).toBe(0);
     });
 
-    it("the first user interaction should arm the scan and post lintBlocks", async () => {
+    it("should run proactively on idle with no user interaction", async () => {
         // Arrange
+        vi.useFakeTimers();
         const container = document.createElement("div");
         document.body.appendChild(container);
         editor = await createEditor(container, DOC, vi.fn());
-        vi.useFakeTimers();
-        await vi.advanceTimersByTimeAsync(2000);
-        expect(lintBlockPosts()).toBe(0); // still nothing before interaction
 
-        // Act — a real interaction (capture-phase document keydown) arms the scan
+        // Act — let the idle arm + scan debounce elapse; NO interaction
+        await vi.advanceTimersByTimeAsync(2000);
+
+        // Assert — annotations settle in on their own
+        expect(lintBlockPosts()).toBeGreaterThan(0);
+    });
+
+    it("with every check disabled should never scan or load the grammar engine", async () => {
+        // Arrange — a config with style, spell, and grammar all off
+        window.__i18n = {
+            translations: {},
+            proofread: { styleCheck: false, spellCheck: false, grammarCheck: false },
+        } as unknown as typeof window.__i18n;
+        vi.useFakeTimers();
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        editor = await createEditor(container, DOC, vi.fn());
+
+        // Act — well past idle + debounce, and even after a real interaction
+        await vi.advanceTimersByTimeAsync(2000);
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "x", bubbles: true }));
         await vi.advanceTimersByTimeAsync(2000);
 
-        // Assert — proofreading runs normally once the user engages
-        expect(lintBlockPosts()).toBeGreaterThan(0);
+        // Assert — a fully-disabled feature costs nothing: no lintBlocks ⇒ no Harper
+        expect(lintBlockPosts()).toBe(0);
     });
 });
