@@ -56,17 +56,27 @@ async function computeEager() {
     let eagerJs = 0;
     for (const o of seen) eagerJs += outputs[o].bytes ?? 0;
 
-    // Render-blocking entry CSS (esbuild concatenates all reachable CSS into one
-    // bundle referenced by the entry). Sum every .css output to be safe.
+    // Render-blocking CSS = the cssBundle of each eagerly-reached JS output.
+    // esbuild attaches the concatenated stylesheet for a JS file to its
+    // `cssBundle` field, so the entry's cssBundle is webview.css and any eager
+    // chunk's CSS is included too. A CSS-only entry point (dist/katex.css) is
+    // NOT the cssBundle of any JS output, so it is correctly excluded — it is
+    // injected lazily, not render-blocking.
     let eagerCss = 0;
-    for (const [o, info] of Object.entries(outputs)) {
-        if (o.endsWith(".css")) eagerCss += info.bytes ?? 0;
+    const cssSeen = new Set();
+    for (const o of seen) {
+        const cb = outputs[o].cssBundle;
+        if (cb && outputs[cb] && !cssSeen.has(cb)) {
+            cssSeen.add(cb);
+            eagerCss += outputs[cb].bytes ?? 0;
+        }
     }
 
-    // Total emitted bytes (incl. lazy chunks), for context only.
-    let totalJs = 0;
+    // Total emitted bytes (incl. lazy chunks + separate CSS entries), for context.
+    let totalJs = 0, totalCss = 0;
     for (const [o, info] of Object.entries(outputs)) {
         if (o.endsWith(".js")) totalJs += info.bytes ?? 0;
+        else if (o.endsWith(".css")) totalCss += info.bytes ?? 0;
     }
 
     return {
@@ -75,6 +85,7 @@ async function computeEager() {
         eagerTotal: eagerJs + eagerCss,
         eagerChunkCount: seen.size,
         totalJs,
+        totalCss,
     };
 }
 
@@ -106,7 +117,7 @@ async function main() {
     console.log(`  eager JS     ${kb(r.eagerJs)} KB  across ${r.eagerChunkCount} chunks`);
     console.log(`  eager CSS    ${kb(r.eagerCss)} KB  (render-blocking)`);
     console.log(`  eager total  ${kb(r.eagerTotal)} KB`);
-    console.log(`  (all JS      ${kb(r.totalJs)} KB incl. lazy chunks)\n`);
+    console.log(`  (all JS      ${kb(r.totalJs)} KB, all CSS ${kb(r.totalCss)} KB incl. lazy)\n`);
     if (jsonIdx !== -1) {
         await writeFile(argv[jsonIdx + 1], JSON.stringify(r, null, 2));
         console.log(`wrote ${argv[jsonIdx + 1]}\n`);
