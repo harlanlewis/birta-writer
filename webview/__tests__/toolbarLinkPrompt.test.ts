@@ -257,4 +257,30 @@ describe("toolbar openLinkPrompt", () => {
         expect(linkedTexts(v)).toEqual([]);
         expect(v.state.doc.textContent).toBe("hello world");
     });
+
+    it("an outside-click landing on a link should still close the open editor (MAR-71)", () => {
+        // Arrange — open the insert editor on "hello".
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)));
+        tb.openLinkPrompt();
+        expect(popupClosed()).toBe(false);
+
+        // Act — click a link anchor OUTSIDE the popup. This is exactly the case
+        // the e2e "blur-out" click hits once a line has been linked: the click
+        // target is an <a>. The anchor is placed in the editor container (so the
+        // popup's capture-phase click handler fires) but outside .ProseMirror,
+        // so ProseMirror's own view handler — which needs layout jsdom lacks —
+        // isn't invoked. The gesture is mousedown → click, as a real click fires.
+        const container = document.querySelector(".milkdown")!.parentElement!;
+        const link = document.createElement("a");
+        link.setAttribute("href", "https://example.com"); // non-anchor: reaches the isEditMode branch
+        link.textContent = "x";
+        container.appendChild(link);
+        link.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        link.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        // Assert — while an editor is open, a click on a link applies-and-closes
+        // instead of re-pointing. Before the fix mousedown skipped the dismiss
+        // (link target) and the click re-pinned, leaving the editor stuck open.
+        expect(popupClosed()).toBe(true);
+    });
 });

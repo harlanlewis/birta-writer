@@ -26,12 +26,21 @@ export async function run({ page, check, baseUrl }) {
         }
     };
 
-    // Select the word "quick" in the paragraph by double-clicking it.
     const para = page.locator(".ProseMirror p").first();
     await para.click();
     const box = await para.boundingBox();
-    await page.mouse.dblclick(box.x + 40, box.y + box.height / 2);
-    await page.waitForTimeout(150);
+    // Select the word `dx` pixels into the paragraph. Two dblclicks at the same
+    // coordinate within the browser's ~500ms multi-click window coalesce into a
+    // triple click (select-all-in-block), so a later insert links the whole
+    // paragraph — a synthetic-input quirk a real native double-click never hits.
+    // Waiting past the window before each dblclick starts a fresh click sequence,
+    // so every call deterministically selects the single word under `dx`.
+    const selectWord = async (dx) => {
+        await page.waitForTimeout(700); // let any prior multi-click window lapse
+        await page.mouse.dblclick(box.x + dx, box.y + box.height / 2);
+        await page.waitForTimeout(150);
+    };
+    await selectWord(40); // "quick"
     const selText = await page.evaluate(() => window.getSelection().toString());
     check("a word is selected in the document", selText.trim().length > 0, JSON.stringify(selText));
 
@@ -80,8 +89,7 @@ export async function run({ page, check, baseUrl }) {
     check("Escape posted no document update", (await updates()).length === beforeEsc);
 
     // ── 6. Reopen, type a URL, Enter applies → link serialized ──
-    await page.mouse.dblclick(box.x + 40, box.y + box.height / 2);
-    await page.waitForTimeout(150);
+    await selectWord(40); // "quick"
     await clickLinkButton();
     await openEditor();
     const url = page.locator(".lp-root .lp-url-input");
@@ -95,12 +103,19 @@ export async function run({ page, check, baseUrl }) {
         posted.some((u) => u.includes("(https://example.com)")),
         JSON.stringify(posted[posted.length - 1] ?? "").slice(0, 120),
     );
+    // The link must land on exactly the selected word — a prior insert then
+    // Escape must not leave a stale range that widens this apply to the whole
+    // paragraph. Asserting the link text, not just the URL, guards that.
+    check(
+        "the link wraps only the selected word (not the whole paragraph)",
+        posted.some((u) => u.includes("[quick](https://example.com)")),
+        JSON.stringify(posted[posted.length - 1] ?? "").slice(0, 120),
+    );
     check("editor closed after Enter", !(await editorVisible()));
     check("pending-range cleared after apply", (await page.locator(".ProseMirror .pending-range").count()) === 0);
 
     // ── 7. Blur-out with no change is a no-op (does not dirty the doc) ──
-    await page.mouse.dblclick(box.x + 200, box.y + box.height / 2); // select another word
-    await page.waitForTimeout(150);
+    await selectWord(200); // another word ("jumps")
     await clickLinkButton();
     await openEditor();
     const nUpdatesBeforeBlur = (await updates()).length;
