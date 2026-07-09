@@ -43,7 +43,10 @@ function copyHarperWasm() {
 // WebView frontend (Browser) - ESM + code splitting, lazy-loads Mermaid etc.
 const webviewBuild = {
     ...commonOptions,
-    entryPoints: { webview: 'webview/index.ts' },
+    // KaTeX's stylesheet is a SECOND entry so it emits as dist/katex.css instead
+    // of being hoisted into the render-blocking entry webview.css. It is injected
+    // lazily at runtime the first time math loads (see webview/utils/katexLoader.ts).
+    entryPoints: { webview: 'webview/index.ts', katex: 'katex/dist/katex.min.css' },
     outdir: 'dist',
     platform: 'browser',
     target: 'es2020',
