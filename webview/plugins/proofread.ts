@@ -29,8 +29,15 @@ import {
     REDUNDANCIES,
     WORDINESS,
 } from "../proofread/wordlists";
-import { isLintSuppressed, setUserWords } from "../proofread/engine";
-import { hideLintPopup, showLintPopup } from "../proofread/popup";
+import {
+    ignoreLintSession,
+    ignoreStyleSession,
+    isLintSuppressed,
+    isStyleSuppressed,
+    learnWord,
+    setUserWords,
+} from "../proofread/engine";
+import { hideLintPopup, showFindingsPopup, type PopupButton, type PopupFinding } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { t } from "../i18n";
 
@@ -63,6 +70,27 @@ export type LintSpec = {
     class: string;
     lint: HarperLint;
 };
+
+/** A style-check finding, resolved to everything the popup needs. */
+export type StyleFinding = {
+    category: StyleCategory;
+    /** Full hover/popup explanation, one clause. */
+    message: string;
+    /**
+     * Auto-fix payload, or null when the fix is a judgment call (long
+     * sentence, passive, …): null = no suggestion button; "" = a "Remove"
+     * button that deletes the span; any other string replaces the span.
+     */
+    suggestion: string | null;
+};
+
+/** Spec attached to a style-check decoration so the popup can render it. */
+export type StyleSpec = {
+    class: string;
+    style: StyleFinding;
+};
+
+type DecoSpec = Partial<LintSpec & StyleSpec>;
 
 type ProofreadState = {
     config: ProofreadConfig;
@@ -124,7 +152,11 @@ function enabledMap(c: ProofreadConfig): Partial<Record<StyleCategory, boolean>>
         aiVocabulary: c.aiVocabulary,
         aiArtifacts: c.aiArtifacts,
         passive: c.passive,
-        longSentences: c.longSentences,
+        // Harper's grammar pass emits its own "Long Sentences" lint with a word
+        // count and a click popup — a strictly richer surface. So the webview's
+        // blunter long-sentence flag stands down whenever grammar check is on,
+        // and only provides coverage when Harper isn't running.
+        longSentences: c.longSentences && !c.grammarCheck,
         negativeParallelism: c.negativeParallelism,
         ruleOfThree: c.ruleOfThree,
         emDash: c.emDash,
@@ -197,6 +229,63 @@ function styleHitTitle(category: string): string {
     }
 }
 
+/** Short category chip shown in the popup (and reused for grouping). */
+function styleTag(category: string): string {
+    switch (category) {
+        case "fillers": return t("Filler");
+        case "redundancies": return t("Redundancy");
+        case "cliches": return t("Cliché");
+        case "wordiness": return t("Wordy");
+        case "aiVocabulary": return t("AI vocabulary");
+        case "aiArtifacts": return t("AI boilerplate");
+        case "passive": return t("Passive voice");
+        case "longSentences": return t("Long sentence");
+        case "negativeParallelism": return t("AI cadence");
+        case "ruleOfThree": return t("Rule of three");
+        case "emDash": return t("Em dash");
+        case "nonAsciiPunct": return t("Punctuation");
+        case "repeated": return t("Repeated word");
+        default: return t("Style");
+    }
+}
+
+// Deterministic ASCII replacements for the non-ASCII-punctuation flag, so the
+// popup can offer a one-click normalization instead of only a nudge. Keyed by
+// the single flagged glyph (see findNonAsciiPunct); zero-width marks map to ""
+// (a "Remove"). Curly quotes/dashes fold to their ASCII equivalents.
+const ASCII_NORMALIZATION: Record<string, string> = {
+    "‘": "'", "’": "'", "“": "\"", "”": "\"",
+    "…": "...",
+    " ": " ", " ": " ", // nbsp, thin space → ASCII space
+    "​": "", "‌": "", "‍": "", // zero-width chars → remove
+};
+
+/**
+ * The auto-fix a style category offers, given its flagged text. Deletable
+ * "read the sentence without it" hits (phrases, repeated words) return "" (a
+ * "Remove"); em dashes and non-ASCII punctuation return a concrete ASCII
+ * replacement; judgment-call flags (long sentence, passive, rule of three,
+ * negative parallelism) return null — those get an explanation and Ignore only.
+ */
+function styleSuggestion(category: StyleCategory, flagged: string): string | null {
+    switch (category) {
+        case "fillers":
+        case "redundancies":
+        case "cliches":
+        case "wordiness":
+        case "aiVocabulary":
+        case "aiArtifacts":
+        case "repeated":
+            return "";
+        case "emDash":
+            return "-";
+        case "nonAsciiPunct":
+            return ASCII_NORMALIZATION[flagged] ?? "";
+        default:
+            return null; // longSentences, passive, ruleOfThree, negativeParallelism
+    }
+}
+
 /**
  * Flatten one textblock into plain text where offsets map 1:1 to document
  * positions (blockPos + 1 + offset): inline-code text is masked with spaces
@@ -238,10 +327,17 @@ export function computeDecorations(doc: ProseNode, config: ProofreadConfig): Dec
         const text = blockPlainText(node);
         const base = pos + 1;
         for (const match of matcher(text)) {
-            const cls = `pf-style-hit pf-style-hit--${match.category}`
+            const flagged = text.slice(match.start, match.end);
+            if (isStyleSuppressed(match.category, flagged)) { continue; }
+            const cls = "pf-style-hit"
                 + (FLAG_CATEGORIES.has(match.category) ? " pf-style-hit--flag" : "");
+            const message = styleHitTitle(match.category);
+            const spec: StyleSpec = {
+                class: cls,
+                style: { category: match.category, message, suggestion: styleSuggestion(match.category, flagged) },
+            };
             decorations.push(Decoration.inline(base + match.start, base + match.end,
-                { class: cls, title: styleHitTitle(match.category) }, { class: cls }));
+                { class: cls, title: message }, spec));
         }
     });
 
@@ -302,14 +398,76 @@ function decorationAt(
     view: EditorView,
     pos: number,
     className: string,
-): { from: number; to: number; spec: Partial<LintSpec> } | null {
+): { from: number; to: number; spec: DecoSpec } | null {
     const state = proofreadPluginKey.getState(view.state);
     if (!state) { return null; }
     const hits = state.combined
         .find(pos, pos, (spec) => ((spec as { class?: string }).class ?? "").includes(className));
     return hits.length > 0
-        ? { from: hits[0].from, to: hits[0].to, spec: hits[0].spec as Partial<LintSpec> }
+        ? { from: hits[0].from, to: hits[0].to, spec: hits[0].spec as DecoSpec }
         : null;
+}
+
+/** Replace the flagged span with `text` ("" deletes it). */
+function replaceRange(view: EditorView, from: number, to: number, text: string): void {
+    view.dispatch(view.state.tr.insertText(text, from, to));
+}
+
+/** Build the popup section for a Harper spelling/grammar finding. */
+function lintFinding(view: EditorView, from: number, to: number, lint: HarperLint): PopupFinding {
+    const word = view.state.doc.textBetween(from, to);
+    const buttons: PopupButton[] = [];
+    for (const suggestion of lint.suggestions) {
+        buttons.push({
+            label: suggestion === "" ? t("Remove") : suggestion,
+            run: () => replaceRange(view, from, to, suggestion),
+        });
+    }
+    if (lint.kind === "Spelling") {
+        buttons.push({ label: t("Add to dictionary"), dismiss: true, run: () => { learnWord(word); refreshProofread(view); } });
+    }
+    buttons.push({ label: t("Ignore"), dismiss: true, run: () => { ignoreLintSession(lint.kind, word); refreshProofread(view); } });
+    return { tag: lint.kind === "Spelling" ? t("Spelling") : t("Grammar"), message: lint.message, buttons };
+}
+
+/** Build the popup section for a style-check finding. */
+function styleFinding(view: EditorView, from: number, to: number, style: StyleFinding): PopupFinding {
+    const word = view.state.doc.textBetween(from, to);
+    const buttons: PopupButton[] = [];
+    if (style.suggestion !== null) {
+        buttons.push({
+            label: style.suggestion === "" ? t("Remove") : t("Fix"),
+            run: () => replaceRange(view, from, to, style.suggestion as string),
+        });
+    }
+    buttons.push({ label: t("Ignore"), dismiss: true, run: () => { ignoreStyleSession(style.category, word); refreshProofread(view); } });
+    return { tag: styleTag(style.category), message: style.message, buttons };
+}
+
+/**
+ * All actionable findings (style + Harper) covering `pos`, most-specific
+ * (smallest span) first — so a filler inside a long sentence lists the filler
+ * above the sentence. Duplicate (from,to,tag) findings are collapsed.
+ */
+function findingsAt(view: EditorView, pos: number): PopupFinding[] {
+    const state = proofreadPluginKey.getState(view.state);
+    if (!state) { return []; }
+    const hits = state.combined.find(pos, pos)
+        .filter((h) => { const s = h.spec as DecoSpec; return Boolean(s.lint || s.style); })
+        .sort((a, b) => (a.to - a.from) - (b.to - b.from));
+    const findings: PopupFinding[] = [];
+    const seen = new Set<string>();
+    for (const h of hits) {
+        const spec = h.spec as DecoSpec;
+        const finding = spec.lint
+            ? lintFinding(view, h.from, h.to, spec.lint)
+            : styleFinding(view, h.from, h.to, spec.style as StyleFinding);
+        const key = `${h.from}:${h.to}:${finding.tag}`;
+        if (seen.has(key)) { continue; }
+        seen.add(key);
+        findings.push(finding);
+    }
+    return findings;
 }
 
 export const proofreadPlugin = $prose(() => {
@@ -354,10 +512,10 @@ export const proofreadPlugin = $prose(() => {
             },
             handleClick(view, pos, event) {
                 const target = event.target as HTMLElement | null;
-                if (!target?.closest?.(".pf-spell-err, .pf-lint-err")) { return false; }
-                const hit = decorationAt(view, pos, "pf-spell-err")
-                    ?? decorationAt(view, pos, "pf-lint-err");
-                if (hit?.spec.lint) { showLintPopup(view, hit.from, hit.to, hit.spec.lint); }
+                if (!target?.closest?.(".pf-style-hit, .pf-spell-err, .pf-lint-err")) { return false; }
+                // One popup for every finding under the cursor — style and Harper,
+                // stacked most-specific-first — so overlaps are all reachable.
+                showFindingsPopup(view, pos, findingsAt(view, pos));
                 return false; // still place the cursor
             },
             handleDoubleClick(view, pos) {

@@ -155,4 +155,55 @@ describe("computeDecorations", () => {
 
         expect(decoratedTexts(doc, { ...CONFIG, styleExceptions: ["really"] })).toEqual([]);
     });
+
+    it("a long sentence should be flagged when grammar check is off", () => {
+        const long = Array.from({ length: 40 }, (_, i) => `w${i}`).join(" ") + ".";
+        const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, [schema.text(long)]),
+        ]);
+
+        expect(decoratedTexts(doc, { ...CONFIG, longSentences: true, grammarCheck: false })).toHaveLength(1);
+    });
+
+    it("a long sentence should defer to Harper when grammar check is on", () => {
+        // Harper owns "Long Sentences" (word count + popup) when grammar runs,
+        // so the webview flag stands down to avoid the double-underline.
+        const long = Array.from({ length: 40 }, (_, i) => `w${i}`).join(" ") + ".";
+        const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, [schema.text(long)]),
+        ]);
+
+        expect(decoratedTexts(doc, { ...CONFIG, longSentences: true, grammarCheck: true })).toEqual([]);
+    });
+});
+
+describe("computeDecorations finding specs", () => {
+    function specsOf(text: string, config = CONFIG): Array<{ class: string; style: { category: string; suggestion: string | null } }> {
+        const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, [schema.text(text)]),
+        ]);
+        return computeDecorations(doc, config).find().map((d) => d.spec as {
+            class: string; style: { category: string; suggestion: string | null };
+        });
+    }
+
+    it("a deletable phrase hit should carry a Remove suggestion (empty string)", () => {
+        const [spec] = specsOf("This is really good.");
+        expect(spec.style.category).toBe("fillers");
+        expect(spec.style.suggestion).toBe("");
+        expect(spec.class).toBe("pf-style-hit");
+    });
+
+    it("an em-dash flag should carry the flag class and a hyphen fix", () => {
+        const [spec] = specsOf("Yes — no", { ...CONFIG, emDash: true });
+        expect(spec.style.category).toBe("emDash");
+        expect(spec.style.suggestion).toBe("-");
+        expect(spec.class).toContain("pf-style-hit--flag");
+    });
+
+    it("a curly apostrophe should normalize to an ASCII apostrophe", () => {
+        const [spec] = specsOf("it’s", { ...CONFIG, nonAsciiPunct: true });
+        expect(spec.style.category).toBe("nonAsciiPunct");
+        expect(spec.style.suggestion).toBe("'");
+    });
 });

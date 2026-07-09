@@ -1,13 +1,32 @@
 /**
- * Lint popup: click a flagged word to see Harper's message, apply a
- * suggestion, add the word to your dictionary (spelling), or ignore the
- * finding for this session.
+ * Findings popup: click any flagged span (spelling, grammar, or style) to see
+ * why it's flagged and what you can do about it. When several findings overlap
+ * the same click — a filler word inside a long sentence, say — the popup stacks
+ * them, one section each, most-specific first.
+ *
+ * This module is a dumb renderer: every action is a closure the caller
+ * (plugins/proofread.ts) builds with the editor view and document positions in
+ * hand, so the popup itself imports neither the engine nor the plugin.
  */
 import type { EditorView } from "@milkdown/prose/view";
-import type { HarperLint } from "../../shared/messages";
-import { t } from "../i18n";
-import { ignoreLintSession, learnWord } from "./engine";
 import "./proofread.css";
+
+/** One button inside a finding section. */
+export type PopupButton = {
+    label: string;
+    /** Dismiss actions (Ignore / Add to dictionary) render quieter, below a rule. */
+    dismiss?: boolean;
+    run: () => void | Promise<void>;
+};
+
+/** One finding, rendered as a labelled message plus its own action buttons. */
+export type PopupFinding = {
+    /** Short category chip, e.g. "Filler", "Spelling", "Long sentence". */
+    tag: string;
+    /** Full explanation, e.g. "This sentence is 44 words long." */
+    message: string;
+    buttons: PopupButton[];
+};
 
 let activePopup: HTMLElement | null = null;
 let cleanup: (() => void) | null = null;
@@ -19,59 +38,53 @@ export function hideLintPopup(): void {
     activePopup = null;
 }
 
-export function showLintPopup(view: EditorView, from: number, to: number, lint: HarperLint): void {
-    hideLintPopup();
-
-    const word = view.state.doc.textBetween(from, to);
-    if (!word) { return; }
-
-    const popup = document.createElement("div");
-    popup.className = "pf-popup";
+function renderFinding(view: EditorView, finding: PopupFinding): HTMLElement {
+    const group = document.createElement("div");
+    group.className = "pf-popup-group";
 
     const message = document.createElement("div");
     message.className = "pf-popup-message";
-    message.textContent = lint.message;
-    popup.appendChild(message);
+    const tag = document.createElement("span");
+    tag.className = "pf-popup-tag";
+    tag.textContent = finding.tag;
+    message.appendChild(tag);
+    message.appendChild(document.createTextNode(finding.message));
+    group.appendChild(message);
 
-    for (const suggestion of lint.suggestions) {
+    for (const button of finding.buttons) {
         const item = document.createElement("button");
         item.type = "button";
-        item.className = "pf-popup-item";
-        item.textContent = suggestion === "" ? t("Remove") : suggestion;
-        item.addEventListener("click", () => {
-            view.dispatch(view.state.tr.insertText(suggestion, from, to));
-            hideLintPopup();
-            view.focus();
-        });
-        popup.appendChild(item);
-    }
-
-    // Writing-app convention: "Add to dictionary" persists, "Ignore" is session-only
-    const dismissActions: Array<[string, () => void]> = [[t("Ignore"), () => ignoreLintSession(lint.kind, word)]];
-    if (lint.kind === "Spelling") {
-        dismissActions.unshift([t("Add to dictionary"), () => learnWord(word)]);
-    }
-    for (const [label, action] of dismissActions) {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "pf-popup-item pf-popup-ignore";
-        item.textContent = label;
+        item.className = "pf-popup-item" + (button.dismiss ? " pf-popup-ignore" : "");
+        item.textContent = button.label;
         item.addEventListener("click", async () => {
-            action();
+            await button.run();
             hideLintPopup();
-            // Rescan so every occurrence is cleared immediately
-            const { refreshProofread } = await import("../plugins/proofread");
-            refreshProofread(view);
             view.focus();
         });
-        popup.appendChild(item);
+        group.appendChild(item);
+    }
+    return group;
+}
+
+/**
+ * Show the popup for one or more findings, anchored under `anchorPos`. The
+ * caller passes findings ordered most-specific-first; an empty list is a no-op.
+ */
+export function showFindingsPopup(view: EditorView, anchorPos: number, findings: PopupFinding[]): void {
+    hideLintPopup();
+    if (findings.length === 0) { return; }
+
+    const popup = document.createElement("div");
+    popup.className = "pf-popup";
+    for (const finding of findings) {
+        popup.appendChild(renderFinding(view, finding));
     }
 
     document.body.appendChild(popup);
     activePopup = popup;
 
-    // Position below the word, clamped to the viewport
-    const coords = view.coordsAtPos(from);
+    // Position below the anchor, clamped to the viewport; flip above on overflow.
+    const coords = view.coordsAtPos(anchorPos);
     const rect = popup.getBoundingClientRect();
     const left = Math.min(coords.left, window.innerWidth - rect.width - 8);
     const top = coords.bottom + 4 + rect.height > window.innerHeight

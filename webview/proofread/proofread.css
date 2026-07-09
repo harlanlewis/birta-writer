@@ -2,16 +2,20 @@
 
 /* Style-check hits: dimmed + struck through ("read the sentence without it").
    Deliberately distinct from real ~~strikethrough~~ content, which keeps
-   normal text color — hits are also dimmed. */
+   normal text color — hits are also dimmed. Clicking any hit opens the
+   findings popup (why it's flagged + Fix/Remove/Ignore), so all three hit
+   types share the pointer cursor. */
 .pf-style-hit {
     color: var(--vscode-descriptionForeground);
     opacity: 0.65;
     text-decoration: line-through;
     text-decoration-thickness: 1px;
+    cursor: pointer;
     transition: opacity 0.1s ease;
 
+    /* Reveal the span at full strength on hover — the word you'd act on. */
     &:hover {
-        opacity: 0.9;
+        opacity: 1;
     }
 }
 
@@ -27,26 +31,32 @@
 
 /* Spelling hits: dotted underline, native-spellcheck look */
 .pf-spell-err {
-    text-decoration: underline dotted var(--vscode-editorWarning-foreground, #cca700);
+    text-decoration: underline dotted var(--vscode-editorWarning-foreground);
     text-decoration-skip-ink: none;
     text-underline-offset: 3px;
     cursor: pointer;
 }
 
-/* Grammar/style findings from Harper: quieter dotted underline */
+/* Grammar findings from Harper: quieter dotted underline */
 .pf-lint-err {
-    text-decoration: underline dotted var(--vscode-editorInfo-foreground, #3794ff);
+    text-decoration: underline dotted var(--vscode-editorInfo-foreground);
     text-decoration-skip-ink: none;
     text-underline-offset: 3px;
     cursor: pointer;
 }
 
-/* Suggestion popup */
+/* Thicken the underline on hover so the actionable span is obvious. */
+.pf-spell-err:hover,
+.pf-lint-err:hover {
+    text-decoration-thickness: 2px;
+}
+
+/* Findings popup */
 .pf-popup {
     position: fixed;
     z-index: 1000;
-    min-width: 140px;
-    max-width: 260px;
+    min-width: 160px;
+    max-width: 280px;
     padding: 4px;
     display: flex;
     flex-direction: column;
@@ -56,6 +66,14 @@
     border-radius: 4px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     font-size: 13px;
+}
+
+/* One finding = one section. When several stack (overlapping findings), a rule
+   separates them. */
+.pf-popup-group + .pf-popup-group {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--vscode-editorWidget-border);
 }
 
 .pf-popup-item {
@@ -83,12 +101,33 @@
     padding-top: 6px;
 }
 
+/* Two dismiss actions in a row (Add to dictionary + Ignore): only the first
+   carries the separating rule. */
+.pf-popup-ignore + .pf-popup-ignore {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 4px;
+}
+
 .pf-popup-message {
     padding: 4px 8px 6px;
     color: var(--vscode-descriptionForeground);
-    border-bottom: 1px solid var(--vscode-editorWidget-border);
     margin-bottom: 2px;
-    max-width: 240px;
+    max-width: 260px;
+}
+
+/* Category chip that leads each finding's message ("Filler", "Long sentence"). */
+.pf-popup-tag {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 0 5px;
+    border-radius: 3px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    font-size: 11px;
+    line-height: 1.5;
+    vertical-align: 1px;
+    white-space: nowrap;
 }
 
 /* The toolbar toggle "on" state (.tb-btn--active) is styled in toolbar.css. */

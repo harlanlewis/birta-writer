@@ -1,0 +1,59 @@
+<!-- e2e harness for the proofread findings popup: mirrors the provider
+     template (src/MarkdownEditorProvider.ts) with acquireVsCodeApi stubbed.
+     Grammar/spell checks are turned off via __i18n.proofread so the surface is
+     purely webview-side and deterministic (no extension-host Harper round
+     trip); long-sentence + filler style checks stay on so a filler inside a
+     long sentence yields two overlapping findings to stack. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-foreground: #cccccc;
+    --vscode-editorWidget-border: #454545;
+    --vscode-widget-border: rgba(128, 128, 128, 0.25);
+    --vscode-focusBorder: #007fd4;
+    --vscode-editorWarning-foreground: #cca700;
+    --vscode-editorInfo-foreground: #3794ff;
+    --vscode-badge-background: #4d4d4d;
+    --vscode-badge-foreground: #ffffff;
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionHighlightBackground: #3a3d41;
+    --vscode-editor-font-family: monospace;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+</style>
+<script>
+  window.__i18n = {
+    translations: {},
+    isMac: true,
+    toolbar: { placements: {}, order: [] },
+    // Webview-only: Harper (grammar/spell) needs the extension host, absent here.
+    proofread: { grammarCheck: false, spellCheck: false },
+  };
+  window.__posted = [];
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          // One long (>30-word) sentence containing the filler "really", so a
+          // click on "really" surfaces both the filler and the long-sentence
+          // findings.
+          content: "The report we prepared last week for the committee was really thorough and covered every topic that anyone on the review board could possibly have wanted to read about before the vote.\n",
+          syncVersion: 1,
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
