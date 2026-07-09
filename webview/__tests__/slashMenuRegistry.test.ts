@@ -71,6 +71,23 @@ describe("filterSlashItems", () => {
         }
     });
 
+    it("only the three check masters are exposed — never the style sub-checks", () => {
+        // The Checks dropdown collapses the style sub-checks under "Check style";
+        // the slash menu's equivalent is to expose only the three masters and
+        // keep the sub-checks out entirely (configuration detail, not commands).
+        // This guards against a sub-check leaking in and contradicting that.
+        const ids = SLASH_MENU_ITEMS.map((i) => i.id);
+        const subChecks = [
+            "fillers", "redundancies", "cliches", "wordiness",
+            "aiVocabulary", "aiArtifacts", "negativeParallelism", "ruleOfThree",
+            "passive", "longSentences", "emDash", "nonAsciiPunct",
+        ];
+        for (const key of subChecks) { expect(ids).not.toContain(key); }
+        for (const master of ["spellCheck", "grammarCheck", "styleCheck"]) {
+            expect(ids).toContain(master);
+        }
+    });
+
     it("a query should surface searchOnly items ranked like any other", () => {
         expect(label(filterSlashItems(SLASH_MENU_ITEMS, "h4"))[0]).toBe("heading4");
         expect(label(filterSlashItems(SLASH_MENU_ITEMS, "bold"))[0]).toBe("bold");

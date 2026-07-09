@@ -474,9 +474,9 @@ function replaceRange(view: EditorView, from: number, to: number, text: string):
  * Delete the flagged span, swallowing one adjacent space so the surrounding
  * words don't collide into a double space: "is really good" → "is good", not
  * "is  good". Prefers the leading space (mid-sentence words) and falls back to
- * the trailing one (sentence-initial words).
+ * the trailing one (sentence-initial words). Exported for unit testing.
  */
-function deleteRange(view: EditorView, from: number, to: number): void {
+export function deleteRange(view: EditorView, from: number, to: number): void {
     const doc = view.state.doc;
     let start = from;
     let end = to;

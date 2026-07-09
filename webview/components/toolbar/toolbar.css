@@ -304,9 +304,12 @@
     background: var(--vscode-editorHoverWidget-border, #454545);
 }
 
-/* A style sub-check while "Check Style" is off: inert but still clickable. */
-.tb-check-item--muted {
-    opacity: 0.45;
+/* The style sub-checks, nested under the "Check style" master: indented with a
+   left rail so they read as belonging to it. Only present in the DOM while
+   Check style is on (see repaintChecks). */
+.tb-checks-children {
+    margin: 4px 0 2px 18px;
+    border-left: 1px solid var(--vscode-editorHoverWidget-border, #454545);
 }
 
 .tb-fmt-header {

@@ -1306,16 +1306,29 @@ export function initToolbar(
         ariaLabel: t("Checks"),
     });
 
-    type CheckRow = { key: ProofreadOptionKey; item: CheckItem; styleDependent: boolean };
+    type CheckRow = { key: ProofreadOptionKey; item: CheckItem };
     const checkRows: CheckRow[] = [];
+    // The style sub-checks live in this container so the whole group can be
+    // shown/hidden as a unit. It's *detached* from the menu when Check Style is
+    // off (rather than dimmed) — a sub-check has no effect while its master is
+    // off, so the menu collapses to just the three masters. Detaching (not
+    // display:none) also keeps the hidden rows out of keyboard focus, since
+    // hoverMenu.rows() only skips a row by its own inline display, not an
+    // ancestor's. Both refs are assigned when the menu is built.
+    let checksMenuEl: HTMLElement | null = null;
+    let styleChildrenEl: HTMLElement | null = null;
 
     const repaintChecks = (cfg: ProofreadConfig): void => {
-        for (const { key, item, styleDependent } of checkRows) {
+        for (const { key, item } of checkRows) {
             item.setChecked(Boolean(cfg[key]));
-            // A style sub-check is inert while "Check Style" is off — dim it so
-            // the dependency reads, but keep it clickable (pre-arm for later).
-            if (styleDependent) {
-                item.el.classList.toggle("tb-check-item--muted", !cfg.styleCheck);
+        }
+        // Reveal the style sub-checks only while their parent master is on.
+        if (checksMenuEl && styleChildrenEl) {
+            const show = Boolean(cfg.styleCheck);
+            if (show && !styleChildrenEl.isConnected) {
+                checksMenuEl.appendChild(styleChildrenEl);
+            } else if (!show && styleChildrenEl.isConnected) {
+                styleChildrenEl.remove();
             }
         }
         // The button carries no on/off highlight: with a dozen sub-toggles inside,
@@ -1342,8 +1355,9 @@ export function initToolbar(
         menu.className = "tb-fmt-menu tb-checks-menu";
         menu.style.display = "none";
         menu.setAttribute("role", "menu");
+        checksMenuEl = menu;
 
-        const addRow = (key: ProofreadOptionKey, label: string, styleDependent: boolean): void => {
+        const addRow = (parent: HTMLElement, key: ProofreadOptionKey, label: string): void => {
             const item = createCheckItem(label);
             item.el.addEventListener("mousedown", (e) => {
                 e.preventDefault();
@@ -1351,28 +1365,27 @@ export function initToolbar(
                 toggleProofread(key);
                 // Menu stays open so several checks can be toggled in a row.
             });
-            menu.appendChild(item.el);
-            checkRows.push({ key, item, styleDependent });
+            parent.appendChild(item.el);
+            checkRows.push({ key, item });
         };
-        const addSep = (): void => {
-            const sep = document.createElement("div");
-            sep.className = "tb-menu-sep";
-            sep.setAttribute("role", "separator");
-            menu.appendChild(sep);
-        };
-        const addHeader = (title: string): void => {
+        const addHeader = (parent: HTMLElement, title: string): void => {
             const header = document.createElement("div");
             header.className = "tb-fmt-header";
             header.textContent = title;
-            menu.appendChild(header);
+            parent.appendChild(header);
         };
 
         // Masters
-        addRow("spellCheck", t("Check spelling"), false);
-        addRow("grammarCheck", t("Check grammar"), false);
-        addRow("styleCheck", t("Check style"), false);
+        addRow(menu, "spellCheck", t("Check spelling"));
+        addRow(menu, "grammarCheck", t("Check grammar"));
+        addRow(menu, "styleCheck", t("Check style"));
 
-        // Style sub-checks, grouped
+        // Style sub-checks live in their own indented container (a left rail ties
+        // them to the "Check style" master above), shown only while it's on.
+        const children = document.createElement("div");
+        children.className = "tb-checks-children";
+        styleChildrenEl = children;
+
         const groups: { title: string; opts: [ProofreadOptionKey, string][] }[] = [
             { title: t("Phrases"), opts: [
                 ["fillers", t("Fillers")],
@@ -1394,10 +1407,10 @@ export function initToolbar(
             ] },
         ];
         for (const group of groups) {
-            addSep();
-            addHeader(group.title);
-            for (const [key, label] of group.opts) { addRow(key, label, true); }
+            addHeader(children, group.title);
+            for (const [key, label] of group.opts) { addRow(children, key, label); }
         }
+        menu.appendChild(children); // repaintChecks detaches it when Style is off
 
         wireHoverMenu(wrapEl, checksBtn, menu, {
             onOpen: () => {
