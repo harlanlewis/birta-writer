@@ -19,6 +19,20 @@ export async function run({ page, check, baseUrl }) {
         return u[u.length - 1] ?? null;
     };
 
+    // ── 0. Borderless table: no outer frame, rounded corners, or row dividers ──
+    const tableBorder = await page.locator(".frontmatter-table").evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return {
+            topWidth: cs.borderTopWidth,
+            radius: cs.borderTopLeftRadius,
+            // A row's cell must carry no bottom divider either.
+            cellBottom: getComputedStyle(el.querySelector("td")).borderBottomWidth,
+        };
+    });
+    check("frontmatter table has no outer border", tableBorder.topWidth === "0px", tableBorder.topWidth);
+    check("frontmatter table has no rounded corners", tableBorder.radius === "0px", tableBorder.radius);
+    check("frontmatter table rows have no divider", tableBorder.cellBottom === "0px", tableBorder.cellBottom);
+
     // ── 1. Structure: trash button is the FIRST cell, left of the key ──
     const firstRow = page.locator("#frontmatter-panel tbody tr").nth(0);
     const firstCellClass = await firstRow.locator("td").nth(0).getAttribute("class");

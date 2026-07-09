@@ -52,3 +52,34 @@ jobs:
         run: |
           test -f dist/extension.js || (echo "dist/extension.js missing" && exit 1)
           test -f dist/webview.js   || (echo "dist/webview.js missing" && exit 1)
+
+  # End-to-end regression guard for behavior the jsdom unit suite cannot observe
+  # (e.g. CSS transitions). Scoped to the deterministic `toc` suite for now; the
+  # broader e2e suite is not gated here yet because the linkEditor suite has a
+  # known flaky check (MAR-71) — wire the rest in once that is fixed.
+  e2e-toc:
+    name: E2E (TOC)
+    runs-on: ubuntu-latest
+    needs: unit-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Build webview bundle
+        run: pnpm run build
+
+      - name: Run TOC e2e regression suite
+        run: node e2e/run.mjs toc
