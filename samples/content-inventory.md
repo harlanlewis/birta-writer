@@ -82,7 +82,7 @@ site generator publishes them — every link below opens a real file in this
 repo when clicked:
 
 - Workspace-root path, extension inferred: [the README](/README)
-- Nested root path: [custom themes](/docs/en/custom-themes)
+- Nested root path: [the perf harness](/e2e/perf/README)
 - Document-relative, `..` and suffix inference: [changelog](../CHANGELOG)
 - `@/` workspace prefix: [package manifest](@/package.json)
 - Heading fragment (scrolls after opening): [README → Features](../README.md#features)
@@ -98,7 +98,7 @@ Typing `[[` opens file-name autocompletion. Bare names match by filename
 across the workspace:
 
 - Bare name: [[README]]
-- With an alias: [[custom-themes|the theming guide]]
+- With an alias: [[CHANGELOG|the changelog]]
 - To a heading in another file: [[README#Features]]
 - Same-page heading: [[#wikilinks]]
 - Colon in a title is just a title, never a URL scheme: [[note: plan]]
@@ -109,7 +109,7 @@ cell:
 
 | form | rendered |
 |---|---|
-| escaped alias | [[custom-themes\|aliased]] |
+| escaped alias | [[CHANGELOG\|aliased]] |
 
 ---
 
