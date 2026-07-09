@@ -1,0 +1,66 @@
+<!-- Launch-perf harness page: mirrors the provider template
+     (src/MarkdownEditorProvider.ts) with acquireVsCodeApi stubbed, so it drives
+     the exact production bundle in headless Chromium.
+
+     Two deliberate faithfulness choices vs the other e2e suites:
+     1. A CSP meta mirroring the provider's, with a FIXED nonce ("perfharness")
+        on every script tag. This enforces nonce-based script loading exactly
+        like VS Code, so a future change that embeds a nonce'd content script
+        (initial-content embedding) surfaces CSP mistakes here first.
+     2. Init content is injected by the runner as window.__perfInit BEFORE any
+        script runs (page.addInitScript), and the stub replies to "ready"
+        synchronously with it — no fetch inside the ready handler, so the
+        ready→init timing is not polluted by fixture I/O. -->
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'none';
+           style-src 'self' 'unsafe-inline';
+           script-src 'nonce-perfharness' 'self';
+           img-src 'self' data:;
+           font-src 'self' data:;">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-widget-border: rgba(128, 128, 128, 0.25);
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-activeSelectionBackground: #094771;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-textLink-foreground: #3794ff;
+    --vscode-editor-font-family: monospace;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+</style>
+<script nonce="perfharness">
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        const init = window.__perfInit || { content: "# Sample\n\ntext\n" };
+        window.postMessage({
+          type: "init",
+          content: init.content,
+          lineMap: init.lineMap || [],
+          syncVersion: 0,
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" nonce="perfharness" src="dist/webview.js"></script>

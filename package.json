@@ -1457,7 +1457,9 @@
     "test": "vitest run",
     "test:e2e": "node e2e/run.mjs",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "perf": "node e2e/perf.mjs",
+    "perf:bundle": "node e2e/perf-bundle.mjs"
   },
   "devDependencies": {
     "@types/dompurify": "^3.2.0",

@@ -70,9 +70,21 @@ try {
 
 const { chromium } = await loadPlaywright();
 const only = process.argv[2];
-const suites = (await readdir(e2eDir, { withFileTypes: true }))
+const dirs = (await readdir(e2eDir, { withFileTypes: true }))
     .filter((d) => d.isDirectory() && (!only || d.name === only))
     .map((d) => d.name);
+// A directory is a pass/fail suite only if it has a checks.mjs. The perf
+// harness (e2e/perf/) has none — it is a measurement runner (node e2e/perf.mjs),
+// not a checks suite — so it is skipped here.
+const suites = [];
+for (const name of dirs) {
+    try {
+        await stat(join(e2eDir, name, "checks.mjs"));
+        suites.push(name);
+    } catch {
+        // no checks.mjs — not a suite
+    }
+}
 if (suites.length === 0) {
     console.error(only ? `no suite named "${only}" under e2e/` : "no suites found under e2e/");
     process.exit(2);

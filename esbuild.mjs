@@ -4,6 +4,9 @@ import path from 'path';
 
 const isProduction = process.argv.includes('--production');
 const isWatch = process.argv.includes('--watch');
+// `--metafile` writes dist/webview.meta.json for bundle analysis (see
+// e2e/perf-bundle.mjs). Off by default so normal builds stay lean.
+const withMetafile = process.argv.includes('--metafile');
 
 const commonOptions = {
     bundle: true,
@@ -57,6 +60,7 @@ const webviewBuild = {
     alias: {
         '@': path.resolve('./webview'),
     },
+    metafile: withMetafile,
 };
 
 copyHarperWasm();
@@ -69,8 +73,14 @@ if (isWatch) {
     await Promise.all([ctx1.watch(), ctx2.watch()]);
     console.log('Watching for changes...');
 } else {
-    await Promise.all([
+    const [, webviewResult] = await Promise.all([
         esbuild.build(extensionBuild),
         esbuild.build(webviewBuild),
     ]);
+    if (withMetafile && webviewResult.metafile) {
+        fs.writeFileSync(
+            path.resolve('./dist/webview.meta.json'),
+            JSON.stringify(webviewResult.metafile),
+        );
+    }
 }

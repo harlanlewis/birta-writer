@@ -1,0 +1,70 @@
+{
+  "note": "Historical reference only, NOT the loop gate. Absolute ms are machine-specific (captured on the maintainer's laptop, production build). The optimization loop gates on a SAME-SESSION A/B via `pnpm perf --compare`; update this file only inside an accepted-optimization commit.",
+  "build": "production (node esbuild.mjs --production --metafile)",
+  "runsPerFixture": 10,
+  "aggregation": "median of runs 2..10 (first discarded)",
+  "bundle": {
+    "eagerJs": 1549426,
+    "eagerCss": 1540875,
+    "eagerTotal": 3090301,
+    "eagerChunkCount": 19,
+    "totalJs": 3815986
+  },
+  "fixtures": {
+    "tiny": {
+      "median": {
+        "launch": 120.8,
+        "eager": 25.1,
+        "roundtrip": 8.1,
+        "create": 13.7,
+        "rtp": 0.6,
+        "toc": 0.5,
+        "toolbar": 9.4
+      }
+    },
+    "medium": {
+      "median": {
+        "launch": 288,
+        "eager": 25.2,
+        "roundtrip": 8.1,
+        "create": 105.4,
+        "rtp": 8.8,
+        "toc": 0.5,
+        "toolbar": 9.3
+      }
+    },
+    "large": {
+      "median": {
+        "launch": 1006.6,
+        "eager": 25.9,
+        "roundtrip": 8.7,
+        "create": 488.7,
+        "rtp": 66.4,
+        "toc": 0.6,
+        "toolbar": 9.8
+      }
+    },
+    "code-heavy": {
+      "median": {
+        "launch": 167.2,
+        "eager": 25.8,
+        "roundtrip": 8.4,
+        "create": 49.9,
+        "rtp": 1.2,
+        "toc": 0.5,
+        "toolbar": 9.3
+      }
+    },
+    "math": {
+      "median": {
+        "launch": 184,
+        "eager": 25.8,
+        "roundtrip": 8.5,
+        "create": 21.5,
+        "rtp": 0.9,
+        "toc": 0.6,
+        "toolbar": 9.5
+      }
+    }
+  }
+}

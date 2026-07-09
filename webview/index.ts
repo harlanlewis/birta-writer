@@ -18,6 +18,7 @@
  * - scrollPersistence: scroll-position persistence
  */
 
+import "./perfBoot"; // MUST stay first: stamps mdw:eval-start before any other module evaluates.
 import "./style.css";
 import {
     createEditor,
@@ -29,6 +30,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import { TextSelection } from "@milkdown/prose/state";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifySetTocPosition, onMessage } from "./messaging";
+import { mark, measure } from "./perf";
 import type { ToWebviewMessage } from "../shared/messages";
 import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
@@ -206,14 +208,25 @@ async function initEditor(
         },
     );
     toc.refresh();
+    // First frame with rendered content on screen: wait two RAFs so the mark
+    // lands after the browser has actually painted the mounted ProseMirror doc.
+    requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+            mark("editor-painted");
+            measure("launch", undefined, "editor-painted");
+        }),
+    );
 }
 
 // ── Initialize the event manager ───────────────────────────
 const eventManager = createEventManager();
 
 // ── UI component initialization ────────────────────────────
+mark("toc-start");
 const toc = initToc(eventManager, () => getEditorView());
 document.body.appendChild(toc.panel);
+mark("toc-end");
+measure("initToc", "toc-start", "toc-end");
 
 const findBar = initFindBar(() => getEditorView(), getMarkdownSource, eventManager);
 
@@ -228,6 +241,7 @@ const switchToSource = (): void => {
         : undefined;
     notifySwitchToTextEditor(line);
 };
+mark("toolbar-start");
 const topbarTb = topbar
     ? initToolbar(
         topbar,
@@ -239,6 +253,8 @@ const topbarTb = topbar
         switchToSource,
     )
     : null;
+mark("toolbar-end");
+measure("initToolbar", "toolbar-start", "toolbar-end");
 
 // Register the editor-command hooks the toolbar does not own (find-with-
 // replace, find navigation, TOC toggle, frontmatter focus). The toolbar
@@ -499,4 +515,6 @@ onMessage(async (msg) => {
 observeNativeThemeChanges();
 
 // WebView finished loading.
+mark("ready-posted");
+measure("eager-boot", "eval-start", "ready-posted");
 notifyReady();

@@ -24,6 +24,7 @@ import { createTableView } from "./components/table/tableView";
 import { getMarkdown } from "@milkdown/utils";
 import { refractor } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
+import { mark, measure } from "./perf";
 import { configureSerialization, pureCommonmark } from "./serialization";
 import {
     applyMinimalChanges,
@@ -239,6 +240,7 @@ export async function createEditor(
     // causes a silent save.
     let isSettled = false;
 
+    mark("create-start");
     _editor = await Editor.make()
         .config((ctx) => {
             ctx.set(rootCtx, container);
@@ -320,14 +322,19 @@ export async function createEditor(
         .use(trailingHrParagraphPlugin)
         .use(proofreadPlugin)
         .create();
+    mark("create-end");
+    measure("create", "create-start", "create-end");
 
     // Compare the loaded file against its own zero-edit serialization to
     // learn which regions the round trip cannot reproduce; those get pinned
     // to their saved bytes on every future save.
+    mark("rtp-start");
     _protection = computeRoundTripProtection(
         initialMarkdown,
         _editor.action(getMarkdown()),
     );
+    mark("rtp-end");
+    measure("rtp", "rtp-start", "rtp-end");
 
     isSettled = true;
     return _editor;

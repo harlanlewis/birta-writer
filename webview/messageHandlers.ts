@@ -18,6 +18,7 @@ import { dispatchLinkTargetSuggestions, dispatchLinkTargetResolved } from "./com
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setLogTableSel, syncExternalContent } from "./editor";
 import { setProofreadConfig } from "./plugins";
+import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
 import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
@@ -116,6 +117,7 @@ export function createMessageHandlers(
 
     return {
         async init(msg, container) {
+            mark("init-received");
             setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
             setLineMap(msg.lineMap ?? []);
