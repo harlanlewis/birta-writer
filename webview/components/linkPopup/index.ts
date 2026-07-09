@@ -770,8 +770,12 @@ export function setupLinkPopup(
 
             // Modifier-click opened the target already (mousedown); don't pin.
             if (me.metaKey || me.ctrlKey) return;
-            // Never rebind mid-edit — the unsaved fields would be lost.
-            if (isEditMode) return;
+            // While an insert/edit editor is open, a click on a link is an
+            // outside-click, not a re-point: apply the edit (blur already saved
+            // it; this is idempotent) and close. Re-pointing here would discard
+            // the fields; doing nothing (the old behavior) left the editor stuck
+            // open, since the mousedown handler skips dismissal on link targets.
+            if (isEditMode) { applyEdit(); hidePopup(); return; }
 
             // Plain click: show this link's popup, pinned so it stays put until
             // Escape or a click outside both the popup and any link. Clicking a
@@ -1052,7 +1056,10 @@ export function setupLinkPopup(
         if (popup.contains(target as Node)) return;
         // A mousedown on a link anchor is a click-to-pin (or a re-point to a
         // different link): let the capture-phase click handler re-anchor the
-        // popup instead of dismissing it here.
+        // popup instead of dismissing it here. When an editor is open, that same
+        // click handler applies-and-closes instead of re-pointing (see the
+        // isEditMode branch there), so an outside-click on a link is never a
+        // dead-end.
         if (target?.closest?.("a")) return;
         // mousedown lands before the input's blur would — save first so the
         // click-away never eats an edit.
