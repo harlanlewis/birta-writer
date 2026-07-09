@@ -55,36 +55,44 @@
       {
         "command": "markdownWysiwyg.switchToTextEditor",
         "title": "%command.switchToTextEditor.title%",
+        "category": "WYSIWYG Markdown Editor",
         "icon": "$(eye-closed)"
       },
       {
         "command": "markdownWysiwyg.switchToPreview",
         "title": "%command.switchToPreview.title%",
+        "category": "WYSIWYG Markdown Editor",
         "icon": "$(eye)"
       },
       {
         "command": "markdownWysiwyg.debugModeEnable",
-        "title": "%command.debugModeEnable.title%"
+        "title": "%command.debugModeEnable.title%",
+        "category": "WYSIWYG Markdown Editor"
       },
       {
         "command": "markdownWysiwyg.debugModeDisable",
-        "title": "%command.debugModeDisable.title%"
+        "title": "%command.debugModeDisable.title%",
+        "category": "WYSIWYG Markdown Editor"
       },
       {
         "command": "markdownWysiwyg.selectTheme",
-        "title": "%command.selectTheme.title%"
+        "title": "%command.selectTheme.title%",
+        "category": "WYSIWYG Markdown Editor"
       },
       {
         "command": "markdownWysiwyg.showCurrentTheme",
-        "title": "%command.showCurrentTheme.title%"
+        "title": "%command.showCurrentTheme.title%",
+        "category": "WYSIWYG Markdown Editor"
       },
       {
         "command": "markdownWysiwyg.toggleStyleCheck",
-        "title": "%command.toggleStyleCheck.title%"
+        "title": "%command.toggleStyleCheck.title%",
+        "category": "WYSIWYG Markdown Editor"
       },
       {
         "command": "markdownWysiwyg.gotoSymbol",
-        "title": "%command.gotoSymbol.title%"
+        "title": "%command.gotoSymbol.title%",
+        "category": "WYSIWYG Markdown Editor"
       },
       {
         "command": "markdownWysiwyg.editor.toggleBold",
