@@ -16,6 +16,7 @@ import {
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { loadMermaid } from "@/utils/mermaidLoader";
+import { mermaidThemeForBackground } from "./mermaidTheme";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
 import { renderKatexInto } from "@/utils/katexLoader";
 import { highlight, ensureGrammars } from "@/highlighter";
@@ -146,8 +147,7 @@ async function ensureMermaid(): Promise<typeof import("mermaid")["default"]> {
     const bg = getComputedStyle(document.documentElement)
         .getPropertyValue("--vscode-editor-background")
         .trim();
-    const isDark = !bg.includes("255") && !bg.includes("fff") && !bg.includes("FFF");
-    const currentTheme = isDark ? "dark" : "default";
+    const currentTheme = mermaidThemeForBackground(bg);
 
     // If the theme hasn't changed and it's already initialized, skip re-init.
     if (mermaidInitialized && lastMermaidTheme === currentTheme) return mermaid;
