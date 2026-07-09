@@ -14,8 +14,11 @@
     display: flex;
     flex-direction: column;
     transform: translateX(-100%);
+    /* Hidden panel fades out; the open state restores opacity to 1. */
+    opacity: 0;
     /* top/height follow the toolbar's 0.2s slide so the panel moves in sync */
-    transition: transform 0.2s ease, top 0.2s ease, height 0.2s ease;
+    transition: transform 0.2s ease, top 0.2s ease, height 0.2s ease,
+        opacity 0.2s ease;
     overflow: hidden;
 }
 
@@ -28,6 +31,7 @@
 
 .toc-panel--open {
     transform: translateX(0);
+    opacity: 1;
 }
 
 /* ─── Drag-to-resize handle (VS Code sash style) ─────── */

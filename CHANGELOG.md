@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
+- **Table-of-contents drawer fades on toggle**: hiding or showing the TOC now fades the drawer's opacity in step with its slide, rather than only sliding — the hidden panel rests at full transparency and the transition animates opacity alongside the transform.
 - **Image alt text is an always-visible caption**: an image's alt text now shows as an editable caption directly under the image (italic, dimmed; revealed on selection when empty) instead of hiding behind a toolbar "ALT" button. Click the caption to edit — Enter or clicking away applies the change to the document, Escape reverts.
 - **Image title shows as a hover tooltip and is editable**: the markdown title (`![alt](src "title")`) now surfaces the way published HTML treats it — hover the image to see it. The image toolbar carries the title as an always-visible second row: click to edit, Enter or click-away applies, Escape reverts.
 - **Image path editing applies on blur**: the image toolbar's ✓/✗ confirm buttons are gone — the editor opens from a single file-name chip (name + pencil glyph) in the toolbar, applies on Enter or on clicking away, and Escape cancels, matching how link edits already work.
