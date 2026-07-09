@@ -32,7 +32,7 @@ import {
 import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
 import { t, kbd, productName } from "@/i18n";
-import { sampleDocPosition } from "../selectionToolbar";
+import { sampleDocPosition } from "@/utils/docPosition";
 import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";

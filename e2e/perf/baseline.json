@@ -1,16 +1,16 @@
 {
   "note": "Historical reference only, NOT the loop gate. Absolute ms are machine-specific (maintainer laptop, production build). The loop gates on a same-session A/B via `pnpm perf --compare`; this file advances only inside accepted-optimization commits.",
-  "lastLanded": "MAR-66 (defer round-trip protection off the launch path)",
+  "lastLanded": "MAR-67 (extract sampleDocPosition; selectionToolbar leaves the bundle)",
   "build": "production (node esbuild.mjs --production --metafile)",
   "runsPerFixture": 10,
   "aggregation": "median of runs 2..10 (first discarded)",
   "bundle": {
     "eagerJs": 980842,
-    "eagerCss": 80572,
-    "eagerTotal": 1061414,
+    "eagerCss": 78863,
+    "eagerTotal": 1059705,
     "eagerChunkCount": 8,
     "totalJs": 3818337,
-    "totalCss": 1540876
+    "totalCss": 1539167
   },
   "fixtures": {
     "tiny": {
