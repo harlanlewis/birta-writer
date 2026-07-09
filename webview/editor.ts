@@ -155,6 +155,10 @@ function scheduleProtection(): void {
 // Reset to false on every createEditor() so that "just opening a file" never triggers an autosave.
 let _hasUserInteracted = false;
 let _interactionListenerAdded = false;
+// One-shot callbacks fired on the first user interaction after the current
+// document opened (see onFirstUserInteraction). Cleared on each createEditor()
+// so a new document re-arms; the interaction listener fires and clears them.
+const _firstInteractionCallbacks = new Set<() => void>();
 
 // IME composition state, hoisted to module scope so inbound external syncs can
 // defer while the user is mid-composition (see syncExternalContent). The
@@ -168,12 +172,35 @@ let _pendingExternalMarkdown: string | null = null;
 function setupInteractionTracking(): void {
     if (_interactionListenerAdded) return;
     _interactionListenerAdded = true;
-    const mark = () => { _hasUserInteracted = true; };
+    const mark = () => {
+        _hasUserInteracted = true;
+        if (_firstInteractionCallbacks.size) {
+            const cbs = [..._firstInteractionCallbacks];
+            _firstInteractionCallbacks.clear();
+            for (const cb of cbs) cb();
+        }
+    };
     document.addEventListener('keydown',   mark, { capture: true });
     document.addEventListener('mousedown', mark, { capture: true });
     document.addEventListener('paste',     mark, { capture: true });
     document.addEventListener('drop',      mark, { capture: true });
     document.addEventListener('cut',       mark, { capture: true });
+}
+
+/**
+ * Run `cb` once, on the first user interaction (keyboard/mouse/paste/…) after
+ * the current document opened — or synchronously if the user has already
+ * interacted. Returns an unsubscribe. Used to keep non-essential, latency-
+ * tolerant work (e.g. the proofread scan, which can load Harper's ~18 MB WASM)
+ * off the read-only open path: reading a file should never trigger it.
+ */
+export function onFirstUserInteraction(cb: () => void): () => void {
+    if (_hasUserInteracted) {
+        cb();
+        return () => {};
+    }
+    _firstInteractionCallbacks.add(cb);
+    return () => { _firstInteractionCallbacks.delete(cb); };
 }
 
 export function getEditorView(): EditorView | null {
@@ -238,6 +265,7 @@ export async function createEditor(
     // a save would fire spuriously. _hasUserInteracted ensures content
     // updates are only sent to the Extension after real user input.
     _hasUserInteracted = false;
+    _firstInteractionCallbacks.clear(); // re-arm first-interaction subscribers for the new doc
     setupInteractionTracking();
 
     let debounceTimer: ReturnType<typeof setTimeout>;

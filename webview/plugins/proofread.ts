@@ -30,6 +30,7 @@ import {
     WORDINESS,
 } from "../proofread/wordlists";
 import { isLintSuppressed, setUserWords } from "../proofread/engine";
+import { onFirstUserInteraction } from "../editor";
 import { hideLintPopup, showLintPopup } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
 import { t } from "../i18n";
@@ -354,6 +355,13 @@ export const proofreadPlugin = $prose(() => {
             let destroyed = false;
             let lintRequestId = 0;
             let lintRequestDoc: ProseNode | null = null;
+            // Proofreading (style, spelling, grammar) is deferred off the
+            // read-only open path: opening a file to read it must never trigger
+            // the first scan, which would load Harper's ~18 MB WASM (~380 ms +
+            // ~300 MB, extension side) for grammar/spell. The first scan waits
+            // for the first user interaction; a deliberate config toggle counts
+            // as interaction too.
+            let interacted = false;
 
             currentApplier = (id, results) => {
                 if (destroyed || view.isDestroyed) { return; }
@@ -374,6 +382,7 @@ export const proofreadPlugin = $prose(() => {
             const scan = () => {
                 scanTimer = null;
                 if (destroyed || view.isDestroyed) { return; }
+                if (!interacted) { return; } // deferred until first interaction — reading a file never scans
                 if (view.composing) { schedule(); return; } // don't disturb IME composition
                 const state = proofreadPluginKey.getState(view.state);
                 if (!state) { return; }
@@ -405,6 +414,7 @@ export const proofreadPlugin = $prose(() => {
                 const state = proofreadPluginKey.getState(view.state);
                 if (!state) { return; }
                 if (state.config !== lastConfig) {
+                    interacted = true; // a deliberate config toggle is engagement enough to run
                     schedule(0); // config toggles should feel instant
                 } else if (view.state.doc !== lastDoc) {
                     hideLintPopup(); // edits invalidate the popup's captured range
@@ -412,14 +422,25 @@ export const proofreadPlugin = $prose(() => {
                 }
             };
 
+            // Seed the trackers to the opened document's state so pre-interaction
+            // transactions (plugin normalizations) don't read as a config change
+            // and slip past the interaction gate.
+            lastDoc = view.state.doc;
+            lastConfig = proofreadPluginKey.getState(view.state)?.config ?? null;
             emitConfigChanged(proofreadPluginKey.getState(view.state)?.config ?? { ...DEFAULT_CONFIG });
-            maybeSchedule();
+            // Arm the first scan on the first user interaction (fires immediately
+            // if the user has already interacted, e.g. an editor rebuild mid-edit).
+            const unsubscribeInteraction = onFirstUserInteraction(() => {
+                interacted = true;
+                schedule(0);
+            });
 
             return {
                 update: maybeSchedule,
                 destroy() {
                     destroyed = true;
                     currentApplier = null;
+                    unsubscribeInteraction();
                     hideLintPopup();
                     if (scanTimer !== null) { clearTimeout(scanTimer); }
                 },
