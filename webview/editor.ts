@@ -22,7 +22,7 @@ import { createImageView } from "./components/imageView";
 import { createMathInlineView } from "./components/math";
 import { createTableView } from "./components/table/tableView";
 import { getMarkdown } from "@milkdown/utils";
-import { refractor } from "./highlighter";
+import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
 import { mark, measure } from "./perf";
 import { configureSerialization, pureCommonmark } from "./serialization";
@@ -239,6 +239,14 @@ export async function createEditor(
     // listener; this flag blocks that initial trigger so opening a file never
     // causes a silent save.
     let isSettled = false;
+
+    // Register syntax grammars before create when the document already contains a
+    // fenced code block, so the prism plugin highlights it on the first paint. A
+    // document with no code skips the ~155 KB grammar chunk entirely; a code
+    // block added later loads it via the code-block NodeView.
+    if (/(^|\n)[ \t]{0,3}(```|~~~)/.test(initialMarkdown)) {
+        await ensureGrammars();
+    }
 
     mark("create-start");
     _editor = await Editor.make()

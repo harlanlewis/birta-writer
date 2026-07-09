@@ -18,7 +18,7 @@ import { t } from "@/i18n";
 import mermaid from "mermaid";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
 import { renderKatexInto } from "@/utils/katexLoader";
-import { highlight } from "@/highlighter";
+import { highlight, ensureGrammars } from "@/highlighter";
 import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
 import { attachInputUndo } from "@/utils/inputUndo";
 import { createButton } from "@/ui/dom";
@@ -420,6 +420,13 @@ export function createCodeBlockView(
 } {
     const _id = Math.random().toString(36).slice(2, 6);
     void _id; // kept for debugging
+
+    // Ensure the syntax grammars are loaded for this (and every later) code
+    // block. On the initial render of a document that already has code, editor.ts
+    // has awaited this so it resolves immediately; for a code block added to a
+    // previously code-free document this kicks off the lazy grammar chunk, and
+    // prism re-highlights the block on the next edit inside it.
+    void ensureGrammars();
 
     const wrapper = document.createElement("div");
     wrapper.className = "code-block-wrapper";

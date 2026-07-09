@@ -1,70 +1,70 @@
 {
   "note": "Historical reference only, NOT the loop gate. Absolute ms are machine-specific (maintainer laptop, production build). The loop gates on a same-session A/B via `pnpm perf --compare`; this file advances only inside accepted-optimization commits.",
-  "lastLanded": "MAR-63 (split KaTeX CSS out of the eager bundle)",
+  "lastLanded": "MAR-64 (lazy-load refractor syntax grammars)",
   "build": "production (node esbuild.mjs --production --metafile)",
   "runsPerFixture": 10,
   "aggregation": "median of runs 2..10 (first discarded)",
   "bundle": {
-    "eagerJs": 1549663,
+    "eagerJs": 1473931,
     "eagerCss": 80572,
-    "eagerTotal": 1630235,
-    "eagerChunkCount": 19,
-    "totalJs": 3816223,
+    "eagerTotal": 1554503,
+    "eagerChunkCount": 20,
+    "totalJs": 3817080,
     "totalCss": 1540876
   },
   "fixtures": {
     "tiny": {
       "median": {
-        "launch": 116.8,
-        "eager": 25.1,
-        "roundtrip": 8.1,
-        "create": 13.8,
+        "launch": 112.3,
+        "eager": 20,
+        "roundtrip": 7.7,
+        "create": 14.5,
         "rtp": 0.5,
         "toc": 0.4,
-        "toolbar": 9.3
+        "toolbar": 9.5
       }
     },
     "medium": {
       "median": {
-        "launch": 284.7,
-        "eager": 25.3,
-        "roundtrip": 8.2,
-        "create": 104.9,
-        "rtp": 8.8,
-        "toc": 0.4,
-        "toolbar": 9.4
-      }
-    },
-    "large": {
-      "median": {
-        "launch": 1013.6,
-        "eager": 25.7,
-        "roundtrip": 8.4,
-        "create": 493.9,
-        "rtp": 59.3,
-        "toc": 0.5,
-        "toolbar": 9.4
-      }
-    },
-    "code-heavy": {
-      "median": {
-        "launch": 163.1,
-        "eager": 25.6,
-        "roundtrip": 8.4,
-        "create": 49.6,
-        "rtp": 1.2,
+        "launch": 293.4,
+        "eager": 20.1,
+        "roundtrip": 7.7,
+        "create": 108.9,
+        "rtp": 9,
         "toc": 0.4,
         "toolbar": 9.3
       }
     },
+    "large": {
+      "median": {
+        "launch": 1016,
+        "eager": 20.2,
+        "roundtrip": 8.1,
+        "create": 492.1,
+        "rtp": 63.8,
+        "toc": 0.5,
+        "toolbar": 9.5
+      }
+    },
+    "code-heavy": {
+      "median": {
+        "launch": 165,
+        "eager": 20.2,
+        "roundtrip": 7.8,
+        "create": 50.9,
+        "rtp": 0.8,
+        "toc": 0.5,
+        "toolbar": 9.6
+      }
+    },
     "math": {
       "median": {
-        "launch": 189.5,
-        "eager": 26.1,
-        "roundtrip": 8.4,
-        "create": 21.8,
+        "launch": 183.8,
+        "eager": 20.2,
+        "roundtrip": 7.8,
+        "create": 22.6,
         "rtp": 0.9,
-        "toc": 0.4,
+        "toc": 0.5,
         "toolbar": 9.5
       }
     }
