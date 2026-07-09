@@ -1,71 +1,71 @@
 {
   "note": "Historical reference only, NOT the loop gate. Absolute ms are machine-specific (maintainer laptop, production build). The loop gates on a same-session A/B via `pnpm perf --compare`; this file advances only inside accepted-optimization commits.",
-  "lastLanded": "MAR-64 (lazy-load refractor syntax grammars)",
+  "lastLanded": "MAR-65 (lazy-load Mermaid)",
   "build": "production (node esbuild.mjs --production --metafile)",
   "runsPerFixture": 10,
   "aggregation": "median of runs 2..10 (first discarded)",
   "bundle": {
-    "eagerJs": 1473931,
+    "eagerJs": 980576,
     "eagerCss": 80572,
-    "eagerTotal": 1554503,
-    "eagerChunkCount": 20,
-    "totalJs": 3817080,
+    "eagerTotal": 1061148,
+    "eagerChunkCount": 8,
+    "totalJs": 3818071,
     "totalCss": 1540876
   },
   "fixtures": {
     "tiny": {
       "median": {
-        "launch": 112.3,
-        "eager": 20,
+        "launch": 111,
+        "eager": 21.7,
         "roundtrip": 7.7,
-        "create": 14.5,
-        "rtp": 0.5,
-        "toc": 0.4,
-        "toolbar": 9.5
+        "create": 15.8,
+        "rtp": 0.7,
+        "toc": 0.6,
+        "toolbar": 10.4
       }
     },
     "medium": {
       "median": {
-        "launch": 293.4,
-        "eager": 20.1,
-        "roundtrip": 7.7,
-        "create": 108.9,
-        "rtp": 9,
-        "toc": 0.4,
-        "toolbar": 9.3
+        "launch": 297,
+        "eager": 21.6,
+        "roundtrip": 7.6,
+        "create": 114.4,
+        "rtp": 9.3,
+        "toc": 0.5,
+        "toolbar": 10.2
       }
     },
     "large": {
       "median": {
-        "launch": 1016,
-        "eager": 20.2,
-        "roundtrip": 8.1,
-        "create": 492.1,
-        "rtp": 63.8,
+        "launch": 1013.5,
+        "eager": 20.5,
+        "roundtrip": 7.3,
+        "create": 506.4,
+        "rtp": 54.4,
         "toc": 0.5,
-        "toolbar": 9.5
+        "toolbar": 9.7
       }
     },
     "code-heavy": {
       "median": {
-        "launch": 165,
-        "eager": 20.2,
-        "roundtrip": 7.8,
-        "create": 50.9,
+        "launch": 153.2,
+        "eager": 20.6,
+        "roundtrip": 7.1,
+        "create": 51.7,
         "rtp": 0.8,
         "toc": 0.5,
-        "toolbar": 9.6
+        "toolbar": 9.7
       }
     },
     "math": {
       "median": {
-        "launch": 183.8,
-        "eager": 20.2,
-        "roundtrip": 7.8,
+        "launch": 175.8,
+        "eager": 20.4,
+        "roundtrip": 7,
         "create": 22.6,
         "rtp": 0.9,
         "toc": 0.5,
-        "toolbar": 9.5
+        "toolbar": 9.6
       }
     }
   }

@@ -15,7 +15,7 @@ import {
 } from "@/ui/icons";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
-import mermaid from "mermaid";
+import { loadMermaid } from "@/utils/mermaidLoader";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
 import { renderKatexInto } from "@/utils/katexLoader";
 import { highlight, ensureGrammars } from "@/highlighter";
@@ -135,16 +135,23 @@ function updateLineNumbers(gutter: HTMLElement, text: string, visualLineCounts?:
 // ─── Mermaid module-level initialization ─────────────────
 let mermaidInitialized = false;
 let lastMermaidTheme = "";
-function ensureMermaid(): void {
+/**
+ * Load Mermaid on demand (lazily code-split) and (re-)initialize it for the
+ * current theme, returning the module so the caller can render. Only invoked
+ * when a diagram actually renders, so documents without ```mermaid blocks never
+ * pull the Mermaid bundle into the launch path.
+ */
+async function ensureMermaid(): Promise<typeof import("mermaid")["default"]> {
+    const mermaid = await loadMermaid();
     const bg = getComputedStyle(document.documentElement)
         .getPropertyValue("--vscode-editor-background")
         .trim();
     const isDark = !bg.includes("255") && !bg.includes("fff") && !bg.includes("FFF");
     const currentTheme = isDark ? "dark" : "default";
-    
-    // If the theme hasn't changed and it's already initialized, return early
-    if (mermaidInitialized && lastMermaidTheme === currentTheme) return;
-    
+
+    // If the theme hasn't changed and it's already initialized, skip re-init.
+    if (mermaidInitialized && lastMermaidTheme === currentTheme) return mermaid;
+
     mermaidInitialized = true;
     lastMermaidTheme = currentTheme;
     mermaid.initialize({
@@ -156,6 +163,7 @@ function ensureMermaid(): void {
         sequence: { useMaxWidth: false },
         gantt: { useMaxWidth: false },
     });
+    return mermaid;
 }
 
 // ─── Mermaid instance registry (used to re-render on theme change) ──────────
@@ -785,7 +793,8 @@ export function createCodeBlockView(
         if (isRendering) return;
         if (code === lastRenderedCode && svgContainer.querySelector("svg")) return;
 
-        ensureMermaid();
+        // Claim the render slot synchronously (before any await) so a second
+        // call while Mermaid lazily loads can't slip past the isRendering guard.
         isRendering = true;
         naturalSvgW = 0; naturalSvgH = 0;
         svgContainer.innerHTML = `<div class="mermaid-loading">${t("Rendering...")}</div>`;
@@ -799,6 +808,7 @@ export function createCodeBlockView(
         // no longer injecting a visible error element (bomb icon) into body, and auto-removes the hidden div after rendering
         const id = `mmid-${Math.random().toString(36).slice(2, 9)}`;
         try {
+            const mermaid = await ensureMermaid();
             const { svg } = await mermaid.render(id, code, svgContainer);
             svgContainer.innerHTML = svg;
             const svgEl = svgContainer.querySelector("svg");
@@ -1295,13 +1305,13 @@ export function createCodeBlockView(
 
         // ── Mermaid rendering inside the lightbox ────────────────────────
         async function renderLbMermaid(code: string): Promise<void> {
-            ensureMermaid();
             lbSvgContainer.innerHTML = `<div class="mermaid-loading">${t("Rendering...")}</div>`;
             const id = `lbmm-${Math.random().toString(36).slice(2, 9)}`;
             const hidden = document.createElement("div");
             hidden.style.cssText = "position:absolute;visibility:hidden;pointer-events:none";
             document.body.appendChild(hidden);
             try {
+                const mermaid = await ensureMermaid();
                 const { svg } = await mermaid.render(id, code, hidden);
                 lbSvgContainer.innerHTML = svg;
                 const svgEl = lbSvgContainer.querySelector("svg");
