@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
-import { getAllThemes, getCustomThemes, type ThemeInfo } from "./themeManager";
 import type { TableWrapMode, FontPreset } from "../shared/messages";
 import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { scanHeadings } from "./utils/headingScan";
@@ -189,107 +188,6 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
-    // Select color theme command
-    context.subscriptions.push(
-        vscode.commands.registerCommand(
-            "markdownWysiwyg.selectTheme",
-            async () => {
-                const themes = getAllThemes();
-                const customThemes = getCustomThemes();
-                const currentTheme = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
-                    .get<string>("colorTheme", "auto");
-
-                // Group by type: dark themes first, light themes after, sorted alphabetically within each group
-                const darkThemes = themes
-                    .filter(t => t.uiTheme === "vs-dark" || t.uiTheme === "hc-black")
-                    .sort((a, b) => a.label.localeCompare(b.label));
-                const lightThemes = themes
-                    .filter(t => t.uiTheme === "vs" || t.uiTheme === "hc-light")
-                    .sort((a, b) => a.label.localeCompare(b.label));
-
-                const items: (vscode.QuickPickItem & { value: string })[] = [
-                    { label: "$(color-mode) Auto", description: "Follow VS Code Theme", value: "auto" },
-                    // Custom themes
-                    ...customThemes.map(t => ({
-                        label: `$(paintbrush) ${t.name}`,
-                        description: "Custom",
-                        value: `custom:${t.name}`,
-                    })),
-                    // Dark themes
-                    ...darkThemes.map(t => ({
-                        label: t.label,
-                        description: "Dark",
-                        value: t.id,
-                    })),
-                    // Light themes
-                    ...lightThemes.map(t => ({
-                        label: t.label,
-                        description: "Light",
-                        value: t.id,
-                    })),
-                ];
-
-                // Find the index of the currently selected theme, used for positioning
-                const activeIndex = items.findIndex((item: any) => item.value === currentTheme);
-
-                const quickPick = vscode.window.createQuickPick();
-                quickPick.title = "Markdown Editor Color Theme";
-                quickPick.placeholder = "Select a color theme for Markdown editor";
-                quickPick.items = items;
-                if (activeIndex >= 0) {
-                    quickPick.activeItems = [items[activeIndex]];
-                }
-
-                quickPick.onDidAccept(async () => {
-                    const selected = quickPick.selectedItems[0];
-                    if (selected) {
-                        const themeId = (selected as any).value;
-                        await vscode.workspace
-                            .getConfiguration("markdownWysiwyg")
-                            .update("colorTheme", themeId, vscode.ConfigurationTarget.Global);
-                    }
-                    quickPick.dispose();
-                });
-
-                quickPick.show();
-            },
-        ),
-    );
-
-    // Show current theme command
-    context.subscriptions.push(
-        vscode.commands.registerCommand(
-            "markdownWysiwyg.showCurrentTheme",
-            () => {
-                const configTheme = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
-                    .get<string>("colorTheme", "auto");
-
-                const vscodeTheme = vscode.workspace
-                    .getConfiguration("workbench")
-                    .get<string>("colorTheme", "Unknown");
-
-                const themeKind = vscode.window.activeColorTheme.kind;
-                const themeType = themeKind === vscode.ColorThemeKind.Light ? "Light"
-                    : themeKind === vscode.ColorThemeKind.Dark ? "Dark"
-                    : themeKind === vscode.ColorThemeKind.HighContrast ? "High Contrast"
-                    : "High Contrast Light";
-
-                let message: string;
-                if (configTheme === "auto") {
-                    message = `Theme: Auto (follows VS Code)\nVS Code Theme: ${vscodeTheme}\nType: ${themeType}`;
-                } else {
-                    const themes = getAllThemes();
-                    const theme = themes.find(t => t.id === configTheme);
-                    message = `Theme: ${theme?.label ?? configTheme}\nType: ${theme?.uiTheme ?? themeType}`;
-                }
-
-                vscode.window.showInformationMessage(message, { modal: false });
-            },
-        ),
-    );
-
     // Listen for manual setting changes (sync when modified from the VSCode settings UI)
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
@@ -312,9 +210,6 @@ export function activate(context: vscode.ExtensionContext) {
                     type: "setDebugMode",
                     enabled: v,
                 });
-            }
-            if (e.affectsConfiguration("markdownWysiwyg.colorTheme")) {
-                MarkdownEditorProvider.current?.applyThemeToAll();
             }
             if (e.affectsConfiguration("markdownWysiwyg.tableWrap")) {
                 const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
@@ -374,12 +269,12 @@ export function activate(context: vscode.ExtensionContext) {
         }),
     );
 
-    // No onDidChangeActiveColorTheme listener is needed in auto mode: the
-    // webview consumes VS Code's natively-injected --vscode-* variables, which
-    // VS Code updates live on every theme change (see resolveThemeColors and
-    // the webview's native-theme bridge). A pinned/custom editor theme only
-    // changes via configuration, handled by the onDidChangeConfiguration
-    // listener on markdownWysiwyg.colorTheme above.
+    // No theme listener is needed: the webview consumes VS Code's
+    // natively-injected --vscode-* variables, which VS Code updates live on
+    // every theme change. The webview's native-theme bridge
+    // (webview/nativeThemeBridge.ts) relays the body-class swap to JS-driven
+    // consumers (e.g. Mermaid), so nothing has to round-trip through the
+    // extension host.
 
     // Close preview: WYSIWYG → text editor
     context.subscriptions.push(

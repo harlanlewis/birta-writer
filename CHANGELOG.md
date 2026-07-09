@@ -65,6 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Removed
 
+- **Editor color-theme picker (`markdownWysiwyg.colorTheme` / `markdownWysiwyg.customThemes` settings, "Select Color Theme" & "Show Current Theme" commands)**: the editor now always follows your active VS Code color theme — including live theme switches and OS light/dark changes — with no separate per-editor theme to set. Pinning a different built-in theme, or defining a hand-written custom theme for the editor pane, is gone; it duplicated VS Code's own theme picker for a niche result and was the source of the "editor theme doesn't update" class of bugs. If you had set either setting, VS Code will flag it as unknown — remove it from your `settings.json`.
 - **`markdownWysiwyg.autoSave` / `markdownWysiwyg.autoSaveDelay` settings**: removed in favor of VS Code's built-in `files.autoSave` / `files.autoSaveDelay`, which govern this editor natively now that it is text-document-backed (see "Saving is fully native" above).
 
 - **`markdownWysiwyg.imageSelectionColor` setting**: selection accents no longer take a custom color — the image/divider selection border and table cell-range selection now follow the active theme's focus color (`focusBorder`), like every other selection indicator.
@@ -75,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Command palette entries all carry the editor's name**: every command this extension contributes now shows under the **"WYSIWYG Markdown Editor:"** prefix in the command palette. Previously the mode-switch, debug, style-check, and go-to-symbol commands showed bare — e.g. a plain "Select Color Theme" that sat next to VS Code's own "Preferences: Color Theme" with nothing marking it as this editor's.
 - **Image toolbar viewport flip**: with an image selected near the top of the viewport, the floating toolbar now measures its own height when deciding to flip below the image, so the two-row toolbar (controls + title) never clips off-screen.
 - **Hidden toolbar no longer leaves phantom toolbar space**: with the toolbar hidden (`markdownWysiwyg.toolbar.visible` off), the table-of-contents panel kept a toolbar-sized gap above its header — and showing the bar again could bury the header underneath it. The panel now tracks the toolbar's real state and slides in sync with it, and every scroll target that reserved room for the bar (clicking a TOC entry, find-bar match navigation, footnote jumps, in-page anchor links, view-source line sync) now lands correctly instead of ~40px off when the bar is hidden.
 - **Link fragments survive modifier-click**: the click handler stripped `#…` from the href before messaging the host, which broke `file.md#27` line navigation and dropped anchors from external URLs.

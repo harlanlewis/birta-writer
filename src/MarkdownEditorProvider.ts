@@ -13,7 +13,6 @@ import { scanHeadings } from "./utils/headingScan";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
-import { resolveThemeColors } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
@@ -221,24 +220,6 @@ export class MarkdownEditorProvider
         this.postToActivePanel(msg);
     }
 
-    public async applyThemeToAll(): Promise<void> {
-        const themeId = vscode.workspace
-            .getConfiguration("markdownWysiwyg")
-            .get<string>("colorTheme", "auto");
-
-        const colors = await resolveThemeColors(themeId);
-        this.postToAll({ type: "setTheme", colors });
-    }
-
-    private async _applyThemeToPanel(panel: vscode.WebviewPanel): Promise<void> {
-        const themeId = vscode.workspace
-            .getConfiguration("markdownWysiwyg")
-            .get<string>("colorTheme", "auto");
-
-        const colors = await resolveThemeColors(themeId);
-        panel.webview.postMessage({ type: "setTheme", colors });
-    }
-
     public static register(
         context: vscode.ExtensionContext,
     ): vscode.Disposable {
@@ -366,8 +347,6 @@ export class MarkdownEditorProvider
                             syncVersion: 0,
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
-                        // Apply the theme
-                        this._applyThemeToPanel(webviewPanel);
                         break;
                     }
                     case "update":

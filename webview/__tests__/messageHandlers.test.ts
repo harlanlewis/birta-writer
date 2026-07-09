@@ -29,7 +29,6 @@ function stubDeps(): MessageHandlerDeps {
             refreshToc: () => {},
         },
         topbarTb: null,
-        themeOverrides: new Set<string>(),
     };
 }
 
@@ -246,35 +245,5 @@ describe("toolbarConfig handler", () => {
 
         // Assert
         expect(applyConfig).toHaveBeenCalledWith(config);
-    });
-});
-
-describe("setTheme handler (override un-freeze)", () => {
-    const BG = "--vscode-editor-background";
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        document.documentElement.style.removeProperty(BG);
-    });
-
-    it("an empty color map should clear the inline overrides a prior push installed", () => {
-        // Arrange: a shared themeOverrides set so both pushes see the same state.
-        const deps = { ...stubDeps(), themeOverrides: new Set<string>() };
-        const handlers = createMessageHandlers(deps);
-        const container = document.createElement("div");
-
-        // Act 1: a pinned/custom palette installs an inline --vscode-* override.
-        handlers.setTheme?.({ type: "setTheme", colors: { [BG]: "#123456" } }, container);
-        expect(document.documentElement.style.getPropertyValue(BG).trim()).toBe("#123456");
-        expect(deps.themeOverrides.has(BG)).toBe(true);
-
-        // Act 2: switching to auto sends an empty map, which must REMOVE the
-        // override so VS Code's live native variable shows through again — this
-        // is the mechanism that un-freezes the theme without a webview reload.
-        handlers.setTheme?.({ type: "setTheme", colors: {} }, container);
-
-        // Assert
-        expect(document.documentElement.style.getPropertyValue(BG)).toBe("");
-        expect(deps.themeOverrides.size).toBe(0);
     });
 });

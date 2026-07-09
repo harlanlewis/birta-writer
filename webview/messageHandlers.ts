@@ -102,7 +102,6 @@ export interface MessageHandlerDeps {
     state: EditorStateAccessor;
     actions: EditorActions;
     topbarTb: ToolbarController | null;
-    themeOverrides: Set<string>;
 }
 
 // ── Message-handler factory ────────────────────────────────
@@ -111,7 +110,7 @@ export interface MessageHandlerDeps {
 export function createMessageHandlers(
     deps: MessageHandlerDeps,
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
-    const { state, actions, topbarTb, themeOverrides } = deps;
+    const { state, actions, topbarTb } = deps;
     const { getEditor, setEditor, getLineMap, setLineMap, getMarkdownSource, setMarkdownSource } = state;
     const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition } = actions;
 
@@ -231,20 +230,6 @@ export function createMessageHandlers(
         },
         imagePathResolved(msg) {
             dispatchImagePathResolved(msg.id, msg.webviewUri);
-        },
-        setTheme(msg) {
-            const root = document.documentElement;
-            for (const prop of themeOverrides) {
-                root.style.removeProperty(prop);
-            }
-            themeOverrides.clear();
-            for (const [key, value] of Object.entries(msg.colors)) {
-                if (value) {
-                    root.style.setProperty(key, value);
-                    themeOverrides.add(key);
-                }
-            }
-            window.dispatchEvent(new CustomEvent("theme-changed"));
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);

@@ -60,12 +60,11 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 - Click an image to select it; click again to open a lightbox preview
 - Toolbar for editing alt text, renaming the file, or deleting the image
 
-### Custom Themes
+### Theming
 
-- Support for custom color themes via `markdownWysiwyg.customThemes` configuration
-- Define themes in `.vscode/settings.json` with custom name and VS Code color IDs
-- Select custom themes from the Command Palette: "Select Color Theme"
-- See [Custom Theme Configuration](docs/en/custom-themes.md) for details
+- The editor follows your active VS Code color theme automatically — everything (text, code, callouts, tables, Mermaid diagrams) recolors from the theme's own palette
+- Theme changes apply live, with no reload — including switching workbench theme and OS-driven light/dark switching
+- Nothing to configure: there is no separate per-editor theme, so the rendered document always matches the rest of your editor
 
 ### Table of Contents (TOC)
 
@@ -125,9 +124,7 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | `markdownWysiwyg.fontSize`           | number  | `100`       | Content font size as a percentage of the VS Code editor font size (50–200)                |
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
 | `markdownWysiwyg.smartLinks`         | boolean | `true`      | Resolve local links the way your site generator does: workspace-root paths, ancestor content roots, `.md`/`index.md` suffixes, and `[[wikilink]]` targets |
-| `markdownWysiwyg.colorTheme`         | string  | `"auto"`    | Color theme: `auto` follows VS Code, or set a theme ID                                   |
 | `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
-| `markdownWysiwyg.customThemes`       | array   | `[]`        | Custom color themes array. See [Custom Theme Configuration](docs/en/custom-themes.md)    |
 
 ***
 

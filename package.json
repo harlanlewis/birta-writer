@@ -75,16 +75,6 @@
         "category": "WYSIWYG Markdown Editor"
       },
       {
-        "command": "markdownWysiwyg.selectTheme",
-        "title": "%command.selectTheme.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.showCurrentTheme",
-        "title": "%command.showCurrentTheme.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
         "command": "markdownWysiwyg.toggleStyleCheck",
         "title": "%command.toggleStyleCheck.title%",
         "category": "WYSIWYG Markdown Editor"
@@ -1420,38 +1410,6 @@
           "type": "boolean",
           "default": true,
           "description": "%config.smartLinks.description%"
-        },
-        "markdownWysiwyg.colorTheme": {
-          "order": 15,
-          "type": "string",
-          "default": "auto",
-          "description": "%config.colorTheme.description%"
-        },
-        "markdownWysiwyg.customThemes": {
-          "order": 16,
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Theme display name"
-              },
-              "colors": {
-                "type": "object",
-                "description": "Theme color definitions (VS Code color IDs as keys)",
-                "additionalProperties": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": [
-              "name",
-              "colors"
-            ]
-          },
-          "default": [],
-          "description": "%config.customThemes.description%"
         }
       }
     }

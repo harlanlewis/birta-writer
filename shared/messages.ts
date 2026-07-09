@@ -239,7 +239,6 @@ export type ToWebviewMessage =
     // absolute when outside the workspace, null for a smart-mode miss.
     | { type: "linkTargetResolved"; id: string; resolved: string | null }
     | { type: "imagePathResolved"; id: string; webviewUri: string }
-    | { type: "setTheme"; colors: Record<string, string> }
     | { type: "setTableWrap"; wrap: TableWrapMode }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }

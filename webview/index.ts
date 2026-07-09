@@ -62,7 +62,6 @@ import { observeNativeThemeChanges } from "./nativeThemeBridge";
 // ── Module-level state ─────────────────────────────────────
 let currentEditor: Editor | null = null;
 let currentLineMap: number[] = [];
-const _themeOverrides = new Set<string>();
 
 export function getLineMap(): number[] {
     return currentLineMap;
@@ -494,7 +493,6 @@ const handlers = createMessageHandlers({
         setTocPosition: (position) => toc.setPosition(position),
     },
     topbarTb,
-    themeOverrides: _themeOverrides,
 });
 
 onMessage(async (msg) => {
@@ -509,9 +507,10 @@ onMessage(async (msg) => {
     }
 });
 
-// In auto mode VS Code drives colors via its native --vscode-* variables;
-// bridge its live theme-class swaps to the "theme-changed" event so JS-driven
-// consumers (Mermaid, etc.) refresh even without a setTheme round-trip.
+// VS Code drives colors via its native --vscode-* variables; bridge its live
+// theme-class swaps to the "theme-changed" event so JS-driven consumers
+// (Mermaid, etc.) refresh on every theme change, including OS light/dark
+// switching that never reaches the extension host.
 observeNativeThemeChanges();
 
 // WebView finished loading.
