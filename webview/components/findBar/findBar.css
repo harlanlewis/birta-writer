@@ -13,13 +13,13 @@
     align-items: stretch;
     gap: 0;
     padding: 3px 2px 3px 2px;
-    background: var(--vscode-editorWidget-background, #252526);
-    border: 1px solid var(--vscode-editorWidget-border, #454545);
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-editorWidget-border);
     border-radius: 2px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
     font-size: 13px;
     font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
-    color: var(--vscode-editorWidget-foreground, #cccccc);
+    color: var(--vscode-editorWidget-foreground);
     opacity: 0;
     transform: translateY(-4px);
     transition: opacity 0.1s ease, transform 0.1s ease;
@@ -75,10 +75,10 @@
     min-width: 0;
     height: 22px;
     padding: 0 4px;
-    background: var(--vscode-input-background, #3c3c3c);
-    border: 1px solid var(--vscode-input-border, transparent);
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     border-radius: 2px;
-    color: var(--vscode-input-foreground, #cccccc);
+    color: var(--vscode-input-foreground);
     font-size: 13px;
     font-family: inherit;
     outline: none;
@@ -90,17 +90,17 @@
 }
 
 .find-bar--no-results .find-bar__input {
-    border-color: var(--vscode-inputValidation-errorBorder, #f44747);
-    background: var(--vscode-inputValidation-errorBackground, rgba(244,71,71,0.1));
+    border-color: var(--vscode-inputValidation-errorBorder);
+    background: var(--vscode-inputValidation-errorBackground);
 }
 
 .find-bar__input[aria-invalid="true"] {
-    border-color: var(--vscode-inputValidation-errorBorder, #f44747);
-    background: var(--vscode-inputValidation-errorBackground, rgba(244,71,71,0.1));
+    border-color: var(--vscode-inputValidation-errorBorder);
+    background: var(--vscode-inputValidation-errorBackground);
 }
 
 .find-bar--invalid .find-bar__count {
-    color: var(--vscode-inputValidation-errorForeground, var(--vscode-editorError-foreground, #f48771));
+    color: var(--vscode-inputValidation-errorForeground, var(--vscode-editorError-foreground));
 }
 
 /* Match count */
@@ -108,25 +108,25 @@
     padding: 0 6px;
     font-size: 12px;
     white-space: nowrap;
-    color: var(--vscode-descriptionForeground, #858585);
+    color: var(--vscode-descriptionForeground);
     min-width: 46px;
     text-align: right;
     flex-shrink: 0;
 }
 
 .find-bar--no-results .find-bar__count {
-    color: var(--vscode-inputValidation-errorForeground, var(--vscode-editorError-foreground, #f48771));
+    color: var(--vscode-inputValidation-errorForeground, var(--vscode-editorError-foreground));
 }
 
 /* Hint row: raw-source (syntax) matches are find-only */
 .find-bar__hint {
     padding: 1px 4px 0;
     font-size: 11px;
-    color: var(--vscode-descriptionForeground, #858585);
+    color: var(--vscode-descriptionForeground);
     transition: color 0.15s ease;
 
     &.find-bar__hint--flash {
-        color: var(--vscode-inputValidation-errorForeground, var(--vscode-editorError-foreground, #f48771));
+        color: var(--vscode-inputValidation-errorForeground, var(--vscode-editorError-foreground));
     }
 }
 
@@ -134,7 +134,7 @@
 .find-bar__sep {
     width: 1px;
     height: 16px;
-    background: var(--vscode-editorWidget-border, var(--vscode-widget-border, #454545));
+    background: var(--vscode-editorWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
     margin: 0 3px;
     flex-shrink: 0;
 }
@@ -154,7 +154,7 @@
     background: transparent;
     border: 1px solid transparent;
     border-radius: 3px;
-    color: var(--vscode-icon-foreground, #cccccc);
+    color: var(--vscode-icon-foreground);
     cursor: pointer;
     font-size: 11px;
     font-family: inherit;
@@ -166,23 +166,23 @@
 }
 
 .find-bar__btn:hover {
-    background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+    background: var(--vscode-toolbar-hoverBackground);
     border-color: var(--vscode-toolbar-hoverOutline, transparent);
-    color: var(--vscode-icon-foreground, #cccccc);
+    color: var(--vscode-icon-foreground);
 }
 
 .find-bar__btn:active {
-    background: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, 0.31));
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
 }
 
 .find-bar__btn--active {
-    background: var(--vscode-toolbar-activeBackground, rgba(99, 102, 103, 0.31));
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
     border-color: var(--vscode-contrastActiveBorder, transparent);
-    color: var(--vscode-icon-foreground, #cccccc);
+    color: var(--vscode-icon-foreground);
 }
 
 .find-bar__btn--active:hover {
-    background: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+    background: var(--vscode-toolbar-hoverBackground);
 }
 
 .find-bar__btn svg {
@@ -195,19 +195,19 @@
 
 /* CSS Custom Highlight API */
 ::highlight(find-highlight) {
-    background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+    background-color: var(--vscode-editor-findMatchHighlightBackground);
     color: inherit;
 }
 
 ::highlight(find-highlight-current) {
-    background-color: var(--vscode-editor-findMatchBackground, rgba(246, 185, 77, 0.7));
+    background-color: var(--vscode-editor-findMatchBackground);
     color: inherit;
 }
 
 /* Element-level highlight for matches without a text range
    (link URLs, image src/alt/title, code fence language, raw-syntax blocks) */
 .find-match-el {
-    outline: 1px dashed var(--vscode-editor-findMatchHighlightBorder, var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.6)));
+    outline: 1px dashed var(--vscode-editor-findMatchHighlightBorder, var(--vscode-editor-findMatchHighlightBackground));
     outline-offset: 2px;
     border-radius: 2px;
 }
@@ -218,6 +218,6 @@
 }
 
 @keyframes find-match-flash {
-    0% { background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)); }
+    0% { background-color: var(--vscode-editor-findMatchHighlightBackground); }
     100% { background-color: transparent; }
 }

@@ -70,16 +70,13 @@ body {
    multiplier over the VS Code editor font size, so editor.fontSize changes
    and window zoom still flow through. */
 #editor {
-    font-family: var(
-        --content-font-family,
-        var(
+    font-family: var(--content-font-family, var(
             --vscode-editor-font-family,
             -apple-system,
             BlinkMacSystemFont,
             "Segoe UI",
             sans-serif
-        )
-    );
+        ));
     font-size: calc(var(--vscode-editor-font-size, 14px) * var(--content-font-scale, 1));
     line-height: 1.6;
 }
@@ -102,22 +99,18 @@ html {
        content column at ~76px. `--editor-content-left-padding` is the CONTENT
        (key-text) inset — kept equal to #editor's so the TOC offset math keeps the
        keys tracking the body column in every docked/collapsed state. The table
-       FRAME itself is pulled one heading-gutter left of that content edge
-       (`- 1px` table border `- --fm-key-inset` key padding), so the frame's left
-       border, the per-row trash button, and the "#H1" heading badges all share
-       the same gutter line (~66px). */
+       has no frame border, so the key text sits `--fm-key-inset` in from this
+       padding edge, landing at the content column; the per-row trash button and
+       the "#H1" heading badges share the gutter line to the left of it. */
     --editor-content-left-padding: 76px;
     --fm-key-inset: 9px;
-    padding-left: calc(var(--editor-content-left-padding) - 1px - var(--fm-key-inset));
+    padding-left: calc(var(--editor-content-left-padding) - var(--fm-key-inset));
     /* The panel BOX adopts #editor's font family + size **only** so its
        `ch`-based --editor-max-width resolves to the same width as #editor (ch
        depends on the element's own font). The box has no direct text of its
        own — its content lives in the children below, which restore the UI font,
        so this is a width-alignment trick, not a visible font change. */
-    font-family: var(
-        --content-font-family,
-        var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)
-    );
+    font-family: var(--content-font-family, var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif));
     font-size: calc(var(--vscode-editor-font-size, 14px) * var(--content-font-scale, 1));
 }
 
@@ -136,23 +129,19 @@ html {
 
 .frontmatter-table {
     width: 100%;
-    /* `separate` (not `collapse`) so the rounded outer border renders WITHOUT
-       `overflow: hidden` — the per-row trash button is absolutely positioned into
-       the gutter LEFT of the table, and an `overflow: hidden` clip would cut it
-       off. With no cell backgrounds and no left/right/top cell borders, only the
-       rounded outer frame + horizontal row dividers show, so nothing squares the
-       corners. */
+    /* Borderless: no outer frame, rounded corners, or row dividers — the table
+       reads as a plain key/value grid on the editor background. `separate` with
+       zero spacing (not `collapse`) keeps each `.fm-action` cell a reliable
+       `position: relative` anchor for the per-row trash button in the left
+       gutter, and avoids the default 2px inter-cell spacing. */
     border-collapse: separate;
     border-spacing: 0;
     /* Pinned to the UI-font basis (not `em`, which would follow the panel box's
        editor-size font set for the ch-width trick above). */
     font-size: calc(0.85 * var(--vscode-font-size, 13px) * var(--content-font-scale, 1));
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
-    border-radius: 4px;
 
     td {
         padding: 5px 10px;
-        border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
         vertical-align: top;
         line-height: 1.5;
         outline: none;
@@ -169,15 +158,11 @@ html {
         }
     }
 
-    tr:last-child td {
-        border-bottom: none;
-    }
-
     .fm-key {
         white-space: nowrap;
         width: 1%;
-        /* Together with the table's 1px left border this puts the key text at the
-           content edge (~76px), while the frame border sits in the gutter. */
+        /* Puts the key text at the content edge (~76px); the panel padding-left
+           already accounts for this inset (see .frontmatter-panel). */
         padding-left: var(--fm-key-inset, 9px);
         padding-right: 16px;
         color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-descriptionForeground));
@@ -201,10 +186,10 @@ html {
 }
 
 /* Row delete button (trash can) — lifted into the left gutter, right-aligned so
-   its right edge lands on the ~66px gutter line shared by the table's left border
-   and the "#H1" heading badges, and vertically centered on its row. `right: 100%`
-   pushes it fully left of the zero-width anchor cell; `margin-right` nudges the
-   right edge onto the frame/badge line. */
+   its right edge lands on the ~66px gutter line shared by the key column's left
+   edge and the "#H1" heading badges, and vertically centered on its row.
+   `right: 100%` pushes it fully left of the zero-width anchor cell; `margin-right`
+   nudges the right edge onto the gutter/badge line. */
 .fm-delete-btn {
     position: absolute;
     top: 50%;
@@ -231,8 +216,8 @@ html {
     }
 
     &:hover {
-        color: var(--vscode-errorForeground, #f44747);
-        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+        color: var(--vscode-errorForeground);
+        background: var(--vscode-toolbar-hoverBackground);
     }
 
     /* Keyboard parity with the row-hover reveal */
@@ -261,7 +246,7 @@ html {
     align-items: center;
     gap: 4px;
     padding: 3px 10px;
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border: 1px solid var(--vscode-panel-border);
     border-radius: 4px;
     background: transparent;
     color: var(--vscode-descriptionForeground);
@@ -277,7 +262,7 @@ html {
     &:hover {
         color: var(--vscode-editor-foreground);
         border-color: var(--vscode-focusBorder);
-        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
+        background: var(--vscode-toolbar-hoverBackground);
     }
 }
 
@@ -287,9 +272,9 @@ html {
     width: 100%;
     box-sizing: border-box;
     padding: 8px 10px;
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    border: 1px solid var(--vscode-panel-border);
     border-radius: 4px;
-    background: var(--vscode-input-background, transparent);
+    background: var(--vscode-input-background);
     color: var(--vscode-editor-foreground);
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 0.85em;
@@ -307,7 +292,7 @@ html {
 
     /* Rejected commit (e.g. an inner `---` line would corrupt the document) */
     &[aria-invalid="true"] {
-        outline: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+        outline: 1px solid var(--vscode-inputValidation-errorBorder);
         outline-offset: -1px;
     }
 }
@@ -482,7 +467,7 @@ body.editor-width-auto {
         mark.md-highlight {
             background: color-mix(
                 in srgb,
-                var(--vscode-charts-yellow, #cca700) 32%,
+                var(--vscode-charts-yellow) 32%,
                 transparent
             );
             color: inherit;
@@ -540,14 +525,14 @@ body.editor-width-auto {
 
         h1 {
             font-size: 2em;
-            border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+            border-bottom: 1px solid var(--vscode-panel-border);
             padding-bottom: 0.5em;
             margin-bottom: 0.5em;
         }
 
         h2 {
             font-size: 1.4em;
-            /* border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35)); */
+            /* border-bottom: 1px solid var(--vscode-panel-border); */
         }
 
         h3 {
@@ -578,7 +563,7 @@ body.editor-width-auto {
             gap: 4px;
             width: 58px;
             height: 1.3em;
-            color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.72));
+            color: var(--vscode-descriptionForeground);
             font-weight: 600;
             line-height: 1;
             user-select: none;
@@ -607,7 +592,7 @@ body.editor-width-auto {
             border: 0;
             border-radius: 4px;
             background: transparent;
-            color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.72));
+            color: var(--vscode-descriptionForeground);
             cursor: pointer;
             opacity: 0;
             pointer-events: none;
@@ -620,7 +605,7 @@ body.editor-width-auto {
         }
 
         .heading-fold-toggle:hover {
-            background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.16));
+            background: var(--vscode-toolbar-hoverBackground);
             color: var(--vscode-foreground);
         }
 
@@ -664,14 +649,8 @@ body.editor-width-auto {
 
         /* Inline code */
         code {
-            background: var(
-                --vscode-textCodeBlock-background,
-                rgba(128, 128, 128, 0.15)
-            );
-            color: var(
-                --vscode-textPreformat-foreground,
-                var(--vscode-editor-foreground)
-            );
+            background: var(--vscode-textCodeBlock-background);
+            color: var(--vscode-textPreformat-foreground, var(--vscode-editor-foreground));
             border-radius: 3px;
             /* Tight horizontal padding so the chip doesn't leave a visible gap
                before adjacent punctuation (e.g. `code`. ). */
@@ -682,10 +661,7 @@ body.editor-width-auto {
 
         /* Code block */
         pre {
-            background: var(
-                --vscode-textCodeBlock-background,
-                rgba(128, 128, 128, 0.1)
-            );
+            background: var(--vscode-textCodeBlock-background);
             border-radius: 6px;
             padding: 1em;
             overflow-x: auto;
@@ -700,11 +676,8 @@ body.editor-width-auto {
 
         /* Blockquote */
         blockquote {
-            border-left: 3px solid var(--vscode-textBlockQuote-border, #007acc);
-            background: var(
-                --vscode-textBlockQuote-background,
-                rgba(0, 122, 204, 0.05)
-            );
+            border-left: 3px solid var(--vscode-textBlockQuote-border);
+            background: var(--vscode-textBlockQuote-background);
             margin: 0 0 1em;
             padding: 0.5em 1em;
             color: var(--vscode-editor-foreground);
@@ -764,9 +737,9 @@ body.editor-width-auto {
                 top: 0.2em;
                 width: 14px;
                 height: 14px;
-                border: 1.5px solid var(--vscode-checkbox-border, #6c6c6c);
+                border: 1.5px solid var(--vscode-checkbox-border);
                 border-radius: 2px;
-                background: var(--vscode-checkbox-background, transparent);
+                background: var(--vscode-checkbox-background);
                 box-sizing: border-box;
                 cursor: pointer;
             }
@@ -776,8 +749,8 @@ body.editor-width-auto {
                duo — unlike checkbox.selectBackground, which resolves to a light
                tone in light themes and washes out a white checkmark. */
             &[data-checked="true"]::before {
-                background: var(--vscode-button-background, #007acc);
-                border-color: var(--vscode-button-background, #007acc);
+                background: var(--vscode-button-background);
+                border-color: var(--vscode-button-background);
             }
 
             /* Checked: checkmark drawn as a masked SVG. The ::after is laid exactly
@@ -791,7 +764,7 @@ body.editor-width-auto {
                 top: 0.2em;
                 width: 14px;
                 height: 14px;
-                background-color: var(--vscode-button-foreground, #fff);
+                background-color: var(--vscode-button-foreground);
                 /* Shared stroked check (see --check-glyph), sized to fill most
                    of the 14px box. */
                 -webkit-mask: var(--check-glyph) center / 11px 11px no-repeat;
@@ -807,19 +780,19 @@ body.editor-width-auto {
 
         /* Links */
         a {
-            color: var(--vscode-textLink-foreground, #4ea6ea);
+            color: var(--vscode-textLink-foreground);
             text-decoration: none;
 
             &:hover {
                 text-decoration: underline;
-                color: var(--vscode-textLink-activeForeground, #4ea6ea);
+                color: var(--vscode-textLink-activeForeground);
             }
         }
 
         /* Horizontal rule */
         hr {
             border: none;
-            border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+            border-top: 1px solid var(--vscode-panel-border);
             margin: 1em 0;
             cursor: pointer;
             outline: 1px solid transparent;
@@ -847,7 +820,7 @@ body.editor-width-auto {
 
             th,
             td {
-                border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+                border: 1px solid var(--vscode-panel-border);
                 padding: 6px 12px;
                 text-align: left;
                 position: relative; /* anchor for .selectedCell::after absolute positioning */
@@ -870,10 +843,7 @@ body.editor-width-auto {
 
         /* Selection highlight */
         & ::selection {
-            background: var(
-                --vscode-editor-selectionBackground,
-                rgba(0, 122, 204, 0.3)
-            );
+            background: var(--vscode-editor-selectionBackground);
         }
 
         /* ─── Table cell range selection (prosemirror-tables CellSelection) ─── */
@@ -926,14 +896,11 @@ body.editor-width-auto {
        outside #editor, so it does not inherit the content-font preset. Opt back
        in explicitly so a stuck heading matches the heading it mirrors instead of
        switching to the chrome/UI font. */
-    font-family: var(
-        --content-font-family,
-        var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)
-    );
+    font-family: var(--content-font-family, var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif));
     font-weight: 600;
     line-height: 1.3;
     pointer-events: auto;
-    box-shadow: 0 1px 0 var(--vscode-panel-border, rgba(128, 128, 128, 0.28));
+    box-shadow: 0 1px 0 var(--vscode-panel-border);
 }
 
 .heading-sticky-title[hidden] {
@@ -951,7 +918,7 @@ body.editor-width-auto {
     gap: 4px;
     width: 58px;
     height: 1.3em;
-    color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.72));
+    color: var(--vscode-descriptionForeground);
     line-height: 1;
     user-select: none;
     white-space: nowrap;
@@ -977,7 +944,7 @@ body.editor-width-auto {
     border: 0;
     border-radius: 4px;
     background: transparent;
-    color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.72));
+    color: var(--vscode-descriptionForeground);
     cursor: pointer;
 }
 
@@ -987,7 +954,7 @@ body.editor-width-auto {
 }
 
 .heading-sticky-toggle:hover {
-    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.16));
+    background: var(--vscode-toolbar-hoverBackground);
     color: var(--vscode-foreground);
 }
 
@@ -1023,7 +990,7 @@ body.editor-width-auto {
     padding: 5px 8px;
     background-color: var(--vscode-editor-background);
     border-bottom: 1px solid
-        var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+        var(--vscode-panel-border);
     user-select: none;
     /* Whole-bar hide (toolbar.visible): slide up like the TOC panel slides
        sideways; visibility flips after the slide so it can't grab focus or
@@ -1052,7 +1019,7 @@ body.toolbar-hidden::before {
     top: 0;
     left: 0;
     right: 0;
-    border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    border-top: 1px solid var(--vscode-panel-border);
     z-index: 1198;
 }
 
@@ -1087,9 +1054,9 @@ body.toolbar-hidden::before {
     gap: 2px;
     max-width: 100%;
     padding: 1px 4px 1px 8px;
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+    border: 1px solid var(--vscode-panel-border);
     border-radius: 10px;
-    background: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.08));
+    background: var(--vscode-textBlockQuote-background);
 
     .fm-chip-text {
         outline: none;
@@ -1123,7 +1090,7 @@ body.toolbar-hidden::before {
 
         &:hover {
             opacity: 1;
-            color: var(--vscode-errorForeground, #f44747);
+            color: var(--vscode-errorForeground);
         }
     }
 }
@@ -1135,7 +1102,7 @@ body.toolbar-hidden::before {
     width: 20px;
     height: 20px;
     padding: 0;
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border: 1px solid var(--vscode-panel-border);
     border-radius: 10px;
     background: transparent;
     color: var(--vscode-descriptionForeground);
@@ -1159,10 +1126,7 @@ body.toolbar-hidden::before {
     z-index: 1000;
     min-width: 180px;
     max-width: 320px;
-    background: var(
-        --vscode-editorSuggestWidget-background,
-        var(--vscode-dropdown-background, var(--vscode-editor-background))
-    );
+    background: var(--vscode-editorSuggestWidget-background, var(--vscode-dropdown-background, var(--vscode-editor-background)));
     border: 1px solid
         var(--vscode-editorSuggestWidget-border, var(--vscode-focusBorder));
     border-radius: 4px;
@@ -1175,7 +1139,7 @@ body.toolbar-hidden::before {
     padding: 6px 8px;
     border: none;
     border-bottom: 1px solid
-        var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+        var(--vscode-widget-border, var(--vscode-panel-border));
     background: transparent;
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
     font-size: 12px;
@@ -1200,20 +1164,14 @@ body.toolbar-hidden::before {
     padding: 5px 10px;
     font-size: 12px;
     cursor: pointer;
-    color: var(
-        --vscode-editorSuggestWidget-foreground,
-        var(--vscode-dropdown-foreground, var(--vscode-editor-foreground))
-    );
+    color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-dropdown-foreground, var(--vscode-editor-foreground)));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 
     &:hover,
     &.fm-suggest-item--focused {
-        background: var(
-            --vscode-editorSuggestWidget-selectedBackground,
-            var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15))
-        );
+        background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-hoverBackground));
     }
 
     &.fm-suggest-create {
@@ -1237,12 +1195,9 @@ body.toolbar-hidden::before {
     z-index: 1000;
     min-width: 220px;
     max-width: 320px;
-    background: var(
-        --vscode-editorSuggestWidget-background,
-        var(--vscode-dropdown-background, var(--vscode-editor-background))
-    );
+    background: var(--vscode-editorSuggestWidget-background, var(--vscode-dropdown-background, var(--vscode-editor-background)));
     border: 1px solid
-        var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border, rgba(128, 128, 128, 0.35)));
+        var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     font-family: var(--vscode-font-family);
@@ -1271,18 +1226,12 @@ body.toolbar-hidden::before {
     padding: 4px 10px;
     font-size: 12px;
     cursor: pointer;
-    color: var(
-        --vscode-editorSuggestWidget-foreground,
-        var(--vscode-dropdown-foreground, var(--vscode-editor-foreground))
-    );
+    color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-dropdown-foreground, var(--vscode-editor-foreground)));
 
     /* Hover moves the highlight (mouseover handler), so --focused is the
        single highlight style — no separate :hover to avoid double rows */
     &.slash-menu-item--focused {
-        background: var(
-            --vscode-editorSuggestWidget-selectedBackground,
-            var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15))
-        );
+        background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-hoverBackground));
     }
 }
 
@@ -1326,7 +1275,7 @@ body.toolbar-hidden::before {
     gap: 16px;
     padding: 5px 10px;
     border-top: 1px solid
-        var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+        var(--vscode-widget-border, var(--vscode-panel-border));
     font-size: 10px;
     color: var(--vscode-descriptionForeground);
 }

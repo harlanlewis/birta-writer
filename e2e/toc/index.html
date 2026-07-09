@@ -1,0 +1,61 @@
+<!-- e2e harness page for the table-of-contents panel. Mirrors the provider
+     template (src/MarkdownEditorProvider.ts) with acquireVsCodeApi stubbed.
+     The document carries >3 headings so the TOC auto-opens on load (docked),
+     and `editor-width-auto` guarantees docked mode at the runner's 1000px
+     viewport (innerWidth >= tocWidth + 720). A capture-phase transitionstart
+     listener records every animation the .toc-panel starts, tagged with the
+     current phase, so checks.mjs can prove the initial reveal is instant while
+     a later user toggle still animates. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-focusBorder: #007fd4;
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-symbolIcon-keywordForeground: #c586c0;
+    --vscode-input-placeholderForeground: #888888;
+    --vscode-icon-foreground: #cccccc;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-hoverBackground: rgba(90, 93, 94, 0.2);
+    --vscode-list-activeSelectionBackground: rgba(0, 127, 212, 0.26);
+    --vscode-editor-selectionBackground: #264f78;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  .editor-topbar { height: 40px; }
+</style>
+<script>
+  // Docked mode is a function of available side-space; forcing editor-width-auto
+  // makes hasEnoughSpace() a pure width test (1000 >= 220 + 720) so the suite is
+  // deterministic regardless of the editor's measured content rect.
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3 };
+  window.__posted = [];
+  const CONTENT = "# One\n\ntext\n\n## Two\n\ntext\n\n## Three\n\ntext\n\n## Four\n\ntext\n\n## Five\n\ntext\n";
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: CONTENT, frontmatter: "", syncVersion: 1 }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+  // Record every transitionstart the TOC panel begins, tagged with the phase the
+  // check has declared. Capture phase so it fires regardless of bubbling.
+  window.__tocTransitions = [];
+  window.__phase = "initial";
+  document.addEventListener("transitionstart", (e) => {
+    const t = e.target;
+    if (t && t.classList && t.classList.contains("toc-panel")) {
+      window.__tocTransitions.push({ phase: window.__phase, prop: e.propertyName });
+    }
+  }, true);
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

@@ -40,8 +40,8 @@
     align-items: stretch;
     gap: 3px;
     padding: 3px 5px;
-    background: var(--vscode-editorHoverWidget-background, #252526);
-    border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-editorHoverWidget-border);
     border-radius: 5px;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
     white-space: nowrap;
@@ -69,14 +69,14 @@
     background: none;
     border: none;
     border-radius: 3px;
-    color: var(--vscode-editorHoverWidget-foreground, #ccc);
+    color: var(--vscode-editorHoverWidget-foreground);
     cursor: pointer;
     font-size: 11px;
     line-height: 1;
 }
 
 .img-tb-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+    background: var(--vscode-toolbar-hoverBackground);
 }
 
 .img-tb-btn svg {
@@ -87,7 +87,7 @@
 .img-tb-sep {
     width: 1px;
     height: 16px;
-    background: var(--vscode-editorHoverWidget-border, #454545);
+    background: var(--vscode-editorHoverWidget-border);
     margin: 0 2px;
     flex-shrink: 0;
 }
@@ -100,7 +100,7 @@
     gap: 6px;
 
     .img-tb-path-name {
-        color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
+        color: var(--vscode-descriptionForeground);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -115,7 +115,7 @@
 
     &:hover .img-tb-path-name,
     &:hover .img-tb-path-pencil {
-        color: var(--vscode-editorHoverWidget-foreground, #ccc);
+        color: var(--vscode-editorHoverWidget-foreground);
         opacity: 1;
     }
 }
@@ -127,7 +127,7 @@
 .img-quiet-input {
     box-sizing: border-box;
     background: transparent;
-    color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.7));
+    color: var(--vscode-descriptionForeground);
     border: 1px solid transparent;
     border-radius: 3px;
     font-family: inherit;
@@ -135,11 +135,11 @@
     cursor: text;
 
     &:hover:not(:focus) {
-        border-color: var(--vscode-editorHoverWidget-border, #454545);
+        border-color: var(--vscode-editorHoverWidget-border);
     }
 
     &:focus {
-        background: var(--vscode-input-background, rgba(128, 128, 128, 0.15));
+        background: var(--vscode-input-background);
         border-color: var(--vscode-focusBorder);
         color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
     }
@@ -164,7 +164,7 @@
 .img-rename-input {
     height: 20px;
     padding: 0 5px;
-    background: var(--vscode-input-background, rgba(128, 128, 128, 0.15));
+    background: var(--vscode-input-background);
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
     border: 1px solid var(--vscode-focusBorder);
     border-radius: 3px;
@@ -207,10 +207,10 @@
     min-width: 120px;
     min-height: 64px;
     padding: 12px 16px;
-    background: var(--vscode-inputValidation-errorBackground, rgba(244, 67, 54, 0.08));
-    border: 1px dashed var(--vscode-inputValidation-errorBorder, rgba(244, 67, 54, 0.4));
+    background: var(--vscode-inputValidation-errorBackground);
+    border: 1px dashed var(--vscode-inputValidation-errorBorder);
     border-radius: 4px;
-    color: var(--vscode-errorForeground, #f44336);
+    color: var(--vscode-errorForeground);
     font-size: 12px;
     user-select: none;
 }
@@ -268,8 +268,8 @@
     margin: 0;
     padding: 2px 0;
     list-style: none;
-    background: var(--vscode-editorWidget-background, #252526);
-    border: 1px solid var(--vscode-editorWidget-border, #454545);
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-editorWidget-border);
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     max-height: 240px;
@@ -291,8 +291,8 @@
 
 .img-path-complete-item--active,
 .img-path-complete-item:hover {
-    background: var(--vscode-list-activeSelectionBackground, #094771);
-    color: var(--vscode-list-activeSelectionForeground, #fff);
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
 }
 
 .img-complete-thumb {

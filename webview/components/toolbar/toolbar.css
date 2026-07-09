@@ -59,15 +59,12 @@
 }
 
 .tb-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+    background: var(--vscode-toolbar-hoverBackground);
     border-color: var(--vscode-toolbar-hoverOutline, transparent);
 }
 
 .tb-btn:active {
-    background: var(
-        --vscode-toolbar-activeBackground,
-        rgba(128, 128, 128, 0.3)
-    );
+    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
 }
 
 .tb-btn code {
@@ -86,7 +83,7 @@
     padding: 0 4px;
     background: transparent;
     color: var(--vscode-editor-foreground);
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
+    border: 1px solid var(--vscode-panel-border);
     border-radius: 3px;
     font-size: 12px;
     font-family: inherit;
@@ -94,17 +91,11 @@
 }
 
 .tb-select:hover {
-    background: var(
-        --vscode-toolbar-hoverBackground,
-        rgba(128, 128, 128, 0.15)
-    );
+    background: var(--vscode-toolbar-hoverBackground);
 }
 
 .tb-select option {
-    background: var(
-        --vscode-dropdown-background,
-        var(--vscode-editor-background)
-    );
+    background: var(--vscode-dropdown-background, var(--vscode-editor-background));
     color: var(--vscode-editor-foreground);
 }
 
@@ -117,15 +108,15 @@
    clear "on" visibility, distinct from the subtle hover background. */
 .tb-btn--active,
 .tb-btn--active:active {
-    background: var(--vscode-button-background, #0e639c);
-    color: var(--vscode-button-foreground, #ffffff);
-    border-color: var(--vscode-button-background, #0e639c);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-background);
 }
 
 .tb-btn--active:hover {
-    background: var(--vscode-button-hoverBackground, #1177bb);
-    color: var(--vscode-button-foreground, #ffffff);
-    border-color: var(--vscode-button-hoverBackground, #1177bb);
+    background: var(--vscode-button-hoverBackground);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-hoverBackground);
 }
 
 .tb-fmt-btn {
@@ -152,11 +143,11 @@
     border: none;
     border-radius: 3px;
     padding: 0;
-    color: var(--vscode-editorHoverWidget-foreground, #ccc);
+    color: var(--vscode-editorHoverWidget-foreground);
     cursor: pointer;
 
     &:hover:not(:disabled) {
-        background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+        background: var(--vscode-list-hoverBackground);
     }
 }
 
@@ -244,8 +235,8 @@
     left: 0;
     display: none;
     flex-direction: column;
-    background: var(--vscode-editorHoverWidget-background, #252526);
-    border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-editorHoverWidget-border);
     border-radius: 5px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     overflow: hidden;
@@ -256,14 +247,14 @@
 .tb-fmt-item {
     padding: 5px 12px;
     font-size: 12px;
-    color: var(--vscode-editorHoverWidget-foreground, #ccc);
+    color: var(--vscode-editorHoverWidget-foreground);
     cursor: pointer;
     text-align: left;
     white-space: nowrap;
 }
 
 .tb-fmt-item:hover {
-    background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+    background: var(--vscode-list-hoverBackground);
 }
 
 /* Callout dropdown rows: a leading kind icon beside the type label. Unlike the
@@ -301,7 +292,7 @@
 .tb-menu-sep {
     height: 1px;
     margin: 4px 0;
-    background: var(--vscode-editorHoverWidget-border, #454545);
+    background: var(--vscode-editorHoverWidget-border);
 }
 
 /* The style sub-checks, nested under the "Check style" master: indented with a
@@ -309,7 +300,7 @@
    Check style is on (see repaintChecks). */
 .tb-checks-children {
     margin: 4px 0 2px 18px;
-    border-left: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+    border-left: 1px solid var(--vscode-editorHoverWidget-border);
 }
 
 .tb-fmt-header {
@@ -318,7 +309,7 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--vscode-descriptionForeground, #999);
+    color: var(--vscode-descriptionForeground);
     cursor: default;
 }
 
@@ -333,7 +324,7 @@
 
 /* On-state: brighten the whole row so the check + label share one color. */
 .tb-check-item--on {
-    color: var(--vscode-foreground, #ccc);
+    color: var(--vscode-foreground);
 }
 
 .tb-check-item--on .menu-check {
@@ -354,8 +345,8 @@
     align-items: stretch;
     gap: 2px;
     padding: 4px;
-    background: var(--vscode-editorHoverWidget-background, #252526);
-    border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-editorHoverWidget-border);
     border-radius: 5px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     z-index: 200;
@@ -376,10 +367,7 @@
     max-width: calc(100vw - 32px);
     max-height: 80vh;
     padding: 14px 16px;
-    background: var(
-        --vscode-editorWidget-background,
-        var(--vscode-editor-background)
-    );
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
     border: 1px solid var(--vscode-focusBorder);
     border-radius: 8px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
@@ -421,7 +409,7 @@
     display: flex;
     gap: 4px;
     border-bottom: 1px solid
-        var(--vscode-input-border, rgba(128, 128, 128, 0.3));
+        var(--vscode-input-border, var(--vscode-panel-border));
     padding-bottom: 6px;
 }
 
@@ -430,7 +418,7 @@
     padding: 0 12px;
     font-size: 12px;
     font-family: inherit;
-    border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     border-radius: 3px;
     background: transparent;
     color: var(--vscode-editor-foreground);
@@ -441,12 +429,12 @@
 }
 
 .img-insert-tab:hover {
-    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-list-hoverBackground);
 }
 
 .img-insert-tab--active {
-    background: var(--vscode-button-background, #007acc);
-    color: var(--vscode-button-foreground, #fff);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
     border-color: transparent;
 }
 
@@ -459,9 +447,9 @@
 .img-insert-input {
     height: 28px;
     padding: 0 8px;
-    background: var(--vscode-input-background, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-input-background);
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
-    border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     border-radius: 3px;
     font-size: 12px;
     font-family: inherit;
@@ -480,24 +468,15 @@
     padding: 0 12px;
     font-size: 12px;
     font-family: inherit;
-    background: var(
-        --vscode-button-secondaryBackground,
-        rgba(128, 128, 128, 0.2)
-    );
-    color: var(
-        --vscode-button-secondaryForeground,
-        var(--vscode-editor-foreground)
-    );
-    border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     border-radius: 4px;
     cursor: pointer;
     transition: background 0.1s;
 }
 .img-insert-browse-btn:hover:not(:disabled) {
-    background: var(
-        --vscode-button-secondaryHoverBackground,
-        rgba(128, 128, 128, 0.3)
-    );
+    background: var(--vscode-button-secondaryHoverBackground);
 }
 .img-insert-browse-btn:disabled {
     opacity: 0.5;
@@ -506,7 +485,7 @@
 
 .img-insert-file-info {
     font-size: 11px;
-    color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+    color: var(--vscode-descriptionForeground);
     word-break: break-all;
 }
 
@@ -515,8 +494,8 @@
     height: 60px;
     object-fit: cover;
     border-radius: 4px;
-    border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
-    background: var(--vscode-input-background, rgba(128, 128, 128, 0.1));
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    background: var(--vscode-input-background);
 }
 
 .img-insert-status {
@@ -525,11 +504,11 @@
 }
 
 .img-insert-status--loading {
-    color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.8));
+    color: var(--vscode-descriptionForeground);
 }
 
 .img-insert-status--error {
-    color: var(--vscode-errorForeground, #f44);
+    color: var(--vscode-errorForeground);
 }
 
 .img-insert-btn-row {
@@ -537,7 +516,7 @@
     justify-content: flex-end;
     gap: 8px;
     padding-top: 4px;
-    border-top: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.2));
+    border-top: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
 }
 
 .img-insert-ok-btn,
@@ -556,12 +535,12 @@
         opacity 0.1s;
 }
 .img-insert-ok-btn {
-    background: var(--vscode-button-background, #007acc);
-    color: var(--vscode-button-foreground, #fff);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
     border: none;
 }
 .img-insert-ok-btn:hover:not(:disabled) {
-    background: var(--vscode-button-hoverBackground, #0062a3);
+    background: var(--vscode-button-hoverBackground);
 }
 .img-insert-ok-btn:disabled {
     opacity: 0.5;
@@ -570,10 +549,10 @@
 .img-insert-cancel-btn {
     background: transparent;
     color: var(--vscode-editor-foreground);
-    border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
 }
 .img-insert-cancel-btn:hover {
-    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-list-hoverBackground);
 }
 
 /* ─── Image grid (browse-project tab) ─── */
@@ -593,14 +572,14 @@
     cursor: pointer;
     overflow: hidden;
     aspect-ratio: 1;
-    background: var(--vscode-input-background, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-input-background);
     transition: border-color 0.12s;
 }
 .img-insert-thumb-item:hover {
     border-color: var(--vscode-focusBorder);
 }
 .img-insert-thumb-item--selected {
-    border-color: var(--vscode-button-background, #007acc);
+    border-color: var(--vscode-button-background);
 }
 
 .img-insert-thumb {
@@ -616,8 +595,8 @@
     left: 4px;
     width: 18px;
     height: 18px;
-    background: var(--vscode-button-background, #007acc);
-    color: var(--vscode-button-foreground, #fff);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
     border-radius: 50%;
     display: none;
     align-items: center;
@@ -657,7 +636,7 @@
 
 .img-insert-selected-count {
     font-size: 11px;
-    color: var(--vscode-button-background, #007acc);
+    color: var(--vscode-button-background);
     padding-top: 2px;
 }
 
@@ -784,7 +763,7 @@
 
 .tb-hidden-tray-label {
     font-size: 11px;
-    color: var(--vscode-descriptionForeground, #999);
+    color: var(--vscode-descriptionForeground);
     white-space: nowrap;
     flex: none;
 }
@@ -802,15 +781,15 @@
 /* While a drag hovers the tray: highlight the whole target (no per-slot line). */
 .tb-hidden-tray-items.tb-tray-drop-active {
     outline-style: solid;
-    background: var(--vscode-list-dropBackground, rgba(0, 122, 204, 0.12));
+    background: var(--vscode-list-dropBackground);
 }
 
 /* "Done" button to leave customize mode (lives at the right of the tray). */
 .tb-edit-done {
     flex: none;
     padding: 4px 16px;
-    background: var(--vscode-button-background, #0e639c);
-    color: var(--vscode-button-foreground, #fff);
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
     border: none;
     border-radius: 12px;
     font-size: 12px;
@@ -819,7 +798,7 @@
 }
 
 .tb-edit-done:hover {
-    background: var(--vscode-button-hoverBackground, #1177bb);
+    background: var(--vscode-button-hoverBackground);
 }
 
 /* ─── Whole-bar expand tab (shown only while toolbar.visible is off) ───
@@ -837,11 +816,8 @@
     padding: 0;
     align-items: center;
     justify-content: center;
-    background: var(
-        --vscode-sideBar-background,
-        var(--vscode-editor-background)
-    );
-    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+    background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-panel-border);
     border-top: none;
     border-radius: 0 0 4px 4px;
     color: var(--vscode-foreground);
@@ -864,5 +840,5 @@ body.toolbar-hidden .toolbar-toggle-tab {
 .toolbar-toggle-tab:hover,
 .toolbar-toggle-tab:focus-visible {
     opacity: 1;
-    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+    background: var(--vscode-list-hoverBackground);
 }
