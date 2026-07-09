@@ -50,6 +50,9 @@ const MIME = {
 function serve() {
     return createServer(async (req, res) => {
         const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
+        // Chromium auto-requests /favicon.ico on the first page of a context; a
+        // 404 there logs a console error that would abort the strict runner.
+        if (urlPath === "/favicon.ico") { res.writeHead(204); res.end(); return; }
         const rel = normalize(urlPath).replace(/^([/\\]|\.\.)+/, "");
         const base = rel.startsWith("dist/") ? repoRoot : suiteDir;
         const file = join(base, rel === "" || rel === "." ? "index.html" : rel);
