@@ -30,6 +30,7 @@ describe("computeZones", () => {
             "taskList",
             "codeBlock",
             "blockquote",
+            "callouts",
             "horizontalRule",
             "table",
             "image",

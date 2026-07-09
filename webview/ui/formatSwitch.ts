@@ -32,7 +32,7 @@ export interface FormatSwitch {
     el: HTMLElement;
     get(): LinkFormat;
     set(format: LinkFormat): void;
-    /** Disables the wikilink option; forces markdown while disallowed. */
+    /** Hides the whole control when a wikilink is impossible; forces markdown. */
     setWikiAllowed(allowed: boolean): void;
 }
 
@@ -43,23 +43,25 @@ export function createLinkFormatSwitch(
     const root = document.createElement("div");
     root.className = "lfs-root";
 
-    // Visual prefix ("Format:"); the accessible name lives on the select.
+    // Visual prefix ("Local link format:"). The control only appears when the
+    // target can be a wikilink (a local file), so the label names that context.
+    // The accessible name lives on the select.
     const label = document.createElement("span");
     label.className = "lfs-label";
-    label.textContent = t("Format");
+    label.textContent = t("Local link format");
     label.setAttribute("aria-hidden", "true");
 
     const select = document.createElement("select");
     select.className = "lfs-select";
-    select.setAttribute("aria-label", t("Link format"));
+    select.setAttribute("aria-label", t("Local link format"));
 
     const optMarkdown = document.createElement("option");
     optMarkdown.value = "markdown";
-    optMarkdown.textContent = t("Markdown");
+    optMarkdown.textContent = t("[text](url)");
 
     const optWiki = document.createElement("option");
     optWiki.value = "wikilink";
-    optWiki.textContent = t("[[wiki]]");
+    optWiki.textContent = t("[[page]]");
 
     select.append(optMarkdown, optWiki);
     select.value = initial;
@@ -80,7 +82,10 @@ export function createLinkFormatSwitch(
             select.value = format;
         },
         setWikiAllowed(allowed: boolean): void {
-            optWiki.disabled = !allowed;
+            // When a wikilink is impossible (external URL / #anchor) there is no
+            // real choice to offer — hide the whole Format row rather than show a
+            // greyed-out option, and force markdown.
+            root.style.display = allowed ? "" : "none";
             if (!allowed && select.value === "wikilink") {
                 select.value = "markdown";
             }

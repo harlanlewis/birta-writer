@@ -266,6 +266,25 @@
     background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
 }
 
+/* Callout dropdown rows: a leading kind icon beside the type label. Unlike the
+   label-only Format rows, these are <button>s with an SVG + a name span. */
+.tb-callout-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 12px;
+
+    svg {
+        width: 14px;
+        height: 14px;
+        flex: none;
+    }
+}
+
 /* ─── Checks menu (spelling / grammar / style + per-check toggles) ─── */
 .tb-checks-menu {
     /* Side + vertical direction are set at open time by placeMenu (menuPlacement.ts),

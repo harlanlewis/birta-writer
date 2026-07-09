@@ -117,6 +117,38 @@ describe("filterSlashItems", () => {
     it("a query matching nothing should return an empty list", () => {
         expect(filterSlashItems(SLASH_MENU_ITEMS, "zzzz")).toEqual([]);
     });
+
+    it("filtering a callout type should surface its search-only row with the kind arg baked in", () => {
+        const warning = filterSlashItems(SLASH_MENU_ITEMS, "warning").find(
+            (i) => i.id === "callout-warning",
+        );
+        expect(warning?.args).toBe("warning");
+        expect(warning?.commandId).toBe("insertCallout");
+        // The generic "Callout" row no longer carries type-name keywords, so a
+        // type filter surfaces only the dedicated type row, not the generic one.
+        const ids = label(filterSlashItems(SLASH_MENU_ITEMS, "warning"));
+        expect(ids).not.toContain("callout");
+    });
+
+    it("filtering an Obsidian alias should surface the aliased callout type", () => {
+        // "attention" is Obsidian's alias for the warning callout (KIND_ALIASES).
+        const ids = label(filterSlashItems(SLASH_MENU_ITEMS, "attention"));
+        expect(ids).toContain("callout-warning");
+    });
+
+    it("typing 'callout' should surface the base row and all five per-type rows", () => {
+        const ids = label(filterSlashItems(SLASH_MENU_ITEMS, "callout"));
+        expect(ids).toEqual(
+            expect.arrayContaining([
+                "callout",
+                "callout-note",
+                "callout-tip",
+                "callout-important",
+                "callout-warning",
+                "callout-caution",
+            ]),
+        );
+    });
 });
 
 describe("registry drift guards", () => {

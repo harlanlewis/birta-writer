@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { insertionIndexFromX, enterEditMode, type EditModeDeps } from "../components/toolbar/dnd";
+import { applyTooltip } from "../ui/tooltip";
+
+// The tooltip binding is a pure side effect of entering/exiting customize
+// mode; mock it so we can assert it happens per-wrapper without depending on
+// the shared (body-wiped) tooltip DOM.
+vi.mock("../ui/tooltip", () => ({
+    applyTooltip: vi.fn(() => ({ setText: vi.fn(), show: vi.fn(), dispose: vi.fn() })),
+}));
 
 /** A div whose getBoundingClientRect is stubbed (jsdom performs no layout). */
 function itemAt(left: number, width: number): HTMLElement {
@@ -212,5 +220,67 @@ describe("enterEditMode drag lifecycle", () => {
         pev("pointermove", 20, 0);
         expect(ghostEl()).toBeNull(); // no drag started after teardown
         expect(onChange).not.toHaveBeenCalled();
+    });
+});
+
+describe("enterEditMode name tooltips", () => {
+    const applyTooltipMock = vi.mocked(applyTooltip);
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+    });
+
+    /** A `.tb-item` wrapper whose inner control carries a display-name aria-label. */
+    function itemWithLabel(id: string, label: string, into: HTMLElement): HTMLElement {
+        const el = document.createElement("div");
+        el.className = "tb-item";
+        el.dataset["itemId"] = id;
+        const inner = document.createElement("button");
+        inner.setAttribute("aria-label", label);
+        el.appendChild(inner);
+        into.appendChild(el);
+        return el;
+    }
+
+    it("entering customize mode should bind a name tooltip to every wrapper and exiting should dispose them", () => {
+        const toolbar = document.createElement("div");
+        const left = document.createElement("div");
+        const right = document.createElement("div");
+        const hidden = document.createElement("div");
+        const moreWrap = document.createElement("div");
+        left.appendChild(moreWrap);
+        toolbar.append(left, right, hidden);
+        document.body.appendChild(toolbar);
+
+        // One item in each of the three zones (left, right, hidden tray).
+        itemWithLabel("bold", "Bold", left);
+        itemWithLabel("settings", "Settings", right);
+        itemWithLabel("footnote", "Insert Footnote", hidden);
+
+        const exit = enterEditMode({
+            toolbar,
+            zones: { left, right, hidden } as unknown as EditModeDeps["zones"],
+            moreWrap,
+            expandOverflow: vi.fn(),
+            onChange: vi.fn(),
+            onExit: vi.fn(),
+        });
+
+        // A tooltip is bound to each wrapper, reading the inner aria-label.
+        expect(applyTooltipMock).toHaveBeenCalledTimes(3);
+        const wrappers = applyTooltipMock.mock.calls.map((c) => c[0]);
+        expect(wrappers.every((w) => (w as HTMLElement).classList.contains("tb-item"))).toBe(true);
+        const names = applyTooltipMock.mock.calls.map((c) => c[1]);
+        expect(names).toEqual(expect.arrayContaining(["Bold", "Settings", "Insert Footnote"]));
+
+        // Exiting disposes every bound tooltip (no leaked/duplicated bindings).
+        const disposers = applyTooltipMock.mock.results.map(
+            (r) => (r.value as { dispose: ReturnType<typeof vi.fn> }).dispose,
+        );
+        exit();
+        for (const dispose of disposers) {
+            expect(dispose).toHaveBeenCalledTimes(1);
+        }
     });
 });

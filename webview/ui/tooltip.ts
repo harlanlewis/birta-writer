@@ -27,6 +27,13 @@ interface TooltipHandle {
     setText(t: string): void;
     /** Show the tooltip programmatically (e.g. for post-click feedback) */
     show(): void;
+    /**
+     * Unbind every listener this handle added and hide the tooltip if it still
+     * owns it. Lets a caller (e.g. the toolbar's customize mode) attach a
+     * temporary tooltip and cleanly remove it later without leaking listeners
+     * or leaving a duplicate binding behind.
+     */
+    dispose(): void;
 }
 
 function position(
@@ -109,6 +116,11 @@ export function applyTooltip(
 
     el.removeAttribute("title");
 
+    // All listeners are registered with this signal so dispose() can unbind
+    // them in one call (no per-listener bookkeeping).
+    const ac = new AbortController();
+    const { signal } = ac;
+
     const show = () => {
         if (!currentText) {
             return;
@@ -127,8 +139,8 @@ export function applyTooltip(
         }
     };
 
-    el.addEventListener("mouseenter", show);
-    el.addEventListener("mouseleave", hideIfOwner);
+    el.addEventListener("mouseenter", show, { signal });
+    el.addEventListener("mouseleave", hideIfOwner, { signal });
 
     // Keyboard parity with hover: tabbing onto the control surfaces the
     // tooltip, leaving hides it. Click focus stays silent (not
@@ -139,13 +151,13 @@ export function applyTooltip(
         if (isKeyboardFocus(el)) {
             show();
         }
-    });
-    el.addEventListener("blur", hideIfOwner);
+    }, { signal });
+    el.addEventListener("blur", hideIfOwner, { signal });
     el.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
             hideIfOwner();
         }
-    });
+    }, { signal });
 
     return {
         setText(t: string) {
@@ -159,6 +171,10 @@ export function applyTooltip(
             tip.textContent = currentText;
             position(tip, el, placement);
             ownerEl = el;
+        },
+        dispose() {
+            ac.abort();
+            hideIfOwner();
         },
     };
 }

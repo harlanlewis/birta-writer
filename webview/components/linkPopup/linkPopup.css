@@ -117,7 +117,8 @@
     background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
 }
 
-/* Remove button hover */
+/* Unlink button hover: destructive, so its hover reads in the error color. All
+   header buttons share uniform .lp-btn spacing via .lp-header-actions gap. */
 .lp-btn-remove:hover {
     opacity: 1;
     background: var(--vscode-inputValidation-errorBackground, rgba(200, 50, 50, 0.18));
@@ -162,14 +163,6 @@
     &:focus {
         border-color: var(--vscode-focusBorder);
     }
-}
-
-/* Button row */
-.lp-body-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 4px;
-    padding-top: 2px;
 }
 
 /* The range the link editor will act on stays visibly "selected" while the

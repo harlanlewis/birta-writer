@@ -12,6 +12,7 @@
  */
 import type { EditorCommandId } from "../../../shared/editorCommands";
 import { t } from "@/i18n";
+import { CALLOUT_ICONS } from "../callout";
 import {
     IconAlertCircle,
     IconArrowLeftRight,
@@ -151,7 +152,19 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "image", group: "insert", label: t("Image"), icon: IconImage, hint: "![]", keywords: ["image", "picture", "photo", "figure"], commandId: "insertImage" },
     { id: "codeBlock", group: "insert", label: t("Code Block"), icon: IconTerminal, hint: "```", keywords: ["code", "fence", "snippet", "pre"], commandId: "insertCodeBlock" },
     { id: "blockquote", group: "insert", label: t("Blockquote"), icon: IconQuote, hint: ">", keywords: ["quote", "cite"], commandId: "toggleBlockquote" },
-    { id: "callout", group: "insert", label: t("Callout"), icon: IconAlertCircle, hint: "> [!]", keywords: ["callout", "admonition", "alert", "note", "warning", "tip", "aside"], commandId: "insertCallout" },
+    // Generic row keeps only generic synonyms; the specific type names (note,
+    // warning, tip, …) live on their dedicated search-only rows below, so
+    // filtering by a type surfaces just that type, not the generic row too.
+    { id: "callout", group: "insert", label: t("Callout"), icon: IconAlertCircle, hint: "> [!]", keywords: ["callout", "admonition", "alert", "aside"], commandId: "insertCallout" },
+    // The five GitHub callout TYPES — search-only so they surface when you type
+    // a type name (or "callout") without cluttering the browse list. Each bakes
+    // in its kind arg; keywords carry the type name, "callout", and Obsidian
+    // aliases (KIND_ALIASES in plugins/callouts.ts) where one exists.
+    { id: "callout-note", group: "insert", label: t("Note"), icon: CALLOUT_ICONS.note, keywords: ["note", "callout", "admonition", "alert"], commandId: "insertCallout", args: "note", searchOnly: true },
+    { id: "callout-tip", group: "insert", label: t("Tip"), icon: CALLOUT_ICONS.tip, keywords: ["tip", "hint", "callout", "admonition"], commandId: "insertCallout", args: "tip", searchOnly: true },
+    { id: "callout-important", group: "insert", label: t("Important"), icon: CALLOUT_ICONS.important, keywords: ["important", "callout", "admonition"], commandId: "insertCallout", args: "important", searchOnly: true },
+    { id: "callout-warning", group: "insert", label: t("Warning"), icon: CALLOUT_ICONS.warning, keywords: ["warning", "attention", "callout", "admonition", "alert"], commandId: "insertCallout", args: "warning", searchOnly: true },
+    { id: "callout-caution", group: "insert", label: t("Caution"), icon: CALLOUT_ICONS.caution, keywords: ["caution", "callout", "admonition", "alert"], commandId: "insertCallout", args: "caution", searchOnly: true },
     { id: "mermaid", group: "insert", label: t("Mermaid Diagram"), icon: IconNetwork, keywords: ["mermaid", "diagram", "flowchart", "graph", "chart"], commandId: "insertCodeBlock", args: "mermaid" },
     // Inline math is a real node; a math BLOCK is a LaTeX-language code block
     // (same mechanism as Mermaid), otherwise reachable only by typing "$$ ".

@@ -93,6 +93,21 @@ export function opensSlashMenu(tr: Transaction): boolean {
  * which reads as an accident from inside a cell; the inline insertions
  * (image, link, math, footnote) genuinely apply and stay offered.
  */
+/**
+ * Every callout registry id — the always-browsable base row plus the five
+ * search-only per-type rows. They share the base callout's context rules
+ * (hidden inside a callout; hidden in a table cell), so this one list keeps
+ * both call sites in lockstep.
+ */
+const CALLOUT_ITEM_IDS = [
+    "callout",
+    "callout-note",
+    "callout-tip",
+    "callout-important",
+    "callout-warning",
+    "callout-caution",
+] as const;
+
 const HIDDEN_IN_TABLE_CELL = [
     "paragraph",
     "heading1",
@@ -105,7 +120,7 @@ const HIDDEN_IN_TABLE_CELL = [
     "orderedList",
     "taskList",
     "blockquote",
-    "callout",
+    ...CALLOUT_ITEM_IDS,
     "divider",
     "codeBlock",
     "mermaid",
@@ -129,8 +144,11 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
                 hidden.add("blockquote");
                 break;
             case "callout":
-                // insertCallout is the same lift-out toggle as blockquote.
-                hidden.add("callout");
+                // insertCallout is the same lift-out toggle as blockquote —
+                // hide the base row AND every per-type row inside a callout.
+                for (const id of CALLOUT_ITEM_IDS) {
+                    hidden.add(id);
+                }
                 break;
             case "list_item":
             case "task_list_item":

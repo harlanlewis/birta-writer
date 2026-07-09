@@ -27,6 +27,7 @@ const SLASH_COVERAGE: Record<ToolbarItemId, readonly string[]> = {
     taskList: ["taskList"],
     codeBlock: ["codeBlock"],
     blockquote: ["blockquote"],
+    callouts: ["callout", "callout-note", "callout-tip", "callout-important", "callout-warning", "callout-caution"],
     horizontalRule: ["divider"],
     table: ["table"],
     image: ["image"],

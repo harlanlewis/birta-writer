@@ -25,8 +25,10 @@ export function getCustomThemes(): CustomTheme[] {
     return config.get<CustomTheme[]>("customThemes", []);
 }
 
-// Parse a color string into RGB values
-function parseColor(color: string): { r: number; g: number; b: number; a: number } | null {
+// Parse a color string into RGB values.
+// Exported so the guarding test can assert every BASE_THEME_DEFAULTS value is a
+// parseable color; also used by colorsAreSimilar below.
+export function parseColor(color: string): { r: number; g: number; b: number; a: number } | null {
     if (!color) return null;
     color = color.trim();
     
@@ -68,8 +70,10 @@ function parseColor(color: string): { r: number; g: number; b: number; a: number
     return null;
 }
 
-// Detect whether two colors are similar (difference too small)
-function colorsAreSimilar(color1: string, color2: string): boolean {
+// Detect whether two colors are similar (difference too small).
+// Exported so the guarding test can exercise the selection-contrast heuristic
+// directly.
+export function colorsAreSimilar(color1: string, color2: string): boolean {
     const c1 = parseColor(color1);
     const c2 = parseColor(color2);
     
@@ -195,6 +199,82 @@ export const THEME_COLOR_KEYS = [
     "terminal.ansiCyan",
 ];
 
+/**
+ * Base-theme color defaults used ONLY to backfill keys a pinned built-in theme
+ * or a user custom theme omits from its JSON (see `getThemeColors`).
+ *
+ * Each entry carries a `light` and a `dark` value that mirror VS Code's own
+ * built-in `light_defaults` / `dark_defaults` base-theme colors. This is the
+ * faithful way to reproduce a pinned theme: VS Code itself fills any color a
+ * theme leaves undefined from these base defaults — NOT from the active
+ * workbench theme — so a partial theme renders here exactly as it would in the
+ * real editor, without visible holes.
+ *
+ * Scope and invariants:
+ * - These values are a deliberate, hand-maintained snapshot. They must stay
+ *   byte-for-byte in sync with VS Code's base defaults; do not "improve" them.
+ * - A `THEME_COLOR_KEYS` entry with NO row here is intentional: that key falls
+ *   through to the webview's live native `--vscode-*` variable rather than being
+ *   frozen to a snapshot. Absence is a feature, not an omission to fix.
+ * - Every value must remain a parseable color string (`#rgb` / `#rrggbb` /
+ *   `rgb()` / `rgba()`). This is enforced by
+ *   src/__tests__/resolveThemeColors.test.ts, which parses each light and dark
+ *   value — that test is the leash keeping this table from silently rotting.
+ * - This table backfills partial pinned/custom themes only. In the default
+ *   `auto` mode none of this runs (`resolveThemeColors` returns `{}`).
+ */
+export const BASE_THEME_DEFAULTS: Record<string, { light: string; dark: string }> = {
+    "editor.background": { light: "#ffffff", dark: "#1e1e1e" },
+    "editor.foreground": { light: "#333333", dark: "#d4d4d4" },
+    "editor.selectionBackground": { light: "rgba(0, 0, 0, 0.1)", dark: "rgba(255, 255, 255, 0.1)" },
+    "editorLineNumber.foreground": { light: "#237893", dark: "#858585" },
+    "foreground": { light: "#616161", dark: "#cccccc" },
+    "descriptionForeground": { light: "#717171", dark: "#a9a9a9" },
+    "errorForeground": { light: "#a1260d", dark: "#f48771" },
+    "focusBorder": { light: "#0090f1", dark: "#007fd4" },
+    "icon.foreground": { light: "#424242", dark: "#c5c5c5" },
+    "editorError.foreground": { light: "#e51400", dark: "#f14c4c" },
+    "editorWarning.foreground": { light: "#bf8803", dark: "#cca700" },
+    "editorInfo.foreground": { light: "#1a85ff", dark: "#3794ff" },
+    "charts.red": { light: "#e51400", dark: "#f14c4c" },
+    "charts.blue": { light: "#1a85ff", dark: "#3794ff" },
+    "charts.yellow": { light: "#bf8803", dark: "#cca700" },
+    "charts.orange": { light: "#d18616", dark: "#d18616" },
+    "charts.green": { light: "#388a34", dark: "#89d185" },
+    "charts.purple": { light: "#652d90", dark: "#b180d7" },
+    "widget.shadow": { light: "rgba(0, 0, 0, 0.16)", dark: "rgba(0, 0, 0, 0.36)" },
+    "textBlockQuote.background": { light: "rgba(0, 0, 0, 0.05)", dark: "rgba(128, 128, 128, 0.1)" },
+    "textBlockQuote.border": { light: "#007acc", dark: "#007acc" },
+    "textCodeBlock.background": { light: "rgba(0, 0, 0, 0.05)", dark: "rgba(128, 128, 128, 0.1)" },
+    "textLink.foreground": { light: "#006ab1", dark: "#3794ff" },
+    "textLink.activeForeground": { light: "#006ab1", dark: "#3794ff" },
+    "sideBar.background": { light: "#f3f3f3", dark: "#252526" },
+    "panel.border": { light: "#e0e0e0", dark: "#3c3c3c" },
+    "toolbar.hoverBackground": { light: "rgba(0, 0, 0, 0.1)", dark: "rgba(128, 128, 128, 0.2)" },
+    "toolbar.activeBackground": { light: "rgba(0, 0, 0, 0.15)", dark: "rgba(128, 128, 128, 0.3)" },
+    "list.activeSelectionBackground": { light: "rgba(0, 0, 0, 0.1)", dark: "rgba(255, 255, 255, 0.1)" },
+    "list.activeSelectionForeground": { light: "#333333", dark: "#ffffff" },
+    "list.hoverBackground": { light: "rgba(0, 0, 0, 0.05)", dark: "rgba(255, 255, 255, 0.05)" },
+    "input.background": { light: "#ffffff", dark: "#3c3c3c" },
+    "input.foreground": { light: "#333333", dark: "#cccccc" },
+    "input.border": { light: "#cecece", dark: "#3c3c3c" },
+    "input.placeholderForeground": { light: "#999999", dark: "#a9a9a9" },
+    "dropdown.background": { light: "#ffffff", dark: "#3c3c3c" },
+    "dropdown.foreground": { light: "#333333", dark: "#cccccc" },
+    "dropdown.border": { light: "#cecece", dark: "#3c3c3c" },
+    "button.background": { light: "#007acc", dark: "#0e639c" },
+    "button.foreground": { light: "#ffffff", dark: "#ffffff" },
+    "button.hoverBackground": { light: "#0069b3", dark: "#1177bb" },
+    "checkbox.background": { light: "#ffffff", dark: "#3c3c3c" },
+    "checkbox.border": { light: "#919191", dark: "#3c3c3c" },
+    "terminal.ansiRed": { light: "#cd3131", dark: "#f44747" },
+    "terminal.ansiGreen": { light: "#00bc00", dark: "#6a9955" },
+    "terminal.ansiYellow": { light: "#949800", dark: "#d7ba7d" },
+    "terminal.ansiBlue": { light: "#0451a5", dark: "#569cd6" },
+    "terminal.ansiMagenta": { light: "#bc05bc", dark: "#d16d9e" },
+    "terminal.ansiCyan": { light: "#0598bc", dark: "#56b6c2" },
+};
+
 export function getAllThemes(): ThemeInfo[] {
     const seen = new Set<string>();
     const themes: ThemeInfo[] = [];
@@ -242,68 +322,17 @@ export async function getThemeColors(themePath: string): Promise<ThemeColors> {
         // Ensure all colors in THEME_COLOR_KEYS are included
         // If not defined in the theme file, use the default value
         const isLight = themeJson.type === "light" || themeJson.type === "vs";
-        // Backfill for colors a pinned theme's JSON omits, so partial themes
-        // don't leave visible holes. Values are VS Code's base-theme defaults.
-        // Keys absent here (and colors of themes that define nothing) fall
-        // through to the active theme's native --vscode-* variables.
-        const defaults: Record<string, string> = {
-            "editor.background": isLight ? "#ffffff" : "#1e1e1e",
-            "editor.foreground": isLight ? "#333333" : "#d4d4d4",
-            "editor.selectionBackground": isLight ? "rgba(0, 0, 0, 0.1)" : "rgba(255, 255, 255, 0.1)",
-            "editorLineNumber.foreground": isLight ? "#237893" : "#858585",
-            "foreground": isLight ? "#616161" : "#cccccc",
-            "descriptionForeground": isLight ? "#717171" : "#a9a9a9",
-            "errorForeground": isLight ? "#a1260d" : "#f48771",
-            "focusBorder": isLight ? "#0090f1" : "#007fd4",
-            "icon.foreground": isLight ? "#424242" : "#c5c5c5",
-            "editorError.foreground": isLight ? "#e51400" : "#f14c4c",
-            "editorWarning.foreground": isLight ? "#bf8803" : "#cca700",
-            "editorInfo.foreground": isLight ? "#1a85ff" : "#3794ff",
-            "charts.red": isLight ? "#e51400" : "#f14c4c",
-            "charts.blue": isLight ? "#1a85ff" : "#3794ff",
-            "charts.yellow": isLight ? "#bf8803" : "#cca700",
-            "charts.orange": "#d18616",
-            "charts.green": isLight ? "#388a34" : "#89d185",
-            "charts.purple": isLight ? "#652d90" : "#b180d7",
-            "widget.shadow": isLight ? "rgba(0, 0, 0, 0.16)" : "rgba(0, 0, 0, 0.36)",
-            "textBlockQuote.background": isLight ? "rgba(0, 0, 0, 0.05)" : "rgba(128, 128, 128, 0.1)",
-            "textBlockQuote.border": "#007acc",
-            "textCodeBlock.background": isLight ? "rgba(0, 0, 0, 0.05)" : "rgba(128, 128, 128, 0.1)",
-            "textLink.foreground": isLight ? "#006ab1" : "#3794ff",
-            "textLink.activeForeground": isLight ? "#006ab1" : "#3794ff",
-            "sideBar.background": isLight ? "#f3f3f3" : "#252526",
-            "panel.border": isLight ? "#e0e0e0" : "#3c3c3c",
-            "toolbar.hoverBackground": isLight ? "rgba(0, 0, 0, 0.1)" : "rgba(128, 128, 128, 0.2)",
-            "toolbar.activeBackground": isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(128, 128, 128, 0.3)",
-            "list.activeSelectionBackground": isLight ? "rgba(0, 0, 0, 0.1)" : "rgba(255, 255, 255, 0.1)",
-            "list.activeSelectionForeground": isLight ? "#333333" : "#ffffff",
-            "list.hoverBackground": isLight ? "rgba(0, 0, 0, 0.05)" : "rgba(255, 255, 255, 0.05)",
-            "input.background": isLight ? "#ffffff" : "#3c3c3c",
-            "input.foreground": isLight ? "#333333" : "#cccccc",
-            "input.border": isLight ? "#cecece" : "#3c3c3c",
-            "input.placeholderForeground": isLight ? "#999999" : "#a9a9a9",
-            "dropdown.background": isLight ? "#ffffff" : "#3c3c3c",
-            "dropdown.foreground": isLight ? "#333333" : "#cccccc",
-            "dropdown.border": isLight ? "#cecece" : "#3c3c3c",
-            "button.background": isLight ? "#007acc" : "#0e639c",
-            "button.foreground": "#ffffff",
-            "button.hoverBackground": isLight ? "#0069b3" : "#1177bb",
-            "checkbox.background": isLight ? "#ffffff" : "#3c3c3c",
-            "checkbox.border": isLight ? "#919191" : "#3c3c3c",
-            "terminal.ansiRed": isLight ? "#cd3131" : "#f44747",
-            "terminal.ansiGreen": isLight ? "#00bc00" : "#6a9955",
-            "terminal.ansiYellow": isLight ? "#949800" : "#d7ba7d",
-            "terminal.ansiBlue": isLight ? "#0451a5" : "#569cd6",
-            "terminal.ansiMagenta": isLight ? "#bc05bc" : "#d16d9e",
-            "terminal.ansiCyan": isLight ? "#0598bc" : "#56b6c2",
-        };
-
+        // Backfill colors a pinned theme's JSON omits, so partial themes don't
+        // leave visible holes. Values come from BASE_THEME_DEFAULTS (VS Code's
+        // base-theme defaults). Keys absent from that table (and colors of
+        // themes that define nothing) fall through to the active theme's native
+        // --vscode-* variables.
         for (const key of THEME_COLOR_KEYS) {
             const cssVar = `--vscode-${key.replace(/\./g, "-")}`;
             if (!colors[cssVar]) {
-                const defaultVal = defaults[key];
+                const defaultVal = BASE_THEME_DEFAULTS[key];
                 if (defaultVal) {
-                    colors[cssVar] = defaultVal;
+                    colors[cssVar] = isLight ? defaultVal.light : defaultVal.dark;
                 }
             }
         }

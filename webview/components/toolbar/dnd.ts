@@ -19,6 +19,7 @@
  * `ToolbarPlacement` models all three (`left | right | hidden`).
  */
 import type { ToolbarPlacement } from "../../../shared/messages";
+import { applyTooltip } from "../../ui/tooltip";
 
 /** A single layout change produced by a drop. */
 export interface ToolbarLayoutChange {
@@ -94,6 +95,20 @@ export function enterEditMode(deps: EditModeDeps): () => void {
     };
     toolbar.addEventListener("mousedown", swallow, true);
     toolbar.addEventListener("click", swallow, true);
+
+    // Customize mode disables the inner controls' pointer-events (so a parked
+    // button can't fire its action), which also kills their own tooltips. Bind
+    // a simple NAME tooltip to each `.tb-item` wrapper across all three targets
+    // — the wrapper keeps pointer-events — reading the inner control's clean
+    // aria-label. Torn down on exit so normal-mode tooltips resume without a
+    // duplicate binding.
+    const nameTooltips = items().map((el) =>
+        applyTooltip(
+            el,
+            el.querySelector("[aria-label]")?.getAttribute("aria-label") ?? "",
+            { placement: "below" },
+        ),
+    );
 
     const indicator = document.createElement("div");
     indicator.className = "tb-drop-indicator";
@@ -321,6 +336,7 @@ export function enterEditMode(deps: EditModeDeps): () => void {
         if (dragging) {
             cancelDrag();
         }
+        for (const tip of nameTooltips) { tip.dispose(); }
         toolbar.classList.remove("toolbar--editing");
         toolbar.removeEventListener("mousedown", swallow, true);
         toolbar.removeEventListener("click", swallow, true);

@@ -1,4 +1,4 @@
-/* ─── Link format switch ("Format: [ Markdown ▾ ]" dropdown) ─── */
+/* ─── Link format switch ("Local link format: [ [text](url) ▾ ]" dropdown) ─── */
 
 .lfs-root {
     display: inline-flex;
@@ -10,6 +10,10 @@
 .lfs-label {
     font-size: 11px;
     color: var(--vscode-descriptionForeground);
+
+    &::after {
+        content: ":";
+    }
 }
 
 .lfs-select {
