@@ -55,13 +55,16 @@ export function createLinkFormatSwitch(
     select.className = "lfs-select";
     select.setAttribute("aria-label", t("Local link format"));
 
+    // Name + example shape, so the choice is legible even to someone who
+    // doesn't recognize the raw syntax. The native <select> trigger shows the
+    // selected option's text, so it reads e.g. "Markdown — [text](url)".
     const optMarkdown = document.createElement("option");
     optMarkdown.value = "markdown";
-    optMarkdown.textContent = t("[text](url)");
+    optMarkdown.textContent = t("Markdown — [text](url)");
 
     const optWiki = document.createElement("option");
     optWiki.value = "wikilink";
-    optWiki.textContent = t("[[page]]");
+    optWiki.textContent = t("Wikilink — [[page]]");
 
     select.append(optMarkdown, optWiki);
     select.value = initial;
