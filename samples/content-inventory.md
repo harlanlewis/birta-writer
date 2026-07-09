@@ -118,21 +118,17 @@ cell:
 ### Bullet list
 
 - First item
-
 - Second item
-
-    - Nested item
-    - Another nested item
-
+  - Nested item
+  - Another nested item
 - Third item with `code` and a [link](https://example.com)
 
 ### Ordered list
 
 1. First step
 2. Second step
-
-    1. Sub-step a
-    2. Sub-step b
+  1. Sub-step a
+  2. Sub-step b
 3. Third step
 
 ### Task list
@@ -148,6 +144,24 @@ cell:
 > A single-line blockquote.
 
 > A multi-line blockquote
+> that spans several lines,
+> and can contain **formatting** and `code`. A multi-line blockquote
+> that spans several lines,
+> and can contain **formatting** and `code`. A multi-line blockquote
+> that spans several lines,
+> and can contain **formatting** and `code`. A multi-line blockquote
+> that spans several lines,
+> and can contain **formatting** and `code`. A multi-line blockquote
+> that spans several lines,
+> and can contain **formatting** and `code`. A multi-line blockquote
+> that spans several lines,
+> and can contain **formatting** and `code`.
+>
+> A multi-line blockquote
+> that spans several lines,
+> and can contain **formatting** and `code`. A multi-line blockquote
+> that spans several lines,
+> and can contain **formatting** and `code`. A multi-line blockquote
 > that spans several lines,
 > and can contain **formatting** and `code`.
 
@@ -374,7 +388,8 @@ get a table UI; complex/nested YAML preserved verbatim.
 
 ## Not supported
 
-If and when support lands for these common content types, move up into the body of this document with a real example.
+> [!WARNING]
+> If and when support lands for these common content types, move up into the body of this document with a real example.
 
 ### Videos / embeds
 
