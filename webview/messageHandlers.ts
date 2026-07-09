@@ -69,6 +69,8 @@ export interface ToolbarController {
     setFontPreset(preset: import("../shared/messages").FontPreset, stacks?: import("../shared/messages").FontStacks): void;
     /** Update the font picker's size-stepper display (percent). */
     setFontSize(size: number): void;
+    /** Update the typography menu's content-width segmented control (and cache the fixed width). */
+    setContentWidth(mode: import("../shared/contentWidth").ContentWidthMode, fixedCss?: string): void;
 }
 
 /** Editor state-management interface. */
@@ -272,6 +274,13 @@ export function createMessageHandlers(
             const size = clampFontSizePercent(msg.size);
             document.documentElement.style.setProperty("--content-font-scale", String(size / 100));
             topbarTb?.setFontSize(size);
+        },
+        setContentWidth(msg) {
+            document.documentElement.style.setProperty("--editor-max-width", msg.cssValue);
+            document.body.classList.toggle("editor-width-auto", msg.isAuto);
+            // Pass the resolved css so the toolbar's cached fixed width tracks
+            // external `maxContentWidth` changes (no stale-flash on re-toggle).
+            topbarTb?.setContentWidth(msg.mode, msg.isAuto ? undefined : msg.cssValue);
         },
         setTocPosition(msg) {
             setTocPosition(msg.position);

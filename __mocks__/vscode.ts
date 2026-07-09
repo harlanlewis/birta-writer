@@ -254,6 +254,7 @@ export const workspace = {
     },
     getConfiguration: vi.fn(() => ({
         get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
+        inspect: vi.fn(() => undefined),
     })),
     getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: URI }),
     workspaceFolders: undefined as undefined | Array<{ uri: URI }>,

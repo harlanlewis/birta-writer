@@ -85,10 +85,10 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 - Matches highlighted in real time using the CSS Custom Highlight API
 - Navigate matches with `Enter` / `Shift+Enter`, dismiss with `Esc`
 
-### Auto Save
+### Saving
 
-- Automatically writes to disk **1 second** after editing stops — no need to press `Cmd+S` / `Ctrl+S`
-- Can be disabled; manual save shows `●` in the tab title
+- The editor is backed by a native text document, so saving follows VS Code's built-in **`files.autoSave`** (set it to `afterDelay` to write automatically after editing stops). Unsaved edits show `●` in the tab title, just like any editor
+- Switching between the rendered editor and Raw Markdown with unsaved edits prompts to Save / Don't Save / Cancel (Cancel keeps you where you are); it never opens a duplicate tab
 - External file changes (e.g. `git checkout`, other editors) sync automatically to the editor
 
 ***
@@ -114,11 +114,10 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 
 | Setting                              | Type    | Default     | Description                                                                               |
 | ------------------------------------ | ------- | ----------- | ----------------------------------------------------------------------------------------- |
-| `markdownWysiwyg.autoSave`           | boolean | `true`      | Automatically save to disk after editing                                                  |
-| `markdownWysiwyg.autoSaveDelay`      | number  | `1000`      | Debounce delay in milliseconds for auto-save                                              |
 | `markdownWysiwyg.defaultMode`        | string  | `"preview"` | Default mode when opening `.md`: `preview` (WYSIWYG) or `markdown` (text editor)          |
 | `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
-| `markdownWysiwyg.editorMaxWidth`     | number  | `900`       | Maximum editor content width in pixels                                                    |
+| `markdownWysiwyg.contentWidth`       | string  | `"full"`    | Content width: `full` (fill the pane) or `fixed` (cap at Max Content Width); also in the toolbar A menu |
+| `markdownWysiwyg.maxContentWidth`    | number  | `100`       | Max content width in ch when Content Width is `fixed` (scales with the content font size)              |
 | `markdownWysiwyg.fontPreset`         | string  | `"editor"`  | Content font: `editor` (follow the VS Code editor font), `sans`, `serif`, or `mono`; also switchable from the toolbar font picker |
 | `markdownWysiwyg.fontFamilySans`     | string  | system sans stack | Font-family stack used by the Sans serif preset                                     |
 | `markdownWysiwyg.fontFamilySerif`    | string  | serif stack | Font-family stack used by the Serif preset                                                |

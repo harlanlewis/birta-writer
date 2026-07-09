@@ -133,8 +133,8 @@ describe("MarkdownEditorProvider webview message round trip", () => {
         });
     });
 
-    describe("update → WorkspaceEdit → autosave", () => {
-        it("should re-attach the frontmatter, apply a minimal edit, and save after the debounce", async () => {
+    describe("update → WorkspaceEdit", () => {
+        it("should re-attach the frontmatter and apply a minimal edit without the extension saving", async () => {
             // Arrange
             const { handler, panel, document } = await setup(FM + BODY);
             await handler({ type: "ready" });
@@ -153,14 +153,11 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             // ...and the webview got a fresh lineMap for the new content
             expect(posted(panel, "lineMapUpdate")).toHaveLength(1);
 
-            // Autosave: nothing saved before the debounce, one save after it
+            // Saving is native now (governed by files.autoSave): the edit marks
+            // the TextDocument dirty, and the extension never calls save itself,
+            // no matter how long we wait.
+            await vi.advanceTimersByTimeAsync(2000);
             expect(mockSave).not.toHaveBeenCalled();
-            await vi.advanceTimersByTimeAsync(1100);
-            expect(mockSave).toHaveBeenCalledTimes(1);
-            expect((mockSave.mock.calls[0][0] as vscode.Uri).fsPath).toBe(
-                vscode.Uri.file("/project/note.md").fsPath,
-            );
-            expect(document.isDirty).toBe(false);
         });
 
         it("an update identical to the current content should not apply any edit", async () => {
@@ -177,12 +174,12 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             expect(mockSave).not.toHaveBeenCalled();
         });
 
-        it("rapid successive updates should each apply an edit but debounce into a single save of the LAST content", async () => {
+        it("rapid successive updates should each apply an edit and the extension should never save", async () => {
             // Arrange
             const { handler, document } = await setup(BODY);
             await handler({ type: "ready" });
 
-            // Act — three updates inside one autosave debounce window
+            // Act — three updates in quick succession
             await handler({ type: "update", content: "one\n", baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(300);
             await handler({ type: "update", content: "two\n", baseSyncVersion: 0 });
@@ -190,9 +187,9 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             await handler({ type: "update", content: "three\n", baseSyncVersion: 0 });
             await vi.advanceTimersByTimeAsync(1100);
 
-            // Assert
+            // Assert — every edit applied; saving is left entirely to VS Code
             expect(mockApplyEdit).toHaveBeenCalledTimes(3);
-            expect(mockSave).toHaveBeenCalledTimes(1);
+            expect(mockSave).not.toHaveBeenCalled();
             expect(document.getText()).toBe("three\n");
         });
 
@@ -233,9 +230,9 @@ describe("MarkdownEditorProvider webview message round trip", () => {
             expect(replacements[0].range.start.character).toBe(0);
             expect(replacements[0].newText).toBe(newFm);
 
-            // Autosave fires for frontmatter edits too
-            await vi.advanceTimersByTimeAsync(1100);
-            expect(mockSave).toHaveBeenCalledTimes(1);
+            // Frontmatter edits also leave saving to VS Code (native files.autoSave).
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(mockSave).not.toHaveBeenCalled();
         });
 
         it("an unchanged frontmatter should not apply any edit", async () => {

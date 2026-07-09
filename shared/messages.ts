@@ -5,6 +5,7 @@
  */
 
 import type { EditorCommandId } from "./editorCommands";
+import type { ContentWidthMode } from "./contentWidth";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
@@ -184,6 +185,10 @@ export type ToExtensionMessage =
     // the `fontSize` setting, which round-trips back as a `setFontSize` message.
     // `size` is a percentage of the VS Code editor font size.
     | { type: "setFontSize"; size: number }
+    // Content-width segmented control (Auto / Narrow / Wide) from the typography
+    // menu; the extension persists it to the `contentWidth` setting, which
+    // round-trips back as a `setContentWidth` message.
+    | { type: "setContentWidth"; mode: ContentWidthMode }
     // Drag-and-drop layout change from customize mode. `item` is set only when
     // the dragged item changed placement (zone, or shown/hidden via the tray);
     // `order` is the left-to-right order of the visible items.
@@ -247,6 +252,10 @@ export type ToWebviewMessage =
     | { type: "setFontFamily"; fontFamily: string | null; preset: FontPreset; stacks: FontStacks }
     // Live content font-size update, as a percentage of the editor font size.
     | { type: "setFontSize"; size: number }
+    // Live content-width update. `cssValue`/`isAuto` drive the CSS (the
+    // `--editor-max-width` var and the full-width body class); `mode` drives the
+    // typography menu's segmented control. Echoed after `contentWidth` changes.
+    | { type: "setContentWidth"; cssValue: string; isAuto: boolean; mode: ContentWidthMode }
     // Live TOC dock-side update (left/right), echoed after `tocPosition` changes.
     | { type: "setTocPosition"; position: TocPosition }
     | { type: "lintResults"; id: number; results: LintBlockResult[] }

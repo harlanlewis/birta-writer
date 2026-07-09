@@ -99,15 +99,37 @@ html {
     margin: 0 auto;
     padding: 56px 48px 0;
     --editor-content-left-padding: 48px;
-    /* Document surface, like #editor: keeps the UI font but follows the
-       content font-size scale (1em = the body's UI font size). */
-    font-size: calc(1em * var(--content-font-scale, 1));
+    /* The panel BOX adopts #editor's font family + size **only** so its
+       `ch`-based --editor-max-width resolves to the same width as #editor (ch
+       depends on the element's own font). The box has no direct text of its
+       own — its content lives in the children below, which restore the UI font,
+       so this is a width-alignment trick, not a visible font change. */
+    font-family: var(
+        --content-font-family,
+        var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)
+    );
+    font-size: calc(var(--vscode-editor-font-size, 14px) * var(--content-font-scale, 1));
+}
+
+/* Restore the UI font + size for the panel's visible content — the ch trick
+   on the box above is width-only; the metadata reads in the chrome UI font. */
+.frontmatter-panel > * {
+    font-family: var(
+        --vscode-font-family,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif
+    );
+    font-size: calc(var(--vscode-font-size, 13px) * var(--content-font-scale, 1));
 }
 
 .frontmatter-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85em;
+    /* Pinned to the UI-font basis (not `em`, which would follow the panel box's
+       editor-size font set for the ch-width trick above). */
+    font-size: calc(0.85 * var(--vscode-font-size, 13px) * var(--content-font-scale, 1));
     border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
     border-radius: 4px;
     overflow: hidden;

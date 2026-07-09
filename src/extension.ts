@@ -361,6 +361,16 @@ export function activate(context: vscode.ExtensionContext) {
                     .get<string>("tocPosition", "right") === "left" ? "left" : "right";
                 MarkdownEditorProvider.current?.postToAll({ type: "setTocPosition", position });
             }
+            if (e.affectsConfiguration("markdownWysiwyg.contentWidth")
+                || e.affectsConfiguration("markdownWysiwyg.maxContentWidth")) {
+                const cw = MarkdownEditorProvider.resolveContentWidthConfig();
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "setContentWidth",
+                    cssValue: cw.cssValue,
+                    isAuto: cw.isAuto,
+                    mode: cw.mode,
+                });
+            }
         }),
     );
 
@@ -465,9 +475,16 @@ export function activate(context: vscode.ExtensionContext) {
                         }
                     }
                 }
-                // Close the text editor tab first, then open WYSIWYG, to avoid the flicker of two tabs coexisting
+                // Close the source (text) tab FIRST, then open WYSIWYG — and
+                // switch only if the close succeeded. Closing a dirty tab shows
+                // VS Code's native Save / Don't Save / Cancel prompt: Save and
+                // Don't Save close it (→ we proceed to render), Cancel leaves it
+                // open and returns false (→ true no-op). Opening the destination
+                // only after a successful close means a mode switch never spawns
+                // a second tab based on dirty state.
                 if (textTab) {
-                    await vscode.window.tabGroups.close(textTab);
+                    const closed = await vscode.window.tabGroups.close(textTab);
+                    if (!closed) { return; }
                 }
                 await vscode.commands.executeCommand(
                     "vscode.openWith",

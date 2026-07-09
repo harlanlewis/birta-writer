@@ -17,6 +17,7 @@ import { resolveThemeColors } from "./themeManager";
 import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
+import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -37,9 +38,6 @@ export function isSafeExternalUrl(rawUrl: string): boolean {
 export class MarkdownEditorProvider
     implements vscode.CustomTextEditorProvider {
     public static readonly viewType = "markdownWysiwyg.editor";
-
-    // Auto-save debounce timers (key: document uri string)
-    private readonly _autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     // Tracks the webviewPanel for each document (used to push new content on external changes)
     private readonly _webviewPanels = new Map<string, vscode.WebviewPanel>();
@@ -289,13 +287,6 @@ export class MarkdownEditorProvider
             this._lastSyncedText.delete(uriKey);
             this._syncVersion.delete(uriKey);
             this._editQueues.delete(uriKey);
-            // Clean up any leftover timer
-            const timer = this._autoSaveTimers.get(uriKey);
-            if (timer !== undefined) {
-                clearTimeout(timer);
-                this._autoSaveTimers.delete(uriKey);
-            }
-
         });
 
         webviewPanel.webview.options = {
@@ -397,7 +388,6 @@ export class MarkdownEditorProvider
                                 const applied = await this._applyWebviewEdit(document, newContent);
                                 if (!applied) { return; }
                                 this._pinTabOnFirstEdit(uriKey);
-                                this._scheduleAutoSave(document);
                                 webviewPanel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
                             });
                         }
@@ -431,7 +421,6 @@ export class MarkdownEditorProvider
                             const applied = await vscode.workspace.applyEdit(edit);
                             if (!applied) { return; }
                             this._pinTabOnFirstEdit(uriKey);
-                            this._scheduleAutoSave(document);
                             webviewPanel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
                         });
                         break;
@@ -465,11 +454,12 @@ export class MarkdownEditorProvider
                         // Suppress the automatic WYSIWYG switch from onDidChangeTabs (to prevent switching back)
                         MarkdownEditorProvider.suppressAutoSwitch.add(document.uri.toString());
                         setTimeout(() => MarkdownEditorProvider.suppressAutoSwitch.delete(document.uri.toString()), 2000);
-                        const textDoc = await vscode.workspace.openTextDocument(document.uri);
                         const viewCol = webviewPanel.viewColumn;
 
-                        // Read the current WYSIWYG tab's preview state (italic = isPreview: true)
+                        // Find this document's WYSIWYG tab and its preview state
+                        // (italic = isPreview: true).
                         let isPreview = false;
+                        let customTab: vscode.Tab | undefined;
                         for (const group of vscode.window.tabGroups.all) {
                             for (const tab of group.tabs) {
                                 if (
@@ -477,9 +467,26 @@ export class MarkdownEditorProvider
                                     (tab.input as vscode.TabInputCustom).uri.toString() === document.uri.toString()
                                 ) {
                                     isPreview = tab.isPreview;
+                                    customTab = tab;
                                     break;
                                 }
                             }
+                        }
+
+                        // Close the source (WYSIWYG) tab FIRST, and switch only if
+                        // the close succeeded. Closing a dirty tab shows VS Code's
+                        // native Save / Don't Save / Cancel prompt: Save and Don't
+                        // Save close it (→ we proceed to the text editor), Cancel
+                        // leaves it open and returns false (→ true no-op). Opening
+                        // the destination only after a successful close means a
+                        // mode switch never spawns a second tab based on dirty
+                        // state. (tabGroups.close reports the cancel; dispose()
+                        // can't, which is why it isn't used here.)
+                        if (customTab) {
+                            const closed = await vscode.window.tabGroups.close(customTab);
+                            if (!closed) { break; }
+                        } else {
+                            webviewPanel.dispose();
                         }
 
                         const opts: vscode.TextDocumentShowOptions = {
@@ -492,8 +499,7 @@ export class MarkdownEditorProvider
                             opts.selection = new vscode.Range(pos, pos);
                         }
 
-                        // Close the WYSIWYG tab first, then open the text editor, to avoid flicker from both tabs coexisting
-                        webviewPanel.dispose();
+                        const textDoc = await vscode.workspace.openTextDocument(document.uri);
                         await vscode.window.showTextDocument(textDoc, opts);
                         break;
                     }
@@ -562,6 +568,9 @@ export class MarkdownEditorProvider
                         break;
                     case "setFontSize":
                         MarkdownEditorProvider.setFontSize(message.size);
+                        break;
+                    case "setContentWidth":
+                        MarkdownEditorProvider.setContentWidth(message.mode);
                         break;
                     case "setToolbarLayout":
                         if (message.item) {
@@ -721,38 +730,6 @@ export class MarkdownEditorProvider
         if (this._pinnedDocuments.has(uriKey)) { return; }
         this._pinnedDocuments.add(uriKey);
         vscode.commands.executeCommand('workbench.action.keepEditor');
-    }
-
-    /**
-     * Auto-save mode: debounce a native workspace save after webview-originated
-     * edits. Manual mode needs no code — the TextDocument carries native dirty
-     * state, and Cmd+S / hot exit / undo/redo are handled by VS Code itself.
-     */
-    private _scheduleAutoSave(document: vscode.TextDocument): void {
-        const config = vscode.workspace.getConfiguration("markdownWysiwyg");
-        if (!config.get<boolean>("autoSave", true)) { return; }
-        // Respect the built-in `files.autoSave` preference: if the user has
-        // explicitly chosen manual saving ("off"), don't force a save from here.
-        // Now that the editor is TextDocument-backed, VS Code's own autosave
-        // governs the other modes natively, so honoring "off" makes the
-        // `markdownWysiwyg.autoSave` deprecation message truthful.
-        if (vscode.workspace.getConfiguration("files").get<string>("autoSave") === "off") { return; }
-        const delay = config.get<number>("autoSaveDelay", 1000);
-        const uriKey = document.uri.toString();
-
-        const existing = this._autoSaveTimers.get(uriKey);
-        if (existing !== undefined) {
-            clearTimeout(existing);
-        }
-        this._autoSaveTimers.set(
-            uriKey,
-            setTimeout(() => {
-                this._autoSaveTimers.delete(uriKey);
-                if (document.isDirty) {
-                    void vscode.workspace.save(document.uri);
-                }
-            }, delay),
-        );
     }
 
     /**
@@ -971,16 +948,18 @@ export class MarkdownEditorProvider
     private _getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
         const maxHeight = cfg.get<number>("codeBlockMaxHeight", 500);
-        const editorMaxWidth = this._getEditorMaxWidthCssValue(cfg.get<number | string>("editorMaxWidth", "auto"));
+        const contentWidth = MarkdownEditorProvider.resolveContentWidthConfig();
+        const maxWidthCssValue = contentWidth.cssValue;
         const tocContentGap = this._getPixelSettingCssValue(cfg.get<number>("tocContentGap", 100), 100, 16, 240);
         // User-dragged TOC panel width, persisted across documents and sessions
         const tocWidth = this._getNumberSettingValue(this.context.globalState.get<number>("tocWidth"), 220, 150, 600);
         const tocRight = cfg.get<string>("tocPosition", "right") === "right";
-        const isAutoWidth = editorMaxWidth === "none";
+        const isAutoWidth = contentWidth.isAuto;
         const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
         const fontStacks = MarkdownEditorProvider.getFontStacks(cfg);
         const resolvedFont = resolveFontFamily(fontPreset, fontStacks);
         const fontSize = clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT));
+        const maxContentWidth = clampMaxWidthCh(cfg.get<number>("maxContentWidth", DEFAULT_MAX_WIDTH_CH));
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
         const customJsUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customJs", []));
         const scriptUri = webview.asWebviewUri(
@@ -1017,7 +996,7 @@ export class MarkdownEditorProvider
         // optional-chained so a stripped-down test context still resolves.
         const productName =
             (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "WYSIWYG Markdown Editor";
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, fontPreset, fontStacks, fontSize, documentUri, productName })};`;
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -1038,7 +1017,7 @@ export class MarkdownEditorProvider
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
 	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${editorMaxWidth}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --content-font-family: ${resolvedFont};` : ''} --content-font-scale: ${fontSize / 100}; }</style>
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${maxWidthCssValue}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --content-font-family: ${resolvedFont};` : ''} --content-font-scale: ${fontSize / 100}; }</style>
 	</head>
 	<body class="${bodyClasses}">
 	  <div class="editor-topbar"></div>
@@ -1050,21 +1029,17 @@ export class MarkdownEditorProvider
 	</html>`;
     }
 
-    private _getEditorMaxWidthCssValue(value: number | string | undefined): string {
-        if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-            return `${Math.max(400, Math.round(value))}px`;
-        }
-        if (typeof value === "string") {
-            const trimmed = value.trim().toLowerCase();
-            if (trimmed === "auto" || trimmed === "") {
-                return "none";
-            }
-            const numeric = Number(trimmed);
-            if (Number.isFinite(numeric) && numeric > 0) {
-                return `${Math.max(400, Math.round(numeric))}px`;
-            }
-        }
-        return "none";
+    /**
+     * Resolve the effective content width from the `contentWidth` mode (full /
+     * fixed) and the `maxContentWidth` ch setting. Shared by the initial HTML
+     * injection and the live `onDidChangeConfiguration` broadcast.
+     */
+    public static resolveContentWidthConfig(): ContentWidthResolution {
+        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        return resolveContentWidth(
+            normalizeContentWidthMode(cfg.get<string>("contentWidth", DEFAULT_CONTENT_WIDTH_MODE)),
+            cfg.get<number>("maxContentWidth", DEFAULT_MAX_WIDTH_CH),
+        );
     }
 
     private _getPixelSettingCssValue(
@@ -1163,6 +1138,11 @@ export class MarkdownEditorProvider
     /** Persist the font-size stepper choice (toolbar → settings write-back). */
     public static setFontSize(size: number): void {
         MarkdownEditorProvider.updateSettingRespectingScope("fontSize", clampFontSizePercent(size));
+    }
+
+    /** Persist the content-width mode (toolbar → settings write-back). */
+    public static setContentWidth(mode: ContentWidthMode): void {
+        MarkdownEditorProvider.updateSettingRespectingScope("contentWidth", normalizeContentWidthMode(mode));
     }
 
     /**

@@ -201,9 +201,13 @@ Test fails
 
 ---
 
-## Autosave settings
+## Autosave
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `markdownWysiwyg.autoSave` | boolean | `true` | Write to disk automatically after edits |
-| `markdownWysiwyg.autoSaveDelay` | number | `1000` | Debounce delay (ms) |
+The editor is `CustomTextEditorProvider`-backed, so the backing `TextDocument`
+carries native dirty state. **Saving is governed entirely by VS Code's built-in
+`files.autoSave` / `files.autoSaveDelay`** — there is no extension-specific
+autosave. (The former `markdownWysiwyg.autoSave` / `autoSaveDelay` settings were
+removed; the custom timer only ever fired in configurations where it was
+redundant or actively fought the user's `files.autoSave` choice.) With the VS
+Code default (`files.autoSave: "off"`), edits stay dirty until Cmd+S / hot exit,
+exactly like any text editor.

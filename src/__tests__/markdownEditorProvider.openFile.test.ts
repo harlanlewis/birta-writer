@@ -60,6 +60,7 @@ function setWorkspace(existingFiles: string[], opts: { smartLinks?: boolean } = 
         get: vi.fn((key: string, defaultValue?: unknown) =>
             key === "smartLinks" ? (opts.smartLinks ?? true) : defaultValue,
         ),
+        inspect: vi.fn(() => undefined),
     } as unknown as vscode.WorkspaceConfiguration);
 }
 

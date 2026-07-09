@@ -22,6 +22,10 @@ declare global {
             fontStacks?: FontStacks;
             /** Content font size as a percentage of the editor font size. */
             fontSize?: number;
+            /** Content-width mode: full / fixed (markdownWysiwyg.contentWidth). */
+            contentWidth?: import("../../shared/contentWidth").ContentWidthMode;
+            /** Fixed measure in ch, used when the mode is "fixed" (markdownWysiwyg.maxContentWidth). */
+            maxContentWidth?: number;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */
             documentUri?: string;
             /** The extension's display name (package.json), for UI that names the product. */

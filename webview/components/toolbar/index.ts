@@ -30,7 +30,7 @@ import {
 } from "@/ui/icons";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "../selectionToolbar";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
@@ -53,6 +53,14 @@ import {
     clampFontSizePercent,
     stepFontSizePercent,
 } from "../../../shared/fontPresets";
+import {
+    CONTENT_WIDTH_MODES,
+    DEFAULT_CONTENT_WIDTH_MODE,
+    DEFAULT_MAX_WIDTH_CH,
+    normalizeContentWidthMode,
+    clampMaxWidthCh,
+    type ContentWidthMode,
+} from "../../../shared/contentWidth";
 import { TOOLBAR_MENU_COMMANDS } from "../../../shared/editorCommands";
 import './toolbar.css';
 
@@ -632,6 +640,8 @@ export function initToolbar(
     setFontPreset: (preset: FontPreset, stacks?: FontStacks) => void;
     /** Update the font picker's size-stepper display (percent). */
     setFontSize: (size: number) => void;
+    /** Update the typography menu's content-width segmented control (and cache the fixed width). */
+    setContentWidth: (mode: ContentWidthMode, fixedCss?: string) => void;
     /** Apply + persist a font preset (slash-menu action; works with the bar hidden). */
     chooseFontPreset: (preset: FontPreset) => void;
     /** Step the content font size up/down (slash-menu action; works with the bar hidden). */
@@ -736,6 +746,44 @@ export function initToolbar(
         notifySetFontSize(currentFontSize);
     }
 
+    // ── Content width state ──
+    // Full Width (fills the pane) / Fixed (capped at the maxContentWidth ch
+    // setting), chosen via a segmented control. The active mode echoes back
+    // from the extension after the settings write, re-syncing the segments.
+    let currentContentWidth: ContentWidthMode = normalizeContentWidthMode(
+        window.__i18n?.contentWidth ?? DEFAULT_CONTENT_WIDTH_MODE,
+    );
+    // Kept in sync with the extension's authoritative resolution so the
+    // optimistic apply on a Fixed click never flashes a stale width after the
+    // setting changes elsewhere.
+    let fixedWidthCss = `${clampMaxWidthCh(window.__i18n?.maxContentWidth ?? DEFAULT_MAX_WIDTH_CH)}ch`;
+    const widthSegments = new Map<ContentWidthMode, HTMLButtonElement>();
+    function setContentWidthActive(mode: ContentWidthMode): void {
+        currentContentWidth = normalizeContentWidthMode(mode);
+        for (const [m, btnEl] of widthSegments) {
+            const on = m === currentContentWidth;
+            btnEl.classList.toggle("tb-seg-btn--on", on);
+            btnEl.setAttribute("aria-checked", on ? "true" : "false");
+        }
+    }
+    // Apply the max-width to the live document optimistically; the settings
+    // round-trip re-broadcasts the resolved value to every open editor.
+    function applyContentWidthLive(): void {
+        document.documentElement.style.setProperty(
+            "--editor-max-width",
+            currentContentWidth === "fixed" ? fixedWidthCss : "none",
+        );
+        document.body.classList.toggle("editor-width-auto", currentContentWidth === "full");
+    }
+    function pickContentWidth(mode: ContentWidthMode): void {
+        if (mode === currentContentWidth) {
+            return;
+        }
+        setContentWidthActive(mode);
+        applyContentWidthLive();
+        notifySetContentWidth(mode);
+    }
+
     function createFontPicker(): HTMLElement {
         const fontWrap = document.createElement("div");
         fontWrap.className = "tb-fmt-wrap";
@@ -824,6 +872,41 @@ export function initToolbar(
         sizeRow.append(sizeDecBtn, sizeValueEl, sizeIncBtn);
         fontMenu.appendChild(sizeRow);
         setFontSizeActive(currentFontSize);
+
+        // ── Content width: Full Width / Fixed segmented control ──
+        // Full Width (default) fills the pane; Fixed caps the content at the
+        // maxContentWidth ch setting and centers it. Clicks keep the menu open.
+        const widthSep = document.createElement("div");
+        widthSep.className = "tb-menu-sep";
+        widthSep.setAttribute("role", "separator");
+        fontMenu.appendChild(widthSep);
+
+        const widthRow = document.createElement("div");
+        widthRow.className = "tb-seg-row";
+        widthRow.setAttribute("role", "radiogroup");
+        widthRow.setAttribute("aria-label", t("Content width"));
+        const widthLabels: Record<ContentWidthMode, { label: string; title: string }> = {
+            full: { label: t("Full Width"), title: t("Full width — fill the pane") },
+            fixed: { label: t("Fixed"), title: t("Fixed — cap at the configured max content width") },
+        };
+        for (const mode of CONTENT_WIDTH_MODES) {
+            const segBtn = document.createElement("button");
+            segBtn.type = "button";
+            segBtn.className = "tb-seg-btn";
+            segBtn.setAttribute("role", "radio");
+            segBtn.textContent = widthLabels[mode].label;
+            segBtn.title = widthLabels[mode].title;
+            segBtn.setAttribute("aria-label", widthLabels[mode].title);
+            segBtn.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                pickContentWidth(mode);
+            });
+            widthRow.appendChild(segBtn);
+            widthSegments.set(mode, segBtn);
+        }
+        fontMenu.appendChild(widthRow);
+        setContentWidthActive(currentContentWidth);
 
         // Jump to the native Settings UI filtered to the font settings, where
         // the per-preset stacks (fontFamilySans/Serif/Mono) can be customized.
@@ -1670,6 +1753,10 @@ export function initToolbar(
         },
         setFontSize(size: number): void {
             setFontSizeActive(size);
+        },
+        setContentWidth(mode: ContentWidthMode, fixedCss?: string): void {
+            if (mode === "fixed" && fixedCss) { fixedWidthCss = fixedCss; }
+            setContentWidthActive(mode);
         },
         // Slash-menu action hooks — the same code paths as the menu rows,
         // usable while the bar itself is hidden.

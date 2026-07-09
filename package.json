@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.95",
+  "version": "0.2.102",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -830,13 +830,6 @@
     "configuration": {
       "title": "WYSIWYG Markdown Editor",
       "properties": {
-        "markdownWysiwyg.autoSave": {
-          "order": 2,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.autoSave.description%",
-          "deprecationMessage": "Deprecated: the editor is now backed by a native text document. Use the built-in `files.autoSave` setting instead — it governs saving for this editor too."
-        },
         "markdownWysiwyg.styleCheck.enabled": {
           "order": 110,
           "type": "boolean",
@@ -945,15 +938,6 @@
           "default": [],
           "description": "%config.styleCheck.exceptions.description%"
         },
-        "markdownWysiwyg.autoSaveDelay": {
-          "order": 3,
-          "type": "number",
-          "default": 1000,
-          "minimum": 100,
-          "maximum": 10000,
-          "description": "%config.autoSaveDelay.description%",
-          "deprecationMessage": "Deprecated: the editor is now backed by a native text document. Use the built-in `files.autoSaveDelay` setting instead."
-        },
         "markdownWysiwyg.codeBlockMaxHeight": {
           "order": 8,
           "type": "number",
@@ -1013,15 +997,26 @@
           "default": "preview",
           "description": "%config.defaultMode.description%"
         },
-        "markdownWysiwyg.editorMaxWidth": {
+        "markdownWysiwyg.contentWidth": {
           "order": 4,
-          "type": [
-            "number",
-            "string"
+          "type": "string",
+          "enum": [
+            "full",
+            "fixed"
           ],
-          "default": "auto",
-          "minimum": 400,
-          "description": "%config.editorMaxWidth.description%"
+          "enumDescriptions": [
+            "%config.contentWidth.full%",
+            "%config.contentWidth.fixed%"
+          ],
+          "default": "full",
+          "description": "%config.contentWidth.description%"
+        },
+        "markdownWysiwyg.maxContentWidth": {
+          "order": 5,
+          "type": "number",
+          "default": 100,
+          "minimum": 20,
+          "description": "%config.maxContentWidth.description%"
         },
         "markdownWysiwyg.tocContentGap": {
           "order": 5,
