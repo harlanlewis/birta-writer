@@ -201,6 +201,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     let userToggled = false;
     let activeHeadingPos: number | null = null;
     let scrollRafId: number | null = null;
+    // The initial auto-open on load should snap into place, not slide/fade in —
+    // the switch into the rendered editor shouldn't draw attention to itself.
+    // While this is true, syncTocState() commits state with transitions off; it
+    // is cleared once the first content-driven refresh (with the editor mounted)
+    // has run, so every later user toggle / resize animates normally. Note the
+    // panel is first opened by refresh() *after* the editor mounts, not by the
+    // init rAF below (which runs before getEditorView() exists), so the guard
+    // has to live in syncTocState rather than around any single caller.
+    let initialLoad = true;
 
     function setActiveHeadingPos(pos: number | null): void {
         activeHeadingPos = pos;
@@ -249,6 +258,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     function syncTocState(): void {
+        // Suppress the slide/fade only for the initial load reveal (see initialLoad).
+        if (initialLoad) {
+            document.body.classList.add("toc-initial");
+        }
         panel.classList.toggle("toc-panel--open", isOpen);
         panel.classList.toggle("toc-panel--docked", tocMode === "docked");
         panel.classList.toggle("toc-panel--overlay", tocMode === "overlay");
@@ -257,6 +270,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         syncOutsideClickHandler();
         if (isOpen) {
             renderHeadings(getHeadings());
+        }
+        if (initialLoad) {
+            // Flush the no-transition state, then re-enable transitions with no
+            // pending change so nothing animates from this commit.
+            void panel.offsetWidth;
+            document.body.classList.remove("toc-initial");
         }
     }
 
@@ -350,6 +369,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const headings = getHeadings();
         syncAutoOpenState(headings);
         syncTocState();
+        // The first refresh with a mounted editor is the load-time reveal — once
+        // it has committed (instantly, above), later syncs animate as usual.
+        if (initialLoad && getEditorView()) {
+            initialLoad = false;
+        }
     }
 
     function outsideClickHandler(e: MouseEvent): void {

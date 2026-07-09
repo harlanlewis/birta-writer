@@ -259,6 +259,15 @@ body.toc-resizing .toc-toggle-tab {
     transition: none;
 }
 
+/* First paint of the rendered-markdown view: commit the panel/tab's initial
+   open state instantly rather than sliding it in — the mode switch shouldn't
+   animate. Only present for the initial sync (see index.ts); user-invoked
+   show/hide keeps the transitions above. */
+body.toc-initial .toc-panel,
+body.toc-initial .toc-toggle-tab {
+    transition: none;
+}
+
 /* Hidden while the panel is open — the header's hide button is the control then */
 body.toc-open .toc-toggle-tab,
 body.toc-overlay-open .toc-toggle-tab {

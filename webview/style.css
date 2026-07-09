@@ -99,13 +99,12 @@ html {
        content column at ~76px. `--editor-content-left-padding` is the CONTENT
        (key-text) inset — kept equal to #editor's so the TOC offset math keeps the
        keys tracking the body column in every docked/collapsed state. The table
-       FRAME itself is pulled one heading-gutter left of that content edge
-       (`- 1px` table border `- --fm-key-inset` key padding), so the frame's left
-       border, the per-row trash button, and the "#H1" heading badges all share
-       the same gutter line (~66px). */
+       has no frame border, so the key text sits `--fm-key-inset` in from this
+       padding edge, landing at the content column; the per-row trash button and
+       the "#H1" heading badges share the gutter line to the left of it. */
     --editor-content-left-padding: 76px;
     --fm-key-inset: 9px;
-    padding-left: calc(var(--editor-content-left-padding) - 1px - var(--fm-key-inset));
+    padding-left: calc(var(--editor-content-left-padding) - var(--fm-key-inset));
     /* The panel BOX adopts #editor's font family + size **only** so its
        `ch`-based --editor-max-width resolves to the same width as #editor (ch
        depends on the element's own font). The box has no direct text of its
@@ -130,23 +129,19 @@ html {
 
 .frontmatter-table {
     width: 100%;
-    /* `separate` (not `collapse`) so the rounded outer border renders WITHOUT
-       `overflow: hidden` — the per-row trash button is absolutely positioned into
-       the gutter LEFT of the table, and an `overflow: hidden` clip would cut it
-       off. With no cell backgrounds and no left/right/top cell borders, only the
-       rounded outer frame + horizontal row dividers show, so nothing squares the
-       corners. */
+    /* Borderless: no outer frame, rounded corners, or row dividers — the table
+       reads as a plain key/value grid on the editor background. `separate` with
+       zero spacing (not `collapse`) keeps each `.fm-action` cell a reliable
+       `position: relative` anchor for the per-row trash button in the left
+       gutter, and avoids the default 2px inter-cell spacing. */
     border-collapse: separate;
     border-spacing: 0;
     /* Pinned to the UI-font basis (not `em`, which would follow the panel box's
        editor-size font set for the ch-width trick above). */
     font-size: calc(0.85 * var(--vscode-font-size, 13px) * var(--content-font-scale, 1));
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
 
     td {
         padding: 5px 10px;
-        border-bottom: 1px solid var(--vscode-panel-border);
         vertical-align: top;
         line-height: 1.5;
         outline: none;
@@ -163,15 +158,11 @@ html {
         }
     }
 
-    tr:last-child td {
-        border-bottom: none;
-    }
-
     .fm-key {
         white-space: nowrap;
         width: 1%;
-        /* Together with the table's 1px left border this puts the key text at the
-           content edge (~76px), while the frame border sits in the gutter. */
+        /* Puts the key text at the content edge (~76px); the panel padding-left
+           already accounts for this inset (see .frontmatter-panel). */
         padding-left: var(--fm-key-inset, 9px);
         padding-right: 16px;
         color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-descriptionForeground));
@@ -195,10 +186,10 @@ html {
 }
 
 /* Row delete button (trash can) — lifted into the left gutter, right-aligned so
-   its right edge lands on the ~66px gutter line shared by the table's left border
-   and the "#H1" heading badges, and vertically centered on its row. `right: 100%`
-   pushes it fully left of the zero-width anchor cell; `margin-right` nudges the
-   right edge onto the frame/badge line. */
+   its right edge lands on the ~66px gutter line shared by the key column's left
+   edge and the "#H1" heading badges, and vertically centered on its row.
+   `right: 100%` pushes it fully left of the zero-width anchor cell; `margin-right`
+   nudges the right edge onto the gutter/badge line. */
 .fm-delete-btn {
     position: absolute;
     top: 50%;
