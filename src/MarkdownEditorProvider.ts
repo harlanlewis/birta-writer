@@ -34,6 +34,21 @@ export function isSafeExternalUrl(rawUrl: string): boolean {
     }
 }
 
+/**
+ * Escape a string for interpolation into a double-quoted HTML attribute value.
+ * Required for the content font stack: the built-in serif/sans/mono presets
+ * (and user `fontFamily*` overrides) contain `"…"` around multi-word family
+ * names, which would otherwise close the `style="…"` attribute and scatter the
+ * family names as bogus attributes.
+ */
+export function escapeHtmlAttr(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
 export class MarkdownEditorProvider
     implements vscode.CustomTextEditorProvider {
     public static readonly viewType = "markdownWysiwyg.editor";
@@ -936,7 +951,18 @@ export class MarkdownEditorProvider
         const isAutoWidth = contentWidth.isAuto;
         const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
         const fontStacks = MarkdownEditorProvider.getFontStacks(cfg);
+        // `null` for the "editor" preset (inherit the VS Code editor font). When
+        // set, this is injected as an INLINE style on <html> below — not into the
+        // <style> block — so that switching to the "editor" preset at runtime,
+        // which does `documentElement.style.removeProperty("--content-font-family")`
+        // (see webview/messageHandlers.ts), actually clears it. removeProperty only
+        // touches inline styles; a value baked into a <style> rule would survive and
+        // leave the content stuck on the old font. The stack must be attribute-
+        // escaped (it contains `"…"` around family names): see escapeHtmlAttr.
         const resolvedFont = resolveFontFamily(fontPreset, fontStacks);
+        const contentFontStyleAttr = resolvedFont
+            ? ` style="--content-font-family: ${escapeHtmlAttr(resolvedFont)}"`
+            : "";
         const fontSize = clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT));
         const maxContentWidth = clampMaxWidthCh(cfg.get<number>("maxContentWidth", DEFAULT_MAX_WIDTH_CH));
         const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
@@ -983,7 +1009,7 @@ export class MarkdownEditorProvider
         ].filter(Boolean).join(" ");
 
         return `<!DOCTYPE html>
-<html lang="${vscode.env.language}">
+<html lang="${vscode.env.language}"${contentFontStyleAttr}>
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
@@ -996,7 +1022,7 @@ export class MarkdownEditorProvider
 	  <title>Markdown Editor</title>
 	  <link rel="stylesheet" href="${styleUri}">
 	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${maxWidthCssValue}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap};${resolvedFont ? ` --content-font-family: ${resolvedFont};` : ''} --content-font-scale: ${fontSize / 100}; }</style>
+	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${maxWidthCssValue}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap}; --content-font-scale: ${fontSize / 100}; }</style>
 	</head>
 	<body class="${bodyClasses}">
 	  <div class="editor-topbar"></div>
