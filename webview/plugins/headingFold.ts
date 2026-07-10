@@ -36,19 +36,25 @@ export function headingMarker(level: number): string {
 
 /**
  * Retype the block at `headingPos` to a heading of `level` (1–6), or to a
- * paragraph when `level` is 0. Targets the node BY POSITION, not the current
- * selection, so the gutter menu can change a heading the caret isn't inside.
- * Heading→heading preserves the node's other attrs (e.g. the TOC-anchor id);
- * →paragraph drops them. Returns false when the position isn't a heading or the
- * change is a no-op (same level). Exported for unit testing.
+ * paragraph when `level` is 0. Accepts a heading OR a paragraph (the paragraph
+ * gutter promotes P → Hn; the heading gutter goes both ways). Targets the node
+ * BY POSITION, not the current selection, so the gutter menu can change a block
+ * the caret isn't inside. Heading→heading preserves the node's other attrs
+ * (e.g. the TOC-anchor id); →paragraph drops them. Returns false when the
+ * position isn't a retypeable block or the change is a no-op (same level).
+ * Exported for unit testing.
  */
 export function setHeadingLevelAt(view: EditorView, headingPos: number, level: number): boolean {
     const node = view.state.doc.nodeAt(headingPos);
-    if (!isHeadingNode(node)) {
+    const isParagraph = node?.type.name === "paragraph";
+    if (!isHeadingNode(node) && !isParagraph) {
         return false;
     }
     const schema = view.state.schema;
     if (level <= 0) {
+        if (isParagraph) {
+            return false; // already a paragraph — no-op
+        }
         const paragraph = schema.nodes["paragraph"];
         if (!paragraph) {
             return false;
@@ -60,10 +66,11 @@ export function setHeadingLevelAt(view: EditorView, headingPos: number, level: n
             return false;
         }
         const clamped = Math.min(Math.max(Math.round(level), 1), 6);
-        if (getHeadingLevel(node) === clamped) {
+        if (!isParagraph && getHeadingLevel(node) === clamped) {
             return false;
         }
-        view.dispatch(view.state.tr.setNodeMarkup(headingPos, heading, { ...node.attrs, level: clamped }));
+        const attrs = isParagraph ? { level: clamped } : { ...node.attrs, level: clamped };
+        view.dispatch(view.state.tr.setNodeMarkup(headingPos, heading, attrs));
     }
     view.focus();
     return true;
@@ -361,12 +368,57 @@ function createHeadingFoldGutter(
     return gutter;
 }
 
+/**
+ * The paragraph twin of the heading gutter: a "P" marker that is invisible
+ * until the paragraph is hovered (CSS), and opens the same retype menu (P /
+ * H1–H6) at full contrast when interacted with — so P → Hn is as reachable as
+ * Hn → P. No fold chevron: paragraphs don't own sections.
+ */
+function createParagraphGutter(view: EditorView, paragraphPos: number): HTMLElement {
+    const gutter = document.createElement("span");
+    gutter.className = "heading-fold-gutter heading-fold-gutter--paragraph";
+    gutter.contentEditable = "false";
+
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = "heading-fold-marker heading-fold-marker--paragraph";
+    marker.textContent = "P";
+    const markerTip = t("Change text style");
+    marker.setAttribute("aria-label", markerTip);
+    marker.setAttribute("aria-haspopup", "menu");
+    applyTooltip(marker, markerTip, { placement: "above" });
+    marker.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    });
+    marker.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openHeadingLevelMenu(view, paragraphPos, 0, marker, event.detail === 0);
+    });
+
+    gutter.appendChild(marker);
+    return gutter;
+}
+
 function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): DecorationSet {
     const decorations: Decoration[] = [];
     const hiddenRanges: HeadingFoldRange[] = [];
 
     doc.forEach((node: any, offset: number) => {
         if (!isHeadingNode(node)) {
+            // Top-level paragraphs get the hover-revealed "P" gutter (the same
+            // retype menu as headings). Only direct children of the doc —
+            // paragraphs inside lists/quotes/tables have their own semantics.
+            if (node.type.name === "paragraph") {
+                decorations.push(
+                    Decoration.widget(
+                        offset + 1,
+                        (view: EditorView) => createParagraphGutter(view, offset),
+                        { key: `paragraph-gutter-${offset}`, side: -1 },
+                    ),
+                );
+            }
             return;
         }
 

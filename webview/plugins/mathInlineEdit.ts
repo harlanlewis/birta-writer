@@ -64,17 +64,45 @@ export const mathInlineEditPlugin = $prose(
                 decorations: revealDecorations,
 
                 handleKeyDown(view: EditorView, event: KeyboardEvent): boolean {
-                    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+                    if (event.metaKey || event.ctrlKey || event.altKey) {
                         return false;
                     }
                     const { state } = view;
                     const { selection } = state;
+                    const isMath = (n: { type: { name: string } } | null | undefined): boolean =>
+                        n?.type.name === mathInlineId;
+
+                    // Shift+Arrow: native selection extension treats the hidden
+                    // source as one opaque unit (the render is one ce=false box),
+                    // so it jumps coarsely past the formula. Step the selection
+                    // HEAD logically, one position at a time, when the next step
+                    // crosses or moves inside a formula; defer to native
+                    // everywhere else.
+                    if (event.shiftKey) {
+                        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+                            return false;
+                        }
+                        const $head = selection.$head;
+                        const dir = event.key === "ArrowRight" ? 1 : -1;
+                        const headInMath = $head.parent.type.name === mathInlineId;
+                        const crossing =
+                            dir === 1 ? isMath($head.nodeAfter) : isMath($head.nodeBefore);
+                        const next = $head.pos + dir;
+                        if ((!headInMath && !crossing) || next < 0 || next > state.doc.content.size) {
+                            return false;
+                        }
+                        view.dispatch(
+                            state.tr.setSelection(
+                                TextSelection.create(state.doc, selection.anchor, next),
+                            ),
+                        );
+                        return true;
+                    }
+
                     if (!selection.empty) {
                         return false;
                     }
                     const { $from } = selection;
-                    const isMath = (n: { type: { name: string } } | null | undefined): boolean =>
-                        n?.type.name === mathInlineId;
                     const insideMath = $from.parent.type.name === mathInlineId;
 
                     const caretTo = (pos: number): boolean => {

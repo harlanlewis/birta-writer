@@ -123,6 +123,38 @@ describe("reveal decorations (pure selection state)", () => {
     });
 });
 
+describe("Shift+Arrow selection stepping across a formula", () => {
+    // Native shift-extension treats the hidden source as one opaque unit; the
+    // plugin steps the head one POSITION at a time through the node instead.
+    function pressShiftArrow(v: EditorView, key: "ArrowLeft" | "ArrowRight"): boolean {
+        const event = new KeyboardEvent("keydown", { key, shiftKey: true });
+        return v.someProp("handleKeyDown", (f) => f(v, event)) ?? false;
+    }
+
+    it("extending right across a formula should grow the head by one position per press", async () => {
+        const editor = await makeEditor("x $abc$ y");
+        const v = view(editor);
+        const pos = mathPos(v);
+        // Anchor just before the node.
+        caretAt(v, pos);
+        const heads: number[] = [];
+        for (let i = 0; i < 5; i++) {
+            expect(pressShiftArrow(v, "ArrowRight")).toBe(true);
+            heads.push(v.state.selection.head);
+        }
+        // Into the node, then a/b/c, then out: strictly +1 each press.
+        expect(heads).toEqual([pos + 1, pos + 2, pos + 3, pos + 4, pos + 5]);
+        expect(v.state.selection.anchor).toBe(pos); // anchor never moves
+    });
+
+    it("a shift-press far from any formula should defer to native handling", async () => {
+        const editor = await makeEditor("plain text only");
+        const v = view(editor);
+        caretAt(v, 3);
+        expect(pressShiftArrow(v, "ArrowRight")).toBe(false);
+    });
+});
+
 describe("toolbar state with the caret inside a formula", () => {
     // Lives here (not toolbarActiveState.test.ts) because a caret INSIDE the
     // source only exists under the content model this plugin introduces.

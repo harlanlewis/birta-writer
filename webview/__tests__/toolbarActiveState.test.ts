@@ -232,6 +232,49 @@ describe("computeToolbarActiveState", () => {
         expect(s.formatApplicable).toBe(true);
     });
 
+    it("a caret inside a footnote definition should report footnote", async () => {
+        const editor = await makeEditor("Text with a note.[^1]\n\n[^1]: The definition body.");
+        caretInText(editor, "definition body");
+        const s = stateOf(editor);
+        expect(s.footnote).toBe(true);
+        // A footnote definition's body is ordinary block content elsewhere-wise.
+        expect(s.inTable).toBe(false);
+    });
+
+    it("a selected footnote reference should report footnote", async () => {
+        const editor = await makeEditor("Text with a note.[^1]\n\n[^1]: The definition body.");
+        nodeSelect(editor, "footnote_reference");
+        const s = stateOf(editor);
+        expect(s.footnote).toBe(true);
+        expect(s.formatApplicable).toBe(false);
+    });
+
+    it("a caret in plain text should NOT report footnote", async () => {
+        const editor = await makeEditor("Text with a note.[^1]\n\n[^1]: The definition body.");
+        caretInText(editor, "Text with");
+        expect(stateOf(editor).footnote).toBe(false);
+    });
+
+    it("a selected horizontal rule should report hr and not-applicable format", async () => {
+        const editor = await makeEditor("above\n\n---\n\nbelow");
+        const v = view(editor);
+        let pos = -1;
+        v.state.doc.descendants((n, p) => {
+            if (pos < 0 && (n.type.name === "hr" || n.type.name === "horizontal_rule")) { pos = p; }
+        });
+        expect(pos).toBeGreaterThan(-1);
+        v.dispatch(v.state.tr.setSelection(NodeSelection.create(v.state.doc, pos)));
+        const s = stateOf(editor);
+        expect(s.hr).toBe(true);
+        expect(s.formatApplicable).toBe(false);
+    });
+
+    it("a selected reference image should report imageSelected (image_ref)", async () => {
+        const editor = await makeEditor("![alt][pic]\n\n[pic]: https://example.com/x.png");
+        nodeSelect(editor, "image_ref");
+        expect(stateOf(editor).imageSelected).toBe(true);
+    });
+
     it("the detached state should be fully neutral (island focus, e.g. a callout title)", async () => {
         // Not derived from a doc: the frozen PM selection is stale, so the bar is blanked.
         expect(DETACHED_STATE.formatApplicable).toBe(false);

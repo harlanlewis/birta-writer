@@ -1192,9 +1192,10 @@ export function initToolbar(
     const tableBtn = btn(IconTable, t("Insert Table"), () =>
         runEditorCommand("insertTable", getEditor));
     items.table = wrap("table", tableBtn);
-    items.footnote = wrap("footnote", btn(IconFootnote, t("Insert Footnote"), () =>
+    const footnoteBtnEl = btn(IconFootnote, t("Insert Footnote"), () =>
         runEditorCommand("insertFootnote", getEditor),
-    ));
+    );
+    items.footnote = wrap("footnote", footnoteBtnEl);
     const mathBtnEl = btn(IconMath, t("Inline Math"), () =>
         runEditorCommand("insertMath", getEditor),
     );
@@ -1344,9 +1345,10 @@ export function initToolbar(
         return codeWrap;
     }
     items.codeBlock = wrap("codeBlock", createCodePicker());
-    items.horizontalRule = wrap("horizontalRule", btn(IconMinus, t("Horizontal Rule"), () =>
+    const hrBtnEl = btn(IconMinus, t("Horizontal Rule"), () =>
         runEditorCommand("insertHorizontalRule", getEditor),
-    ));
+    );
+    items.horizontalRule = wrap("horizontalRule", hrBtnEl);
 
     // ── Quote dropdown (plain blockquote + GitHub callout types) ──
     // A callout is a typed blockquote, so the two live in one "Quote" family
@@ -2076,6 +2078,8 @@ export function initToolbar(
         setBtnActive(linkBtnEl, active.marks.link || active.wikiLink);
         setBtnActive(mathBtnEl, active.inlineMath);
         setBtnActive(imgBtnEl, active.imageSelected);
+        setBtnActive(footnoteBtnEl, active.footnote);
+        setBtnActive(hrBtnEl, active.hr);
         setBtnActive(tableBtn, active.inTable);
         setBtnActive(listTriggerBtn, active.list !== null);
         setBtnActive(quoteTriggerBtn, active.quote !== null);

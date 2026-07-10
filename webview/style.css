@@ -549,6 +549,9 @@ body.editor-width-auto {
         p {
             margin: 0;
             padding-bottom: 0.4em;
+            /* Anchor for the hover-revealed "P" gutter (top-level paragraphs only
+               get the widget, but the anchor is harmless elsewhere). */
+            position: relative;
         }
 
         /* Headings: use padding instead of margin so the click area includes the visual spacing */
@@ -649,6 +652,36 @@ body.editor-width-auto {
         .heading-fold-marker:hover,
         .heading-fold-marker--menu-open {
             opacity: 1;
+            color: var(--vscode-foreground);
+            background: var(--vscode-toolbar-hoverBackground);
+        }
+
+        /* Paragraph gutter: invisible until the paragraph is hovered, then a
+           very subtle "P"; interacting with the marker itself (hover / open
+           menu / keyboard focus) brings it to the headings' full treatment —
+           so P → Hn is as reachable as Hn → P without adding ambient noise. */
+        .heading-fold-gutter--paragraph {
+            top: 0;
+            height: 1.5em;
+        }
+
+        .heading-fold-marker--paragraph {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        p:hover > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph {
+            opacity: 0.3;
+            pointer-events: auto;
+        }
+
+        /* Selectors carry the full p > … path so they outrank the subtle
+           paragraph-hover rule above (the marker's own state must win). */
+        p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph:hover,
+        p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph:focus-visible,
+        p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph.heading-fold-marker--menu-open {
+            opacity: 1;
+            pointer-events: auto;
             color: var(--vscode-foreground);
             background: var(--vscode-toolbar-hoverBackground);
         }

@@ -158,6 +158,31 @@ export async function run({ page, check, baseUrl }) {
     check("selected image → image active", (await activeIds()).includes("image"), `active=${JSON.stringify(await activeIds())}`);
     check("selected image → format —", (await fmtLabel()) === "—");
 
+    // ── 10b. Footnote: definition caret and reference selection light Footnote ──
+    await clickText("definition body");
+    check("caret in footnote definition → footnote active", (await activeIds()).includes("footnote"), `active=${JSON.stringify(await activeIds())}`);
+    await clickText("footnoted claim");
+    check("caret in plain text → footnote NOT active", !(await activeIds()).includes("footnote"));
+    // The reference chip's CLICK jumps to the definition (by design), so select
+    // the atom the keyboard way: caret in the text before it, arrow right onto it.
+    let refSelected = false;
+    for (let i = 0; i < 25 && !refSelected; i++) {
+        await page.keyboard.press("ArrowRight");
+        await page.waitForTimeout(40);
+        refSelected = (await activeIds()).includes("footnote");
+    }
+    check("arrowing onto a footnote reference → footnote active", refSelected);
+
+    // ── 10c. Selected horizontal rule lights HR ──
+    const hrBox = await page.$eval(".ProseMirror hr", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.click(hrBox.x, hrBox.y);
+    await page.waitForTimeout(80);
+    check("selected horizontal rule → horizontalRule active", (await activeIds()).includes("horizontalRule"), `active=${JSON.stringify(await activeIds())}`);
+    check("selected horizontal rule → format —", (await fmtLabel()) === "—");
+
     // ── 11. Callout TITLE island: the bar detaches (the "P in a title" bug) ──
     // Put a real block state on the bar first, then focus the title island.
     await clickText("callout body");

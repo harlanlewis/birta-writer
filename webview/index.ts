@@ -410,12 +410,13 @@ registerSelectionChangeHandler((view) => {
     topbarTb?.onSelectionChange(view);
 });
 
-// Focus can leave ProseMirror for a nested contenteditable island — a callout
-// title (components/callout) is its own plaintext editor whose events ProseMirror
-// never sees (stopEvent), so the PM selection freezes on the block the caret last
-// sat in. Without this the bar would keep asserting that stale block (e.g. "P"
-// while you type a callout title); blank it instead. Returning to PM fires a real
-// selection change that restores the true state.
+// Focus can leave ProseMirror for a nested editable island — a callout/directive
+// title (its own contenteditable whose events ProseMirror never sees via
+// stopEvent), or a chrome input like the image caption. The PM selection freezes
+// on the block the caret last sat in, so without this the bar would keep
+// asserting that stale block (e.g. "P" while you type a callout title); blank it
+// instead. Returning to PM fires a real selection change that restores the true
+// state.
 eventManager.onDocument(
     "focusin",
     (e) => {
@@ -423,6 +424,10 @@ eventManager.onDocument(
         const pm = target?.closest(".ProseMirror");
         if (!pm) {
             return; // focus went outside the editor entirely — leave the bar as-is
+        }
+        if (target?.matches("input, textarea")) {
+            topbarTb?.setDetached();
+            return;
         }
         const editable = target?.closest<HTMLElement>("[contenteditable]");
         if (editable && editable !== pm) {

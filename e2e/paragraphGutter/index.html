@@ -1,6 +1,5 @@
-<!-- e2e harness: toolbar active-state matrix. Mirrors the provider template with
-     acquireVsCodeApi stubbed and a fixture doc exercising every kind of caret
-     context (heading, marks, atoms, containers, table, code, image). -->
+<!-- e2e harness: the paragraph "P" gutter (hover-revealed, same retype menu as
+     heading markers). Mirrors the provider template with acquireVsCodeApi stubbed. -->
 <meta charset="utf-8">
 <style>
   :root {
@@ -11,8 +10,7 @@
     --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
     --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
     --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
-    --vscode-button-secondaryBackground: #3a3d41;
-    --vscode-inputOption-activeBackground: rgba(14,99,156,0.4); --vscode-inputOption-activeBorder: #007fd4;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
   }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
 </style>
@@ -20,51 +18,20 @@
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
   window.__posted = [];
   const DOC = [
-    "# Heading One",
+    "## A heading",
     "",
-    "A paragraph with a [regular link](https://example.com) and a $x^2+y^2$ math and a [[Wiki Page]] link here.",
+    "First top-level paragraph here.",
     "",
-    "- bullet item",
-    "- [ ] task item",
+    "- a list item paragraph",
     "",
-    "1. ordered item",
-    "",
-    "> plain quote text",
-    "",
-    "> [!tip] My Tip",
-    "> callout body text",
-    "",
-    "| aa | bb |",
-    "| -- | -- |",
-    "| cc | dd |",
-    "",
-    "```js",
-    "const zzz = 1;",
-    "```",
-    "",
-    "![alt text](https://example.com/pic.png)",
-    "",
-    "A footnoted claim.[^1]",
-    "",
-    "[^1]: The footnote definition body.",
-    "",
-    "---",
-    "",
-    "tail paragraph",
+    "> a quoted paragraph",
     "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);
-      if (msg.type === "ready") {
+      if (msg.type === "ready")
         window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
-        // Math / Footnote / HR ship hidden by default (registry.ts) — place
-        // them on the bar so this suite can assert their active-state wiring.
-        window.postMessage(
-          { type: "toolbarConfig", config: { placements: { math: "left", footnote: "left", horizontalRule: "left" }, order: [] } },
-          "*",
-        );
-      }
     },
     getState: () => undefined, setState: () => {},
   });

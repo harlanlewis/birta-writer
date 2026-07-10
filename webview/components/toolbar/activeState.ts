@@ -52,8 +52,15 @@ export interface ToolbarActiveState {
      * LaTeX source (the formula's text content — mathInlineEdit.ts).
      */
     readonly inlineMath: boolean;
-    /** An `image` node is node-selected (the image button reflects this). */
+    /** An `image` (or `image_ref`) node is node-selected (the image button reflects this). */
     readonly imageSelected: boolean;
+    /**
+     * The caret is inside a footnote definition, or a footnote reference atom is
+     * node-selected (the footnote button reflects this).
+     */
+    readonly footnote: boolean;
+    /** A horizontal rule is node-selected (the HR button reflects this). */
+    readonly hr: boolean;
 }
 
 // Mark → the schema mark name(s) to probe (first that exists wins). Strikethrough
@@ -125,6 +132,8 @@ export const DETACHED_STATE: ToolbarActiveState = {
     wikiLink: false,
     inlineMath: false,
     imageSelected: false,
+    footnote: false,
+    hr: false,
 };
 
 export function computeToolbarActiveState(state: EditorState): ToolbarActiveState {
@@ -145,6 +154,7 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
     let inTable = false;
     let inCodeBlock = false;
     let inMathSource = false;
+    let inFootnoteDef = false;
 
     // Walk the ancestor chain innermost→outermost. Each container is recorded the
     // first (innermost) time it's seen; a task item (list_item with a `checked`
@@ -174,6 +184,8 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
             // Caret inside a formula's revealed source (math_inline holds its
             // LaTeX as text content — mathInlineEdit.ts).
             inMathSource = true;
+        } else if (name === "footnote_definition") {
+            inFootnoteDef = true;
         }
     }
 
@@ -200,6 +212,9 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
         wikiLink: selectedName === "wiki_link",
         // Node-selected (click/drag) OR caret inside the revealed source.
         inlineMath: selectedName === "math_inline" || inMathSource,
-        imageSelected: selectedName === "image",
+        imageSelected: selectedName === "image" || selectedName === "image_ref",
+        footnote: inFootnoteDef || selectedName === "footnote_reference",
+        // The HR schema name differs across presets (see horizontalRule.ts).
+        hr: selectedName === "hr" || selectedName === "horizontal_rule",
     };
 }

@@ -112,9 +112,32 @@ describe("setHeadingLevelAt", () => {
         expect(v.state.doc.nodeAt(pos)!.attrs["level"]).toBe(2);
     });
 
-    it("a position that is not a heading should return false without changing the doc", async () => {
-        // Arrange: a bare paragraph — position 0 is not a heading
+    it("a paragraph position should promote to the picked heading level", async () => {
+        // Arrange: a bare paragraph at position 0 (the paragraph gutter's path)
         const editor = await makeEditor("Just a paragraph");
+        const v = view(editor);
+
+        // Act
+        const changed = setHeadingLevelAt(v, 0, 3);
+
+        // Assert
+        expect(changed).toBe(true);
+        expect(v.state.doc.nodeAt(0)!.type.name).toBe("heading");
+        expect(v.state.doc.nodeAt(0)!.attrs["level"]).toBe(3);
+        expect(markdown(editor)).toContain("### Just a paragraph");
+    });
+
+    it("a paragraph position with level 0 should be a no-op (already P)", async () => {
+        const editor = await makeEditor("Just a paragraph");
+        const v = view(editor);
+        const before = markdown(editor);
+        expect(setHeadingLevelAt(v, 0, 0)).toBe(false);
+        expect(markdown(editor)).toBe(before);
+    });
+
+    it("a position that is neither heading nor paragraph should return false", async () => {
+        // Arrange: a code block — not a retypeable block
+        const editor = await makeEditor("```js\nlet x = 1\n```");
         const v = view(editor);
         const before = markdown(editor);
 
@@ -204,6 +227,35 @@ describe("heading gutter level menu", () => {
         // Assert
         expect(levelMenu()).toBeNull();
         expect(v.state.doc.firstChild!.type.name).toBe("paragraph");
+    });
+
+    it("a top-level paragraph should render a 'P' gutter marker that opens the same menu", async () => {
+        // Arrange: paragraph only — the paragraph gutter's own marker
+        const editor = await makeEditor("Just a paragraph");
+        const v = view(editor);
+        const pMarker = document.querySelector<HTMLButtonElement>(".heading-fold-marker--paragraph");
+        expect(pMarker).not.toBeNull();
+        expect(pMarker!.textContent).toBe("P");
+
+        // Act: open the menu and pick H2 (rows are P,H1,H2 → index 2)
+        clickMouse(pMarker!, "click");
+        const menu = levelMenu();
+        expect(menu).not.toBeNull();
+        // P is the checked current level for a paragraph.
+        expect(menu!.querySelector(".heading-level-item--active")!.textContent).toBe("P");
+        const rows = menu!.querySelectorAll<HTMLButtonElement>(".heading-level-item");
+        clickMouse(rows[2]!, "mousedown");
+
+        // Assert: promoted, menu closed
+        expect(levelMenu()).toBeNull();
+        expect(v.state.doc.firstChild!.type.name).toBe("heading");
+        expect(v.state.doc.firstChild!.attrs["level"]).toBe(2);
+    });
+
+    it("a paragraph inside a blockquote should NOT render a paragraph gutter", async () => {
+        const editor = await makeEditor("> quoted text");
+        view(editor);
+        expect(document.querySelector(".heading-fold-marker--paragraph")).toBeNull();
     });
 
     it("Escape should close the menu", async () => {
