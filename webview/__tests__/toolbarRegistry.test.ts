@@ -25,8 +25,8 @@ describe("computeZones", () => {
             "italic",
             "link",
             "listMenu",
-            "codeBlock",
             "quote",
+            "codeBlock",
             "table",
             "image",
         ]);
