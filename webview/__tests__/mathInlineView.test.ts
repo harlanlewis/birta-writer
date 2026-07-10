@@ -1,127 +1,84 @@
 /**
- * Unit tests for the inline math NodeView (components/math): clicking opens the
- * edit popover; Enter/blur commit through the document, Escape cancels, and an
- * emptied formula deletes the node. KaTeX renders through jsdom.
+ * Unit tests for the inline math NodeView (components/math): the two-face DOM
+ * (KaTeX render + source contentDOM), content-driven repaint, empty-formula
+ * placeholder state, and mutation filtering (ProseMirror must see contentDOM
+ * mutations, KaTeX churn is ignored). KaTeX renders through jsdom.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { createMathInlineView } from "../components/math";
 
-/** A ProseMirror transaction stub recording the mutation calls it receives. */
-function makeTr() {
-    const calls: Array<{ op: string; args: unknown[] }> = [];
-    const tr = {
-        calls,
-        setNodeMarkup(...args: unknown[]) {
-            calls.push({ op: "setNodeMarkup", args });
-            return tr;
-        },
-        delete(...args: unknown[]) {
-            calls.push({ op: "delete", args });
-            return tr;
-        },
-    };
-    return tr;
+/** A minimal PMNode stub: type identity (shared reference) + textContent. */
+const MATH_TYPE = { name: "math_inline" };
+function makeNode(text: string, type: object = MATH_TYPE) {
+    return {
+        type,
+        textContent: text,
+        content: { size: text.length },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
 }
 
-function makeView(nodeValue: string) {
-    const tr = makeTr();
-    const dispatched: unknown[] = [];
-    const view = {
-        state: {
-            get tr() {
-                return tr;
-            },
-        },
-        dispatch: vi.fn((t: unknown) => dispatched.push(t)),
-        focus: vi.fn(),
-    };
-    const node = {
-        type: { name: "math_inline" },
-        attrs: { value: nodeValue },
-        nodeSize: 1,
-    };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return { view: view as any, node: node as any, tr, dispatched };
-}
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
-function getPopoverInput(): HTMLInputElement | null {
-    return document.querySelector<HTMLInputElement>(".math-popover-input");
-}
-
-describe("inline math NodeView popover", () => {
+describe("inline math NodeView", () => {
     beforeEach(() => {
         document.body.innerHTML = "";
     });
 
-    it("clicking the formula should open a popover pre-filled with its value", () => {
-        const { view, node } = makeView("a^2");
-        const nv = createMathInlineView(node, view, () => 5);
-        document.body.appendChild(nv.dom);
-
-        nv.dom.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-
-        const input = getPopoverInput();
-        expect(input).not.toBeNull();
-        expect(input!.value).toBe("a^2");
+    it("the view should expose a render span and the source span as contentDOM", () => {
+        const nv = createMathInlineView(makeNode("a^2"));
+        expect(nv.dom.classList.contains("math-inline")).toBe(true);
+        const render = nv.dom.querySelector(".math-inline-render") as HTMLElement;
+        expect(render).not.toBeNull();
+        // The render face is not editable; the source face is PM's contentDOM.
+        expect(render.contentEditable).toBe("false");
+        expect(nv.contentDOM.classList.contains("math-inline-src")).toBe(true);
+        expect(nv.dom.contains(nv.contentDOM)).toBe(true);
     });
 
-    it("pressing Enter should commit the edited value via setNodeMarkup", () => {
-        const { view, node, tr, dispatched } = makeView("a^2");
-        const nv = createMathInlineView(node, view, () => 5);
-        document.body.appendChild(nv.dom);
-        nv.dom.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-
-        const input = getPopoverInput()!;
-        input.value = "b^2";
-        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-
-        const markup = tr.calls.find((c) => c.op === "setNodeMarkup");
-        expect(markup).toBeDefined();
-        expect((markup!.args[2] as { value: string }).value).toBe("b^2");
-        expect(view.dispatch).toHaveBeenCalledOnce();
-        expect(dispatched).toHaveLength(1);
-        // Popover is torn down after commit.
-        expect(getPopoverInput()).toBeNull();
+    it("a non-empty formula should render KaTeX output into the render span", async () => {
+        const nv = createMathInlineView(makeNode("a^2"));
+        await flush();
+        const render = nv.dom.querySelector(".math-inline-render") as HTMLElement;
+        // KaTeX output (or the raw-value fallback) lands in the render span only.
+        expect(render.textContent).toContain("a");
+        expect(nv.dom.classList.contains("math-inline--empty")).toBe(false);
     });
 
-    it("committing an empty value should delete the node", () => {
-        const { view, node, tr } = makeView("a^2");
-        const nv = createMathInlineView(node, view, () => 5);
-        document.body.appendChild(nv.dom);
-        nv.dom.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-
-        const input = getPopoverInput()!;
-        input.value = "   ";
-        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-
-        expect(tr.calls.some((c) => c.op === "delete")).toBe(true);
-        expect(tr.calls.some((c) => c.op === "setNodeMarkup")).toBe(false);
+    it("an empty formula should mark the node empty (placeholder styling)", () => {
+        const nv = createMathInlineView(makeNode(""));
+        expect(nv.dom.classList.contains("math-inline--empty")).toBe(true);
     });
 
-    it("pressing Escape should cancel without dispatching a change", () => {
-        const { view, node } = makeView("a^2");
-        const nv = createMathInlineView(node, view, () => 5);
-        document.body.appendChild(nv.dom);
-        nv.dom.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-
-        const input = getPopoverInput()!;
-        input.value = "changed";
-        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-
-        expect(view.dispatch).not.toHaveBeenCalled();
-        expect(getPopoverInput()).toBeNull();
+    it("update with changed content should repaint and clear/set the empty state", async () => {
+        const nv = createMathInlineView(makeNode("a^2"));
+        expect(nv.update(makeNode(""))).toBe(true);
+        expect(nv.dom.classList.contains("math-inline--empty")).toBe(true);
+        expect(nv.update(makeNode("b_1"))).toBe(true);
+        await flush();
+        expect(nv.dom.classList.contains("math-inline--empty")).toBe(false);
     });
 
-    it("an unchanged commit should not dispatch a transaction", () => {
-        const { view, node } = makeView("a^2");
-        const nv = createMathInlineView(node, view, () => 5);
-        document.body.appendChild(nv.dom);
-        nv.dom.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    it("update with a different node type should return false", () => {
+        const nv = createMathInlineView(makeNode("a^2"));
+        expect(nv.update(makeNode("a^2", { name: "other" }))).toBe(false);
+    });
 
-        const input = getPopoverInput()!;
-        // value unchanged
-        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    it("mutations in the source span should reach ProseMirror; render churn should not", () => {
+        const nv = createMathInlineView(makeNode("a^2"));
+        const render = nv.dom.querySelector(".math-inline-render") as HTMLElement;
+        const srcMutation = { type: "characterData", target: nv.contentDOM } as unknown as MutationRecord;
+        const renderMutation = { type: "childList", target: render } as unknown as MutationRecord;
+        expect(nv.ignoreMutation(srcMutation)).toBe(false);
+        expect(nv.ignoreMutation(renderMutation)).toBe(true);
+        expect(nv.ignoreMutation({ type: "selection", target: render })).toBe(false);
+    });
 
-        expect(view.dispatch).not.toHaveBeenCalled();
+    it("selectNode/deselectNode should toggle the selected class", () => {
+        const nv = createMathInlineView(makeNode("x"));
+        nv.selectNode();
+        expect(nv.dom.classList.contains("math-inline--selected")).toBe(true);
+        nv.deselectNode();
+        expect(nv.dom.classList.contains("math-inline--selected")).toBe(false);
     });
 });

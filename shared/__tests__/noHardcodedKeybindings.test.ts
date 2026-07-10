@@ -62,6 +62,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "bar-local input keys (Mod+Enter = replace all inside the replace input)",
         "webview/plugins/headingEmptyDelete.ts":
             "bails out when modifiers are held — typing-level Backspace handling, not a chord",
+        "webview/plugins/mathInlineEdit.ts":
+            "bails out when modifiers are held — typing-level arrow/Backspace boundary handling at a formula's edge, not a chord",
         "webview/plugins/codeBlockSelectAll.ts":
             "scopes the editor's Mod+A inside code blocks — typing-level, must run synchronously",
         "webview/components/callout/index.ts":

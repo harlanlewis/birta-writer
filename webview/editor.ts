@@ -51,6 +51,7 @@ import {
     insertFootnoteCommand,
     linkInputRule,
     linkUrlCompletePlugin,
+    mathInlineEditPlugin,
     wikiLinkCompletePlugin,
     listEnterPlugin,
     listLiftPlugin,
@@ -339,6 +340,9 @@ export async function createEditor(
         })
         // Registered BEFORE the commonmark/base keymap so table Tab/Enter/Delete
         // win over the defaults (e.g. base Backspace only clears cell contents).
+        // mathInlineEdit is even earlier: its boundary keys (arrow into / backspace
+        // against a formula) are narrowly guarded and must beat every other handler.
+        .use(mathInlineEditPlugin)
         .use(tableKeymapPlugin)
         .use(pureCommonmark)
         .use(gfm)

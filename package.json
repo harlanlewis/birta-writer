@@ -1,1449 +1,1449 @@
 {
-  "name": "md-wysiwyg-editor",
-  "displayName": "WYSIWYG Markdown Editor",
-  "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.129",
-  "publisher": "harlanlewis",
-  "engines": {
-    "vscode": "^1.80.0"
-  },
-  "packageManager": "pnpm@10.6.1",
-  "extensionKind": [
-    "workspace",
-    "ui"
-  ],
-  "icon": "images/icon.jpg",
-  "categories": [
-    "Formatters",
-    "Other"
-  ],
-  "keywords": [
-    "markdown",
-    "wysiwyg",
-    "editor",
-    "table",
-    "milkdown"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/harlanlewis/md-wysiwyg-editor.git"
-  },
-  "bugs": {
-    "url": "https://github.com/harlanlewis/md-wysiwyg-editor/issues"
-  },
-  "homepage": "https://github.com/harlanlewis/md-wysiwyg-editor#readme",
-  "activationEvents": [],
-  "main": "./dist/extension.js",
-  "l10n": "./l10n",
-  "contributes": {
-    "customEditors": [
-      {
-        "viewType": "markdownWysiwyg.editor",
-        "displayName": "WYSIWYG Markdown Editor",
-        "selector": [
-          {
-            "filenamePattern": "*.md"
-          },
-          {
-            "filenamePattern": "*.markdown"
-          }
-        ],
-        "priority": "option"
-      }
-    ],
-    "commands": [
-      {
-        "command": "markdownWysiwyg.switchToTextEditor",
-        "title": "%command.switchToTextEditor.title%",
-        "category": "WYSIWYG Markdown Editor",
-        "icon": "$(eye-closed)"
-      },
-      {
-        "command": "markdownWysiwyg.switchToPreview",
-        "title": "%command.switchToPreview.title%",
-        "category": "WYSIWYG Markdown Editor",
-        "icon": "$(eye)"
-      },
-      {
-        "command": "markdownWysiwyg.debugModeEnable",
-        "title": "%command.debugModeEnable.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.debugModeDisable",
-        "title": "%command.debugModeDisable.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.toggleProofreading",
-        "title": "%command.toggleProofreading.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.gotoSymbol",
-        "title": "%command.gotoSymbol.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleBold",
-        "title": "%command.editor.toggleBold.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleItalic",
-        "title": "%command.editor.toggleItalic.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleStrikethrough",
-        "title": "%command.editor.toggleStrikethrough.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleHighlight",
-        "title": "%command.editor.toggleHighlight.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleInlineCode",
-        "title": "%command.editor.toggleInlineCode.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.clearFormatting",
-        "title": "%command.editor.clearFormatting.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.setParagraph",
-        "title": "%command.editor.setParagraph.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.setHeading1",
-        "title": "%command.editor.setHeading1.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.setHeading2",
-        "title": "%command.editor.setHeading2.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.setHeading3",
-        "title": "%command.editor.setHeading3.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.setHeading4",
-        "title": "%command.editor.setHeading4.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.setHeading5",
-        "title": "%command.editor.setHeading5.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.setHeading6",
-        "title": "%command.editor.setHeading6.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleBulletList",
-        "title": "%command.editor.toggleBulletList.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleOrderedList",
-        "title": "%command.editor.toggleOrderedList.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleTaskList",
-        "title": "%command.editor.toggleTaskList.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleBlockquote",
-        "title": "%command.editor.toggleBlockquote.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertCodeBlock",
-        "title": "%command.editor.insertCodeBlock.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertHorizontalRule",
-        "title": "%command.editor.insertHorizontalRule.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertTable",
-        "title": "%command.editor.insertTable.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertLink",
-        "title": "%command.editor.insertLink.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertImage",
-        "title": "%command.editor.insertImage.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertMath",
-        "title": "%command.editor.insertMath.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertFootnote",
-        "title": "%command.editor.insertFootnote.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertCallout",
-        "title": "%command.editor.insertCallout.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.openFind",
-        "title": "%command.editor.openFind.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.openFindReplace",
-        "title": "%command.editor.openFindReplace.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.findNext",
-        "title": "%command.editor.findNext.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.findPrevious",
-        "title": "%command.editor.findPrevious.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.findSelection",
-        "title": "%command.editor.findSelection.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleToc",
-        "title": "%command.editor.toggleToc.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.editFrontmatter",
-        "title": "%command.editor.editFrontmatter.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.tableInsertRowAbove",
-        "title": "%command.editor.tableInsertRowAbove.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.tableInsertRowBelow",
-        "title": "%command.editor.tableInsertRowBelow.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.tableInsertColumnLeft",
-        "title": "%command.editor.tableInsertColumnLeft.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.tableInsertColumnRight",
-        "title": "%command.editor.tableInsertColumnRight.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.tableDeleteRow",
-        "title": "%command.editor.tableDeleteRow.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.tableDeleteColumn",
-        "title": "%command.editor.tableDeleteColumn.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.tableDeleteTable",
-        "title": "%command.editor.tableDeleteTable.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.copyAsHtml",
-        "title": "%command.editor.copyAsHtml.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.copyAsMarkdown",
-        "title": "%command.editor.copyAsMarkdown.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.editRawMarkdown",
-        "title": "%command.editor.editRawMarkdown.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.customizeToolbar",
-        "title": "%command.editor.customizeToolbar.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.hideToolbar",
-        "title": "%command.editor.hideToolbar.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.showToolbar",
-        "title": "%command.editor.showToolbar.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.openExtensionSettings",
-        "title": "%command.editor.openExtensionSettings.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
-        "title": "%command.editor.openKeyboardShortcuts.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.fontEditor",
-        "title": "%command.editor.fontEditor.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.fontSans",
-        "title": "%command.editor.fontSans.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.fontSerif",
-        "title": "%command.editor.fontSerif.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.fontMono",
-        "title": "%command.editor.fontMono.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.increaseFontSize",
-        "title": "%command.editor.increaseFontSize.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.decreaseFontSize",
-        "title": "%command.editor.decreaseFontSize.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleSpellCheck",
-        "title": "%command.editor.toggleSpellCheck.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleGrammarCheck",
-        "title": "%command.editor.toggleGrammarCheck.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleStyleCheck",
-        "title": "%command.editor.toggleStyleCheck.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.toggleToolbar",
-        "title": "%command.editor.toggleToolbar.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.editor.swapTocSide",
-        "title": "%command.editor.swapTocSide.title%",
-        "category": "WYSIWYG Markdown Editor"
-      }
-    ],
-    "keybindings": [
-      {
-        "command": "markdownWysiwyg.switchToTextEditor",
-        "key": "ctrl+shift+m",
-        "mac": "cmd+shift+m",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.toggleProofreading",
-        "key": "ctrl+alt+shift+d",
-        "mac": "cmd+alt+shift+d",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.switchToPreview",
-        "key": "ctrl+shift+m",
-        "mac": "cmd+shift+m",
-        "when": "resourceLangId == markdown && activeCustomEditorId != 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.gotoSymbol",
-        "key": "ctrl+shift+o",
-        "mac": "cmd+shift+o",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.openFind",
-        "key": "ctrl+f",
-        "mac": "cmd+f",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.openFindReplace",
-        "key": "ctrl+alt+f",
-        "mac": "cmd+alt+f",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.openFindReplace",
-        "win": "ctrl+h",
-        "linux": "ctrl+h",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.insertLink",
-        "key": "ctrl+k",
-        "mac": "cmd+k",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.findNext",
-        "key": "f3",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.findNext",
-        "mac": "cmd+g",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.findPrevious",
-        "key": "shift+f3",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.findPrevious",
-        "mac": "cmd+shift+g",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      },
-      {
-        "command": "markdownWysiwyg.editor.findSelection",
-        "key": "ctrl+d",
-        "mac": "cmd+d",
-        "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-      }
-    ],
-    "menus": {
-      "editor/title": [
-        {
-          "command": "markdownWysiwyg.switchToTextEditor",
-          "group": "navigation",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.switchToPreview",
-          "group": "navigation",
-          "when": "resourceLangId == markdown && activeCustomEditorId != 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.debugModeEnable",
-          "group": "9_debug",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && !markdownWysiwyg.debugModeActive"
-        },
-        {
-          "command": "markdownWysiwyg.debugModeDisable",
-          "group": "9_debug",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && markdownWysiwyg.debugModeActive"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "markdownWysiwyg.toggleProofreading",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.gotoSymbol",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleBold",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleItalic",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleStrikethrough",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleHighlight",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleInlineCode",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.clearFormatting",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.setParagraph",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.setHeading1",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.setHeading2",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.setHeading3",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.setHeading4",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.setHeading5",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.setHeading6",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleBulletList",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleOrderedList",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleTaskList",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleBlockquote",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertCodeBlock",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertHorizontalRule",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertTable",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertLink",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertImage",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertMath",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertFootnote",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertCallout",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.openFind",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.openFindReplace",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.findNext",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.findPrevious",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.findSelection",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleToc",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.editFrontmatter",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableInsertRowAbove",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableInsertRowBelow",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableInsertColumnLeft",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableInsertColumnRight",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableDeleteRow",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableDeleteColumn",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableDeleteTable",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.copyAsHtml",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.copyAsMarkdown",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.editRawMarkdown",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.customizeToolbar",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.hideToolbar",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.showToolbar",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.openExtensionSettings",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
-          "when": "false"
-        },
-        {
-          "command": "markdownWysiwyg.editor.fontEditor",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.fontSans",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.fontSerif",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.fontMono",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.increaseFontSize",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.decreaseFontSize",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleSpellCheck",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleGrammarCheck",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleStyleCheck",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.toggleToolbar",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        },
-        {
-          "command": "markdownWysiwyg.editor.swapTocSide",
-          "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-        }
-      ],
-      "webview/context": [
-        {
-          "command": "markdownWysiwyg.editor.tableInsertRowAbove",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_tableinsert@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableInsertRowBelow",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_tableinsert@2"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableInsertColumnLeft",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_tableinsert@3"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableInsertColumnRight",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "1_tableinsert@4"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableDeleteRow",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "2_tabledelete@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableDeleteColumn",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "2_tabledelete@2"
-        },
-        {
-          "command": "markdownWysiwyg.editor.tableDeleteTable",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "2_tabledelete@3"
-        },
-        {
-          "command": "markdownWysiwyg.editor.insertLink",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
-          "group": "1_link@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.copyAsHtml",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'editor'",
-          "group": "3_copy@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.copyAsMarkdown",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'editor'",
-          "group": "3_copy@2"
-        },
-        {
-          "command": "markdownWysiwyg.editor.copyAsHtml",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "3_copy@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.copyAsMarkdown",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "3_copy@2"
-        },
-        {
-          "command": "markdownWysiwyg.editor.copyAsHtml",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
-          "group": "3_copy@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.copyAsMarkdown",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
-          "group": "3_copy@2"
-        },
-        {
-          "command": "markdownWysiwyg.editor.editRawMarkdown",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'editor'",
-          "group": "9_view@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.editRawMarkdown",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
-          "group": "9_view@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.editRawMarkdown",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
-          "group": "9_view@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.customizeToolbar",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-          "group": "1_toolbar@1"
-        },
-        {
-          "command": "markdownWysiwyg.editor.hideToolbar",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-          "group": "1_toolbar@2"
-        },
-        {
-          "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-          "group": "1_toolbar@3"
-        },
-        {
-          "command": "markdownWysiwyg.editor.openExtensionSettings",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-          "group": "1_toolbar@4"
-        },
-        {
-          "command": "markdownWysiwyg.editor.showToolbar",
-          "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbarTab'",
-          "group": "1_toolbar@1"
-        }
-      ]
+    "name": "md-wysiwyg-editor",
+    "displayName": "WYSIWYG Markdown Editor",
+    "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
+    "version": "0.2.131",
+    "publisher": "harlanlewis",
+    "engines": {
+        "vscode": "^1.80.0"
     },
-    "configuration": {
-      "title": "WYSIWYG Markdown Editor",
-      "properties": {
-        "markdownWysiwyg.proofreading.enabled": {
-          "order": 109,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.proofreading.enabled.description%"
+    "packageManager": "pnpm@10.6.1",
+    "extensionKind": [
+        "workspace",
+        "ui"
+    ],
+    "icon": "images/icon.jpg",
+    "categories": [
+        "Formatters",
+        "Other"
+    ],
+    "keywords": [
+        "markdown",
+        "wysiwyg",
+        "editor",
+        "table",
+        "milkdown"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/harlanlewis/md-wysiwyg-editor.git"
+    },
+    "bugs": {
+        "url": "https://github.com/harlanlewis/md-wysiwyg-editor/issues"
+    },
+    "homepage": "https://github.com/harlanlewis/md-wysiwyg-editor#readme",
+    "activationEvents": [],
+    "main": "./dist/extension.js",
+    "l10n": "./l10n",
+    "contributes": {
+        "customEditors": [
+            {
+                "viewType": "markdownWysiwyg.editor",
+                "displayName": "WYSIWYG Markdown Editor",
+                "selector": [
+                    {
+                        "filenamePattern": "*.md"
+                    },
+                    {
+                        "filenamePattern": "*.markdown"
+                    }
+                ],
+                "priority": "option"
+            }
+        ],
+        "commands": [
+            {
+                "command": "markdownWysiwyg.switchToTextEditor",
+                "title": "%command.switchToTextEditor.title%",
+                "category": "WYSIWYG Markdown Editor",
+                "icon": "$(eye-closed)"
+            },
+            {
+                "command": "markdownWysiwyg.switchToPreview",
+                "title": "%command.switchToPreview.title%",
+                "category": "WYSIWYG Markdown Editor",
+                "icon": "$(eye)"
+            },
+            {
+                "command": "markdownWysiwyg.debugModeEnable",
+                "title": "%command.debugModeEnable.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.debugModeDisable",
+                "title": "%command.debugModeDisable.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.toggleProofreading",
+                "title": "%command.toggleProofreading.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.gotoSymbol",
+                "title": "%command.gotoSymbol.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleBold",
+                "title": "%command.editor.toggleBold.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleItalic",
+                "title": "%command.editor.toggleItalic.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleStrikethrough",
+                "title": "%command.editor.toggleStrikethrough.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleHighlight",
+                "title": "%command.editor.toggleHighlight.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleInlineCode",
+                "title": "%command.editor.toggleInlineCode.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.clearFormatting",
+                "title": "%command.editor.clearFormatting.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setParagraph",
+                "title": "%command.editor.setParagraph.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading1",
+                "title": "%command.editor.setHeading1.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading2",
+                "title": "%command.editor.setHeading2.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading3",
+                "title": "%command.editor.setHeading3.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading4",
+                "title": "%command.editor.setHeading4.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading5",
+                "title": "%command.editor.setHeading5.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading6",
+                "title": "%command.editor.setHeading6.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleBulletList",
+                "title": "%command.editor.toggleBulletList.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleOrderedList",
+                "title": "%command.editor.toggleOrderedList.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleTaskList",
+                "title": "%command.editor.toggleTaskList.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleBlockquote",
+                "title": "%command.editor.toggleBlockquote.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertCodeBlock",
+                "title": "%command.editor.insertCodeBlock.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertHorizontalRule",
+                "title": "%command.editor.insertHorizontalRule.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertTable",
+                "title": "%command.editor.insertTable.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertLink",
+                "title": "%command.editor.insertLink.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertImage",
+                "title": "%command.editor.insertImage.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertMath",
+                "title": "%command.editor.insertMath.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertFootnote",
+                "title": "%command.editor.insertFootnote.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertCallout",
+                "title": "%command.editor.insertCallout.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openFind",
+                "title": "%command.editor.openFind.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openFindReplace",
+                "title": "%command.editor.openFindReplace.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.findNext",
+                "title": "%command.editor.findNext.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.findPrevious",
+                "title": "%command.editor.findPrevious.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.findSelection",
+                "title": "%command.editor.findSelection.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleToc",
+                "title": "%command.editor.toggleToc.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.editFrontmatter",
+                "title": "%command.editor.editFrontmatter.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableInsertRowAbove",
+                "title": "%command.editor.tableInsertRowAbove.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableInsertRowBelow",
+                "title": "%command.editor.tableInsertRowBelow.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableInsertColumnLeft",
+                "title": "%command.editor.tableInsertColumnLeft.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableInsertColumnRight",
+                "title": "%command.editor.tableInsertColumnRight.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableDeleteRow",
+                "title": "%command.editor.tableDeleteRow.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableDeleteColumn",
+                "title": "%command.editor.tableDeleteColumn.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableDeleteTable",
+                "title": "%command.editor.tableDeleteTable.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.copyAsHtml",
+                "title": "%command.editor.copyAsHtml.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.copyAsMarkdown",
+                "title": "%command.editor.copyAsMarkdown.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.editRawMarkdown",
+                "title": "%command.editor.editRawMarkdown.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.customizeToolbar",
+                "title": "%command.editor.customizeToolbar.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.hideToolbar",
+                "title": "%command.editor.hideToolbar.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.showToolbar",
+                "title": "%command.editor.showToolbar.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openExtensionSettings",
+                "title": "%command.editor.openExtensionSettings.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
+                "title": "%command.editor.openKeyboardShortcuts.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.fontEditor",
+                "title": "%command.editor.fontEditor.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.fontSans",
+                "title": "%command.editor.fontSans.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.fontSerif",
+                "title": "%command.editor.fontSerif.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.fontMono",
+                "title": "%command.editor.fontMono.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.increaseFontSize",
+                "title": "%command.editor.increaseFontSize.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.decreaseFontSize",
+                "title": "%command.editor.decreaseFontSize.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleSpellCheck",
+                "title": "%command.editor.toggleSpellCheck.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleGrammarCheck",
+                "title": "%command.editor.toggleGrammarCheck.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleStyleCheck",
+                "title": "%command.editor.toggleStyleCheck.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleToolbar",
+                "title": "%command.editor.toggleToolbar.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.swapTocSide",
+                "title": "%command.editor.swapTocSide.title%",
+                "category": "WYSIWYG Markdown Editor"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "markdownWysiwyg.switchToTextEditor",
+                "key": "ctrl+shift+m",
+                "mac": "cmd+shift+m",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.toggleProofreading",
+                "key": "ctrl+alt+shift+d",
+                "mac": "cmd+alt+shift+d",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.switchToPreview",
+                "key": "ctrl+shift+m",
+                "mac": "cmd+shift+m",
+                "when": "resourceLangId == markdown && activeCustomEditorId != 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.gotoSymbol",
+                "key": "ctrl+shift+o",
+                "mac": "cmd+shift+o",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openFind",
+                "key": "ctrl+f",
+                "mac": "cmd+f",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openFindReplace",
+                "key": "ctrl+alt+f",
+                "mac": "cmd+alt+f",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openFindReplace",
+                "win": "ctrl+h",
+                "linux": "ctrl+h",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertLink",
+                "key": "ctrl+k",
+                "mac": "cmd+k",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.findNext",
+                "key": "f3",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.findNext",
+                "mac": "cmd+g",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.findPrevious",
+                "key": "shift+f3",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.findPrevious",
+                "mac": "cmd+shift+g",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.findSelection",
+                "key": "ctrl+d",
+                "mac": "cmd+d",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            }
+        ],
+        "menus": {
+            "editor/title": [
+                {
+                    "command": "markdownWysiwyg.switchToTextEditor",
+                    "group": "navigation",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.switchToPreview",
+                    "group": "navigation",
+                    "when": "resourceLangId == markdown && activeCustomEditorId != 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.debugModeEnable",
+                    "group": "9_debug",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && !markdownWysiwyg.debugModeActive"
+                },
+                {
+                    "command": "markdownWysiwyg.debugModeDisable",
+                    "group": "9_debug",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor' && markdownWysiwyg.debugModeActive"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "markdownWysiwyg.toggleProofreading",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.gotoSymbol",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleBold",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleItalic",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleStrikethrough",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleHighlight",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleInlineCode",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.clearFormatting",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.setParagraph",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.setHeading1",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.setHeading2",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.setHeading3",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.setHeading4",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.setHeading5",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.setHeading6",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleBulletList",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleOrderedList",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleTaskList",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleBlockquote",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertCodeBlock",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertHorizontalRule",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertTable",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertLink",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertImage",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertMath",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertFootnote",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertCallout",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.openFind",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.openFindReplace",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.findNext",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.findPrevious",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.findSelection",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleToc",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.editFrontmatter",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableInsertRowAbove",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableInsertRowBelow",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableInsertColumnLeft",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableInsertColumnRight",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableDeleteRow",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableDeleteColumn",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableDeleteTable",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.copyAsHtml",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.copyAsMarkdown",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.editRawMarkdown",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.customizeToolbar",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.hideToolbar",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.showToolbar",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.openExtensionSettings",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.fontEditor",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.fontSans",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.fontSerif",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.fontMono",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.increaseFontSize",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.decreaseFontSize",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleSpellCheck",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleGrammarCheck",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleStyleCheck",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleToolbar",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.swapTocSide",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                }
+            ],
+            "webview/context": [
+                {
+                    "command": "markdownWysiwyg.editor.tableInsertRowAbove",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "1_tableinsert@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableInsertRowBelow",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "1_tableinsert@2"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableInsertColumnLeft",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "1_tableinsert@3"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableInsertColumnRight",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "1_tableinsert@4"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableDeleteRow",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "2_tabledelete@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableDeleteColumn",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "2_tabledelete@2"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableDeleteTable",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "2_tabledelete@3"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertLink",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
+                    "group": "1_link@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.copyAsHtml",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'editor'",
+                    "group": "3_copy@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.copyAsMarkdown",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'editor'",
+                    "group": "3_copy@2"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.copyAsHtml",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "3_copy@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.copyAsMarkdown",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "3_copy@2"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.copyAsHtml",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
+                    "group": "3_copy@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.copyAsMarkdown",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
+                    "group": "3_copy@2"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.editRawMarkdown",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'editor'",
+                    "group": "9_view@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.editRawMarkdown",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "9_view@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.editRawMarkdown",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'link'",
+                    "group": "9_view@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.customizeToolbar",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
+                    "group": "1_toolbar@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.hideToolbar",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
+                    "group": "1_toolbar@2"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
+                    "group": "1_toolbar@3"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.openExtensionSettings",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
+                    "group": "1_toolbar@4"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.showToolbar",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbarTab'",
+                    "group": "1_toolbar@1"
+                }
+            ]
         },
-        "markdownWysiwyg.styleCheck.enabled": {
-          "order": 110,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.enabled.description%"
-        },
-        "markdownWysiwyg.styleCheck.fillers": {
-          "order": 111,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.fillers.description%"
-        },
-        "markdownWysiwyg.styleCheck.redundancies": {
-          "order": 112,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.redundancies.description%"
-        },
-        "markdownWysiwyg.styleCheck.cliches": {
-          "order": 113,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.cliches.description%"
-        },
-        "markdownWysiwyg.styleCheck.wordiness": {
-          "order": 117,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.wordiness.description%"
-        },
-        "markdownWysiwyg.styleCheck.aiVocabulary": {
-          "order": 118,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.aiVocabulary.description%"
-        },
-        "markdownWysiwyg.styleCheck.aiArtifacts": {
-          "order": 119,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.aiArtifacts.description%"
-        },
-        "markdownWysiwyg.styleCheck.passive": {
-          "order": 120,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.passive.description%"
-        },
-        "markdownWysiwyg.styleCheck.negativeParallelism": {
-          "order": 121,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.negativeParallelism.description%"
-        },
-        "markdownWysiwyg.styleCheck.longSentences": {
-          "order": 122,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.longSentences.description%"
-        },
-        "markdownWysiwyg.styleCheck.ruleOfThree": {
-          "order": 123,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.ruleOfThree.description%"
-        },
-        "markdownWysiwyg.styleCheck.emDash": {
-          "order": 124,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.emDash.description%"
-        },
-        "markdownWysiwyg.styleCheck.nonAsciiPunct": {
-          "order": 125,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.styleCheck.nonAsciiPunct.description%"
-        },
-        "markdownWysiwyg.spellCheck.enabled": {
-          "order": 114,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.spellCheck.enabled.description%"
-        },
-        "markdownWysiwyg.grammarCheck.enabled": {
-          "order": 116,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.grammarCheck.enabled.description%"
-        },
-        "markdownWysiwyg.spellCheck.grammar": {
-          "order": 114,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.spellCheck.grammar.description%",
-          "deprecationMessage": "%config.spellCheck.grammar.deprecation%",
-          "markdownDeprecationMessage": "%config.spellCheck.grammar.deprecation%"
-        },
-        "markdownWysiwyg.spellCheck.userWords": {
-          "order": 115,
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.spellCheck.userWords.description%"
-        },
-        "markdownWysiwyg.styleCheck.exceptions": {
-          "order": 116,
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "%config.styleCheck.exceptions.description%"
-        },
-        "markdownWysiwyg.codeBlockMaxHeight": {
-          "order": 8,
-          "type": "number",
-          "default": 600,
-          "minimum": 100,
-          "description": "%config.codeBlockMaxHeight.description%"
-        },
-        "markdownWysiwyg.codeBlockAutoConvert": {
-          "order": 7,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.codeBlockAutoConvert.description%"
-        },
-        "markdownWysiwyg.codeBlockWordWrap": {
-          "order": 9,
-          "type": "string",
-          "enum": [
-            "inherit",
-            "on",
-            "off"
-          ],
-          "enumDescriptions": [
-            "%config.codeBlockWordWrap.inherit%",
-            "%config.codeBlockWordWrap.on%",
-            "%config.codeBlockWordWrap.off%"
-          ],
-          "default": "inherit",
-          "description": "%config.codeBlockWordWrap.description%"
-        },
-        "markdownWysiwyg.tableWrap": {
-          "order": 10,
-          "type": "string",
-          "enum": [
-            "none",
-            "normal",
-            "aggressive"
-          ],
-          "default": "normal",
-          "description": "%config.tableWrap.description%",
-          "enumDescriptions": [
-            "%config.tableWrap.none%",
-            "%config.tableWrap.normal%",
-            "%config.tableWrap.aggressive%"
-          ]
-        },
-        "markdownWysiwyg.defaultMode": {
-          "order": 1,
-          "type": "string",
-          "enum": [
-            "preview",
-            "markdown"
-          ],
-          "enumDescriptions": [
-            "%config.defaultMode.preview%",
-            "%config.defaultMode.markdown%"
-          ],
-          "default": "preview",
-          "description": "%config.defaultMode.description%"
-        },
-        "markdownWysiwyg.contentWidth": {
-          "order": 4,
-          "type": "string",
-          "enum": [
-            "full",
-            "fixed"
-          ],
-          "enumDescriptions": [
-            "%config.contentWidth.full%",
-            "%config.contentWidth.fixed%"
-          ],
-          "default": "full",
-          "description": "%config.contentWidth.description%"
-        },
-        "markdownWysiwyg.maxContentWidth": {
-          "order": 5,
-          "type": "number",
-          "default": 100,
-          "minimum": 20,
-          "description": "%config.maxContentWidth.description%"
-        },
-        "markdownWysiwyg.tocContentGap": {
-          "order": 5,
-          "type": "number",
-          "default": 100,
-          "minimum": 16,
-          "maximum": 240,
-          "description": "%config.tocContentGap.description%"
-        },
-        "markdownWysiwyg.tocPosition": {
-          "order": 5,
-          "type": "string",
-          "enum": [
-            "left",
-            "right"
-          ],
-          "default": "right",
-          "description": "%config.tocPosition.description%",
-          "enumDescriptions": [
-            "%config.tocPosition.left%",
-            "%config.tocPosition.right%"
-          ]
-        },
-        "markdownWysiwyg.frontmatterExpanded": {
-          "order": 6,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.frontmatterExpanded.description%"
-        },
-        "markdownWysiwyg.customCss": {
-          "order": 12,
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "description": "%config.customCss.description%"
-        },
-        "markdownWysiwyg.customJs": {
-          "order": 13,
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "description": "%config.customJs.description%"
-        },
-        "markdownWysiwyg.fontPreset": {
-          "order": 7,
-          "type": "string",
-          "enum": [
-            "editor",
-            "sans",
-            "serif",
-            "mono"
-          ],
-          "enumDescriptions": [
-            "%config.fontPreset.editor%",
-            "%config.fontPreset.sans%",
-            "%config.fontPreset.serif%",
-            "%config.fontPreset.mono%"
-          ],
-          "default": "editor",
-          "description": "%config.fontPreset.description%"
-        },
-        "markdownWysiwyg.fontFamilySans": {
-          "order": 8,
-          "type": "string",
-          "default": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, \"Noto Sans\", sans-serif",
-          "description": "%config.fontFamilySans.description%"
-        },
-        "markdownWysiwyg.fontFamilySerif": {
-          "order": 9,
-          "type": "string",
-          "default": "\"Iowan Old Style\", \"Palatino\", Charter, ui-serif, Georgia, serif",
-          "description": "%config.fontFamilySerif.description%"
-        },
-        "markdownWysiwyg.fontFamilyMono": {
-          "order": 10,
-          "type": "string",
-          "default": "ui-monospace, \"Cascadia Code\", \"Source Code Pro\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace",
-          "description": "%config.fontFamilyMono.description%"
-        },
-        "markdownWysiwyg.fontSize": {
-          "order": 11,
-          "type": "number",
-          "default": 100,
-          "minimum": 50,
-          "maximum": 200,
-          "description": "%config.fontSize.description%"
-        },
-        "markdownWysiwyg.toolbar.visible": {
-          "order": 29,
-          "type": "boolean",
-          "default": true,
-          "description": "Show the toolbar. When off, a small tab at the top edge (or the Toggle Toolbar command) brings it back."
-        },
-        "markdownWysiwyg.toolbar.items.format": {
-          "order": 30,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Text level menu (paragraph, headings): pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.clearFormatting": {
-          "order": 31,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "hidden",
-          "description": "Clear formatting button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.fontPreset": {
-          "order": 32,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "right",
-          "description": "Font picker: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.bold": {
-          "order": 33,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Bold button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.italic": {
-          "order": 34,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Italic button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.strikethrough": {
-          "order": 35,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "hidden",
-          "description": "Strikethrough button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.highlight": {
-          "order": 35.5,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "hidden",
-          "description": "Highlight (==mark==) button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.inlineCode": {
-          "order": 36,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "hidden",
-          "description": "Inline code button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.link": {
-          "order": 37,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Insert/edit link button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.image": {
-          "order": 38,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Insert image button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.table": {
-          "order": 39,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Insert table button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.footnote": {
-          "order": 40,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "hidden",
-          "description": "Insert footnote button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.math": {
-          "order": 41,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "hidden",
-          "description": "Inline math button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.listMenu": {
-          "order": 42,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Lists dropdown (bullet / ordered / task): pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.quote": {
-          "order": 45,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Quote dropdown (plain blockquote plus the GitHub callout types: Note, Tip, Important, Warning, Caution): pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.codeBlock": {
-          "order": 46,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Code block button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.horizontalRule": {
-          "order": 47,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "hidden",
-          "description": "Horizontal rule button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.viewSource": {
-          "order": 48,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "right",
-          "description": "Edit Raw Markdown button (switch to the plain text editor): pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.styleCheck": {
-          "order": 49,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "right",
-          "description": "Checks menu (spelling, grammar, style): pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.find": {
-          "order": 50,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "right",
-          "description": "Find button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.settings": {
-          "order": 51,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "right",
-          "description": "Settings button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.order": {
-          "order": 52,
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `listMenu`, `quote`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
-        },
-        "markdownWysiwyg.tocAutoHideThreshold": {
-          "order": 11,
-          "type": "number",
-          "default": 3,
-          "minimum": 0,
-          "maximum": 20,
-          "description": "%config.tocAutoHideThreshold.description%"
-        },
-        "markdownWysiwyg.debugMode": {
-          "order": 90,
-          "type": "boolean",
-          "default": false,
-          "description": "%config.debugMode.description%"
-        },
-        "markdownWysiwyg.imageLocalPath": {
-          "order": 101,
-          "type": "string",
-          "default": "",
-          "description": "%config.imageLocalPath.description%"
-        },
-        "markdownWysiwyg.smartLinks": {
-          "order": 106,
-          "type": "boolean",
-          "default": true,
-          "description": "%config.smartLinks.description%"
+        "configuration": {
+            "title": "WYSIWYG Markdown Editor",
+            "properties": {
+                "markdownWysiwyg.proofreading.enabled": {
+                    "order": 109,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.proofreading.enabled.description%"
+                },
+                "markdownWysiwyg.styleCheck.enabled": {
+                    "order": 110,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.enabled.description%"
+                },
+                "markdownWysiwyg.styleCheck.fillers": {
+                    "order": 111,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.fillers.description%"
+                },
+                "markdownWysiwyg.styleCheck.redundancies": {
+                    "order": 112,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.redundancies.description%"
+                },
+                "markdownWysiwyg.styleCheck.cliches": {
+                    "order": 113,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.cliches.description%"
+                },
+                "markdownWysiwyg.styleCheck.wordiness": {
+                    "order": 117,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.wordiness.description%"
+                },
+                "markdownWysiwyg.styleCheck.aiVocabulary": {
+                    "order": 118,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.aiVocabulary.description%"
+                },
+                "markdownWysiwyg.styleCheck.aiArtifacts": {
+                    "order": 119,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.aiArtifacts.description%"
+                },
+                "markdownWysiwyg.styleCheck.passive": {
+                    "order": 120,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.passive.description%"
+                },
+                "markdownWysiwyg.styleCheck.negativeParallelism": {
+                    "order": 121,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.negativeParallelism.description%"
+                },
+                "markdownWysiwyg.styleCheck.longSentences": {
+                    "order": 122,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.longSentences.description%"
+                },
+                "markdownWysiwyg.styleCheck.ruleOfThree": {
+                    "order": 123,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.ruleOfThree.description%"
+                },
+                "markdownWysiwyg.styleCheck.emDash": {
+                    "order": 124,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.emDash.description%"
+                },
+                "markdownWysiwyg.styleCheck.nonAsciiPunct": {
+                    "order": 125,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.styleCheck.nonAsciiPunct.description%"
+                },
+                "markdownWysiwyg.spellCheck.enabled": {
+                    "order": 114,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.spellCheck.enabled.description%"
+                },
+                "markdownWysiwyg.grammarCheck.enabled": {
+                    "order": 116,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.grammarCheck.enabled.description%"
+                },
+                "markdownWysiwyg.spellCheck.grammar": {
+                    "order": 114,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.spellCheck.grammar.description%",
+                    "deprecationMessage": "%config.spellCheck.grammar.deprecation%",
+                    "markdownDeprecationMessage": "%config.spellCheck.grammar.deprecation%"
+                },
+                "markdownWysiwyg.spellCheck.userWords": {
+                    "order": 115,
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "%config.spellCheck.userWords.description%"
+                },
+                "markdownWysiwyg.styleCheck.exceptions": {
+                    "order": 116,
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "%config.styleCheck.exceptions.description%"
+                },
+                "markdownWysiwyg.codeBlockMaxHeight": {
+                    "order": 8,
+                    "type": "number",
+                    "default": 600,
+                    "minimum": 100,
+                    "description": "%config.codeBlockMaxHeight.description%"
+                },
+                "markdownWysiwyg.codeBlockAutoConvert": {
+                    "order": 7,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.codeBlockAutoConvert.description%"
+                },
+                "markdownWysiwyg.codeBlockWordWrap": {
+                    "order": 9,
+                    "type": "string",
+                    "enum": [
+                        "inherit",
+                        "on",
+                        "off"
+                    ],
+                    "enumDescriptions": [
+                        "%config.codeBlockWordWrap.inherit%",
+                        "%config.codeBlockWordWrap.on%",
+                        "%config.codeBlockWordWrap.off%"
+                    ],
+                    "default": "inherit",
+                    "description": "%config.codeBlockWordWrap.description%"
+                },
+                "markdownWysiwyg.tableWrap": {
+                    "order": 10,
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "normal",
+                        "aggressive"
+                    ],
+                    "default": "normal",
+                    "description": "%config.tableWrap.description%",
+                    "enumDescriptions": [
+                        "%config.tableWrap.none%",
+                        "%config.tableWrap.normal%",
+                        "%config.tableWrap.aggressive%"
+                    ]
+                },
+                "markdownWysiwyg.defaultMode": {
+                    "order": 1,
+                    "type": "string",
+                    "enum": [
+                        "preview",
+                        "markdown"
+                    ],
+                    "enumDescriptions": [
+                        "%config.defaultMode.preview%",
+                        "%config.defaultMode.markdown%"
+                    ],
+                    "default": "preview",
+                    "description": "%config.defaultMode.description%"
+                },
+                "markdownWysiwyg.contentWidth": {
+                    "order": 4,
+                    "type": "string",
+                    "enum": [
+                        "full",
+                        "fixed"
+                    ],
+                    "enumDescriptions": [
+                        "%config.contentWidth.full%",
+                        "%config.contentWidth.fixed%"
+                    ],
+                    "default": "full",
+                    "description": "%config.contentWidth.description%"
+                },
+                "markdownWysiwyg.maxContentWidth": {
+                    "order": 5,
+                    "type": "number",
+                    "default": 100,
+                    "minimum": 20,
+                    "description": "%config.maxContentWidth.description%"
+                },
+                "markdownWysiwyg.tocContentGap": {
+                    "order": 5,
+                    "type": "number",
+                    "default": 100,
+                    "minimum": 16,
+                    "maximum": 240,
+                    "description": "%config.tocContentGap.description%"
+                },
+                "markdownWysiwyg.tocPosition": {
+                    "order": 5,
+                    "type": "string",
+                    "enum": [
+                        "left",
+                        "right"
+                    ],
+                    "default": "right",
+                    "description": "%config.tocPosition.description%",
+                    "enumDescriptions": [
+                        "%config.tocPosition.left%",
+                        "%config.tocPosition.right%"
+                    ]
+                },
+                "markdownWysiwyg.frontmatterExpanded": {
+                    "order": 6,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.frontmatterExpanded.description%"
+                },
+                "markdownWysiwyg.customCss": {
+                    "order": 12,
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "%config.customCss.description%"
+                },
+                "markdownWysiwyg.customJs": {
+                    "order": 13,
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "%config.customJs.description%"
+                },
+                "markdownWysiwyg.fontPreset": {
+                    "order": 7,
+                    "type": "string",
+                    "enum": [
+                        "editor",
+                        "sans",
+                        "serif",
+                        "mono"
+                    ],
+                    "enumDescriptions": [
+                        "%config.fontPreset.editor%",
+                        "%config.fontPreset.sans%",
+                        "%config.fontPreset.serif%",
+                        "%config.fontPreset.mono%"
+                    ],
+                    "default": "editor",
+                    "description": "%config.fontPreset.description%"
+                },
+                "markdownWysiwyg.fontFamilySans": {
+                    "order": 8,
+                    "type": "string",
+                    "default": "system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, \"Noto Sans\", sans-serif",
+                    "description": "%config.fontFamilySans.description%"
+                },
+                "markdownWysiwyg.fontFamilySerif": {
+                    "order": 9,
+                    "type": "string",
+                    "default": "\"Iowan Old Style\", \"Palatino\", Charter, ui-serif, Georgia, serif",
+                    "description": "%config.fontFamilySerif.description%"
+                },
+                "markdownWysiwyg.fontFamilyMono": {
+                    "order": 10,
+                    "type": "string",
+                    "default": "ui-monospace, \"Cascadia Code\", \"Source Code Pro\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace",
+                    "description": "%config.fontFamilyMono.description%"
+                },
+                "markdownWysiwyg.fontSize": {
+                    "order": 11,
+                    "type": "number",
+                    "default": 100,
+                    "minimum": 50,
+                    "maximum": 200,
+                    "description": "%config.fontSize.description%"
+                },
+                "markdownWysiwyg.toolbar.visible": {
+                    "order": 29,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the toolbar. When off, a small tab at the top edge (or the Toggle Toolbar command) brings it back."
+                },
+                "markdownWysiwyg.toolbar.items.format": {
+                    "order": 30,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Text level menu (paragraph, headings): pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.clearFormatting": {
+                    "order": 31,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "hidden",
+                    "description": "Clear formatting button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.fontPreset": {
+                    "order": 32,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "right",
+                    "description": "Font picker: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.bold": {
+                    "order": 33,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Bold button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.italic": {
+                    "order": 34,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Italic button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.strikethrough": {
+                    "order": 35,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "hidden",
+                    "description": "Strikethrough button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.highlight": {
+                    "order": 35.5,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "hidden",
+                    "description": "Highlight (==mark==) button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.inlineCode": {
+                    "order": 36,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "hidden",
+                    "description": "Inline code button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.link": {
+                    "order": 37,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Insert/edit link button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.image": {
+                    "order": 38,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Insert image button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.table": {
+                    "order": 39,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Insert table button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.footnote": {
+                    "order": 40,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "hidden",
+                    "description": "Insert footnote button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.math": {
+                    "order": 41,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "hidden",
+                    "description": "Inline math button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.listMenu": {
+                    "order": 42,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Lists dropdown (bullet / ordered / task): pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.quote": {
+                    "order": 45,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Quote dropdown (plain blockquote plus the GitHub callout types: Note, Tip, Important, Warning, Caution): pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.codeBlock": {
+                    "order": 46,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "left",
+                    "description": "Code block button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.horizontalRule": {
+                    "order": 47,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "hidden",
+                    "description": "Horizontal rule button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.viewSource": {
+                    "order": 48,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "right",
+                    "description": "Edit Raw Markdown button (switch to the plain text editor): pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.styleCheck": {
+                    "order": 49,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "right",
+                    "description": "Checks menu (spelling, grammar, style): pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.find": {
+                    "order": 50,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "right",
+                    "description": "Find button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.items.settings": {
+                    "order": 51,
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "left",
+                        "right"
+                    ],
+                    "default": "right",
+                    "description": "Settings button: pick a toolbar zone or hide it."
+                },
+                "markdownWysiwyg.toolbar.order": {
+                    "order": 52,
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `listMenu`, `quote`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
+                },
+                "markdownWysiwyg.tocAutoHideThreshold": {
+                    "order": 11,
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 0,
+                    "maximum": 20,
+                    "description": "%config.tocAutoHideThreshold.description%"
+                },
+                "markdownWysiwyg.debugMode": {
+                    "order": 90,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.debugMode.description%"
+                },
+                "markdownWysiwyg.imageLocalPath": {
+                    "order": 101,
+                    "type": "string",
+                    "default": "",
+                    "description": "%config.imageLocalPath.description%"
+                },
+                "markdownWysiwyg.smartLinks": {
+                    "order": 106,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.smartLinks.description%"
+                }
+            }
         }
-      }
+    },
+    "scripts": {
+        "vscode:prepublish": "node esbuild.mjs --production",
+        "build": "node esbuild.mjs",
+        "watch": "node esbuild.mjs --watch",
+        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/md-wysiwyg-editor/blob/dev --baseImagesUrl https://github.com/harlanlewis/md-wysiwyg-editor/raw/dev",
+        "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
+        "test": "vitest run",
+        "test:e2e": "node e2e/run.mjs",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
+        "perf": "node e2e/perf.mjs",
+        "perf:bundle": "node e2e/perf-bundle.mjs"
+    },
+    "devDependencies": {
+        "@types/dompurify": "^3.2.0",
+        "@types/jsdom": "^21.1.0",
+        "@types/katex": "^0.16.8",
+        "@types/node": "^18.0.0",
+        "@types/vscode": "^1.80.0",
+        "@vitest/coverage-v8": "^2.1.0",
+        "@vscode/vsce": "^2.32.0",
+        "esbuild": "^0.24.0",
+        "jsdom": "24.1.3",
+        "playwright": "^1.61.1",
+        "typescript": "^5.7.0",
+        "vitest": "^2.1.0",
+        "vscode-uri": "^3.1.0"
+    },
+    "dependencies": {
+        "@milkdown/core": "7.21.2",
+        "@milkdown/plugin-diff": "7.21.2",
+        "@milkdown/plugin-listener": "7.21.2",
+        "@milkdown/plugin-prism": "7.21.2",
+        "@milkdown/preset-commonmark": "7.21.2",
+        "@milkdown/preset-gfm": "7.21.2",
+        "@milkdown/prose": "7.21.2",
+        "@milkdown/transformer": "7.21.2",
+        "@milkdown/utils": "7.21.2",
+        "dompurify": "^3.4.11",
+        "harper.js": "^2.4.0",
+        "katex": "^0.16.44",
+        "mermaid": "^11.0.0",
+        "prosemirror-tables": "^1.8.5",
+        "refractor": "^5.0.0",
+        "remark-math": "6",
+        "unist-util-visit": "^5.1.0"
     }
-  },
-  "scripts": {
-    "vscode:prepublish": "node esbuild.mjs --production",
-    "build": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch",
-    "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/md-wysiwyg-editor/blob/dev --baseImagesUrl https://github.com/harlanlewis/md-wysiwyg-editor/raw/dev",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
-    "test": "vitest run",
-    "test:e2e": "node e2e/run.mjs",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "perf": "node e2e/perf.mjs",
-    "perf:bundle": "node e2e/perf-bundle.mjs"
-  },
-  "devDependencies": {
-    "@types/dompurify": "^3.2.0",
-    "@types/jsdom": "^21.1.0",
-    "@types/katex": "^0.16.8",
-    "@types/node": "^18.0.0",
-    "@types/vscode": "^1.80.0",
-    "@vitest/coverage-v8": "^2.1.0",
-    "@vscode/vsce": "^2.32.0",
-    "esbuild": "^0.24.0",
-    "jsdom": "24.1.3",
-    "playwright": "^1.61.1",
-    "typescript": "^5.7.0",
-    "vitest": "^2.1.0",
-    "vscode-uri": "^3.1.0"
-  },
-  "dependencies": {
-    "@milkdown/core": "7.21.2",
-    "@milkdown/plugin-diff": "7.21.2",
-    "@milkdown/plugin-listener": "7.21.2",
-    "@milkdown/plugin-prism": "7.21.2",
-    "@milkdown/preset-commonmark": "7.21.2",
-    "@milkdown/preset-gfm": "7.21.2",
-    "@milkdown/prose": "7.21.2",
-    "@milkdown/transformer": "7.21.2",
-    "@milkdown/utils": "7.21.2",
-    "dompurify": "^3.4.11",
-    "harper.js": "^2.4.0",
-    "katex": "^0.16.44",
-    "mermaid": "^11.0.0",
-    "prosemirror-tables": "^1.8.5",
-    "refractor": "^5.0.0",
-    "remark-math": "6",
-    "unist-util-visit": "^5.1.0"
-  }
 }

@@ -15,8 +15,10 @@
  *    EXISTING fenced-code-block machinery (schema, NodeView, serializer).
  *  - `blockLatexSchema` extends the commonmark `code_block` schema so a
  *    LaTeX-language code block serializes back to a `math` mdast node (→ `$$`).
- *  - `mathInlineSchema` models the inline atom; its DOM rendering is handled by
- *    the NodeView in components/math (lazy KaTeX), not by this schema's `toDOM`.
+ *  - `mathInlineSchema` models inline math as a node whose text CONTENT is the
+ *    LaTeX source (per-character caret editing, MAR-74); rendering is handled by
+ *    the NodeView in components/math (lazy KaTeX), and the reveal-source-on-
+ *    caret-entry behavior by mathInlineEdit.ts.
  *  - input rules convert typed `$...$` / `$$ ` into math on the fly.
  *  - `insertInlineMathCommand` powers the toolbar button.
  *
@@ -30,9 +32,8 @@
  */
 import type { Node as MdastNode } from "@milkdown/transformer";
 import { codeBlockSchema } from "@milkdown/preset-commonmark";
-import { findNodeInSelection, nodeRule } from "@milkdown/prose";
 import { NodeSelection, TextSelection } from "@milkdown/prose/state";
-import { textblockTypeInputRule } from "@milkdown/prose/inputrules";
+import { InputRule, textblockTypeInputRule } from "@milkdown/prose/inputrules";
 import { $command, $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
 import remarkMath from "remark-math";
 import { visit } from "unist-util-visit";
@@ -140,40 +141,45 @@ export const blockLatexSchema = codeBlockSchema.extendSchema((prev) => (ctx) => 
  * (components/math); this schema's `toDOM`/`parseDOM` only need to preserve the
  * value for clipboard round-trips, so no synchronous KaTeX is pulled in here.
  */
+/**
+ * Inline math holds its LaTeX source as REAL TEXT CONTENT (not an attr), so the
+ * caret can walk into it character-by-character like inline code (MAR-74). The
+ * NodeView (components/math) shows rendered KaTeX while the caret is outside and
+ * the raw source while it's inside; `mathInlineEditPlugin` (mathInlineEdit.ts)
+ * owns that reveal behavior. `code: true` makes prosemirror-inputrules skip
+ * input rules inside the formula (typing `**x**` in LaTeX must stay literal),
+ * and `marks: ""` keeps the source a plain-text run.
+ */
 export const mathInlineSchema = $nodeSchema(mathInlineId, () => ({
     group: "inline",
     inline: true,
+    content: "text*",
+    marks: "",
+    code: true,
     draggable: true,
-    atom: true,
-    attrs: {
-        value: { default: "" },
-    },
     parseDOM: [
         {
             tag: `span[data-type="${mathInlineId}"]`,
-            getAttrs: (dom) => ({
-                value: (dom as HTMLElement).dataset["value"] ?? "",
-            }),
+            // The source is the element's text content (the toDOM hole below);
+            // older clipboard HTML also carried it as text, so one rule covers both.
         },
     ],
-    toDOM: (node) => {
-        const value = node.attrs["value"] as string;
-        return [
-            "span",
-            { "data-type": mathInlineId, "data-value": value },
-            value,
-        ];
-    },
+    toDOM: () => ["span", { "data-type": mathInlineId }, 0],
     parseMarkdown: {
         match: (node) => node.type === "inlineMath",
         runner: (state, node, type) => {
-            state.addNode(type, { value: node["value"] as string });
+            const value = (node["value"] as string) ?? "";
+            state.openNode(type);
+            if (value) {
+                state.addText(value);
+            }
+            state.closeNode();
         },
     },
     toMarkdown: {
         match: (node) => node.type.name === mathInlineId,
         runner: (state, node) => {
-            state.addNode("inlineMath", undefined, node.attrs["value"] as string);
+            state.addNode("inlineMath", undefined, node.textContent);
         },
     },
 }));
@@ -189,11 +195,19 @@ export const mathInlineSchema = $nodeSchema(mathInlineId, () => ({
  */
 export const INLINE_MATH_RULE_REGEX = /(?<![\\$])\$([^\s$](?:[^$]*[^\s$])?)\$$/;
 
-export const mathInlineInputRule = $inputRule((ctx) =>
-    nodeRule(INLINE_MATH_RULE_REGEX, mathInlineSchema.type(ctx), {
-        getAttr: (match) => ({ value: match[1] ?? "" }),
-    }),
-);
+export const mathInlineInputRule = $inputRule((ctx) => {
+    const type = mathInlineSchema.type(ctx);
+    // A plain InputRule (not nodeRule): the LaTeX lives as the node's text
+    // CONTENT, which nodeRule's attr-only factory can't create.
+    return new InputRule(INLINE_MATH_RULE_REGEX, (state, match, start, end) => {
+        const value = match[1];
+        if (!value) {
+            return null;
+        }
+        const node = type.create(null, state.schema.text(value));
+        return state.tr.replaceRangeWith(start, end, node);
+    });
+});
 
 /** Block input rule: typing `$$` then a space/newline starts a LaTeX block. */
 export const mathBlockInputRule = $inputRule((ctx) =>
@@ -204,55 +218,61 @@ export const mathBlockInputRule = $inputRule((ctx) =>
 
 /**
  * Toggle inline math over the selection (toolbar button / command).
- * With text selected, wraps it as `$...$`; with the caret inside an existing
- * inline math node, unwraps it back to plain text. Ported from Crepe's
- * `toggleLatexCommand`.
+ * With text selected, wraps it as `$...$` and places the caret inside (so the
+ * revealed source is immediately editable); with the caret inside an existing
+ * inline math node (or one node-selected), unwraps it back to plain text.
  */
 export const insertInlineMathCommand = $command(
     "InsertInlineMath",
     (ctx) => () => (state, dispatch) => {
         const mathType = mathInlineSchema.type(ctx);
-        const {
-            hasNode: hasMath,
-            pos: mathPos,
-            target: mathNode,
-        } = findNodeInSelection(state, mathType);
-
         const { selection, doc, tr } = state;
-        if (!hasMath) {
-            // Refuse where inline math cannot live (e.g. inside a code
-            // block, or with a block node selected): replaceSelectionWith
-            // would re-fit the content elsewhere and NodeSelection.create
-            // on selection.from would throw on the missing node.
-            const { $from, $to } = selection;
-            const toIndex = $to.sameParent($from) ? $to.index() : $from.index();
-            if (!$from.parent.canReplaceWith($from.index(), toIndex, mathType)) {
-                return false;
+        const { $from, $to } = selection;
+
+        // Unwrap: the caret sits inside a math node's source, or one is selected.
+        let mathPos = -1;
+        let mathNode = null;
+        if (selection instanceof NodeSelection && selection.node.type === mathType) {
+            mathPos = selection.from;
+            mathNode = selection.node;
+        } else if ($from.parent.type === mathType) {
+            mathPos = $from.before();
+            mathNode = $from.parent;
+        }
+        if (mathNode) {
+            const content = mathNode.textContent;
+            let next = tr.delete(mathPos, mathPos + mathNode.nodeSize);
+            if (content) {
+                next = next.insertText(content, mathPos);
             }
-            const text = doc.textBetween(selection.from, selection.to);
-            const next = tr.replaceSelectionWith(mathType.create({ value: text }));
             if (dispatch) {
-                // Belt and braces: only node-select the insertion if it
-                // actually landed at selection.from.
-                if (next.doc.nodeAt(selection.from)?.type === mathType) {
-                    next.setSelection(NodeSelection.create(next.doc, selection.from));
-                }
-                dispatch(next);
+                dispatch(next.setSelection(
+                    TextSelection.create(next.doc, mathPos, mathPos + content.length),
+                ));
             }
             return true;
         }
 
-        if (!mathNode || mathPos < 0) return false;
-        const { from, to } = selection;
-        const content = mathNode.attrs["value"] as string;
-        let next = tr.delete(mathPos, mathPos + 1);
-        next = next.insertText(content, mathPos);
+        // Refuse where inline math cannot live (e.g. inside a code block, or
+        // with a block node selected): replaceSelectionWith would re-fit the
+        // content elsewhere.
+        const toIndex = $to.sameParent($from) ? $to.index() : $from.index();
+        if (!$from.parent.canReplaceWith($from.index(), toIndex, mathType)) {
+            return false;
+        }
+        const text = doc.textBetween(selection.from, selection.to);
+        const node = mathType.create(null, text ? state.schema.text(text) : null);
+        const next = tr.replaceSelectionWith(node);
         if (dispatch) {
-            dispatch(
+            // Belt and braces: only move the caret inside if the node actually
+            // landed at selection.from. Caret inside-at-end reveals the source
+            // (mathInlineEdit) so an empty insert is immediately typable.
+            if (next.doc.nodeAt(selection.from)?.type === mathType) {
                 next.setSelection(
-                    TextSelection.create(next.doc, from, to + content.length - 1),
-                ),
-            );
+                    TextSelection.create(next.doc, selection.from + 1 + text.length),
+                );
+            }
+            dispatch(next);
         }
         return true;
     },

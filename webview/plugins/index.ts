@@ -20,6 +20,7 @@ export {
 } from "./horizontalRule";
 export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
+export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export { listEnterPlugin, listLiftPlugin, listSpreadNormalizePlugin } from "./list";
 export { pendingRangePlugin, setPendingRange } from "./pendingRange";
