@@ -25,11 +25,15 @@ This document is a **living reference** of every content type WYSIWYG Markdown E
 
 ###### Heading 6
 
-Setext headings round-trip in their original form too:
+Setext headings round-trip in their original form too (these two are real
+setext source — open the raw file to confirm saving never rewrites them to
+`#` form):
 
-# Setext H1
+Setext H1
+=========
 
-## Setext H2
+Setext H2
+---------
 
 ---
 
@@ -68,12 +72,13 @@ A hard line break ends this line here →<br>and continues on the next.
 
 [spec]: https://example.com/spec "Reference definition"
 
-Hover any link for the popup: it shows **where the link actually opens**
-(`→ path`, straight from the resolver), an open button (or Cmd/Ctrl+click the
-link itself), and a pencil to edit — text, URL, and a **format switch**
-(`markdown` ⇄ `[[wiki]]`) that converts the link in place. Edits **save on
-blur**; there is no confirm button. External links open through VS Code's own
-trusted-domains prompt.
+Hover a link for the popup (clicking pins it open): it shows **where the link
+actually opens** (`→ path`, straight from the resolver) and the actions
+`open · copy · unlink · edit` — editing covers text, URL, and (for local
+links) a **Local link format** switch (`markdown` ⇄ `[[wiki]]`) that converts
+the link in place. Edits **save on blur**; there is no confirm button.
+External links open through VS Code's own trusted-domains prompt, or
+Cmd/Ctrl+click the link itself.
 
 ### Smart local links
 
@@ -127,8 +132,8 @@ cell:
 
 1. First step
 2. Second step
-  1. Sub-step a
-  2. Sub-step b
+   1. Sub-step a
+   2. Sub-step b
 3. Third step
 
 ### Task list
@@ -143,27 +148,11 @@ cell:
 
 > A single-line blockquote.
 
-> A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`. A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`. A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`. A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`. A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`. A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`.
+> A multi-line blockquote that spans several lines and can contain
+> **formatting** and `code` — long enough to wrap at any sane editor width,
+> so soft-wrap rendering inside a quote gets eyeballed here too.
 >
-> A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`. A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`. A multi-line blockquote
-> that spans several lines,
-> and can contain **formatting** and `code`.
+> A second paragraph inside the same quote.
 
 ---
 
@@ -300,18 +289,18 @@ no highlighting here
 
 | Feature | Supported | Notes |
 |---|:---:|---|
-| Alignment | yes | left / center / right |
 | Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
 | Line breaks | yes | first line<br>second line |
+| Alignment markers | render + round-trip | this Supported column is `:---:` centered; no UI to *change* alignment yet (MAR-75) |
 
 ---
 
 ## Math
 
-
-
-Inline math renders in place: $E = mc^2$. Currency like $5 and $10 stays as
-plain text.
+Inline math renders in place and is **edited in place**: arrow into
+$E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character
+editing, exactly like inline code; leave it and KaTeX re-renders. Currency
+like $5 and $10 stays as plain text.
 
 Block math:
 
@@ -357,13 +346,14 @@ graph TD
 
 ## Horizontal rules
 
-Three marker styles all round-trip in their original form:
+Three marker styles, all preserved in their original form on save (open the
+raw file: these really are three different markers):
 
 ---
 
----
+***
 
----
+___
 
 ---
 
@@ -411,7 +401,7 @@ the Checks menu — flip that off to silence all of them at once.
 - the error occured twice
 - a small mispeling slips through
 
-### Grammar — `markdownWysiwyg.spellCheck.grammar`
+### Grammar — `markdownWysiwyg.grammarCheck.enabled`
 
 Harper owns these; a couple of classic rules:
 

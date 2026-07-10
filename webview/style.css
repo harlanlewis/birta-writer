@@ -656,32 +656,48 @@ body.editor-width-auto {
             background: var(--vscode-toolbar-hoverBackground);
         }
 
-        /* Paragraph gutter: invisible until the paragraph is hovered, then a
-           very subtle "P"; interacting with the marker itself (hover / open
-           menu / keyboard focus) brings it to the headings' full treatment —
-           so P → Hn is as reachable as Hn → P without adding ambient noise. */
+        /* Paragraph gutter: invisible until the paragraph is hovered, then the
+           same contrast as the heading hash markers; interacting with the
+           marker itself (hover / open menu / keyboard focus) brings it to the
+           markers' full hover treatment — so P → Hn is as reachable as
+           Hn → P without adding ambient noise. */
         .heading-fold-gutter--paragraph {
             top: 0;
             height: 1.5em;
         }
 
-        .heading-fold-marker--paragraph {
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        p:hover > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph {
-            opacity: 0.3;
+        /* Bridge the whitespace between the gutter and the paragraph text, so
+           mousing from the text to the marker never leaves the paragraph's
+           hover (the same gap-bridge idea as the toolbar menus). The pseudo-
+           element re-enables pointer events inside the otherwise inert gutter. */
+        .heading-fold-gutter--paragraph::after {
+            content: "";
+            position: absolute;
+            left: 100%;
+            top: 0;
+            width: 12px;
+            height: 100%;
             pointer-events: auto;
         }
 
-        /* Selectors carry the full p > … path so they outrank the subtle
-           paragraph-hover rule above (the marker's own state must win). */
+        /* pointer-events stays AUTO even while invisible (matching the heading
+           markers): the marker itself must sustain the paragraph's :hover as
+           the pointer travels onto it — with `none` here, leaving the text box
+           dropped the hover and the marker vanished before it could be clicked. */
+        .heading-fold-marker--paragraph {
+            opacity: 0;
+        }
+
+        p:hover > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph {
+            opacity: 0.55; /* the heading markers' resting contrast */
+        }
+
+        /* Selectors carry the full p > … path so they outrank the paragraph-
+           hover rule above (the marker's own state must win). */
         p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph:hover,
         p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph:focus-visible,
         p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph.heading-fold-marker--menu-open {
             opacity: 1;
-            pointer-events: auto;
             color: var(--vscode-foreground);
             background: var(--vscode-toolbar-hoverBackground);
         }

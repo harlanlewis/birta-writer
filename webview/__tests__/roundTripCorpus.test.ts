@@ -24,6 +24,18 @@ const fixtures = readdirSync(FIXTURES_DIR)
     .filter((f) => f.endsWith(".md"))
     .map((f) => ({ name: f, content: readFileSync(join(FIXTURES_DIR, f), "utf8") }));
 
+// The living showcase (samples/content-inventory.md) doubles as a corpus
+// member: every content type it demonstrates must round-trip byte-identically,
+// so an inventory edit that breaks a fidelity claim fails here. The extension
+// strips YAML frontmatter before the webview ever sees content
+// (src/utils/contentTransform.ts), so the corpus tests the body exactly as
+// production delivers it.
+{
+    const raw = readFileSync(join(__dirname, "..", "..", "samples", "content-inventory.md"), "utf8");
+    const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
+    fixtures.push({ name: "samples/content-inventory.md (body)", content: body });
+}
+
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
     document.body.appendChild(root);

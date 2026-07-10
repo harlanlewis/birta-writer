@@ -39,16 +39,22 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.move(paraBox.x, paraBox.y);
     await page.waitForTimeout(150);
     const subtle = parseFloat(await opacity());
-    check("paragraph hover: P visible but subtle", subtle > 0 && subtle < 0.6, `opacity=${subtle}`);
+    check("paragraph hover: P at the heading markers' resting contrast", subtle > 0.4 && subtle < 0.7, `opacity=${subtle}`);
 
-    // ── 4. Hovering the marker itself: full contrast ──
+    // ── 4. Mousing from the text TO the marker keeps it alive (gap bridge) ──
+    // The regression: leaving the paragraph's text box dropped :hover and the
+    // marker vanished before it could be clicked. Travel in small steps.
     const markerBox = await page.$eval(pMarker, (el) => {
         const r = el.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     });
-    await page.mouse.move(markerBox.x, markerBox.y);
+    const paraLeft = await page.$eval(".ProseMirror > p", (el) => el.getBoundingClientRect().x);
+    await page.mouse.move(paraLeft + 4, markerBox.y); // at the text's left edge
+    await page.waitForTimeout(80);
+    await page.mouse.move(markerBox.x, markerBox.y, { steps: 20 }); // travel the gap
     await page.waitForTimeout(150);
-    check("marker hover: full contrast", (await opacity()) === "1", `opacity=${await opacity()}`);
+    const arrived = parseFloat(await opacity());
+    check("traveling text → marker keeps it visible (full contrast on arrival)", arrived === 1, `opacity=${arrived}`);
 
     // ── 5. Click opens the shared retype menu with P checked ──
     await page.mouse.click(markerBox.x, markerBox.y);
