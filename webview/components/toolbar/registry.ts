@@ -20,9 +20,7 @@ export const TOOLBAR_ITEM_IDS = [
     "highlight",
     "inlineCode",
     "link",
-    "bulletList",
-    "orderedList",
-    "taskList",
+    "listMenu",
     "codeBlock",
     "blockquote",
     "callouts",
@@ -46,7 +44,7 @@ export type ToolbarItemId = (typeof TOOLBAR_ITEM_IDS)[number];
  * The shipped layout: the common editing controls in the left zone (in
  * TOOLBAR_ITEM_IDS order), utilities on the right. Less-used inserts ship
  * hidden (opt-in), since each has an input-rule / slash / palette path:
- * strikethrough, highlight, inlineCode, taskList, callouts, horizontalRule,
+ * strikethrough, highlight, inlineCode, callouts, horizontalRule,
  * math, footnote, clearFormatting. Kept in lockstep
  * with the package.json setting defaults by
  * shared/__tests__/toolbarDefaultsContributions.test.ts.
@@ -63,10 +61,10 @@ export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     // Inline code ships hidden: the `` `…` `` input rule and Mod-e cover it.
     inlineCode: "hidden",
     link: "left",
-    bulletList: "left",
-    orderedList: "left",
-    // Task list ships hidden: `- [ ] ` at the start of a line covers it.
-    taskList: "hidden",
+    // Lists: one dropdown (bullet / ordered / task), mirroring the format
+    // (P + headings) picker. Each list type is still reachable by its input
+    // rule (`- `, `1. `, `- [ ] `), the slash menu, and the command palette.
+    listMenu: "left",
     codeBlock: "left",
     blockquote: "left",
     // Callouts ship hidden: the slash menu and `[!note] ` in a blockquote cover them.

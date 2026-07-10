@@ -22,9 +22,8 @@ const SLASH_COVERAGE: Record<ToolbarItemId, readonly string[]> = {
     highlight: ["highlight"],
     inlineCode: ["inlineCode"],
     link: ["link"],
-    bulletList: ["bulletList"],
-    orderedList: ["orderedList"],
-    taskList: ["taskList"],
+    // The lists dropdown covers all three list types (like format → headings).
+    listMenu: ["bulletList", "orderedList", "taskList"],
     codeBlock: ["codeBlock"],
     blockquote: ["blockquote"],
     callouts: ["callout", "callout-note", "callout-tip", "callout-important", "callout-warning", "callout-caution"],

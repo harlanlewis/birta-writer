@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.119",
+  "version": "0.2.121",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"
@@ -1273,7 +1273,7 @@
           "default": "hidden",
           "description": "Inline math button: pick a toolbar zone or hide it."
         },
-        "markdownWysiwyg.toolbar.items.bulletList": {
+        "markdownWysiwyg.toolbar.items.listMenu": {
           "order": 42,
           "type": "string",
           "enum": [
@@ -1282,29 +1282,7 @@
             "right"
           ],
           "default": "left",
-          "description": "Bullet list button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.orderedList": {
-          "order": 43,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "left",
-          "description": "Ordered list button: pick a toolbar zone or hide it."
-        },
-        "markdownWysiwyg.toolbar.items.taskList": {
-          "order": 44,
-          "type": "string",
-          "enum": [
-            "hidden",
-            "left",
-            "right"
-          ],
-          "default": "hidden",
-          "description": "Task list button: pick a toolbar zone or hide it."
+          "description": "Lists dropdown (bullet / ordered / task): pick a toolbar zone or hide it."
         },
         "markdownWysiwyg.toolbar.items.blockquote": {
           "order": 45,
@@ -1401,7 +1379,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `bulletList`, `orderedList`, `taskList`, `blockquote`, `callouts`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
+          "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `listMenu`, `blockquote`, `callouts`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
         },
         "markdownWysiwyg.tocAutoHideThreshold": {
           "order": 11,

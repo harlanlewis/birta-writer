@@ -40,6 +40,50 @@
     visibility: hidden;
 }
 
+/* Heading gutter level menu — the popup opened by clicking a heading's `##`
+   gutter marker to retype it (P / H1–H6). Body-mounted (outside the editor,
+   like the other chrome popups), so it lives at top level, not in the .milkdown
+   scope. Mirrors the toolbar Format dropdown and the code-block language picker;
+   the active level is marked with the shared leading check glyph. */
+.heading-level-menu {
+    position: fixed;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    min-width: 88px;
+    padding: 4px 0;
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-editorHoverWidget-border);
+    border-radius: 5px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.heading-level-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border: 0;
+    background: none;
+    color: var(--vscode-editorHoverWidget-foreground);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.heading-level-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.heading-level-item-label {
+    font-weight: 600;
+}
+
+.heading-level-item--active .menu-check {
+    visibility: visible;
+}
+
 html,
 body {
     height: 100%;
@@ -581,11 +625,32 @@ body.editor-width-auto {
         .heading-fold-marker {
             /* Monospace so the hashes read as literal Markdown source and stay
                compact/predictable in width (a proportional font makes six
-               hashes run long). Fixed size regardless of heading level. */
+               hashes run long). Fixed size regardless of heading level.
+               It's a <button> (opens the level menu) but reads as bare text
+               until hovered; pointer-events:auto so it stays clickable even on
+               non-foldable headings, whose gutter is otherwise inert. */
+            display: inline-flex;
+            align-items: center;
+            margin: 0;
+            padding: 0 2px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: inherit;
             font-family: var(--vscode-editor-font-family, monospace);
             font-size: 0.95rem;
             line-height: 1;
             opacity: 0.55;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+        }
+
+        .heading-fold-marker:hover,
+        .heading-fold-marker--menu-open {
+            opacity: 1;
+            color: var(--vscode-foreground);
+            background: var(--vscode-toolbar-hoverBackground);
         }
 
         .heading-fold-toggle {

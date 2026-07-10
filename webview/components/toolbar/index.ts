@@ -1160,16 +1160,58 @@ export function initToolbar(
         runEditorCommand("insertMath", getEditor),
     ));
 
-    // Lists (toggle: clicking the active one again lifts out)
-    items.bulletList = wrap("bulletList", btn(IconList, t("Bullet List"), () =>
-        runEditorCommand("toggleBulletList", getEditor),
-    ));
-    items.orderedList = wrap("orderedList", btn(IconListOrdered, t("Ordered List"), () =>
-        runEditorCommand("toggleOrderedList", getEditor),
-    ));
-    items.taskList = wrap("taskList", btn(IconCheckSquare, t("Task List"), () =>
-        runEditorCommand("toggleTaskList", getEditor),
-    ));
+    // ── Lists dropdown (bullet / ordered / task) ──
+    // One hover-menu picker, mirroring the Format (P + headings) dropdown: the
+    // three list types share a single toolbar slot, each row toggling its list
+    // (clicking the active one again lifts out). The active list type is
+    // checkmarked, refreshed by onSelectionChange. The three individual list
+    // buttons collapsed into this to slim the default bar.
+    type ListType = "bullet" | "ordered" | "task";
+    const listRows: { type: ListType; item: CheckItem }[] = [];
+    function createListPicker(): HTMLElement {
+        const listWrap = document.createElement("div");
+        listWrap.className = "tb-fmt-wrap";
+
+        const listBtn = createMenuTrigger({
+            html: IconList + IconChevronDown,
+            ariaLabel: t("Lists"),
+        });
+
+        const listMenu = document.createElement("div");
+        listMenu.className = "tb-fmt-menu tb-list-menu";
+        listMenu.style.display = "none";
+        listMenu.setAttribute("role", "menu");
+
+        const choices: { type: ListType; icon: string; label: string; command: string }[] = [
+            { type: "bullet", icon: IconList, label: t("Bullet List"), command: "toggleBulletList" },
+            { type: "ordered", icon: IconListOrdered, label: t("Ordered List"), command: "toggleOrderedList" },
+            { type: "task", icon: IconCheckSquare, label: t("Task List"), command: "toggleTaskList" },
+        ];
+        for (const { type, icon, label, command } of choices) {
+            const item = createCheckItem(label);
+            item.el.classList.add("tb-list-item");
+            const iconEl = document.createElement("span");
+            iconEl.className = "tb-list-item-icon";
+            iconEl.innerHTML = icon;
+            // Sit the icon between the leading check column and the label.
+            item.el.insertBefore(iconEl, item.label);
+            item.el.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                runEditorCommand(command, getEditor);
+                listMenu.style.display = "none";
+            });
+            listMenu.appendChild(item.el);
+            listRows.push({ type, item });
+        }
+
+        wireHoverMenu(listWrap, listBtn, listMenu);
+
+        listWrap.appendChild(listBtn);
+        listWrap.appendChild(listMenu);
+        return listWrap;
+    }
+    items.listMenu = wrap("listMenu", createListPicker());
 
     // Blocks (toggle)
     items.blockquote = wrap("blockquote", btn(IconQuote, t("Blockquote"), () =>
@@ -1886,6 +1928,30 @@ export function initToolbar(
                 // i=0 → P (activeLevel===0), i=1..6 → H1..H6 (activeLevel===i)
                 item.setChecked(i === 0 ? activeLevel === 0 : i === activeLevel);
             });
+            // Lists dropdown: checkmark the enclosing list type (task lists are
+            // bullet lists whose items carry a `checked` attr, so probe that
+            // first). At most one is active; a bare paragraph checks none.
+            if (listRows.length > 0) {
+                let activeList: ListType | null = null;
+                for (let d = $from.depth; d >= 0; d--) {
+                    const n = $from.node(d);
+                    if (n.type.name === "list_item" && n.attrs["checked"] != null) {
+                        activeList = "task";
+                        break;
+                    }
+                    if (n.type.name === "bullet_list") {
+                        activeList = "bullet";
+                        break;
+                    }
+                    if (n.type.name === "ordered_list") {
+                        activeList = "ordered";
+                        break;
+                    }
+                }
+                for (const { type, item } of listRows) {
+                    item.setChecked(type === activeList);
+                }
+            }
         },
         setDebugMode(enabled: boolean): void {
             debugVisible = enabled;

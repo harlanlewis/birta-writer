@@ -276,6 +276,24 @@
     }
 }
 
+/* Lists dropdown rows: a leading check column (shared .menu-check) + a type
+   icon + the label. Like the Format rows they are checkable (the active list
+   type is marked), and like the Callout rows they carry an icon. Center the
+   row (the check-item default is baseline-aligned, which drops the icon low). */
+.tb-list-item {
+    align-items: center;
+}
+
+.tb-list-item-icon {
+    display: inline-flex;
+    flex: none;
+
+    svg {
+        width: 14px;
+        height: 14px;
+    }
+}
+
 /* ─── Checks menu (spelling / grammar / style + per-check toggles) ─── */
 .tb-checks-menu {
     /* Side + vertical direction are set at open time by placeMenu (menuPlacement.ts),

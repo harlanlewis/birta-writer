@@ -1,0 +1,285 @@
+/**
+ * Tests for the heading gutter's level control: `setHeadingLevelAt` (retype a
+ * heading by position — the pure transform behind the gutter menu) and
+ * `openHeadingLevelMenu` (the popup opened by clicking a heading's `##` marker).
+ *
+ * Both drive the REAL Milkdown editor (real parser, real schema, the production
+ * serialization config) so the position math and node markup match production.
+ * acquireVsCodeApi is injected globally by setup.ts.
+ */
+import { describe, it, expect, afterEach } from "vitest";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import { gfm } from "@milkdown/preset-gfm";
+import type { EditorView } from "@milkdown/prose/view";
+import { getMarkdown } from "@milkdown/utils";
+import { configureSerialization, pureCommonmark } from "../serialization";
+import { setHeadingLevelAt } from "../plugins/headingFold";
+
+// openHeadingLevelMenu is not exported (it's DOM-internal), so we exercise it
+// through the marker button the plugin renders. The plugin registration wires
+// the gutter widget; clicking its marker opens the menu on <body>.
+import { headingFoldPlugin } from "../plugins/headingFold";
+
+let editors: Editor[] = [];
+
+async function makeEditor(markdown: string): Promise<Editor> {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const editor = await Editor.make()
+        .config((ctx) => {
+            ctx.set(rootCtx, root);
+            ctx.set(defaultValueCtx, markdown);
+            configureSerialization(ctx);
+        })
+        .use(pureCommonmark)
+        .use(gfm)
+        .use(headingFoldPlugin)
+        .create();
+    editors.push(editor);
+    return editor;
+}
+
+function view(editor: Editor): EditorView {
+    return editor.action((ctx) => ctx.get(editorViewCtx));
+}
+
+function markdown(editor: Editor): string {
+    return editor.action(getMarkdown()).trim();
+}
+
+/** Document position of the first heading node (0 when it leads the doc). */
+function firstHeadingPos(v: EditorView): number {
+    let pos = -1;
+    v.state.doc.forEach((node, offset) => {
+        if (pos === -1 && node.type.name === "heading") {
+            pos = offset;
+        }
+    });
+    return pos;
+}
+
+afterEach(async () => {
+    for (const editor of editors) {
+        await editor.destroy();
+    }
+    editors = [];
+    document.querySelectorAll(".heading-level-menu").forEach((el) => el.remove());
+    document.body.innerHTML = "";
+});
+
+describe("setHeadingLevelAt", () => {
+    it("a different heading level should retype the heading in place", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title\n\nBody");
+        const v = view(editor);
+        const pos = firstHeadingPos(v);
+
+        // Act
+        const changed = setHeadingLevelAt(v, pos, 4);
+
+        // Assert
+        expect(changed).toBe(true);
+        expect(v.state.doc.nodeAt(pos)!.attrs["level"]).toBe(4);
+        expect(markdown(editor)).toBe("#### Title\n\nBody");
+    });
+
+    it("level 0 should convert the heading to a paragraph", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title\n\nBody");
+        const v = view(editor);
+        const pos = firstHeadingPos(v);
+
+        // Act
+        const changed = setHeadingLevelAt(v, pos, 0);
+
+        // Assert
+        expect(changed).toBe(true);
+        expect(v.state.doc.nodeAt(pos)!.type.name).toBe("paragraph");
+        expect(markdown(editor)).toBe("Title\n\nBody");
+    });
+
+    it("the same heading level should be a no-op returning false", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title");
+        const v = view(editor);
+        const pos = firstHeadingPos(v);
+
+        // Act
+        const changed = setHeadingLevelAt(v, pos, 2);
+
+        // Assert
+        expect(changed).toBe(false);
+        expect(v.state.doc.nodeAt(pos)!.attrs["level"]).toBe(2);
+    });
+
+    it("a position that is not a heading should return false without changing the doc", async () => {
+        // Arrange: a bare paragraph — position 0 is not a heading
+        const editor = await makeEditor("Just a paragraph");
+        const v = view(editor);
+        const before = markdown(editor);
+
+        // Act
+        const changed = setHeadingLevelAt(v, 0, 3);
+
+        // Assert
+        expect(changed).toBe(false);
+        expect(markdown(editor)).toBe(before);
+    });
+
+    it("an out-of-clamp level should be clamped into 1..6", async () => {
+        // Arrange
+        const editor = await makeEditor("# Title");
+        const v = view(editor);
+        const pos = firstHeadingPos(v);
+
+        // Act: 9 clamps to 6
+        const changed = setHeadingLevelAt(v, pos, 9);
+
+        // Assert
+        expect(changed).toBe(true);
+        expect(v.state.doc.nodeAt(pos)!.attrs["level"]).toBe(6);
+    });
+});
+
+/** The <body>-mounted level menu, if open. */
+function levelMenu(): HTMLElement | null {
+    return document.querySelector<HTMLElement>(".heading-level-menu");
+}
+
+/** The heading's gutter marker button (opens the level menu). */
+function marker(): HTMLButtonElement {
+    const el = document.querySelector<HTMLButtonElement>(".heading-fold-marker");
+    expect(el, "gutter marker not rendered").not.toBeNull();
+    return el!;
+}
+
+function clickMouse(el: HTMLElement, type: "mousedown" | "click"): void {
+    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
+}
+
+describe("heading gutter level menu", () => {
+    it("clicking the marker should open a P/H1–H6 menu with the current level checked", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title\n\nBody");
+        view(editor); // force layout
+
+        // Act
+        clickMouse(marker(), "click");
+
+        // Assert
+        const menu = levelMenu();
+        expect(menu).not.toBeNull();
+        const rows = menu!.querySelectorAll(".heading-level-item");
+        expect(Array.from(rows).map((r) => r.textContent)).toEqual(["P", "H1", "H2", "H3", "H4", "H5", "H6"]);
+        const active = menu!.querySelector(".heading-level-item--active");
+        expect(active!.textContent).toBe("H2");
+        expect(active!.getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("picking a level should retype the heading and close the menu", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title");
+        const v = view(editor);
+        clickMouse(marker(), "click");
+
+        // Act: pick H4 (rows are P,H1,H2,H3,H4,... → index 4)
+        const rows = levelMenu()!.querySelectorAll<HTMLButtonElement>(".heading-level-item");
+        clickMouse(rows[4]!, "mousedown");
+
+        // Assert
+        expect(levelMenu()).toBeNull();
+        expect(v.state.doc.nodeAt(firstHeadingPos(v))!.attrs["level"]).toBe(4);
+    });
+
+    it("picking P should convert the heading to a paragraph", async () => {
+        // Arrange
+        const editor = await makeEditor("### Heading");
+        const v = view(editor);
+        clickMouse(marker(), "click");
+
+        // Act: first row is P
+        const rows = levelMenu()!.querySelectorAll<HTMLButtonElement>(".heading-level-item");
+        clickMouse(rows[0]!, "mousedown");
+
+        // Assert
+        expect(levelMenu()).toBeNull();
+        expect(v.state.doc.firstChild!.type.name).toBe("paragraph");
+    });
+
+    it("Escape should close the menu", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title");
+        view(editor);
+        clickMouse(marker(), "click");
+        expect(levelMenu()).not.toBeNull();
+
+        // Act
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+        // Assert
+        expect(levelMenu()).toBeNull();
+    });
+
+    it("clicking the same marker again should toggle the menu closed", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title");
+        view(editor);
+        const m = marker();
+
+        // Act + Assert: open …
+        clickMouse(m, "click");
+        expect(levelMenu()).not.toBeNull();
+        // … then a re-click (mousedown is ignored on the anchor, click toggles).
+        clickMouse(m, "mousedown");
+        clickMouse(m, "click");
+        expect(levelMenu()).toBeNull();
+    });
+
+    it("a keyboard open should move focus onto the current-level row", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title");
+        view(editor);
+
+        // Act: a keyboard-activated button click reports detail 0
+        marker().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+
+        // Assert: the H2 row is focused so arrows/Enter drive it immediately
+        const active = levelMenu()!.querySelector<HTMLElement>(".heading-level-item--active");
+        expect(document.activeElement).toBe(active);
+        expect(active!.textContent).toBe("H2");
+    });
+
+    it("arrow keys should rove focus and Enter should activate the focused row", async () => {
+        // Arrange: keyboard-open on H2 (focus lands on the H2 row, index 2)
+        const editor = await makeEditor("## Title");
+        const v = view(editor);
+        marker().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+
+        // Act: ArrowUp → H1 row, then Enter activates it. Keydowns dispatch from
+        // the focused row so the capture handler sees it as event.target.
+        const pressKey = (key: string): void =>
+            document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+        pressKey("ArrowUp");
+        expect((document.activeElement as HTMLElement).textContent).toBe("H1");
+        pressKey("Enter");
+
+        // Assert: heading retyped to H1, menu closed
+        expect(levelMenu()).toBeNull();
+        expect(v.state.doc.nodeAt(firstHeadingPos(v))!.attrs["level"]).toBe(1);
+    });
+
+    it("Escape should close a keyboard-opened menu and return focus to the marker", async () => {
+        // Arrange
+        const editor = await makeEditor("## Title");
+        view(editor);
+        const m = marker();
+        m.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+
+        // Act
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+        // Assert
+        expect(levelMenu()).toBeNull();
+        expect(document.activeElement).toBe(m);
+    });
+});
