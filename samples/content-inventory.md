@@ -237,7 +237,7 @@ sanitized HTML preview, byte-preserved.
 
 ---
 
-## Container directives
+### Container directives
 
 `:::name` fenced blocks (the Docusaurus admonition syntax) render as labeled
 containers with an editable body and title. Known names pick up callout-style
