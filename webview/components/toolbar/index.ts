@@ -44,6 +44,7 @@ import { createOverflowController } from './overflow';
 import type { OverflowController, OverflowGroup } from './overflow';
 import { computeZones } from './registry';
 import type { ToolbarItemId } from './registry';
+import { computeToolbarActiveState } from './activeState';
 import { enterEditMode } from './dnd';
 import { wireHoverMenu } from './hoverMenu';
 import type { ToolbarConfig, FontPreset, FontStacks, ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
@@ -1018,23 +1019,26 @@ export function initToolbar(
     items.fontPreset = wrap("fontPreset", createFontPicker());
 
     // ── Inline formatting ─────────────────────────────
-    items.bold = wrap("bold", btn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
-        runEditorCommand("toggleBold", getEditor),
-    ));
-    items.italic = wrap("italic", btn(IconItalic, t("Italic") + " " + kbd("Mod-i"), () =>
-        runEditorCommand("toggleItalic", getEditor),
-    ));
-    items.strikethrough = wrap("strikethrough", btn(
+    // Button refs kept so onSelectionChange can light up the mark currently under
+    // the caret (the toolbar reflects the selection's state).
+    const boldBtn = btn(IconBold, t("Bold") + " " + kbd("Mod-b"), () =>
+        runEditorCommand("toggleBold", getEditor));
+    items.bold = wrap("bold", boldBtn);
+    const italicBtn = btn(IconItalic, t("Italic") + " " + kbd("Mod-i"), () =>
+        runEditorCommand("toggleItalic", getEditor));
+    items.italic = wrap("italic", italicBtn);
+    const strikeBtn = btn(
         IconStrikethrough,
         t("Strikethrough") + " " + kbd("Mod-Shift-x"),
         () => runEditorCommand("toggleStrikethrough", getEditor),
-    ));
-    items.highlight = wrap("highlight", btn(IconHighlighter, t("Highlight"), () =>
-        runEditorCommand("toggleHighlight", getEditor),
-    ));
-    items.inlineCode = wrap("inlineCode", btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () =>
-        runEditorCommand("toggleInlineCode", getEditor),
-    ));
+    );
+    items.strikethrough = wrap("strikethrough", strikeBtn);
+    const highlightBtn = btn(IconHighlighter, t("Highlight"), () =>
+        runEditorCommand("toggleHighlight", getEditor));
+    items.highlight = wrap("highlight", highlightBtn);
+    const inlineCodeBtn = btn(IconCode, t("Inline Code") + " " + kbd("Mod-e"), () =>
+        runEditorCommand("toggleInlineCode", getEditor));
+    items.inlineCode = wrap("inlineCode", inlineCodeBtn);
     items.clearFormatting = wrap("clearFormatting", btn(IconEraser, t("Clear Formatting"), () =>
         runEditorCommand("clearFormatting", getEditor),
     ));
@@ -1156,9 +1160,9 @@ export function initToolbar(
     };
     const imgBtnEl = btn(IconImage, t("Insert Image"), openImagePanel);
     items.image = wrap("image", imgBtnEl);
-    items.table = wrap("table", btn(IconTable, t("Insert Table"), () =>
-        runEditorCommand("insertTable", getEditor),
-    ));
+    const tableBtn = btn(IconTable, t("Insert Table"), () =>
+        runEditorCommand("insertTable", getEditor));
+    items.table = wrap("table", tableBtn);
     items.footnote = wrap("footnote", btn(IconFootnote, t("Insert Footnote"), () =>
         runEditorCommand("insertFootnote", getEditor),
     ));
@@ -1178,6 +1182,10 @@ export function initToolbar(
     // into this to slim the default bar.
     type ListType = "bullet" | "ordered" | "task";
     const listRows: { type: ListType; setActive: (on: boolean) => void }[] = [];
+    // Trigger refs for the container dropdowns, so onSelectionChange can light up
+    // the bar button when the caret is inside that container (like the mark
+    // buttons). The menu row shows WHICH one; the trigger shows THAT one.
+    let listTriggerBtn: HTMLElement | null = null;
     function createListPicker(): HTMLElement {
         const listWrap = document.createElement("div");
         listWrap.className = "tb-fmt-wrap";
@@ -1186,6 +1194,7 @@ export function initToolbar(
             html: IconList + IconChevronDown,
             ariaLabel: t("Lists"),
         });
+        listTriggerBtn = listBtn;
 
         const listMenu = document.createElement("div");
         listMenu.className = "tb-fmt-menu tb-list-menu";
@@ -1240,6 +1249,9 @@ export function initToolbar(
     // block — mirroring the Quote picker. The top row inserts a plain code
     // block; below a separator, Mermaid and Math Block bake in their fence
     // language. All three are also in the slash menu.
+    type CodeRowKey = "code" | "mermaid" | "math";
+    const codeRows: { key: CodeRowKey; setActive: (on: boolean) => void }[] = [];
+    let codeTriggerBtn: HTMLElement | null = null;
     function createCodePicker(): HTMLElement {
         const codeWrap = document.createElement("div");
         codeWrap.className = "tb-fmt-wrap";
@@ -1248,17 +1260,21 @@ export function initToolbar(
             html: IconTerminal + IconChevronDown,
             ariaLabel: t("Code Block"),
         });
+        codeTriggerBtn = codeBtn;
 
         const codeMenu = document.createElement("div");
         codeMenu.className = "tb-fmt-menu tb-callout-menu";
         codeMenu.style.display = "none";
         codeMenu.setAttribute("role", "menu");
 
-        const addRow = (icon: string, label: string, run: () => void): void => {
+        // `key` matches computeToolbarActiveState().code so onSelectionChange can
+        // fill the row for the code block you're inside.
+        const addRow = (key: CodeRowKey, icon: string, label: string, run: () => void): void => {
             const row = document.createElement("button");
             row.type = "button";
             row.className = "tb-fmt-item tb-callout-item";
-            row.setAttribute("role", "menuitem");
+            row.setAttribute("role", "menuitemcheckbox");
+            row.setAttribute("aria-checked", "false");
             row.innerHTML = icon;
             const name = document.createElement("span");
             name.textContent = label;
@@ -1270,10 +1286,17 @@ export function initToolbar(
                 codeMenu.style.display = "none";
             });
             codeMenu.appendChild(row);
+            codeRows.push({
+                key,
+                setActive: (on: boolean): void => {
+                    row.classList.toggle("tb-callout-item--on", on);
+                    row.setAttribute("aria-checked", on ? "true" : "false");
+                },
+            });
         };
 
         // Plain code block first — the common case and the dropdown's identity.
-        addRow(IconTerminal, t("Code Block"), () => runEditorCommand("insertCodeBlock", getEditor));
+        addRow("code", IconTerminal, t("Code Block"), () => runEditorCommand("insertCodeBlock", getEditor));
 
         const sep = document.createElement("div");
         sep.className = "tb-menu-sep";
@@ -1281,8 +1304,8 @@ export function initToolbar(
         codeMenu.appendChild(sep);
 
         // Language-typed blocks (same insertCodeBlock command, fence language baked in).
-        addRow(IconNetwork, t("Mermaid Diagram"), () => runEditorCommand("insertCodeBlock", getEditor, "mermaid"));
-        addRow(IconMath, t("Math Block"), () => runEditorCommand("insertCodeBlock", getEditor, "LaTeX"));
+        addRow("mermaid", IconNetwork, t("Mermaid Diagram"), () => runEditorCommand("insertCodeBlock", getEditor, "mermaid"));
+        addRow("math", IconMath, t("Math Block"), () => runEditorCommand("insertCodeBlock", getEditor, "LaTeX"));
 
         wireHoverMenu(codeWrap, codeBtn, codeMenu);
 
@@ -1302,6 +1325,8 @@ export function initToolbar(
     // kind arg). Folding the two together frees a toolbar slot and surfaces the
     // callout types on the default (visible) bar, where the standalone Callouts
     // dropdown used to ship hidden.
+    const quoteRows: { key: string; setActive: (on: boolean) => void }[] = [];
+    let quoteTriggerBtn: HTMLElement | null = null;
     function createQuotePicker(): HTMLElement {
         const quoteWrap = document.createElement("div");
         quoteWrap.className = "tb-fmt-wrap";
@@ -1310,17 +1335,21 @@ export function initToolbar(
             html: IconQuote + IconChevronDown,
             ariaLabel: t("Quote"),
         });
+        quoteTriggerBtn = quoteBtn;
 
         const quoteMenu = document.createElement("div");
         quoteMenu.className = "tb-fmt-menu tb-callout-menu";
         quoteMenu.style.display = "none";
         quoteMenu.setAttribute("role", "menu");
 
-        const addRow = (icon: string, label: string, run: () => void): void => {
+        // `key` matches computeToolbarActiveState().quote ("blockquote" or a
+        // callout kind) so onSelectionChange can fill the row you're inside.
+        const addRow = (key: string, icon: string, label: string, run: () => void): void => {
             const row = document.createElement("button");
             row.type = "button";
             row.className = "tb-fmt-item tb-callout-item";
-            row.setAttribute("role", "menuitem");
+            row.setAttribute("role", "menuitemcheckbox");
+            row.setAttribute("aria-checked", "false");
             row.innerHTML = icon;
             const name = document.createElement("span");
             name.textContent = label;
@@ -1334,10 +1363,17 @@ export function initToolbar(
                 quoteMenu.style.display = "none";
             });
             quoteMenu.appendChild(row);
+            quoteRows.push({
+                key,
+                setActive: (on: boolean): void => {
+                    row.classList.toggle("tb-callout-item--on", on);
+                    row.setAttribute("aria-checked", on ? "true" : "false");
+                },
+            });
         };
 
         // Plain blockquote first — the common case, and the dropdown's identity.
-        addRow(IconQuote, t("Blockquote"), () => runEditorCommand("toggleBlockquote", getEditor));
+        addRow("blockquote", IconQuote, t("Blockquote"), () => runEditorCommand("toggleBlockquote", getEditor));
 
         const sep = document.createElement("div");
         sep.className = "tb-menu-sep";
@@ -1352,7 +1388,7 @@ export function initToolbar(
             ["caution", t("Caution")],
         ];
         for (const [kind, label] of calloutKinds) {
-            addRow(CALLOUT_ICONS[kind], label, () => runEditorCommand("insertCallout", getEditor, kind));
+            addRow(kind, CALLOUT_ICONS[kind], label, () => runEditorCommand("insertCallout", getEditor, kind));
         }
 
         wireHoverMenu(quoteWrap, quoteBtn, quoteMenu);
@@ -1992,53 +2028,43 @@ export function initToolbar(
 
     return {
         onSelectionChange(view: EditorView): void {
-            const { $from } = view.state.selection;
-            let activeLevel = 0; // 0 = paragraph
-            for (let d = $from.depth; d >= 0; d--) {
-                const n = $from.node(d);
-                if (n.type.name === "heading") {
-                    activeLevel = n.attrs["level"] as number;
-                    break;
-                }
-                if (n.type.name === "code_block") {
-                    activeLevel = -1;
-                    break;
-                }
-            }
-            // Update the format button's label (may be detached when hidden).
+            // One derivation of "what state is the caret in"; the toolbar mirrors it.
+            const active = computeToolbarActiveState(view.state);
+
+            // Bar buttons: quiet toggle-on for the inline mark / container the
+            // caret sits in. A hidden/overflowed button still exists — toggling
+            // its class is harmless.
+            const setBtnActive = (el: HTMLElement | null, on: boolean): void => {
+                el?.classList.toggle("tb-btn--active", on);
+            };
+            setBtnActive(boldBtn, active.marks.bold);
+            setBtnActive(italicBtn, active.marks.italic);
+            setBtnActive(strikeBtn, active.marks.strikethrough);
+            setBtnActive(highlightBtn, active.marks.highlight);
+            setBtnActive(inlineCodeBtn, active.marks.inlineCode);
+            setBtnActive(linkBtnEl, active.marks.link);
+            setBtnActive(tableBtn, active.inTable);
+            setBtnActive(listTriggerBtn, active.list !== null);
+            setBtnActive(quoteTriggerBtn, active.quote !== null);
+            setBtnActive(codeTriggerBtn, active.code !== null);
+
+            // Format (text hierarchy): checkmark the level; grey the control out
+            // where the text type can't become a heading (table cell / code block).
             const labelEl = fmtBtn.querySelector(".tb-fmt-label");
             if (labelEl) {
-                const labels = ["P","H1","H2","H3","H4","H5","H6"];
-                labelEl.textContent = activeLevel === -1 ? "—" : (labels[activeLevel] ?? "P");
+                const labels = ["P", "H1", "H2", "H3", "H4", "H5", "H6"];
+                labelEl.textContent = active.formatApplicable ? (labels[active.headingLevel] ?? "P") : "—";
             }
+            fmtWrap.classList.toggle("tb-fmt-wrap--disabled", !active.formatApplicable);
             fmtItems.forEach((item, i) => {
-                // i=0 → P (activeLevel===0), i=1..6 → H1..H6 (activeLevel===i)
-                item.setChecked(i === 0 ? activeLevel === 0 : i === activeLevel);
+                // i=0 → P (level 0), i=1..6 → H1..H6; nothing checked when N/A.
+                item.setChecked(active.formatApplicable && (i === 0 ? active.headingLevel === 0 : i === active.headingLevel));
             });
-            // Lists dropdown: checkmark the enclosing list type (task lists are
-            // bullet lists whose items carry a `checked` attr, so probe that
-            // first). At most one is active; a bare paragraph checks none.
-            if (listRows.length > 0) {
-                let activeList: ListType | null = null;
-                for (let d = $from.depth; d >= 0; d--) {
-                    const n = $from.node(d);
-                    if (n.type.name === "list_item" && n.attrs["checked"] != null) {
-                        activeList = "task";
-                        break;
-                    }
-                    if (n.type.name === "bullet_list") {
-                        activeList = "bullet";
-                        break;
-                    }
-                    if (n.type.name === "ordered_list") {
-                        activeList = "ordered";
-                        break;
-                    }
-                }
-                for (const { type, setActive } of listRows) {
-                    setActive(type === activeList);
-                }
-            }
+
+            // Container menu rows: fill the row for the exact container you're in.
+            for (const { type, setActive } of listRows) { setActive(type === active.list); }
+            for (const { key, setActive } of quoteRows) { setActive(key === active.quote); }
+            for (const { key, setActive } of codeRows) { setActive(key === active.code); }
         },
         setDebugMode(enabled: boolean): void {
             debugVisible = enabled;

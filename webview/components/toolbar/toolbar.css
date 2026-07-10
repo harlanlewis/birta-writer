@@ -122,19 +122,17 @@
     height: calc(var(--tb-menu-gap, 6px) + 1px);
 }
 
-/* Active toggle state (style check / spell check on). A filled accent gives
-   clear "on" visibility, distinct from the subtle hover background. */
+/* A bar button reflecting the caret's state — an active inline mark (Bold in
+   bold text), or the caret sitting inside a container (Table, or a list/quote/
+   code dropdown trigger). The bar changes as the caret moves, so this is a QUIET
+   "on" look — VS Code's activated-option token (the find-widget toggle look),
+   with an inset ring so it stays distinct from the plain hover background.
+   Menus get the louder accent fill; the always-visible bar stays calm. */
 .tb-btn--active,
-.tb-btn--active:active {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border-color: var(--vscode-button-background);
-}
-
 .tb-btn--active:hover {
-    background: var(--vscode-button-hoverBackground);
-    color: var(--vscode-button-foreground);
-    border-color: var(--vscode-button-hoverBackground);
+    background: var(--vscode-inputOption-activeBackground);
+    color: var(--vscode-inputOption-activeForeground);
+    box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder);
 }
 
 .tb-fmt-btn {
@@ -321,16 +319,28 @@
     }
 }
 
-/* Active list type: filled accent row. Overrides the .tb-fmt-item:hover tint
+/* Active container row: the list type / blockquote / callout kind / code kind
+   the caret is inside, filled with the accent (the menu "on" idiom, shared by
+   the Lists, Quote, and Code dropdowns). Overrides the .tb-fmt-item:hover tint
    for its own hover so an active row stays clearly "on" under the pointer. */
 .tb-list-item--on,
-.tb-list-item--on:hover {
+.tb-list-item--on:hover,
+.tb-callout-item--on,
+.tb-callout-item--on:hover {
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
 }
 
-.tb-list-item--on:hover {
+.tb-list-item--on:hover,
+.tb-callout-item--on:hover {
     background: var(--vscode-button-hoverBackground);
+}
+
+/* Text-hierarchy control greyed out where the type can't become a heading
+   (caret in a table cell or code block). Inert so the menu can't open. */
+.tb-fmt-wrap--disabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 /* ─── Checks menu (spelling / grammar / style + per-check toggles) ─── */
