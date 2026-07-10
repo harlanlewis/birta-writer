@@ -949,15 +949,15 @@ export function initToolbar(
             notifyOpenSettings("markdownWysiwyg.font");
         });
 
-        // Assemble top→bottom: content width, font size, then the family presets
-        // grouped with Font settings. Dividers separate width / size / family;
-        // none between the family presets and Font settings (one group).
+        // Assemble top→bottom: font size, content width, the family presets,
+        // then Font settings — each group separated by a divider.
         fontMenu.append(
-            widthRow,
-            makeSep(),
             sizeRow,
             makeSep(),
+            widthRow,
+            makeSep(),
             ...fontItemEls,
+            makeSep(),
             fontSettingsEntry,
         );
 

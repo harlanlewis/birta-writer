@@ -375,9 +375,10 @@
     opacity: 0.5;
 }
 
-/* Track + sliding knob. Off: a dim neutral track. On: the theme accent, with the
-   knob slid right. Accent is --vscode-focusBorder (no literal fallback), per the
-   repo's no-custom-colors rule. */
+/* Track + sliding knob. Off: a dim neutral track. On: the toolbar's "on" accent
+   (--vscode-button-background), matching the active fills for lists, the Full/
+   Fixed width segments, and the style/spell-check toolbar buttons — focusBorder
+   read washed-out for a filled toggle in some themes. */
 .tb-switch {
     position: relative;
     flex: none;
@@ -403,7 +404,7 @@
 }
 
 .tb-switch-item--on .tb-switch {
-    background: var(--vscode-focusBorder);
+    background: var(--vscode-button-background);
     opacity: 1;
 }
 
