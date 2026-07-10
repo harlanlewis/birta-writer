@@ -85,6 +85,8 @@ export type FontStacks = { sans: string; serif: string; mono: string };
  * row in the toolbar's style-check dropdown.
  */
 export type ProofreadOptionKey =
+    // Master gate over the whole feature (spelling + grammar + style)
+    | "proofreading"
     // Masters
     | "styleCheck"
     | "spellCheck"
@@ -106,6 +108,14 @@ export type ProofreadOptionKey =
 
 /** Proofread (style check + spell check) configuration snapshot */
 export type ProofreadConfig = {
+    /**
+     * Master gate over the entire proofreading feature. When false, nothing runs
+     * or decorates (spelling, grammar, and style all off) regardless of the
+     * per-domain switches below — and those switches keep their own values, so
+     * flipping the gate back on restores exactly what was enabled before. The
+     * effective state of any check is `proofreadingEnabled && <that switch>`.
+     */
+    proofreadingEnabled: boolean;
     /** Style check master switch (gates every option below + repeated words) */
     styleCheck: boolean;
     // ── Phrase categories ──

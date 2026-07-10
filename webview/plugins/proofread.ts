@@ -46,9 +46,12 @@ const SCAN_DEBOUNCE_MS = 350;
 // for an idle window before it runs anyway.
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
 
-/** True when any proofreading check is on. All off ⇒ the plugin does no work. */
+/**
+ * True when proofreading is active: the master gate is on AND at least one
+ * domain check is on. Gate off (or every domain off) ⇒ the plugin does no work.
+ */
 function anyProofreadEnabled(c: ProofreadConfig): boolean {
-    return c.styleCheck || c.spellCheck || c.grammarCheck;
+    return c.proofreadingEnabled && (c.styleCheck || c.spellCheck || c.grammarCheck);
 }
 
 /** requestIdleCallback if the runtime has it (webview does; jsdom does not). */
@@ -113,6 +116,7 @@ export const proofreadPluginKey = new PluginKey<ProofreadState>("proofread");
 // contributed setting defaults in package.json — see
 // shared/__tests__/proofreadDefaultsContributions.test.ts.
 export const DEFAULT_CONFIG: ProofreadConfig = {
+    proofreadingEnabled: true,
     styleCheck: true,
     fillers: true,
     redundancies: true,
@@ -366,9 +370,10 @@ function forEachTextblock(doc: ProseNode, cb: (node: ProseNode, pos: number) => 
 
 /** Style-check decorations (instant, synchronous). Exported for unit testing. */
 export function computeDecorations(doc: ProseNode, config: ProofreadConfig): DecorationSet {
-    // The repeated-word check rides on the master switch, so style check is
-    // meaningful even with all three phrase categories turned off.
-    if (!config.styleCheck) { return DecorationSet.empty; }
+    // Gate: nothing renders unless the master proofreading switch is on and the
+    // style master is on. The repeated-word check rides on the style master, so
+    // style check is meaningful even with all phrase categories turned off.
+    if (!config.proofreadingEnabled || !config.styleCheck) { return DecorationSet.empty; }
     const matcher = styleMatcherFor(config);
     const decorations: Decoration[] = [];
 
@@ -414,6 +419,8 @@ function buildLintDecorations(
     config: ProofreadConfig,
 ): DecorationSet {
     const decorations: Decoration[] = [];
+    // Gate: the master switch silences every Harper finding at once.
+    if (!config.proofreadingEnabled) { return DecorationSet.empty; }
     for (const { key, lints } of results) {
         const node = doc.nodeAt(key);
         if (!node?.isTextblock) { continue; }
@@ -674,7 +681,7 @@ export const proofreadPlugin = $prose(() => {
                     view.dispatch(view.state.tr.setMeta(proofreadPluginKey, meta));
                 }
 
-                if (state.config.spellCheck || state.config.grammarCheck) {
+                if (state.config.proofreadingEnabled && (state.config.spellCheck || state.config.grammarCheck)) {
                     lintRequestId++;
                     lintRequestDoc = view.state.doc;
                     notifyLintBlocks(lintRequestId, collectLintBlocks(view.state.doc));

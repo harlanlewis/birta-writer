@@ -75,13 +75,8 @@
         "category": "WYSIWYG Markdown Editor"
       },
       {
-        "command": "markdownWysiwyg.toggleStyleCheck",
-        "title": "%command.toggleStyleCheck.title%",
-        "category": "WYSIWYG Markdown Editor"
-      },
-      {
-        "command": "markdownWysiwyg.toggleAllChecks",
-        "title": "%command.toggleAllChecks.title%",
+        "command": "markdownWysiwyg.toggleProofreading",
+        "title": "%command.toggleProofreading.title%",
         "category": "WYSIWYG Markdown Editor"
       },
       {
@@ -388,7 +383,7 @@
         "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
       },
       {
-        "command": "markdownWysiwyg.toggleStyleCheck",
+        "command": "markdownWysiwyg.toggleProofreading",
         "key": "ctrl+alt+shift+d",
         "mac": "cmd+alt+shift+d",
         "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
@@ -481,7 +476,7 @@
       ],
       "commandPalette": [
         {
-          "command": "markdownWysiwyg.toggleAllChecks",
+          "command": "markdownWysiwyg.toggleProofreading",
           "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
         },
         {
@@ -837,6 +832,12 @@
     "configuration": {
       "title": "WYSIWYG Markdown Editor",
       "properties": {
+        "markdownWysiwyg.proofreading.enabled": {
+          "order": 109,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.proofreading.enabled.description%"
+        },
         "markdownWysiwyg.styleCheck.enabled": {
           "order": 110,
           "type": "boolean",
@@ -921,11 +922,19 @@
           "default": true,
           "description": "%config.spellCheck.enabled.description%"
         },
+        "markdownWysiwyg.grammarCheck.enabled": {
+          "order": 116,
+          "type": "boolean",
+          "default": true,
+          "description": "%config.grammarCheck.enabled.description%"
+        },
         "markdownWysiwyg.spellCheck.grammar": {
           "order": 114,
           "type": "boolean",
           "default": true,
-          "description": "%config.spellCheck.grammar.description%"
+          "description": "%config.spellCheck.grammar.description%",
+          "deprecationMessage": "%config.spellCheck.grammar.deprecation%",
+          "markdownDeprecationMessage": "%config.spellCheck.grammar.deprecation%"
         },
         "markdownWysiwyg.spellCheck.userWords": {
           "order": 115,

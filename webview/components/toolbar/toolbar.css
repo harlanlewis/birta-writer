@@ -295,15 +295,27 @@
     background: var(--vscode-editorHoverWidget-border);
 }
 
-/* Master "Proofreading" switch: label left, switch right. A switch (not a
-   checkmark) marks it as the master control governing every check below. */
-.tb-checks-master {
+/* Switch row: label left, on/off switch right. Every proofreading row uses this
+   (domain masters + sub-checks); the gate row adds .tb-checks-master for
+   emphasis. A switch reads truer than a checkmark here — each row is an
+   independent on/off, not a selection from a set. */
+.tb-switch-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+}
+
+/* The master gate is the same idiom, emphasized as the top-level control. */
+.tb-checks-master {
     font-weight: 600;
     color: var(--vscode-foreground);
+}
+
+/* Gate off: dim the Checks toolbar button so a globally-disabled proofreading
+   pass is visible at a glance (no underlines otherwise reads as clean text). */
+.tb-checks-btn--off {
+    opacity: 0.5;
 }
 
 /* Track + sliding knob. Off: a dim neutral track. On: the theme accent, with the
@@ -333,12 +345,12 @@
     transition: transform 120ms ease;
 }
 
-.tb-checks-master--on .tb-switch {
+.tb-switch-item--on .tb-switch {
     background: var(--vscode-focusBorder);
     opacity: 1;
 }
 
-.tb-checks-master--on .tb-switch-knob {
+.tb-switch-item--on .tb-switch-knob {
     transform: translateX(11px);
 }
 

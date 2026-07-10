@@ -400,8 +400,9 @@ Every line below is written to trip **one** check, so you can eyeball its
 decoration during manual review. Only prose is scanned — code blocks, inline
 code, links, and paths are skipped — which is why the triggers here are
 deliberately bare words. (The rest of this document already contains plenty of
-incidental hits, so the checker lights up outside this section too.) Two
-categories ship **off by default**, noted inline; enable them to see their flags.
+incidental hits, so the checker lights up outside this section too.) Every check
+ships on by default, gated by the master **Proofreading** switch at the top of
+the Checks menu — flip that off to silence all of them at once.
 
 ### Spelling — `markdownWysiwyg.spellCheck.enabled`
 
@@ -438,8 +439,8 @@ The master switch above governs every category below; each also has its own
 - Rule of three (`ruleOfThree`): The build is fast, cheap, and reliable.
 - Em dash (`emDash`): The plan is simple — ship it. (offers an ASCII fix)
 - Non-ASCII punctuation (`nonAsciiPunct`): She called it “clever,” then trailed off… (curly quotes and an ellipsis glyph)
-- Passive voice (`passive`, **off by default**): The report was written overnight.
-- Negative parallelism (`negativeParallelism`, **off by default**): It's not a bug, it's a feature.
+- Passive voice (`passive`): The report was written overnight.
+- Negative parallelism (`negativeParallelism`): It's not a bug, it's a feature.
 
 ---
 

@@ -179,31 +179,21 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
-    // Toggle style check (keyboard shortcut / command palette); the config
-    // change listener below broadcasts the new state to every open editor.
+    // Toggle the master proofreading gate (keyboard shortcut / command palette);
+    // the config-change listener below broadcasts the new state to every open
+    // editor. This gates spelling + grammar + style at once without touching
+    // their individual switches, so it restores exactly what was on before.
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.toggleStyleCheck",
-            () => MarkdownEditorProvider.toggleStyleCheck(),
+            "markdownWysiwyg.toggleProofreading",
+            () => MarkdownEditorProvider.toggleProofreading(),
         ),
     );
 
-    // "Go clean": toggle spelling + grammar + style off (or back on) in one
-    // step. The config listener below broadcasts each change to open editors.
-    context.subscriptions.push(
-        vscode.commands.registerCommand(
-            "markdownWysiwyg.toggleAllChecks",
-            () => MarkdownEditorProvider.toggleAllChecks(),
-        ),
-    );
-
-    // Coalesce a burst of proofread setting writes into a single broadcast.
-    // "Turn off/on proofreading" writes three settings back-to-back
-    // (styleCheck.enabled, spellCheck.enabled, spellCheck.grammar); broadcasting
-    // on each write echoed a *partial* config to the webview, so the Checks
-    // menu's checkmarks flickered through intermediate states before settling.
-    // A trailing-edge debounce fires once writes stop and reads the settled
-    // config, so it can never broadcast a half-applied state.
+    // Coalesce a burst of proofread setting writes into a single broadcast: a
+    // trailing-edge debounce fires once writes stop and reads the settled config,
+    // so a rapid sequence of toggles (e.g. several rows in the Settings UI) can
+    // never broadcast a half-applied state and flicker the Checks menu.
     let proofreadBroadcastTimer: ReturnType<typeof setTimeout> | undefined;
     const broadcastProofreadConfig = (): void => {
         if (proofreadBroadcastTimer) { clearTimeout(proofreadBroadcastTimer); }
@@ -244,8 +234,10 @@ export function activate(context: vscode.ExtensionContext) {
                 const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
                 MarkdownEditorProvider.current?.postToAll({ type: "setTableWrap", wrap: tableWrap });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.styleCheck")
-                || e.affectsConfiguration("markdownWysiwyg.spellCheck")) {
+            if (e.affectsConfiguration("markdownWysiwyg.proofreading")
+                || e.affectsConfiguration("markdownWysiwyg.styleCheck")
+                || e.affectsConfiguration("markdownWysiwyg.spellCheck")
+                || e.affectsConfiguration("markdownWysiwyg.grammarCheck")) {
                 broadcastProofreadConfig();
             }
             if (e.affectsConfiguration("markdownWysiwyg.toolbar")) {

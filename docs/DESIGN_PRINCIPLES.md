@@ -49,12 +49,21 @@ Proofreading (and anything like it) advises; it never acts on its own.
   dictionary add, or Ignore. Suggestions apply on click, never automatically.
 - **The user can always go quiet.** All checks ship on, but a single master
   **Proofreading** switch (the top row of the Checks menu, and the
-  `toggleAllChecks` command) silences spelling, grammar, and style in one step,
-  and restores the exact per-check config on the way back. Defaulting loud is
-  only acceptable because going quiet is one action away. Name the domain in the
-  control ("Proofreading", not "all checks") — the toolbar button is icon-only,
-  so a bare "all" has no referent — and give the master a *switch*, distinct from
-  the checkmark rows it governs, so its hierarchy reads at a glance.
+  `toggleProofreading` command) silences spelling, grammar, and style in one
+  step. Defaulting loud is only acceptable because going quiet is one action
+  away. Name the domain in the control ("Proofreading", not "all checks") — the
+  toolbar button is icon-only, so a bare "all" has no referent.
+- **A master gates its children; it never overwrites them.** The Proofreading
+  switch enables/disables the whole feature *without touching* the per-domain
+  choices beneath it, so turning it back on restores exactly what was on before —
+  the same contract "Check style" has with its sub-checks. A master that flips
+  its children on/off instead (the first, wrong version of this switch) destroys
+  intent and is the anti-pattern. When a gate is off, hide what it governs rather
+  than leaving dimmed dead controls.
+- **A silent absence needs a signal.** When proofreading is gated off there are
+  simply no underlines — indistinguishable from clean text — so the toolbar
+  button dims to say "off". Any feature whose "off" state looks like a passing
+  "all clear" owes the user a visible cue.
 - **A disabled feature costs nothing.** No scan, no decoration pass, no lazy
   dependency loaded. (See "Launch performance" in `CLAUDE.md`.)
 

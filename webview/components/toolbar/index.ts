@@ -144,6 +144,37 @@ function createCheckItem(label: string): CheckItem {
 }
 
 /**
+ * A switch menu row: a label on the left and an on/off switch on the right. Used
+ * by the Checks menu (proofreading), where every row is an independent on/off,
+ * not a selection from a set — so a switch reads truer than a checkmark. The row
+ * itself is role=switch (the track/knob are decorative) so the menu's Enter/Space
+ * handling activates it without a duplicate focus stop. Same CheckItem shape as
+ * createCheckItem, so callers treat the two interchangeably.
+ */
+function createSwitchItem(label: string): CheckItem {
+    const el = document.createElement("div");
+    el.className = "tb-fmt-item tb-switch-item";
+    el.setAttribute("role", "switch");
+    el.setAttribute("aria-checked", "true");
+    const labelEl = document.createElement("span");
+    labelEl.className = "tb-switch-item-label";
+    labelEl.textContent = label;
+    const track = document.createElement("span");
+    track.className = "tb-switch";
+    track.setAttribute("aria-hidden", "true");
+    track.appendChild(document.createElement("span")).className = "tb-switch-knob";
+    el.append(labelEl, track);
+    return {
+        el,
+        label: labelEl,
+        setChecked: (on: boolean): void => {
+            el.classList.toggle("tb-switch-item--on", on);
+            el.setAttribute("aria-checked", on ? "true" : "false");
+        },
+    };
+}
+
+/**
  * Image insert panel: a centered floating panel (no backdrop) with three modes: Browse Project / URL / Upload local
  */
 function showImageInsertPanel(
@@ -1306,69 +1337,80 @@ export function initToolbar(
         ariaLabel: t("Checks"),
     });
 
-    type CheckRow = { key: ProofreadOptionKey; item: CheckItem };
+    // Every option key except the gate maps 1:1 to a boolean ProofreadConfig
+    // field (the gate's key "proofreading" ↔ field "proofreadingEnabled"), so the
+    // domain rows use this narrowed key and index the config directly.
+    type DomainCheckKey = Exclude<ProofreadOptionKey, "proofreading">;
+    type CheckRow = { key: DomainCheckKey; item: CheckItem };
     const checkRows: CheckRow[] = [];
-    // The style sub-checks live in this container so the whole group can be
-    // shown/hidden as a unit. It's *detached* from the menu when Check Style is
-    // off (rather than dimmed) — a sub-check has no effect while its master is
-    // off, so the menu collapses to just the three masters. Detaching (not
-    // display:none) also keeps the hidden rows out of keyboard focus, since
-    // hoverMenu.rows() only skips a row by its own inline display, not an
-    // ancestor's. Both refs are assigned when the menu is built.
+    // Two levels of show/hide, both by *detaching* the container (not dimming):
+    //   • the whole body (domain masters + style sub-checks) is detached when the
+    //     master Proofreading gate is off, so the menu collapses to just the gate;
+    //   • the style sub-checks are detached when Check style is off.
+    // Detaching (not display:none) also keeps hidden rows out of keyboard focus,
+    // since hoverMenu.rows() only skips a row by its own inline display, not an
+    // ancestor's. All refs are assigned when the menu is built.
     let checksMenuEl: HTMLElement | null = null;
+    let bodyEl: HTMLElement | null = null;
     let styleChildrenEl: HTMLElement | null = null;
-    // The master "Proofreading" switch at the top. It's on whenever any check is
-    // enabled, off only when all three are off (see toggleAllChecks).
-    let masterSwitchEl: HTMLElement | null = null;
+    // The master "Proofreading" gate switch (handled separately from checkRows
+    // because its config field name differs from its option key).
+    let masterItem: CheckItem | null = null;
+
+    /** Attach `child` into `parent` iff `show`, else detach it. */
+    const setAttached = (parent: HTMLElement, child: HTMLElement, show: boolean): void => {
+        if (show && !child.isConnected) { parent.appendChild(child); }
+        else if (!show && child.isConnected) { child.remove(); }
+    };
 
     const repaintChecks = (cfg: ProofreadConfig): void => {
         for (const { key, item } of checkRows) {
             item.setChecked(Boolean(cfg[key]));
         }
-        if (masterSwitchEl) {
-            const anyOn = Boolean(cfg.styleCheck || cfg.spellCheck || cfg.grammarCheck);
-            masterSwitchEl.classList.toggle("tb-checks-master--on", anyOn);
-            masterSwitchEl.setAttribute("aria-checked", anyOn ? "true" : "false");
+        masterItem?.setChecked(cfg.proofreadingEnabled);
+        // Signal a globally-off gate on the toolbar button itself: with the gate
+        // off there are simply no underlines, which looks identical to clean
+        // text, so dim the button to say "proofreading is off" without opening
+        // the menu. (A domain being off is a per-check choice, not shown here.)
+        checksBtn.classList.toggle("tb-checks-btn--off", !cfg.proofreadingEnabled);
+        // Gate: the whole body shows only while the master switch is on.
+        if (checksMenuEl && bodyEl) {
+            setAttached(checksMenuEl, bodyEl, cfg.proofreadingEnabled);
         }
-        // Reveal the style sub-checks only while their parent master is on.
-        if (checksMenuEl && styleChildrenEl) {
-            const show = Boolean(cfg.styleCheck);
-            if (show && !styleChildrenEl.isConnected) {
-                checksMenuEl.appendChild(styleChildrenEl);
-            } else if (!show && styleChildrenEl.isConnected) {
-                styleChildrenEl.remove();
-            }
+        // Nested: style sub-checks show only while Check style is on (and, since
+        // they live inside the body, only when the gate is on too).
+        if (bodyEl && styleChildrenEl) {
+            setAttached(bodyEl, styleChildrenEl, cfg.styleCheck);
         }
-        // The button carries no on/off highlight: with a dozen sub-toggles inside,
-        // a single boolean state is more distracting than informative. The menu's
-        // own checkmarks are the source of truth.
     };
 
     /** Flip one proofread toggle — shared by the Checks rows and slash menu. */
     function toggleProofread(key: ProofreadOptionKey): void {
+        // The gate is a special case (its field name differs); everything else is
+        // a boolean field keyed by its own name.
+        if (key === "proofreading") { toggleProofreadingGate(); return; }
         const view = getEditorView();
         if (!view) { return; }
         const cfg = getProofreadConfig(view);
-        const value = !cfg[key];
-        setProofreadConfig(view, { ...cfg, [key]: value });
-        notifySetProofreadOption(key, value);
+        const field = key as DomainCheckKey;
+        const value = !cfg[field];
+        setProofreadConfig(view, { ...cfg, [field]: value });
+        notifySetProofreadOption(field, value);
     }
 
     /**
-     * "Go clean": flip spelling, grammar, and style together — off when any is
-     * on, back on when all are off. Sub-checks are left as-is, so restoring the
-     * masters brings back whatever per-check config was already set. Mirrors the
-     * `markdownWysiwyg.toggleAllChecks` command; both converge on the same state.
+     * Flip the master proofreading gate. Unlike the domain rows, its config field
+     * (`proofreadingEnabled`) differs from its option key (`proofreading`), and it
+     * never touches the per-domain switches — so turning it back on restores
+     * exactly what was enabled before. Mirrors the `toggleProofreading` command.
      */
-    function toggleAllChecks(): void {
+    function toggleProofreadingGate(): void {
         const view = getEditorView();
         if (!view) { return; }
         const cfg = getProofreadConfig(view);
-        const value = !(cfg.styleCheck || cfg.spellCheck || cfg.grammarCheck);
-        setProofreadConfig(view, { ...cfg, styleCheck: value, spellCheck: value, grammarCheck: value });
-        for (const key of ["styleCheck", "spellCheck", "grammarCheck"] as const) {
-            notifySetProofreadOption(key, value);
-        }
+        const value = !cfg.proofreadingEnabled;
+        setProofreadConfig(view, { ...cfg, proofreadingEnabled: value });
+        notifySetProofreadOption("proofreading", value);
     }
 
     function createChecksControl(): HTMLElement {
@@ -1382,8 +1424,8 @@ export function initToolbar(
         menu.setAttribute("role", "menu");
         checksMenuEl = menu;
 
-        const addRow = (parent: HTMLElement, key: ProofreadOptionKey, label: string): void => {
-            const item = createCheckItem(label);
+        const addRow = (parent: HTMLElement, key: DomainCheckKey, label: string): void => {
+            const item = createSwitchItem(label);
             item.el.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1400,40 +1442,34 @@ export function initToolbar(
             parent.appendChild(header);
         };
 
-        // Master "Proofreading" switch — the top-level control that governs
-        // everything below. A switch (not a checkmark row) marks it as the
-        // master: flipping it off silences spelling, grammar, and style at once
-        // for a clean drafting pass, and flipping it on restores them. The row
-        // itself is the switch (role=switch) so the menu's Enter/Space handling
-        // activates it; the track/knob are decorative (no inner button, which
-        // would become a duplicate focus stop).
-        const master = document.createElement("div");
-        master.className = "tb-fmt-item tb-checks-master";
-        master.setAttribute("role", "switch");
-        master.setAttribute("aria-checked", "true");
-        const masterLabel = document.createElement("span");
-        masterLabel.className = "tb-checks-master-label";
-        masterLabel.textContent = t("Proofreading");
-        const masterTrack = document.createElement("span");
-        masterTrack.className = "tb-switch";
-        masterTrack.setAttribute("aria-hidden", "true");
-        masterTrack.appendChild(document.createElement("span")).className = "tb-switch-knob";
-        master.append(masterLabel, masterTrack);
-        masterSwitchEl = master;
-        master.addEventListener("mousedown", (e) => {
+        // Master "Proofreading" gate — the top-level switch that governs
+        // everything below. Flipping it off silences spelling, grammar, and style
+        // at once and hides the rest of the menu; flipping it on brings back
+        // exactly what was enabled before (it never rewrites the domain switches).
+        // It's emphasized (tb-checks-master) but otherwise the same switch idiom.
+        masterItem = createSwitchItem(t("Proofreading"));
+        masterItem.el.classList.add("tb-checks-master");
+        masterItem.el.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            toggleAllChecks();
+            toggleProofreadingGate();
         });
-        menu.appendChild(master);
-        const masterSep = document.createElement("div");
-        masterSep.className = "tb-menu-sep";
-        menu.appendChild(masterSep);
+        menu.appendChild(masterItem.el);
 
-        // Masters
-        addRow(menu, "spellCheck", t("Check spelling"));
-        addRow(menu, "grammarCheck", t("Check grammar"));
-        addRow(menu, "styleCheck", t("Check style"));
+        // The body holds everything the gate governs. A leading separator sits
+        // inside it so that when the gate is off and the body is detached, the
+        // menu collapses cleanly to just the master switch (no dangling divider).
+        const body = document.createElement("div");
+        body.className = "tb-checks-body";
+        bodyEl = body;
+        const bodySep = document.createElement("div");
+        bodySep.className = "tb-menu-sep";
+        body.appendChild(bodySep);
+
+        // Domain masters
+        addRow(body, "spellCheck", t("Check spelling"));
+        addRow(body, "grammarCheck", t("Check grammar"));
+        addRow(body, "styleCheck", t("Check style"));
 
         // Style sub-checks live in their own indented container (a left rail ties
         // them to the "Check style" master above), shown only while it's on.
@@ -1441,7 +1477,7 @@ export function initToolbar(
         children.className = "tb-checks-children";
         styleChildrenEl = children;
 
-        const groups: { title: string; opts: [ProofreadOptionKey, string][] }[] = [
+        const groups: { title: string; opts: [DomainCheckKey, string][] }[] = [
             { title: t("Phrases"), opts: [
                 ["fillers", t("Fillers")],
                 ["redundancies", t("Redundancies")],
@@ -1465,7 +1501,8 @@ export function initToolbar(
             addHeader(children, group.title);
             for (const [key, label] of group.opts) { addRow(children, key, label); }
         }
-        menu.appendChild(children); // repaintChecks detaches it when Style is off
+        body.appendChild(children); // repaintChecks detaches it when Check style is off
+        menu.appendChild(body); // repaintChecks detaches it when the gate is off
 
         wireHoverMenu(wrapEl, checksBtn, menu, {
             onOpen: () => {

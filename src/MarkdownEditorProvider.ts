@@ -1067,6 +1067,7 @@ export class MarkdownEditorProvider
     public static getProofreadConfig(): ProofreadConfig {
         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
         return {
+            proofreadingEnabled: cfg.get<boolean>("proofreading.enabled", true),
             styleCheck: cfg.get<boolean>("styleCheck.enabled", true),
             fillers: cfg.get<boolean>("styleCheck.fillers", true),
             redundancies: cfg.get<boolean>("styleCheck.redundancies", true),
@@ -1082,7 +1083,10 @@ export class MarkdownEditorProvider
             nonAsciiPunct: cfg.get<boolean>("styleCheck.nonAsciiPunct", true),
             styleExceptions: cfg.get<string[]>("styleCheck.exceptions", []),
             spellCheck: cfg.get<boolean>("spellCheck.enabled", true),
-            grammarCheck: cfg.get<boolean>("spellCheck.grammar", true),
+            // grammarCheck.enabled is the current key; spellCheck.grammar is the
+            // deprecated one (grammar was misnested under spelling). Read the new
+            // key, falling back to the old value so an existing config migrates.
+            grammarCheck: cfg.get<boolean>("grammarCheck.enabled", cfg.get<boolean>("spellCheck.grammar", true)),
             userWords: cfg.get<string[]>("spellCheck.userWords", []),
         };
     }
@@ -1137,23 +1141,16 @@ export class MarkdownEditorProvider
     }
 
     /**
-     * Persist a proofread on/off switch, writing to the scope that currently
-     * wins — a Global write would be silently overridden by an existing
-     * workspace value.
-     */
-    public static setProofreadEnabled(key: "styleCheck.enabled" | "spellCheck.enabled", enabled: boolean): void {
-        MarkdownEditorProvider.updateSettingRespectingScope(key, enabled);
-    }
-
-    /**
      * Every proofread toggle the webview may write, mapped to its setting path.
-     * The three masters live under their own keys; the sub-checks nest under
-     * `styleCheck.*`. Unknown keys are ignored (guards the write).
+     * `proofreading` is the master gate; the three domain masters and the
+     * sub-checks live under their own keys. Unknown keys are ignored (guards
+     * the write).
      */
     private static readonly PROOFREAD_SETTING: Record<ProofreadOptionKey, string> = {
+        proofreading: "proofreading.enabled",
         styleCheck: "styleCheck.enabled",
         spellCheck: "spellCheck.enabled",
-        grammarCheck: "spellCheck.grammar",
+        grammarCheck: "grammarCheck.enabled",
         fillers: "styleCheck.fillers",
         redundancies: "styleCheck.redundancies",
         cliches: "styleCheck.cliches",
@@ -1175,38 +1172,17 @@ export class MarkdownEditorProvider
         MarkdownEditorProvider.updateSettingRespectingScope(path, value);
     }
 
-    /** Flip the style check (command palette / keyboard shortcut). */
-    public static toggleStyleCheck(): void {
+    /**
+     * Flip the master proofreading gate (command palette / keyboard shortcut).
+     * This gates the whole feature on/off without touching the per-domain
+     * switches, so turning it back on restores exactly what was enabled before.
+     */
+    public static toggleProofreading(): void {
         const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
-        MarkdownEditorProvider.setProofreadEnabled(
-            "styleCheck.enabled",
-            !cfg.get<boolean>("styleCheck.enabled", false),
+        MarkdownEditorProvider.updateSettingRespectingScope(
+            "proofreading.enabled",
+            !cfg.get<boolean>("proofreading.enabled", true),
         );
-    }
-
-    /**
-     * The three master switches, for the "go clean" all-checks toggle.
-     * Sub-checks are intentionally untouched: turning the masters back on
-     * restores whatever per-check config the writer already had.
-     */
-    private static readonly CHECK_MASTERS = [
-        "styleCheck.enabled",
-        "spellCheck.enabled",
-        "spellCheck.grammar",
-    ] as const;
-
-    /**
-     * "Go clean" — flip every check (spelling, grammar, style) at once. If any
-     * master is on, turn all three off for a distraction-free pass; if all are
-     * off, turn them back on. One quiet keystroke to silence the underlines.
-     */
-    public static toggleAllChecks(): void {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
-        const anyOn = MarkdownEditorProvider.CHECK_MASTERS.some((key) => cfg.get<boolean>(key, true));
-        const next = !anyOn;
-        for (const key of MarkdownEditorProvider.CHECK_MASTERS) {
-            MarkdownEditorProvider.updateSettingRespectingScope(key, next);
-        }
     }
 
     private _handleSpellAddWord(word: string): void {

@@ -26,6 +26,7 @@ const schema = new Schema({
 });
 
 const CONFIG: ProofreadConfig = {
+    proofreadingEnabled: true,
     styleCheck: true,
     fillers: true,
     redundancies: true,
@@ -138,6 +139,15 @@ describe("computeDecorations", () => {
         ]);
 
         expect(decoratedTexts(doc, { ...CONFIG, styleCheck: false })).toEqual([]);
+    });
+
+    it("the master gate off should produce no decorations even with style check on", () => {
+        const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, [schema.text("This is really good.")]),
+        ]);
+
+        // proofreadingEnabled=false gates everything; styleCheck stays true.
+        expect(decoratedTexts(doc, { ...CONFIG, proofreadingEnabled: false })).toEqual([]);
     });
 
     it("a repeated word should be decorated even with all phrase categories off", () => {

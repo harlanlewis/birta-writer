@@ -22,6 +22,7 @@ const props: Record<string, { default?: unknown }> =
 
 /** ProofreadConfig field → contributed setting key (sans prefix). */
 const FIELD_TO_SETTING: Record<keyof ProofreadConfig, string> = {
+    proofreadingEnabled: "proofreading.enabled",
     styleCheck: "styleCheck.enabled",
     fillers: "styleCheck.fillers",
     redundancies: "styleCheck.redundancies",
@@ -37,7 +38,7 @@ const FIELD_TO_SETTING: Record<keyof ProofreadConfig, string> = {
     nonAsciiPunct: "styleCheck.nonAsciiPunct",
     styleExceptions: "styleCheck.exceptions",
     spellCheck: "spellCheck.enabled",
-    grammarCheck: "spellCheck.grammar",
+    grammarCheck: "grammarCheck.enabled",
     userWords: "spellCheck.userWords",
 };
 
