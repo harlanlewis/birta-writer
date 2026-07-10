@@ -27,6 +27,7 @@ export { pendingRangePlugin, setPendingRange } from "./pendingRange";
 export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";
 export { setSlashMenuHost, slashMenuPlugin } from "./slashMenu";
+export { tableAlignDefaultPlugin } from "./tableAlignDefault";
 export { cellClickFixPlugin } from "./tableCellClickFix";
 export { setLogTableSel } from "./tableDebug";
 export { tabKeymapPlugin } from "./tabKeymap";

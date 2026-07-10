@@ -52,6 +52,7 @@ import {
     linkInputRule,
     linkUrlCompletePlugin,
     mathInlineEditPlugin,
+    tableAlignDefaultPlugin,
     wikiLinkCompletePlugin,
     listEnterPlugin,
     listLiftPlugin,
@@ -346,6 +347,9 @@ export async function createEditor(
         .use(tableKeymapPlugin)
         .use(pureCommonmark)
         .use(gfm)
+        // After gfm so the extended cell schemas (null alignment default —
+        // inserted columns must not write `:---` markers) win over the preset's.
+        .use(tableAlignDefaultPlugin)
         .use(listener)
         .use(prism)
         .use(historyPlugin)

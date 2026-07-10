@@ -291,7 +291,7 @@ no highlighting here
 |---|:---:|---|
 | Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
 | Line breaks | yes | first line<br>second line |
-| Alignment markers | render + round-trip | this Supported column is `:---:` centered; no UI to *change* alignment yet (MAR-75) |
+| Alignment | yes | right-click a cell → **Align Column Left / Center / Right** (this Supported column is `:---:` centered); re-pick the current alignment to clear back to `---` |
 
 ---
 

@@ -48,6 +48,7 @@ import {
     deleteRow,
     deleteTable,
     CellSelection,
+    TableMap,
 } from "@milkdown/prose/tables";
 import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
@@ -314,11 +315,82 @@ function tableCmd(
             if (!$cell) {
                 return;
             }
-            view.dispatch(view.state.tr.setSelection(new CellSelection($cell)));
+            // Right-click inside an existing cell selection acts on THAT
+            // selection (align/delete the grip-selected columns), the native
+            // convention; a click outside it re-targets the clicked cell.
+            // Membership is per-cell (`ranges`), not the flat from/to span —
+            // a CellSelection's from/to cover only the anchor/head corners.
+            const sel = view.state.selection;
+            const clickedInsideSelection =
+                sel instanceof CellSelection &&
+                sel.ranges.some((r) => cellPos >= r.$from.pos && cellPos <= r.$to.pos);
+            if (!clickedInsideSelection) {
+                view.dispatch(view.state.tr.setSelection(new CellSelection($cell)));
+            }
         }
         fn(view.state, view.dispatch);
         view.focus();
     });
+}
+
+/**
+ * GFM column alignment (MAR-75): set the `alignment` attr on EVERY cell of the
+ * column(s) the selection touches. The header row's attrs drive the serialized
+ * `:---:` / `---:` / `:---` markers (serialization.ts reads `node.align` built
+ * from the first row), and each body cell's attr drives its rendered
+ * `text-align` — so both must move together. Re-picking a column's current
+ * alignment TOGGLES it off (attr null → the unmarked `---` separator), which
+ * is the only path back to the default in a menu with no state display.
+ */
+function columnAlignCommand(align: "left" | "center" | "right") {
+    return (state: EditorView["state"], dispatch: EditorView["dispatch"]): boolean => {
+        const sel = state.selection;
+        let $anchorCell;
+        let $headCell;
+        if (sel instanceof CellSelection) {
+            $anchorCell = sel.$anchorCell;
+            $headCell = sel.$headCell;
+        } else {
+            const $cell = cellAround(sel.$from);
+            if (!$cell) {
+                return false;
+            }
+            $anchorCell = $cell;
+            $headCell = $cell;
+        }
+        const table = $anchorCell.node(-1);
+        const tableStart = $anchorCell.start(-1);
+        const map = TableMap.get(table);
+        const rect = map.rectBetween($anchorCell.pos - tableStart, $headCell.pos - tableStart);
+
+        // Every cell of every spanned column, header included (deduped —
+        // row/col-spanning cells appear at several map slots).
+        const cellPositions = new Set<number>();
+        for (let col = rect.left; col < rect.right; col++) {
+            for (let row = 0; row < map.height; row++) {
+                cellPositions.add(map.map[row * map.width + col]!);
+            }
+        }
+
+        const allAlready = [...cellPositions].every(
+            (pos) => table.nodeAt(pos)?.attrs["alignment"] === align,
+        );
+        const target = allAlready ? null : align;
+
+        const tr = state.tr;
+        for (const pos of cellPositions) {
+            const cell = table.nodeAt(pos);
+            if (!cell || cell.attrs["alignment"] === target) {
+                continue;
+            }
+            tr.setNodeMarkup(tableStart + pos, null, { ...cell.attrs, alignment: target });
+        }
+        if (!tr.docChanged) {
+            return false;
+        }
+        dispatch(tr);
+        return true;
+    };
 }
 
 /**
@@ -414,6 +486,9 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     tableInsertRowBelow: (getEditor, args) => tableCmd(getEditor, addRowAfter, args),
     tableInsertColumnLeft: (getEditor, args) => tableCmd(getEditor, addColumnBefore, args),
     tableInsertColumnRight: (getEditor, args) => tableCmd(getEditor, addColumnAfter, args),
+    tableAlignColumnLeft: (getEditor, args) => tableCmd(getEditor, columnAlignCommand("left"), args),
+    tableAlignColumnCenter: (getEditor, args) => tableCmd(getEditor, columnAlignCommand("center"), args),
+    tableAlignColumnRight: (getEditor, args) => tableCmd(getEditor, columnAlignCommand("right"), args),
     tableDeleteRow: (getEditor, args) => tableCmd(getEditor, deleteRow, args),
     tableDeleteColumn: (getEditor, args) => tableCmd(getEditor, deleteColumn, args),
     tableDeleteTable: (getEditor, args) => tableCmd(getEditor, deleteTable, args),

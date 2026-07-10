@@ -67,6 +67,11 @@ export const EDITOR_COMMANDS = [
     { id: "tableInsertRowBelow", title: "Insert Row Below", palette: false, sections: ["table"] },
     { id: "tableInsertColumnLeft", title: "Insert Column Left", palette: false, sections: ["table"] },
     { id: "tableInsertColumnRight", title: "Insert Column Right", palette: false, sections: ["table"] },
+    // Column alignment (GFM `:---:` markers). Re-picking a column's current
+    // alignment clears it back to the unmarked `---` default.
+    { id: "tableAlignColumnLeft", title: "Align Column Left", palette: false, sections: ["table"] },
+    { id: "tableAlignColumnCenter", title: "Align Column Center", palette: false, sections: ["table"] },
+    { id: "tableAlignColumnRight", title: "Align Column Right", palette: false, sections: ["table"] },
     { id: "tableDeleteRow", title: "Delete Row", palette: false, sections: ["table"] },
     { id: "tableDeleteColumn", title: "Delete Column", palette: false, sections: ["table"] },
     { id: "tableDeleteTable", title: "Delete Table", palette: false, sections: ["table"] },

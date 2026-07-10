@@ -2,7 +2,7 @@
     "name": "md-wysiwyg-editor",
     "displayName": "WYSIWYG Markdown Editor",
     "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-    "version": "0.2.134",
+    "version": "0.2.135",
     "publisher": "harlanlewis",
     "engines": {
         "vscode": "^1.80.0"
@@ -262,6 +262,21 @@
             {
                 "command": "markdownWysiwyg.editor.tableInsertColumnRight",
                 "title": "%command.editor.tableInsertColumnRight.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableAlignColumnLeft",
+                "title": "%command.editor.tableAlignColumnLeft.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableAlignColumnCenter",
+                "title": "%command.editor.tableAlignColumnCenter.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.tableAlignColumnRight",
+                "title": "%command.editor.tableAlignColumnRight.title%",
                 "category": "WYSIWYG Markdown Editor"
             },
             {
@@ -628,6 +643,18 @@
                     "when": "false"
                 },
                 {
+                    "command": "markdownWysiwyg.editor.tableAlignColumnLeft",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableAlignColumnCenter",
+                    "when": "false"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableAlignColumnRight",
+                    "when": "false"
+                },
+                {
                     "command": "markdownWysiwyg.editor.tableDeleteRow",
                     "when": "false"
                 },
@@ -736,6 +763,21 @@
                     "command": "markdownWysiwyg.editor.tableInsertColumnRight",
                     "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
                     "group": "1_tableinsert@4"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableAlignColumnLeft",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "2_tablealign@1"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableAlignColumnCenter",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "2_tablealign@2"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.tableAlignColumnRight",
+                    "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'table'",
+                    "group": "2_tablealign@3"
                 },
                 {
                     "command": "markdownWysiwyg.editor.tableDeleteRow",
