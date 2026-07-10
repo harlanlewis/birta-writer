@@ -326,13 +326,16 @@
 .tb-list-item--on,
 .tb-list-item--on:hover,
 .tb-callout-item--on,
-.tb-callout-item--on:hover {
+.tb-callout-item--on:hover,
+.tb-fmt-item--on,
+.tb-fmt-item--on:hover {
     background: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
 }
 
 .tb-list-item--on:hover,
-.tb-callout-item--on:hover {
+.tb-callout-item--on:hover,
+.tb-fmt-item--on:hover {
     background: var(--vscode-button-hoverBackground);
 }
 

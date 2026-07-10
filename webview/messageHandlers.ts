@@ -63,6 +63,8 @@ export type Handler<T extends ToWebviewMessage["type"] = ToWebviewMessage["type"
 /** Toolbar controller interface. */
 export interface ToolbarController {
     onSelectionChange(view: EditorView): void;
+    /** Blank the bar while focus is in a nested editable island (a callout title). */
+    setDetached(): void;
     setDebugMode(enabled: boolean): void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig(config: import("../shared/messages").ToolbarConfig): void;

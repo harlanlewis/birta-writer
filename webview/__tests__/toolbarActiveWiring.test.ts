@@ -7,7 +7,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { gfm } from "@milkdown/preset-gfm";
-import { Selection, TextSelection } from "@milkdown/prose/state";
+import { Selection, TextSelection, NodeSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { insertCalloutCommand } from "../plugins/callouts";
@@ -122,16 +122,47 @@ describe("toolbar reflects caret state", () => {
         tb.onSelectionChange(view(editor));
         expect(active(q(topbar, '[data-item-id="table"] .tb-btn'))).toBe(true);
         expect(q(topbar, '[data-item-id="format"] .tb-fmt-wrap').classList.contains("tb-fmt-wrap--disabled")).toBe(true);
-        expect(topbar.querySelectorAll('[data-item-id="format"] .tb-check-item--on').length).toBe(0);
+        // No format row is filled where the type can't become a heading (N/A → "—").
+        expect(topbar.querySelectorAll('[data-item-id="format"] .tb-fmt-item--on').length).toBe(0);
     });
 
-    it("a caret in plain text should light nothing and enable the P/H control", async () => {
+    it("a selected image should light the Image button and grey the P/H control", async () => {
+        const { editor, topbar, tb } = await setup("![alt](https://example.com/x.png)");
+        const v = view(editor);
+        let pos = -1;
+        v.state.doc.descendants((n, p) => { if (pos < 0 && n.type.name === "image") { pos = p; } });
+        v.dispatch(v.state.tr.setSelection(NodeSelection.create(v.state.doc, pos)));
+        tb.onSelectionChange(v);
+        expect(active(q(topbar, '[data-item-id="image"] .tb-btn'))).toBe(true);
+        expect(q(topbar, '[data-item-id="format"] .tb-fmt-wrap').classList.contains("tb-fmt-wrap--disabled")).toBe(true);
+    });
+
+    it("setDetached should blank the bar after it reflected a real block", async () => {
+        // Focus in a callout-title island freezes the PM selection; the bar must
+        // stop asserting the (now-stale) block it last reflected.
+        const { editor, topbar, tb } = await setup("> [!TIP]\n> hint");
+        caretInText(editor, "hint");
+        tb.onSelectionChange(view(editor));
+        expect(active(q(topbar, '[data-item-id="quote"] .tb-fmt-btn'))).toBe(true); // precondition
+
+        tb.setDetached();
+        expect(topbar.querySelectorAll(".tb-btn--active").length).toBe(0);
+        expect(q(topbar, '[data-item-id="format"] .tb-fmt-wrap').classList.contains("tb-fmt-wrap--disabled")).toBe(true);
+        expect(topbar.querySelectorAll('[data-item-id="format"] .tb-fmt-item--on').length).toBe(0);
+        expect(topbar.querySelectorAll('[data-item-id="quote"] .tb-callout-item--on').length).toBe(0);
+    });
+
+    it("a caret in plain text should light nothing and fill the P row (no checkmark column)", async () => {
         const { editor, topbar, tb } = await setup("plain paragraph here");
         caretInText(editor, "plain");
         tb.onSelectionChange(view(editor));
         expect(topbar.querySelectorAll(".tb-btn--active").length).toBe(0);
         expect(q(topbar, '[data-item-id="format"] .tb-fmt-wrap').classList.contains("tb-fmt-wrap--disabled")).toBe(false);
-        // P is checked (the caret is a paragraph).
-        expect(topbar.querySelectorAll('[data-item-id="format"] .tb-check-item--on').length).toBe(1);
+        // Exactly the P row is filled (the caret is a paragraph) — via the fill
+        // idiom, not a checkmark: the Format menu has no .menu-check column.
+        const filled = topbar.querySelectorAll<HTMLElement>('[data-item-id="format"] .tb-fmt-item--on');
+        expect(filled.length).toBe(1);
+        expect(filled[0]!.textContent!.trim()).toBe("P");
+        expect(topbar.querySelectorAll('[data-item-id="format"] .menu-check').length).toBe(0);
     });
 });

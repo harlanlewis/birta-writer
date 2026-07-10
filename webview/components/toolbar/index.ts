@@ -44,7 +44,7 @@ import { createOverflowController } from './overflow';
 import type { OverflowController, OverflowGroup } from './overflow';
 import { computeZones } from './registry';
 import type { ToolbarItemId } from './registry';
-import { computeToolbarActiveState } from './activeState';
+import { computeToolbarActiveState, DETACHED_STATE, type ToolbarActiveState } from './activeState';
 import { enterEditMode } from './dnd';
 import { wireHoverMenu } from './hoverMenu';
 import type { ToolbarConfig, FontPreset, FontStacks, ProofreadConfig, ProofreadOptionKey } from "../../../shared/messages";
@@ -139,6 +139,33 @@ function createCheckItem(label: string): CheckItem {
         label: labelEl,
         setChecked: (on: boolean): void => {
             el.classList.toggle("tb-check-item--on", on);
+            el.setAttribute("aria-checked", on ? "true" : "false");
+        },
+    };
+}
+
+/** A menu row whose active state is shown by filling the row (no leading check). */
+interface FillItem {
+    el: HTMLElement;
+    setActive: (on: boolean) => void;
+}
+
+/**
+ * A fill-idiom menu row: a label whose active state is an accent-filled row (the
+ * `.tb-list-item--on` treatment shared by the Lists/Quote/Code pickers), not a
+ * leading checkmark. The Format (P / H1–H6) menu uses this so it reads the same
+ * as the other container pickers — a single-select where the current row lights.
+ */
+function createFillItem(label: string): FillItem {
+    const el = document.createElement("div");
+    el.className = "tb-fmt-item tb-fmt-fill-item";
+    el.setAttribute("role", "menuitemradio");
+    el.setAttribute("aria-checked", "false");
+    el.textContent = label;
+    return {
+        el,
+        setActive: (on: boolean): void => {
+            el.classList.toggle("tb-fmt-item--on", on);
             el.setAttribute("aria-checked", on ? "true" : "false");
         },
     };
@@ -668,6 +695,8 @@ export function initToolbar(
     onSwitchToSource?: () => void,
 ): {
     onSelectionChange: (view: EditorView) => void;
+    /** Blank the bar while focus is in a nested editable island (a callout title). */
+    setDetached: () => void;
     setDebugMode: (enabled: boolean) => void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig: (config: ToolbarConfig) => void;
@@ -996,9 +1025,9 @@ export function initToolbar(
         ["H6", () => runEditorCommand("setHeading6", getEditor)],
     ];
 
-    const fmtItems: CheckItem[] = [];
+    const fmtItems: FillItem[] = [];
     formats.forEach(([label, action]) => {
-        const item = createCheckItem(label);
+        const item = createFillItem(label);
         item.el.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1166,9 +1195,10 @@ export function initToolbar(
     items.footnote = wrap("footnote", btn(IconFootnote, t("Insert Footnote"), () =>
         runEditorCommand("insertFootnote", getEditor),
     ));
-    items.math = wrap("math", btn(IconMath, t("Inline Math"), () =>
+    const mathBtnEl = btn(IconMath, t("Inline Math"), () =>
         runEditorCommand("insertMath", getEditor),
-    ));
+    );
+    items.math = wrap("math", mathBtnEl);
 
     // ── Lists dropdown (bullet / ordered / task) ──
     // One hover-menu picker with an icon+label row per list type. Each row is a
@@ -2026,45 +2056,61 @@ export function initToolbar(
         toggleToolbar: () => setToolbarVisible(!toolbarVisible),
     });
 
+    // Reflect a derived active-state across the whole bar. Split out from
+    // onSelectionChange so the same wiring drives the "detached" state (focus in a
+    // contenteditable island outside ProseMirror — see setDetached below).
+    const applyActiveState = (active: ToolbarActiveState): void => {
+        // Bar buttons: quiet toggle-on for the inline mark / container / selected
+        // atom the caret sits on. A hidden/overflowed button still exists —
+        // toggling its class is harmless.
+        const setBtnActive = (el: HTMLElement | null, on: boolean): void => {
+            el?.classList.toggle("tb-btn--active", on);
+        };
+        setBtnActive(boldBtn, active.marks.bold);
+        setBtnActive(italicBtn, active.marks.italic);
+        setBtnActive(strikeBtn, active.marks.strikethrough);
+        setBtnActive(highlightBtn, active.marks.highlight);
+        setBtnActive(inlineCodeBtn, active.marks.inlineCode);
+        // A real `[text](url)` link is a mark; a `[[wikilink]]` is a node-selected
+        // atom. Both light the one Link button.
+        setBtnActive(linkBtnEl, active.marks.link || active.wikiLink);
+        setBtnActive(mathBtnEl, active.inlineMath);
+        setBtnActive(imgBtnEl, active.imageSelected);
+        setBtnActive(tableBtn, active.inTable);
+        setBtnActive(listTriggerBtn, active.list !== null);
+        setBtnActive(quoteTriggerBtn, active.quote !== null);
+        setBtnActive(codeTriggerBtn, active.code !== null);
+
+        // Format (text hierarchy): label the level and fill its menu row; grey the
+        // control out where the text type can't become a heading (table cell /
+        // code block / a selected atom).
+        const labelEl = fmtBtn.querySelector(".tb-fmt-label");
+        if (labelEl) {
+            const labels = ["P", "H1", "H2", "H3", "H4", "H5", "H6"];
+            labelEl.textContent = active.formatApplicable ? (labels[active.headingLevel] ?? "P") : "—";
+        }
+        fmtWrap.classList.toggle("tb-fmt-wrap--disabled", !active.formatApplicable);
+        fmtItems.forEach((item, i) => {
+            // i=0 → P (level 0), i=1..6 → H1..H6; nothing filled when N/A.
+            item.setActive(active.formatApplicable && (i === 0 ? active.headingLevel === 0 : i === active.headingLevel));
+        });
+
+        // Container menu rows: fill the row for the exact container you're in.
+        for (const { type, setActive } of listRows) { setActive(type === active.list); }
+        for (const { key, setActive } of quoteRows) { setActive(key === active.quote); }
+        for (const { key, setActive } of codeRows) { setActive(key === active.code); }
+    };
+
     return {
         onSelectionChange(view: EditorView): void {
             // One derivation of "what state is the caret in"; the toolbar mirrors it.
-            const active = computeToolbarActiveState(view.state);
-
-            // Bar buttons: quiet toggle-on for the inline mark / container the
-            // caret sits in. A hidden/overflowed button still exists — toggling
-            // its class is harmless.
-            const setBtnActive = (el: HTMLElement | null, on: boolean): void => {
-                el?.classList.toggle("tb-btn--active", on);
-            };
-            setBtnActive(boldBtn, active.marks.bold);
-            setBtnActive(italicBtn, active.marks.italic);
-            setBtnActive(strikeBtn, active.marks.strikethrough);
-            setBtnActive(highlightBtn, active.marks.highlight);
-            setBtnActive(inlineCodeBtn, active.marks.inlineCode);
-            setBtnActive(linkBtnEl, active.marks.link);
-            setBtnActive(tableBtn, active.inTable);
-            setBtnActive(listTriggerBtn, active.list !== null);
-            setBtnActive(quoteTriggerBtn, active.quote !== null);
-            setBtnActive(codeTriggerBtn, active.code !== null);
-
-            // Format (text hierarchy): checkmark the level; grey the control out
-            // where the text type can't become a heading (table cell / code block).
-            const labelEl = fmtBtn.querySelector(".tb-fmt-label");
-            if (labelEl) {
-                const labels = ["P", "H1", "H2", "H3", "H4", "H5", "H6"];
-                labelEl.textContent = active.formatApplicable ? (labels[active.headingLevel] ?? "P") : "—";
-            }
-            fmtWrap.classList.toggle("tb-fmt-wrap--disabled", !active.formatApplicable);
-            fmtItems.forEach((item, i) => {
-                // i=0 → P (level 0), i=1..6 → H1..H6; nothing checked when N/A.
-                item.setChecked(active.formatApplicable && (i === 0 ? active.headingLevel === 0 : i === active.headingLevel));
-            });
-
-            // Container menu rows: fill the row for the exact container you're in.
-            for (const { type, setActive } of listRows) { setActive(type === active.list); }
-            for (const { key, setActive } of quoteRows) { setActive(key === active.quote); }
-            for (const { key, setActive } of codeRows) { setActive(key === active.code); }
+            applyActiveState(computeToolbarActiveState(view.state));
+        },
+        setDetached(): void {
+            // Focus is in a nested editable island (a callout title) — the frozen
+            // PM selection no longer describes where the user is typing, so blank
+            // the bar rather than assert a stale block.
+            applyActiveState(DETACHED_STATE);
         },
         setDebugMode(enabled: boolean): void {
             debugVisible = enabled;

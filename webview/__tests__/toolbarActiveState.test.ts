@@ -8,11 +8,17 @@ import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, commandsCtx } from "@milkdown/core";
 import { toggleStrongCommand, toggleEmphasisCommand } from "@milkdown/preset-commonmark";
 import { gfm } from "@milkdown/preset-gfm";
-import { Selection, TextSelection } from "@milkdown/prose/state";
+import { Selection, TextSelection, NodeSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { insertCalloutCommand } from "../plugins/callouts";
-import { computeToolbarActiveState } from "../components/toolbar/activeState";
+import { mathPlugin } from "../plugins/math";
+import { wikiLinksPlugin } from "../plugins/wikiLinks";
+import { referenceLinksPlugin } from "../plugins/referenceLinks";
+import {
+    computeToolbarActiveState,
+    DETACHED_STATE,
+} from "../components/toolbar/activeState";
 
 let editors: Editor[] = [];
 
@@ -28,9 +34,26 @@ async function makeEditor(md: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfm)
         .use(insertCalloutCommand)
+        // The atom nodes the bar reflects off a NodeSelection live in these
+        // plugins — include them so the schema carries wiki_link / math_inline /
+        // link_ref, and the derivation is pinned against the REAL node names.
+        .use(mathPlugin)
+        .use(wikiLinksPlugin)
+        .use(referenceLinksPlugin)
         .create();
     editors.push(editor);
     return editor;
+}
+
+/** Node-select the first node of the given type (what clicking an atom does). */
+function nodeSelect(editor: Editor, typeName: string): void {
+    const v = view(editor);
+    let pos = -1;
+    v.state.doc.descendants((n, p) => {
+        if (pos < 0 && n.type.name === typeName) { pos = p; }
+    });
+    if (pos < 0) { throw new Error(`node not found: ${typeName}`); }
+    v.dispatch(v.state.tr.setSelection(NodeSelection.create(v.state.doc, pos)));
 }
 
 function view(editor: Editor): EditorView {
@@ -143,5 +166,82 @@ describe("computeToolbarActiveState", () => {
         const s = stateOf(editor);
         expect(s.inTable).toBe(true);
         expect(s.formatApplicable).toBe(false);
+    });
+
+    // ── Inline atoms and node selections ──
+    // Wikilinks and inline math are inline ATOMS (not marks): arrowing onto one, or
+    // clicking it, node-selects the whole node — a rangeHasMark probe can't see them.
+
+    it("a selected inline-math atom should report inlineMath, no marks, N/A format", async () => {
+        const editor = await makeEditor("before $a^2+b^2$ after");
+        nodeSelect(editor, "math_inline");
+        const s = stateOf(editor);
+        expect(s.inlineMath).toBe(true);
+        expect(s.wikiLink).toBe(false);
+        expect(s.imageSelected).toBe(false);
+        // An atom isn't a heading-capable textblock — format greys out like a table cell.
+        expect(s.formatApplicable).toBe(false);
+        expect(Object.values(s.marks).every((v) => v === false)).toBe(true);
+    });
+
+    it("a selected wikilink atom should report wikiLink (the Link button reflects it)", async () => {
+        const editor = await makeEditor("see [[Some Page]] here");
+        nodeSelect(editor, "wiki_link");
+        const s = stateOf(editor);
+        expect(s.wikiLink).toBe(true);
+        expect(s.inlineMath).toBe(false);
+        // wikiLink is a node, not a mark — marks.link stays false (index.ts ORs the two).
+        expect(s.marks.link).toBe(false);
+        expect(s.formatApplicable).toBe(false);
+    });
+
+    it("a selected image should report imageSelected and not-applicable format", async () => {
+        const editor = await makeEditor("![alt](https://example.com/x.png)");
+        nodeSelect(editor, "image");
+        const s = stateOf(editor);
+        expect(s.imageSelected).toBe(true);
+        expect(s.inlineMath).toBe(false);
+        expect(s.wikiLink).toBe(false);
+        expect(s.formatApplicable).toBe(false);
+    });
+
+    it("a caret inside a real markdown link should report marks.link, not wikiLink", async () => {
+        const editor = await makeEditor("a [regular](https://example.com) link");
+        caretInText(editor, "regular");
+        const s = stateOf(editor);
+        expect(s.marks.link).toBe(true);
+        expect(s.wikiLink).toBe(false);
+        // A real link is a mark on ordinary text — the caret is still in a paragraph.
+        expect(s.formatApplicable).toBe(true);
+        expect(s.headingLevel).toBe(0);
+    });
+
+    it("a caret inside a reference link should report marks.link (link_ref)", async () => {
+        const editor = await makeEditor("a [ref link][id] here\n\n[id]: https://example.com");
+        caretInText(editor, "ref link");
+        expect(stateOf(editor).marks.link).toBe(true);
+    });
+
+    it("a caret adjacent to an inline-math atom (not selected) should NOT report it", async () => {
+        // A collapsed caret sitting next to the atom is ordinary paragraph text —
+        // only a NodeSelection (arrowed-onto / clicked) lights the button.
+        const editor = await makeEditor("x $a^2$ y");
+        caretInText(editor, "x ");
+        const s = stateOf(editor);
+        expect(s.inlineMath).toBe(false);
+        expect(s.formatApplicable).toBe(true);
+    });
+
+    it("the detached state should be fully neutral (island focus, e.g. a callout title)", async () => {
+        // Not derived from a doc: the frozen PM selection is stale, so the bar is blanked.
+        expect(DETACHED_STATE.formatApplicable).toBe(false);
+        expect(DETACHED_STATE.list).toBeNull();
+        expect(DETACHED_STATE.quote).toBeNull();
+        expect(DETACHED_STATE.code).toBeNull();
+        expect(DETACHED_STATE.inTable).toBe(false);
+        expect(DETACHED_STATE.wikiLink).toBe(false);
+        expect(DETACHED_STATE.inlineMath).toBe(false);
+        expect(DETACHED_STATE.imageSelected).toBe(false);
+        expect(Object.values(DETACHED_STATE.marks).every((v) => v === false)).toBe(true);
     });
 });

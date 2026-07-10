@@ -11,6 +11,7 @@
  * true right now."
  */
 import type { EditorState } from "@milkdown/prose/state";
+import { NodeSelection } from "@milkdown/prose/state";
 
 export type ListKind = "bullet" | "ordered" | "task";
 /** "blockquote" for a plain quote, otherwise the callout kind (note/tip/…). */
@@ -29,7 +30,7 @@ export interface ToolbarActiveState {
     };
     /** 0 = paragraph, 1–6 = heading, -1 = not a heading-capable textblock (code block). */
     readonly headingLevel: number;
-    /** false where the text type can't be changed to a heading (table cell / code block). */
+    /** false where the text type can't be changed to a heading (table cell / code block / a selected atom). */
     readonly formatApplicable: boolean;
     /** The enclosing list type, or null. */
     readonly list: ListKind | null;
@@ -39,6 +40,20 @@ export interface ToolbarActiveState {
     readonly code: CodeKind | null;
     /** The caret is inside a table. */
     readonly inTable: boolean;
+    /**
+     * A `wiki_link` atom is node-selected. Wikilinks (like inline math) are inline
+     * ATOMS, not marks — arrowing onto one selects the whole node — so a
+     * `rangeHasMark` probe can never see them; the toolbar lights the Link button
+     * off this instead. `marks.link` still covers real `[text](url)` links.
+     */
+    readonly wikiLink: boolean;
+    /**
+     * A `math_inline` node is node-selected OR the caret is inside its revealed
+     * LaTeX source (the formula's text content — mathInlineEdit.ts).
+     */
+    readonly inlineMath: boolean;
+    /** An `image` node is node-selected (the image button reflects this). */
+    readonly imageSelected: boolean;
 }
 
 // Mark → the schema mark name(s) to probe (first that exists wins). Strikethrough
@@ -49,7 +64,8 @@ const MARK_NAMES: Record<keyof ToolbarActiveState["marks"], readonly string[]> =
     strikethrough: ["strike_through", "strikethrough"],
     highlight: ["highlight"],
     inlineCode: ["inlineCode"],
-    link: ["link"],
+    // `link_ref` is the reference-style `[text][ref]` mark (plugins/referenceLinks.ts).
+    link: ["link", "link_ref"],
 };
 
 /** True if any of the named marks is active on the current selection/caret. */
@@ -84,8 +100,43 @@ function codeKindFromLanguage(language: unknown): CodeKind {
     return "code";
 }
 
+/**
+ * The "caret is somewhere the toolbar can't act on" state: nothing lit, format
+ * greyed to "—". Used when focus leaves ProseMirror for a nested contenteditable
+ * island (a callout title, plugins/callouts.ts) — the PM selection stays frozen
+ * where it was, so without this the bar would keep asserting the stale block
+ * (the "P stays active in the callout title" bug). Mirrors a table cell: neutral.
+ */
+export const DETACHED_STATE: ToolbarActiveState = {
+    marks: {
+        bold: false,
+        italic: false,
+        strikethrough: false,
+        highlight: false,
+        inlineCode: false,
+        link: false,
+    },
+    headingLevel: 0,
+    formatApplicable: false,
+    list: null,
+    quote: null,
+    code: null,
+    inTable: false,
+    wikiLink: false,
+    inlineMath: false,
+    imageSelected: false,
+};
+
 export function computeToolbarActiveState(state: EditorState): ToolbarActiveState {
-    const { $from } = state.selection;
+    const { selection } = state;
+    const { $from } = selection;
+
+    // A node-selected inline atom (wikilink / inline math) or image is what
+    // clicking the rendered node — or arrowing onto it — produces. These aren't
+    // marks and aren't ancestors of the caret, so they're read straight off the
+    // selection rather than the ancestor walk below.
+    const selectedNode = selection instanceof NodeSelection ? selection.node : null;
+    const selectedName = selectedNode?.type.name ?? null;
 
     let headingLevel = 0;
     let list: ListKind | null = null;
@@ -93,6 +144,7 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
     let code: CodeKind | null = null;
     let inTable = false;
     let inCodeBlock = false;
+    let inMathSource = false;
 
     // Walk the ancestor chain innermost→outermost. Each container is recorded the
     // first (innermost) time it's seen; a task item (list_item with a `checked`
@@ -118,6 +170,10 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
             quote = typeof attrs["kind"] === "string" ? attrs["kind"] : "note";
         } else if (name === "blockquote" && quote === null) {
             quote = "blockquote";
+        } else if (name === "math_inline") {
+            // Caret inside a formula's revealed source (math_inline holds its
+            // LaTeX as text content — mathInlineEdit.ts).
+            inMathSource = true;
         }
     }
 
@@ -131,10 +187,19 @@ export function computeToolbarActiveState(state: EditorState): ToolbarActiveStat
             link: anyMarkActive(state, MARK_NAMES.link),
         },
         headingLevel,
-        formatApplicable: !inTable && !inCodeBlock,
+        // A selected atom/image or a caret inside math source isn't a
+        // heading-capable textblock, so the format control greys to "—" there
+        // too (the table-cell / code-block treatment).
+        formatApplicable:
+            !inTable && !inCodeBlock && !inMathSource &&
+            (selectedNode === null || selectedNode.isTextblock),
         list,
         quote,
         code,
         inTable,
+        wikiLink: selectedName === "wiki_link",
+        // Node-selected (click/drag) OR caret inside the revealed source.
+        inlineMath: selectedName === "math_inline" || inMathSource,
+        imageSelected: selectedName === "image",
     };
 }

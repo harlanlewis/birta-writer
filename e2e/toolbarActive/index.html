@@ -1,0 +1,67 @@
+<!-- e2e harness: toolbar active-state matrix. Mirrors the provider template with
+     acquireVsCodeApi stubbed and a fixture doc exercising every kind of caret
+     context (heading, marks, atoms, containers, table, code, image). -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-inputOption-activeBackground: rgba(14,99,156,0.4); --vscode-inputOption-activeBorder: #007fd4;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const DOC = [
+    "# Heading One",
+    "",
+    "A paragraph with a [regular link](https://example.com) and a $x^2+y^2$ math and a [[Wiki Page]] link here.",
+    "",
+    "- bullet item",
+    "- [ ] task item",
+    "",
+    "1. ordered item",
+    "",
+    "> plain quote text",
+    "",
+    "> [!tip] My Tip",
+    "> callout body text",
+    "",
+    "| aa | bb |",
+    "| -- | -- |",
+    "| cc | dd |",
+    "",
+    "```js",
+    "const zzz = 1;",
+    "```",
+    "",
+    "![alt text](https://example.com/pic.png)",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
+        // The Inline Math button ships hidden by default (registry.ts) — place it
+        // on the bar so this suite can assert its active-state wiring.
+        window.postMessage(
+          { type: "toolbarConfig", config: { placements: { math: "left" }, order: [] } },
+          "*",
+        );
+      }
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
