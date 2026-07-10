@@ -12,9 +12,12 @@ export interface HoverMenuOptions {
     /** Runs immediately before the menu is shown — e.g. repaint checkmarks. */
     onOpen?: () => void;
     /**
-     * Grace period before hiding once the pointer leaves the wrap. Covers the
-     * dead space of the button→menu gap (the menu is absolutely positioned just
-     * outside the wrap's box); the menu's own hover cancels it. Default 100ms.
+     * Grace period before hiding once the pointer leaves the wrap. Defaults to
+     * 0 (instant): the button→menu gap is bridged by a transparent CSS strip
+     * (`.tb-fmt-wrap.tb-menu-open::after`, sized to MENU_GAP) so the pointer
+     * never leaves the wrap while crossing it — no timer is needed to hold the
+     * menu open. Leaving the wrap for real closes it at once, so switching
+     * between adjacent dropdowns never briefly stacks them.
      */
     hideDelayMs?: number;
 }
@@ -36,7 +39,7 @@ export function wireHoverMenu(
     menu: HTMLElement,
     options: HoverMenuOptions = {},
 ): () => void {
-    const hideDelay = options.hideDelayMs ?? 100;
+    const hideDelay = options.hideDelayMs ?? 0;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
 
     const cancelHide = (): void => {
@@ -52,11 +55,14 @@ export function wireHoverMenu(
         menu.style.display = "flex";
         placeMenu(button, menu);
         button.setAttribute("aria-expanded", "true");
+        // Marks the wrap so its ::after gap-bridge is live only while open.
+        wrap.classList.add("tb-menu-open");
     };
     const close = (): void => {
         cancelHide();
         menu.style.display = "none";
         button.setAttribute("aria-expanded", "false");
+        wrap.classList.remove("tb-menu-open");
     };
     const scheduleHide = (): void => {
         cancelHide();

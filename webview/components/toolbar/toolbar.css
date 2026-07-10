@@ -104,6 +104,21 @@
     position: relative;
 }
 
+/* Transparent hover bridge over the button→menu gap (MENU_GAP in
+   menuPlacement.ts, 6px). The menu is a child of the wrap but sits 6px below
+   it, so without this strip the pointer would leave the wrap while crossing the
+   gap and — now that the hide is instant — the menu would close mid-travel.
+   Live only while the menu is open (the .tb-menu-open class), and only below
+   the button since the top-docked toolbar always opens its menus downward. */
+.tb-fmt-wrap.tb-menu-open::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: 6px;
+}
+
 /* Active toggle state (style check / spell check on). A filled accent gives
    clear "on" visibility, distinct from the subtle hover background. */
 .tb-btn--active,

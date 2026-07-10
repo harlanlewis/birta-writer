@@ -39,13 +39,24 @@ describe("wireHoverMenu", () => {
         expect(calls).toEqual(["none"]); // onOpen ran first, while still hidden
     });
 
-    it("hides only after the grace delay on leave", () => {
+    it("marks the wrap open so its CSS gap-bridge is live, and clears it on close", () => {
+        const { wrap, button, menu } = build();
+        wireHoverMenu(wrap, button, menu);
+        fire(wrap, "mouseenter");
+        expect(wrap.classList.contains("tb-menu-open")).toBe(true);
+        fire(wrap, "mouseleave");
+        vi.advanceTimersByTime(0);
+        expect(wrap.classList.contains("tb-menu-open")).toBe(false);
+    });
+
+    it("hides on leave with no grace delay by default", () => {
         const { wrap, button, menu } = build();
         wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
         fire(wrap, "mouseleave");
-        expect(menu.style.display).toBe("flex"); // still open during grace
-        vi.advanceTimersByTime(100);
+        // The default delay is 0 — the menu closes on the very next tick, so
+        // switching between adjacent dropdowns never briefly stacks them.
+        vi.advanceTimersByTime(0);
         expect(menu.style.display).toBe("none");
     });
 
@@ -53,8 +64,8 @@ describe("wireHoverMenu", () => {
         const { wrap, button, menu } = build();
         wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
-        fire(wrap, "mouseleave"); // pointer enters the dead-space gap
-        fire(menu, "mouseenter"); // ...then reaches the menu
+        fire(wrap, "mouseleave"); // pointer leaves the wrap
+        fire(menu, "mouseenter"); // ...but reaches the menu before the hide tick
         vi.advanceTimersByTime(500);
         expect(menu.style.display).toBe("flex");
     });

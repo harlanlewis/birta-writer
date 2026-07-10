@@ -831,42 +831,45 @@ export function initToolbar(
         fontMenu.className = "tb-fmt-menu tb-font-menu";
         fontMenu.style.display = "none";
 
-        // "Editor font" (the default) follows the VS Code editor font; the
-        // other presets use their stack, user-customizable via the
-        // fontFamilySans/Serif/Mono settings. Each row previews its own font.
-        const choices: { preset: FontPreset; label: string; stack: string }[] = [
-            { preset: "editor", label: t("Editor font"), stack: EDITOR_FONT },
-            { preset: "sans", label: t("Sans serif"), stack: currentFontStacks.sans },
-            { preset: "serif", label: t("Serif"), stack: currentFontStacks.serif },
-            { preset: "mono", label: t("Monospace"), stack: currentFontStacks.mono },
-        ];
-        for (const { preset, label, stack } of choices) {
-            const item = createCheckItem(label);
-            item.el.classList.add("tb-font-item");
-            if (stack) {
-                item.label.style.fontFamily = stack; // preview the font on its own label
-            }
-            item.el.addEventListener("mousedown", (e) => {
+        const makeSep = (): HTMLElement => {
+            const sep = document.createElement("div");
+            sep.className = "tb-menu-sep";
+            sep.setAttribute("role", "separator");
+            return sep;
+        };
+
+        // ── Content width: Full Width / Fixed segmented control ──
+        // Full Width (default) fills the pane; Fixed caps the content at the
+        // maxContentWidth ch setting and centers it. Clicks keep the menu open.
+        const widthRow = document.createElement("div");
+        widthRow.className = "tb-seg-row";
+        widthRow.setAttribute("role", "radiogroup");
+        widthRow.setAttribute("aria-label", t("Content width"));
+        const widthLabels: Record<ContentWidthMode, { label: string; title: string }> = {
+            full: { label: t("Full Width"), title: t("Full width — fill the pane") },
+            fixed: { label: t("Fixed"), title: t("Fixed — cap at the configured max content width") },
+        };
+        for (const mode of CONTENT_WIDTH_MODES) {
+            const segBtn = document.createElement("button");
+            segBtn.type = "button";
+            segBtn.className = "tb-seg-btn";
+            segBtn.setAttribute("role", "radio");
+            segBtn.textContent = widthLabels[mode].label;
+            segBtn.title = widthLabels[mode].title;
+            segBtn.setAttribute("aria-label", widthLabels[mode].title);
+            segBtn.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                fontMenu.style.display = "none";
-                setFontActive(preset);
-                notifySetFontPreset(preset);
+                pickContentWidth(mode);
             });
-            fontMenu.appendChild(item.el);
-            fontEntries.push({ preset, item });
+            widthRow.appendChild(segBtn);
+            widthSegments.set(mode, segBtn);
         }
-        setFontActive(currentFontPreset);
 
         // ── Size stepper: A− <percent> A+ ──
         // Scales the document content (and frontmatter) relative to the VS Code
         // editor font size; clicking the percent resets to the default. Clicks
         // keep the menu open, like the checks menu, so steps can be repeated.
-        const sizeSep = document.createElement("div");
-        sizeSep.className = "tb-menu-sep";
-        sizeSep.setAttribute("role", "separator");
-        fontMenu.appendChild(sizeSep);
-
         const sizeRow = document.createElement("div");
         sizeRow.className = "tb-font-size-row";
         const sizeBtn = (
@@ -903,50 +906,38 @@ export function initToolbar(
             pickFontSize(DEFAULT_FONT_SIZE_PERCENT);
         });
         sizeRow.append(sizeDecBtn, sizeValueEl, sizeIncBtn);
-        fontMenu.appendChild(sizeRow);
-        setFontSizeActive(currentFontSize);
 
-        // ── Content width: Full Width / Fixed segmented control ──
-        // Full Width (default) fills the pane; Fixed caps the content at the
-        // maxContentWidth ch setting and centers it. Clicks keep the menu open.
-        const widthSep = document.createElement("div");
-        widthSep.className = "tb-menu-sep";
-        widthSep.setAttribute("role", "separator");
-        fontMenu.appendChild(widthSep);
-
-        const widthRow = document.createElement("div");
-        widthRow.className = "tb-seg-row";
-        widthRow.setAttribute("role", "radiogroup");
-        widthRow.setAttribute("aria-label", t("Content width"));
-        const widthLabels: Record<ContentWidthMode, { label: string; title: string }> = {
-            full: { label: t("Full Width"), title: t("Full width — fill the pane") },
-            fixed: { label: t("Fixed"), title: t("Fixed — cap at the configured max content width") },
-        };
-        for (const mode of CONTENT_WIDTH_MODES) {
-            const segBtn = document.createElement("button");
-            segBtn.type = "button";
-            segBtn.className = "tb-seg-btn";
-            segBtn.setAttribute("role", "radio");
-            segBtn.textContent = widthLabels[mode].label;
-            segBtn.title = widthLabels[mode].title;
-            segBtn.setAttribute("aria-label", widthLabels[mode].title);
-            segBtn.addEventListener("mousedown", (e) => {
+        // ── Font family presets ──
+        // "Editor font" (the default) follows the VS Code editor font; the
+        // other presets use their stack, user-customizable via the
+        // fontFamilySans/Serif/Mono settings. Each row previews its own font.
+        const choices: { preset: FontPreset; label: string; stack: string }[] = [
+            { preset: "editor", label: t("Editor font"), stack: EDITOR_FONT },
+            { preset: "sans", label: t("Sans serif"), stack: currentFontStacks.sans },
+            { preset: "serif", label: t("Serif"), stack: currentFontStacks.serif },
+            { preset: "mono", label: t("Monospace"), stack: currentFontStacks.mono },
+        ];
+        const fontItemEls: HTMLElement[] = [];
+        for (const { preset, label, stack } of choices) {
+            const item = createCheckItem(label);
+            item.el.classList.add("tb-font-item");
+            if (stack) {
+                item.label.style.fontFamily = stack; // preview the font on its own label
+            }
+            item.el.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                pickContentWidth(mode);
+                fontMenu.style.display = "none";
+                setFontActive(preset);
+                notifySetFontPreset(preset);
             });
-            widthRow.appendChild(segBtn);
-            widthSegments.set(mode, segBtn);
+            fontItemEls.push(item.el);
+            fontEntries.push({ preset, item });
         }
-        fontMenu.appendChild(widthRow);
-        setContentWidthActive(currentContentWidth);
 
         // Jump to the native Settings UI filtered to the font settings, where
         // the per-preset stacks (fontFamilySans/Serif/Mono) can be customized.
-        const settingsSep = document.createElement("div");
-        settingsSep.className = "tb-menu-sep";
-        settingsSep.setAttribute("role", "separator");
-        fontMenu.appendChild(settingsSep);
+        // Grouped with the family presets above it (no divider between them).
         const fontSettingsEntry = document.createElement("div");
         fontSettingsEntry.className = "tb-fmt-item";
         fontSettingsEntry.textContent = t("Font settings");
@@ -956,7 +947,22 @@ export function initToolbar(
             fontMenu.style.display = "none";
             notifyOpenSettings("markdownWysiwyg.font");
         });
-        fontMenu.appendChild(fontSettingsEntry);
+
+        // Assemble top→bottom: content width, font size, then the family presets
+        // grouped with Font settings. Dividers separate width / size / family;
+        // none between the family presets and Font settings (one group).
+        fontMenu.append(
+            widthRow,
+            makeSep(),
+            sizeRow,
+            makeSep(),
+            ...fontItemEls,
+            fontSettingsEntry,
+        );
+
+        setFontActive(currentFontPreset);
+        setFontSizeActive(currentFontSize);
+        setContentWidthActive(currentContentWidth);
 
         wireHoverMenu(fontWrap, fontBtn, fontMenu);
 
