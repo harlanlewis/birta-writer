@@ -22,8 +22,7 @@ export const TOOLBAR_ITEM_IDS = [
     "link",
     "listMenu",
     "codeBlock",
-    "blockquote",
-    "callouts",
+    "quote",
     "horizontalRule",
     "table",
     "image",
@@ -44,7 +43,7 @@ export type ToolbarItemId = (typeof TOOLBAR_ITEM_IDS)[number];
  * The shipped layout: the common editing controls in the left zone (in
  * TOOLBAR_ITEM_IDS order), utilities on the right. Less-used inserts ship
  * hidden (opt-in), since each has an input-rule / slash / palette path:
- * strikethrough, highlight, inlineCode, callouts, horizontalRule,
+ * strikethrough, highlight, inlineCode, horizontalRule,
  * math, footnote, clearFormatting. Kept in lockstep
  * with the package.json setting defaults by
  * shared/__tests__/toolbarDefaultsContributions.test.ts.
@@ -66,9 +65,10 @@ export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     // rule (`- `, `1. `, `- [ ] `), the slash menu, and the command palette.
     listMenu: "left",
     codeBlock: "left",
-    blockquote: "left",
-    // Callouts ship hidden: the slash menu and `[!note] ` in a blockquote cover them.
-    callouts: "hidden",
+    // Quote: one dropdown holding a plain blockquote (top) + the five callout
+    // types. Ships visible where the standalone Blockquote button used to;
+    // callouts (previously a hidden dropdown) now ride along on the visible bar.
+    quote: "left",
     // Horizontal rule ships hidden: the `---` input rule covers it.
     horizontalRule: "hidden",
     table: "left",

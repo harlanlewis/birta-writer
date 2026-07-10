@@ -27,7 +27,6 @@ import {
     IconSearch,
     IconSettings,
     IconFileCode,
-    IconAlertCircle,
 } from "@/ui/icons";
 import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
@@ -1213,10 +1212,6 @@ export function initToolbar(
     }
     items.listMenu = wrap("listMenu", createListPicker());
 
-    // Blocks (toggle)
-    items.blockquote = wrap("blockquote", btn(IconQuote, t("Blockquote"), () =>
-        runEditorCommand("toggleBlockquote", getEditor),
-    ));
     items.codeBlock = wrap("codeBlock", btn(IconTerminal, t("Code Block"), () =>
         runEditorCommand("insertCodeBlock", getEditor),
     ));
@@ -1224,22 +1219,54 @@ export function initToolbar(
         runEditorCommand("insertHorizontalRule", getEditor),
     ));
 
-    // ── Callouts dropdown (GitHub alert types) ──
-    // Mirrors the Format dropdown: a hover menu with one row per GitHub type,
-    // each inserting a callout of that kind (insertCallout takes a kind arg).
-    function createCalloutPicker(): HTMLElement {
-        const calloutWrap = document.createElement("div");
-        calloutWrap.className = "tb-fmt-wrap";
+    // ── Quote dropdown (plain blockquote + GitHub callout types) ──
+    // A callout is a typed blockquote, so the two live in one "Quote" family
+    // dropdown: the top row toggles a plain blockquote; below a separator, one
+    // row per callout type inserts a callout of that kind (insertCallout takes a
+    // kind arg). Folding the two together frees a toolbar slot and surfaces the
+    // callout types on the default (visible) bar, where the standalone Callouts
+    // dropdown used to ship hidden.
+    function createQuotePicker(): HTMLElement {
+        const quoteWrap = document.createElement("div");
+        quoteWrap.className = "tb-fmt-wrap";
 
-        const calloutBtn = createMenuTrigger({
-            html: IconAlertCircle + IconChevronDown,
-            ariaLabel: t("Callout"),
+        const quoteBtn = createMenuTrigger({
+            html: IconQuote + IconChevronDown,
+            ariaLabel: t("Quote"),
         });
 
-        const calloutMenu = document.createElement("div");
-        calloutMenu.className = "tb-fmt-menu tb-callout-menu";
-        calloutMenu.style.display = "none";
-        calloutMenu.setAttribute("role", "menu");
+        const quoteMenu = document.createElement("div");
+        quoteMenu.className = "tb-fmt-menu tb-callout-menu";
+        quoteMenu.style.display = "none";
+        quoteMenu.setAttribute("role", "menu");
+
+        const addRow = (icon: string, label: string, run: () => void): void => {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "tb-fmt-item tb-callout-item";
+            row.setAttribute("role", "menuitem");
+            row.innerHTML = icon;
+            const name = document.createElement("span");
+            name.textContent = label;
+            row.appendChild(name);
+            // mousedown (not click): wireHoverMenu activates rows via a
+            // synthetic mousedown.
+            row.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                run();
+                quoteMenu.style.display = "none";
+            });
+            quoteMenu.appendChild(row);
+        };
+
+        // Plain blockquote first — the common case, and the dropdown's identity.
+        addRow(IconQuote, t("Blockquote"), () => runEditorCommand("toggleBlockquote", getEditor));
+
+        const sep = document.createElement("div");
+        sep.className = "tb-menu-sep";
+        sep.setAttribute("role", "separator");
+        quoteMenu.appendChild(sep);
 
         const calloutKinds: [CalloutKind, string][] = [
             ["note", t("Note")],
@@ -1249,32 +1276,16 @@ export function initToolbar(
             ["caution", t("Caution")],
         ];
         for (const [kind, label] of calloutKinds) {
-            const row = document.createElement("button");
-            row.type = "button";
-            row.className = "tb-fmt-item tb-callout-item";
-            row.setAttribute("role", "menuitem");
-            row.innerHTML = CALLOUT_ICONS[kind];
-            const name = document.createElement("span");
-            name.textContent = label;
-            row.appendChild(name);
-            // mousedown (not click): wireHoverMenu activates rows via a
-            // synthetic mousedown, matching the callout kind-picker.
-            row.addEventListener("mousedown", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                runEditorCommand("insertCallout", getEditor, kind);
-                calloutMenu.style.display = "none";
-            });
-            calloutMenu.appendChild(row);
+            addRow(CALLOUT_ICONS[kind], label, () => runEditorCommand("insertCallout", getEditor, kind));
         }
 
-        wireHoverMenu(calloutWrap, calloutBtn, calloutMenu);
+        wireHoverMenu(quoteWrap, quoteBtn, quoteMenu);
 
-        calloutWrap.appendChild(calloutBtn);
-        calloutWrap.appendChild(calloutMenu);
-        return calloutWrap;
+        quoteWrap.appendChild(quoteBtn);
+        quoteWrap.appendChild(quoteMenu);
+        return quoteWrap;
     }
-    items.callouts = wrap("callouts", createCalloutPicker());
+    items.quote = wrap("quote", createQuotePicker());
 
     // ── Debug tools (dev-only dropdown, gated by debugMode; pinned before
     //    Settings in the right zone, not user-placeable) ──

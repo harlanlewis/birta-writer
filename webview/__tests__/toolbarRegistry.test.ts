@@ -26,7 +26,7 @@ describe("computeZones", () => {
             "link",
             "listMenu",
             "codeBlock",
-            "blockquote",
+            "quote",
             "table",
             "image",
         ]);
@@ -35,7 +35,6 @@ describe("computeZones", () => {
             "strikethrough",
             "highlight",
             "inlineCode",
-            "callouts",
             "horizontalRule",
             "math",
             "footnote",
