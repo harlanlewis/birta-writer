@@ -126,13 +126,12 @@
    bold text), or the caret sitting inside a container (Table, or a list/quote/
    code dropdown trigger). The bar changes as the caret moves, so this is a QUIET
    "on" look — VS Code's activated-option token (the find-widget toggle look),
-   with an inset ring so it stays distinct from the plain hover background.
-   Menus get the louder accent fill; the always-visible bar stays calm. */
+   background only: a ring per active button read as loud clutter with several
+   lit at once. Menus get the louder accent fill; the bar stays calm. */
 .tb-btn--active,
 .tb-btn--active:hover {
     background: var(--vscode-inputOption-activeBackground);
     color: var(--vscode-inputOption-activeForeground);
-    box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder);
 }
 
 .tb-fmt-btn {
