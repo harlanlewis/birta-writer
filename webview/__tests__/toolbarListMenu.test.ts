@@ -2,14 +2,15 @@
  * Tests for the toolbar's Lists dropdown — the single hover-menu picker that
  * replaced the three separate bullet / ordered / task buttons (mirroring the
  * Format P + headings dropdown). Covers the rendered rows and the active-list
- * checkmark that onSelectionChange drives against the REAL Milkdown editor.
- * acquireVsCodeApi is injected globally by setup.ts.
+ * highlight (a filled accent row) that onSelectionChange drives against the REAL
+ * Milkdown editor. acquireVsCodeApi is injected globally by setup.ts.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { gfm } from "@milkdown/preset-gfm";
 import { Selection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
+import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";
 
@@ -66,7 +67,7 @@ describe("toolbar Lists dropdown", () => {
 
         // Assert: a single list slot, three labelled rows, each with an icon
         const rows = listRows(topbar);
-        expect(rows.map((r) => r.querySelector(".tb-check-label")?.textContent)).toEqual([
+        expect(rows.map((r) => r.querySelector(".tb-list-item-label")?.textContent)).toEqual([
             "Bullet List",
             "Ordered List",
             "Task List",
@@ -77,7 +78,22 @@ describe("toolbar Lists dropdown", () => {
         expect(topbar.querySelectorAll('[data-item-id="listMenu"]').length).toBe(1);
     });
 
-    it("a caret inside a bullet list should check only the Bullet row", async () => {
+    it("clicking a row should run its list command against the editor", async () => {
+        // Arrange
+        const editor = await makeEditor("plain line");
+        const v = view(editor);
+        const { topbar } = buildToolbar(() => editor);
+        v.dispatch(v.state.tr.setSelection(Selection.atEnd(v.state.doc)));
+
+        // Act: activate the Ordered row (index 1) the way wireHoverMenu does
+        const [, ordered] = listRows(topbar);
+        ordered!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        // Assert: the paragraph is now an ordered list item
+        expect(editor.action(getMarkdown()).trim()).toMatch(/^1\. plain line/);
+    });
+
+    it("a caret inside a bullet list should mark only the Bullet row active", async () => {
         // Arrange
         const editor = await makeEditor("- one\n- two");
         const v = view(editor);
@@ -89,12 +105,12 @@ describe("toolbar Lists dropdown", () => {
 
         // Assert
         const [bullet, ordered, task] = listRows(topbar);
-        expect(bullet!.classList.contains("tb-check-item--on")).toBe(true);
-        expect(ordered!.classList.contains("tb-check-item--on")).toBe(false);
-        expect(task!.classList.contains("tb-check-item--on")).toBe(false);
+        expect(bullet!.classList.contains("tb-list-item--on")).toBe(true);
+        expect(ordered!.classList.contains("tb-list-item--on")).toBe(false);
+        expect(task!.classList.contains("tb-list-item--on")).toBe(false);
     });
 
-    it("a caret inside an ordered list should check only the Ordered row", async () => {
+    it("a caret inside an ordered list should mark only the Ordered row active", async () => {
         // Arrange
         const editor = await makeEditor("1. one\n2. two");
         const v = view(editor);
@@ -106,12 +122,12 @@ describe("toolbar Lists dropdown", () => {
 
         // Assert
         const [bullet, ordered, task] = listRows(topbar);
-        expect(ordered!.classList.contains("tb-check-item--on")).toBe(true);
-        expect(bullet!.classList.contains("tb-check-item--on")).toBe(false);
-        expect(task!.classList.contains("tb-check-item--on")).toBe(false);
+        expect(ordered!.classList.contains("tb-list-item--on")).toBe(true);
+        expect(bullet!.classList.contains("tb-list-item--on")).toBe(false);
+        expect(task!.classList.contains("tb-list-item--on")).toBe(false);
     });
 
-    it("a caret inside a task list should check only the Task row", async () => {
+    it("a caret inside a task list should mark only the Task row active", async () => {
         // Arrange
         const editor = await makeEditor("- [ ] one\n- [x] two");
         const v = view(editor);
@@ -123,12 +139,12 @@ describe("toolbar Lists dropdown", () => {
 
         // Assert
         const [bullet, ordered, task] = listRows(topbar);
-        expect(task!.classList.contains("tb-check-item--on")).toBe(true);
-        expect(bullet!.classList.contains("tb-check-item--on")).toBe(false);
-        expect(ordered!.classList.contains("tb-check-item--on")).toBe(false);
+        expect(task!.classList.contains("tb-list-item--on")).toBe(true);
+        expect(bullet!.classList.contains("tb-list-item--on")).toBe(false);
+        expect(ordered!.classList.contains("tb-list-item--on")).toBe(false);
     });
 
-    it("a caret in plain text should check no list row", async () => {
+    it("a caret in plain text should mark no list row active", async () => {
         // Arrange
         const editor = await makeEditor("just a paragraph");
         const v = view(editor);
@@ -139,6 +155,6 @@ describe("toolbar Lists dropdown", () => {
         tb.onSelectionChange(v);
 
         // Assert
-        listRows(topbar).forEach((r) => expect(r.classList.contains("tb-check-item--on")).toBe(false));
+        listRows(topbar).forEach((r) => expect(r.classList.contains("tb-list-item--on")).toBe(false));
     });
 });

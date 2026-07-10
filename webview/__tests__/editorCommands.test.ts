@@ -44,7 +44,7 @@ function fakeEditor(selectionEmpty = true) {
     const view = {
         state: {
             selection: { empty: selectionEmpty, from: 1, to: selectionEmpty ? 1 : 5, $from },
-            schema: { marks: {} },
+            schema: { marks: {}, nodes: {} },
         },
         dispatch,
         focus,

@@ -294,12 +294,21 @@
     }
 }
 
-/* Lists dropdown rows: a leading check column (shared .menu-check) + a type
-   icon + the label. Like the Format rows they are checkable (the active list
-   type is marked), and like the Callout rows they carry an icon. Center the
-   row (the check-item default is baseline-aligned, which drops the icon low). */
+/* Lists dropdown rows: a type icon + label, like the Callout/Quote rows. The
+   list types are TOGGLES that are often all-off (caret not in a list), so the
+   active one is marked by filling the row with the accent (the toolbar's "on"
+   idiom, matching .tb-seg-btn--on / .tb-btn--active) rather than a leading
+   checkmark — a checkmark would reserve an empty gutter in the common all-off
+   case and, next to the row icons, read as a broken two-column layout. */
 .tb-list-item {
+    display: flex;
     align-items: center;
+    gap: 8px;
+    width: 100%;
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 12px;
 }
 
 .tb-list-item-icon {
@@ -310,6 +319,18 @@
         width: 14px;
         height: 14px;
     }
+}
+
+/* Active list type: filled accent row. Overrides the .tb-fmt-item:hover tint
+   for its own hover so an active row stays clearly "on" under the pointer. */
+.tb-list-item--on,
+.tb-list-item--on:hover {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.tb-list-item--on:hover {
+    background: var(--vscode-button-hoverBackground);
 }
 
 /* ─── Checks menu (spelling / grammar / style + per-check toggles) ─── */

@@ -1167,13 +1167,17 @@ export function initToolbar(
     ));
 
     // ── Lists dropdown (bullet / ordered / task) ──
-    // One hover-menu picker, mirroring the Format (P + headings) dropdown: the
-    // three list types share a single toolbar slot, each row toggling its list
-    // (clicking the active one again lifts out). The active list type is
-    // checkmarked, refreshed by onSelectionChange. The three individual list
-    // buttons collapsed into this to slim the default bar.
+    // One hover-menu picker with an icon+label row per list type. Each row is a
+    // TOGGLE (clicking the active one again lifts out of the list), not a
+    // select-one, and the caret is often in no list at all — so the active list
+    // is marked with a filled/accent row (the toolbar's "on" idiom, like the
+    // segmented width control) rather than a leading checkmark. A checkmark would
+    // reserve an empty gutter in the common "not in a list" case and, beside the
+    // row icons, read as a broken two-column layout. onSelectionChange refreshes
+    // which row (if any) is active. The three standalone list buttons collapsed
+    // into this to slim the default bar.
     type ListType = "bullet" | "ordered" | "task";
-    const listRows: { type: ListType; item: CheckItem }[] = [];
+    const listRows: { type: ListType; setActive: (on: boolean) => void }[] = [];
     function createListPicker(): HTMLElement {
         const listWrap = document.createElement("div");
         listWrap.className = "tb-fmt-wrap";
@@ -1194,21 +1198,32 @@ export function initToolbar(
             { type: "task", icon: IconCheckSquare, label: t("Task List"), command: "toggleTaskList" },
         ];
         for (const { type, icon, label, command } of choices) {
-            const item = createCheckItem(label);
-            item.el.classList.add("tb-list-item");
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "tb-fmt-item tb-list-item";
+            row.setAttribute("role", "menuitemcheckbox");
+            row.setAttribute("aria-checked", "false");
             const iconEl = document.createElement("span");
             iconEl.className = "tb-list-item-icon";
             iconEl.innerHTML = icon;
-            // Sit the icon between the leading check column and the label.
-            item.el.insertBefore(iconEl, item.label);
-            item.el.addEventListener("mousedown", (e) => {
+            const labelEl = document.createElement("span");
+            labelEl.className = "tb-list-item-label";
+            labelEl.textContent = label;
+            row.append(iconEl, labelEl);
+            row.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 runEditorCommand(command, getEditor);
                 listMenu.style.display = "none";
             });
-            listMenu.appendChild(item.el);
-            listRows.push({ type, item });
+            listMenu.appendChild(row);
+            listRows.push({
+                type,
+                setActive: (on: boolean): void => {
+                    row.classList.toggle("tb-list-item--on", on);
+                    row.setAttribute("aria-checked", on ? "true" : "false");
+                },
+            });
         }
 
         wireHoverMenu(listWrap, listBtn, listMenu);
@@ -2020,8 +2035,8 @@ export function initToolbar(
                         break;
                     }
                 }
-                for (const { type, item } of listRows) {
-                    item.setChecked(type === activeList);
+                for (const { type, setActive } of listRows) {
+                    setActive(type === activeList);
                 }
             }
         },

@@ -35,6 +35,7 @@ import {
 } from "@/plugins";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { lift } from "@milkdown/prose/commands";
+import { liftListItem } from "@milkdown/prose/schema-list";
 import { TextSelection } from "@milkdown/prose/state";
 import { DOMSerializer, Fragment } from "@milkdown/prose/model";
 import {
@@ -163,6 +164,39 @@ function clearFormatting(getEditor: GetEditor): void {
             tr = tr.removeMark(from, to, markType);
         });
         view.dispatch(tr);
+        view.focus();
+    });
+}
+
+/**
+ * Set the current block's heading level. A heading cannot live inside a list
+ * item — the schema's `list_item` content is `paragraph block*`, so its required
+ * first child must be a paragraph — so `wrapInHeading` silently no-ops on a list
+ * line. When the caret is inside one or more lists we first lift the block all
+ * the way out (promoting it to a top-level block, splitting the surrounding
+ * list) and only then apply the heading. This mirrors Notion/Obsidian: choosing
+ * a heading on a list line turns that line into a heading and drops it from the
+ * list. Paragraph (turnIntoText) is deliberately NOT lifted — a list item's
+ * content is already a paragraph, so "P" is a no-op there and list membership
+ * stays a separate concern owned by the Lists control.
+ */
+function setHeading(getEditor: GetEditor, level: number): void {
+    const editor = getEditor();
+    if (!editor) { return; }
+    editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const liType = view.state.schema.nodes["list_item"];
+        // liftListItem climbs one list level per call, so nested lists need
+        // repeats. Bound the loop by the caret's initial depth (+slack) so it
+        // can never spin — and stop early if a lift makes no progress.
+        if (liType) {
+            let guard = view.state.selection.$from.depth + 1;
+            while (guard-- > 0 && isInNode(view, "list_item")) {
+                if (!liftListItem(liType)(view.state, view.dispatch)) { break; }
+            }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ctx.get(commandsCtx).call(wrapInHeadingCommand.key as any, level);
         view.focus();
     });
 }
@@ -348,12 +382,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleInlineCode: (getEditor) => toggleInlineCode(getEditor),
     clearFormatting: (getEditor) => clearFormatting(getEditor),
     setParagraph: (getEditor) => callCmd(getEditor, turnIntoTextCommand),
-    setHeading1: (getEditor) => callCmd(getEditor, wrapInHeadingCommand, 1),
-    setHeading2: (getEditor) => callCmd(getEditor, wrapInHeadingCommand, 2),
-    setHeading3: (getEditor) => callCmd(getEditor, wrapInHeadingCommand, 3),
-    setHeading4: (getEditor) => callCmd(getEditor, wrapInHeadingCommand, 4),
-    setHeading5: (getEditor) => callCmd(getEditor, wrapInHeadingCommand, 5),
-    setHeading6: (getEditor) => callCmd(getEditor, wrapInHeadingCommand, 6),
+    setHeading1: (getEditor) => setHeading(getEditor, 1),
+    setHeading2: (getEditor) => setHeading(getEditor, 2),
+    setHeading3: (getEditor) => setHeading(getEditor, 3),
+    setHeading4: (getEditor) => setHeading(getEditor, 4),
+    setHeading5: (getEditor) => setHeading(getEditor, 5),
+    setHeading6: (getEditor) => setHeading(getEditor, 6),
     toggleBulletList: (getEditor) => toggleWrap(getEditor, "bullet_list", wrapInBulletListCommand),
     toggleOrderedList: (getEditor) => toggleWrap(getEditor, "ordered_list", wrapInOrderedListCommand),
     toggleTaskList: (getEditor) => toggleTaskList(getEditor),
