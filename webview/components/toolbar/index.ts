@@ -1125,7 +1125,7 @@ export function initToolbar(
     items.footnote = wrap("footnote", btn(IconFootnote, t("Insert Footnote"), () =>
         runEditorCommand("insertFootnote", getEditor),
     ));
-    items.math = wrap("math", btn(IconMath, t("Insert Math"), () =>
+    items.math = wrap("math", btn(IconMath, t("Inline Math"), () =>
         runEditorCommand("insertMath", getEditor),
     ));
 

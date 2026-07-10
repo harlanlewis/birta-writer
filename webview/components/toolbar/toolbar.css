@@ -738,9 +738,16 @@
 /* ─── Drag-and-drop "Customize toolbar" mode ─── */
 .toolbar--editing .tb-zone {
     flex-wrap: wrap;
-    min-height: 26px;
-    outline: 1px dashed var(--vscode-focusBorder);
-    outline-offset: 2px;
+    /* Match the button height (24px), not 26px: a taller zone would grow the
+       centered toolbar row and nudge every control down ~1px on entering edit
+       mode. The ring below is a box-shadow, so it never contributes height. */
+    min-height: 24px;
+    /* A solid 1px ring sitting 2px outside the box — a box-shadow instead of an
+       outline so it costs zero layout (no reflow, no nudge). The transparent
+       spread reproduces the old outline-offset gap; the second shadow is the ring. */
+    box-shadow:
+        0 0 0 2px var(--vscode-editorWidget-background, var(--vscode-editor-background)),
+        0 0 0 3px var(--vscode-focusBorder);
     border-radius: 4px;
 }
 
@@ -816,19 +823,23 @@
     flex: none;
 }
 
-/* The drop target for hidden items; grows to fill and wraps if crowded. */
+/* The drop target for hidden items; grows to fill and wraps if crowded.
+   Same layout-neutral box-shadow ring as the editing zones (see .tb-zone). */
 .tb-hidden-tray-items {
     flex: 1 1 auto;
     flex-wrap: wrap;
     min-height: 26px;
-    outline: 1px dashed var(--vscode-focusBorder);
-    outline-offset: 2px;
+    box-shadow:
+        0 0 0 2px var(--vscode-editorWidget-background, var(--vscode-editor-background)),
+        0 0 0 3px var(--vscode-focusBorder);
     border-radius: 4px;
 }
 
-/* While a drag hovers the tray: highlight the whole target (no per-slot line). */
+/* While a drag hovers the tray: intensify the ring and fill the whole target. */
 .tb-hidden-tray-items.tb-tray-drop-active {
-    outline-style: solid;
+    box-shadow:
+        0 0 0 2px var(--vscode-editorWidget-background, var(--vscode-editor-background)),
+        0 0 0 4px var(--vscode-focusBorder);
     background: var(--vscode-list-dropBackground);
 }
 

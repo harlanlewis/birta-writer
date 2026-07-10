@@ -16,29 +16,33 @@ describe("computeZones", () => {
         // Act
         const zones = computeZones(undefined);
 
-        // Assert: shipped layout — editing controls left, utilities right,
-        // footnote the sole opt-in
+        // Assert: shipped layout — common editing controls left, utilities
+        // right, less-used inserts (highlight, horizontalRule, math, footnote,
+        // clearFormatting) hidden by default
         expect(zones.left).toEqual([
             "format",
             "bold",
             "italic",
-            "strikethrough",
-            "inlineCode",
             "link",
             "bulletList",
             "orderedList",
-            "taskList",
             "codeBlock",
             "blockquote",
-            "callouts",
-            "horizontalRule",
             "table",
             "image",
-            "math",
-            "clearFormatting",
         ]);
         expect(zones.right).toEqual(["viewSource", "find", "styleCheck", "fontPreset", "settings"]);
-        expect(zones.hidden).toEqual(["highlight", "footnote"]);
+        expect(zones.hidden).toEqual([
+            "strikethrough",
+            "highlight",
+            "inlineCode",
+            "taskList",
+            "callouts",
+            "horizontalRule",
+            "math",
+            "footnote",
+            "clearFormatting",
+        ]);
     });
 
     it("hidden items should be omitted from every zone and listed under hidden", () => {

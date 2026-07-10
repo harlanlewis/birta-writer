@@ -43,33 +43,44 @@ export type ToolbarItemId = (typeof TOOLBAR_ITEM_IDS)[number];
 
 /**
  * Default placement for each item when the user has not overridden it.
- * The shipped layout: every editing control in the left zone (in
- * TOOLBAR_ITEM_IDS order), utilities on the right, center empty, and
- * footnote opt-in. Kept in lockstep with the package.json setting defaults
- * by shared/__tests__/toolbarDefaultsContributions.test.ts.
+ * The shipped layout: the common editing controls in the left zone (in
+ * TOOLBAR_ITEM_IDS order), utilities on the right. Less-used inserts ship
+ * hidden (opt-in), since each has an input-rule / slash / palette path:
+ * strikethrough, highlight, inlineCode, taskList, callouts, horizontalRule,
+ * math, footnote, clearFormatting. Kept in lockstep
+ * with the package.json setting defaults by
+ * shared/__tests__/toolbarDefaultsContributions.test.ts.
  */
 export const DEFAULT_PLACEMENTS: Record<ToolbarItemId, ToolbarPlacement> = {
     format: "left",
     bold: "left",
     italic: "left",
-    strikethrough: "left",
+    // Strikethrough ships hidden: the ~~…~~ input rule and Mod-Shift-x cover it.
+    strikethrough: "hidden",
     // Highlight ships hidden (like footnote): opt-in via settings, the
     // ==…== input rule and command palette are always available.
     highlight: "hidden",
-    inlineCode: "left",
+    // Inline code ships hidden: the `` `…` `` input rule and Mod-e cover it.
+    inlineCode: "hidden",
     link: "left",
     bulletList: "left",
     orderedList: "left",
-    taskList: "left",
+    // Task list ships hidden: `- [ ] ` at the start of a line covers it.
+    taskList: "hidden",
     codeBlock: "left",
     blockquote: "left",
-    callouts: "left",
-    horizontalRule: "left",
+    // Callouts ship hidden: the slash menu and `[!note] ` in a blockquote cover them.
+    callouts: "hidden",
+    // Horizontal rule ships hidden: the `---` input rule covers it.
+    horizontalRule: "hidden",
     table: "left",
     image: "left",
-    math: "left",
+    // Inline math ships hidden: the `$…$` input rule and slash menu cover it
+    // (block math is a LaTeX code block, reached via the code-block language switcher).
+    math: "hidden",
     footnote: "hidden",
-    clearFormatting: "left",
+    // Clear Formatting ships hidden: reachable via the command palette and slash menu.
+    clearFormatting: "hidden",
     viewSource: "right",
     find: "right",
     styleCheck: "right",
