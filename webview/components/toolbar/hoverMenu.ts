@@ -6,7 +6,7 @@
  * identically and a new one is correct by construction — the gap-bridge bug that
  * once affected only the Debug menu can't recur, because there's one code path.
  */
-import { placeMenu } from "./menuPlacement";
+import { placeMenu, MENU_GAP } from "./menuPlacement";
 
 export interface HoverMenuOptions {
     /** Runs immediately before the menu is shown — e.g. repaint checkmarks. */
@@ -71,6 +71,9 @@ export function wireHoverMenu(
 
     button.setAttribute("aria-haspopup", "menu");
     button.setAttribute("aria-expanded", "false");
+    // Publish the JS gap constant to CSS so the ::after bridge sizes itself from
+    // the single source of truth (MENU_GAP), never a hardcoded duplicate.
+    wrap.style.setProperty("--tb-menu-gap", `${MENU_GAP}px`);
 
     // Activatable rows: menu items are mousedown-wired divs, plus any real
     // buttons a menu embeds (e.g. the font-size stepper, overflowed tb-btns).

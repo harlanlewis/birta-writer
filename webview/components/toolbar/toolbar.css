@@ -104,19 +104,22 @@
     position: relative;
 }
 
-/* Transparent hover bridge over the button→menu gap (MENU_GAP in
-   menuPlacement.ts, 6px). The menu is a child of the wrap but sits 6px below
-   it, so without this strip the pointer would leave the wrap while crossing the
-   gap and — now that the hide is instant — the menu would close mid-travel.
-   Live only while the menu is open (the .tb-menu-open class), and only below
-   the button since the top-docked toolbar always opens its menus downward. */
+/* Transparent hover bridge over the button→menu gap. The menu is a child of the
+   wrap but sits MENU_GAP px below it, so without this strip the pointer would
+   leave the wrap while crossing the gap and — now that the hide is instant — the
+   menu would close mid-travel. The height reads --tb-menu-gap, which wireHoverMenu
+   sets from the JS MENU_GAP constant (single source of truth, no drift); the +1px
+   overshoots the seam into the menu (which paints above it, z-index 200) so a
+   sub-pixel rounding never leaves a dead line. Live only while the menu is open
+   (the .tb-menu-open class), and only below the button — the top-docked toolbar
+   always opens its menus downward (menuPlacement never flips these up). */
 .tb-fmt-wrap.tb-menu-open::after {
     content: "";
     position: absolute;
     left: 0;
     right: 0;
     top: 100%;
-    height: 6px;
+    height: calc(var(--tb-menu-gap, 6px) + 1px);
 }
 
 /* Active toggle state (style check / spell check on). A filled accent gives
