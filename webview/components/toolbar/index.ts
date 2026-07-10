@@ -13,6 +13,7 @@ import {
     IconTable,
     IconFootnote,
     IconMath,
+    IconNetwork,
     IconQuote,
     IconTerminal,
     IconMinus,
@@ -1218,9 +1219,63 @@ export function initToolbar(
     }
     items.listMenu = wrap("listMenu", createListPicker());
 
-    items.codeBlock = wrap("codeBlock", btn(IconTerminal, t("Code Block"), () =>
-        runEditorCommand("insertCodeBlock", getEditor),
-    ));
+    // ── Code dropdown (plain code block + Mermaid diagram + Math block) ──
+    // Mermaid and a math block are both just fenced code blocks with a set
+    // language, so they live in one "Code" family dropdown alongside the plain
+    // block — mirroring the Quote picker. The top row inserts a plain code
+    // block; below a separator, Mermaid and Math Block bake in their fence
+    // language. All three are also in the slash menu.
+    function createCodePicker(): HTMLElement {
+        const codeWrap = document.createElement("div");
+        codeWrap.className = "tb-fmt-wrap";
+
+        const codeBtn = createMenuTrigger({
+            html: IconTerminal + IconChevronDown,
+            ariaLabel: t("Code Block"),
+        });
+
+        const codeMenu = document.createElement("div");
+        codeMenu.className = "tb-fmt-menu tb-callout-menu";
+        codeMenu.style.display = "none";
+        codeMenu.setAttribute("role", "menu");
+
+        const addRow = (icon: string, label: string, run: () => void): void => {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "tb-fmt-item tb-callout-item";
+            row.setAttribute("role", "menuitem");
+            row.innerHTML = icon;
+            const name = document.createElement("span");
+            name.textContent = label;
+            row.appendChild(name);
+            row.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                run();
+                codeMenu.style.display = "none";
+            });
+            codeMenu.appendChild(row);
+        };
+
+        // Plain code block first — the common case and the dropdown's identity.
+        addRow(IconTerminal, t("Code Block"), () => runEditorCommand("insertCodeBlock", getEditor));
+
+        const sep = document.createElement("div");
+        sep.className = "tb-menu-sep";
+        sep.setAttribute("role", "separator");
+        codeMenu.appendChild(sep);
+
+        // Language-typed blocks (same insertCodeBlock command, fence language baked in).
+        addRow(IconNetwork, t("Mermaid Diagram"), () => runEditorCommand("insertCodeBlock", getEditor, "mermaid"));
+        addRow(IconMath, t("Math Block"), () => runEditorCommand("insertCodeBlock", getEditor, "LaTeX"));
+
+        wireHoverMenu(codeWrap, codeBtn, codeMenu);
+
+        codeWrap.appendChild(codeBtn);
+        codeWrap.appendChild(codeMenu);
+        return codeWrap;
+    }
+    items.codeBlock = wrap("codeBlock", createCodePicker());
     items.horizontalRule = wrap("horizontalRule", btn(IconMinus, t("Horizontal Rule"), () =>
         runEditorCommand("insertHorizontalRule", getEditor),
     ));

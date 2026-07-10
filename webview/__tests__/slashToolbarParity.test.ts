@@ -24,7 +24,8 @@ const SLASH_COVERAGE: Record<ToolbarItemId, readonly string[]> = {
     link: ["link"],
     // The lists dropdown covers all three list types (like format → headings).
     listMenu: ["bulletList", "orderedList", "taskList"],
-    codeBlock: ["codeBlock"],
+    // The Code dropdown covers a plain code block plus Mermaid and Math Block.
+    codeBlock: ["codeBlock", "mermaid", "mathBlock"],
     // The Quote dropdown covers a plain blockquote plus all callout types.
     quote: ["blockquote", "callout", "callout-note", "callout-tip", "callout-important", "callout-warning", "callout-caution"],
     horizontalRule: ["divider"],
