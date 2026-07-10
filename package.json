@@ -2,7 +2,7 @@
   "name": "md-wysiwyg-editor",
   "displayName": "WYSIWYG Markdown Editor",
   "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-  "version": "0.2.116",
+  "version": "0.2.117",
   "publisher": "harlanlewis",
   "engines": {
     "vscode": "^1.80.0"

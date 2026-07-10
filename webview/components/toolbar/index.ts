@@ -1317,19 +1317,18 @@ export function initToolbar(
     // ancestor's. Both refs are assigned when the menu is built.
     let checksMenuEl: HTMLElement | null = null;
     let styleChildrenEl: HTMLElement | null = null;
-    // The "go clean" row's label flips with state: it silences every check when
-    // any is on, and restores them when all are off.
-    let goCleanLabelEl: HTMLElement | null = null;
+    // The master "Proofreading" switch at the top. It's on whenever any check is
+    // enabled, off only when all three are off (see toggleAllChecks).
+    let masterSwitchEl: HTMLElement | null = null;
 
     const repaintChecks = (cfg: ProofreadConfig): void => {
         for (const { key, item } of checkRows) {
             item.setChecked(Boolean(cfg[key]));
         }
-        if (goCleanLabelEl) {
+        if (masterSwitchEl) {
             const anyOn = Boolean(cfg.styleCheck || cfg.spellCheck || cfg.grammarCheck);
-            // Name the domain ("proofreading") in the action itself — the toolbar
-            // button is icon-only, so "all checks" had no referent.
-            goCleanLabelEl.textContent = anyOn ? t("Turn off proofreading") : t("Turn on proofreading");
+            masterSwitchEl.classList.toggle("tb-checks-master--on", anyOn);
+            masterSwitchEl.setAttribute("aria-checked", anyOn ? "true" : "false");
         }
         // Reveal the style sub-checks only while their parent master is on.
         if (checksMenuEl && styleChildrenEl) {
@@ -1401,26 +1400,35 @@ export function initToolbar(
             parent.appendChild(header);
         };
 
-        // "Go clean" — the top-level action: one row silences (or restores)
-        // every check at once, so the writer can turn off the underlines for a
-        // clean drafting pass without hunting through the individual toggles.
-        // Its label reflects state, so it reads as a switch, not a command.
-        const goClean = document.createElement("div");
-        goClean.className = "tb-fmt-item tb-checks-goclean";
-        goClean.setAttribute("role", "menuitem");
-        const goCleanLabel = document.createElement("span");
-        goCleanLabel.textContent = t("Turn off proofreading");
-        goClean.appendChild(goCleanLabel);
-        goCleanLabelEl = goCleanLabel;
-        goClean.addEventListener("mousedown", (e) => {
+        // Master "Proofreading" switch — the top-level control that governs
+        // everything below. A switch (not a checkmark row) marks it as the
+        // master: flipping it off silences spelling, grammar, and style at once
+        // for a clean drafting pass, and flipping it on restores them. The row
+        // itself is the switch (role=switch) so the menu's Enter/Space handling
+        // activates it; the track/knob are decorative (no inner button, which
+        // would become a duplicate focus stop).
+        const master = document.createElement("div");
+        master.className = "tb-fmt-item tb-checks-master";
+        master.setAttribute("role", "switch");
+        master.setAttribute("aria-checked", "true");
+        const masterLabel = document.createElement("span");
+        masterLabel.className = "tb-checks-master-label";
+        masterLabel.textContent = t("Proofreading");
+        const masterTrack = document.createElement("span");
+        masterTrack.className = "tb-switch";
+        masterTrack.setAttribute("aria-hidden", "true");
+        masterTrack.appendChild(document.createElement("span")).className = "tb-switch-knob";
+        master.append(masterLabel, masterTrack);
+        masterSwitchEl = master;
+        master.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
             toggleAllChecks();
         });
-        menu.appendChild(goClean);
-        const goCleanSep = document.createElement("div");
-        goCleanSep.className = "tb-menu-sep";
-        menu.appendChild(goCleanSep);
+        menu.appendChild(master);
+        const masterSep = document.createElement("div");
+        masterSep.className = "tb-menu-sep";
+        menu.appendChild(masterSep);
 
         // Masters
         addRow(menu, "spellCheck", t("Check spelling"));
