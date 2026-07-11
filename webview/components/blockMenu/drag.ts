@@ -19,7 +19,7 @@
  */
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import { closeBlockMenu, moveRangeAt } from "./index";
+import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
 import { hideTooltip } from "../../ui/tooltip";
 
 /** A droppable boundary between top-level blocks. */
@@ -69,28 +69,6 @@ export function dropTargetFor(
         }
     }
     return best;
-}
-
-/**
- * Move `range` so it starts at boundary `targetPos`, as a single transaction.
- * Returns false for no-op targets (inside/adjacent to the range). Exported
- * for unit testing and shared with the menu's Move rows via moveBlockAt.
- */
-export function moveBlockTo(
-    view: EditorView,
-    range: { from: number; to: number },
-    targetPos: number,
-): boolean {
-    if (targetPos >= range.from && targetPos <= range.to) {
-        return false;
-    }
-    const { doc } = view.state;
-    const slice = doc.slice(range.from, range.to);
-    const tr = view.state.tr.delete(range.from, range.to);
-    tr.insert(tr.mapping.map(targetPos), slice.content);
-    view.dispatch(tr);
-    view.focus();
-    return true;
 }
 
 /** Pixels of pointer travel before a mousedown becomes a drag. */
@@ -201,10 +179,24 @@ export function wireMarkerDrag(
             document.removeEventListener("mousemove", onMove, true);
             document.removeEventListener("mouseup", onUp, true);
             document.removeEventListener("keydown", onKey, true);
+            window.removeEventListener("blur", onBlur);
+            // The click-suppression flag must not outlive the session: the
+            // click (if any) fires synchronously right after mouseup, so a
+            // zero-delay cleanup runs after it — an Escape-canceled or
+            // outside-released drag can't eat the marker's NEXT real click.
+            setTimeout(() => {
+                delete marker.dataset["dragged"];
+            }, 0);
         };
 
         const onMove = (move: MouseEvent): void => {
             lastPointerY = move.clientY;
+            // The button was released outside the window (no mouseup reaches
+            // us): end the session instead of dragging with no button down.
+            if (dragging && (move.buttons & 1) === 0) {
+                stop();
+                return;
+            }
             if (!dragging) {
                 if (
                     Math.abs(move.clientX - startX) < DRAG_THRESHOLD &&
@@ -261,9 +253,14 @@ export function wireMarkerDrag(
                 stop();
             }
         };
+        // Window blur (webview lost focus mid-drag): cancel, don't linger.
+        const onBlur = (): void => {
+            stop();
+        };
 
         document.addEventListener("mousemove", onMove, true);
         document.addEventListener("mouseup", onUp, true);
         document.addEventListener("keydown", onKey, true);
+        window.addEventListener("blur", onBlur);
     });
 }

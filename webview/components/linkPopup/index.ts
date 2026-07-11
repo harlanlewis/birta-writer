@@ -1,7 +1,7 @@
 import "./linkPopup.css";
 import type { EditorView } from "@milkdown/prose/view";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
-import { scrollElementBelowTopbar } from "@/utils/headingUtils";
+import { getHeadingText, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import {
     IconCopy,
     IconExternalLink,
@@ -236,11 +236,13 @@ function findHeadingElement(id: string, container: HTMLElement): HTMLElement | n
     const direct = document.getElementById(id);
     if (direct) return direct;
 
-    // Fallback: re-scan by slug (ProseMirror may have stripped the id attribute)
+    // Fallback: re-scan by slug (ProseMirror may have stripped the id attribute).
+    // getHeadingText strips the gutter chrome — raw textContent would include
+    // the "##" marker glyphs and corrupt every slug.
     const headings = container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6");
     const counts = new Map<string, number>();
     for (const h of Array.from(headings)) {
-        const base = slugify(h.textContent ?? "");
+        const base = slugify(getHeadingText(h));
         if (!base) continue;
         const count = counts.get(base) ?? 0;
         const slug = count === 0 ? base : `${base}-${count}`;

@@ -23,13 +23,18 @@
  */
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import { findHeadingFoldRange, getHeadingLevel } from "../../plugins/headingFold";
+import {
+    findHeadingFoldRange,
+    getHeadingLevel,
+    headingFoldPluginKey,
+    type HeadingFoldMeta,
+} from "../../plugins/headingFold";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
 import { hideTooltip } from "../../ui/tooltip";
 import { t } from "../../i18n";
-import { canTurnInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
+import { blockMarkdownAt, canTurnInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
 
 // The conversion matrix and kind helpers live in ./turnInto; re-exported so
 // consumers and tests keep one import surface.
@@ -78,13 +83,20 @@ function duplicateBlock(view: EditorView, pos: number): boolean {
 }
 
 /** Delete the node at `pos` (deleteRange fills the schema-required empty
- * paragraph when the last block goes). */
+ * paragraph when the last block goes). The fold meta stops a collapsed
+ * heading's fold entry from transferring to whatever fills the gap. */
 function deleteBlock(view: EditorView, pos: number): boolean {
     const node = view.state.doc.nodeAt(pos);
     if (!node) {
         return false;
     }
-    view.dispatch(view.state.tr.deleteRange(pos, pos + node.nodeSize));
+    const tr = view.state.tr.deleteRange(pos, pos + node.nodeSize);
+    tr.setMeta(headingFoldPluginKey, {
+        type: "delete",
+        from: pos,
+        to: pos + node.nodeSize,
+    } satisfies HeadingFoldMeta);
+    view.dispatch(tr);
     view.focus();
     return true;
 }
@@ -148,9 +160,39 @@ function moveTargetFor(
 }
 
 /**
- * Move the block (heading: its section) one unit up or down, as a single
- * undoable transaction. Returns false at a document edge.
- * Exported for unit testing and reuse by the drag handle (MAR-19).
+ * Move `range` so it starts at boundary `targetPos`, as a single transaction
+ * (one undo step). Returns false for no-op targets (inside/adjacent to the
+ * range). Carries the fold-preserving move meta so a collapsed section stays
+ * collapsed at its destination — and nothing else inherits its fold.
+ * Exported for unit testing; shared by the menu's Move rows and drag-drop.
+ */
+export function moveBlockTo(
+    view: EditorView,
+    range: { from: number; to: number },
+    targetPos: number,
+): boolean {
+    if (targetPos >= range.from && targetPos <= range.to) {
+        return false;
+    }
+    const { doc } = view.state;
+    const slice = doc.slice(range.from, range.to);
+    const tr = view.state.tr.delete(range.from, range.to);
+    const insertAt = tr.mapping.map(targetPos);
+    tr.insert(insertAt, slice.content);
+    tr.setMeta(headingFoldPluginKey, {
+        type: "move",
+        from: range.from,
+        to: range.to,
+        insertAt,
+    } satisfies HeadingFoldMeta);
+    view.dispatch(tr);
+    view.focus();
+    return true;
+}
+
+/**
+ * Move the block (heading: its section) one unit up or down. Returns false
+ * at a document edge. Exported for unit testing.
  */
 export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean {
     const range = moveRangeAt(view, pos);
@@ -163,15 +205,7 @@ export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean
     if (target === null) {
         return false;
     }
-    const slice = doc.slice(range.from, range.to);
-    const tr = view.state.tr.delete(range.from, range.to);
-    // Upward: the insertion point precedes the deleted range, unaffected by
-    // the delete. Downward: map the old end through the deletion.
-    const insertAt = dir === -1 ? target : tr.mapping.map(target);
-    tr.insert(insertAt, slice.content);
-    view.dispatch(tr);
-    view.focus();
-    return true;
+    return moveBlockTo(view, range, target);
 }
 
 /** Whether a move in `dir` has somewhere to go (drives row disabling). */
@@ -184,14 +218,38 @@ function canMove(view: EditorView, pos: number, dir: -1 | 1): boolean {
     return moveTargetFor(view.state.doc, range, isHeading, dir) !== null;
 }
 
+/**
+ * The heading's real anchor slug: duplicates get `-1`, `-2`, … in document
+ * order — the exact scheme headingIds/linkPopup resolve against (see
+ * findHeadingElement in components/linkPopup), so a copied link always lands
+ * on THIS heading, not the first duplicate. Exported for unit testing.
+ */
+export function headingAnchorSlug(doc: ProseNode, pos: number): string | null {
+    const target = doc.nodeAt(pos);
+    if (!target || target.type.name !== "heading") {
+        return null;
+    }
+    const base = slugify(target.textContent);
+    let priorDuplicates = 0;
+    doc.descendants((node: ProseNode, nodePos: number) => {
+        if (node.type.name === "heading" && nodePos < pos && slugify(node.textContent) === base) {
+            priorDuplicates++;
+        }
+        return true;
+    });
+    return priorDuplicates === 0 ? base : `${base}-${priorDuplicates}`;
+}
+
 /** Copy `[text](#slug)` for the heading at `pos` (its TOC anchor). */
 function copyHeadingLink(view: EditorView, pos: number): void {
+    const slug = headingAnchorSlug(view.state.doc, pos);
     const node = view.state.doc.nodeAt(pos);
-    if (!node || node.type.name !== "heading") {
+    if (slug === null || !node) {
         return;
     }
-    const text = node.textContent.trim();
-    notifyClipboardWrite("markdown", `[${text}](#${slugify(text)})`);
+    // Escape link-text metacharacters so a heading like "a ] b" survives.
+    const text = node.textContent.trim().replace(/([\\[\]])/g, "\\$1");
+    notifyClipboardWrite("markdown", `[${text}](#${slug})`);
 }
 
 // ── The menu ────────────────────────────────────────────────────────────────
@@ -421,8 +479,16 @@ export function openBlockMenu(
 
     // ── Block actions ──
     addRow(t("Duplicate"), { action: () => duplicateBlock(view, blockPos) });
+    // Direct block serialization — the shared copyAsMarkdown command prefers
+    // a non-empty ambient selection, which would violate this menu's
+    // by-position contract (select text in block A, copy block B → get A).
     addRow(t("Copy as Markdown"), {
-        action: () => runEditorCommand("copyAsMarkdown", getEditor, { blockPos }),
+        action: () => {
+            const markdown = blockMarkdownAt(view, blockPos, getEditor);
+            if (markdown !== null) {
+                notifyClipboardWrite("markdown", markdown);
+            }
+        },
     });
     if (isHeading) {
         addRow(t("Copy Link"), { action: () => copyHeadingLink(view, blockPos) });

@@ -60,18 +60,22 @@ export function isTextBearingParagraph(node: ProseNode): boolean {
     if (node.childCount === 0) {
         return true; // a blank line the user is about to type on
     }
-    let textBearing = false;
+    let sawAtom = false;
+    let sawContent = false;
     node.forEach((child) => {
         const name = child.type.name;
         if (name === "image" || name === "html") {
+            sawAtom = true;
             return;
         }
         if (child.isText && !child.text?.trim()) {
             return;
         }
-        textBearing = true;
+        sawContent = true;
     });
-    return textBearing;
+    // Whitespace-only paragraphs (no atoms at all) are still prose — only a
+    // paragraph whose real content is images/html is a visual block.
+    return sawContent || !sawAtom;
 }
 
 /**

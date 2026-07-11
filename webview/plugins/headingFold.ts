@@ -12,7 +12,23 @@ import { closeBlockMenu, openBlockMenu } from "../components/blockMenu";
 import { isTextBearingParagraph } from "../components/blockMenu/turnInto";
 import { wireMarkerDrag } from "../components/blockMenu/drag";
 
-export type HeadingFoldMeta = { type: "toggle"; pos: number };
+export type HeadingFoldMeta =
+    | { type: "toggle"; pos: number }
+    /**
+     * A block move (menu Move rows / drag-drop): content in [from, to) was
+     * deleted and re-inserted with its start at `insertAt` (a FINAL-doc
+     * position). Position mapping alone can't follow relocated content —
+     * without this meta a collapsed heading's fold entry would land on
+     * whatever block filled the old gap, collapsing the wrong section.
+     */
+    | { type: "move"; from: number; to: number; insertAt: number }
+    /**
+     * A block deletion (menu Delete): fold entries inside [from, to) die with
+     * their heading instead of being position-mapped onto whatever heading
+     * fills the gap. (Mapping flags can't express this: a deletion STARTING
+     * at the heading maps its entry cleanly onto the next block.)
+     */
+    | { type: "delete"; from: number; to: number };
 type HeadingFoldRange = { from: number; to: number };
 
 export const headingFoldPluginKey = new PluginKey<Set<number>>("heading-fold");
@@ -405,10 +421,26 @@ export const headingFoldPlugin = $prose(() =>
             init: () => new Set<number>(),
             apply(tr, value, _oldState, newState) {
                 let next = value;
+                const meta = tr.getMeta(headingFoldPluginKey) as HeadingFoldMeta | undefined;
 
                 if (tr.docChanged) {
+                    const move = meta?.type === "move" ? meta : null;
+                    const del = meta?.type === "delete" ? meta : null;
                     next = new Set<number>();
                     for (const pos of value) {
+                        // Entries inside a moved range travel with the
+                        // content to its new location.
+                        if (move && pos >= move.from && pos < move.to) {
+                            const relocated = move.insertAt + (pos - move.from);
+                            if (isHeadingNode(newState.doc.nodeAt(relocated))) {
+                                next.add(relocated);
+                            }
+                            continue;
+                        }
+                        // Entries inside a deleted block die with it.
+                        if (del && pos >= del.from && pos < del.to) {
+                            continue;
+                        }
                         const mapped = tr.mapping.map(pos, -1);
                         if (isHeadingNode(newState.doc.nodeAt(mapped))) {
                             next.add(mapped);
@@ -417,7 +449,6 @@ export const headingFoldPlugin = $prose(() =>
                     next = cleanFoldedHeadingPositions(newState.doc, next);
                 }
 
-                const meta = tr.getMeta(headingFoldPluginKey) as HeadingFoldMeta | undefined;
                 if (meta?.type === "toggle") {
                     next = new Set<number>(next);
                     if (next.has(meta.pos)) {

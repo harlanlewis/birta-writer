@@ -18,7 +18,10 @@ import {
     turnIntoKindAt,
     moveRangeAt,
     moveBlockAt,
+    headingAnchorSlug,
 } from "../components/blockMenu";
+import { headingFoldPluginKey } from "../plugins/headingFold";
+import { TextSelection } from "@milkdown/prose/state";
 import { mockVscodeApi } from "./setup";
 
 let editors: Editor[] = [];
@@ -135,6 +138,23 @@ describe("turnIntoKindAt", () => {
             kinds.push(turnIntoKindAt(v, offset));
         });
         expect(kinds).toEqual([null, null]);
+    });
+
+    it("a whitespace-only paragraph should still be prose (P marker, paragraph kind)", async () => {
+        const editor = await makeEditor("Alpha");
+        const v = view(editor);
+        // Build a paragraph whose only child is whitespace text.
+        const paragraph = v.state.schema.nodes["paragraph"]!;
+        const ws = paragraph.create(null, v.state.schema.text("   "));
+        v.dispatch(v.state.tr.insert(v.state.doc.content.size, ws));
+        let wsPos = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (!node.textContent.trim()) wsPos = offset;
+        });
+        expect(turnIntoKindAt(v, wsPos)).toBe("paragraph");
+        const glyphs = Array.from(document.querySelectorAll(".heading-fold-marker--block"))
+            .map((el) => el.textContent);
+        expect(glyphs).toEqual(["P", "P"]);
     });
 });
 
@@ -375,6 +395,87 @@ describe("block actions", () => {
         expect(labels).not.toContain("Copy Link");
         expect(labels).toContain("Move Up");
         expect(labels).not.toContain("Move Section Up");
+    });
+});
+
+describe("fold state across moves and deletes", () => {
+    const DOC = "# A\n\ncontent A\n\n# B\n\ncontent B";
+    const foldedSet = (v: ReturnType<typeof view>) =>
+        headingFoldPluginKey.getState(v.state) ?? new Set<number>();
+    const collapse = (v: ReturnType<typeof view>, pos: number) =>
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos }));
+
+    it("a collapsed section should stay collapsed after Move Section Down", async () => {
+        const editor = await makeEditor(DOC);
+        const v = view(editor);
+        collapse(v, 0); // fold section A
+        expect(foldedSet(v).has(0)).toBe(true);
+        expect(moveBlockAt(v, 0, 1)).toBe(true);
+        expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A\n\ncontent A");
+        // Section A now starts after B's section; its fold entry moved along.
+        let posA = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading" && node.textContent === "A") posA = offset;
+        });
+        const folded = foldedSet(v);
+        expect(folded.has(posA)).toBe(true);
+        expect(folded.size).toBe(1); // and ONLY A — B must not inherit it
+    });
+
+    it("moving an expanded section past a collapsed one should not steal its fold", async () => {
+        const editor = await makeEditor(DOC);
+        const v = view(editor);
+        // Collapse B, then move A (expanded) down past it.
+        let posB = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading" && node.textContent === "B") posB = offset;
+        });
+        collapse(v, posB);
+        expect(moveBlockAt(v, 0, 1)).toBe(true);
+        // B now leads the doc, still collapsed; A (now second) is expanded.
+        const folded = foldedSet(v);
+        expect(folded.has(0)).toBe(true);
+        expect(folded.size).toBe(1);
+    });
+
+    it("deleting a collapsed heading should not transfer its fold to the next heading", async () => {
+        const editor = await makeEditor("# A\n\n# B\n\ncontent B");
+        const v = view(editor);
+        collapse(v, 0);
+        pickRow(openMenuOn(markers().filter((m) => !m.classList.contains("heading-fold-marker--paragraph"))[0]!), "Delete");
+        expect(markdown(editor)).toBe("# B\n\ncontent B");
+        expect(foldedSet(v).size).toBe(0); // B stays expanded
+    });
+});
+
+describe("copy actions", () => {
+    it("Copy as Markdown should ignore a non-empty ambient selection elsewhere", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        // Select "Alph" in block 1, then copy block 2 from its gutter menu.
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 5)));
+        pickRow(openMenuOn(markers()[1]!), "Copy as Markdown");
+        const call = mockVscodeApi.postMessage.mock.calls
+            .map((args) => args[0] as { type: string; data?: string })
+            .find((msg) => msg.type === "clipboardWrite");
+        expect(call?.data?.trim()).toBe("Beta");
+    });
+
+    it("Copy Link on a duplicate heading should carry the -N anchor suffix", async () => {
+        const editor = await makeEditor("## Setup\n\ntext\n\n## Setup");
+        const v = view(editor);
+        let secondPos = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading") secondPos = offset; // last wins
+        });
+        expect(headingAnchorSlug(v.state.doc, 0)).toBe("setup");
+        expect(headingAnchorSlug(v.state.doc, secondPos)).toBe("setup-1");
+        const headingMarkers = markers().filter((m) => !m.classList.contains("heading-fold-marker--paragraph"));
+        pickRow(openMenuOn(headingMarkers[1]!), "Copy Link");
+        const call = mockVscodeApi.postMessage.mock.calls
+            .map((args) => args[0] as { type: string; data?: string })
+            .find((msg) => msg.type === "clipboardWrite");
+        expect(call?.data).toBe("[Setup](#setup-1)");
     });
 });
 

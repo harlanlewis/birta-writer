@@ -11,11 +11,10 @@ import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
-import { moveRangeAt } from "../components/blockMenu";
+import { moveBlockTo, moveRangeAt } from "../components/blockMenu";
 import {
     blockBoundaryPositions,
     dropTargetFor,
-    moveBlockTo,
 } from "../components/blockMenu/drag";
 
 let editors: Editor[] = [];
@@ -89,6 +88,44 @@ describe("dropTargetFor", () => {
 
     it("no legal boundary should yield null", () => {
         expect(dropTargetFor(boundaries.slice(0, 2), 50, { from: 0, to: 10 })).toBeNull();
+    });
+});
+
+describe("drag session robustness", () => {
+    function marker(): HTMLButtonElement {
+        return document.querySelector<HTMLButtonElement>(".heading-fold-marker")!;
+    }
+    const mouse = (
+        target: EventTarget,
+        type: string,
+        opts: MouseEventInit,
+    ) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...opts }));
+
+    it("releasing the button outside the window should end the session", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        view(editor);
+        const m = marker();
+        mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
+        mouse(document, "mousemove", { clientX: 30, clientY: 30, buttons: 1 }); // threshold
+        expect(document.body.classList.contains("block-dragging")).toBe(true);
+        // Next move arrives with no button held (released off-window).
+        mouse(document, "mousemove", { clientX: 32, clientY: 32, buttons: 0 });
+        expect(document.body.classList.contains("block-dragging")).toBe(false);
+    });
+
+    it("an Escape-canceled drag should not eat the marker's next click", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        view(editor);
+        const m = marker();
+        mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
+        mouse(document, "mousemove", { clientX: 30, clientY: 30, buttons: 1 });
+        expect(m.dataset["dragged"]).toBe("1");
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+        expect(document.body.classList.contains("block-dragging")).toBe(false);
+        await new Promise((resolve) => setTimeout(resolve, 1)); // flag cleanup tick
+        expect(m.dataset["dragged"]).toBeUndefined();
+        mouse(m, "click", { button: 0 });
+        expect(document.querySelector(".block-menu")).not.toBeNull();
     });
 });
 
