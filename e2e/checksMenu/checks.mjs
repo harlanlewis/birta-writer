@@ -24,11 +24,13 @@ export async function run({ page, check, baseUrl }) {
         await page.waitForTimeout(100);
     }
 
-    const labels = () => page.$$eval(`${MENU} .tb-check-label`, (els) => els.map((e) => e.textContent));
-    const rowCount = () => page.$$eval(`${MENU} .tb-check-item`, (els) => els.length);
+    // Rows are on/off switches (createSwitchItem) since 338f8c9; the menu also
+    // gained a 16th row — the master "Proofreading" gate above the body.
+    const labels = () => page.$$eval(`${MENU} .tb-switch-item-label`, (els) => els.map((e) => e.textContent));
+    const rowCount = () => page.$$eval(`${MENU} .tb-switch-item`, (els) => els.length);
     const hasChildren = () => page.locator(`${MENU} .tb-checks-children`).count().then((n) => n > 0);
     const clickRow = async (label) => {
-        await page.locator(`${MENU} .tb-check-item`, { hasText: label }).first().click();
+        await page.locator(`${MENU} .tb-switch-item`, { hasText: label }).first().click();
         await page.waitForTimeout(150);
     };
 
@@ -39,13 +41,13 @@ export async function run({ page, check, baseUrl }) {
     check("the three masters are present", ["Check spelling", "Check grammar", "Check style"].every((x) => l.includes(x)), JSON.stringify(l));
     check("style sub-checks are shown while Check Style is on", l.includes("Fillers") && l.includes("Long sentences"), JSON.stringify(l));
     check("sub-checks live in the nested children container", await hasChildren());
-    check("full menu has all 15 check rows", (await rowCount()) === 15, String(await rowCount()));
+    check("full menu has all 16 rows (gate + 15 checks)", (await rowCount()) === 16, String(await rowCount()));
 
-    // ── 2. Toggle Check Style OFF → collapses to just the 3 masters ───
+    // ── 2. Toggle Check Style OFF → collapses to gate + 3 masters ─────
     await clickRow("Check style");
     l = await labels();
     check("Check Style off hides every style sub-check", !l.includes("Fillers") && !l.includes("Passive voice"), JSON.stringify(l));
-    check("Check Style off leaves exactly the 3 masters", (await rowCount()) === 3, String(await rowCount()));
+    check("Check Style off leaves the gate + 3 masters", (await rowCount()) === 4, String(await rowCount()));
     check("the nested children container is detached when off", !(await hasChildren()));
     check("the three masters remain after collapsing", ["Check spelling", "Check grammar", "Check style"].every((x) => l.includes(x)), JSON.stringify(l));
 
@@ -53,5 +55,14 @@ export async function run({ page, check, baseUrl }) {
     await clickRow("Check style");
     l = await labels();
     check("re-enabling Check Style restores the sub-checks", l.includes("Fillers") && l.includes("Curly punctuation"), JSON.stringify(l));
-    check("re-enabling restores all 15 rows", (await rowCount()) === 15, String(await rowCount()));
+    check("re-enabling restores all 16 rows", (await rowCount()) === 16, String(await rowCount()));
+
+    // ── 4. Master gate OFF → menu collapses to just the gate row ─────
+    await clickRow("Proofreading");
+    l = await labels();
+    check("gate off collapses the menu to just the gate row", (await rowCount()) === 1 && l.length === 1 && l[0] === "Proofreading", JSON.stringify(l));
+
+    // ── 5. Gate back ON → prior mix restored (all rows return) ───────
+    await clickRow("Proofreading");
+    check("gate back on restores all 16 rows", (await rowCount()) === 16, String(await rowCount()));
 }

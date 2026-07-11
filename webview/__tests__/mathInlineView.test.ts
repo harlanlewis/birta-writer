@@ -4,7 +4,7 @@
  * placeholder state, and mutation filtering (ProseMirror must see contentDOM
  * mutations, KaTeX churn is ignored). KaTeX renders through jsdom.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createMathInlineView } from "../components/math";
 
 /** A minimal PMNode stub: type identity (shared reference) + textContent. */
@@ -18,7 +18,11 @@ function makeNode(text: string, type: object = MATH_TYPE) {
     } as any;
 }
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
+// KaTeX arrives via a cached dynamic import (katexLoader) that the NodeView
+// fires and forgets — a single-macrotask flush loses the race when the first
+// import is slow (observed under coverage instrumentation). Poll instead.
+const katexRendered = (render: HTMLElement) =>
+    vi.waitFor(() => expect(render.textContent).not.toBe(""), { timeout: 5000 });
 
 describe("inline math NodeView", () => {
     beforeEach(() => {
@@ -38,8 +42,8 @@ describe("inline math NodeView", () => {
 
     it("a non-empty formula should render KaTeX output into the render span", async () => {
         const nv = createMathInlineView(makeNode("a^2"));
-        await flush();
         const render = nv.dom.querySelector(".math-inline-render") as HTMLElement;
+        await katexRendered(render);
         // KaTeX output (or the raw-value fallback) lands in the render span only.
         expect(render.textContent).toContain("a");
         expect(nv.dom.classList.contains("math-inline--empty")).toBe(false);
@@ -55,7 +59,7 @@ describe("inline math NodeView", () => {
         expect(nv.update(makeNode(""))).toBe(true);
         expect(nv.dom.classList.contains("math-inline--empty")).toBe(true);
         expect(nv.update(makeNode("b_1"))).toBe(true);
-        await flush();
+        await katexRendered(nv.dom.querySelector(".math-inline-render") as HTMLElement);
         expect(nv.dom.classList.contains("math-inline--empty")).toBe(false);
     });
 
