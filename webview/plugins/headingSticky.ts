@@ -203,7 +203,7 @@ export const headingStickyPlugin = $prose(() =>
                     dispatchStickyActiveChange(headingPos);
                 }
                 const foldable = heading.classList.contains("heading-fold-heading--foldable");
-                const collapsed = headingFoldPluginKey.getState(view.state)?.has(headingPos) ?? false;
+                const collapsed = headingFoldPluginKey.getState(view.state)?.folded.has(headingPos) ?? false;
                 const rect = heading.getBoundingClientRect();
                 sticky.hidden = false;
                 sticky.dataset["headingPos"] = String(headingPos);

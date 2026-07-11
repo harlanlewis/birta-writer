@@ -292,6 +292,51 @@ describe("heading gutter level menu", () => {
         expect(document.querySelector(".heading-fold-marker--paragraph")).not.toBeNull();
     });
 
+    // ── Decoration caching (the typing-perf contract) ──
+
+    it("typing inside a block should NOT rebuild the gutter widget DOM", async () => {
+        const editor = await makeEditor("## Title\n\nBody text");
+        const v = view(editor);
+        const before = Array.from(document.querySelectorAll(".heading-fold-marker"));
+        expect(before).toHaveLength(2);
+        // Type into the paragraph — positions shift, structure doesn't.
+        v.dispatch(v.state.tr.insertText("x", v.state.doc.content.size - 2));
+        const after = Array.from(document.querySelectorAll(".heading-fold-marker"));
+        expect(after).toHaveLength(2);
+        // Same DOM elements, merely position-mapped — not recreated.
+        expect(after[0]).toBe(before[0]);
+        expect(after[1]).toBe(before[1]);
+    });
+
+    it("a selection-only transaction should return the identical plugin state", async () => {
+        const { headingFoldPluginKey } = await import("../plugins/headingFold");
+        const { TextSelection } = await import("@milkdown/prose/state");
+        const editor = await makeEditor("## Title\n\nBody");
+        const v = view(editor);
+        const before = headingFoldPluginKey.getState(v.state);
+        v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(3))));
+        expect(headingFoldPluginKey.getState(v.state)).toBe(before);
+    });
+
+    it("a marker clicked AFTER earlier-block edits should still target its own block", async () => {
+        // The stale-closure regression: widgets survive edits via position
+        // mapping, so their handlers must derive the block position at
+        // interaction time, not capture it at build time.
+        const editor = await makeEditor("Alpha\n\n## Title");
+        const v = view(editor);
+        // Grow the first paragraph so every later position shifts.
+        v.dispatch(v.state.tr.insertText("xxxxx", 1));
+        const heading = Array.from(document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker"))
+            .find((m) => m.textContent === "##")!;
+        clickMouse(heading, "click");
+        const menu = levelMenu()!;
+        expect(menu.querySelector(".block-menu-item--active")!.textContent).toBe("H2");
+        // Retype via the menu: the SHIFTED heading must be the one retyped.
+        const rows = menu.querySelectorAll<HTMLButtonElement>(".block-menu-item");
+        clickMouse(rows[3]!, "mousedown"); // H3
+        expect(markdown(editor)).toBe("xxxxxAlpha\n\n### Title");
+    });
+
     it("Escape should close the menu", async () => {
         // Arrange
         const editor = await makeEditor("## Title");

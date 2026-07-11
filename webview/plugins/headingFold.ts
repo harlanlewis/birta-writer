@@ -31,7 +31,21 @@ export type HeadingFoldMeta =
     | { type: "delete"; from: number; to: number };
 type HeadingFoldRange = { from: number; to: number };
 
-export const headingFoldPluginKey = new PluginKey<Set<number>>("heading-fold");
+/**
+ * Plugin state: the folded heading positions PLUS the cached decoration set
+ * and the structural fingerprint it was built for. Caching here (instead of
+ * rebuilding in props.decorations on every state read) is what keeps typing
+ * O(1)-ish: selection-only transactions return the identical state object,
+ * and structure-preserving edits merely position-map the existing set — no
+ * widget DOM is recreated.
+ */
+export interface HeadingFoldState {
+    readonly folded: ReadonlySet<number>;
+    readonly decorations: DecorationSet;
+    readonly fingerprint: string;
+}
+
+export const headingFoldPluginKey = new PluginKey<HeadingFoldState>("heading-fold");
 
 type ProseNodeLike = {
     type: { name: string };
@@ -100,28 +114,52 @@ export function setHeadingLevelAt(view: EditorView, headingPos: number, level: n
 }
 
 /**
- * The content range a heading owns — from just after the heading to the next
- * heading of the same or higher level (the fold range, and the "section" the
- * block menu's move actions and the drag handle operate on). Null when the
- * heading owns nothing.
+ * Fold ranges for EVERY heading in one pass (a stack of open sections): a
+ * heading's range runs from just after it to the next heading of the same or
+ * higher rank. Null value = the heading owns nothing (not foldable).
  */
-export function findHeadingFoldRange(doc: any, headingPos: number, headingLevel: number): HeadingFoldRange | null {
+export function computeFoldRanges(doc: any): Map<number, HeadingFoldRange | null> {
+    const ranges = new Map<number, HeadingFoldRange | null>();
+    const open: { pos: number; level: number; from: number }[] = [];
+    const closeThrough = (level: number, to: number): void => {
+        while (open.length > 0 && open[open.length - 1]!.level >= level) {
+            const section = open.pop()!;
+            ranges.set(section.pos, section.from < to ? { from: section.from, to } : null);
+        }
+    };
+    doc.forEach((node: any, offset: number) => {
+        if (!isHeadingNode(node)) {
+            return;
+        }
+        const level = getHeadingLevel(node);
+        closeThrough(level, offset);
+        open.push({ pos: offset, level, from: offset + node.nodeSize });
+    });
+    closeThrough(0, doc.content.size);
+    return ranges;
+}
+
+/**
+ * The content range ONE heading owns (see computeFoldRanges for the map the
+ * decoration pass uses). A direct scan — the block menu / drag handle call
+ * this per action, sometimes in loops, so it mustn't build the whole map.
+ */
+export function findHeadingFoldRange(doc: any, headingPos: number, headingLevel?: number): HeadingFoldRange | null {
     const headingNode = doc.nodeAt(headingPos);
     if (!isHeadingNode(headingNode)) {
         return null;
     }
-
+    const level = headingLevel ?? getHeadingLevel(headingNode);
     const from = headingPos + headingNode.nodeSize;
     let to = doc.content.size;
     doc.forEach((node: any, offset: number) => {
         if (offset <= headingPos || !isHeadingNode(node)) {
             return;
         }
-        if (getHeadingLevel(node) <= headingLevel && to === doc.content.size) {
+        if (getHeadingLevel(node) <= level && to === doc.content.size) {
             to = offset;
         }
     });
-
     return from < to ? { from, to } : null;
 }
 
@@ -135,9 +173,27 @@ function cleanFoldedHeadingPositions(doc: any, folded: Iterable<number>): Set<nu
     return next;
 }
 
+/**
+ * The document position of the block a gutter widget belongs to, derived at
+ * INTERACTION time from the widget's own DOM position. The cached decoration
+ * set is position-mapped through edits without rebuilding widget DOM, so a
+ * position captured at build time would go stale — this never can. Null when
+ * the widget is no longer in the view.
+ */
+function gutterBlockPos(view: EditorView, gutter: HTMLElement): number | null {
+    if (!gutter.isConnected) {
+        return null;
+    }
+    try {
+        // The widget sits at blockPos + 1 (just inside the block).
+        return view.posAtDOM(gutter, 0) - 1;
+    } catch {
+        return null;
+    }
+}
+
 function createHeadingFoldGutter(
     view: EditorView,
-    headingPos: number,
     level: number,
     collapsed: boolean,
     foldable: boolean,
@@ -176,11 +232,15 @@ function createHeadingFoldGutter(
             delete marker.dataset["dragged"];
             return;
         }
+        const pos = gutterBlockPos(view, gutter);
+        if (pos === null) {
+            return;
+        }
         // A keyboard-activated button click reports detail 0 (no mouse click
         // count) — use it to move focus into the menu only for keyboard opens.
-        openBlockMenu(view, headingPos, marker, event.detail === 0);
+        openBlockMenu(view, pos, marker, event.detail === 0);
     });
-    wireMarkerDrag(view, marker, () => headingPos);
+    wireMarkerDrag(view, marker, () => gutterBlockPos(view, gutter));
 
     if (!foldable) {
         gutter.appendChild(marker);
@@ -204,8 +264,9 @@ function createHeadingFoldGutter(
         event.preventDefault();
         event.stopPropagation();
 
-        const node = view.state.doc.nodeAt(headingPos);
-        if (!isHeadingNode(node)) {
+        const headingPos = gutterBlockPos(view, gutter);
+        const node = headingPos === null ? null : view.state.doc.nodeAt(headingPos);
+        if (headingPos === null || !isHeadingNode(node)) {
             return;
         }
 
@@ -241,7 +302,7 @@ function createHeadingFoldGutter(
  * top-level block's conversions and actions are as reachable as a heading's.
  * No fold chevron: only headings own sections.
  */
-function createBlockGutter(view: EditorView, blockPos: number, glyph: string): HTMLElement {
+function createBlockGutter(view: EditorView, glyph: string): HTMLElement {
     const gutter = document.createElement("span");
     gutter.className = "heading-fold-gutter heading-fold-gutter--block";
     gutter.contentEditable = "false";
@@ -268,9 +329,13 @@ function createBlockGutter(view: EditorView, blockPos: number, glyph: string): H
             delete marker.dataset["dragged"];
             return;
         }
-        openBlockMenu(view, blockPos, marker, event.detail === 0);
+        const pos = gutterBlockPos(view, gutter);
+        if (pos === null) {
+            return;
+        }
+        openBlockMenu(view, pos, marker, event.detail === 0);
     });
-    wireMarkerDrag(view, marker, () => blockPos);
+    wireMarkerDrag(view, marker, () => gutterBlockPos(view, gutter));
 
     gutter.appendChild(marker);
     return gutter;
@@ -318,23 +383,58 @@ function blockMarkerGlyph(node: any): string | null {
     }
 }
 
+/**
+ * A cheap structural summary of everything the decorations depend on: per
+ * top-level block its rendered identity (glyph, or heading level + collapsed
+ * + foldable). While this string is unchanged across an edit, the cached
+ * decoration set is merely position-MAPPED — widget DOM survives, nothing is
+ * rebuilt. (Positions are deliberately absent: gutterBlockPos derives them at
+ * interaction time, so shifted widgets never go stale.)
+ */
+function structureFingerprint(
+    doc: any,
+    folded: ReadonlySet<number>,
+    ranges: Map<number, HeadingFoldRange | null>,
+): string {
+    const parts: string[] = [];
+    doc.forEach((node: any, offset: number) => {
+        if (isHeadingNode(node)) {
+            const collapsed = folded.has(offset);
+            const foldable = Boolean(ranges.get(offset));
+            parts.push(`h${getHeadingLevel(node)}${collapsed ? "c" : ""}${foldable ? "f" : ""}`);
+        } else {
+            parts.push(blockMarkerGlyph(node) ?? "·");
+        }
+    });
+    return parts.join("|");
+}
+
 function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): DecorationSet {
     const decorations: Decoration[] = [];
     const hiddenRanges: HeadingFoldRange[] = [];
+    const ranges = computeFoldRanges(doc);
 
     doc.forEach((node: any, offset: number) => {
         if (!isHeadingNode(node)) {
             // Every non-heading top-level block with a glyph gets the
-            // hover-revealed gutter marker opening the block menu. Only
+            // hover-revealed gutter marker opening the block menu, plus the
+            // host class that carries the shared positioning/hover CSS. Only
             // direct children of the doc — blocks inside lists/quotes/tables
             // have their own semantics.
             const glyph = blockMarkerGlyph(node);
             if (glyph !== null) {
                 decorations.push(
+                    Decoration.node(offset, offset + node.nodeSize, {
+                        class: "block-gutter-host",
+                    }),
+                );
+                decorations.push(
                     Decoration.widget(
                         offset + 1,
-                        (view: EditorView) => createBlockGutter(view, offset, glyph),
-                        { key: `block-gutter-${offset}-${glyph}`, side: -1 },
+                        (view: EditorView) => createBlockGutter(view, glyph),
+                        // Stable, position-free key: same-glyph widgets reuse
+                        // their DOM across rebuilds (matching is ordinal).
+                        { key: `g:${glyph}`, side: -1 },
                     ),
                 );
             }
@@ -343,7 +443,7 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
 
         const level = getHeadingLevel(node);
         const collapsed = folded.has(offset);
-        const range = findHeadingFoldRange(doc, offset, level);
+        const range = ranges.get(offset) ?? null;
         const foldable = Boolean(range);
 
         decorations.push(
@@ -355,9 +455,9 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
         decorations.push(
             Decoration.widget(
                 offset + 1,
-                (view) => createHeadingFoldGutter(view, offset, level, collapsed, foldable),
+                (view) => createHeadingFoldGutter(view, level, collapsed, foldable),
                 {
-                    key: `heading-fold-gutter-${offset}-${level}-${collapsed ? "closed" : "open"}-${foldable ? "foldable" : "leaf"}`,
+                    key: `h:${level}:${collapsed ? "c" : "o"}:${foldable ? "f" : "l"}`,
                     side: -1,
                 },
             ),
@@ -415,19 +515,26 @@ function getHeadingElementAtPos(view: EditorView, pos: number): HTMLElement | nu
 }
 
 export const headingFoldPlugin = $prose(() =>
-    new Plugin<Set<number>>({
+    new Plugin<HeadingFoldState>({
         key: headingFoldPluginKey,
         state: {
-            init: () => new Set<number>(),
+            init: (_config, state) => {
+                const folded = new Set<number>();
+                return {
+                    folded,
+                    decorations: buildHeadingFoldDecorations(state.doc, folded),
+                    fingerprint: structureFingerprint(state.doc, folded, computeFoldRanges(state.doc)),
+                };
+            },
             apply(tr, value, _oldState, newState) {
-                let next = value;
                 const meta = tr.getMeta(headingFoldPluginKey) as HeadingFoldMeta | undefined;
+                let folded: ReadonlySet<number> = value.folded;
 
                 if (tr.docChanged) {
                     const move = meta?.type === "move" ? meta : null;
                     const del = meta?.type === "delete" ? meta : null;
-                    next = new Set<number>();
-                    for (const pos of value) {
+                    const next = new Set<number>();
+                    for (const pos of value.folded) {
                         // Entries inside a moved range travel with the
                         // content to its new location.
                         if (move && pos >= move.from && pos < move.to) {
@@ -446,24 +553,56 @@ export const headingFoldPlugin = $prose(() =>
                             next.add(mapped);
                         }
                     }
-                    next = cleanFoldedHeadingPositions(newState.doc, next);
+                    folded = cleanFoldedHeadingPositions(newState.doc, next);
                 }
 
                 if (meta?.type === "toggle") {
-                    next = new Set<number>(next);
+                    const next = new Set<number>(folded);
                     if (next.has(meta.pos)) {
                         next.delete(meta.pos);
                     } else if (isHeadingNode(newState.doc.nodeAt(meta.pos))) {
                         next.add(meta.pos);
                     }
+                    folded = next;
                 }
 
-                return next;
+                // Selection-only transaction, nothing folded/unfolded: the
+                // state is untouched — zero decoration work per caret move.
+                if (!tr.docChanged && folded === value.folded) {
+                    return value;
+                }
+
+                const fingerprint = structureFingerprint(
+                    newState.doc,
+                    folded,
+                    computeFoldRanges(newState.doc),
+                );
+                if (fingerprint === value.fingerprint) {
+                    if (!tr.docChanged) {
+                        return { folded, fingerprint, decorations: value.decorations };
+                    }
+                    // Structure (and therefore every rendered gutter) is
+                    // unchanged — just map positions; widget DOM survives.
+                    // CAVEAT: mapping DESTROYS decorations on a replaced node
+                    // even when the replacement is structure-neutral (e.g.
+                    // headingIds stamping an id attr via setNodeMarkup), so
+                    // fall back to a rebuild whenever the map lost any —
+                    // identical structure implies an identical count.
+                    const mapped = value.decorations.map(tr.mapping, newState.doc);
+                    if (mapped.find().length === value.decorations.find().length) {
+                        return { folded, fingerprint, decorations: mapped };
+                    }
+                }
+                return {
+                    folded,
+                    fingerprint,
+                    decorations: buildHeadingFoldDecorations(newState.doc, folded),
+                };
             },
         },
         props: {
             decorations(state) {
-                return buildHeadingFoldDecorations(state.doc, headingFoldPluginKey.getState(state) ?? new Set<number>());
+                return headingFoldPluginKey.getState(state)?.decorations ?? DecorationSet.empty;
             },
         },
         view(view) {
@@ -483,7 +622,16 @@ export const headingFoldPlugin = $prose(() =>
                 hoveredGutter?.classList.add("heading-fold-gutter--section-hover");
             };
 
+            // Quiet-while-typing (the BlockNote/Tiptap/Crepe convention): any
+            // keydown in the editor suppresses the hover-revealed markers so
+            // the gutter never flickers alongside the caret; the next mouse
+            // motion brings them back.
+            const handleKeyDown = () => {
+                document.body.classList.add("gutter-quiet");
+            };
+
             const handleMouseMove = (event: MouseEvent) => {
+                document.body.classList.remove("gutter-quiet");
                 const target = event.target as Element | null;
                 const directHeading = target?.closest("h1,h2,h3,h4,h5,h6") ?? null;
                 if (directHeading && view.dom.contains(directHeading)) {
@@ -501,6 +649,7 @@ export const headingFoldPlugin = $prose(() =>
 
             view.dom.addEventListener("mousemove", handleMouseMove);
             view.dom.addEventListener("mouseleave", clearHoveredGutter);
+            view.dom.addEventListener("keydown", handleKeyDown);
 
             return {
                 update(updatedView, prevState) {
@@ -518,6 +667,8 @@ export const headingFoldPlugin = $prose(() =>
                 destroy() {
                     view.dom.removeEventListener("mousemove", handleMouseMove);
                     view.dom.removeEventListener("mouseleave", clearHoveredGutter);
+                    view.dom.removeEventListener("keydown", handleKeyDown);
+                    document.body.classList.remove("gutter-quiet");
                     clearHoveredGutter();
                 },
             };

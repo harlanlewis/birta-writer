@@ -401,7 +401,7 @@ describe("block actions", () => {
 describe("fold state across moves and deletes", () => {
     const DOC = "# A\n\ncontent A\n\n# B\n\ncontent B";
     const foldedSet = (v: ReturnType<typeof view>) =>
-        headingFoldPluginKey.getState(v.state) ?? new Set<number>();
+        headingFoldPluginKey.getState(v.state)?.folded ?? new Set<number>();
     const collapse = (v: ReturnType<typeof view>, pos: number) =>
         v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos }));
 

@@ -131,7 +131,7 @@ function hideIndicator(): void {
 export function wireMarkerDrag(
     view: EditorView,
     marker: HTMLElement,
-    blockPos: () => number,
+    blockPos: () => number | null,
 ): void {
     marker.addEventListener("mousedown", (event: MouseEvent) => {
         if (event.button !== 0) {
@@ -207,7 +207,8 @@ export function wireMarkerDrag(
                 // Threshold crossed — the session starts now.
                 dragging = true;
                 marker.dataset["dragged"] = "1";
-                range = moveRangeAt(view, blockPos());
+                const pos = blockPos();
+                range = pos === null ? null : moveRangeAt(view, pos);
                 if (!range) {
                     stop();
                     return;

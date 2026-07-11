@@ -696,13 +696,11 @@ body.editor-width-auto {
             height: 1.5em;
         }
 
-        /* Positioning anchor for the hosts that don't already have one
-           (paragraphs and headings set position:relative above; the code
-           block's wrapper and pre carry their own). Scoped to top-level
-           blocks — only they get the widget. Nesting-relative: this block
-           already sits inside `.milkdown .editor`, which IS the ProseMirror
-           root element. */
-        > :is(ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) {
+        /* Positioning anchor for every glyph-bearing block: the decoration
+           pass stamps .block-gutter-host on exactly the top-level blocks
+           that get a marker (blockMarkerGlyph is the single source of which
+           blocks those are — no CSS host list to keep in sync). */
+        .block-gutter-host {
             position: relative;
         }
 
@@ -1465,15 +1463,15 @@ body.toolbar-hidden::before {
    mode "active and hover quirk" makes a lone :hover compound never match.
    The harnesses now carry <!doctype html>; the explicit :is(host list) is
    kept for scoping (only glyph-bearing top-level blocks reveal markers). */
-.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper):hover .heading-fold-marker--block {
+.milkdown .editor .block-gutter-host:hover .heading-fold-marker--block {
     opacity: 0.55;
 }
 
-/* The marker's own state must win over the block-hover rule above, so it
-   carries the same host prefix (one extra class of specificity). */
-.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) .heading-fold-marker--block:hover,
-.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) .heading-fold-marker--block:focus-visible,
-.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) .heading-fold-marker--block.heading-fold-marker--menu-open {
+/* The marker's own state must win over the block-hover rule above — equal
+   specificity, placed after. */
+.milkdown .editor .block-gutter-host .heading-fold-marker--block:hover,
+.milkdown .editor .block-gutter-host .heading-fold-marker--block:focus-visible,
+.milkdown .editor .block-gutter-host .heading-fold-marker--block.heading-fold-marker--menu-open {
     opacity: 1;
     color: var(--vscode-foreground);
     background: var(--vscode-toolbar-hoverBackground);
@@ -1504,11 +1502,19 @@ body.block-dragging * {
 
 /* The dragged marker keeps full contrast even when the pointer leaves its
    block (same specificity family as the hover rules above). */
-.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) .heading-fold-marker--block.heading-fold-marker--dragging {
+.milkdown .editor .block-gutter-host .heading-fold-marker--block.heading-fold-marker--dragging {
     opacity: 1;
     color: var(--vscode-foreground);
 }
 
 body.block-dragging .milkdown .editor {
     user-select: none;
+}
+
+/* Quiet gutter while typing: any keydown in the editor suppresses the
+   hover-revealed markers until the mouse moves again (the BlockNote/Tiptap
+   convention) — the gutter never flickers alongside the caret. Placed last:
+   equal-or-higher specificity than every reveal/state rule above. */
+body.gutter-quiet .block-gutter-host .heading-fold-marker--block {
+    opacity: 0;
 }
