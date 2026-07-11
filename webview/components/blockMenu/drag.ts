@@ -25,25 +25,50 @@ import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
 import { t } from "../../i18n";
 
-/** A droppable boundary between top-level blocks. */
+/** A droppable boundary between sibling blocks or sibling list items. */
 export interface DropBoundary {
-    /** Document position of the boundary (before the block starting here). */
+    /** Document position of the boundary (before the unit starting here). */
     pos: number;
     /** Viewport y of the boundary line. */
     y: number;
+    /** Whether this slot takes top-level blocks or list items — a dragged
+     * unit only sees boundaries of its own kind (schema legality). */
+    kind: "block" | "item";
+    /** Indicator geometry for item slots: the item column's left/width, so
+     * the drop line indents to the target nesting depth. */
+    left?: number;
+    width?: number;
 }
 
 /**
- * Every top-level block boundary as a document position: before each block,
- * plus the end of the document. Pure on the doc; the caller pairs positions
- * with viewport geometry. Exported for unit testing.
+ * Every droppable boundary as a document position: before each top-level
+ * block plus the doc's end (kind "block"), and before each list item at any
+ * nesting depth plus each list's end (kind "item"). Pure on the doc; the
+ * caller pairs positions with viewport geometry. Exported for unit testing.
  */
-export function blockBoundaryPositions(doc: ProseNode): number[] {
-    const positions: number[] = [];
-    doc.forEach((_node: ProseNode, offset: number) => {
-        positions.push(offset);
+export function blockBoundaryPositions(doc: ProseNode): { pos: number; kind: "block" | "item" }[] {
+    const positions: { pos: number; kind: "block" | "item" }[] = [];
+    const walkList = (list: ProseNode, listPos: number): void => {
+        let lastEnd = listPos + 1;
+        list.forEach((item: ProseNode, offset: number) => {
+            const itemPos = listPos + 1 + offset;
+            positions.push({ pos: itemPos, kind: "item" });
+            lastEnd = itemPos + item.nodeSize;
+            item.forEach((child: ProseNode, childOffset: number) => {
+                if (child.type.name === "bullet_list" || child.type.name === "ordered_list") {
+                    walkList(child, itemPos + 1 + childOffset);
+                }
+            });
+        });
+        positions.push({ pos: lastEnd, kind: "item" });
+    };
+    doc.forEach((node: ProseNode, offset: number) => {
+        positions.push({ pos: offset, kind: "block" });
+        if (node.type.name === "bullet_list" || node.type.name === "ordered_list") {
+            walkList(node, offset);
+        }
     });
-    positions.push(doc.content.size);
+    positions.push({ pos: doc.content.size, kind: "block" });
     return positions;
 }
 
@@ -107,24 +132,40 @@ const SCROLL_ZONE = 80;
 /** Max auto-scroll speed (px per frame). */
 const SCROLL_STEP = 24;
 
-/** Current viewport geometry of every top-level block boundary
- * (blockBoundaryPositions supplies the positions; the DOM supplies the ys). */
+/** Current viewport geometry of every droppable boundary
+ * (blockBoundaryPositions supplies positions/kinds; the DOM supplies ys —
+ * item slots also carry their column's left/width for the indented line). */
 function measureBoundaries(view: EditorView): DropBoundary[] {
     const { doc } = view.state;
     const boundaries: DropBoundary[] = [];
-    let lastBottom: number | null = null;
-    for (const pos of blockBoundaryPositions(doc)) {
-        if (pos === doc.content.size) {
-            if (lastBottom !== null) {
-                boundaries.push({ pos, y: lastBottom });
+    let lastBlockBottom: number | null = null;
+    let lastItemGeom: { bottom: number; left: number; width: number } | null = null;
+    for (const { pos, kind } of blockBoundaryPositions(doc)) {
+        if (kind === "block" && pos === doc.content.size) {
+            if (lastBlockBottom !== null) {
+                boundaries.push({ pos, y: lastBlockBottom, kind });
             }
             continue;
         }
         const dom = view.nodeDOM(pos);
         if (dom instanceof HTMLElement) {
             const rect = dom.getBoundingClientRect();
-            boundaries.push({ pos, y: rect.top });
-            lastBottom = rect.bottom;
+            if (kind === "item") {
+                boundaries.push({ pos, y: rect.top, kind, left: rect.left, width: rect.width });
+                lastItemGeom = { bottom: rect.bottom, left: rect.left, width: rect.width };
+            } else {
+                boundaries.push({ pos, y: rect.top, kind });
+                lastBlockBottom = rect.bottom;
+            }
+        } else if (kind === "item" && lastItemGeom !== null) {
+            // End-of-list slot: below the last sibling item.
+            boundaries.push({
+                pos,
+                y: lastItemGeom.bottom,
+                kind,
+                left: lastItemGeom.left,
+                width: lastItemGeom.width,
+            });
         }
     }
     return boundaries;
@@ -184,12 +225,14 @@ function pillLabel(view: EditorView, glyph: string, range: { from: number; to: n
     return blocks > 1 ? `${glyph}  ${blocks} blocks` : glyph;
 }
 
-function showIndicator(view: EditorView, y: number): void {
+function showIndicator(view: EditorView, target: DropBoundary): void {
     const el = indicator();
+    // Item slots indent the line to the target column (nesting depth is
+    // visible at a glance); block slots span the editor.
     const editorRect = view.dom.getBoundingClientRect();
-    el.style.left = `${editorRect.left}px`;
-    el.style.width = `${editorRect.width}px`;
-    el.style.top = `${y - 1}px`;
+    el.style.left = `${target.left ?? editorRect.left}px`;
+    el.style.width = `${target.width ?? editorRect.width}px`;
+    el.style.top = `${target.y - 1}px`;
     el.style.display = "block";
 }
 
@@ -219,6 +262,7 @@ export function wireMarkerDrag(
         let target: DropBoundary | null = null;
         let range: { from: number; to: number } | null = null;
         let boundaries: DropBoundary[] = [];
+        let draggedKind: "block" | "item" = "block";
         let scrollDir = 0;
         let scrollRaf = 0;
         let lastPointerY = startY;
@@ -233,11 +277,11 @@ export function wireMarkerDrag(
             if (scrollDir !== 0) {
                 window.scrollBy(0, scrollDir * SCROLL_STEP);
                 // Geometry shifted under the pointer — remeasure and re-aim.
-                boundaries = measureBoundaries(view);
+                boundaries = measureBoundaries(view).filter((b) => b.kind === draggedKind);
                 if (range) {
                     target = dropTargetFor(boundaries, lastPointerY, range);
                     if (target) {
-                        showIndicator(view, target.y);
+                        showIndicator(view, target);
                     } else {
                         hideIndicator();
                     }
@@ -327,7 +371,12 @@ export function wireMarkerDrag(
                     stop();
                     return;
                 }
-                boundaries = measureBoundaries(view);
+                // A dragged unit only sees slots of its own kind: items drop
+                // at item boundaries (any list), blocks at block boundaries.
+                draggedKind = !multi && view.state.doc.nodeAt(range.from)?.type.name === "list_item"
+                    ? "item"
+                    : "block";
+                boundaries = measureBoundaries(view).filter((b) => b.kind === draggedKind);
                 startDoc = view.state.doc;
                 if (!multi) {
                     // Caret into the dragged block: history snapshots the
@@ -346,7 +395,7 @@ export function wireMarkerDrag(
             showPill(move.clientX, move.clientY, label);
             target = dropTargetFor(boundaries, move.clientY, range!);
             if (target) {
-                showIndicator(view, target.y);
+                showIndicator(view, target);
             } else {
                 hideIndicator();
             }

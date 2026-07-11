@@ -37,6 +37,16 @@ function measureRange(
             bottom = rect.bottom;
         }
     });
+    // Ranges that don't align to top-level children (a list ITEM) measure
+    // from the range's own node directly.
+    if (top === null) {
+        const dom = view.nodeDOM(range.from);
+        if (dom instanceof HTMLElement) {
+            const rect = dom.getBoundingClientRect();
+            top = rect.top;
+            bottom = rect.bottom;
+        }
+    }
     if (top === null || bottom === null || bottom <= top) {
         return null;
     }

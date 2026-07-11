@@ -134,7 +134,8 @@ export async function run({ page, check, baseUrl }) {
     // in-NodeView anchoring (code block) is the fragile part. Hover the block
     // first so the marker is revealed where geometry is measured.
     for (const [sel, name] of [
-        [".ProseMirror > ul", "list"],
+        // Per-item markers (MAR-86): the list's marker belongs to its ITEM.
+        [".ProseMirror > ul li", "list item"],
         [".ProseMirror > blockquote", "quote"],
         [".ProseMirror > .code-block-wrapper, .ProseMirror > pre", "code"],
     ]) {

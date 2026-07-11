@@ -161,16 +161,22 @@ export function selectInto(view: EditorView, pos: number): void {
     view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(inside))));
 }
 
-/** Serializes the single top-level node at `pos` to its markdown source. */
+/** Serializes the single node at `pos` to its markdown source. A bare list
+ * item can't serialize standalone, so it's wrapped in its parent list type
+ * ("- text" / "1. text"). */
 export function blockMarkdownAt(
     view: EditorView,
     pos: number,
     getEditor: GetEditor,
 ): string | null {
     const editor = getEditor();
-    const node = view.state.doc.nodeAt(pos);
+    let node = view.state.doc.nodeAt(pos);
     if (!editor || !node) {
         return null;
+    }
+    if (node.type.name === "list_item") {
+        const parent = view.state.doc.resolve(pos).parent;
+        node = parent.type.createChecked(parent.attrs, Fragment.from(node));
     }
     let markdown: string | null = null;
     editor.action((ctx) => {

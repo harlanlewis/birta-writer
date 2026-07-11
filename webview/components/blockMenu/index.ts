@@ -23,6 +23,7 @@
  * keyboard model mirrors the toolbar dropdowns (roving arrows, Enter, Escape).
  */
 import type { EditorView } from "@milkdown/prose/view";
+import { Fragment } from "@milkdown/prose/model";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import {
     findHeadingFoldRange,
@@ -173,6 +174,27 @@ function moveTargetFor(
 }
 
 /**
+ * Sibling-hop target for a LIST ITEM move: the previous sibling's start or
+ * the next sibling's end, null at the list's edge. Items move within their
+ * own list from the menu (drag handles cross-list refile).
+ */
+function moveItemTarget(view: EditorView, itemPos: number, dir: -1 | 1): number | null {
+    const $pos = view.state.doc.resolve(itemPos);
+    if ($pos.depth === 0) {
+        return null;
+    }
+    const index = $pos.index();
+    const parent = $pos.parent;
+    if (dir === -1) {
+        return index > 0 ? $pos.posAtIndex(index - 1) : null;
+    }
+    if (index >= parent.childCount - 1) {
+        return null;
+    }
+    return $pos.posAtIndex(index + 1) + parent.child(index + 1).nodeSize;
+}
+
+/**
  * Move `range` so it starts at boundary `targetPos`, as a single transaction
  * (one undo step). Returns false for no-op targets (inside/adjacent to the
  * range). Carries the fold-preserving move meta so a collapsed section stays
@@ -189,10 +211,29 @@ export function moveBlockTo(
         return false;
     }
     const { doc } = view.state;
-    const slice = doc.slice(range.from, range.to);
-    const tr = view.state.tr.delete(range.from, range.to);
+    // Collect the moved children directly from their common parent — a
+    // doc.slice through a LIST would wrap the items in a phantom list node
+    // (open slice), nesting a list inside the drop target. Works uniformly
+    // for top-level blocks (parent = doc) and list items (parent = list).
+    const $from = doc.resolve(range.from);
+    const parent = $from.depth === 0 ? doc : $from.parent;
+    const base = $from.depth === 0 ? 0 : $from.start();
+    const moved: ProseNode[] = [];
+    parent.forEach((child: ProseNode, offset: number) => {
+        const childPos = base + offset;
+        if (childPos >= range.from && childPos < range.to) {
+            moved.push(child);
+        }
+    });
+    if (moved.length === 0) {
+        return false;
+    }
+    const content = Fragment.from(moved);
+    // deleteRange (not delete): removing a list's last item must dissolve
+    // the emptied list instead of leaving a schema-invalid empty node.
+    const tr = view.state.tr.deleteRange(range.from, range.to);
     const insertAt = tr.mapping.map(targetPos);
-    tr.insert(insertAt, slice.content);
+    tr.insert(insertAt, content);
     tr.setMeta(headingFoldPluginKey, {
         type: "move",
         from: range.from,
@@ -205,7 +246,7 @@ export function moveBlockTo(
     // convention) so it stays grabbable for another drag; single moves get a
     // plain caret.
     if (opts?.selectRun) {
-        const runEnd = insertAt + slice.content.size;
+        const runEnd = insertAt + content.size;
         tr.setSelection(
             TextSelection.between(
                 tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size)),
@@ -220,7 +261,7 @@ export function moveBlockTo(
     view.dispatch(tr);
     view.focus();
     // Landing flash at the destination — positions are valid in the new doc.
-    flashRange(view, insertAt, insertAt + slice.content.size);
+    flashRange(view, insertAt, insertAt + content.size);
     return true;
 }
 
@@ -234,8 +275,10 @@ export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean
         return false;
     }
     const { doc } = view.state;
-    const isHeading = doc.nodeAt(pos)?.type.name === "heading";
-    const target = moveTargetFor(doc, range, isHeading, dir);
+    const node = doc.nodeAt(pos);
+    const target = node?.type.name === "list_item"
+        ? moveItemTarget(view, pos, dir)
+        : moveTargetFor(doc, range, node?.type.name === "heading", dir);
     if (target === null) {
         return false;
     }
@@ -248,8 +291,11 @@ function canMove(view: EditorView, pos: number, dir: -1 | 1): boolean {
     if (!range) {
         return false;
     }
-    const isHeading = view.state.doc.nodeAt(pos)?.type.name === "heading";
-    return moveTargetFor(view.state.doc, range, isHeading, dir) !== null;
+    const node = view.state.doc.nodeAt(pos);
+    if (node?.type.name === "list_item") {
+        return moveItemTarget(view, pos, dir) !== null;
+    }
+    return moveTargetFor(view.state.doc, range, node?.type.name === "heading", dir) !== null;
 }
 
 /**
@@ -356,13 +402,20 @@ export function openBlockMenu(
         return;
     }
 
-    const currentKind = turnIntoKindAt(view, blockPos);
     // Identity guard: every action re-checks that the block it was built for
     // is still the node at blockPos. The doc-change close (headingFold's
     // plugin view calls closeBlockMenu) makes stale menus rare; this makes a
     // stale ACTION impossible — same philosophy as tableCmd's cellPos bail.
     const anchorNode = view.state.doc.nodeAt(blockPos);
     const isHeading = anchorNode?.type.name === "heading";
+    const isItem = anchorNode?.type.name === "list_item";
+    // An ITEM's marker still offers the LIST-level conversions (turn the
+    // whole list ordered/task/prose/…): actions target the item, Turn-into
+    // targets its parent list — the list node itself carries no marker.
+    const conversionPos = isItem
+        ? view.state.doc.resolve(blockPos).before(view.state.doc.resolve(blockPos).depth)
+        : blockPos;
+    const currentKind = turnIntoKindAt(view, conversionPos);
 
     const menu = document.createElement("div");
     menu.className = "block-menu";
@@ -565,8 +618,8 @@ export function openBlockMenu(
     // temporarily-impossible edges below.
     let activeRow: HTMLElement | null = null;
     if (currentKind !== null) {
-        addHeader(t("Turn into"));
-        const offered = TURN_INTO_CHOICES.filter(({ kind }) => canTurnInto(view, blockPos, kind));
+        addHeader(isItem ? t("Turn list into") : t("Turn into"));
+        const offered = TURN_INTO_CHOICES.filter(({ kind }) => canTurnInto(view, conversionPos, kind));
         for (const choice of offered) {
             const active = choice.kind === currentKind;
             const row = addRow(choice.label, {
@@ -577,7 +630,7 @@ export function openBlockMenu(
                 ...(choice.hint !== undefined && { hint: choice.hint }),
                 action: () => {
                     if (!active) {
-                        turnBlockInto(view, blockPos, choice.kind, getEditor);
+                        turnBlockInto(view, conversionPos, choice.kind, getEditor);
                     }
                 },
             });

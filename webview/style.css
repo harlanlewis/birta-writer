@@ -1663,3 +1663,9 @@ body.block-dragging .milkdown .editor {
 .block-drop-flash--fade {
     opacity: 0;
 }
+
+/* Per-item gutters (MAR-86): the item's marker sits clear of the native
+   bullet/number, further into the margin than the -10px block default. */
+.block-gutter-host--item > .heading-fold-gutter--block {
+    left: -26px;
+}

@@ -11,13 +11,17 @@ import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
-import { moveBlockTo, moveRangeAt } from "../components/blockMenu";
+import { moveBlockTo, moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
+import { mockVscodeApi } from "./setup";
 import {
     blockBoundaryPositions,
     dropTargetFor,
 } from "../components/blockMenu/drag";
 
 let editors: Editor[] = [];
+let activeEditor: Editor | null = null;
+
+setBlockMenuContext({ getEditor: () => activeEditor });
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -33,6 +37,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(headingFoldPlugin)
         .create();
     editors.push(editor);
+    activeEditor = editor;
     return editor;
 }
 
@@ -53,17 +58,113 @@ afterEach(async () => {
 });
 
 describe("blockBoundaryPositions", () => {
-    it("a three-block doc should yield four boundaries (before each + end)", async () => {
+    it("a three-block doc should yield four block boundaries (before each + end)", async () => {
         const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
         const doc = view(editor).state.doc;
         const positions = blockBoundaryPositions(doc);
         expect(positions).toHaveLength(4);
-        expect(positions[0]).toBe(0);
-        expect(positions[3]).toBe(doc.content.size);
-        // Every non-end boundary starts a top-level block.
-        for (const pos of positions.slice(0, -1)) {
+        expect(positions[0]).toEqual({ pos: 0, kind: "block" });
+        expect(positions[3]).toEqual({ pos: doc.content.size, kind: "block" });
+        for (const { pos } of positions.slice(0, -1)) {
             expect(doc.nodeAt(pos)).not.toBeNull();
         }
+    });
+
+    it("lists contribute item slots at every depth plus an end-of-list slot", async () => {
+        const editor = await makeEditor("- one\n- two\n  - nested\n\npara");
+        const doc = view(editor).state.doc;
+        const positions = blockBoundaryPositions(doc);
+        const items = positions.filter((b) => b.kind === "item");
+        // one, two, nested = 3 item starts; outer + inner list ends = 2.
+        expect(items).toHaveLength(5);
+        const itemStarts = items.filter(({ pos }) => doc.nodeAt(pos)?.type.name === "list_item");
+        expect(itemStarts).toHaveLength(3);
+        const blocks = positions.filter((b) => b.kind === "block");
+        expect(blocks).toHaveLength(3); // list, para, doc end
+    });
+});
+
+describe("per-item list drag/menu (MAR-86)", () => {
+    it("every list item gets its own marker with a source-true glyph", async () => {
+        const editor = await makeEditor("1. first\n2. second\n\n- [x] done\n- [ ] todo");
+        view(editor);
+        const glyphs = Array.from(document.querySelectorAll(".heading-fold-marker--block"))
+            .map((el) => el.textContent);
+        expect(glyphs).toEqual(["1.", "2.", "[x]", "[ ]"]);
+    });
+
+    it("moving an item within its list should reorder just the siblings", async () => {
+        const editor = await makeEditor("- one\n- two\n- three");
+        const v = view(editor);
+        // First item's marker → its menu → Move Down.
+        const markerEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker"));
+        markerEls[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Move Down")!;
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(markdown(editor)).toBe("- two\n- one\n- three");
+        void v;
+    });
+
+    it("an item's menu offers the LIST-level conversions under 'Turn list into'", async () => {
+        const editor = await makeEditor("- one\n- two");
+        view(editor);
+        const markerEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker"));
+        markerEls[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        expect(menu.querySelector(".block-menu-header")!.textContent).toBe("Turn list into");
+        const active = menu.querySelector(".block-menu-item--active .block-menu-item-label");
+        expect(active!.textContent).toBe("Bullet List");
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Ordered List")!;
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(markdown(editor)).toBe("1. one\n2. two");
+    });
+
+    it("deleting a list's only item should dissolve the list", async () => {
+        const editor = await makeEditor("- only\n\npara");
+        view(editor);
+        const markerEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker"));
+        markerEls[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Delete")!;
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(markdown(editor)).toBe("para");
+    });
+
+    it("moveBlockTo can refile an item into ANOTHER list", async () => {
+        const editor = await makeEditor("- a1\n- a2\n\n1. b1");
+        const v = view(editor);
+        // Find the second item of list A and the slot before b1.
+        let a2Pos = -1;
+        let b1Pos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "list_item") {
+                if (node.textContent === "a2") a2Pos = pos;
+                if (node.textContent === "b1") b1Pos = pos;
+            }
+            return true;
+        });
+        const item = v.state.doc.nodeAt(a2Pos)!;
+        expect(moveBlockTo(v, { from: a2Pos, to: a2Pos + item.nodeSize }, b1Pos)).toBe(true);
+        expect(markdown(editor)).toBe("- a1\n\n1. a2\n2. b1");
+    });
+
+    it("an item's Copy as Markdown wraps it in its list flavor", async () => {
+        const editor = await makeEditor("1. first\n2. second");
+        view(editor);
+        const markerEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker"));
+        markerEls[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Copy as Markdown")!;
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        const call = mockVscodeApi.postMessage.mock.calls
+            .map((args) => args[0])
+            .find((msg) => msg.type === "clipboardWrite");
+        expect(call?.data?.trim()).toBe("1. second");
     });
 });
 

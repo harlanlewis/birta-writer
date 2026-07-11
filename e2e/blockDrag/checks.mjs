@@ -209,6 +209,44 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the moved run stays selected after the drop", runSelected);
 
+    // ── 3c. Per-item drag: reorder items within their list (MAR-86) ──
+    const itemOne = await page.$$eval(".ProseMirror li", (els) => {
+        const el = els.find((e) => e.textContent.includes("item one"));
+        const r = el.getBoundingClientRect();
+        return { x: r.x + 10, y: r.y + 8 };
+    });
+    await page.mouse.move(itemOne.x, itemOne.y);
+    await page.waitForTimeout(120);
+    const itemMarker = await page.$$eval(".ProseMirror li .heading-fold-marker", (els) => {
+        const el = els.find((e) => e.closest("li")?.textContent.includes("item one"));
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    const itemTwoRect = await page.$$eval(".ProseMirror li", (els) => {
+        const el = els.find((e) => e.textContent.includes("item two"));
+        const r = el.getBoundingClientRect();
+        return { bottom: r.bottom, x: r.x + r.width / 2, left: r.left };
+    });
+    await page.mouse.move(itemMarker.x, itemMarker.y);
+    await page.mouse.down();
+    await page.mouse.move(itemMarker.x + 10, itemMarker.y + 10);
+    await page.mouse.move(itemTwoRect.x, itemTwoRect.bottom - 2, { steps: 6 });
+    await page.waitForTimeout(100);
+    // The indicator indents to the item column, not the editor's left edge.
+    const indented = await page.evaluate((itemLeft) => {
+        const el = document.querySelector(".block-drag-indicator");
+        if (!el || getComputedStyle(el).display === "none") return null;
+        const r = el.getBoundingClientRect();
+        const editor = document.querySelector(".milkdown .editor").getBoundingClientRect();
+        return { indented: r.left > editor.left + 10 && Math.abs(r.left - itemLeft) < 8 };
+    }, itemTwoRect.left);
+    check("item drop indicator indents to the item column",
+        indented !== null && indented.indented, JSON.stringify(indented));
+    await page.mouse.up();
+    const itemsReordered = await latestDoc(page, (doc) =>
+        doc.indexOf("item two") < doc.indexOf("item one"));
+    check("dragging an item reorders it within its list", itemsReordered !== null);
+
     // ── 4. A plain click (no movement) still opens the menu ──
     const pAgain = await markerCenter(page, ".ProseMirror > p");
     await page.mouse.click(pAgain.x, pAgain.y);

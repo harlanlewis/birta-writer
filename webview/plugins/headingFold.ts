@@ -367,10 +367,7 @@ function blockMarkerGlyph(node: any): string | null {
             });
             return sawImage ? "![]" : "<>";
         }
-        case "bullet_list":
-            return isTaskListNode(node) ? "[ ]" : "-";
-        case "ordered_list":
-            return "1.";
+        // Lists get PER-ITEM markers (emitItemGutters), not a list-level one.
         case "blockquote":
             return ">";
         case "callout":
@@ -380,6 +377,61 @@ function blockMarkerGlyph(node: any): string | null {
         default:
             return null;
     }
+}
+
+/** True for the two list container types (items are the draggable units). */
+function isListNode(node: any): boolean {
+    return node.type.name === "bullet_list" || node.type.name === "ordered_list";
+}
+
+/**
+ * The source-mirroring glyph for ONE list item: its actual ordinal in an
+ * ordered list ("3."), its checkbox state in a task list ("[ ]"/"[x]"),
+ * or "-" in a bullet list.
+ */
+function itemGlyph(listNode: any, item: any, index: number): string {
+    if (item.attrs["checked"] != null) {
+        return item.attrs["checked"] ? "[x]" : "[ ]";
+    }
+    return listNode.type.name === "ordered_list" ? `${index + 1}.` : "-";
+}
+
+/**
+ * Per-item gutter markers (MAR-86): every list item — at any nesting depth —
+ * is its own grabbable unit with its own glyph. The list node itself carries
+ * no marker (whole-list operations are reachable by selecting all items).
+ * `listPos` is the list node's document position; items' positions are
+ * derived from it. Appends into `decorations` and `parts` (fingerprint).
+ */
+function emitItemGutters(
+    listNode: any,
+    listPos: number,
+    decorations: Decoration[] | null,
+    parts: string[] | null,
+): void {
+    listNode.forEach((item: any, offset: number, index: number) => {
+        const itemPos = listPos + 1 + offset;
+        const glyph = itemGlyph(listNode, item, index);
+        parts?.push(`i${glyph}`);
+        decorations?.push(
+            Decoration.node(itemPos, itemPos + item.nodeSize, {
+                class: "block-gutter-host block-gutter-host--item",
+            }),
+        );
+        decorations?.push(
+            Decoration.widget(
+                itemPos + 1,
+                (view: EditorView) => createBlockGutter(view, glyph),
+                { key: `g:${glyph}`, side: -1 },
+            ),
+        );
+        // Nested lists inside the item: their items are units too.
+        item.forEach((child: any, childOffset: number) => {
+            if (isListNode(child)) {
+                emitItemGutters(child, itemPos + 1 + childOffset, decorations, parts);
+            }
+        });
+    });
 }
 
 /**
@@ -401,6 +453,9 @@ function structureFingerprint(
             const collapsed = folded.has(offset);
             const foldable = Boolean(ranges.get(offset));
             parts.push(`h${getHeadingLevel(node)}${collapsed ? "c" : ""}${foldable ? "f" : ""}`);
+        } else if (isListNode(node)) {
+            parts.push("L");
+            emitItemGutters(node, offset, null, parts);
         } else {
             parts.push(blockMarkerGlyph(node) ?? "·");
         }
@@ -415,11 +470,14 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
 
     doc.forEach((node: any, offset: number) => {
         if (!isHeadingNode(node)) {
-            // Every non-heading top-level block with a glyph gets the
+            // Lists get per-item markers (each item is the grabbable unit,
+            // MAR-86); every other non-heading block with a glyph gets the
             // hover-revealed gutter marker opening the block menu, plus the
-            // host class that carries the shared positioning/hover CSS. Only
-            // direct children of the doc — blocks inside lists/quotes/tables
-            // have their own semantics.
+            // host class that carries the shared positioning/hover CSS.
+            if (isListNode(node)) {
+                emitItemGutters(node, offset, decorations, null);
+                return;
+            }
             const glyph = blockMarkerGlyph(node);
             if (glyph !== null) {
                 decorations.push(
