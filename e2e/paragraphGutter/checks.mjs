@@ -93,9 +93,9 @@ export async function run({ page, check, baseUrl }) {
         `inset=${pGeom.glyphInsetFromGutterRight.toFixed(1)}`);
 
     // The marker is hovered right now (step 4 landed on it) — the tooltip is
-    // visible and must name the block menu, not the old "text style".
+    // visible and must teach both verbs (menu click + drag).
     const tipText = await page.$eval(".custom-tooltip", (el) => el.textContent);
-    check("P marker tooltip reads 'Block options'", tipText === "Block options",
+    check("P marker tooltip teaches click and drag", tipText === "Click for options · Drag to move",
         `tooltip=${tipText}`);
 
     // ── 4c. Heading hash marker: same enlargement, chevron untouched ──

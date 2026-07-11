@@ -1477,3 +1477,37 @@ body.toolbar-hidden::before {
     color: var(--vscode-foreground);
     background: var(--vscode-toolbar-hoverBackground);
 }
+
+/* Drag-to-reorder chrome (gutter markers, MAR-19). The indicator is the
+   standard accent drop line, body-mounted so it rides over every block. */
+.block-drag-indicator {
+    display: none;
+    position: fixed;
+    z-index: 1200;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--vscode-focusBorder);
+    pointer-events: none;
+}
+
+/* Markers advertise dragability; the whole page shows a grabbing cursor
+   during a session so the affordance never flickers mid-drag. */
+.milkdown .editor .heading-fold-marker {
+    cursor: grab;
+}
+
+body.block-dragging,
+body.block-dragging * {
+    cursor: grabbing !important;
+}
+
+/* The dragged marker keeps full contrast even when the pointer leaves its
+   block (same specificity family as the hover rules above). */
+.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) .heading-fold-marker--block.heading-fold-marker--dragging {
+    opacity: 1;
+    color: var(--vscode-foreground);
+}
+
+body.block-dragging .milkdown .editor {
+    user-select: none;
+}

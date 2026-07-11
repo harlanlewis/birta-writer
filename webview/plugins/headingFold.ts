@@ -10,6 +10,7 @@ import { t } from "../i18n";
 // matching the slashMenu plugin ↔ component precedent.
 import { openBlockMenu } from "../components/blockMenu";
 import { isTextBearingParagraph } from "../components/blockMenu/turnInto";
+import { wireMarkerDrag } from "../components/blockMenu/drag";
 
 export type HeadingFoldMeta = { type: "toggle"; pos: number };
 type HeadingFoldRange = { from: number; to: number };
@@ -142,10 +143,9 @@ function createHeadingFoldGutter(
     marker.type = "button";
     marker.className = "heading-fold-marker";
     marker.textContent = headingMarker(level);
-    const markerTip = t("Block options");
-    marker.setAttribute("aria-label", markerTip);
+    marker.setAttribute("aria-label", t("Block options"));
     marker.setAttribute("aria-haspopup", "menu");
-    applyTooltip(marker, markerTip, { placement: "above" });
+    applyTooltip(marker, t("Click for options · Drag to move"), { placement: "above" });
     // mousedown: keep the editor selection/caret; click: open the menu.
     marker.addEventListener("mousedown", (event) => {
         event.preventDefault();
@@ -154,10 +154,16 @@ function createHeadingFoldGutter(
     marker.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        // A drag that started on this marker must not also open the menu.
+        if (marker.dataset["dragged"]) {
+            delete marker.dataset["dragged"];
+            return;
+        }
         // A keyboard-activated button click reports detail 0 (no mouse click
         // count) — use it to move focus into the menu only for keyboard opens.
         openBlockMenu(view, headingPos, marker, event.detail === 0);
     });
+    wireMarkerDrag(view, marker, () => headingPos);
 
     if (!foldable) {
         gutter.appendChild(marker);
@@ -230,10 +236,9 @@ function createBlockGutter(view: EditorView, blockPos: number, glyph: string): H
     marker.className = `heading-fold-marker heading-fold-marker--block${glyph === "P" ? " heading-fold-marker--paragraph" : ""}`;
     marker.textContent = glyph;
     // Same label as the heading markers: it's the same block menu.
-    const markerTip = t("Block options");
-    marker.setAttribute("aria-label", markerTip);
+    marker.setAttribute("aria-label", t("Block options"));
     marker.setAttribute("aria-haspopup", "menu");
-    applyTooltip(marker, markerTip, { placement: "above" });
+    applyTooltip(marker, t("Click for options · Drag to move"), { placement: "above" });
     marker.addEventListener("mousedown", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -241,8 +246,13 @@ function createBlockGutter(view: EditorView, blockPos: number, glyph: string): H
     marker.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (marker.dataset["dragged"]) {
+            delete marker.dataset["dragged"];
+            return;
+        }
         openBlockMenu(view, blockPos, marker, event.detail === 0);
     });
+    wireMarkerDrag(view, marker, () => blockPos);
 
     gutter.appendChild(marker);
     return gutter;

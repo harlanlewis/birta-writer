@@ -1,0 +1,116 @@
+/**
+ * Gutter drag-to-reorder (MAR-19) — real-browser truths (pointer sessions,
+ * layout-driven drop targets, the indicator):
+ *   - dragging a paragraph's P marker below the list reorders the document,
+ *   - the accent drop indicator shows during a drag and hides after,
+ *   - Escape cancels a drag without touching the document,
+ *   - a heading's marker drags its whole section,
+ *   - a drag does not also open the block menu; a plain click still does.
+ */
+
+/** The serialized doc after updates settle (updates are debounced 300ms). */
+async function latestDoc(page, matcher, tries = 30) {
+    for (let i = 0; i < tries; i++) {
+        const updates = await page.evaluate(() =>
+            window.__posted.filter((m) => m.type === "update").map((m) => m.content));
+        const last = updates[updates.length - 1];
+        if (last && matcher(last)) return last;
+        await page.waitForTimeout(100);
+    }
+    return null;
+}
+
+/** Center of the gutter marker owned by the top-level block matching `sel`. */
+async function markerCenter(page, sel) {
+    // Reveal (hover) first so geometry is stable, then measure.
+    const host = await page.$eval(sel, (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + Math.min(14, r.height / 2) };
+    });
+    await page.mouse.move(host.x, host.y);
+    await page.waitForTimeout(120);
+    return page.$eval(`${sel} .heading-fold-marker`, (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+}
+
+export async function run({ page, check, baseUrl }) {
+    await page.goto(`${baseUrl}/index.html`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForSelector(".heading-fold-marker--paragraph", { timeout: 10000 });
+    await page.waitForTimeout(500);
+
+    // ── 1. Drag the first paragraph below the list ──
+    const pMarker = await markerCenter(page, ".ProseMirror > p");
+    const listRect = await page.$eval(".ProseMirror > ul", (el) => {
+        const r = el.getBoundingClientRect();
+        return { bottom: r.bottom, x: r.x + r.width / 2 };
+    });
+    await page.mouse.move(pMarker.x, pMarker.y);
+    await page.mouse.down();
+    await page.mouse.move(pMarker.x + 10, pMarker.y + 10); // cross the threshold
+    await page.mouse.move(listRect.x, listRect.bottom - 2, { steps: 8 });
+    await page.waitForTimeout(100);
+    const indicatorVisible = await page.$eval(".block-drag-indicator", (el) =>
+        getComputedStyle(el).display !== "none");
+    check("drop indicator shows during a drag", indicatorVisible);
+    await page.mouse.up();
+    const reordered = await latestDoc(page, (doc) =>
+        doc.indexOf("item two") < doc.indexOf("Alpha paragraph."));
+    check("dragging the paragraph below the list reorders the doc", reordered !== null);
+    const indicatorHidden = await page.$eval(".block-drag-indicator", (el) =>
+        getComputedStyle(el).display === "none");
+    check("indicator hides after the drop", indicatorHidden);
+    check("the drag did not open the block menu", (await page.$(".block-menu")) === null);
+
+    // ── 2. Escape cancels a drag ──
+    const before = await page.evaluate(() => {
+        const updates = window.__posted.filter((m) => m.type === "update");
+        return updates[updates.length - 1]?.content ?? null;
+    });
+    const omega = await markerCenter(page, ".ProseMirror > p:nth-of-type(2)");
+    await page.mouse.move(omega.x, omega.y);
+    await page.mouse.down();
+    await page.mouse.move(omega.x + 10, omega.y + 60, { steps: 6 });
+    await page.waitForTimeout(80);
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+    await page.waitForTimeout(450);
+    const after = await page.evaluate(() => {
+        const updates = window.__posted.filter((m) => m.type === "update");
+        return updates[updates.length - 1]?.content ?? null;
+    });
+    check("Escape cancels the drag without a doc change", before === after);
+    const indicatorGone = await page.$eval(".block-drag-indicator", (el) =>
+        getComputedStyle(el).display === "none");
+    check("indicator hides after a cancel", indicatorGone);
+
+    // ── 3. A heading drags its whole section ──
+    // Drag "# Section A"'s marker to the very end of the document.
+    const hMarker = await markerCenter(page, ".ProseMirror > h1:nth-of-type(1)");
+    const lastRect = await page.$eval(".ProseMirror > *:last-child", (el) => {
+        const r = el.getBoundingClientRect();
+        return { bottom: r.bottom, x: r.x + r.width / 2 };
+    });
+    await page.mouse.move(hMarker.x, hMarker.y);
+    await page.mouse.down();
+    await page.mouse.move(hMarker.x + 10, hMarker.y + 10);
+    await page.mouse.move(lastRect.x, lastRect.bottom - 1, { steps: 8 });
+    await page.waitForTimeout(100);
+    await page.mouse.up();
+    const sectionMoved = await latestDoc(page, (doc) => {
+        const a = doc.indexOf("# Section A");
+        const contentA = doc.indexOf("content of A");
+        const b = doc.indexOf("# Section B");
+        return b !== -1 && b < a && a < contentA; // B now precedes A; A kept its body
+    });
+    check("a heading drags its whole section", sectionMoved !== null);
+
+    // ── 4. A plain click (no movement) still opens the menu ──
+    const pAgain = await markerCenter(page, ".ProseMirror > p");
+    await page.mouse.click(pAgain.x, pAgain.y);
+    await page.waitForTimeout(100);
+    check("a plain marker click still opens the block menu", (await page.$(".block-menu")) !== null);
+    await page.keyboard.press("Escape");
+}
