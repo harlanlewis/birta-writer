@@ -80,13 +80,20 @@ describe("dropTargetFor", () => {
         expect(dropTargetFor(boundaries, 230, { from: 0, to: 10 })?.pos).toBe(20);
     });
 
-    it("boundaries inside or at the edges of the dragged range should be skipped", () => {
-        // Dragging [10,20): pointer near its own edges snaps outward.
-        expect(dropTargetFor(boundaries, 105, { from: 10, to: 20 })?.pos).toBe(0);
-        expect(dropTargetFor(boundaries, 195, { from: 10, to: 20 })?.pos).toBe(30);
+    it("a pointer nearest the range's own slot should yield null (put it back)", () => {
+        // Dragging [10,20): hovering near its own edges is the return
+        // gesture — the indicator hides and the drop is a clean no-op,
+        // instead of snapping to the neighbor above/below.
+        expect(dropTargetFor(boundaries, 105, { from: 10, to: 20 })).toBeNull();
+        expect(dropTargetFor(boundaries, 195, { from: 10, to: 20 })).toBeNull();
     });
 
-    it("no legal boundary should yield null", () => {
+    it("a pointer genuinely nearest a legal boundary still snaps there", () => {
+        expect(dropTargetFor(boundaries, 40, { from: 10, to: 20 })?.pos).toBe(0);
+        expect(dropTargetFor(boundaries, 260, { from: 10, to: 20 })?.pos).toBe(30);
+    });
+
+    it("all boundaries in-range should yield null", () => {
         expect(dropTargetFor(boundaries.slice(0, 2), 50, { from: 0, to: 10 })).toBeNull();
     });
 });

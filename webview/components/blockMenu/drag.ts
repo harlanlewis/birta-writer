@@ -46,9 +46,12 @@ export function blockBoundaryPositions(doc: ProseNode): number[] {
 }
 
 /**
- * The boundary to drop at for a pointer at `pointerY`, or null when every
- * candidate is inside (or equal to an edge of) the dragged range — dropping
- * there would be a no-op. Nearest-y wins. Exported for unit testing.
+ * The boundary to drop at for a pointer at `pointerY` — nearest-y wins — or
+ * null when the NEAREST boundary sits inside (or at an edge of) the dragged
+ * range: that's the "put it back" gesture, so the indicator hides and the
+ * drop is a clean no-op. (Skipping own-range boundaries before choosing used
+ * to snap the indicator away from the origin, making it impossible to drop a
+ * block back where it was picked up.) Exported for unit testing.
  */
 export function dropTargetFor(
     boundaries: readonly DropBoundary[],
@@ -58,16 +61,14 @@ export function dropTargetFor(
     let best: DropBoundary | null = null;
     let bestDist = Infinity;
     for (const boundary of boundaries) {
-        // Boundaries inside the dragged range — including its own edges —
-        // are all no-op drops; skip them so the indicator never suggests one.
-        if (boundary.pos >= range.from && boundary.pos <= range.to) {
-            continue;
-        }
         const dist = Math.abs(boundary.y - pointerY);
         if (dist < bestDist) {
             bestDist = dist;
             best = boundary;
         }
+    }
+    if (best && best.pos >= range.from && best.pos <= range.to) {
+        return null;
     }
     return best;
 }
