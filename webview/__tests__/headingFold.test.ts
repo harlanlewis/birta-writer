@@ -194,15 +194,18 @@ describe("heading gutter level menu", () => {
         // section moves).
         const menu = levelMenu();
         expect(menu).not.toBeNull();
-        const rows = menu!.querySelectorAll(".block-menu-item");
+        const rows = menu!.querySelectorAll(".block-menu-item-label");
         expect(Array.from(rows).map((r) => r.textContent)).toEqual([
-            "P", "H1", "H2", "H3", "H4", "H5", "H6",
+            "Paragraph", "Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6",
             "Bullet List", "Ordered List", "Task List", "Blockquote", "Callout", "Code Block",
             "Duplicate", "Copy as Markdown", "Copy Link",
             "Move Section Up", "Move Section Down", "Delete",
         ]);
+        // Two labeled sections frame the rows (slash-menu group idiom).
+        expect(Array.from(menu!.querySelectorAll(".block-menu-header")).map((h) => h.textContent))
+            .toEqual(["Turn into", "Actions"]);
         const active = menu!.querySelector(".block-menu-item--active");
-        expect(active!.textContent).toBe("H2");
+        expect(active!.querySelector(".block-menu-item-label")!.textContent).toBe("Heading 2");
         expect(active!.getAttribute("aria-checked")).toBe("true");
     });
 
@@ -249,7 +252,7 @@ describe("heading gutter level menu", () => {
         const menu = levelMenu();
         expect(menu).not.toBeNull();
         // P is the checked current level for a paragraph.
-        expect(menu!.querySelector(".block-menu-item--active")!.textContent).toBe("P");
+        expect(menu!.querySelector(".block-menu-item--active .block-menu-item-label")!.textContent).toBe("Paragraph");
         const rows = menu!.querySelectorAll<HTMLButtonElement>(".block-menu-item");
         clickMouse(rows[2]!, "mousedown");
 
@@ -330,7 +333,7 @@ describe("heading gutter level menu", () => {
             .find((m) => m.textContent === "##")!;
         clickMouse(heading, "click");
         const menu = levelMenu()!;
-        expect(menu.querySelector(".block-menu-item--active")!.textContent).toBe("H2");
+        expect(menu.querySelector(".block-menu-item--active .block-menu-item-label")!.textContent).toBe("Heading 2");
         // Retype via the menu: the SHIFTED heading must be the one retyped.
         const rows = menu.querySelectorAll<HTMLButtonElement>(".block-menu-item");
         clickMouse(rows[3]!, "mousedown"); // H3
@@ -377,7 +380,7 @@ describe("heading gutter level menu", () => {
         // Assert: the H2 row is focused so arrows/Enter drive it immediately
         const active = levelMenu()!.querySelector<HTMLElement>(".block-menu-item--active");
         expect(document.activeElement).toBe(active);
-        expect(active!.textContent).toBe("H2");
+        expect(active!.querySelector(".block-menu-item-label")!.textContent).toBe("Heading 2");
     });
 
     it("arrow keys should rove focus and Enter should activate the focused row", async () => {
@@ -391,7 +394,7 @@ describe("heading gutter level menu", () => {
         const pressKey = (key: string): void =>
             document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
         pressKey("ArrowUp");
-        expect((document.activeElement as HTMLElement).textContent).toBe("H1");
+        expect((document.activeElement as HTMLElement).querySelector(".block-menu-item-label")!.textContent).toBe("Heading 1");
         pressKey("Enter");
 
         // Assert: heading retyped to H1, menu closed

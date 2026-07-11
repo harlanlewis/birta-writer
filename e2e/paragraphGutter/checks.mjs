@@ -167,14 +167,14 @@ export async function run({ page, check, baseUrl }) {
     const menu = await page.$(".block-menu");
     check("clicking P opens the level menu", menu !== null);
     const activeLabel = await page.$eval(
-        ".block-menu .block-menu-item--active",
+        ".block-menu .block-menu-item--active .block-menu-item-label",
         (el) => el.textContent.trim(),
     );
-    check("menu marks P as the current level", activeLabel === "P", `active=${activeLabel}`);
+    check("menu marks Paragraph as the current type", activeLabel === "Paragraph", `active=${activeLabel}`);
 
     // ── 6. Picking H2 promotes the paragraph ──
     const rows = await page.$$(".block-menu .block-menu-item");
-    await rows[2].dispatchEvent("mousedown"); // P,H1,H2 → index 2
+    await rows[2].dispatchEvent("mousedown"); // Paragraph,Heading 1,Heading 2 → index 2
     await page.waitForTimeout(100);
     check("menu closed after pick", (await page.$(".block-menu")) === null);
     // Updates are debounced (300ms) — poll for the promoted line.

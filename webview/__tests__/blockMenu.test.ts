@@ -69,7 +69,7 @@ function openMenuOn(markerEl: HTMLButtonElement): HTMLElement {
 
 function pickRow(menu: HTMLElement, label: string): HTMLElement {
     const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
-        .find((el) => el.textContent === label);
+        .find((el) => el.querySelector(".block-menu-item-label")?.textContent === label);
     expect(row, `menu row "${label}" not found`).not.toBeNull();
     row!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
     return row!;
@@ -177,14 +177,14 @@ describe("Turn into — non-prose sources", () => {
     it("bullet list → paragraph should unwrap every item", async () => {
         const editor = await makeEditor("- one\n- two");
         view(editor);
-        pickRow(openMenuOn(markers()[0]!), "P");
+        pickRow(openMenuOn(markers()[0]!), "Paragraph");
         expect(markdown(editor)).toBe("one\n\ntwo");
     });
 
     it("bullet list → H2 should turn each item's lead paragraph into a heading", async () => {
         const editor = await makeEditor("- one\n- two");
         view(editor);
-        pickRow(openMenuOn(markers()[0]!), "H2");
+        pickRow(openMenuOn(markers()[0]!), "Heading 2");
         expect(markdown(editor)).toBe("## one\n\n## two");
     });
 
@@ -198,14 +198,14 @@ describe("Turn into — non-prose sources", () => {
     it("blockquote → paragraph should unwrap the quote", async () => {
         const editor = await makeEditor("> quoted line");
         view(editor);
-        pickRow(openMenuOn(markers()[0]!), "P");
+        pickRow(openMenuOn(markers()[0]!), "Paragraph");
         expect(markdown(editor)).toBe("quoted line");
     });
 
     it("blockquote → H3 should unwrap and retype the first paragraph", async () => {
         const editor = await makeEditor("> quoted line");
         view(editor);
-        pickRow(openMenuOn(markers()[0]!), "H3");
+        pickRow(openMenuOn(markers()[0]!), "Heading 3");
         expect(markdown(editor)).toBe("### quoted line");
     });
 
@@ -230,9 +230,9 @@ describe("Turn into — non-prose sources", () => {
         const editor = await makeEditor("```js\nlet x = 1\n```");
         view(editor);
         const menu = openMenuOn(markers()[0]!);
-        const labels = Array.from(menu.querySelectorAll(".block-menu-item")).map((el) => el.textContent);
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item-label")).map((el) => el.textContent);
         expect(labels).toContain("Code Block"); // the filled current row
-        expect(labels).not.toContain("P");
+        expect(labels).not.toContain("Paragraph");
         expect(labels).not.toContain("Bullet List");
         expect(labels).toContain("Duplicate"); // actions always present
     });
@@ -241,8 +241,8 @@ describe("Turn into — non-prose sources", () => {
         const editor = await makeEditor("![img](data:,x)");
         view(editor);
         const menu = openMenuOn(markers()[0]!);
-        const labels = Array.from(menu.querySelectorAll(".block-menu-item")).map((el) => el.textContent);
-        expect(labels).not.toContain("P");
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item-label")).map((el) => el.textContent);
+        expect(labels).not.toContain("Paragraph");
         expect(labels).not.toContain("Code Block");
         expect(labels).toEqual(["Duplicate", "Copy as Markdown", "Move Up", "Move Down", "Delete"]);
     });
@@ -320,7 +320,7 @@ describe("Turn into", () => {
         const editor = await makeEditor("Alpha");
         view(editor);
         const before = markdown(editor);
-        pickRow(openMenuOn(markers()[0]!), "P");
+        pickRow(openMenuOn(markers()[0]!), "Paragraph");
         expect(markdown(editor)).toBe(before);
     });
 });

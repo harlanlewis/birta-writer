@@ -52,7 +52,7 @@
     z-index: 1000;
     display: flex;
     flex-direction: column;
-    min-width: 132px;
+    min-width: 200px;
     max-height: calc(100vh - 16px);
     overflow-y: auto;
     padding: 4px 0;
@@ -65,8 +65,9 @@
 .block-menu-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 10px;
     border: 0;
     background: none;
     color: var(--vscode-editorHoverWidget-foreground);
@@ -75,8 +76,11 @@
     text-align: left;
     cursor: pointer;
 
-    &:hover {
+    /* One highlight model for mouse and keyboard (the slash menu's lesson). */
+    &:hover,
+    &:focus-visible {
         background: var(--vscode-list-hoverBackground);
+        outline: none;
     }
 
     &[aria-disabled="true"] {
@@ -89,22 +93,101 @@
     }
 }
 
-.block-menu-item-label {
-    font-weight: 600;
+/* Leading 16px slot — SVG icon or text badge, the slash menu's row anatomy. */
+.block-menu-item-icon {
+    flex: 0 0 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--vscode-descriptionForeground);
+
+    & svg {
+        width: 14px;
+        height: 14px;
+    }
 }
 
-.block-menu-item--active .menu-check {
-    visibility: visible;
+.block-menu-item-badge {
+    flex: 0 0 16px;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+}
+
+.block-menu-item-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.block-menu-item-hint {
+    flex: none;
+    margin-left: 16px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Current type: accent-filled row — the toolbar Format-menu idiom (this IS
+   the Format menu's semantics, reached from the gutter). */
+.block-menu-item--active,
+.block-menu-item--active:hover,
+.block-menu-item--active:focus-visible {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.block-menu-item--active :is(.block-menu-item-icon, .block-menu-item-badge, .block-menu-item-hint) {
+    color: inherit;
 }
 
 .block-menu-item--danger:hover {
     color: var(--vscode-errorForeground);
 }
 
+.block-menu-header {
+    padding: 5px 10px 2px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--vscode-descriptionForeground);
+    user-select: none;
+}
+
 .block-menu-divider {
     height: 1px;
     margin: 4px 0;
     background: var(--vscode-editorHoverWidget-border);
+}
+
+/* The block a menu is open FOR: a quiet tint so Duplicate/Delete's target is
+   visible at a glance (Editor.js/Notion cue; theme token, no custom color).
+   Keyed off the marker's own --menu-open class via :has() — mutating the
+   block element's classList directly would wake ProseMirror's DOM observer
+   and redraw the node, destroying the menu's anchor widget. */
+.milkdown .editor :is(.block-gutter-host, .heading-fold-heading):has(.heading-fold-marker--menu-open) {
+    background: var(--vscode-toolbar-hoverBackground);
+    border-radius: 3px;
+}
+
+/* Drag pill: rides the cursor during a block drag, naming what's moving —
+   the glyph, plus a block count for multi-block (section) drags. */
+.block-drag-pill {
+    position: fixed;
+    z-index: 1200;
+    padding: 2px 8px;
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-editorHoverWidget-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    color: var(--vscode-editorHoverWidget-foreground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    pointer-events: none;
+    white-space: nowrap;
 }
 
 html,

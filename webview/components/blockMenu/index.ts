@@ -2,13 +2,14 @@
  * components/blockMenu/index.ts
  *
  * The gutter block menu (MAR-78) — opened by clicking a block's gutter marker
- * (`#`..`######`, `P`, …). Two sections:
+ * (`#`..`######`, `P`, …). Two labeled sections:
  *   - **Turn into**: real markdown conversions — P / H1–H6, the three list
- *     types, blockquote, callout, code block — with the block's current type
- *     filled (the shared check glyph). Turning a block into a code block
- *     preserves its literal markdown source inside the fence.
- *   - **Block actions**: Duplicate, Delete, Move Up/Down, Copy as Markdown,
- *     and Copy Link on headings (slug anchors are the only block identity
+ *     types, blockquote, callout, code block — the current type shown as an
+ *     accent-filled row (the toolbar Format-menu idiom). Row art (icons,
+ *     badges, markdown hints) comes straight from the slash-menu registry, so
+ *     the two menus can never drift apart visually.
+ *   - **Actions**: Duplicate, Copy as Markdown, Move Up/Down, Delete, and
+ *     Copy Link on headings (slug anchors are the only block identity
  *     markdown has).
  *
  * Every action targets the block BY POSITION (like setHeadingLevelAt), never
@@ -29,11 +30,20 @@ import {
     headingFoldPluginKey,
     type HeadingFoldMeta,
 } from "../../plugins/headingFold";
-import { runEditorCommand, type GetEditor } from "../../editorCommands";
+import { type GetEditor } from "../../editorCommands";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
 import { hideTooltip } from "../../ui/tooltip";
 import { t } from "../../i18n";
+import { SLASH_MENU_ITEMS } from "../slashMenu/registry";
+import {
+    IconChevronDown,
+    IconChevronUp,
+    IconCopy,
+    IconFileText,
+    IconLink,
+    IconTrash2,
+} from "../../ui/icons";
 import { blockMarkdownAt, canTurnInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
 
 // The conversion matrix and kind helpers live in ./turnInto; re-exported so
@@ -254,21 +264,45 @@ function copyHeadingLink(view: EditorView, pos: number): void {
 
 // ── The menu ────────────────────────────────────────────────────────────────
 
-const TURN_INTO_CHOICES: { kind: TurnIntoKind; label: string }[] = [
-    { kind: "paragraph", label: "P" },
-    { kind: "h1", label: "H1" },
-    { kind: "h2", label: "H2" },
-    { kind: "h3", label: "H3" },
-    { kind: "h4", label: "H4" },
-    { kind: "h5", label: "H5" },
-    { kind: "h6", label: "H6" },
-    { kind: "bulletList", label: "Bullet List" },
-    { kind: "orderedList", label: "Ordered List" },
-    { kind: "taskList", label: "Task List" },
-    { kind: "blockquote", label: "Blockquote" },
-    { kind: "callout", label: "Callout" },
-    { kind: "codeBlock", label: "Code Block" },
-];
+// Turn-into rows reuse the slash registry's art wholesale — label, icon,
+// SVG-or-badge slot, and the right-aligned literal-markdown hint — so the two
+// menus present every block type identically (single source, zero drift).
+const SLASH_ID_BY_KIND: Record<TurnIntoKind, string> = {
+    paragraph: "paragraph",
+    h1: "heading1",
+    h2: "heading2",
+    h3: "heading3",
+    h4: "heading4",
+    h5: "heading5",
+    h6: "heading6",
+    bulletList: "bulletList",
+    orderedList: "orderedList",
+    taskList: "taskList",
+    blockquote: "blockquote",
+    callout: "callout",
+    codeBlock: "codeBlock",
+};
+
+interface TurnIntoRow {
+    kind: TurnIntoKind;
+    label: string;
+    icon: string;
+    badge?: string;
+    hint?: string;
+}
+
+const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as TurnIntoKind[]).map(
+    (kind) => {
+        const item = SLASH_MENU_ITEMS.find((entry) => entry.id === SLASH_ID_BY_KIND[kind]);
+        return {
+            kind,
+            label: item?.label ?? kind,
+            icon: item?.icon ?? "",
+            ...(item?.badge !== undefined && { badge: item.badge }),
+            ...(item?.hint !== undefined && { hint: item.hint }),
+        };
+    },
+);
 
 // Only one gutter menu is open at a time; opening (or clicking the same
 // marker again) closes the previous one.
@@ -399,6 +433,9 @@ export function openBlockMenu(
             disabled?: boolean;
             radio?: boolean;
             danger?: boolean;
+            icon?: string;
+            badge?: string;
+            hint?: string;
             action: () => void;
         },
     ): HTMLElement => {
@@ -415,13 +452,27 @@ export function openBlockMenu(
         if (opts.disabled) {
             row.setAttribute("aria-disabled", "true");
         }
-        const check = document.createElement("span");
-        check.className = "menu-check";
-        check.setAttribute("aria-hidden", "true");
+        // Leading 16px slot: text badge ("H1".."H6") or SVG icon — the slash
+        // menu's exact row anatomy.
+        const slot = document.createElement("span");
+        slot.setAttribute("aria-hidden", "true");
+        if (opts.badge) {
+            slot.className = "block-menu-item-badge";
+            slot.textContent = opts.badge;
+        } else {
+            slot.className = "block-menu-item-icon";
+            slot.innerHTML = opts.icon ?? "";
+        }
         const text = document.createElement("span");
         text.className = "block-menu-item-label";
         text.textContent = label;
-        row.append(check, text);
+        row.append(slot, text);
+        if (opts.hint) {
+            const hint = document.createElement("span");
+            hint.className = "block-menu-item-hint";
+            hint.textContent = opts.hint;
+            row.appendChild(hint);
+        }
         row.addEventListener("mousedown", (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -438,6 +489,12 @@ export function openBlockMenu(
         menu.appendChild(row);
         return row;
     };
+    const addHeader = (label: string): void => {
+        const header = document.createElement("div");
+        header.className = "block-menu-header";
+        header.textContent = label;
+        menu.appendChild(header);
+    };
     const addDivider = (): void => {
         const divider = document.createElement("div");
         divider.className = "block-menu-divider";
@@ -453,36 +510,37 @@ export function openBlockMenu(
     // temporarily-impossible edges below.
     let activeRow: HTMLElement | null = null;
     if (currentKind !== null) {
+        addHeader(t("Turn into"));
         const offered = TURN_INTO_CHOICES.filter(({ kind }) => canTurnInto(view, blockPos, kind));
-        for (const { kind, label } of offered) {
-            const active = kind === currentKind;
-            const row = addRow(t(label), {
+        for (const choice of offered) {
+            const active = choice.kind === currentKind;
+            const row = addRow(choice.label, {
                 radio: true,
                 active,
+                icon: choice.icon,
+                ...(choice.badge !== undefined && { badge: choice.badge }),
+                ...(choice.hint !== undefined && { hint: choice.hint }),
                 action: () => {
                     if (!active) {
-                        turnBlockInto(view, blockPos, kind, getEditor);
+                        turnBlockInto(view, blockPos, choice.kind, getEditor);
                     }
                 },
             });
             if (active) {
                 activeRow = row;
             }
-            // The wordy conversions start after H6 — visually split them from
-            // the compact level radio the menu grew out of.
-            if (kind === "h6" && offered.some((c) => !c.kind.startsWith("h") && c.kind !== "paragraph")) {
-                addDivider();
-            }
         }
         addDivider();
     }
 
-    // ── Block actions ──
-    addRow(t("Duplicate"), { action: () => duplicateBlock(view, blockPos) });
+    // ── Actions ──
+    addHeader(t("Actions"));
+    addRow(t("Duplicate"), { icon: IconCopy, action: () => duplicateBlock(view, blockPos) });
     // Direct block serialization — the shared copyAsMarkdown command prefers
     // a non-empty ambient selection, which would violate this menu's
     // by-position contract (select text in block A, copy block B → get A).
     addRow(t("Copy as Markdown"), {
+        icon: IconFileText,
         action: () => {
             const markdown = blockMarkdownAt(view, blockPos, getEditor);
             if (markdown !== null) {
@@ -491,17 +549,27 @@ export function openBlockMenu(
         },
     });
     if (isHeading) {
-        addRow(t("Copy Link"), { action: () => copyHeadingLink(view, blockPos) });
+        addRow(t("Copy Link"), { icon: IconLink, action: () => copyHeadingLink(view, blockPos) });
     }
     addRow(isHeading ? t("Move Section Up") : t("Move Up"), {
+        icon: IconChevronUp,
         disabled: !canMove(view, blockPos, -1),
         action: () => moveBlockAt(view, blockPos, -1),
     });
     addRow(isHeading ? t("Move Section Down") : t("Move Down"), {
+        icon: IconChevronDown,
         disabled: !canMove(view, blockPos, 1),
         action: () => moveBlockAt(view, blockPos, 1),
     });
-    addRow(t("Delete"), { danger: true, action: () => deleteBlock(view, blockPos) });
+    addRow(t("Delete"), { icon: IconTrash2, danger: true, action: () => deleteBlock(view, blockPos) });
+
+    // The target-block tint (the Editor.js/Notion "what will this hit" cue)
+    // is pure CSS: hosts match `:has(.heading-fold-marker--menu-open)`.
+    // Deliberately NOT a classList mutation on the block's own element —
+    // ProseMirror's DOM observer treats that as an unexpected mutation and
+    // redraws the node, recreating this menu's anchor widget out from under
+    // it. Widget-internal class changes (the marker's --menu-open) are
+    // invisible to the observer.
 
     document.body.appendChild(menu);
     anchor.classList.add("heading-fold-marker--menu-open");

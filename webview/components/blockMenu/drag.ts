@@ -108,6 +108,40 @@ function indicator(): HTMLElement {
     return indicatorEl;
 }
 
+// The cursor-riding pill naming what's being dragged ("##  3 blocks" for a
+// section) — the honest version of a drag ghost for a source-mirroring
+// gutter: the glyph, not a rendered preview.
+let pillEl: HTMLElement | null = null;
+
+function showPill(x: number, y: number, label: string): void {
+    if (!pillEl) {
+        pillEl = document.createElement("div");
+        pillEl.className = "block-drag-pill";
+        document.body.appendChild(pillEl);
+    }
+    pillEl.textContent = label;
+    pillEl.style.left = `${x + 14}px`;
+    pillEl.style.top = `${y + 14}px`;
+    pillEl.style.display = "block";
+}
+
+function hidePill(): void {
+    if (pillEl) {
+        pillEl.style.display = "none";
+    }
+}
+
+/** Pill label: the marker glyph, plus a count when a section drags along. */
+function pillLabel(view: EditorView, glyph: string, range: { from: number; to: number }): string {
+    let blocks = 0;
+    view.state.doc.forEach((node: ProseNode, offset: number) => {
+        if (offset >= range.from && offset < range.to) {
+            blocks++;
+        }
+    });
+    return blocks > 1 ? `${glyph}  ${blocks} blocks` : glyph;
+}
+
 function showIndicator(view: EditorView, y: number): void {
     const el = indicator();
     const editorRect = view.dom.getBoundingClientRect();
@@ -146,6 +180,7 @@ export function wireMarkerDrag(
         let scrollDir = 0;
         let scrollRaf = 0;
         let lastPointerY = startY;
+        let label = "";
 
         const scrollLoop = (): void => {
             if (scrollDir !== 0) {
@@ -174,6 +209,7 @@ export function wireMarkerDrag(
                 scrollRaf = 0;
             }
             hideIndicator();
+            hidePill();
             marker.classList.remove("heading-fold-marker--dragging");
             document.body.classList.remove("block-dragging");
             document.removeEventListener("mousemove", onMove, true);
@@ -218,8 +254,10 @@ export function wireMarkerDrag(
                 hideTooltip();
                 marker.classList.add("heading-fold-marker--dragging");
                 document.body.classList.add("block-dragging");
+                label = pillLabel(view, marker.textContent ?? "", range);
             }
             move.preventDefault();
+            showPill(move.clientX, move.clientY, label);
             target = dropTargetFor(boundaries, move.clientY, range!);
             if (target) {
                 showIndicator(view, target.y);
