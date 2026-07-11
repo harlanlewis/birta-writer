@@ -54,8 +54,22 @@ function measureRange(
     return { top, bottom, left: editorRect.left, width: editorRect.width };
 }
 
+/**
+ * Two visual modes, one machinery:
+ *   - "drag": the dimming veil — this content is IN MOTION;
+ *   - "select": the selection tint (the editor's own selection color at
+ *     block scope) — this content is INCLUDED. Selection must read as
+ *     selection, not as dimming (dimming over colorful blocks like callouts
+ *     washed the document out and implied "disabled").
+ */
+export type RangeIndicatorMode = "drag" | "select";
+
 let veilEl: HTMLElement | null = null;
-let veilArgs: { view: EditorView; range: { from: number; to: number } } | null = null;
+let veilArgs: {
+    view: EditorView;
+    range: { from: number; to: number };
+    mode: RangeIndicatorMode;
+} | null = null;
 
 const repositionVeil = (): void => {
     if (!veilArgs) {
@@ -66,6 +80,7 @@ const repositionVeil = (): void => {
         veilEl && (veilEl.style.display = "none");
         return;
     }
+    veilEl.className = veilArgs.mode === "drag" ? "block-drag-veil" : "block-range-tint";
     veilEl.style.left = `${rect.left}px`;
     veilEl.style.width = `${rect.width}px`;
     veilEl.style.top = `${rect.top}px`;
@@ -74,22 +89,26 @@ const repositionVeil = (): void => {
 };
 
 /**
- * Dim the block range. Stays glued through scrolling/resizing (own capture
- * listeners) until hideRangeVeil. Re-calling replaces the tracked range.
+ * Mark the block range (dim for drags, selection-tint for selections).
+ * Stays glued through scrolling/resizing (own capture listeners) until
+ * hideRangeVeil. Re-calling replaces the tracked range/mode.
  */
-export function showRangeVeil(view: EditorView, range: { from: number; to: number }): void {
+export function showRangeVeil(
+    view: EditorView,
+    range: { from: number; to: number },
+    mode: RangeIndicatorMode = "drag",
+): void {
     // isConnected guard: an editor teardown (revert/reload) or a test's body
     // wipe can detach the singleton — re-append rather than paint nowhere.
     if (!veilEl || !veilEl.isConnected) {
         veilEl = document.createElement("div");
-        veilEl.className = "block-drag-veil";
         document.body.appendChild(veilEl);
     }
     if (!veilArgs) {
         window.addEventListener("scroll", repositionVeil, { capture: true, passive: true });
         window.addEventListener("resize", repositionVeil);
     }
-    veilArgs = { view, range };
+    veilArgs = { view, range, mode };
     repositionVeil();
 }
 

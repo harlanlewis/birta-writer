@@ -186,11 +186,11 @@
     position: fixed;
     z-index: 1200;
     padding: 2px 8px;
-    background: var(--vscode-editorHoverWidget-background);
-    border: 1px solid var(--vscode-editorHoverWidget-border);
+    /* Same inverted chip as .custom-tooltip — the two read as one family. */
+    background: var(--vscode-editor-foreground);
+    color: var(--vscode-editor-background);
     border-radius: 3px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-    color: var(--vscode-editorHoverWidget-foreground);
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 11px;
     pointer-events: none;
@@ -199,7 +199,7 @@
 
 .block-drag-pill-hint {
     margin-left: 10px;
-    color: var(--vscode-descriptionForeground);
+    opacity: 0.65; /* dimmed against the inverted ground */
     font-family: var(--vscode-font-family, sans-serif);
     font-size: 10px;
 }
@@ -1287,9 +1287,10 @@ body.toolbar-hidden::before {
     z-index: 10000;
     display: none;
     padding: 4px 8px;
-    background: var(--vscode-editorHoverWidget-background);
-    color: var(--vscode-editorHoverWidget-foreground);
-    border: 1px solid var(--vscode-editorHoverWidget-border);
+    /* Inverted chip: reversed contrast in every theme — the editor's
+       foreground becomes the chip's ground and vice versa. */
+    background: var(--vscode-editor-foreground);
+    color: var(--vscode-editor-background);
     border-radius: 3px;
     font-size: 12px;
     line-height: 1.4;
@@ -1560,7 +1561,11 @@ body.toolbar-hidden::before {
    mode "active and hover quirk" makes a lone :hover compound never match.
    The harnesses now carry <!doctype html>; the explicit :is(host list) is
    kept for scoping (only glyph-bearing top-level blocks reveal markers). */
-.milkdown .editor .block-gutter-host:hover .heading-fold-marker--block {
+/* :where() keeps the innermost-hover machinery at ZERO specificity so this
+   reveal rule stays at 5 class-level — the marker's own state rules (also
+   5, placed later) must still win their tie. */
+.milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--block .heading-fold-marker--block,
+.milkdown .editor :where(.code-block-wrapper.block-gutter-host:hover) .heading-fold-marker--block {
     opacity: 0.55;
 }
 
@@ -1633,6 +1638,19 @@ body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--blo
     pointer-events: none;
 }
 
+/* Selection tint: the same overlay machinery in SELECT mode — the editor's
+   own selection color at block scope, so a multi-block selection reads as
+   selected (not dimmed/disabled the way the drag veil would imply). */
+.block-range-tint {
+    display: none;
+    position: fixed;
+    z-index: 5;
+    background: var(--vscode-editor-selectionBackground);
+    opacity: 0.45;
+    border-radius: 3px;
+    pointer-events: none;
+}
+
 /* Multi-block selection cover: the markers of every block the selection
    spans surface at resting contrast — a standing invitation that dragging
    any of them moves the whole run. Placed after the quiet-while-typing rule
@@ -1667,7 +1685,21 @@ body.block-dragging .milkdown .editor {
 }
 
 /* Per-item gutters (MAR-86): the item's marker sits clear of the native
-   bullet/number, further into the margin than the -10px block default. */
-.block-gutter-host--item > .heading-fold-gutter--block {
-    left: -26px;
+   bullet/number, further into the margin than the -10px block default.
+   (Prefixed to outrank the nested base rule's specificity.) */
+.milkdown .editor .block-gutter-host--item > .heading-fold-gutter--block {
+    left: -34px;
+}
+
+/* Marquee rectangle (MAR-82 v1): drag from the margins to block-select.
+   Accent-bordered with a faint accent fill — the covered blocks show the
+   selection tint live underneath. */
+.block-marquee {
+    display: none;
+    position: fixed;
+    z-index: 1150;
+    border: 1px solid var(--vscode-focusBorder);
+    background: color-mix(in srgb, var(--vscode-focusBorder) 10%, transparent);
+    border-radius: 2px;
+    pointer-events: none;
 }

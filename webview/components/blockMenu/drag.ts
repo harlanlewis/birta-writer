@@ -327,7 +327,7 @@ export function wireMarkerDrag(
             // language for the covered range, dragging or not.
             const survivingCover = selectionCoverRange(view);
             if (survivingCover) {
-                showRangeVeil(view, survivingCover);
+                showRangeVeil(view, survivingCover, "select");
             } else {
                 hideRangeVeil();
             }

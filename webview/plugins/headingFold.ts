@@ -12,6 +12,7 @@ import { closeBlockMenu, openBlockMenu } from "../components/blockMenu";
 import { isTaskListNode, isTextBearingParagraph } from "../components/blockMenu/turnInto";
 import { selectionCoverRange, wireMarkerDrag } from "../components/blockMenu/drag";
 import { hideRangeVeil, showRangeVeil } from "../components/blockMenu/rangeIndicator";
+import { wireMarquee } from "../components/blockMenu/marquee";
 
 export type HeadingFoldMeta =
     | { type: "toggle"; pos: number }
@@ -697,7 +698,7 @@ export const headingFoldPlugin = $prose(() =>
                 // same veil the drag uses dims the covered range live while
                 // the multi-block selection exists (MAR-85).
                 if (cover) {
-                    showRangeVeil(view, cover);
+                    showRangeVeil(view, cover, "select");
                 } else {
                     hideRangeVeil();
                 }
@@ -761,6 +762,7 @@ export const headingFoldPlugin = $prose(() =>
             view.dom.addEventListener("mousemove", handleMouseMove);
             view.dom.addEventListener("mouseleave", clearHoveredGutter);
             view.dom.addEventListener("keydown", handleKeyDown);
+            const disposeMarquee = wireMarquee(view);
 
             return {
                 update(updatedView, prevState) {
@@ -781,6 +783,7 @@ export const headingFoldPlugin = $prose(() =>
                     view.dom.removeEventListener("mouseleave", clearHoveredGutter);
                     view.dom.removeEventListener("keydown", handleKeyDown);
                     document.body.classList.remove("gutter-quiet");
+                    disposeMarquee();
                     // A selection-cover veil must not outlive its editor
                     // (revert/reload recreates the view; the fresh plugin's
                     // first sync would otherwise early-return and leave the

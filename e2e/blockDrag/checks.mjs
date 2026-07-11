@@ -177,11 +177,10 @@ export async function run({ page, check, baseUrl }) {
         els.map((el) => parseFloat(getComputedStyle(el).opacity)));
     check("covered blocks' markers surface during a multi-block selection",
         covered.length >= 2 && covered.every((o) => o > 0.4), JSON.stringify(covered));
-    // One visual language: the veil dims the covered range while merely
-    // SELECTED, before any drag starts.
-    const selectionVeil = await page.$eval(".block-drag-veil", (el) =>
+    // Selection reads as SELECTION (tint), not as the drag's dimming veil.
+    const selectionTint = await page.$eval(".block-range-tint", (el) =>
         getComputedStyle(el).display !== "none").catch(() => false);
-    check("the veil dims a multi-block selection before dragging", selectionVeil);
+    check("a multi-block selection shows the selection tint before dragging", selectionTint);
     // Drag Omega's marker to the very top of the document.
     const multiMarker = await markerCenter(page, ".ProseMirror > p", "Omega");
     const firstRect = await page.$eval(".ProseMirror > *:first-child", (el) => {
@@ -298,6 +297,48 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 1000, height: 900 });
     await page.waitForTimeout(100);
+
+    // ── 5c. Marquee: drag from the left margin block-selects (MAR-82 v1) ──
+    const firstBlock = await page.$eval(".ProseMirror > *:first-child", (el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top };
+    });
+    const lastBlock = await page.$eval(".ProseMirror > *:nth-child(3)", (el) => {
+        const r = el.getBoundingClientRect();
+        return { bottom: r.bottom };
+    });
+    // Clear of the sidebar-toggle chrome at the far left, inside #editor's
+    // own margin band.
+    const marginX = firstBlock.left - 30;
+    await page.mouse.move(marginX, firstBlock.top + 2);
+    await page.mouse.down();
+    await page.mouse.move(marginX + 6, firstBlock.top + 12); // threshold
+    await page.mouse.move(marginX + 10, lastBlock.bottom - 4, { steps: 6 });
+    await page.waitForTimeout(80);
+    const marqueeState = await page.evaluate(() => ({
+        rect: !!document.querySelector(".block-marquee") &&
+            getComputedStyle(document.querySelector(".block-marquee")).display !== "none",
+        tint: !!document.querySelector(".block-range-tint") &&
+            getComputedStyle(document.querySelector(".block-range-tint")).display !== "none",
+    }));
+    check("marquee shows rectangle + live selection tint", marqueeState.rect && marqueeState.tint,
+        JSON.stringify(marqueeState));
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    const marqueeSelected = await page.evaluate(() => {
+        const sel = window.getSelection();
+        const covered = document.querySelectorAll(".heading-fold-marker--covered").length;
+        return { spans: sel ? sel.toString().length > 10 : false, covered };
+    });
+    check("marquee release selects the covered blocks (markers reveal)",
+        marqueeSelected.spans && marqueeSelected.covered >= 2, JSON.stringify(marqueeSelected));
+    // Click in text to clear the selection before the next scenario.
+    const clearPt = await page.$eval(".ProseMirror > *:first-child", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + 40, y: r.y + 8 };
+    });
+    await page.mouse.click(clearPt.x, clearPt.y);
+    await page.waitForTimeout(80);
 
     // ── 6. Typing while the menu is open closes it (doc-change close) ──
     const pOnceMore = await markerCenter(page, ".ProseMirror > p");
