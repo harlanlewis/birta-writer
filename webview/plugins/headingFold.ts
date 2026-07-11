@@ -11,6 +11,7 @@ import { t } from "../i18n";
 import { closeBlockMenu, openBlockMenu } from "../components/blockMenu";
 import { isTaskListNode, isTextBearingParagraph } from "../components/blockMenu/turnInto";
 import { selectionCoverRange, wireMarkerDrag } from "../components/blockMenu/drag";
+import { hideRangeVeil, showRangeVeil } from "../components/blockMenu/rangeIndicator";
 
 export type HeadingFoldMeta =
     | { type: "toggle"; pos: number }
@@ -628,6 +629,14 @@ export const headingFoldPlugin = $prose(() =>
                 coverKey = key;
                 coveredMarkers.forEach((m) => m.classList.remove("heading-fold-marker--covered"));
                 coveredMarkers = [];
+                // One visual language for "these blocks are included": the
+                // same veil the drag uses dims the covered range live while
+                // the multi-block selection exists (MAR-85).
+                if (cover) {
+                    showRangeVeil(view, cover);
+                } else {
+                    hideRangeVeil();
+                }
                 if (!cover) {
                     return;
                 }

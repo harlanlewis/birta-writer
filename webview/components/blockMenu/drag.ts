@@ -21,7 +21,9 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
 import { selectInto } from "./turnInto";
+import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
+import { t } from "../../i18n";
 
 /** A droppable boundary between top-level blocks. */
 export interface DropBoundary {
@@ -148,10 +150,17 @@ function showPill(x: number, y: number, label: string): void {
     if (!pillEl) {
         pillEl = document.createElement("div");
         pillEl.className = "block-drag-pill";
+        const text = document.createElement("span");
+        text.className = "block-drag-pill-label";
+        const hint = document.createElement("span");
+        hint.className = "block-drag-pill-hint";
+        hint.textContent = t("esc to cancel");
+        pillEl.append(text, hint);
         document.body.appendChild(pillEl);
     }
-    if (pillEl.textContent !== label) {
-        pillEl.textContent = label; // fixed per session — skip per-move writes
+    const text = pillEl.querySelector<HTMLElement>(".block-drag-pill-label")!;
+    if (text.textContent !== label) {
+        text.textContent = label; // fixed per session — skip per-move writes
     }
     pillEl.style.left = `${x + 14}px`;
     pillEl.style.top = `${y + 14}px`;
@@ -161,39 +170,6 @@ function showPill(x: number, y: number, label: string): void {
 function hidePill(): void {
     if (pillEl) {
         pillEl.style.display = "none";
-    }
-}
-
-// The veil dims everything the drag will move (the whole section for a
-// heading) — a body-mounted translucent overlay in the editor's own
-// background color. Deliberately NOT an opacity/class change on the block
-// elements themselves: mutating ProseMirror-managed DOM wakes its observer
-// and redraws the nodes, destroying the gutter widgets mid-drag.
-let veilEl: HTMLElement | null = null;
-
-function showVeil(view: EditorView, boundaries: readonly DropBoundary[], range: { from: number; to: number }): void {
-    const top = boundaries.find((b) => b.pos === range.from)?.y;
-    const bottom = boundaries.find((b) => b.pos === range.to)?.y;
-    if (top === undefined || bottom === undefined || bottom <= top) {
-        hideVeil();
-        return;
-    }
-    if (!veilEl) {
-        veilEl = document.createElement("div");
-        veilEl.className = "block-drag-veil";
-        document.body.appendChild(veilEl);
-    }
-    const editorRect = view.dom.getBoundingClientRect();
-    veilEl.style.left = `${editorRect.left}px`;
-    veilEl.style.width = `${editorRect.width}px`;
-    veilEl.style.top = `${top}px`;
-    veilEl.style.height = `${bottom - top}px`;
-    veilEl.style.display = "block";
-}
-
-function hideVeil(): void {
-    if (veilEl) {
-        veilEl.style.display = "none";
     }
 }
 
@@ -259,7 +235,6 @@ export function wireMarkerDrag(
                 // Geometry shifted under the pointer — remeasure and re-aim.
                 boundaries = measureBoundaries(view);
                 if (range) {
-                    showVeil(view, boundaries, range);
                     target = dropTargetFor(boundaries, lastPointerY, range);
                     if (target) {
                         showIndicator(view, target.y);
@@ -282,7 +257,15 @@ export function wireMarkerDrag(
             }
             hideIndicator();
             hidePill();
-            hideVeil();
+            // A multi-block selection that outlives the session (e.g. an
+            // Escape-canceled multi-drag) keeps its veil — one visual
+            // language for the covered range, dragging or not.
+            const survivingCover = selectionCoverRange(view);
+            if (survivingCover) {
+                showRangeVeil(view, survivingCover);
+            } else {
+                hideRangeVeil();
+            }
             marker.classList.remove("heading-fold-marker--dragging");
             document.body.classList.remove("block-dragging");
             document.removeEventListener("mousemove", onMove, true);
@@ -357,7 +340,7 @@ export function wireMarkerDrag(
                 marker.classList.add("heading-fold-marker--dragging");
                 document.body.classList.add("block-dragging");
                 label = pillLabel(view, marker.textContent ?? "", range);
-                showVeil(view, boundaries, range);
+                showRangeVeil(view, range);
             }
             move.preventDefault();
             showPill(move.clientX, move.clientY, label);

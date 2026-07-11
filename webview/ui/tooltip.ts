@@ -125,6 +125,11 @@ export function applyTooltip(
         if (!currentText) {
             return;
         }
+        // No tooltips while a block drag is in flight (belt to the editor's
+        // pointer-events suppression — body-mounted chrome still hit-tests).
+        if (document.body.classList.contains("block-dragging")) {
+            return;
+        }
         if (truncatedOnly && el.scrollWidth <= el.offsetWidth) {
             return;
         }

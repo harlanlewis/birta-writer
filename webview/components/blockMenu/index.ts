@@ -46,6 +46,7 @@ import {
     IconTrash2,
 } from "../../ui/icons";
 import { blockMarkdownAt, canTurnInto, selectInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
+import { flashRange } from "./rangeIndicator";
 import { TextSelection } from "@milkdown/prose/state";
 
 // The conversion matrix and kind helpers live in ./turnInto; re-exported so
@@ -218,6 +219,8 @@ export function moveBlockTo(
     }
     view.dispatch(tr);
     view.focus();
+    // Landing flash at the destination — positions are valid in the new doc.
+    flashRange(view, insertAt, insertAt + slice.content.size);
     return true;
 }
 

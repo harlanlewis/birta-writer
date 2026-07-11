@@ -63,7 +63,22 @@ export async function run({ page, check, baseUrl }) {
     const indicatorVisible = await page.$eval(".block-drag-indicator", (el) =>
         getComputedStyle(el).display !== "none");
     check("drop indicator shows during a drag", indicatorVisible);
+    const dragChrome = await page.evaluate(() => {
+        const pill = document.querySelector(".block-drag-pill");
+        const tip = document.querySelector(".custom-tooltip");
+        return {
+            escHint: pill?.textContent?.includes("esc to cancel") ?? false,
+            tooltipSuppressed: !tip || getComputedStyle(tip).display === "none",
+            editorInert: getComputedStyle(document.querySelector(".milkdown .editor")).pointerEvents === "none",
+        };
+    });
+    check("pill teaches esc-to-cancel; hover chrome suppressed mid-drag",
+        dragChrome.escHint && dragChrome.tooltipSuppressed && dragChrome.editorInert,
+        JSON.stringify(dragChrome));
     await page.mouse.up();
+    await page.waitForTimeout(50);
+    const flashSeen = await page.$eval(".block-drop-flash", () => true).catch(() => false);
+    check("landing flash appears at the drop destination", flashSeen);
     const reordered = await latestDoc(page, (doc) =>
         doc.indexOf("item two") < doc.indexOf("Alpha paragraph."));
     check("dragging the paragraph below the list reorders the doc", reordered !== null);
@@ -162,6 +177,11 @@ export async function run({ page, check, baseUrl }) {
         els.map((el) => parseFloat(getComputedStyle(el).opacity)));
     check("covered blocks' markers surface during a multi-block selection",
         covered.length >= 2 && covered.every((o) => o > 0.4), JSON.stringify(covered));
+    // One visual language: the veil dims the covered range while merely
+    // SELECTED, before any drag starts.
+    const selectionVeil = await page.$eval(".block-drag-veil", (el) =>
+        getComputedStyle(el).display !== "none").catch(() => false);
+    check("the veil dims a multi-block selection before dragging", selectionVeil);
     // Drag Omega's marker to the very top of the document.
     const multiMarker = await markerCenter(page, ".ProseMirror > p", "Omega");
     const firstRect = await page.$eval(".ProseMirror > *:first-child", (el) => {
