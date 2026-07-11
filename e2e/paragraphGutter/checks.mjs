@@ -56,6 +56,52 @@ export async function run({ page, check, baseUrl }) {
     const arrived = parseFloat(await opacity());
     check("traveling text → marker keeps it visible (full contrast on arrival)", arrived === 1, `opacity=${arrived}`);
 
+    // ── 4b. Generous hit target, glyph unmoved ──
+    // The button's border box (hover background + click target) is padded well
+    // beyond the glyph, while negative margins keep the glyph's rendered
+    // position where the bare text sat: 2px inside the gutter's right edge.
+    const markerGeometry = (sel) =>
+        page.$eval(sel, (el) => {
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            const glyph = range.getBoundingClientRect();
+            const box = el.getBoundingClientRect();
+            const gutter = el.parentElement.getBoundingClientRect();
+            return {
+                padX: box.width - glyph.width,
+                padY: box.height - glyph.height,
+                glyphInsetFromGutterRight: gutter.right - glyph.right,
+            };
+        });
+    const pGeom = await markerGeometry(pMarker);
+    check("P marker box is padded beyond the glyph", pGeom.padX >= 10 && pGeom.padY >= 8,
+        `padX=${pGeom.padX.toFixed(1)} padY=${pGeom.padY.toFixed(1)}`);
+    check("P glyph stays 2px inside the gutter's right edge",
+        Math.abs(pGeom.glyphInsetFromGutterRight - 2) <= 1.5,
+        `inset=${pGeom.glyphInsetFromGutterRight.toFixed(1)}`);
+
+    // The marker is hovered right now (step 4 landed on it) — the tooltip is
+    // visible and must carry the level wording, not the old "text style".
+    const tipText = await page.$eval(".custom-tooltip", (el) => el.textContent);
+    check("P marker tooltip reads 'Change heading level'", tipText === "Change heading level",
+        `tooltip=${tipText}`);
+
+    // ── 4c. Heading hash marker: same enlargement, chevron untouched ──
+    const hMarker = ".ProseMirror h2 .heading-fold-marker:not(.heading-fold-marker--paragraph)";
+    const hGeom = await markerGeometry(hMarker);
+    check("## marker box is padded beyond the glyph", hGeom.padX >= 10 && hGeom.padY >= 8,
+        `padX=${hGeom.padX.toFixed(1)} padY=${hGeom.padY.toFixed(1)}`);
+    check("## glyph stays 2px inside the gutter's right edge",
+        Math.abs(hGeom.glyphInsetFromGutterRight - 2) <= 1.5,
+        `inset=${hGeom.glyphInsetFromGutterRight.toFixed(1)}`);
+    const chevronGap = await page.$eval(hMarker, (el) => {
+        const chevron = el.parentElement.querySelector(".heading-fold-toggle");
+        if (!chevron) return null;
+        return el.getBoundingClientRect().left - chevron.getBoundingClientRect().right;
+    });
+    check("## marker's enlarged box does not overlap the fold chevron",
+        chevronGap !== null && chevronGap >= -0.5, `gap=${chevronGap?.toFixed(1)}`);
+
     // ── 5. Click opens the shared retype menu with P checked ──
     await page.mouse.click(markerBox.x, markerBox.y);
     await page.waitForTimeout(100);

@@ -383,7 +383,9 @@ function createParagraphGutter(view: EditorView, paragraphPos: number): HTMLElem
     marker.type = "button";
     marker.className = "heading-fold-marker heading-fold-marker--paragraph";
     marker.textContent = "P";
-    const markerTip = t("Change text style");
+    // Same label as the heading markers: it's the same P/H1–H6 level menu,
+    // and "level" (not "style") is what the choice actually changes.
+    const markerTip = t("Change heading level");
     marker.setAttribute("aria-label", markerTip);
     marker.setAttribute("aria-haspopup", "menu");
     applyTooltip(marker, markerTip, { placement: "above" });

@@ -634,8 +634,14 @@ body.editor-width-auto {
                non-foldable headings, whose gutter is otherwise inert. */
             display: inline-flex;
             align-items: center;
-            margin: 0;
-            padding: 0 2px;
+            /* Generous hit target without moving the glyph: the padding grows
+               the border box (hover background + clickable area) and the equal
+               negative margins cancel it out of the flex layout, so the hashes
+               / P render exactly where the bare text did and the chevron
+               beside them doesn't shift. Vertically the centered gutter grows
+               the box symmetrically around the glyph. */
+            margin: -5px -4px;
+            padding: 5px 6px;
             border: 0;
             border-radius: 4px;
             background: transparent;
@@ -755,6 +761,16 @@ body.editor-width-auto {
                 left: -6px;
                 width: 56px;
                 gap: 2px;
+            }
+
+            /* The gap shrinks to 2px here, so shrink the marker's horizontal
+               expansion to match — otherwise its hover background overlaps
+               the fold chevron. */
+            .heading-fold-marker {
+                margin-left: -2px;
+                margin-right: -2px;
+                padding-left: 4px;
+                padding-right: 4px;
             }
         }
 
