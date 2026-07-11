@@ -156,6 +156,12 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.click(contentBSel.x, contentBSel.y);
     await page.keyboard.up("Shift");
     await page.waitForTimeout(100);
+    // Discoverability: every covered block's marker surfaces while the
+    // multi-block selection exists.
+    const covered = await page.$$eval(".heading-fold-marker--covered", (els) =>
+        els.map((el) => parseFloat(getComputedStyle(el).opacity)));
+    check("covered blocks' markers surface during a multi-block selection",
+        covered.length >= 2 && covered.every((o) => o > 0.4), JSON.stringify(covered));
     // Drag Omega's marker to the very top of the document.
     const multiMarker = await markerCenter(page, ".ProseMirror > p", "Omega");
     const firstRect = await page.$eval(".ProseMirror > *:first-child", (el) => {
@@ -176,6 +182,12 @@ export async function run({ page, check, baseUrl }) {
         doc.indexOf("Omega") < doc.indexOf("Alpha paragraph.") &&
         doc.indexOf("content of B") < doc.indexOf("Alpha paragraph."));
     check("dragging a marker inside a multi-block selection moves the whole run", multiMoved !== null);
+    // Post-drop, the moved run stays selected (grabbable for another drag).
+    const runSelected = await page.evaluate(() => {
+        const sel = window.getSelection();
+        return sel ? sel.toString().includes("Omega") && sel.toString().includes("content of B") : false;
+    });
+    check("the moved run stays selected after the drop", runSelected);
 
     // ── 4. A plain click (no movement) still opens the menu ──
     const pAgain = await markerCenter(page, ".ProseMirror > p");

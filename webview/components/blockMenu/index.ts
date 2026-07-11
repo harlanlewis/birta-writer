@@ -182,6 +182,7 @@ export function moveBlockTo(
     view: EditorView,
     range: { from: number; to: number },
     targetPos: number,
+    opts?: { selectRun?: boolean },
 ): boolean {
     if (targetPos >= range.from && targetPos <= range.to) {
         return false;
@@ -197,11 +198,24 @@ export function moveBlockTo(
         to: range.to,
         insertAt,
     } satisfies HeadingFoldMeta);
-    // The caret rides the moved block — redo then restores it (and the
-    // scroll) at the destination instead of jumping to a stale spot.
-    tr.setSelection(
-        TextSelection.near(tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size))),
-    );
+    // The selection rides the moved content — redo then restores it (and the
+    // scroll) at the destination instead of jumping to a stale spot. Multi-
+    // block drops keep the whole run selected (the Tiptap post-drop
+    // convention) so it stays grabbable for another drag; single moves get a
+    // plain caret.
+    if (opts?.selectRun) {
+        const runEnd = insertAt + slice.content.size;
+        tr.setSelection(
+            TextSelection.between(
+                tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size)),
+                tr.doc.resolve(Math.max(0, Math.min(runEnd - 1, tr.doc.content.size))),
+            ),
+        );
+    } else {
+        tr.setSelection(
+            TextSelection.near(tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size))),
+        );
+    }
     view.dispatch(tr);
     view.focus();
     return true;

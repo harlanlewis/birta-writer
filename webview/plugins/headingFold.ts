@@ -10,7 +10,7 @@ import { t } from "../i18n";
 // matching the slashMenu plugin ↔ component precedent.
 import { closeBlockMenu, openBlockMenu } from "../components/blockMenu";
 import { isTaskListNode, isTextBearingParagraph } from "../components/blockMenu/turnInto";
-import { wireMarkerDrag } from "../components/blockMenu/drag";
+import { selectionCoverRange, wireMarkerDrag } from "../components/blockMenu/drag";
 
 export type HeadingFoldMeta =
     | { type: "toggle"; pos: number }
@@ -612,6 +612,40 @@ export const headingFoldPlugin = $prose(() =>
         view(view) {
             let hoveredGutter: HTMLElement | null = null;
 
+            // Multi-block selection discoverability: while the selection
+            // spans several top-level blocks, their markers surface at
+            // resting contrast — "drag any of these and they all move".
+            // Classes go on the MARKER (widget DOM — invisible to PM's
+            // observer); mutating the block elements would redraw them.
+            let coveredMarkers: HTMLElement[] = [];
+            let coverKey = "";
+            const syncSelectionCover = (): void => {
+                const cover = selectionCoverRange(view);
+                const key = cover ? `${cover.from}:${cover.to}` : "";
+                if (key === coverKey && coveredMarkers.every((m) => m.isConnected)) {
+                    return;
+                }
+                coverKey = key;
+                coveredMarkers.forEach((m) => m.classList.remove("heading-fold-marker--covered"));
+                coveredMarkers = [];
+                if (!cover) {
+                    return;
+                }
+                view.state.doc.forEach((node: any, offset: number) => {
+                    if (offset < cover.from || offset >= cover.to) {
+                        return;
+                    }
+                    const dom = view.nodeDOM(offset);
+                    if (dom instanceof HTMLElement) {
+                        const markerEl = dom.querySelector<HTMLElement>(".heading-fold-marker");
+                        if (markerEl) {
+                            markerEl.classList.add("heading-fold-marker--covered");
+                            coveredMarkers.push(markerEl);
+                        }
+                    }
+                });
+            };
+
             const clearHoveredGutter = () => {
                 hoveredGutter?.classList.remove("heading-fold-gutter--section-hover");
                 hoveredGutter = null;
@@ -664,6 +698,7 @@ export const headingFoldPlugin = $prose(() =>
                     if (updatedView.state.doc !== prevState.doc) {
                         closeBlockMenu();
                     }
+                    syncSelectionCover();
                     if (hoveredGutter && !view.dom.contains(hoveredGutter)) {
                         hoveredGutter = null;
                     }

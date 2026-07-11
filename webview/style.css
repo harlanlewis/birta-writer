@@ -1623,3 +1623,11 @@ body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--blo
     opacity: 0.6;
     pointer-events: none;
 }
+
+/* Multi-block selection cover: the markers of every block the selection
+   spans surface at resting contrast — a standing invitation that dragging
+   any of them moves the whole run. Placed after the quiet-while-typing rule
+   so keyboard-built selections (shift+arrows) still show it. */
+.milkdown .editor .heading-fold-marker--covered {
+    opacity: 0.55;
+}

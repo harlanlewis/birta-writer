@@ -246,6 +246,7 @@ export function wireMarkerDrag(
         let scrollRaf = 0;
         let lastPointerY = startY;
         let label = "";
+        let wasMulti = false;
         // The doc the session's range/boundaries were measured against — an
         // inbound edit mid-drag (external file sync) invalidates them, and a
         // drop must then cancel rather than slice stale positions.
@@ -334,6 +335,7 @@ export function wireMarkerDrag(
                 const multi = Boolean(
                     range && cover && range.from >= cover.from && range.from < cover.to,
                 );
+                wasMulti = multi;
                 if (multi) {
                     range = cover;
                 }
@@ -381,9 +383,10 @@ export function wireMarkerDrag(
             const commit = dragging && range && target && view.state.doc === startDoc;
             const commitRange = range;
             const commitTarget = target;
+            const commitMulti = wasMulti;
             stop();
             if (commit) {
-                moveBlockTo(view, commitRange!, commitTarget!.pos);
+                moveBlockTo(view, commitRange!, commitTarget!.pos, { selectRun: commitMulti });
             }
         };
 
