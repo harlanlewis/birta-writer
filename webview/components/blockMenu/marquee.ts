@@ -1,13 +1,16 @@
 /**
  * components/blockMenu/marquee.ts
  *
- * Marquee block selection (MAR-82 v1): a mousedown in the editor's MARGINS —
+ * Marquee block selection (MAR-82): a mousedown in the editor's MARGINS —
  * the gutter column left of the content, or the space right of it — arms a
  * rubber-band. Crossing a small threshold draws the rectangle and live-tints
- * the covered top-level blocks; mouseup sets a TextSelection spanning them,
- * which plugs straight into everything the selection cover already powers:
- * covered-marker reveal, drag-any-covered-marker multi-move, the selection
- * tint, and undo's selection restore.
+ * the covered top-level blocks; mouseup commits a BlockRangeSelection over
+ * them, which plugs straight into everything the selection cover already
+ * powers: covered-marker reveal, drag-any-covered-marker multi-move, the
+ * selection tint, and undo's selection restore. The window auto-scrolls
+ * when the rubber-band nears the viewport edges (same zones as a drag);
+ * the rectangle's origin is anchored to the CONTENT, so scrolling extends
+ * the marquee instead of sliding it.
  *
  * Field rules honored (Notion / Editor.js / Plate consensus):
  *   - a pointer-down inside text content NEVER becomes a marquee (Notion
@@ -20,8 +23,8 @@
  */
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import { TextSelection } from "@milkdown/prose/state";
-import { selectionCoverRange } from "./drag";
+import { BlockRangeSelection } from "../../plugins/blockRange";
+import { SCROLL_STEP, SCROLL_ZONE, selectionCoverRange } from "./drag";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 
 const MARQUEE_THRESHOLD = 4;
@@ -101,25 +104,18 @@ function coveredRange(
 }
 
 /**
- * Commit the marquee's covered range as a document selection. TextSelection
- * snaps to valid TEXT positions, so leaf-edged runs (an HR at either end)
- * shrink to the text they contain — a known v1 limit until a block-range
- * Selection type lands (MAR-82 remainder); the caller reconciles the tint
- * with the real cover afterward so the UI never lies. Returns false (and
- * dispatches nothing) when the run contains no selectable text at all.
+ * Commit the marquee's covered range as a BlockRangeSelection — every
+ * covered block participates, including leaf blocks (an HR-only run is a
+ * real selection now, not a snapped-away caret). Returns false (and
+ * dispatches nothing) only when the range holds no block at all.
  * Exported for unit testing.
  */
 export function commitMarqueeSelection(
     view: EditorView,
     range: { from: number; to: number },
 ): boolean {
-    const { doc } = view.state;
-    const $from = doc.resolve(Math.min(range.from + 1, doc.content.size));
-    const $to = doc.resolve(Math.max(0, range.to - 1));
-    const selection = TextSelection.between($from, $to);
-    // A leaf-only run (just an HR) snaps to an empty caret OUTSIDE the run —
-    // committing that would be a surprise caret teleport, not a selection.
-    if (selection.empty) {
+    const selection = BlockRangeSelection.tryCreate(view.state.doc, range.from, range.to);
+    if (!selection) {
         return false;
     }
     view.dispatch(view.state.tr.setSelection(selection));
@@ -166,16 +162,56 @@ export function wireMarquee(view: EditorView): () => void {
 
         const startX = event.clientX;
         const startY = event.clientY;
+        // Content-anchored origin: scrolling mid-marquee must extend the
+        // rectangle over newly revealed blocks, not drag its corner along.
+        const startXDoc = startX + window.scrollX;
+        const startYDoc = startY + window.scrollY;
         let active = false;
+        let lastClientX = startX;
+        let lastClientY = startY;
+        let scrollDir = 0;
+        let scrollRaf = 0;
         let range: { from: number; to: number; blocks: number } | null = null;
 
         const stop = (): void => {
             hideRect();
+            scrollDir = 0;
+            if (scrollRaf) {
+                cancelAnimationFrame(scrollRaf);
+                scrollRaf = 0;
+            }
             document.body.classList.remove("block-marqueeing");
             document.removeEventListener("mousemove", onMove, true);
             document.removeEventListener("mouseup", onUp, true);
             document.removeEventListener("keydown", onKey, true);
             window.removeEventListener("blur", onBlur);
+        };
+
+        // Redraw the rectangle (origin re-projected into the viewport) and
+        // re-derive the covered range + live tint. Shared by pointer moves
+        // and auto-scroll frames, where geometry shifts with no mousemove.
+        const applyGeometry = (): void => {
+            const originX = startXDoc - window.scrollX;
+            const originY = startYDoc - window.scrollY;
+            drawRect(originX, originY, lastClientX, lastClientY);
+            const yTop = Math.min(originY, lastClientY);
+            const yBottom = Math.max(originY, lastClientY);
+            range = coveredRange(view, yTop, yBottom);
+            if (range) {
+                showRangeVeil(view, range, "select");
+            } else {
+                hideRangeVeil();
+            }
+        };
+
+        const scrollLoop = (): void => {
+            scrollRaf = 0;
+            if (scrollDir === 0 || !active) {
+                return;
+            }
+            window.scrollBy(0, scrollDir * SCROLL_STEP);
+            applyGeometry();
+            scrollRaf = requestAnimationFrame(scrollLoop);
         };
 
         const onMove = (move: MouseEvent): void => {
@@ -197,14 +233,17 @@ export function wireMarquee(view: EditorView): () => void {
                 document.body.classList.add("block-marqueeing");
             }
             move.preventDefault();
-            drawRect(startX, startY, move.clientX, move.clientY);
-            const yTop = Math.min(startY, move.clientY);
-            const yBottom = Math.max(startY, move.clientY);
-            range = coveredRange(view, yTop, yBottom);
-            if (range) {
-                showRangeVeil(view, range, "select");
-            } else {
-                hideRangeVeil();
+            lastClientX = move.clientX;
+            lastClientY = move.clientY;
+            applyGeometry();
+            const nextDir =
+                move.clientY < SCROLL_ZONE ? -1 :
+                move.clientY > window.innerHeight - SCROLL_ZONE ? 1 : 0;
+            if (nextDir !== scrollDir) {
+                scrollDir = nextDir;
+                if (scrollDir !== 0 && !scrollRaf) {
+                    scrollRaf = requestAnimationFrame(scrollLoop);
+                }
             }
         };
 

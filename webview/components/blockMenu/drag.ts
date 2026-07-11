@@ -20,6 +20,7 @@
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
+import { BlockRangeSelection } from "../../plugins/blockRange";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
@@ -116,6 +117,11 @@ export function dropTargetFor(
  */
 export function selectionCoverRange(view: EditorView): { from: number; to: number } | null {
     const sel = view.state.selection;
+    // An explicit block range IS its own cover — including a single block
+    // (Escape's block selection paints and drags like any covered run).
+    if (sel instanceof BlockRangeSelection) {
+        return { from: sel.from, to: sel.to };
+    }
     if (sel.empty) {
         return null;
     }
@@ -135,10 +141,11 @@ export function selectionCoverRange(view: EditorView): { from: number; to: numbe
 
 /** Pixels of pointer travel before a mousedown becomes a drag. */
 const DRAG_THRESHOLD = 4;
-/** Viewport margin (px) inside which the window auto-scrolls. */
-const SCROLL_ZONE = 80;
+/** Viewport margin (px) inside which the window auto-scrolls.
+ * Shared with the marquee so both pointer sessions scroll identically. */
+export const SCROLL_ZONE = 80;
 /** Max auto-scroll speed (px per frame). */
-const SCROLL_STEP = 24;
+export const SCROLL_STEP = 24;
 
 /** Current viewport geometry of every droppable boundary
  * (blockBoundaryPositions supplies positions/kinds; the DOM supplies ys —

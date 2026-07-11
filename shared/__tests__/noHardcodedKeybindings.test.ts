@@ -109,7 +109,9 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
         // blocks and must fall through (return false) to native text
         // selection otherwise, which a contributed keybinding cannot do;
         // the Alt/Mod-Shift move chords share the same command layer and
-        // stay PM-level with them. None are claimed by the key-leak guard:
+        // stay PM-level with them. Mod-a is the escalation ladder (block
+        // text → block → all blocks) and must fall through to baseKeymap's
+        // selectAll in tables. None are claimed by the key-leak guard:
         // VS Code's own Alt+arrow / Cmd+Shift+arrow defaults are
         // editorTextFocus-scoped and inert while a webview has focus.
         "webview/plugins/blockKeys.ts": [
@@ -117,6 +119,7 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
             "Alt-ArrowUp",
             "Mod-Shift-ArrowDown",
             "Mod-Shift-ArrowUp",
+            "Mod-a",
             "Shift-ArrowDown",
             "Shift-ArrowUp",
         ],

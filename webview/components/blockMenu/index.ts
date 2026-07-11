@@ -31,6 +31,7 @@ import {
     headingFoldPluginKey,
     type HeadingFoldMeta,
 } from "../../plugins/headingFold";
+import { BlockRangeSelection } from "../../plugins/blockRange";
 import { type GetEditor } from "../../editorCommands";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
@@ -247,7 +248,14 @@ export function moveBlockTo(
     // plain caret.
     if (opts?.selectRun) {
         const runEnd = insertAt + content.size;
+        // Top-level runs stay selected as a real block range (leaf blocks
+        // included); item-level ranges (inside a list) would snap outward
+        // to the whole list, so they keep the text-span fallback.
+        const runRange = tr.doc.resolve(insertAt).depth === 0
+            ? BlockRangeSelection.tryCreate(tr.doc, insertAt, runEnd)
+            : null;
         tr.setSelection(
+            runRange ??
             TextSelection.between(
                 tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size)),
                 tr.doc.resolve(Math.max(0, Math.min(runEnd - 1, tr.doc.content.size))),

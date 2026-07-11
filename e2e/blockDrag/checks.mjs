@@ -349,4 +349,77 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.type("x");
     await page.waitForTimeout(100);
     check("typing closes the block menu", (await page.$(".block-menu")) === null);
+
+    // ── 7. Keyboard block selection (BlockRangeSelection, MAR-82) ──
+    // Caret is in the first paragraph from the typing above. Escape
+    // escalates to a block range: tint + hidden native selection.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
+    const escState = await page.evaluate(() => ({
+        tint: !!document.querySelector(".block-range-tint") &&
+            getComputedStyle(document.querySelector(".block-range-tint")).display !== "none",
+        hidden: !!document.querySelector(".ProseMirror-hideselection"),
+        covered: document.querySelectorAll(".heading-fold-marker--covered").length,
+    }));
+    check("Escape selects the caret's block (tint + hideselection)",
+        escState.tint && escState.hidden && escState.covered === 1, JSON.stringify(escState));
+
+    // Shift+Down grows the range one block.
+    await page.keyboard.press("Shift+ArrowDown");
+    await page.waitForTimeout(100);
+    const grew = await page.evaluate(
+        () => document.querySelectorAll(".heading-fold-marker--covered").length,
+    );
+    check("Shift+Down extends the block range", grew >= 2, `covered=${grew}`);
+
+    // Alt+Down moves the covered run; it stays selected after the move.
+    const orderBefore = await page.$eval(".ProseMirror", (el) =>
+        [...el.children].map((c) => c.textContent.slice(0, 12)).join("|"));
+    await page.keyboard.press("Alt+ArrowDown");
+    await page.waitForTimeout(150);
+    const afterMove = await page.evaluate(() => ({
+        order: [...document.querySelector(".ProseMirror").children]
+            .map((c) => c.textContent.slice(0, 12)).join("|"),
+        covered: document.querySelectorAll(".heading-fold-marker--covered").length,
+    }));
+    check("Alt+Down moves the selected blocks", afterMove.order !== orderBefore,
+        `before=${orderBefore} after=${afterMove.order}`);
+    check("moved run stays selected", afterMove.covered >= 2, `covered=${afterMove.covered}`);
+
+    // Escape collapses back to a caret — tint gone.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
+    const collapsed = await page.evaluate(() => ({
+        tint: document.querySelector(".block-range-tint") &&
+            getComputedStyle(document.querySelector(".block-range-tint")).display !== "none",
+        covered: document.querySelectorAll(".heading-fold-marker--covered").length,
+    }));
+    check("Escape collapses the block range (tint cleared)",
+        !collapsed.tint && collapsed.covered === 0, JSON.stringify(collapsed));
+
+    // ── 8. Mod+A escalation ladder ──
+    const blocks = await page.$eval(".ProseMirror", (el) => el.children.length);
+    await page.keyboard.press("Meta+a"); // 1: block text
+    await page.waitForTimeout(80);
+    const step1 = await page.evaluate(() => ({
+        text: (window.getSelection()?.toString() ?? "").length,
+        tint: !!document.querySelector(".block-range-tint") &&
+            getComputedStyle(document.querySelector(".block-range-tint")).display !== "none",
+    }));
+    check("Cmd+A step 1 selects the block's text (no block tint yet)",
+        step1.text > 0 && !step1.tint, JSON.stringify(step1));
+    await page.keyboard.press("Meta+a"); // 2: the block
+    await page.waitForTimeout(80);
+    const step2 = await page.evaluate(
+        () => document.querySelectorAll(".heading-fold-marker--covered").length,
+    );
+    check("Cmd+A step 2 selects the block itself", step2 === 1, `covered=${step2}`);
+    await page.keyboard.press("Meta+a"); // 3: everything
+    await page.waitForTimeout(80);
+    const step3 = await page.evaluate(
+        () => document.querySelectorAll(".heading-fold-marker--covered").length,
+    );
+    check("Cmd+A step 3 selects every block", step3 >= 3, `covered=${step3} of ${blocks}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
 }

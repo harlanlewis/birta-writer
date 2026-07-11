@@ -1659,6 +1659,19 @@ body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--blo
     opacity: 0.55;
 }
 
+/* ProseMirror stamps this class on its root while the active selection is
+   not `visible` (our BlockRangeSelection, like PM's own NodeSelection). The
+   DOM selection still spans the blocks — native copy keeps working — so
+   suppress its paint: the block-range tint above is the ONE visual language
+   for "these blocks are selected". PM ships these rules in its own
+   stylesheet, which this bundle does not include. */
+.ProseMirror-hideselection *::selection {
+    background: transparent;
+}
+.ProseMirror-hideselection {
+    caret-color: transparent;
+}
+
 /* While a block drag is in flight the editor takes no pointer events — no
    tooltips, link popups, or marker reveals can pop under the crossing
    pointer. The session's own listeners live on document and are unaffected;
