@@ -12,14 +12,16 @@
  * Field rules honored (Notion / Editor.js / Plate consensus):
  *   - a pointer-down inside text content NEVER becomes a marquee (Notion
  *     explicitly reverted stealing text selection in 2022);
- *   - gutter markers/chevrons keep their own mousedown (they stopPropagation
- *     before this listener sees anything);
+ *   - gutter markers/chevrons keep their own mousedown (the containment
+ *     test filters everything inside ProseMirror's content — this capture
+ *     listener fires before any target-phase stopPropagation could);
  *   - Escape cancels; the rectangle needs ~4px of travel to appear, so a
  *     stray margin click doesn't flash chrome.
  */
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { TextSelection } from "@milkdown/prose/state";
+import { selectionCoverRange } from "./drag";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 
 const MARQUEE_THRESHOLD = 4;
@@ -53,6 +55,12 @@ function contentBounds(view: EditorView): { left: number; right: number } | null
         const dom = view.nodeDOM(offset);
         if (dom instanceof HTMLElement) {
             const rect = dom.getBoundingClientRect();
+            // Folded-away blocks (display:none) report all-zero rects — one
+            // collapsed section anywhere would drag `left` to 0 and kill
+            // left-margin arming for the whole document.
+            if (rect.width === 0 && rect.height === 0) {
+                return;
+            }
             left = Math.min(left, rect.left);
             right = Math.max(right, rect.right);
         }
@@ -75,6 +83,12 @@ function coveredRange(
             return;
         }
         const rect = dom.getBoundingClientRect();
+        // Zero-rect (folded-hidden) blocks would count as "covered" whenever
+        // the marquee reaches the viewport top (yTop <= 0) — exploding the
+        // range across every hidden block in the document.
+        if (rect.width === 0 && rect.height === 0) {
+            return;
+        }
         if (rect.bottom >= yTop && rect.top <= yBottom) {
             if (from === null) {
                 from = offset;
@@ -84,6 +98,33 @@ function coveredRange(
         }
     });
     return from === null || to === null ? null : { from, to, blocks };
+}
+
+/**
+ * Commit the marquee's covered range as a document selection. TextSelection
+ * snaps to valid TEXT positions, so leaf-edged runs (an HR at either end)
+ * shrink to the text they contain — a known v1 limit until a block-range
+ * Selection type lands (MAR-82 remainder); the caller reconciles the tint
+ * with the real cover afterward so the UI never lies. Returns false (and
+ * dispatches nothing) when the run contains no selectable text at all.
+ * Exported for unit testing.
+ */
+export function commitMarqueeSelection(
+    view: EditorView,
+    range: { from: number; to: number },
+): boolean {
+    const { doc } = view.state;
+    const $from = doc.resolve(Math.min(range.from + 1, doc.content.size));
+    const $to = doc.resolve(Math.max(0, range.to - 1));
+    const selection = TextSelection.between($from, $to);
+    // A leaf-only run (just an HR) snaps to an empty caret OUTSIDE the run —
+    // committing that would be a surprise caret teleport, not a selection.
+    if (selection.empty) {
+        return false;
+    }
+    view.dispatch(view.state.tr.setSelection(selection));
+    view.focus();
+    return true;
 }
 
 /**
@@ -130,21 +171,16 @@ export function wireMarquee(view: EditorView): () => void {
 
         const stop = (): void => {
             hideRect();
+            document.body.classList.remove("block-marqueeing");
             document.removeEventListener("mousemove", onMove, true);
             document.removeEventListener("mouseup", onUp, true);
             document.removeEventListener("keydown", onKey, true);
             window.removeEventListener("blur", onBlur);
-            // Let the selection-cover sync own the tint from here; a
-            // canceled marquee leaves no residue.
-            if (!range || range.blocks === 0) {
-                hideRangeVeil();
-            }
         };
 
         const onMove = (move: MouseEvent): void => {
             if ((move.buttons & 1) === 0) {
-                range = null;
-                stop();
+                cancel();
                 return;
             }
             if (!active) {
@@ -155,6 +191,10 @@ export function wireMarquee(view: EditorView): () => void {
                     return;
                 }
                 active = true;
+                // Same suppression as drags: no tooltips/link popups/marker
+                // reveals popping under an active rubber-band, and no native
+                // text selection painting alongside it.
+                document.body.classList.add("block-marqueeing");
             }
             move.preventDefault();
             drawRect(startX, startY, move.clientX, move.clientY);
@@ -172,31 +212,43 @@ export function wireMarquee(view: EditorView): () => void {
             const commit = active && range && range.blocks > 0;
             const commitRange = range;
             stop();
-            if (!commit) {
-                return;
+            if (commit) {
+                commitMarqueeSelection(view, commitRange!);
             }
-            // A selection spanning the covered blocks — the cover machinery
-            // (markers, multi-drag, tint) takes over from here.
-            const { doc } = view.state;
-            const $from = doc.resolve(Math.min(commitRange!.from + 1, doc.content.size));
-            const $to = doc.resolve(Math.max(0, commitRange!.to - 1));
-            view.dispatch(view.state.tr.setSelection(TextSelection.between($from, $to)));
-            view.focus();
+            // Reconcile the tint with the REAL post-commit cover (the sync's
+            // coverKey bookkeeping was bypassed by the live preview, so its
+            // early-return would leave a stale tint painted — e.g. after a
+            // single-block marquee, whose selection has no multi-block
+            // cover). Same reconciliation the drag handle uses.
+            const cover = selectionCoverRange(view);
+            if (cover) {
+                showRangeVeil(view, cover, "select");
+            } else {
+                hideRangeVeil();
+            }
         };
 
+        const cancel = (): void => {
+            range = null;
+            stop();
+            const cover = selectionCoverRange(view);
+            if (cover) {
+                showRangeVeil(view, cover, "select");
+            } else {
+                hideRangeVeil();
+            }
+        };
         const onKey = (key: KeyboardEvent): void => {
             // Only a VISIBLY active marquee owns Escape — an armed-but-idle
             // session (mousedown, no travel yet) must not eat anyone's key.
             if (key.key === "Escape" && active) {
                 key.preventDefault();
                 key.stopPropagation();
-                range = null;
-                stop();
+                cancel();
             }
         };
         const onBlur = (): void => {
-            range = null;
-            stop();
+            cancel();
         };
 
         document.addEventListener("mousemove", onMove, true);

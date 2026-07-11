@@ -686,6 +686,12 @@ export const headingFoldPlugin = $prose(() =>
             let coveredMarkers: HTMLElement[] = [];
             let coverKey = "";
             const syncSelectionCover = (): void => {
+                // A drag in flight owns the singleton indicator (drag-mode
+                // veil); an external-sync transaction mid-drag must not
+                // repaint it as the selection tint — stop() reconciles.
+                if (document.body.classList.contains("block-dragging")) {
+                    return;
+                }
                 const cover = selectionCoverRange(view);
                 const key = cover ? `${cover.from}:${cover.to}` : "";
                 if (key === coverKey && coveredMarkers.every((m) => m.isConnected)) {

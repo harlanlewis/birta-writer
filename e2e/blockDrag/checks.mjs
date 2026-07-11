@@ -307,9 +307,10 @@ export async function run({ page, check, baseUrl }) {
         const r = el.getBoundingClientRect();
         return { bottom: r.bottom };
     });
-    // Clear of the sidebar-toggle chrome at the far left, inside #editor's
-    // own margin band.
-    const marginX = firstBlock.left - 30;
+    // The clean band between the sidebar-toggle chrome (far left) and the
+    // invisible-but-clickable P marker box (right edge ~-6, left ~-34):
+    // -40 clears both at this viewport.
+    const marginX = firstBlock.left - 40;
     await page.mouse.move(marginX, firstBlock.top + 2);
     await page.mouse.down();
     await page.mouse.move(marginX + 6, firstBlock.top + 12); // threshold

@@ -1565,7 +1565,7 @@ body.toolbar-hidden::before {
    reveal rule stays at 5 class-level — the marker's own state rules (also
    5, placed later) must still win their tie. */
 .milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--block .heading-fold-marker--block,
-.milkdown .editor :where(.code-block-wrapper.block-gutter-host:hover) .heading-fold-marker--block {
+.milkdown .editor .code-block-wrapper:where(.block-gutter-host):hover .heading-fold-marker--block {
     opacity: 0.55;
 }
 
@@ -1664,7 +1664,8 @@ body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--blo
    pointer. The session's own listeners live on document and are unaffected;
    the dragged (--dragging) and covered (--covered) markers stay visible via
    their class-based rules. */
-body.block-dragging .milkdown .editor {
+body.block-dragging .milkdown .editor,
+body.block-marqueeing .milkdown .editor {
     pointer-events: none;
 }
 
