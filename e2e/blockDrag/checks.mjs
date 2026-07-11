@@ -20,19 +20,27 @@ async function latestDoc(page, matcher, tries = 30) {
     return null;
 }
 
-/** Center of the gutter marker owned by the top-level block matching `sel`. */
-async function markerCenter(page, sel) {
-    // Reveal (hover) first so geometry is stable, then measure.
-    const host = await page.$eval(sel, (el) => {
+/**
+ * Center of the gutter marker owned by the top-level block matching `sel`
+ * (optionally disambiguated by contained text — earlier checks mutate the
+ * document, so positional nth-of-type selectors would drift).
+ */
+async function markerCenter(page, sel, text) {
+    const host = await page.$$eval(sel, (els, t) => {
+        const el = (t ? els.find((e) => e.textContent.includes(t)) : els[0]) ?? els[0];
         const r = el.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + Math.min(14, r.height / 2) };
-    });
+    }, text ?? null);
+    // Reveal (hover) first so geometry is stable, then measure.
     await page.mouse.move(host.x, host.y);
     await page.waitForTimeout(120);
-    return page.$eval(`${sel} .heading-fold-marker`, (el) => {
+    return page.$$eval(`${sel} .heading-fold-marker`, (els, t) => {
+        const el = (t
+            ? els.find((e) => e.closest(".ProseMirror > *")?.textContent.includes(t))
+            : els[0]) ?? els[0];
         const r = el.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    });
+    }, text ?? null);
 }
 
 export async function run({ page, check, baseUrl }) {
@@ -69,7 +77,7 @@ export async function run({ page, check, baseUrl }) {
         const updates = window.__posted.filter((m) => m.type === "update");
         return updates[updates.length - 1]?.content ?? null;
     });
-    const omega = await markerCenter(page, ".ProseMirror > p:nth-of-type(2)");
+    const omega = await markerCenter(page, ".ProseMirror > p", "Omega");
     await page.mouse.move(omega.x, omega.y);
     await page.mouse.down();
     await page.mouse.move(omega.x + 10, omega.y + 60, { steps: 6 });
@@ -88,7 +96,7 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 3. A heading drags its whole section ──
     // Drag "# Section A"'s marker to the very end of the document.
-    const hMarker = await markerCenter(page, ".ProseMirror > h1:nth-of-type(1)");
+    const hMarker = await markerCenter(page, ".ProseMirror > h1", "Section A");
     const lastRect = await page.$eval(".ProseMirror > *:last-child", (el) => {
         const r = el.getBoundingClientRect();
         return { bottom: r.bottom, x: r.x + r.width / 2 };

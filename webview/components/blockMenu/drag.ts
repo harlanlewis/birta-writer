@@ -78,21 +78,25 @@ const SCROLL_ZONE = 80;
 /** Max auto-scroll speed (px per frame). */
 const SCROLL_STEP = 24;
 
-/** Current viewport geometry of every top-level block boundary. */
+/** Current viewport geometry of every top-level block boundary
+ * (blockBoundaryPositions supplies the positions; the DOM supplies the ys). */
 function measureBoundaries(view: EditorView): DropBoundary[] {
     const { doc } = view.state;
     const boundaries: DropBoundary[] = [];
     let lastBottom: number | null = null;
-    doc.forEach((_node: ProseNode, offset: number) => {
-        const dom = view.nodeDOM(offset);
+    for (const pos of blockBoundaryPositions(doc)) {
+        if (pos === doc.content.size) {
+            if (lastBottom !== null) {
+                boundaries.push({ pos, y: lastBottom });
+            }
+            continue;
+        }
+        const dom = view.nodeDOM(pos);
         if (dom instanceof HTMLElement) {
             const rect = dom.getBoundingClientRect();
-            boundaries.push({ pos: offset, y: rect.top });
+            boundaries.push({ pos, y: rect.top });
             lastBottom = rect.bottom;
         }
-    });
-    if (lastBottom !== null) {
-        boundaries.push({ pos: doc.content.size, y: lastBottom });
     }
     return boundaries;
 }

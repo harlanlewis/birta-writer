@@ -30,6 +30,8 @@ export default defineConfig({
                 "webview/components/pathLink/linkTargetComplete.ts",
                 "webview/components/frontmatter/**/*.ts",
                 "webview/components/slashMenu/**/*.ts",
+                "webview/components/blockMenu/**/*.ts",
+                "webview/plugins/headingFold.ts",
                 "webview/components/toolbar/hoverMenu.ts",
                 "webview/ui/dom.ts",
                 "webview/ui/tooltip.ts",

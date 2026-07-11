@@ -12,7 +12,10 @@ import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
-import { headingFoldPlugin } from "../plugins/headingFold";
+import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
+import { historyPlugin } from "../plugins/history";
+import { insertCalloutCommand } from "../plugins/callouts";
+import { undo } from "@milkdown/prose/history";
 import {
     setBlockMenuContext,
     turnIntoKindAt,
@@ -20,7 +23,6 @@ import {
     moveBlockAt,
     headingAnchorSlug,
 } from "../components/blockMenu";
-import { headingFoldPluginKey } from "../plugins/headingFold";
 import { TextSelection } from "@milkdown/prose/state";
 import { mockVscodeApi } from "./setup";
 
@@ -41,6 +43,8 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfm)
         .use(headingFoldPlugin)
+        .use(historyPlugin)
+        .use(insertCalloutCommand)
         .create();
     editors.push(editor);
     activeEditor = editor;
@@ -395,6 +399,110 @@ describe("block actions", () => {
         expect(labels).not.toContain("Copy Link");
         expect(labels).toContain("Move Up");
         expect(labels).not.toContain("Move Section Up");
+    });
+});
+
+describe("callout conversions", () => {
+    it("blockquote → Callout should retype in place with default attrs", async () => {
+        const editor = await makeEditor("> quoted line");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Callout");
+        expect(view(editor).state.doc.firstChild!.type.name).toBe("callout");
+        expect(markdown(editor)).toBe("> [!NOTE]\n> quoted line");
+    });
+
+    it("callout → Blockquote should retype in place", async () => {
+        const editor = await makeEditor("> [!TIP]\n> handy hint");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Blockquote");
+        expect(view(editor).state.doc.firstChild!.type.name).toBe("blockquote");
+        expect(markdown(editor)).toBe("> handy hint");
+    });
+
+    it("callout → Paragraph should unwrap the body", async () => {
+        const editor = await makeEditor("> [!WARNING]\n> careful now");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Paragraph");
+        expect(markdown(editor)).toBe("careful now");
+    });
+
+    it("paragraph → Callout should wrap via the toolbar command", async () => {
+        const editor = await makeEditor("plain text");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Callout");
+        expect(view(editor).state.doc.firstChild!.type.name).toBe("callout");
+        expect(markdown(editor)).toContain("> [!");
+    });
+});
+
+describe("more turn-into round-trips", () => {
+    it("an H5 source should convert to a list (retype to prose, then wrap)", async () => {
+        const editor = await makeEditor("##### Five");
+        const v = view(editor);
+        expect(turnIntoKindAt(v, 0)).toBe("h5");
+        pickRow(openMenuOn(markers()[0]!), "Ordered List");
+        expect(markdown(editor)).toBe("1. Five");
+    });
+
+    it("a checked task list → Bullet List should drop the checkboxes", async () => {
+        const editor = await makeEditor("- [x] done\n- [ ] todo");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Bullet List");
+        expect(markdown(editor)).toBe("- done\n- todo");
+    });
+});
+
+describe("undo semantics", () => {
+    it("a menu Move should revert with a single undo", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        expect(moveBlockAt(v, 0, 1)).toBe(true);
+        expect(markdown(editor)).toBe("Beta\n\nAlpha");
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("Alpha\n\nBeta");
+    });
+
+    it("a section move should revert with a single undo", async () => {
+        const editor = await makeEditor("# A\n\ncontent A\n\n# B\n\ncontent B");
+        const v = view(editor);
+        expect(moveBlockAt(v, 0, 1)).toBe(true);
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("# A\n\ncontent A\n\n# B\n\ncontent B");
+    });
+
+    it("a multi-transaction conversion (H1 → task list) should revert with a single undo", async () => {
+        // Documents the grouping contract: retype-to-P + selection + wrap all
+        // land in one history event (same tick, adjacent ranges).
+        const editor = await makeEditor("# Title");
+        const v = view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Task List");
+        expect(markdown(editor)).toBe("- [ ] Title");
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("# Title");
+    });
+});
+
+describe("keyboard roving with disabled rows", () => {
+    it("ArrowUp from the first row should wrap to Delete, skipping disabled moves", async () => {
+        // Single block: Move Up AND Move Down are both disabled.
+        const editor = await makeEditor("Alpha");
+        view(editor);
+        const marker = markers()[0]!;
+        marker.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const focusedLabel = () =>
+            (document.activeElement as HTMLElement).querySelector(".block-menu-item-label")?.textContent;
+        expect(focusedLabel()).toBe("Paragraph"); // keyboard open lands on the active row
+        const pressKey = (key: string): void =>
+            document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+        pressKey("ArrowUp");
+        expect(focusedLabel()).toBe("Delete"); // wrapped, skipping disabled rows
+        pressKey("ArrowDown");
+        expect(focusedLabel()).toBe("Paragraph"); // and back
+        // Sanity: the disabled rows really are excluded from the roving list.
+        const disabled = Array.from(menu.querySelectorAll('[aria-disabled="true"] .block-menu-item-label'))
+            .map((el) => el.textContent);
+        expect(disabled).toEqual(["Move Up", "Move Down"]);
     });
 });
 

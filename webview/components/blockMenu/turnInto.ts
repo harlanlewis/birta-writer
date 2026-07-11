@@ -78,6 +78,13 @@ export function isTextBearingParagraph(node: ProseNode): boolean {
     return sawContent || !sawAtom;
 }
 
+/** A bullet list whose items carry `checked` renders (and serializes) as a
+ * task list — the single probe shared by the menu and the gutter glyphs. */
+export function isTaskListNode(node: ProseNode): boolean {
+    const first = node.firstChild;
+    return node.type.name === "bullet_list" && first !== null && first.attrs["checked"] != null;
+}
+
 /**
  * The Turn-into kind of the top-level node at `pos`, or null for blocks the
  * section can't name (tables, HR, image/html paragraphs, raw blocks…) —
@@ -99,10 +106,8 @@ export function turnIntoKindAt(view: EditorView, pos: number): TurnIntoKind | nu
             return "callout";
         case "code_block":
             return "codeBlock";
-        case "bullet_list": {
-            const first = node.firstChild;
-            return first && first.attrs["checked"] != null ? "taskList" : "bulletList";
-        }
+        case "bullet_list":
+            return isTaskListNode(node) ? "taskList" : "bulletList";
         case "ordered_list":
             return "orderedList";
         default:

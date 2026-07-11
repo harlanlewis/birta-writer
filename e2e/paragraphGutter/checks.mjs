@@ -14,9 +14,17 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForSelector(".heading-fold-marker--paragraph", { timeout: 10000 });
     // The fixture's code block pulls the lazy grammar chunk and re-highlights
     // asynchronously; those late DOM mutations clear Chromium's hover chain
-    // out from under a synthetic mouse position, so let startup fully settle
-    // before any hover-dependent check.
-    await page.waitForTimeout(700);
+    // out from under a synthetic mouse position. Wait for the DETERMINISTIC
+    // completion signal — refractor's token spans appearing in the code
+    // block — then two frames for the render to settle (a fixed sleep here
+    // was machine-speed roulette).
+    await page.waitForFunction(
+        () => document.querySelector("pre code .token, .code-block-wrapper code .token"),
+        { timeout: 10000 },
+    );
+    await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
 
     const pMarker = ".ProseMirror > p .heading-fold-marker--paragraph";
     const opacity = () => page.$eval(pMarker, (el) => getComputedStyle(el).opacity);

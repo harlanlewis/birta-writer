@@ -9,7 +9,7 @@ import { t } from "../i18n";
 // both sides touch the other only inside event handlers / decoration passes,
 // matching the slashMenu plugin ↔ component precedent.
 import { closeBlockMenu, openBlockMenu } from "../components/blockMenu";
-import { isTextBearingParagraph } from "../components/blockMenu/turnInto";
+import { isTaskListNode, isTextBearingParagraph } from "../components/blockMenu/turnInto";
 import { wireMarkerDrag } from "../components/blockMenu/drag";
 
 export type HeadingFoldMeta =
@@ -366,10 +366,8 @@ function blockMarkerGlyph(node: any): string | null {
             });
             return sawImage ? "![]" : "<>";
         }
-        case "bullet_list": {
-            const first = node.firstChild;
-            return first && first.attrs["checked"] != null ? "[ ]" : "-";
-        }
+        case "bullet_list":
+            return isTaskListNode(node) ? "[ ]" : "-";
         case "ordered_list":
             return "1.";
         case "blockquote":
