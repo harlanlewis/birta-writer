@@ -20,6 +20,7 @@
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
+import { selectInto } from "./turnInto";
 import { hideTooltip } from "../../ui/tooltip";
 
 /** A droppable boundary between top-level blocks. */
@@ -69,6 +70,31 @@ export function dropTargetFor(
         }
     }
     return best;
+}
+
+/**
+ * The top-level block range covered by the ambient selection, when it spans
+ * MORE THAN ONE top-level block — the Notion multi-drag contract: dragging
+ * the marker of any block inside a multi-block selection drags them all.
+ * Null for empty or single-block selections. Exported for unit testing.
+ */
+export function selectionCoverRange(view: EditorView): { from: number; to: number } | null {
+    const sel = view.state.selection;
+    if (sel.empty) {
+        return null;
+    }
+    const doc = view.state.doc;
+    const $from = doc.resolve(sel.from);
+    const $to = doc.resolve(sel.to);
+    const from = $from.depth >= 1 ? $from.before(1) : sel.from;
+    const to = $to.depth >= 1 ? $to.after(1) : sel.to;
+    let blocks = 0;
+    doc.forEach((_node: ProseNode, offset: number) => {
+        if (offset >= from && offset < to) {
+            blocks++;
+        }
+    });
+    return blocks > 1 ? { from, to } : null;
 }
 
 /** Pixels of pointer travel before a mousedown becomes a drag. */
@@ -137,6 +163,39 @@ function hidePill(): void {
     }
 }
 
+// The veil dims everything the drag will move (the whole section for a
+// heading) — a body-mounted translucent overlay in the editor's own
+// background color. Deliberately NOT an opacity/class change on the block
+// elements themselves: mutating ProseMirror-managed DOM wakes its observer
+// and redraws the nodes, destroying the gutter widgets mid-drag.
+let veilEl: HTMLElement | null = null;
+
+function showVeil(view: EditorView, boundaries: readonly DropBoundary[], range: { from: number; to: number }): void {
+    const top = boundaries.find((b) => b.pos === range.from)?.y;
+    const bottom = boundaries.find((b) => b.pos === range.to)?.y;
+    if (top === undefined || bottom === undefined || bottom <= top) {
+        hideVeil();
+        return;
+    }
+    if (!veilEl) {
+        veilEl = document.createElement("div");
+        veilEl.className = "block-drag-veil";
+        document.body.appendChild(veilEl);
+    }
+    const editorRect = view.dom.getBoundingClientRect();
+    veilEl.style.left = `${editorRect.left}px`;
+    veilEl.style.width = `${editorRect.width}px`;
+    veilEl.style.top = `${top}px`;
+    veilEl.style.height = `${bottom - top}px`;
+    veilEl.style.display = "block";
+}
+
+function hideVeil(): void {
+    if (veilEl) {
+        veilEl.style.display = "none";
+    }
+}
+
 /** Pill label: the marker glyph, plus a count when a section drags along. */
 function pillLabel(view: EditorView, glyph: string, range: { from: number; to: number }): string {
     let blocks = 0;
@@ -198,6 +257,7 @@ export function wireMarkerDrag(
                 // Geometry shifted under the pointer — remeasure and re-aim.
                 boundaries = measureBoundaries(view);
                 if (range) {
+                    showVeil(view, boundaries, range);
                     target = dropTargetFor(boundaries, lastPointerY, range);
                     if (target) {
                         showIndicator(view, target.y);
@@ -220,6 +280,7 @@ export function wireMarkerDrag(
             }
             hideIndicator();
             hidePill();
+            hideVeil();
             marker.classList.remove("heading-fold-marker--dragging");
             document.body.classList.remove("block-dragging");
             document.removeEventListener("mousemove", onMove, true);
@@ -265,17 +326,35 @@ export function wireMarkerDrag(
                 marker.dataset["dragged"] = "1";
                 const pos = blockPos();
                 range = pos === null ? null : moveRangeAt(view, pos);
+                // Multi-block drag: a selection spanning several top-level
+                // blocks, with this marker's block inside it, drags the whole
+                // covered run (the selection is KEPT — history then restores
+                // it on undo).
+                const cover = selectionCoverRange(view);
+                const multi = Boolean(
+                    range && cover && range.from >= cover.from && range.from < cover.to,
+                );
+                if (multi) {
+                    range = cover;
+                }
                 if (!range) {
                     stop();
                     return;
                 }
                 boundaries = measureBoundaries(view);
                 startDoc = view.state.doc;
+                if (!multi) {
+                    // Caret into the dragged block: history snapshots the
+                    // selection before the drop's transaction, so undoing a
+                    // drag scrolls back to where the block came FROM.
+                    selectInto(view, range.from);
+                }
                 closeBlockMenu();
                 hideTooltip();
                 marker.classList.add("heading-fold-marker--dragging");
                 document.body.classList.add("block-dragging");
                 label = pillLabel(view, marker.textContent ?? "", range);
+                showVeil(view, boundaries, range);
             }
             move.preventDefault();
             showPill(move.clientX, move.clientY, label);

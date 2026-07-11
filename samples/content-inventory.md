@@ -9,8 +9,6 @@ tags: [reference, showcase, regression]
 
 This document is a **living reference** of every content type WYSIWYG Markdown Editor supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
 
-/
-
 ---
 
 ## Headings
@@ -45,7 +43,7 @@ The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~st
 
 Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
 
-### Highlight
+#### Highlight
 
 `==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict — each of these stays plain text, byte-preserved:
 
@@ -59,6 +57,8 @@ next — the same behavior as any paired-delimiter syntax.) Nested formatting
 inside a highlight renders literally.
 
 A hard line break ends this line here →<br>and continues on the next.
+
+
 
 ---
 

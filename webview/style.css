@@ -1610,3 +1610,16 @@ body.block-dragging .milkdown .editor {
 body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--block:not(.heading-fold-marker--menu-open):not(:focus-visible) {
     opacity: 0;
 }
+
+/* Drag veil: dims everything the drag will move (the whole section for a
+   heading drag) — a translucent overlay in the editor's own background, so
+   the covered content reads at reduced opacity. Below the indicator/pill,
+   above the content. */
+.block-drag-veil {
+    display: none;
+    position: fixed;
+    z-index: 1150;
+    background: var(--vscode-editor-background);
+    opacity: 0.6;
+    pointer-events: none;
+}

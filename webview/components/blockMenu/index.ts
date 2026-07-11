@@ -45,7 +45,8 @@ import {
     IconLink,
     IconTrash2,
 } from "../../ui/icons";
-import { blockMarkdownAt, canTurnInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
+import { blockMarkdownAt, canTurnInto, selectInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
+import { TextSelection } from "@milkdown/prose/state";
 
 // The conversion matrix and kind helpers live in ./turnInto; re-exported so
 // consumers and tests keep one import surface.
@@ -196,6 +197,11 @@ export function moveBlockTo(
         to: range.to,
         insertAt,
     } satisfies HeadingFoldMeta);
+    // The caret rides the moved block — redo then restores it (and the
+    // scroll) at the destination instead of jumping to a stale spot.
+    tr.setSelection(
+        TextSelection.near(tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size))),
+    );
     view.dispatch(tr);
     view.focus();
     return true;
@@ -457,12 +463,16 @@ export function openBlockMenu(
             icon?: string;
             badge?: string;
             hint?: string;
+            /** False for read-only rows (copies) — they must not move the
+             * user's caret/selection. Defaults true. */
+            mutates?: boolean;
             action: () => void;
         },
     ): HTMLElement => {
         const row = document.createElement("button");
         row.type = "button";
         row.className = "block-menu-item";
+        row.dataset["mutates"] = opts.mutates === false ? "0" : "1";
         row.setAttribute("role", opts.radio ? "menuitemradio" : "menuitem");
         row.tabIndex = -1;
         if (opts.radio) {
@@ -504,6 +514,13 @@ export function openBlockMenu(
             // Identity guard (see anchorNode above): never act on a block
             // that is no longer the one this menu was opened for.
             if (view.state.doc.nodeAt(blockPos) === anchorNode) {
+                // Pre-place the caret in the target block for MUTATING
+                // actions: history snapshots the selection before the
+                // transaction, so undo/redo restore (and scroll) here — not
+                // to wherever the caret happened to sit (see selectInto).
+                if (opts.mutates !== false) {
+                    selectInto(view, blockPos);
+                }
                 opts.action();
             }
         });
@@ -562,6 +579,7 @@ export function openBlockMenu(
     // by-position contract (select text in block A, copy block B → get A).
     addRow(t("Copy as Markdown"), {
         icon: IconFileText,
+        mutates: false,
         action: () => {
             const markdown = blockMarkdownAt(view, blockPos, getEditor);
             if (markdown !== null) {
@@ -570,7 +588,11 @@ export function openBlockMenu(
         },
     });
     if (isHeading) {
-        addRow(t("Copy Link"), { icon: IconLink, action: () => copyHeadingLink(view, blockPos) });
+        addRow(t("Copy Link"), {
+            icon: IconLink,
+            mutates: false,
+            action: () => copyHeadingLink(view, blockPos),
+        });
     }
     addRow(isHeading ? t("Move Section Up") : t("Move Up"), {
         icon: IconChevronUp,

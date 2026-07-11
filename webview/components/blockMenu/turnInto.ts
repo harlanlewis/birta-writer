@@ -148,9 +148,15 @@ export function canTurnInto(view: EditorView, pos: number, target: TurnIntoKind)
     return true;
 }
 
-/** Places the caret just inside the block at `pos`, so the selection-based
- * editor commands (the same ones the toolbar runs) target that block. */
-function selectInto(view: EditorView, pos: number): void {
+/**
+ * Places the caret just inside the block at `pos`. Two jobs: the selection-
+ * based editor commands (the same ones the toolbar runs) target that block —
+ * and prosemirror-history snapshots the selection BEFORE a mutating
+ * transaction, so pre-placing the caret here makes undo/redo restore it (and
+ * scroll) to the block that was acted on, not wherever the caret last was
+ * (often the top of the document). Exported for the menu and drag handle.
+ */
+export function selectInto(view: EditorView, pos: number): void {
     const inside = Math.min(pos + 1, view.state.doc.content.size);
     view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(inside))));
 }

@@ -482,6 +482,48 @@ describe("undo semantics", () => {
     });
 });
 
+describe("undo restores the caret at the acted-on block (no scroll-to-top)", () => {
+    it("undo after a menu conversion should put the selection in the converted block", async () => {
+        // Caret starts at the doc top (fresh-load state); convert the LAST
+        // block via its gutter menu. history's undo restores the selection
+        // it snapshotted before the transaction + scrolls to it — without
+        // the pre-placed caret that snapshot was position 0 (jump to top).
+        const editor = await makeEditor("Alpha\n\nBeta paragraph");
+        const v = view(editor);
+        let betaPos = -1;
+        v.state.doc.forEach((_n, o) => { betaPos = o; }); // last block
+        pickRow(openMenuOn(markers()[1]!), "Heading 3");
+        expect(markdown(editor)).toBe("Alpha\n\n### Beta paragraph");
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("Alpha\n\nBeta paragraph");
+        expect(v.state.selection.from).toBeGreaterThan(betaPos);
+    });
+
+    it("a move carries the caret with the block; undo restores it at the origin", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Move Down");
+        expect(markdown(editor)).toBe("Beta\n\nAlpha");
+        // Caret rides the moved block (now the second one).
+        let alphaPos = -1;
+        v.state.doc.forEach((n, o) => { if (n.textContent === "Alpha") alphaPos = o; });
+        expect(v.state.selection.from).toBeGreaterThan(alphaPos);
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("Alpha\n\nBeta");
+        // Restored selection sits in Alpha at its original spot (pos 0 block).
+        expect(v.state.selection.from).toBeLessThanOrEqual(v.state.doc.firstChild!.nodeSize);
+    });
+
+    it("Copy as Markdown must NOT move the user's caret or selection", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 5)));
+        const before = v.state.selection;
+        pickRow(openMenuOn(markers()[1]!), "Copy as Markdown");
+        expect(v.state.selection.eq(before)).toBe(true);
+    });
+});
+
 describe("keyboard roving with disabled rows", () => {
     it("ArrowUp from the first row should wrap to Delete, skipping disabled moves", async () => {
         // Single block: Move Up AND Move Down are both disabled.

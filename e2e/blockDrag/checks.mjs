@@ -106,7 +106,29 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.move(hMarker.x + 10, hMarker.y + 10);
     await page.mouse.move(lastRect.x, lastRect.bottom - 1, { steps: 8 });
     await page.waitForTimeout(100);
+    // The veil dims the whole dragged section: it must cover the heading AND
+    // its content, and stop before the next section.
+    const veil = await page.evaluate(() => {
+        const el = document.querySelector(".block-drag-veil");
+        if (!el || getComputedStyle(el).display === "none") return null;
+        const v = el.getBoundingClientRect();
+        const heads = [...document.querySelectorAll(".ProseMirror > h1")];
+        const a = heads.find((h) => h.textContent.includes("Section A"))?.getBoundingClientRect();
+        const b = heads.find((h) => h.textContent.includes("Section B"))?.getBoundingClientRect();
+        if (!a || !b) return { missing: true };
+        return {
+            coversHeading: v.top <= a.top + 2,
+            coversContent: v.bottom >= a.bottom + 10,
+            stopsBeforeNext: v.bottom <= b.top + 2,
+        };
+    });
+    check("drag veil dims exactly the dragged section",
+        veil !== null && veil.coversHeading && veil.coversContent && veil.stopsBeforeNext,
+        JSON.stringify(veil));
     await page.mouse.up();
+    const veilGone = await page.$eval(".block-drag-veil", (el) =>
+        getComputedStyle(el).display === "none");
+    check("veil hides after the drop", veilGone);
     const sectionMoved = await latestDoc(page, (doc) => {
         const a = doc.indexOf("# Section A");
         const contentA = doc.indexOf("content of A");
@@ -114,6 +136,46 @@ export async function run({ page, check, baseUrl }) {
         return b !== -1 && b < a && a < contentA; // B now precedes A; A kept its body
     });
     check("a heading drags its whole section", sectionMoved !== null);
+
+    // ── 3b. A selection spanning blocks drags them all together ──
+    // Select from inside "Omega paragraph." down into "content of B" (the doc
+    // was reordered by earlier checks; both exist somewhere). Then drag the
+    // marker of a block INSIDE the selection: the whole covered run moves.
+    const omegaSel = await page.$$eval(".ProseMirror > p", (els) => {
+        const el = els.find((e) => e.textContent.includes("Omega"));
+        const r = el.getBoundingClientRect();
+        return { x: r.x + 10, y: r.y + r.height / 2 };
+    });
+    const contentBSel = await page.$$eval(".ProseMirror > p", (els) => {
+        const el = els.find((e) => e.textContent.includes("content of B"));
+        const r = el.getBoundingClientRect();
+        return { x: r.x + 30, y: r.y + r.height / 2 };
+    });
+    await page.mouse.click(omegaSel.x, omegaSel.y);
+    await page.keyboard.down("Shift");
+    await page.mouse.click(contentBSel.x, contentBSel.y);
+    await page.keyboard.up("Shift");
+    await page.waitForTimeout(100);
+    // Drag Omega's marker to the very top of the document.
+    const multiMarker = await markerCenter(page, ".ProseMirror > p", "Omega");
+    const firstRect = await page.$eval(".ProseMirror > *:first-child", (el) => {
+        const r = el.getBoundingClientRect();
+        return { top: r.top, x: r.x + r.width / 2 };
+    });
+    await page.mouse.move(multiMarker.x, multiMarker.y);
+    await page.mouse.down();
+    await page.mouse.move(multiMarker.x + 10, multiMarker.y + 10);
+    await page.waitForTimeout(80);
+    const multiPill = await page.$eval(".block-drag-pill", (el) => el.textContent).catch(() => null);
+    await page.mouse.move(firstRect.x, firstRect.top + 1, { steps: 8 });
+    await page.waitForTimeout(100);
+    await page.mouse.up();
+    check("multi-drag pill counts the selected blocks", /\d+ blocks/.test(multiPill ?? ""),
+        `pill=${multiPill}`);
+    const multiMoved = await latestDoc(page, (doc) =>
+        doc.indexOf("Omega") < doc.indexOf("Alpha paragraph.") &&
+        doc.indexOf("content of B") < doc.indexOf("Alpha paragraph."));
+    check("dragging a marker inside a multi-block selection moves the whole run", multiMoved !== null);
 
     // ── 4. A plain click (no movement) still opens the menu ──
     const pAgain = await markerCenter(page, ".ProseMirror > p");

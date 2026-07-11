@@ -149,6 +149,36 @@ describe("drag session robustness", () => {
     });
 });
 
+describe("selectionCoverRange (multi-block drag)", () => {
+    it("a selection spanning two blocks should cover exactly those blocks", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        const v = view(editor);
+        const { TextSelection } = await import("@milkdown/prose/state");
+        // From inside Alpha to inside Beta.
+        let betaPos = -1;
+        v.state.doc.forEach((n, o) => { if (n.textContent === "Beta") betaPos = o; });
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 2, betaPos + 3)));
+        const { selectionCoverRange } = await import("../components/blockMenu/drag");
+        const cover = selectionCoverRange(v)!;
+        expect(cover.from).toBe(0);
+        expect(v.state.doc.resolve(cover.to).nodeAfter?.textContent).toBe("Gamma");
+        // Moving the cover to the end moves BOTH blocks.
+        const { moveBlockTo } = await import("../components/blockMenu");
+        expect(moveBlockTo(v, cover, v.state.doc.content.size)).toBe(true);
+        expect(markdown(editor)).toBe("Gamma\n\nAlpha\n\nBeta");
+    });
+
+    it("an empty or single-block selection should yield no cover", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        const { selectionCoverRange } = await import("../components/blockMenu/drag");
+        expect(selectionCoverRange(v)).toBeNull(); // caret only
+        const { TextSelection } = await import("@milkdown/prose/state");
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 4)));
+        expect(selectionCoverRange(v)).toBeNull(); // inside one block
+    });
+});
+
 describe("moveBlockTo", () => {
     it("moving the first block to the end should reorder the doc", async () => {
         const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
