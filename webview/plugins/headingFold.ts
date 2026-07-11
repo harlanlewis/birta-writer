@@ -403,6 +403,32 @@ function createParagraphGutter(view: EditorView, paragraphPos: number): HTMLElem
     return gutter;
 }
 
+/**
+ * True when a paragraph carries actual text content — at least one inline
+ * child that is neither an image nor an html atom, ignoring whitespace-only
+ * text nodes. Image-only and HTML-only paragraphs are visual blocks, not
+ * prose, so they don't earn the "P" marker (MAR-79).
+ */
+function isTextBearingParagraph(node: any): boolean {
+    // An empty paragraph is a blank line the user is about to type on —
+    // prose, not a visual block.
+    if (node.childCount === 0) {
+        return true;
+    }
+    let textBearing = false;
+    node.forEach((child: any) => {
+        const name = child.type.name;
+        if (name === "image" || name === "html") {
+            return;
+        }
+        if (child.isText && !child.text?.trim()) {
+            return;
+        }
+        textBearing = true;
+    });
+    return textBearing;
+}
+
 function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): DecorationSet {
     const decorations: Decoration[] = [];
     const hiddenRanges: HeadingFoldRange[] = [];
@@ -412,7 +438,11 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
             // Top-level paragraphs get the hover-revealed "P" gutter (the same
             // retype menu as headings). Only direct children of the doc —
             // paragraphs inside lists/quotes/tables have their own semantics.
-            if (node.type.name === "paragraph") {
+            // Image-only / HTML-only paragraphs are excluded (MAR-79): a
+            // standalone image or raw-HTML block parses as a paragraph
+            // wrapping a single inline atom, and "P" (a text-level cue) plus
+            // the heading retype menu are wrong for those.
+            if (node.type.name === "paragraph" && isTextBearingParagraph(node)) {
                 decorations.push(
                     Decoration.widget(
                         offset + 1,

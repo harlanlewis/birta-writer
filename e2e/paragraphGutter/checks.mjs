@@ -17,9 +17,11 @@ export async function run({ page, check, baseUrl }) {
     const pMarker = ".ProseMirror > p .heading-fold-marker--paragraph";
     const opacity = () => page.$eval(pMarker, (el) => getComputedStyle(el).opacity);
 
-    // ── 1. Exactly one paragraph marker: the top-level paragraph only ──
+    // ── 1. Exactly one paragraph marker: the top-level TEXT paragraph only.
+    // The fixture also carries an image-only line and a raw-html line — both
+    // parse as top-level paragraphs but must NOT get the P marker (MAR-79). ──
     const markerCount = await page.$$eval(".heading-fold-marker--paragraph", (els) => els.length);
-    check("only the top-level paragraph gets a P marker", markerCount === 1, `count=${markerCount}`);
+    check("only the top-level text paragraph gets a P marker (not image/html blocks)", markerCount === 1, `count=${markerCount}`);
     const inListOrQuote = await page.$$eval(
         "li .heading-fold-marker--paragraph, blockquote .heading-fold-marker--paragraph",
         (els) => els.length,

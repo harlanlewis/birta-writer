@@ -258,6 +258,33 @@ describe("heading gutter level menu", () => {
         expect(document.querySelector(".heading-fold-marker--paragraph")).toBeNull();
     });
 
+    // MAR-79: standalone images/HTML parse as paragraphs wrapping a single
+    // inline atom — "P" (a text-level cue) and the heading retype menu are
+    // wrong for them.
+    it("an image-only paragraph should NOT render a paragraph gutter", async () => {
+        const editor = await makeEditor("![two cats](cats.jpg)");
+        view(editor);
+        expect(document.querySelector(".heading-fold-marker--paragraph")).toBeNull();
+    });
+
+    it("an html-only paragraph should NOT render a paragraph gutter", async () => {
+        const editor = await makeEditor("<div align='center'>Centered raw HTML block</div>");
+        view(editor);
+        expect(document.querySelector(".heading-fold-marker--paragraph")).toBeNull();
+    });
+
+    it("a paragraph mixing text and an inline image SHOULD render a paragraph gutter", async () => {
+        const editor = await makeEditor("An inline ![icon](i.png) in a sentence");
+        view(editor);
+        expect(document.querySelector(".heading-fold-marker--paragraph")).not.toBeNull();
+    });
+
+    it("an empty paragraph (blank line) SHOULD render a paragraph gutter", async () => {
+        const editor = await makeEditor("");
+        view(editor);
+        expect(document.querySelector(".heading-fold-marker--paragraph")).not.toBeNull();
+    });
+
     it("Escape should close the menu", async () => {
         // Arrange
         const editor = await makeEditor("## Title");

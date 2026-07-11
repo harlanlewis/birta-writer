@@ -26,6 +26,10 @@
     "",
     "> a quoted paragraph",
     "",
+    "![a standalone image](data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==)",
+    "",
+    "<div align='center'>raw html block</div>",
+    "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
