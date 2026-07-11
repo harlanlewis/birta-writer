@@ -83,9 +83,9 @@ export async function run({ page, check, baseUrl }) {
         `inset=${pGeom.glyphInsetFromGutterRight.toFixed(1)}`);
 
     // The marker is hovered right now (step 4 landed on it) — the tooltip is
-    // visible and must carry the level wording, not the old "text style".
+    // visible and must name the block menu, not the old "text style".
     const tipText = await page.$eval(".custom-tooltip", (el) => el.textContent);
-    check("P marker tooltip reads 'Change heading level'", tipText === "Change heading level",
+    check("P marker tooltip reads 'Block options'", tipText === "Block options",
         `tooltip=${tipText}`);
 
     // ── 4c. Heading hash marker: same enlargement, chevron untouched ──
@@ -107,19 +107,19 @@ export async function run({ page, check, baseUrl }) {
     // ── 5. Click opens the shared retype menu with P checked ──
     await page.mouse.click(markerBox.x, markerBox.y);
     await page.waitForTimeout(100);
-    const menu = await page.$(".heading-level-menu");
+    const menu = await page.$(".block-menu");
     check("clicking P opens the level menu", menu !== null);
     const activeLabel = await page.$eval(
-        ".heading-level-menu .heading-level-item--active",
+        ".block-menu .block-menu-item--active",
         (el) => el.textContent.trim(),
     );
     check("menu marks P as the current level", activeLabel === "P", `active=${activeLabel}`);
 
     // ── 6. Picking H2 promotes the paragraph ──
-    const rows = await page.$$(".heading-level-menu .heading-level-item");
+    const rows = await page.$$(".block-menu .block-menu-item");
     await rows[2].dispatchEvent("mousedown"); // P,H1,H2 → index 2
     await page.waitForTimeout(100);
-    check("menu closed after pick", (await page.$(".heading-level-menu")) === null);
+    check("menu closed after pick", (await page.$(".block-menu")) === null);
     // Updates are debounced (300ms) — poll for the promoted line.
     let promoted = null;
     for (let i = 0; i < 30 && !promoted; i++) {

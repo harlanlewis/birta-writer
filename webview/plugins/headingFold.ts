@@ -5,6 +5,10 @@ import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
 import { t } from "../i18n";
+// Runtime-only cycle (blockMenu imports this module's pure helpers back);
+// both sides touch the other only inside event handlers, matching the
+// slashMenu plugin ↔ component precedent.
+import { openBlockMenu } from "../components/blockMenu";
 
 export type HeadingFoldMeta = { type: "toggle"; pos: number };
 type HeadingFoldRange = { from: number; to: number };
@@ -21,7 +25,8 @@ function isHeadingNode(node: ProseNodeLike | null | undefined): node is ProseNod
     return node?.type.name === "heading";
 }
 
-function getHeadingLevel(node: { attrs?: Record<string, unknown> }): number {
+/** A heading NODE's level attr (the DOM-element twin lives in utils/headingUtils). */
+export function getHeadingLevel(node: { attrs?: Record<string, unknown> }): number {
     const level = node.attrs?.["level"];
     return typeof level === "number" ? level : 1;
 }
@@ -76,176 +81,13 @@ export function setHeadingLevelAt(view: EditorView, headingPos: number, level: n
     return true;
 }
 
-// The block-type choices offered by the gutter menu: paragraph (level 0) then
-// H1–H6, mirroring the toolbar's Format dropdown labels.
-const HEADING_LEVEL_CHOICES: { level: number; label: string }[] = [
-    { level: 0, label: "P" },
-    { level: 1, label: "H1" },
-    { level: 2, label: "H2" },
-    { level: 3, label: "H3" },
-    { level: 4, label: "H4" },
-    { level: 5, label: "H5" },
-    { level: 6, label: "H6" },
-];
-
-// Only one gutter menu is open at a time; opening (or clicking the same marker
-// again) closes the previous one.
-let closeActiveHeadingLevelMenu: (() => void) | null = null;
-
 /**
- * Open a small popup anchored to a heading's gutter marker, letting the user
- * retype that heading (P / H1–H6). The current level is checkmarked. Positioned
- * below the marker and clamped to the viewport; closes on pick, outside click,
- * or Escape. Body-mounted (outside the editor) like the other chrome popups.
- * `viaKeyboard` moves focus onto the current-level row so arrows/Enter can drive
- * it; a mouse open leaves focus in the editor (mirrors wireHoverMenu).
+ * The content range a heading owns — from just after the heading to the next
+ * heading of the same or higher level (the fold range, and the "section" the
+ * block menu's move actions and the drag handle operate on). Null when the
+ * heading owns nothing.
  */
-function openHeadingLevelMenu(
-    view: EditorView,
-    headingPos: number,
-    currentLevel: number,
-    anchor: HTMLElement,
-    viaKeyboard: boolean,
-): void {
-    // Toggle: a second click on the SAME marker closes its menu instead of
-    // reopening it. Read the open-state before closing (close() clears the
-    // class), so re-clicking the marker that owns the open menu just closes it,
-    // while clicking a different marker closes the old menu and opens a new one.
-    const reopeningSameMarker = anchor.classList.contains("heading-fold-marker--menu-open");
-    closeActiveHeadingLevelMenu?.();
-    if (reopeningSameMarker) {
-        return;
-    }
-
-    const menu = document.createElement("div");
-    menu.className = "heading-level-menu";
-    menu.setAttribute("role", "menu");
-
-    // Ignore mousedowns on the anchor itself: the marker's own click handler
-    // owns the toggle, so closing here would race it (close-then-reopen).
-    const onDocMouseDown = (event: MouseEvent): void => {
-        const target = event.target as Node;
-        if (!menu.contains(target) && !anchor.contains(target)) {
-            close();
-        }
-    };
-    const rowEls = (): HTMLElement[] =>
-        Array.from(menu.querySelectorAll<HTMLElement>(".heading-level-item"));
-    const focusRow = (el: HTMLElement | undefined): void => {
-        el?.focus();
-    };
-    // Keyboard model mirrors wireHoverMenu (the toolbar dropdowns): arrows rove
-    // over the rows, Enter/Space activate the focused row by replaying the
-    // mousedown its handler listens for, Escape closes and restores marker
-    // focus. Attached to the document (capture) so Escape works whether the
-    // menu was opened by mouse (focus still in the editor) or keyboard.
-    const onKeyDown = (event: KeyboardEvent): void => {
-        if (event.key === "Escape") {
-            event.preventDefault();
-            close();
-            anchor.focus();
-            return;
-        }
-        const list = rowEls();
-        const idx = list.indexOf(event.target as HTMLElement);
-        if (idx === -1) {
-            return; // focus isn't on a row (mouse-opened, caret in editor)
-        }
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            const delta = event.key === "ArrowDown" ? 1 : -1;
-            focusRow(list[(idx + delta + list.length) % list.length]);
-        } else if (event.key === "Enter" || event.key === " ") {
-            // preventDefault suppresses the native keyboard click the focused
-            // <button> would fire, so the replayed mousedown runs the action once.
-            event.preventDefault();
-            list[idx]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-        }
-    };
-    // Tabbing out of the menu closes it (focus moving between rows does not).
-    const onFocusOut = (event: FocusEvent): void => {
-        const next = event.relatedTarget;
-        if (!(next instanceof Node) || (!menu.contains(next) && next !== anchor)) {
-            close();
-        }
-    };
-    function close(): void {
-        if (closeActiveHeadingLevelMenu === close) {
-            closeActiveHeadingLevelMenu = null;
-        }
-        anchor.classList.remove("heading-fold-marker--menu-open");
-        document.removeEventListener("mousedown", onDocMouseDown, true);
-        document.removeEventListener("keydown", onKeyDown, true);
-        menu.removeEventListener("focusout", onFocusOut);
-        menu.remove();
-    }
-
-    let activeRow: HTMLElement | null = null;
-    for (const { level, label } of HEADING_LEVEL_CHOICES) {
-        const row = document.createElement("button");
-        row.type = "button";
-        row.className = "heading-level-item";
-        row.setAttribute("role", "menuitemradio");
-        row.tabIndex = -1;
-        const active = level === currentLevel;
-        row.setAttribute("aria-checked", active ? "true" : "false");
-        row.classList.toggle("heading-level-item--active", active);
-        if (active) {
-            activeRow = row;
-        }
-
-        const check = document.createElement("span");
-        check.className = "menu-check";
-        check.setAttribute("aria-hidden", "true");
-        const text = document.createElement("span");
-        text.className = "heading-level-item-label";
-        text.textContent = label;
-        row.append(check, text);
-
-        row.addEventListener("mousedown", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            close();
-            setHeadingLevelAt(view, headingPos, level);
-        });
-        menu.appendChild(row);
-    }
-
-    document.body.appendChild(menu);
-    anchor.classList.add("heading-fold-marker--menu-open");
-    menu.addEventListener("focusout", onFocusOut);
-
-    // Position below the marker, flipping/clamping to stay on screen.
-    const rect = anchor.getBoundingClientRect();
-    const mw = menu.offsetWidth;
-    const mh = menu.offsetHeight;
-    let left = rect.left;
-    if (left + mw > window.innerWidth - 8) {
-        left = window.innerWidth - 8 - mw;
-    }
-    left = Math.max(8, left);
-    let top = rect.bottom + 4;
-    if (top + mh > window.innerHeight - 8) {
-        top = rect.top - 4 - mh;
-    }
-    top = Math.max(8, top);
-    menu.style.left = `${Math.round(left)}px`;
-    menu.style.top = `${Math.round(top)}px`;
-
-    closeActiveHeadingLevelMenu = close;
-    // Defer the outside-click listener so the opening click doesn't close it.
-    setTimeout(() => document.addEventListener("mousedown", onDocMouseDown, true), 0);
-    document.addEventListener("keydown", onKeyDown, true);
-    hideTooltip();
-
-    // Keyboard open: land on the current level so arrows/Enter work immediately.
-    // Mouse open leaves the editor selection focused, like the toolbar menus.
-    if (viaKeyboard) {
-        focusRow(activeRow ?? rowEls()[0]);
-    }
-}
-
-function findHeadingFoldRange(doc: any, headingPos: number, headingLevel: number): HeadingFoldRange | null {
+export function findHeadingFoldRange(doc: any, headingPos: number, headingLevel: number): HeadingFoldRange | null {
     const headingNode = doc.nodeAt(headingPos);
     if (!isHeadingNode(headingNode)) {
         return null;
@@ -299,7 +141,7 @@ function createHeadingFoldGutter(
     marker.type = "button";
     marker.className = "heading-fold-marker";
     marker.textContent = headingMarker(level);
-    const markerTip = t("Change heading level");
+    const markerTip = t("Block options");
     marker.setAttribute("aria-label", markerTip);
     marker.setAttribute("aria-haspopup", "menu");
     applyTooltip(marker, markerTip, { placement: "above" });
@@ -313,7 +155,7 @@ function createHeadingFoldGutter(
         event.stopPropagation();
         // A keyboard-activated button click reports detail 0 (no mouse click
         // count) — use it to move focus into the menu only for keyboard opens.
-        openHeadingLevelMenu(view, headingPos, level, marker, event.detail === 0);
+        openBlockMenu(view, headingPos, marker, event.detail === 0);
     });
 
     if (!foldable) {
@@ -383,9 +225,8 @@ function createParagraphGutter(view: EditorView, paragraphPos: number): HTMLElem
     marker.type = "button";
     marker.className = "heading-fold-marker heading-fold-marker--paragraph";
     marker.textContent = "P";
-    // Same label as the heading markers: it's the same P/H1–H6 level menu,
-    // and "level" (not "style") is what the choice actually changes.
-    const markerTip = t("Change heading level");
+    // Same label as the heading markers: it's the same block menu.
+    const markerTip = t("Block options");
     marker.setAttribute("aria-label", markerTip);
     marker.setAttribute("aria-haspopup", "menu");
     applyTooltip(marker, markerTip, { placement: "above" });
@@ -396,7 +237,7 @@ function createParagraphGutter(view: EditorView, paragraphPos: number): HTMLElem
     marker.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        openHeadingLevelMenu(view, paragraphPos, 0, marker, event.detail === 0);
+        openBlockMenu(view, paragraphPos, marker, event.detail === 0);
     });
 
     gutter.appendChild(marker);

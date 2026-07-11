@@ -63,7 +63,7 @@ afterEach(async () => {
         await editor.destroy();
     }
     editors = [];
-    document.querySelectorAll(".heading-level-menu").forEach((el) => el.remove());
+    document.querySelectorAll(".block-menu").forEach((el) => el.remove());
     document.body.innerHTML = "";
 });
 
@@ -166,7 +166,7 @@ describe("setHeadingLevelAt", () => {
 
 /** The <body>-mounted level menu, if open. */
 function levelMenu(): HTMLElement | null {
-    return document.querySelector<HTMLElement>(".heading-level-menu");
+    return document.querySelector<HTMLElement>(".block-menu");
 }
 
 /** The heading's gutter marker button (opens the level menu). */
@@ -181,7 +181,7 @@ function clickMouse(el: HTMLElement, type: "mousedown" | "click"): void {
 }
 
 describe("heading gutter level menu", () => {
-    it("clicking the marker should open a P/H1–H6 menu with the current level checked", async () => {
+    it("clicking the marker should open the block menu with the current level checked", async () => {
         // Arrange
         const editor = await makeEditor("## Title\n\nBody");
         view(editor); // force layout
@@ -189,12 +189,19 @@ describe("heading gutter level menu", () => {
         // Act
         clickMouse(marker(), "click");
 
-        // Assert
+        // Assert: the Turn-into section leads with the level radio, then the
+        // conversions, then the block actions (heading flavor: Copy Link +
+        // section moves).
         const menu = levelMenu();
         expect(menu).not.toBeNull();
-        const rows = menu!.querySelectorAll(".heading-level-item");
-        expect(Array.from(rows).map((r) => r.textContent)).toEqual(["P", "H1", "H2", "H3", "H4", "H5", "H6"]);
-        const active = menu!.querySelector(".heading-level-item--active");
+        const rows = menu!.querySelectorAll(".block-menu-item");
+        expect(Array.from(rows).map((r) => r.textContent)).toEqual([
+            "P", "H1", "H2", "H3", "H4", "H5", "H6",
+            "Bullet List", "Ordered List", "Task List", "Blockquote", "Callout", "Code Block",
+            "Duplicate", "Copy as Markdown", "Copy Link",
+            "Move Section Up", "Move Section Down", "Delete",
+        ]);
+        const active = menu!.querySelector(".block-menu-item--active");
         expect(active!.textContent).toBe("H2");
         expect(active!.getAttribute("aria-checked")).toBe("true");
     });
@@ -206,7 +213,7 @@ describe("heading gutter level menu", () => {
         clickMouse(marker(), "click");
 
         // Act: pick H4 (rows are P,H1,H2,H3,H4,... → index 4)
-        const rows = levelMenu()!.querySelectorAll<HTMLButtonElement>(".heading-level-item");
+        const rows = levelMenu()!.querySelectorAll<HTMLButtonElement>(".block-menu-item");
         clickMouse(rows[4]!, "mousedown");
 
         // Assert
@@ -221,7 +228,7 @@ describe("heading gutter level menu", () => {
         clickMouse(marker(), "click");
 
         // Act: first row is P
-        const rows = levelMenu()!.querySelectorAll<HTMLButtonElement>(".heading-level-item");
+        const rows = levelMenu()!.querySelectorAll<HTMLButtonElement>(".block-menu-item");
         clickMouse(rows[0]!, "mousedown");
 
         // Assert
@@ -242,8 +249,8 @@ describe("heading gutter level menu", () => {
         const menu = levelMenu();
         expect(menu).not.toBeNull();
         // P is the checked current level for a paragraph.
-        expect(menu!.querySelector(".heading-level-item--active")!.textContent).toBe("P");
-        const rows = menu!.querySelectorAll<HTMLButtonElement>(".heading-level-item");
+        expect(menu!.querySelector(".block-menu-item--active")!.textContent).toBe("P");
+        const rows = menu!.querySelectorAll<HTMLButtonElement>(".block-menu-item");
         clickMouse(rows[2]!, "mousedown");
 
         // Assert: promoted, menu closed
@@ -323,7 +330,7 @@ describe("heading gutter level menu", () => {
         marker().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
 
         // Assert: the H2 row is focused so arrows/Enter drive it immediately
-        const active = levelMenu()!.querySelector<HTMLElement>(".heading-level-item--active");
+        const active = levelMenu()!.querySelector<HTMLElement>(".block-menu-item--active");
         expect(document.activeElement).toBe(active);
         expect(active!.textContent).toBe("H2");
     });

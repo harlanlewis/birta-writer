@@ -46,6 +46,7 @@ import type { Editor } from "@milkdown/core";
 
 import { renderFrontmatterPanel, focusFrontmatterPanel } from "./components/frontmatter";
 import { runEditorCommand, setEditorCommandHost } from "./editorCommands";
+import { setBlockMenuContext } from "./components/blockMenu";
 import { setSlashMenuHost } from "./plugins";
 import { initContextMenu } from "./components/contextMenu";
 import {
@@ -260,6 +261,10 @@ measure("initToolbar", "toolbar-start", "toolbar-end");
 // itself registers openLinkPrompt / openImagePanel / openFind (MAR-9).
 // The find-navigation hooks back the contributed (user-rebindable)
 // keybindings: Cmd+G / F3, Cmd+Shift+G / Shift+F3, and Cmd/Ctrl+D.
+// The gutter block menu needs the Editor (commands + markdown serializer),
+// not just the view its widget receives.
+setBlockMenuContext({ getEditor: () => currentEditor });
+
 setEditorCommandHost({
     openFindReplace: () => findBar.open(undefined, { showReplace: true }),
     findNext: () => findBar.findNext(),
