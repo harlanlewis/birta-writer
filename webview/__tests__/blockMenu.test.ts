@@ -556,6 +556,97 @@ describe("fold state across moves and deletes", () => {
     });
 });
 
+describe("fold state vs insertions at the heading's start", () => {
+    const collapse = (v: ReturnType<typeof view>, pos: number) =>
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos }));
+    const foldedSet = (v: ReturnType<typeof view>) =>
+        headingFoldPluginKey.getState(v.state)?.folded ?? new Set<number>();
+
+    it("duplicating the block above a collapsed heading keeps it collapsed", async () => {
+        const editor = await makeEditor("Para\n\n# B\n\ncontent B");
+        const v = view(editor);
+        let posB = -1;
+        v.state.doc.forEach((n, o) => { if (n.type.name === "heading") posB = o; });
+        collapse(v, posB);
+        pickRow(openMenuOn(markers()[0]!), "Duplicate");
+        expect(markdown(editor)).toBe("Para\n\nPara\n\n# B\n\ncontent B");
+        let newPosB = -1;
+        v.state.doc.forEach((n, o) => { if (n.type.name === "heading") newPosB = o; });
+        const folded = foldedSet(v);
+        expect(folded.has(newPosB)).toBe(true);
+        expect(folded.size).toBe(1);
+    });
+
+    it("duplicating a heading above a collapsed heading doesn't shift the fold onto the copy", async () => {
+        const editor = await makeEditor("# A\n\n# B\n\ncontent B");
+        const v = view(editor);
+        let posB = -1;
+        v.state.doc.forEach((n, o) => { if (n.type.name === "heading" && n.textContent === "B") posB = o; });
+        collapse(v, posB);
+        const headingMarkers = markers().filter((m) => !m.classList.contains("heading-fold-marker--paragraph"));
+        pickRow(openMenuOn(headingMarkers[0]!), "Duplicate");
+        expect(markdown(editor)).toBe("# A\n\n# A\n\n# B\n\ncontent B");
+        let newPosB = -1;
+        v.state.doc.forEach((n, o) => { if (n.type.name === "heading" && n.textContent === "B") newPosB = o; });
+        const folded = foldedSet(v);
+        expect(folded.has(newPosB)).toBe(true); // B stays collapsed…
+        expect(folded.size).toBe(1);            // …and the A-copy does NOT inherit it
+    });
+
+    it("dropping a section directly above a collapsed heading preserves both folds", async () => {
+        const editor = await makeEditor("# A\n\ncontent A\n\n# B\n\ncontent B");
+        const v = view(editor);
+        collapse(v, 0); // fold A
+        let posB = -1;
+        v.state.doc.forEach((n, o) => { if (n.type.name === "heading" && n.textContent === "B") posB = o; });
+        collapse(v, posB); // fold B too
+        // Move section B up: it lands exactly at collapsed A's start.
+        expect(moveBlockAt(v, posB, -1)).toBe(true);
+        expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A\n\ncontent A");
+        const folded = foldedSet(v);
+        expect(folded.size).toBe(2); // both sections still collapsed
+    });
+});
+
+describe("callout titles survive conversions", () => {
+    it("a titled callout → Blockquote keeps the title as leading prose", async () => {
+        const editor = await makeEditor("> [!TIP] My Title\n> body text");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Blockquote");
+        expect(markdown(editor)).toBe("> My Title\n>\n> body text");
+    });
+
+    it("a titled callout → Paragraph keeps the title as the first paragraph", async () => {
+        const editor = await makeEditor("> [!TIP] My Title\n> body text");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Paragraph");
+        expect(markdown(editor)).toBe("My Title\n\nbody text");
+    });
+
+    it("a titled callout → Bullet List leads with the title item", async () => {
+        const editor = await makeEditor("> [!TIP] My Title\n> body text");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Bullet List");
+        expect(markdown(editor)).toBe("- My Title\n- body text");
+    });
+});
+
+describe("fold state through undo", () => {
+    it("undoing a collapsed-section move expands it but never collapses a neighbor", async () => {
+        // Documented limitation: prosemirror-history replays inverse steps
+        // without our move meta, so the fold entry can't travel back — the
+        // section arrives expanded. The IMPORTANT invariant (regression-
+        // pinned here) is that no OTHER heading inherits the collapse.
+        const editor = await makeEditor("# A\n\ncontent A\n\n# B\n\ncontent B");
+        const v = view(editor);
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: 0 }));
+        expect(moveBlockAt(v, 0, 1)).toBe(true);
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("# A\n\ncontent A\n\n# B\n\ncontent B");
+        expect(headingFoldPluginKey.getState(v.state)!.folded.size).toBe(0);
+    });
+});
+
 describe("copy actions", () => {
     it("Copy as Markdown should ignore a non-empty ambient selection elsewhere", async () => {
         const editor = await makeEditor("Alpha\n\nBeta");

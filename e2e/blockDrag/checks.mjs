@@ -142,6 +142,31 @@ export async function run({ page, check, baseUrl }) {
         glued.menu && glued.marker && glued.tracks === true, JSON.stringify(glued));
     await page.keyboard.press("Escape");
 
+    // ── 5b. Small viewport: the menu fits the available band and scrolls ──
+    // (Regression: it used to clamp to y=8, sliding under the fixed topbar
+    // and covering its own anchor block.)
+    await page.setViewportSize({ width: 1000, height: 480 });
+    await page.waitForTimeout(100);
+    const pSmall = await markerCenter(page, ".ProseMirror > p");
+    await page.mouse.click(pSmall.x, pSmall.y);
+    await page.waitForTimeout(100);
+    const fit = await page.evaluate(() => {
+        const menu = document.querySelector(".block-menu");
+        if (!menu) return null;
+        const r = menu.getBoundingClientRect();
+        const topbar = document.querySelector(".editor-topbar")?.getBoundingClientRect().height ?? 0;
+        return {
+            belowTopbar: r.top >= topbar,
+            onScreen: r.bottom <= window.innerHeight - 4,
+            scrolls: menu.scrollHeight > menu.clientHeight + 1 || r.height < 400,
+        };
+    });
+    check("small viewport: menu clears the topbar, fits on screen, scrolls internally",
+        fit !== null && fit.belowTopbar && fit.onScreen && fit.scrolls, JSON.stringify(fit));
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await page.waitForTimeout(100);
+
     // ── 6. Typing while the menu is open closes it (doc-change close) ──
     const pOnceMore = await markerCenter(page, ".ProseMirror > p");
     await page.mouse.click(pOnceMore.x, pOnceMore.y);

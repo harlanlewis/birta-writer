@@ -546,7 +546,13 @@ export const headingFoldPlugin = $prose(() =>
                         if (del && pos >= del.from && pos < del.to) {
                             continue;
                         }
-                        const mapped = tr.mapping.map(pos, -1);
+                        // Forward assoc: an entry must FOLLOW its heading when
+                        // content is inserted exactly at the heading's start
+                        // (duplicating the block above, dropping a section
+                        // there). Backward assoc left the entry at the old
+                        // offset — the newly inserted block inherited the
+                        // collapse while the real heading expanded.
+                        const mapped = tr.mapping.map(pos);
                         if (isHeadingNode(newState.doc.nodeAt(mapped))) {
                             next.add(mapped);
                         }

@@ -123,7 +123,9 @@ function showPill(x: number, y: number, label: string): void {
         pillEl.className = "block-drag-pill";
         document.body.appendChild(pillEl);
     }
-    pillEl.textContent = label;
+    if (pillEl.textContent !== label) {
+        pillEl.textContent = label; // fixed per session — skip per-move writes
+    }
     pillEl.style.left = `${x + 14}px`;
     pillEl.style.top = `${y + 14}px`;
     pillEl.style.display = "block";
@@ -185,6 +187,10 @@ export function wireMarkerDrag(
         let scrollRaf = 0;
         let lastPointerY = startY;
         let label = "";
+        // The doc the session's range/boundaries were measured against — an
+        // inbound edit mid-drag (external file sync) invalidates them, and a
+        // drop must then cancel rather than slice stale positions.
+        let startDoc: ProseNode | null = null;
 
         const scrollLoop = (): void => {
             if (scrollDir !== 0) {
@@ -220,20 +226,30 @@ export function wireMarkerDrag(
             document.removeEventListener("mouseup", onUp, true);
             document.removeEventListener("keydown", onKey, true);
             window.removeEventListener("blur", onBlur);
-            // The click-suppression flag must not outlive the session: the
-            // click (if any) fires synchronously right after mouseup, so a
-            // zero-delay cleanup runs after it — an Escape-canceled or
-            // outside-released drag can't eat the marker's NEXT real click.
-            setTimeout(() => {
-                delete marker.dataset["dragged"];
-            }, 0);
+            // The click-suppression flag must not outlive the interaction —
+            // but it must survive until the mouse BUTTON is actually released
+            // (an Escape-cancel leaves it held; the eventual release still
+            // produces a click on the marker, which must stay suppressed).
+            // A one-shot bubble-phase mouseup fires for the release — on the
+            // commit path that's the very mouseup ending the drag — and its
+            // zero-delay hop runs after the click that release produces.
+            if (marker.dataset["dragged"]) {
+                document.addEventListener(
+                    "mouseup",
+                    () => setTimeout(() => {
+                        delete marker.dataset["dragged"];
+                    }, 0),
+                    { once: true },
+                );
+            }
         };
 
         const onMove = (move: MouseEvent): void => {
             lastPointerY = move.clientY;
             // The button was released outside the window (no mouseup reaches
-            // us): end the session instead of dragging with no button down.
-            if (dragging && (move.buttons & 1) === 0) {
+            // us): end the session — armed or dragging — instead of leaking
+            // listeners / dragging with no button down.
+            if ((move.buttons & 1) === 0) {
                 stop();
                 return;
             }
@@ -254,6 +270,7 @@ export function wireMarkerDrag(
                     return;
                 }
                 boundaries = measureBoundaries(view);
+                startDoc = view.state.doc;
                 closeBlockMenu();
                 hideTooltip();
                 marker.classList.add("heading-fold-marker--dragging");
@@ -280,7 +297,9 @@ export function wireMarkerDrag(
         };
 
         const onUp = (): void => {
-            const commit = dragging && range && target;
+            // Doc changed mid-drag (external sync): the measured range and
+            // boundaries describe a document that no longer exists — cancel.
+            const commit = dragging && range && target && view.state.doc === startDoc;
             const commitRange = range;
             const commitTarget = target;
             stop();

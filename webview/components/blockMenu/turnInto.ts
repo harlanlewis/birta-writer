@@ -251,14 +251,30 @@ function unwrapContainerTo(view: EditorView, pos: number, level: number): boolea
     if (!node || node.childCount === 0) {
         return false;
     }
-    view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, node.content));
+    const content = withCalloutTitle(view, node, node.content);
+    view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, content));
     if (level > 0 && view.state.doc.nodeAt(pos)?.type.name === "paragraph") {
         setHeadingLevelAt(view, pos, level);
     }
     return true;
 }
 
-/** quote/callout → list: each direct paragraph child becomes an item. */
+/**
+ * A titled callout's title is user-typed prose — no conversion may drop it.
+ * Returns `content` with the title prepended as a leading paragraph when the
+ * node is a callout carrying one.
+ */
+function withCalloutTitle(view: EditorView, node: ProseNode, content: Fragment): Fragment {
+    const title = node.type.name === "callout" ? String(node.attrs["title"] ?? "").trim() : "";
+    const paragraph = view.state.schema.nodes["paragraph"];
+    if (!title || !paragraph) {
+        return content;
+    }
+    return Fragment.from(paragraph.create(null, view.state.schema.text(title))).append(content);
+}
+
+/** quote/callout → list: each direct paragraph child becomes an item (a
+ * callout's title leads as its own item). */
 function containerToList(view: EditorView, pos: number, target: TurnIntoKind): boolean {
     const node = view.state.doc.nodeAt(pos);
     const itemType = view.state.schema.nodes["list_item"];
@@ -268,7 +284,7 @@ function containerToList(view: EditorView, pos: number, target: TurnIntoKind): b
     }
     const items: ProseNode[] = [];
     let bail = false;
-    node.forEach((child) => {
+    withCalloutTitle(view, node, node.content).forEach((child) => {
         if (child.type.name !== "paragraph") {
             bail = true;
             return;
@@ -285,12 +301,21 @@ function containerToList(view: EditorView, pos: number, target: TurnIntoKind): b
 }
 
 /** container ↔ container (quote ↔ callout): retype in place — same content
- * shape, and every callout attr has a default. */
+ * shape, and every callout attr has a default. A titled callout's title is
+ * prepended as prose on the way OUT (a blockquote can't carry it). */
 function retypeContainer(view: EditorView, pos: number, target: TurnIntoKind): boolean {
     const node = view.state.doc.nodeAt(pos);
     const nodeType = view.state.schema.nodes[target === "callout" ? "callout" : "blockquote"];
     if (!node || !nodeType) {
         return false;
+    }
+    if (target === "blockquote") {
+        const content = withCalloutTitle(view, node, node.content);
+        if (content !== node.content) {
+            const quote = nodeType.createChecked(null, content);
+            view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, quote));
+            return true;
+        }
     }
     view.dispatch(view.state.tr.setNodeMarkup(pos, nodeType, null));
     return true;

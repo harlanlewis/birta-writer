@@ -113,7 +113,7 @@ describe("drag session robustness", () => {
         expect(document.body.classList.contains("block-dragging")).toBe(false);
     });
 
-    it("an Escape-canceled drag should not eat the marker's next click", async () => {
+    it("releasing an Escape-canceled drag suppresses THAT click; the next one opens the menu", async () => {
         const editor = await makeEditor("Alpha\n\nBeta");
         view(editor);
         const m = marker();
@@ -122,10 +122,30 @@ describe("drag session robustness", () => {
         expect(m.dataset["dragged"]).toBe("1");
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
         expect(document.body.classList.contains("block-dragging")).toBe(false);
-        await new Promise((resolve) => setTimeout(resolve, 1)); // flag cleanup tick
+        // The button is STILL HELD after Escape — the flag must survive until
+        // the eventual release, whose click stays suppressed.
+        expect(m.dataset["dragged"]).toBe("1");
+        mouse(m, "mouseup", { button: 0, buttons: 0 });
+        mouse(m, "click", { button: 0 });
+        expect(document.querySelector(".block-menu")).toBeNull();
+        await new Promise((resolve) => setTimeout(resolve, 1)); // cleanup hop after the release
         expect(m.dataset["dragged"]).toBeUndefined();
+        // The NEXT genuine click opens the menu.
         mouse(m, "click", { button: 0 });
         expect(document.querySelector(".block-menu")).not.toBeNull();
+    });
+
+    it("releasing outside the window with the threshold uncrossed should tear the session down", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        view(editor);
+        const m = marker();
+        mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
+        // Pointer re-enters the window with no button held, threshold never crossed.
+        mouse(document, "mousemove", { clientX: 11, clientY: 11, buttons: 0 });
+        // A later big move must NOT start a ghost session.
+        mouse(document, "mousemove", { clientX: 300, clientY: 300, buttons: 0 });
+        expect(document.body.classList.contains("block-dragging")).toBe(false);
+        expect(m.dataset["dragged"]).toBeUndefined();
     });
 });
 

@@ -169,6 +169,26 @@ export async function run({ page, check, baseUrl }) {
     check("hovering a list reveals its - marker", listMarkerOpacity > 0.4,
         `opacity=${listMarkerOpacity}`);
 
+    // ── 4e. The code block's marker opens its menu (the one gutter that sits
+    // nested inside a NodeView's contentDOM — posAtDOM must still resolve). ──
+    const codeMarkerBox = await page.$eval(
+        ":is(.ProseMirror > .code-block-wrapper, .ProseMirror > pre) .heading-fold-marker",
+        (el) => {
+            const r = el.getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        },
+    );
+    await page.mouse.click(codeMarkerBox.x, codeMarkerBox.y);
+    await page.waitForTimeout(100);
+    const codeActive = await page.$eval(
+        ".block-menu .block-menu-item--active .block-menu-item-label",
+        (el) => el.textContent,
+    ).catch(() => null);
+    check("code block marker opens its menu with Code Block active", codeActive === "Code Block",
+        `active=${codeActive}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(50);
+
     // ── 5. Click opens the shared retype menu with P checked ──
     await page.mouse.click(markerBox.x, markerBox.y);
     await page.waitForTimeout(100);

@@ -33,6 +33,7 @@ import {
 import { type GetEditor } from "../../editorCommands";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
+import { getTopbarBottom } from "../../utils/headingUtils";
 import { hideTooltip } from "../../ui/tooltip";
 import { t } from "../../i18n";
 import { SLASH_MENU_ITEMS } from "../slashMenu/registry";
@@ -398,7 +399,26 @@ export function openBlockMenu(
     // slash-menu idiom: capture-phase because the editor's scroller isn't
     // always window). The marker may be destroyed by a decoration rebuild
     // mid-scroll — then there is nothing to anchor to, so close.
-    const onScroll = (): void => {
+    const onScroll = (event: Event): void => {
+        // Capture-phase scroll listeners also see the menu's OWN internal
+        // scrolling — repositioning then (which touches maxHeight) would
+        // reset the menu's scrollTop on every wheel tick. Only document
+        // scrolling moves the anchor.
+        if (event.target instanceof Node && menu.contains(event.target)) {
+            return;
+        }
+        if (!anchor.isConnected) {
+            close();
+            return;
+        }
+        // Scrolling can slide another block's marker under the stationary
+        // pointer — its tooltip alongside an open menu is noise.
+        hideTooltip();
+        position();
+    };
+    // A panel/sash resize reflows the editor with no scroll event — re-anchor
+    // exactly as a scroll would (or close if the marker was rebuilt away).
+    const onResize = (): void => {
         if (!anchor.isConnected) {
             close();
             return;
@@ -421,6 +441,7 @@ export function openBlockMenu(
         document.removeEventListener("mousedown", onDocMouseDown, true);
         document.removeEventListener("keydown", onKeyDown, true);
         window.removeEventListener("scroll", onScroll, true);
+        window.removeEventListener("resize", onResize);
         window.removeEventListener("blur", onWindowBlur);
         menu.removeEventListener("focusout", onFocusOut);
         menu.remove();
@@ -577,23 +598,38 @@ export function openBlockMenu(
     menu.addEventListener("focusout", onFocusOut);
 
     // Position below the marker from a FRESH anchor rect, flipping/clamping
-    // to stay on screen — called at open and again on every scroll.
+    // to stay on screen — called at open and again on every scroll. The menu
+    // never intrudes into the fixed topbar's band, and when neither side can
+    // hold it whole it takes the LARGER side and scrolls internally (its
+    // max-height is set to the space actually available) — clamping a
+    // full-height menu used to occlude its own anchor and slide under the
+    // topbar/sticky-heading chrome.
+    // The menu's content is fixed after build — measure its natural height
+    // once (lazily, after mount) instead of clearing maxHeight per scroll,
+    // which would force double reflows and clamp the menu's own scrollTop.
+    let naturalHeight = 0;
     function position(): void {
         const rect = anchor.getBoundingClientRect();
+        const topbarBottom = getTopbarBottom();
         const mw = menu.offsetWidth;
-        const mh = menu.offsetHeight;
+        if (naturalHeight === 0) {
+            naturalHeight = menu.offsetHeight;
+        }
         let left = rect.left;
         if (left + mw > window.innerWidth - 8) {
             left = window.innerWidth - 8 - mw;
         }
         left = Math.max(8, left);
-        let top = rect.bottom + 4;
-        if (top + mh > window.innerHeight - 8) {
-            top = rect.top - 4 - mh;
-        }
-        top = Math.max(8, top);
+
+        const spaceBelow = window.innerHeight - 8 - (rect.bottom + 4);
+        const spaceAbove = rect.top - 4 - (topbarBottom + 8);
+        const below = naturalHeight <= spaceBelow || spaceBelow >= spaceAbove;
+        const space = Math.max(below ? spaceBelow : spaceAbove, 48);
+        menu.style.maxHeight = naturalHeight > space ? `${Math.floor(space)}px` : "";
+        const height = Math.min(naturalHeight, space);
+        const top = below ? rect.bottom + 4 : rect.top - 4 - height;
         menu.style.left = `${Math.round(left)}px`;
-        menu.style.top = `${Math.round(top)}px`;
+        menu.style.top = `${Math.round(Math.max(topbarBottom + 8, top))}px`;
     }
     position();
 
@@ -604,6 +640,7 @@ export function openBlockMenu(
     document.addEventListener("mousedown", onDocMouseDown, true);
     document.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    window.addEventListener("resize", onResize);
     window.addEventListener("blur", onWindowBlur);
     hideTooltip();
 
