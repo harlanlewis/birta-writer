@@ -12,10 +12,15 @@ export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
     await page.waitForSelector(".heading-fold-marker--paragraph", { timeout: 10000 });
-    await page.waitForTimeout(200);
+    // The fixture's code block pulls the lazy grammar chunk and re-highlights
+    // asynchronously; those late DOM mutations clear Chromium's hover chain
+    // out from under a synthetic mouse position, so let startup fully settle
+    // before any hover-dependent check.
+    await page.waitForTimeout(700);
 
     const pMarker = ".ProseMirror > p .heading-fold-marker--paragraph";
     const opacity = () => page.$eval(pMarker, (el) => getComputedStyle(el).opacity);
+
 
     // ── 1. Exactly one paragraph marker: the top-level TEXT paragraph only.
     // The fixture also carries an image-only line and a raw-html line — both
@@ -40,6 +45,11 @@ export async function run({ page, check, baseUrl }) {
     });
     await page.mouse.move(paraBox.x, paraBox.y);
     await page.waitForTimeout(150);
+    // Async renders after the move (the code block's lazy grammar chunk)
+    // clear Chromium's hover chain until the next real input — jiggle to
+    // re-establish it. A human's continuous motion does this for free.
+    await page.mouse.move(paraBox.x + 1, paraBox.y);
+    await page.waitForTimeout(50);
     const subtle = parseFloat(await opacity());
     check("paragraph hover: P at the heading markers' resting contrast", subtle > 0.4 && subtle < 0.7, `opacity=${subtle}`);
 
@@ -103,6 +113,53 @@ export async function run({ page, check, baseUrl }) {
     });
     check("## marker's enlarged box does not overlap the fold chevron",
         chevronGap !== null && chevronGap >= -0.5, `gap=${chevronGap?.toFixed(1)}`);
+
+    // ── 4d. Every top-level block type carries its glyph marker ──
+    // Fixture order: text P, list -, quote >, image ![], html <>, code ```.
+    const glyphs = await page.$$eval(".heading-fold-marker--block", (els) =>
+        els.map((el) => el.textContent));
+    check("block glyph markers cover list/quote/image/html/code",
+        JSON.stringify(glyphs) === JSON.stringify(["P", "-", ">", "![]", "<>", "```"]),
+        `glyphs=${JSON.stringify(glyphs)}`);
+
+    // Each glyph marker must sit in the LEFT GUTTER of its own block — the
+    // in-NodeView anchoring (code block) is the fragile part. Hover the block
+    // first so the marker is revealed where geometry is measured.
+    for (const [sel, name] of [
+        [".ProseMirror > ul", "list"],
+        [".ProseMirror > blockquote", "quote"],
+        [".ProseMirror > .code-block-wrapper, .ProseMirror > pre", "code"],
+    ]) {
+        const geom = await page.$eval(sel, (host) => {
+            const m = host.querySelector(".heading-fold-marker--block");
+            if (!m) return null;
+            const hostRect = host.getBoundingClientRect();
+            const rect = m.getBoundingClientRect();
+            return {
+                leftOfBlock: rect.right <= hostRect.left + 2,
+                withinBlockY: rect.top >= hostRect.top - 4 && rect.bottom <= hostRect.bottom + 4,
+            };
+        }).catch(() => null);
+        check(`${name} marker sits in its block's left gutter`,
+            geom !== null && geom.leftOfBlock && geom.withinBlockY,
+            JSON.stringify(geom));
+    }
+
+    // Hover the list: its marker reveals at resting contrast.
+    const listBox = await page.$eval(".ProseMirror > ul", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(listBox.x, listBox.y);
+    await page.waitForTimeout(150);
+    await page.mouse.move(listBox.x + 1, listBox.y); // hover-chain jiggle (see check 3)
+    await page.waitForTimeout(50);
+    const listMarkerOpacity = await page.$eval(
+        ".ProseMirror > ul .heading-fold-marker--block",
+        (el) => parseFloat(getComputedStyle(el).opacity),
+    );
+    check("hovering a list reveals its - marker", listMarkerOpacity > 0.4,
+        `opacity=${listMarkerOpacity}`);
 
     // ── 5. Click opens the shared retype menu with P checked ──
     await page.mouse.click(markerBox.x, markerBox.y);

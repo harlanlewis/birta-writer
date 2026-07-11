@@ -21,21 +21,20 @@
  * Body-mounted like the other chrome popups; one menu open at a time; the
  * keyboard model mirrors the toolbar dropdowns (roving arrows, Enter, Escape).
  */
-import { editorViewCtx, serializerCtx } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
-import { Fragment } from "@milkdown/prose/model";
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import { TextSelection } from "@milkdown/prose/state";
-import {
-    findHeadingFoldRange,
-    getHeadingLevel,
-    setHeadingLevelAt,
-} from "../../plugins/headingFold";
+import { findHeadingFoldRange, getHeadingLevel } from "../../plugins/headingFold";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import { notifyClipboardWrite } from "../../messaging";
 import { slugify } from "../../utils/slug";
 import { hideTooltip } from "../../ui/tooltip";
 import { t } from "../../i18n";
+import { canTurnInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
+
+// The conversion matrix and kind helpers live in ./turnInto; re-exported so
+// consumers and tests keep one import surface.
+export { turnIntoKindAt, canTurnInto, turnBlockInto, isTextBearingParagraph } from "./turnInto";
+export type { TurnIntoKind } from "./turnInto";
 
 // ── Editor access ───────────────────────────────────────────────────────────
 // The menu lives behind a ProseMirror widget, which only hands us the view;
@@ -45,149 +44,6 @@ let getEditor: GetEditor = () => null;
 
 export function setBlockMenuContext(ctx: { getEditor: GetEditor }): void {
     getEditor = ctx.getEditor;
-}
-
-// ── Block typing ────────────────────────────────────────────────────────────
-
-/** The convertible block kinds the Turn-into section can name. */
-export type TurnIntoKind =
-    | "paragraph"
-    | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
-    | "bulletList" | "orderedList" | "taskList"
-    | "blockquote" | "callout" | "codeBlock";
-
-/**
- * The Turn-into kind of the top-level node at `pos`, or null for blocks the
- * section can't name (tables, HR, raw blocks…) — those get actions only.
- * Exported for unit testing.
- */
-export function turnIntoKindAt(view: EditorView, pos: number): TurnIntoKind | null {
-    const node = view.state.doc.nodeAt(pos);
-    if (!node) {
-        return null;
-    }
-    switch (node.type.name) {
-        case "paragraph":
-            return "paragraph";
-        case "heading":
-            return `h${Math.min(Math.max(getHeadingLevel(node), 1), 6)}` as TurnIntoKind;
-        case "blockquote":
-            return "blockquote";
-        case "callout":
-            return "callout";
-        case "code_block":
-            return "codeBlock";
-        case "bullet_list": {
-            // A bullet list whose items carry `checked` is a task list.
-            const first = node.firstChild;
-            return first && first.attrs["checked"] != null ? "taskList" : "bulletList";
-        }
-        case "ordered_list":
-            return "orderedList";
-        default:
-            return null;
-    }
-}
-
-const HEADING_KINDS: readonly TurnIntoKind[] = ["h1", "h2", "h3", "h4", "h5", "h6"];
-
-function headingLevelOf(kind: TurnIntoKind): number {
-    const idx = HEADING_KINDS.indexOf(kind);
-    return idx === -1 ? 0 : idx + 1;
-}
-
-// ── Conversions ─────────────────────────────────────────────────────────────
-
-/** Places the caret just inside the block at `pos`, so the selection-based
- * editor commands (the same ones the toolbar runs) target that block. */
-function selectInto(view: EditorView, pos: number): void {
-    const inside = Math.min(pos + 1, view.state.doc.content.size);
-    view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(inside))));
-}
-
-/** Serializes the single top-level node at `pos` to markdown source. */
-function blockMarkdownAt(view: EditorView, pos: number): string | null {
-    const editor = getEditor();
-    const node = view.state.doc.nodeAt(pos);
-    if (!editor || !node) {
-        return null;
-    }
-    let markdown: string | null = null;
-    editor.action((ctx) => {
-        const serializer = ctx.get(serializerCtx);
-        const doc = view.state.schema.topNodeType.create(null, Fragment.from(node));
-        markdown = serializer(doc).replace(/\n+$/, "");
-    });
-    return markdown;
-}
-
-/**
- * Replace the block at `pos` with a code block holding the block's literal
- * markdown source — marks become visible syntax (`**bold**`), a heading keeps
- * its `##`. Lossless in the markdown sense: converting back re-parses it.
- */
-function turnIntoCodeBlock(view: EditorView, pos: number): boolean {
-    const node = view.state.doc.nodeAt(pos);
-    const source = blockMarkdownAt(view, pos);
-    const codeType = view.state.schema.nodes["code_block"];
-    if (!node || source === null || !codeType) {
-        return false;
-    }
-    const code = codeType.createChecked(
-        null,
-        source ? view.state.schema.text(source) : undefined,
-    );
-    view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, code));
-    view.focus();
-    return true;
-}
-
-/**
- * Convert the block at `pos` to `target`. P/H retypes go through
- * setHeadingLevelAt (attr-preserving, no selection dance); the wrapping
- * conversions (lists, quote, callout) first retype a heading to a paragraph,
- * then run the exact command the toolbar runs with the caret placed in the
- * block — so the menu can never drift from toolbar behavior.
- */
-function turnBlockInto(view: EditorView, pos: number, target: TurnIntoKind): void {
-    if (target === "paragraph" || HEADING_KINDS.includes(target)) {
-        const node = view.state.doc.nodeAt(pos);
-        if (node && (node.type.name === "paragraph" || node.type.name === "heading")) {
-            setHeadingLevelAt(view, pos, headingLevelOf(target));
-        } else {
-            // Other block shapes (quote/list/code marker anchors): the
-            // selection-based command carries the right per-shape semantics
-            // (setHeading lifts list items, etc.).
-            selectInto(view, pos);
-            const id = target === "paragraph" ? "setParagraph" : `setHeading${headingLevelOf(target)}`;
-            runEditorCommand(id, getEditor);
-        }
-        return;
-    }
-    if (target === "codeBlock") {
-        turnIntoCodeBlock(view, pos);
-        return;
-    }
-    // Wrapping targets want prose to wrap: retype a heading down to a
-    // paragraph first so "H2 → Bullet List" gives a list item, not a no-op.
-    const node = view.state.doc.nodeAt(pos);
-    if (node?.type.name === "heading") {
-        setHeadingLevelAt(view, pos, 0);
-    }
-    selectInto(view, pos);
-    const wrapCommands: Partial<Record<TurnIntoKind, string>> = {
-        bulletList: "toggleBulletList",
-        orderedList: "toggleOrderedList",
-        taskList: "toggleTaskList",
-        blockquote: "toggleBlockquote",
-        callout: "insertCallout",
-    };
-    const commandId = wrapCommands[target];
-    if (!commandId) {
-        return;
-    }
-    runEditorCommand(commandId, getEditor);
-    view.focus();
 }
 
 // ── Block actions ───────────────────────────────────────────────────────────
@@ -494,30 +350,38 @@ export function openBlockMenu(
     };
 
     // ── Turn into ──
+    // Blocks with no nameable kind (tables, HR, image/html paragraphs, raw
+    // blocks) get an actions-only menu; conversions the matrix can't perform
+    // for THIS source (e.g. anything from a code block) are hidden rather
+    // than disabled — a never-possible row is noise, unlike the move rows'
+    // temporarily-impossible edges below.
     let activeRow: HTMLElement | null = null;
-    for (const { kind, label } of TURN_INTO_CHOICES) {
-        const active = kind === currentKind;
-        const row = addRow(t(label), {
-            radio: true,
-            active,
-            action: () => {
-                if (!active) {
-                    turnBlockInto(view, blockPos, kind);
-                }
-            },
-        });
-        if (active) {
-            activeRow = row;
+    if (currentKind !== null) {
+        const offered = TURN_INTO_CHOICES.filter(({ kind }) => canTurnInto(view, blockPos, kind));
+        for (const { kind, label } of offered) {
+            const active = kind === currentKind;
+            const row = addRow(t(label), {
+                radio: true,
+                active,
+                action: () => {
+                    if (!active) {
+                        turnBlockInto(view, blockPos, kind, getEditor);
+                    }
+                },
+            });
+            if (active) {
+                activeRow = row;
+            }
+            // The wordy conversions start after H6 — visually split them from
+            // the compact level radio the menu grew out of.
+            if (kind === "h6" && offered.some((c) => !c.kind.startsWith("h") && c.kind !== "paragraph")) {
+                addDivider();
+            }
         }
-        // The wordy conversions start after H6 — visually split them from the
-        // compact level radio the menu grew out of.
-        if (kind === "h6") {
-            addDivider();
-        }
+        addDivider();
     }
 
     // ── Block actions ──
-    addDivider();
     addRow(t("Duplicate"), { action: () => duplicateBlock(view, blockPos) });
     addRow(t("Copy as Markdown"), {
         action: () => runEditorCommand("copyAsMarkdown", getEditor, { blockPos }),

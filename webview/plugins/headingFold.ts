@@ -6,9 +6,10 @@ import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
 import { t } from "../i18n";
 // Runtime-only cycle (blockMenu imports this module's pure helpers back);
-// both sides touch the other only inside event handlers, matching the
-// slashMenu plugin ↔ component precedent.
+// both sides touch the other only inside event handlers / decoration passes,
+// matching the slashMenu plugin ↔ component precedent.
 import { openBlockMenu } from "../components/blockMenu";
+import { isTextBearingParagraph } from "../components/blockMenu/turnInto";
 
 export type HeadingFoldMeta = { type: "toggle"; pos: number };
 type HeadingFoldRange = { from: number; to: number };
@@ -211,20 +212,23 @@ function createHeadingFoldGutter(
 }
 
 /**
- * The paragraph twin of the heading gutter: a "P" marker that is invisible
- * until the paragraph is hovered (CSS), and opens the same retype menu (P /
- * H1–H6) at full contrast when interacted with — so P → Hn is as reachable as
- * Hn → P. No fold chevron: paragraphs don't own sections.
+ * The non-heading twin of the heading gutter: a source-mirroring glyph (`P`,
+ * `-`, `>`, ``` …) that is invisible until its block is hovered (CSS), and
+ * opens the block menu at full contrast when interacted with — so every
+ * top-level block's conversions and actions are as reachable as a heading's.
+ * No fold chevron: only headings own sections.
  */
-function createParagraphGutter(view: EditorView, paragraphPos: number): HTMLElement {
+function createBlockGutter(view: EditorView, blockPos: number, glyph: string): HTMLElement {
     const gutter = document.createElement("span");
-    gutter.className = "heading-fold-gutter heading-fold-gutter--paragraph";
+    gutter.className = "heading-fold-gutter heading-fold-gutter--block";
     gutter.contentEditable = "false";
 
     const marker = document.createElement("button");
     marker.type = "button";
-    marker.className = "heading-fold-marker heading-fold-marker--paragraph";
-    marker.textContent = "P";
+    // --paragraph kept as the P marker's stable test/back-compat hook; every
+    // hover-revealed marker (including P) carries --block for shared styling.
+    marker.className = `heading-fold-marker heading-fold-marker--block${glyph === "P" ? " heading-fold-marker--paragraph" : ""}`;
+    marker.textContent = glyph;
     // Same label as the heading markers: it's the same block menu.
     const markerTip = t("Block options");
     marker.setAttribute("aria-label", markerTip);
@@ -237,7 +241,7 @@ function createParagraphGutter(view: EditorView, paragraphPos: number): HTMLElem
     marker.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        openBlockMenu(view, paragraphPos, marker, event.detail === 0);
+        openBlockMenu(view, blockPos, marker, event.detail === 0);
     });
 
     gutter.appendChild(marker);
@@ -245,29 +249,45 @@ function createParagraphGutter(view: EditorView, paragraphPos: number): HTMLElem
 }
 
 /**
- * True when a paragraph carries actual text content — at least one inline
- * child that is neither an image nor an html atom, ignoring whitespace-only
- * text nodes. Image-only and HTML-only paragraphs are visual blocks, not
- * prose, so they don't earn the "P" marker (MAR-79).
+ * The gutter glyph for a non-heading top-level block, or null for blocks that
+ * get no marker. Glyphs mirror the markdown source, dimmed (the design
+ * principle the heading hashes established): `-`/`1.`/`[ ]` lists, `>` quote,
+ * `[!]` callout, ``` code, `![]` standalone image, `<>` raw HTML.
+ *
+ * Deliberately absent for now: tables (rich chrome of their own — grips,
+ * insert bars; a second control would double up) and leaf atoms like `---`
+ * (an hr can't host the in-block widget this gutter rides on; both join in
+ * MAR-19's overlay-based drag handle).
  */
-function isTextBearingParagraph(node: any): boolean {
-    // An empty paragraph is a blank line the user is about to type on —
-    // prose, not a visual block.
-    if (node.childCount === 0) {
-        return true;
+function blockMarkerGlyph(node: any): string | null {
+    switch (node.type.name) {
+        case "paragraph": {
+            if (isTextBearingParagraph(node)) {
+                return "P";
+            }
+            let sawImage = false;
+            node.forEach((child: any) => {
+                if (child.type.name === "image") {
+                    sawImage = true;
+                }
+            });
+            return sawImage ? "![]" : "<>";
+        }
+        case "bullet_list": {
+            const first = node.firstChild;
+            return first && first.attrs["checked"] != null ? "[ ]" : "-";
+        }
+        case "ordered_list":
+            return "1.";
+        case "blockquote":
+            return ">";
+        case "callout":
+            return "[!]";
+        case "code_block":
+            return "```";
+        default:
+            return null;
     }
-    let textBearing = false;
-    node.forEach((child: any) => {
-        const name = child.type.name;
-        if (name === "image" || name === "html") {
-            return;
-        }
-        if (child.isText && !child.text?.trim()) {
-            return;
-        }
-        textBearing = true;
-    });
-    return textBearing;
 }
 
 function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): DecorationSet {
@@ -276,19 +296,17 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
 
     doc.forEach((node: any, offset: number) => {
         if (!isHeadingNode(node)) {
-            // Top-level paragraphs get the hover-revealed "P" gutter (the same
-            // retype menu as headings). Only direct children of the doc —
-            // paragraphs inside lists/quotes/tables have their own semantics.
-            // Image-only / HTML-only paragraphs are excluded (MAR-79): a
-            // standalone image or raw-HTML block parses as a paragraph
-            // wrapping a single inline atom, and "P" (a text-level cue) plus
-            // the heading retype menu are wrong for those.
-            if (node.type.name === "paragraph" && isTextBearingParagraph(node)) {
+            // Every non-heading top-level block with a glyph gets the
+            // hover-revealed gutter marker opening the block menu. Only
+            // direct children of the doc — blocks inside lists/quotes/tables
+            // have their own semantics.
+            const glyph = blockMarkerGlyph(node);
+            if (glyph !== null) {
                 decorations.push(
                     Decoration.widget(
                         offset + 1,
-                        (view: EditorView) => createParagraphGutter(view, offset),
-                        { key: `paragraph-gutter-${offset}`, side: -1 },
+                        (view: EditorView) => createBlockGutter(view, offset, glyph),
+                        { key: `block-gutter-${offset}-${glyph}`, side: -1 },
                     ),
                 );
             }

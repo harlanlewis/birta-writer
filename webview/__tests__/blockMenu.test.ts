@@ -126,6 +126,140 @@ describe("turnIntoKindAt", () => {
             null, // hr — actions only
         ]);
     });
+
+    it("image-only and html-only paragraphs should have no Turn-into kind", async () => {
+        const editor = await makeEditor("![img](data:,x)\n\n<div>raw</div>");
+        const v = view(editor);
+        const kinds: (string | null)[] = [];
+        v.state.doc.forEach((_node, offset) => {
+            kinds.push(turnIntoKindAt(v, offset));
+        });
+        expect(kinds).toEqual([null, null]);
+    });
+});
+
+describe("Turn into — non-prose sources", () => {
+    it("bullet list → ordered list should retype the node in place", async () => {
+        const editor = await makeEditor("- one\n- two");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Ordered List");
+        expect(view(editor).state.doc.firstChild!.type.name).toBe("ordered_list");
+        expect(markdown(editor)).toBe("1. one\n2. two");
+    });
+
+    it("bullet list → task list should mark every item checkable", async () => {
+        const editor = await makeEditor("- one\n- two");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Task List");
+        expect(markdown(editor)).toBe("- [ ] one\n- [ ] two");
+    });
+
+    it("bullet list → paragraph should unwrap every item", async () => {
+        const editor = await makeEditor("- one\n- two");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "P");
+        expect(markdown(editor)).toBe("one\n\ntwo");
+    });
+
+    it("bullet list → H2 should turn each item's lead paragraph into a heading", async () => {
+        const editor = await makeEditor("- one\n- two");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "H2");
+        expect(markdown(editor)).toBe("## one\n\n## two");
+    });
+
+    it("bullet list → blockquote should wrap the whole list", async () => {
+        const editor = await makeEditor("- one\n- two");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Blockquote");
+        expect(markdown(editor)).toBe("> - one\n> - two");
+    });
+
+    it("blockquote → paragraph should unwrap the quote", async () => {
+        const editor = await makeEditor("> quoted line");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "P");
+        expect(markdown(editor)).toBe("quoted line");
+    });
+
+    it("blockquote → H3 should unwrap and retype the first paragraph", async () => {
+        const editor = await makeEditor("> quoted line");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "H3");
+        expect(markdown(editor)).toBe("### quoted line");
+    });
+
+    it("blockquote → bullet list should itemize each paragraph", async () => {
+        const editor = await makeEditor("> alpha\n>\n> beta");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Bullet List");
+        expect(markdown(editor)).toBe("- alpha\n- beta");
+    });
+
+    it("a whole list → code block should fence its literal markdown source", async () => {
+        const editor = await makeEditor("- one\n- two");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Code Block");
+        const first = view(editor).state.doc.firstChild!;
+        expect(first.type.name).toBe("code_block");
+        expect(first.textContent).toContain("- one");
+        expect(first.textContent).toContain("- two");
+    });
+
+    it("a code block's menu should offer no conversions except itself", async () => {
+        const editor = await makeEditor("```js\nlet x = 1\n```");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item")).map((el) => el.textContent);
+        expect(labels).toContain("Code Block"); // the filled current row
+        expect(labels).not.toContain("P");
+        expect(labels).not.toContain("Bullet List");
+        expect(labels).toContain("Duplicate"); // actions always present
+    });
+
+    it("an image-only paragraph's menu should be actions-only", async () => {
+        const editor = await makeEditor("![img](data:,x)");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item")).map((el) => el.textContent);
+        expect(labels).not.toContain("P");
+        expect(labels).not.toContain("Code Block");
+        expect(labels).toEqual(["Duplicate", "Copy as Markdown", "Move Up", "Move Down", "Delete"]);
+    });
+});
+
+describe("block markers for every top-level type", () => {
+    it("lists, quotes, code blocks, images, and html should carry glyph markers", async () => {
+        const editor = await makeEditor(
+            [
+                "text",
+                "",
+                "- bullet",
+                "",
+                "1. ordered",
+                "",
+                "- [ ] task",
+                "",
+                "> quote",
+                "",
+                "```js",
+                "code",
+                "```",
+                "",
+                "![img](data:,x)",
+                "",
+                "<div>raw</div>",
+                "",
+            ].join("\n"),
+        );
+        view(editor);
+        const glyphs = Array.from(
+            document.querySelectorAll(".heading-fold-marker--block"),
+        ).map((el) => el.textContent);
+        expect(glyphs).toEqual(["P", "-", "1.", "[ ]", ">", "```", "![]", "<>"]);
+        // The P marker keeps its historical class; glyph markers don't.
+        expect(document.querySelectorAll(".heading-fold-marker--paragraph")).toHaveLength(1);
+    });
 });
 
 describe("Turn into", () => {

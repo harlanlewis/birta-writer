@@ -685,21 +685,32 @@ body.editor-width-auto {
             background: var(--vscode-toolbar-hoverBackground);
         }
 
-        /* Paragraph gutter: invisible until the paragraph is hovered, then the
-           same contrast as the heading hash markers; interacting with the
-           marker itself (hover / open menu / keyboard focus) brings it to the
-           markers' full hover treatment — so P → Hn is as reachable as
-           Hn → P without adding ambient noise. */
-        .heading-fold-gutter--paragraph {
+        /* Non-heading block gutters (P, -, 1., [ ], >, [!], ```, ![], <>):
+           invisible until their block is hovered, then the same contrast as
+           the heading hash markers; interacting with the marker itself
+           (hover / open menu / keyboard focus) brings it to the markers' full
+           hover treatment — every block's menu is as reachable as a heading's
+           without adding ambient noise. */
+        .heading-fold-gutter--block {
             top: 0;
             height: 1.5em;
         }
 
-        /* Bridge the whitespace between the gutter and the paragraph text, so
-           mousing from the text to the marker never leaves the paragraph's
+        /* Positioning anchor for the hosts that don't already have one
+           (paragraphs and headings set position:relative above; the code
+           block's wrapper and pre carry their own). Scoped to top-level
+           blocks — only they get the widget. Nesting-relative: this block
+           already sits inside `.milkdown .editor`, which IS the ProseMirror
+           root element. */
+        > :is(ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) {
+            position: relative;
+        }
+
+        /* Bridge the whitespace between the gutter and the block content, so
+           mousing from the text to the marker never leaves the block's
            hover (the same gap-bridge idea as the toolbar menus). The pseudo-
            element re-enables pointer events inside the otherwise inert gutter. */
-        .heading-fold-gutter--paragraph::after {
+        .heading-fold-gutter--block::after {
             content: "";
             position: absolute;
             left: 100%;
@@ -710,26 +721,16 @@ body.editor-width-auto {
         }
 
         /* pointer-events stays AUTO even while invisible (matching the heading
-           markers): the marker itself must sustain the paragraph's :hover as
+           markers): the marker itself must sustain the block's :hover as
            the pointer travels onto it — with `none` here, leaving the text box
            dropped the hover and the marker vanished before it could be clicked. */
-        .heading-fold-marker--paragraph {
+        .heading-fold-marker--block {
             opacity: 0;
         }
 
-        p:hover > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph {
-            opacity: 0.55; /* the heading markers' resting contrast */
-        }
-
-        /* Selectors carry the full p > … path so they outrank the paragraph-
-           hover rule above (the marker's own state must win). */
-        p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph:hover,
-        p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph:focus-visible,
-        p > .heading-fold-gutter--paragraph .heading-fold-marker--paragraph.heading-fold-marker--menu-open {
-            opacity: 1;
-            color: var(--vscode-foreground);
-            background: var(--vscode-toolbar-hoverBackground);
-        }
+        /* The reveal-on-hover rules for these markers live at TOP LEVEL
+           (search "Block marker hover") — a bare `:hover` subject never
+           matched in Chromium, so they use an explicit :is(host) list. */
 
         .heading-fold-toggle {
             box-sizing: border-box;
@@ -1455,4 +1456,24 @@ body.toolbar-hidden::before {
     &:hover {
         text-decoration: underline;
     }
+}
+
+/* Block marker hover. Hovering a top-level block reveals its glyph marker at
+   the heading markers' resting contrast; the widget may sit nested inside a
+   NodeView (the code block's contentDOM), but it always belongs to the
+   hovered top-level block. The hovered child is spelled out as an explicit
+   :is(host list) — a bare `> :hover` subject silently never matched in
+   Chromium (headless and headed), so don't "simplify" back to it. */
+.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper):hover .heading-fold-marker--block {
+    opacity: 0.55;
+}
+
+/* The marker's own state must win over the block-hover rule above, so it
+   carries the same host prefix (one extra class of specificity). */
+.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) .heading-fold-marker--block:hover,
+.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) .heading-fold-marker--block:focus-visible,
+.milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper) .heading-fold-marker--block.heading-fold-marker--menu-open {
+    opacity: 1;
+    color: var(--vscode-foreground);
+    background: var(--vscode-toolbar-hoverBackground);
 }
