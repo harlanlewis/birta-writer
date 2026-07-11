@@ -46,13 +46,15 @@ export interface DropBoundary {
  * nesting depth plus each list's end (kind "item"). Pure on the doc; the
  * caller pairs positions with viewport geometry. Exported for unit testing.
  */
-export function blockBoundaryPositions(doc: ProseNode): { pos: number; kind: "block" | "item" }[] {
-    const positions: { pos: number; kind: "block" | "item" }[] = [];
+export function blockBoundaryPositions(
+    doc: ProseNode,
+): { pos: number; kind: "block" | "item"; listPos?: number }[] {
+    const positions: { pos: number; kind: "block" | "item"; listPos?: number }[] = [];
     const walkList = (list: ProseNode, listPos: number): void => {
         let lastEnd = listPos + 1;
         list.forEach((item: ProseNode, offset: number) => {
             const itemPos = listPos + 1 + offset;
-            positions.push({ pos: itemPos, kind: "item" });
+            positions.push({ pos: itemPos, kind: "item", listPos });
             lastEnd = itemPos + item.nodeSize;
             item.forEach((child: ProseNode, childOffset: number) => {
                 if (child.type.name === "bullet_list" || child.type.name === "ordered_list") {
@@ -60,7 +62,10 @@ export function blockBoundaryPositions(doc: ProseNode): { pos: number; kind: "bl
                 }
             });
         });
-        positions.push({ pos: lastEnd, kind: "item" });
+        // End-of-list slot; carries its OWNING list so geometry is measured
+        // per list, not from whatever item happened to be walked last (a
+        // nested last item would otherwise shadow the outer list's slot).
+        positions.push({ pos: lastEnd, kind: "item", listPos });
     };
     doc.forEach((node: ProseNode, offset: number) => {
         positions.push({ pos: offset, kind: "block" });
@@ -89,7 +94,10 @@ export function dropTargetFor(
     let bestDist = Infinity;
     for (const boundary of boundaries) {
         const dist = Math.abs(boundary.y - pointerY);
-        if (dist < bestDist) {
+        // Ties break toward the LARGER position: coincident end-of-list
+        // slots (a nested list ending flush with its parent) resolve to the
+        // shallower slot, whose position is the greater.
+        if (dist < bestDist || (dist === bestDist && best !== null && boundary.pos > best.pos)) {
             bestDist = dist;
             best = boundary;
         }
@@ -139,8 +147,7 @@ function measureBoundaries(view: EditorView): DropBoundary[] {
     const { doc } = view.state;
     const boundaries: DropBoundary[] = [];
     let lastBlockBottom: number | null = null;
-    let lastItemGeom: { bottom: number; left: number; width: number } | null = null;
-    for (const { pos, kind } of blockBoundaryPositions(doc)) {
+    for (const { pos, kind, listPos } of blockBoundaryPositions(doc)) {
         if (kind === "block" && pos === doc.content.size) {
             if (lastBlockBottom !== null) {
                 boundaries.push({ pos, y: lastBlockBottom, kind });
@@ -152,20 +159,34 @@ function measureBoundaries(view: EditorView): DropBoundary[] {
             const rect = dom.getBoundingClientRect();
             if (kind === "item") {
                 boundaries.push({ pos, y: rect.top, kind, left: rect.left, width: rect.width });
-                lastItemGeom = { bottom: rect.bottom, left: rect.left, width: rect.width };
             } else {
                 boundaries.push({ pos, y: rect.top, kind });
                 lastBlockBottom = rect.bottom;
             }
-        } else if (kind === "item" && lastItemGeom !== null) {
-            // End-of-list slot: below the last sibling item.
-            boundaries.push({
-                pos,
-                y: lastItemGeom.bottom,
-                kind,
-                left: lastItemGeom.left,
-                width: lastItemGeom.width,
-            });
+        } else if (kind === "item" && listPos !== undefined) {
+            // End-of-list slot: the OWNING list's bottom edge, at its own
+            // items' column (its last DIRECT child supplies the indent —
+            // deriving from the last WALKED item let a nested list's column
+            // shadow the outer slot's geometry entirely).
+            const listDom = view.nodeDOM(listPos);
+            const listNode = doc.nodeAt(listPos);
+            if (listDom instanceof HTMLElement && listNode && listNode.childCount > 0) {
+                let lastChildOffset = 0;
+                listNode.forEach((_child: ProseNode, childOffset: number) => {
+                    lastChildOffset = childOffset;
+                });
+                const lastItemDom = view.nodeDOM(listPos + 1 + lastChildOffset);
+                const column = lastItemDom instanceof HTMLElement
+                    ? lastItemDom.getBoundingClientRect()
+                    : listDom.getBoundingClientRect();
+                boundaries.push({
+                    pos,
+                    y: listDom.getBoundingClientRect().bottom,
+                    kind,
+                    left: column.left,
+                    width: column.width,
+                });
+            }
         }
     }
     return boundaries;

@@ -78,7 +78,9 @@ const repositionVeil = (): void => {
  * listeners) until hideRangeVeil. Re-calling replaces the tracked range.
  */
 export function showRangeVeil(view: EditorView, range: { from: number; to: number }): void {
-    if (!veilEl) {
+    // isConnected guard: an editor teardown (revert/reload) or a test's body
+    // wipe can detach the singleton — re-append rather than paint nowhere.
+    if (!veilEl || !veilEl.isConnected) {
         veilEl = document.createElement("div");
         veilEl.className = "block-drag-veil";
         document.body.appendChild(veilEl);

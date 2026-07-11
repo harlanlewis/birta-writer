@@ -1610,11 +1610,13 @@ body.block-dragging .milkdown .editor {
 
 /* Quiet gutter while typing: any keydown in the editor suppresses the
    hover-revealed markers until the mouse moves again (the BlockNote/Tiptap
-   convention) — the gutter never flickers alongside the caret. Specificity
-   matches the reveal/state rules (5 class-level) and sits after them, so it
-   wins ties; the --dragging rule (6) still outranks it, keeping a dragged
-   marker visible if a key is pressed mid-drag. */
-body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--block:not(.heading-fold-marker--menu-open):not(:focus-visible) {
+   convention) — the gutter never flickers alongside the caret. NOTE the
+   :not() arguments count toward specificity, making this rule outrank every
+   marker-state rule — so each state that must survive typing is excluded
+   explicitly: an open menu's anchor, keyboard focus, a drag in flight, and
+   the covered markers of a keyboard-built (shift+arrow) multi-block
+   selection. */
+body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--block:not(.heading-fold-marker--menu-open):not(:focus-visible):not(.heading-fold-marker--dragging):not(.heading-fold-marker--covered) {
     opacity: 0;
 }
 

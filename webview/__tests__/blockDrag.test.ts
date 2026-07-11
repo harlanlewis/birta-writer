@@ -4,13 +4,15 @@
  * (thresholds, indicator, auto-scroll) needs real layout and lives in
  * e2e/blockDrag.
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
+import { historyPlugin } from "../plugins/history";
+import { undo } from "@milkdown/prose/history";
 import { moveBlockTo, moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
 import { mockVscodeApi } from "./setup";
 import {
@@ -35,6 +37,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfm)
         .use(headingFoldPlugin)
+        .use(historyPlugin)
         .create();
     editors.push(editor);
     activeEditor = editor;
@@ -48,6 +51,10 @@ function view(editor: Editor): EditorView {
 function markdown(editor: Editor): string {
     return editor.action(getMarkdown()).trim();
 }
+
+beforeEach(() => {
+    vi.clearAllMocks();
+});
 
 afterEach(async () => {
     for (const editor of editors) {
@@ -91,6 +98,25 @@ describe("per-item list drag/menu (MAR-86)", () => {
         const glyphs = Array.from(document.querySelectorAll(".heading-fold-marker--block"))
             .map((el) => el.textContent);
         expect(glyphs).toEqual(["1.", "2.", "[x]", "[ ]"]);
+    });
+
+    it("an ordered list starting at 3 shows 3. and 4. — the real ordinals", async () => {
+        const editor = await makeEditor("3. a\n4. b");
+        view(editor);
+        const glyphs = Array.from(document.querySelectorAll(".heading-fold-marker--block"))
+            .map((el) => el.textContent);
+        expect(glyphs).toEqual(["3.", "4."]);
+        // And copying the second item carries ITS ordinal, not the start.
+        const markerEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker"));
+        markerEls[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Copy as Markdown")!;
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        const call = mockVscodeApi.postMessage.mock.calls
+            .map((args) => args[0])
+            .find((msg) => msg.type === "clipboardWrite");
+        expect(call?.data?.trim()).toBe("4. b");
     });
 
     it("moving an item within its list should reorder just the siblings", async () => {
@@ -164,16 +190,17 @@ describe("per-item list drag/menu (MAR-86)", () => {
         const call = mockVscodeApi.postMessage.mock.calls
             .map((args) => args[0])
             .find((msg) => msg.type === "clipboardWrite");
-        expect(call?.data?.trim()).toBe("1. second");
+        // The item's REAL ordinal, not the list's start.
+        expect(call?.data?.trim()).toBe("2. second");
     });
 });
 
 describe("dropTargetFor", () => {
     const boundaries = [
-        { pos: 0, y: 0 },
-        { pos: 10, y: 100 },
-        { pos: 20, y: 200 },
-        { pos: 30, y: 300 },
+        { pos: 0, y: 0, kind: "block" as const },
+        { pos: 10, y: 100, kind: "block" as const },
+        { pos: 20, y: 200, kind: "block" as const },
+        { pos: 30, y: 300, kind: "block" as const },
     ];
 
     it("the nearest boundary by y should win", () => {
@@ -326,13 +353,13 @@ describe("moveBlockTo", () => {
         expect(markdown(editor)).toBe(before);
     });
 
-    it("one drop should be one undo step (single transaction)", async () => {
+    it("one drop should be one undo step", async () => {
         const editor = await makeEditor("Alpha\n\nBeta");
         const v = view(editor);
         const range = moveRangeAt(v, 0)!;
-        const stepsBefore = v.state.tr.steps.length; // sanity: fresh tr is empty
-        expect(stepsBefore).toBe(0);
         expect(moveBlockTo(v, range, v.state.doc.content.size)).toBe(true);
         expect(markdown(editor)).toBe("Beta\n\nAlpha");
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("Alpha\n\nBeta");
     });
 });

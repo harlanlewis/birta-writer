@@ -393,7 +393,13 @@ function itemGlyph(listNode: any, item: any, index: number): string {
     if (item.attrs["checked"] != null) {
         return item.attrs["checked"] ? "[x]" : "[ ]";
     }
-    return listNode.type.name === "ordered_list" ? `${index + 1}.` : "-";
+    if (listNode.type.name === "ordered_list") {
+        // Honor the list's start number — a list sourced "3. / 4." must
+        // show 3. and 4., not 1. and 2.
+        const start = Number(listNode.attrs["order"] ?? 1);
+        return `${(Number.isFinite(start) ? start : 1) + index}.`;
+    }
+    return "-";
 }
 
 /**
@@ -775,6 +781,11 @@ export const headingFoldPlugin = $prose(() =>
                     view.dom.removeEventListener("mouseleave", clearHoveredGutter);
                     view.dom.removeEventListener("keydown", handleKeyDown);
                     document.body.classList.remove("gutter-quiet");
+                    // A selection-cover veil must not outlive its editor
+                    // (revert/reload recreates the view; the fresh plugin's
+                    // first sync would otherwise early-return and leave the
+                    // stale veil painted over the new document).
+                    hideRangeVeil();
                     clearHoveredGutter();
                 },
             };

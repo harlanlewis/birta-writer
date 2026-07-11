@@ -175,8 +175,14 @@ export function blockMarkdownAt(
         return null;
     }
     if (node.type.name === "list_item") {
-        const parent = view.state.doc.resolve(pos).parent;
-        node = parent.type.createChecked(parent.attrs, Fragment.from(node));
+        const $pos = view.state.doc.resolve(pos);
+        const parent = $pos.parent;
+        // An ordered item copies with its ACTUAL ordinal ("4. text"), not
+        // the parent list's start number.
+        const attrs = parent.type.name === "ordered_list"
+            ? { ...parent.attrs, order: Number(parent.attrs["order"] ?? 1) + $pos.index() }
+            : parent.attrs;
+        node = parent.type.createChecked(attrs, Fragment.from(node));
     }
     let markdown: string | null = null;
     editor.action((ctx) => {
