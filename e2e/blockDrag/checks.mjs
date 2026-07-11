@@ -112,5 +112,34 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.click(pAgain.x, pAgain.y);
     await page.waitForTimeout(100);
     check("a plain marker click still opens the block menu", (await page.$(".block-menu")) !== null);
+
+    // ── 5. The open menu stays glued to its marker while scrolling ──
+    // (Regression: it used to keep its fixed viewport coordinates and float
+    // away from the marker.)
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(150);
+    const glued = await page.evaluate(() => {
+        const menu = document.querySelector(".block-menu");
+        const marker = document.querySelector(".heading-fold-marker--menu-open");
+        if (!menu || !marker) return { menu: !!menu, marker: !!marker };
+        const m = menu.getBoundingClientRect();
+        const a = marker.getBoundingClientRect();
+        // Below-anchor placement: menu top ≈ marker bottom + 4 (a flip to
+        // above is also legal; accept either side within tolerance).
+        const below = Math.abs(m.top - (a.bottom + 4)) <= 3;
+        const above = Math.abs(m.bottom - (a.top - 4)) <= 3;
+        return { menu: true, marker: true, tracks: below || above };
+    });
+    check("menu tracks its marker through a scroll",
+        glued.menu && glued.marker && glued.tracks === true, JSON.stringify(glued));
     await page.keyboard.press("Escape");
+
+    // ── 6. Typing while the menu is open closes it (doc-change close) ──
+    const pOnceMore = await markerCenter(page, ".ProseMirror > p");
+    await page.mouse.click(pOnceMore.x, pOnceMore.y);
+    await page.waitForTimeout(100);
+    check("menu open before typing", (await page.$(".block-menu")) !== null);
+    await page.keyboard.type("x");
+    await page.waitForTimeout(100);
+    check("typing closes the block menu", (await page.$(".block-menu")) === null);
 }

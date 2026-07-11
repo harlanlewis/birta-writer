@@ -378,6 +378,68 @@ describe("block actions", () => {
     });
 });
 
+describe("menu lifecycle", () => {
+    it("a document change while the menu is open should close it", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        openMenuOn(markers()[0]!);
+        // Simulate an inbound edit (external sync / typing): insert text.
+        v.dispatch(v.state.tr.insertText("x", 1));
+        expect(document.querySelector(".block-menu")).toBeNull();
+    });
+
+    it("a selection-only transaction should NOT close the menu", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        openMenuOn(markers()[0]!);
+        const { TextSelection } = await import("@milkdown/prose/state");
+        v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(3))));
+        expect(document.querySelector(".block-menu")).not.toBeNull();
+    });
+
+    it("an action whose block was replaced under it should be a no-op", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        // Bypass the doc-change close (unit-level: pretend the close was
+        // missed) by swapping the first block for a different node directly.
+        const heading = v.state.schema.nodes["heading"]!;
+        v.dispatch(v.state.tr.setNodeMarkup(0, heading, { level: 2 }));
+        document.body.appendChild(menu); // re-attach to click a row
+        pickRow(menu, "Delete");
+        // The identity guard must refuse: both blocks still present.
+        expect(markdown(editor)).toBe("## Alpha\n\nBeta");
+    });
+
+    it("opening a marker should set aria-expanded, closing should clear it", async () => {
+        const editor = await makeEditor("Alpha");
+        view(editor);
+        const marker = markers()[0]!;
+        expect(marker.getAttribute("aria-expanded")).toBe("false");
+        openMenuOn(marker);
+        expect(marker.getAttribute("aria-expanded")).toBe("true");
+        marker.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(marker.getAttribute("aria-expanded")).toBe("false");
+        expect(document.querySelector(".block-menu")).toBeNull();
+    });
+
+    it("only one menu should be open at a time", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        view(editor);
+        openMenuOn(markers()[0]!);
+        openMenuOn(markers()[1]!);
+        expect(document.querySelectorAll(".block-menu")).toHaveLength(1);
+    });
+
+    it("a mousedown outside the menu should close it", async () => {
+        const editor = await makeEditor("Alpha");
+        view(editor);
+        openMenuOn(markers()[0]!);
+        document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(document.querySelector(".block-menu")).toBeNull();
+    });
+});
+
 describe("heading section semantics", () => {
     const DOC = "# A\n\ncontent A\n\n# B\n\ncontent B";
 

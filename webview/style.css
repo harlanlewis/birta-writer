@@ -729,8 +729,7 @@ body.editor-width-auto {
         }
 
         /* The reveal-on-hover rules for these markers live at TOP LEVEL
-           (search "Block marker hover") — a bare `:hover` subject never
-           matched in Chromium, so they use an explicit :is(host) list. */
+           (search "Block marker hover"). */
 
         .heading-fold-toggle {
             box-sizing: border-box;
@@ -1461,9 +1460,11 @@ body.toolbar-hidden::before {
 /* Block marker hover. Hovering a top-level block reveals its glyph marker at
    the heading markers' resting contrast; the widget may sit nested inside a
    NodeView (the code block's contentDOM), but it always belongs to the
-   hovered top-level block. The hovered child is spelled out as an explicit
-   :is(host list) — a bare `> :hover` subject silently never matched in
-   Chromium (headless and headed), so don't "simplify" back to it. */
+   hovered top-level block. Historical note: a bare `> :hover` subject failed
+   here only because the e2e harnesses lacked a doctype — the WHATWG quirks-
+   mode "active and hover quirk" makes a lone :hover compound never match.
+   The harnesses now carry <!doctype html>; the explicit :is(host list) is
+   kept for scoping (only glyph-bearing top-level blocks reveal markers). */
 .milkdown .editor > :is(p, ul, ol, blockquote, [data-type="callout"], .code-block-wrapper):hover .heading-fold-marker--block {
     opacity: 0.55;
 }

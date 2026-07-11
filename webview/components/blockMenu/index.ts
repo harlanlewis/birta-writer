@@ -241,7 +241,12 @@ export function openBlockMenu(
     }
 
     const currentKind = turnIntoKindAt(view, blockPos);
-    const isHeading = view.state.doc.nodeAt(blockPos)?.type.name === "heading";
+    // Identity guard: every action re-checks that the block it was built for
+    // is still the node at blockPos. The doc-change close (headingFold's
+    // plugin view calls closeBlockMenu) makes stale menus rare; this makes a
+    // stale ACTION impossible — same philosophy as tableCmd's cellPos bail.
+    const anchorNode = view.state.doc.nodeAt(blockPos);
+    const isHeading = anchorNode?.type.name === "heading";
 
     const menu = document.createElement("div");
     menu.className = "block-menu";
@@ -265,8 +270,16 @@ export function openBlockMenu(
     const onKeyDown = (event: KeyboardEvent): void => {
         if (event.key === "Escape") {
             event.preventDefault();
+            event.stopPropagation();
             close();
-            anchor.focus();
+            // Keyboard users get their focus back on the marker; a mouse
+            // open never moved focus, so return it to the editor (the marker
+            // may also have been destroyed by a decoration rebuild).
+            if (viaKeyboard && anchor.isConnected) {
+                anchor.focus();
+            } else {
+                view.focus();
+            }
             return;
         }
         const list = rowEls();
@@ -289,13 +302,34 @@ export function openBlockMenu(
             close();
         }
     };
+    // Keep the menu glued to its marker while any ancestor scrolls (the
+    // slash-menu idiom: capture-phase because the editor's scroller isn't
+    // always window). The marker may be destroyed by a decoration rebuild
+    // mid-scroll — then there is nothing to anchor to, so close.
+    const onScroll = (): void => {
+        if (!anchor.isConnected) {
+            close();
+            return;
+        }
+        position();
+    };
+    // The webview losing focus (user clicked another VS Code panel) should
+    // dismiss transient chrome, like the slash menu does.
+    const onWindowBlur = (): void => {
+        close();
+    };
     function close(): void {
         if (closeActiveBlockMenu === close) {
             closeActiveBlockMenu = null;
         }
         anchor.classList.remove("heading-fold-marker--menu-open");
+        if (anchor.isConnected) {
+            anchor.setAttribute("aria-expanded", "false");
+        }
         document.removeEventListener("mousedown", onDocMouseDown, true);
         document.removeEventListener("keydown", onKeyDown, true);
+        window.removeEventListener("scroll", onScroll, true);
+        window.removeEventListener("blur", onWindowBlur);
         menu.removeEventListener("focusout", onFocusOut);
         menu.remove();
     }
@@ -337,7 +371,11 @@ export function openBlockMenu(
                 return;
             }
             close();
-            opts.action();
+            // Identity guard (see anchorNode above): never act on a block
+            // that is no longer the one this menu was opened for.
+            if (view.state.doc.nodeAt(blockPos) === anchorNode) {
+                opts.action();
+            }
         });
         menu.appendChild(row);
         return row;
@@ -401,29 +439,38 @@ export function openBlockMenu(
 
     document.body.appendChild(menu);
     anchor.classList.add("heading-fold-marker--menu-open");
+    anchor.setAttribute("aria-expanded", "true");
     menu.addEventListener("focusout", onFocusOut);
 
-    // Position below the marker, flipping/clamping to stay on screen.
-    const rect = anchor.getBoundingClientRect();
-    const mw = menu.offsetWidth;
-    const mh = menu.offsetHeight;
-    let left = rect.left;
-    if (left + mw > window.innerWidth - 8) {
-        left = window.innerWidth - 8 - mw;
+    // Position below the marker from a FRESH anchor rect, flipping/clamping
+    // to stay on screen — called at open and again on every scroll.
+    function position(): void {
+        const rect = anchor.getBoundingClientRect();
+        const mw = menu.offsetWidth;
+        const mh = menu.offsetHeight;
+        let left = rect.left;
+        if (left + mw > window.innerWidth - 8) {
+            left = window.innerWidth - 8 - mw;
+        }
+        left = Math.max(8, left);
+        let top = rect.bottom + 4;
+        if (top + mh > window.innerHeight - 8) {
+            top = rect.top - 4 - mh;
+        }
+        top = Math.max(8, top);
+        menu.style.left = `${Math.round(left)}px`;
+        menu.style.top = `${Math.round(top)}px`;
     }
-    left = Math.max(8, left);
-    let top = rect.bottom + 4;
-    if (top + mh > window.innerHeight - 8) {
-        top = rect.top - 4 - mh;
-    }
-    top = Math.max(8, top);
-    menu.style.left = `${Math.round(left)}px`;
-    menu.style.top = `${Math.round(top)}px`;
+    position();
 
     closeActiveBlockMenu = close;
-    // Defer the outside-click listener so the opening click doesn't close it.
-    setTimeout(() => document.addEventListener("mousedown", onDocMouseDown, true), 0);
+    // Synchronous registration is safe: this runs from the marker's `click`,
+    // whose mousedown already happened — the next mousedown is genuinely
+    // outside. (A deferred add could leak if close() raced the timeout.)
+    document.addEventListener("mousedown", onDocMouseDown, true);
     document.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    window.addEventListener("blur", onWindowBlur);
     hideTooltip();
 
     if (viaKeyboard) {

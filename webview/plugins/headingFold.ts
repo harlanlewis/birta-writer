@@ -8,7 +8,7 @@ import { t } from "../i18n";
 // Runtime-only cycle (blockMenu imports this module's pure helpers back);
 // both sides touch the other only inside event handlers / decoration passes,
 // matching the slashMenu plugin ↔ component precedent.
-import { openBlockMenu } from "../components/blockMenu";
+import { closeBlockMenu, openBlockMenu } from "../components/blockMenu";
 import { isTextBearingParagraph } from "../components/blockMenu/turnInto";
 import { wireMarkerDrag } from "../components/blockMenu/drag";
 
@@ -145,6 +145,7 @@ function createHeadingFoldGutter(
     marker.textContent = headingMarker(level);
     marker.setAttribute("aria-label", t("Block options"));
     marker.setAttribute("aria-haspopup", "menu");
+    marker.setAttribute("aria-expanded", "false");
     applyTooltip(marker, t("Click for options · Drag to move"), { placement: "above" });
     // mousedown: keep the editor selection/caret; click: open the menu.
     marker.addEventListener("mousedown", (event) => {
@@ -238,6 +239,7 @@ function createBlockGutter(view: EditorView, blockPos: number, glyph: string): H
     // Same label as the heading markers: it's the same block menu.
     marker.setAttribute("aria-label", t("Block options"));
     marker.setAttribute("aria-haspopup", "menu");
+    marker.setAttribute("aria-expanded", "false");
     applyTooltip(marker, t("Click for options · Drag to move"), { placement: "above" });
     marker.addEventListener("mousedown", (event) => {
         event.preventDefault();
@@ -470,7 +472,14 @@ export const headingFoldPlugin = $prose(() =>
             view.dom.addEventListener("mouseleave", clearHoveredGutter);
 
             return {
-                update() {
+                update(updatedView, prevState) {
+                    // Any document change invalidates an open block menu's
+                    // captured position (and may destroy its anchor marker) —
+                    // close it. Selection-only transactions keep the same doc
+                    // node, so this never fires for caret movement.
+                    if (updatedView.state.doc !== prevState.doc) {
+                        closeBlockMenu();
+                    }
                     if (hoveredGutter && !view.dom.contains(hoveredGutter)) {
                         hoveredGutter = null;
                     }
