@@ -30,5 +30,6 @@ export { setSlashMenuHost, slashMenuPlugin } from "./slashMenu";
 export { tableAlignDefaultPlugin } from "./tableAlignDefault";
 export { cellClickFixPlugin } from "./tableCellClickFix";
 export { setLogTableSel } from "./tableDebug";
+export { blockKeysPlugin } from "./blockKeys";
 export { tabKeymapPlugin } from "./tabKeymap";
 export { tableKeymapPlugin } from "./tableKeymap";

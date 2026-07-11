@@ -104,6 +104,22 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
      */
     const CHORD_ALLOWLIST: Record<string, string[]> = {
         // typing-level ProseMirror keymaps (see keyboardShortcuts.ts)
+        // blockKeys: selection-state-conditional bindings — Shift+arrows
+        // extend block-wise ONLY when the selection already spans whole
+        // blocks and must fall through (return false) to native text
+        // selection otherwise, which a contributed keybinding cannot do;
+        // the Alt/Mod-Shift move chords share the same command layer and
+        // stay PM-level with them. None are claimed by the key-leak guard:
+        // VS Code's own Alt+arrow / Cmd+Shift+arrow defaults are
+        // editorTextFocus-scoped and inert while a webview has focus.
+        "webview/plugins/blockKeys.ts": [
+            "Alt-ArrowDown",
+            "Alt-ArrowUp",
+            "Mod-Shift-ArrowDown",
+            "Mod-Shift-ArrowUp",
+            "Shift-ArrowDown",
+            "Shift-ArrowUp",
+        ],
         "webview/plugins/formatKeymap.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
         "webview/plugins/history.ts": ["Mod-Shift-z", "Mod-y", "Mod-z"],
         "webview/plugins/tableKeymap.ts": ["Shift-Tab"],

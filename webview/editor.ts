@@ -62,6 +62,7 @@ import {
     selectionPlugin,
     slashMenuPlugin,
     tabKeymapPlugin,
+    blockKeysPlugin,
     tableKeymapPlugin,
     toggleHighlightCommand,
     trailingHrParagraphPlugin,
@@ -377,6 +378,7 @@ export async function createEditor(
         .use(wikiLinkCompletePlugin)
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
+        .use(blockKeysPlugin)
         .use(cellClickFixPlugin)
         .use(listSpreadNormalizePlugin)
         .use(trailingHrParagraphPlugin)
