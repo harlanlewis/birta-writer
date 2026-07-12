@@ -60,6 +60,14 @@
     "directive body",
     ":::",
     "",
+    "> [!important] Outer",
+    "> outer prose",
+    "> > [!tip] Inner Callout",
+    "> > inner prose",
+    "> ```js",
+    "> nested();",
+    "> ```",
+    "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

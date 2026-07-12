@@ -284,7 +284,11 @@ export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean
     }
     const { doc } = view.state;
     const node = doc.nodeAt(pos);
-    const target = node?.type.name === "list_item"
+    // Any NESTED block (list item, or a container's child) hops among its
+    // siblings via the parent-generic index walk; only top-level blocks use
+    // the doc-level walk (which also carries heading sections).
+    const nested = doc.resolve(pos).depth > 0;
+    const target = nested
         ? moveItemTarget(view, pos, dir)
         : moveTargetFor(doc, range, node?.type.name === "heading", dir);
     if (target === null) {
@@ -300,7 +304,7 @@ function canMove(view: EditorView, pos: number, dir: -1 | 1): boolean {
         return false;
     }
     const node = view.state.doc.nodeAt(pos);
-    if (node?.type.name === "list_item") {
+    if (view.state.doc.resolve(pos).depth > 0) {
         return moveItemTarget(view, pos, dir) !== null;
     }
     return moveTargetFor(view.state.doc, range, node?.type.name === "heading", dir) !== null;

@@ -132,8 +132,47 @@ export async function run({ page, check, baseUrl }) {
             "Paragraph", "List item", "Blockquote", "Image", "HTML",
             "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
             "Table", "Callout", "Callout", "Directive",
+            "Callout", "Callout", "Code Block",
         ]) && markers.every((m) => m.svg),
         `markers=${JSON.stringify(markers)}`);
+
+    // Nested children (a callout in a callout, a code block in a callout)
+    // are grabbable units: child markers exist and reveal on THEIR hover.
+    const nested = await page.evaluate(() => {
+        const kids = [...document.querySelectorAll(".block-gutter-host--child")];
+        return kids.map((el) => ({
+            pill: el.querySelector(".heading-fold-marker")?.dataset?.pill ?? null,
+            x: Math.round(el.querySelector(".heading-fold-marker")?.getBoundingClientRect().x ?? -1),
+        }));
+    });
+    check("nested container children carry their own markers",
+        nested.length === 2 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
+    const innerCallout = await page.evaluate(() => {
+        const el = [...document.querySelectorAll(".block-gutter-host--child")]
+            .find((k) => k.classList.contains("callout"));
+        if (!el) return null;
+        el.scrollIntoView({ block: "center" });
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + 12 };
+    });
+    check("inner callout found", innerCallout !== null);
+    await page.mouse.move(innerCallout.x, innerCallout.y);
+    await page.waitForTimeout(150);
+    const innerReveal = await page.evaluate(() => {
+        const el = [...document.querySelectorAll(".block-gutter-host--child")]
+            .find((k) => k.classList.contains("callout"));
+        const m = el?.querySelector(".heading-fold-marker");
+        const outer = el?.closest(".callout:not(.block-gutter-host--child)")
+            ?.querySelector(":scope .heading-fold-marker");
+        return {
+            inner: m ? Number(getComputedStyle(m).opacity) : -1,
+        };
+    });
+    check("hovering the inner callout reveals ITS marker",
+        innerReveal.inner > 0.5, JSON.stringify(innerReveal));
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(120);
 
     // NodeView blocks nest the gutter below wrapper chrome — hovering the
     // block BODY must still reveal the marker (descendant reveal variant).

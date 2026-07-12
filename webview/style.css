@@ -1741,6 +1741,13 @@ body.block-marqueeing .milkdown .editor {
     left: -12px;
 }
 
+/* Blocks NESTED inside containers (callout/quote/directive children): the
+   marker sits in the container's padding, just left of the child block. */
+.milkdown .editor .block-gutter-host--child > .heading-fold-gutter--block {
+    left: -26px;
+    top: 0;
+}
+
 /* Per-flavor nudges: the -34px base puts every marker in one column, but
    the PERCEIVED gap is icon → the item's ::marker ink, and that ink
    differs — an ordered "1." is ~13px wide, a bullet dot ~6px, a task

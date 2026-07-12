@@ -343,7 +343,11 @@ function createBlockGutter(view: EditorView, spec: MarkerSpec): HTMLElement {
     // --paragraph kept as the P marker's stable test/back-compat hook; every
     // hover-revealed marker (including P) carries --block for shared styling.
     marker.className = `heading-fold-marker heading-fold-marker--block${spec.key === "P" ? " heading-fold-marker--paragraph" : ""}`;
-    marker.innerHTML = spec.icon;
+    if (spec.text !== undefined) {
+        marker.textContent = spec.text;
+    } else {
+        marker.innerHTML = spec.icon;
+    }
     marker.dataset["pill"] = spec.label;
     // Same label as the heading markers: it's the same block menu.
     marker.setAttribute("aria-label", t("Block options"));
@@ -385,15 +389,18 @@ function createBlockGutter(view: EditorView, spec: MarkerSpec): HTMLElement {
  * get a marker (grab/menu/drag) alongside their own grips/insert bars —
  * the two serve different jobs (block-level vs cell-level).
  */
-/** A gutter marker's rendering: the same icon its slash-menu row uses, a
- * stable fingerprint/widget key, and the human name the drag pill shows. */
+/** A gutter marker's rendering: the same icon its slash-menu row uses (or
+ * a text badge — nested headings show H1-H6 like the slash menu's heading
+ * rows), a stable fingerprint/widget key, and the drag pill's name. */
 export interface MarkerSpec {
     key: string;
     icon: string;
     label: string;
+    /** Text badge instead of an SVG (heading "H2"). */
+    text?: string;
 }
 
-function blockMarkerSpec(node: any): MarkerSpec | null {
+export function blockMarkerSpec(node: any): MarkerSpec | null {
     switch (node.type.name) {
         case "paragraph": {
             if (isTextBearingParagraph(node)) {
@@ -441,6 +448,77 @@ function blockMarkerSpec(node: any): MarkerSpec | null {
 /** True for the two list container types (items are the draggable units). */
 function isListNode(node: any): boolean {
     return node.type.name === "bullet_list" || node.type.name === "ordered_list";
+}
+
+/** Containers whose direct block children are grabbable units of their own
+ * (all are `content: "block+"`, so drops between their children are legal). */
+function isContainerNode(node: any): boolean {
+    switch (node.type.name) {
+        case "blockquote":
+        case "callout":
+        case "notion_callout":
+        case "container_directive":
+            return true;
+        default:
+            return false;
+    }
+}
+
+/** The marker for a block NESTED inside a container: its normal spec, with
+ * two exceptions — text paragraphs are the container's own prose (the
+ * container's marker is their handle; a P on every quoted line is noise),
+ * and headings get a badge marker (nested headings don't own fold
+ * sections, so no chevron machinery). */
+function nestedChildSpec(node: any): MarkerSpec | null {
+    if (isHeadingNode(node)) {
+        const level = Math.min(Math.max(getHeadingLevel(node), 1), 6);
+        return { key: `h${level}`, icon: "", label: t("Heading"), text: `H${level}` };
+    }
+    const spec = blockMarkerSpec(node);
+    return spec?.key === "P" ? null : spec;
+}
+
+/**
+ * Markers for a container's direct block children, recursively (a callout
+ * inside a callout is grabbable at every depth) — lists inside containers
+ * get their per-item markers too. Appends into `decorations` and `parts`
+ * (fingerprint), mirroring emitItemGutters.
+ */
+function emitContainerChildGutters(
+    container: any,
+    containerPos: number,
+    decorations: Decoration[] | null,
+    parts: string[] | null,
+): void {
+    container.forEach((child: any, offset: number) => {
+        const childPos = containerPos + 1 + offset;
+        if (isListNode(child)) {
+            parts?.push("L");
+            emitItemGutters(child, childPos, decorations, parts);
+            return;
+        }
+        const spec = nestedChildSpec(child);
+        if (spec !== null) {
+            parts?.push(`c${spec.key}`);
+            decorations?.push(
+                Decoration.node(childPos, childPos + child.nodeSize, {
+                    class: "block-gutter-host block-gutter-host--child",
+                }),
+            );
+            decorations?.push(
+                Decoration.widget(
+                    childPos + 1,
+                    (view: EditorView) => createBlockGutter(view, spec),
+                    { key: `g:${spec.key}`, side: -1 },
+                ),
+            );
+        } else {
+            parts?.push("·");
+        }
+        if (isContainerNode(child)) {
+            emitContainerChildGutters(child, childPos, decorations, parts);
+        }
+    });
 }
 
 /** The marker for ONE list item: the icon of its list flavor (matching the
@@ -517,6 +595,9 @@ function structureFingerprint(
             emitItemGutters(node, offset, null, parts);
         } else {
             parts.push(blockMarkerSpec(node)?.key ?? "·");
+            if (isContainerNode(node)) {
+                emitContainerChildGutters(node, offset, null, parts);
+            }
         }
     });
     return parts.join("|");
@@ -553,6 +634,9 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
                         { key: `g:${spec.key}`, side: -1 },
                     ),
                 );
+            }
+            if (isContainerNode(node)) {
+                emitContainerChildGutters(node, offset, decorations, null);
             }
             return;
         }

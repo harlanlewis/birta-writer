@@ -97,16 +97,19 @@
         display: inline-flex;
         border: none;
         background: none;
-        padding: 2px;
+        padding: 4px;
         margin-left: auto;
+        /* Hug the right edge: the title bar's 0.9em side padding left the
+           small button floating too far inboard. */
+        margin-right: -6px;
         color: inherit;
         cursor: pointer;
         border-radius: 3px;
         transition: transform 0.15s ease;
 
         svg {
-            width: 14px;
-            height: 14px;
+            width: 16px;
+            height: 16px;
         }
 
         &:hover {
@@ -154,6 +157,12 @@
     }
 
     &.collapsed {
+        /* The body normally supplies the bottom whitespace; collapsed, the
+           title must carry it or the box reads top-heavy (0.5em over 0). */
+        .callout-title {
+            padding-bottom: 0.5em;
+        }
+
         /* Collapse via visibility, not display:none: the block's gutter
            marker (heading-fold widget) lives inside the body, and display
            on an ancestor is un-overridable — visibility lets the marker's

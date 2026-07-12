@@ -291,6 +291,47 @@ describe("block markers for every top-level type", () => {
         // The P marker keeps its historical class; other markers don't.
         expect(document.querySelectorAll(".heading-fold-marker--paragraph")).toHaveLength(1);
     });
+
+    it("blocks nested inside containers get their own child markers", async () => {
+        const editor = await makeEditor([
+            "> quoted prose",
+            ">",
+            "> ```js",
+            "> code();",
+            "> ```",
+            ">",
+            "> > inner quote",
+            "",
+        ].join("\n"));
+        view(editor);
+        const childPills = Array.from(
+            document.querySelectorAll<HTMLElement>(".block-gutter-host--child .heading-fold-marker--block"),
+        ).map((el) => el.dataset["pill"]);
+        // The quote's own prose paragraph gets NO child marker (the quote's
+        // marker is its handle); the nested code block and inner quote do.
+        expect(childPills).toEqual(["Code Block", "Blockquote"]);
+        // And the outer quote still has its own top-level marker.
+        const outer = document.querySelectorAll(
+            ".block-gutter-host:not(.block-gutter-host--child) > .heading-fold-gutter > .heading-fold-marker--block",
+        );
+        expect(outer.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("a nested block's menu Move rows hop container siblings", async () => {
+        const editor = await makeEditor("> alpha\n>\n> ```js\n> one\n> ```\n>\n> omega");
+        const v = view(editor);
+        // Move the nested code block up past "alpha".
+        let codePos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "code_block") codePos = pos;
+            return codePos === -1;
+        });
+        expect(codePos).toBeGreaterThan(-1);
+        expect(moveBlockAt(v, codePos, -1)).toBe(true);
+        const quote = v.state.doc.firstChild!;
+        expect(quote.child(0).type.name).toBe("code_block");
+        expect(quote.child(1).textContent).toBe("alpha");
+    });
 });
 
 describe("Turn into", () => {

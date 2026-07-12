@@ -114,8 +114,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Send to Claude**: removed the selection-toolbar "Send to Claude" button and the `Option+K` / `Alt+K` shortcut, along with the terminal/extension detection plumbing.
 - **External-link confirmation dialog**: opening an external link no longer shows an extension-level confirm — VS Code's own trusted-domains prompt on `openExternal` already covers it, so the extension dialog only stacked a second question on top. The `javascript:`/`file:`/`command:` scheme blocklist stays.
 
+### Added
+
+- **Nested blocks are grabbable**: blocks inside callouts, blockquotes, directives, and Notion asides — nested callouts, quotes, code blocks, images, headings (shown as an H badge), and list items — now get their own gutter grabber at every depth, with the full block menu (move up/down among their container siblings, duplicate, copy, delete) and drag support: reorder within the container, drag a nested block out to the top level, or drop a top-level block into a container. A container's own prose paragraphs stay handle-free (the container's marker is their handle). A new exhaustiveness test enumerates every block type in the schema and fails the build if any kind of content lacks a grabber decision — no more discovering omissions one hover at a time.
+
 ### Fixed
 
+- **Collapsed callout padding is symmetric** (the title bar now carries the bottom whitespace the hidden body used to provide), and the fold chevron is larger and sits closer to the callout's right edge.
 - **Block selection no longer double-paints**: with blocks selected (Escape, marquee, Shift+arrows), the native blue text highlight leaked through under the block tint — two competing blues that read as a glitch, especially in light themes. The tint is the single selection visual now.
 - **Gutter icons align with the first line everywhere**: markers on quotes, callouts, directives, code blocks, tables, and footnotes rode several pixels above their block's first visible line (anchored to the box corner instead of the content); every marker now centers on the first line and the whole gutter column is pixel-straight. Revealed markers are also a touch higher-contrast.
 - **Callouts, container directives, and Notion asides have gutter grabbers**: hovering their body reveals the marker (it previously only appeared from the bare gutter strip), directives and asides had no marker at all, and a folded callout's grabber survives the collapse instead of vanishing with the body.

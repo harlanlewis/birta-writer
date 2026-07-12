@@ -51,16 +51,29 @@ export interface DropBoundary {
  */
 export function blockBoundaryPositions(
     doc: ProseNode,
-): { pos: number; kind: "block" | "item"; listPos?: number }[] {
-    const positions: { pos: number; kind: "block" | "item"; listPos?: number }[] = [];
+): { pos: number; kind: "block" | "item"; ownerPos?: number }[] {
+    const positions: { pos: number; kind: "block" | "item"; ownerPos?: number }[] = [];
+    const isList = (node: ProseNode): boolean =>
+        node.type.name === "bullet_list" || node.type.name === "ordered_list";
+    const isContainer = (node: ProseNode): boolean => {
+        switch (node.type.name) {
+            case "blockquote":
+            case "callout":
+            case "notion_callout":
+            case "container_directive":
+                return true;
+            default:
+                return false;
+        }
+    };
     const walkList = (list: ProseNode, listPos: number): void => {
         let lastEnd = listPos + 1;
         list.forEach((item: ProseNode, offset: number) => {
             const itemPos = listPos + 1 + offset;
-            positions.push({ pos: itemPos, kind: "item", listPos });
+            positions.push({ pos: itemPos, kind: "item", ownerPos: listPos });
             lastEnd = itemPos + item.nodeSize;
             item.forEach((child: ProseNode, childOffset: number) => {
-                if (child.type.name === "bullet_list" || child.type.name === "ordered_list") {
+                if (isList(child)) {
                     walkList(child, itemPos + 1 + childOffset);
                 }
             });
@@ -68,12 +81,31 @@ export function blockBoundaryPositions(
         // End-of-list slot; carries its OWNING list so geometry is measured
         // per list, not from whatever item happened to be walked last (a
         // nested last item would otherwise shadow the outer list's slot).
-        positions.push({ pos: lastEnd, kind: "item", listPos });
+        positions.push({ pos: lastEnd, kind: "item", ownerPos: listPos });
+    };
+    // Containers (blockquote/callout/directive/aside — all `block+`): every
+    // slot between their children takes a BLOCK, so nested blocks can be
+    // reordered in place, dragged out, and top-level blocks dropped in.
+    const walkContainer = (container: ProseNode, containerPos: number): void => {
+        let lastEnd = containerPos + 1;
+        container.forEach((child: ProseNode, offset: number) => {
+            const childPos = containerPos + 1 + offset;
+            positions.push({ pos: childPos, kind: "block", ownerPos: containerPos });
+            lastEnd = childPos + child.nodeSize;
+            if (isList(child)) {
+                walkList(child, childPos);
+            } else if (isContainer(child)) {
+                walkContainer(child, childPos);
+            }
+        });
+        positions.push({ pos: lastEnd, kind: "block", ownerPos: containerPos });
     };
     doc.forEach((node: ProseNode, offset: number) => {
         positions.push({ pos: offset, kind: "block" });
-        if (node.type.name === "bullet_list" || node.type.name === "ordered_list") {
+        if (isList(node)) {
             walkList(node, offset);
+        } else if (isContainer(node)) {
+            walkContainer(node, offset);
         }
     });
     positions.push({ pos: doc.content.size, kind: "block" });
@@ -208,7 +240,7 @@ function measureBoundaries(view: EditorView): DropBoundary[] {
     const { doc } = view.state;
     const boundaries: DropBoundary[] = [];
     let lastBlockBottom: number | null = null;
-    for (const { pos, kind, listPos } of blockBoundaryPositions(doc)) {
+    for (const { pos, kind, ownerPos } of blockBoundaryPositions(doc)) {
         if (kind === "block" && pos === doc.content.size) {
             if (lastBlockBottom !== null) {
                 boundaries.push({ pos, y: lastBlockBottom, kind });
@@ -218,31 +250,33 @@ function measureBoundaries(view: EditorView): DropBoundary[] {
         const dom = view.nodeDOM(pos);
         if (dom instanceof HTMLElement) {
             const rect = dom.getBoundingClientRect();
-            if (kind === "item") {
+            if (ownerPos !== undefined) {
+                // Owned slots (list items, container children) indent the
+                // indicator to their own column.
                 boundaries.push({ pos, y: rect.top, kind, left: rect.left, width: rect.width });
             } else {
                 boundaries.push({ pos, y: rect.top, kind });
                 lastBlockBottom = rect.bottom;
             }
-        } else if (kind === "item" && listPos !== undefined) {
-            // End-of-list slot: the OWNING list's bottom edge, at its own
-            // items' column (its last DIRECT child supplies the indent —
-            // deriving from the last WALKED item let a nested list's column
+        } else if (ownerPos !== undefined) {
+            // End-of-owner slot: the OWNING node's bottom edge, at its own
+            // children's column (its last DIRECT child supplies the indent —
+            // deriving from the last WALKED node let a nested list's column
             // shadow the outer slot's geometry entirely).
-            const listDom = view.nodeDOM(listPos);
-            const listNode = doc.nodeAt(listPos);
-            if (listDom instanceof HTMLElement && listNode && listNode.childCount > 0) {
+            const ownerDom = view.nodeDOM(ownerPos);
+            const ownerNode = doc.nodeAt(ownerPos);
+            if (ownerDom instanceof HTMLElement && ownerNode && ownerNode.childCount > 0) {
                 let lastChildOffset = 0;
-                listNode.forEach((_child: ProseNode, childOffset: number) => {
+                ownerNode.forEach((_child: ProseNode, childOffset: number) => {
                     lastChildOffset = childOffset;
                 });
-                const lastItemDom = view.nodeDOM(listPos + 1 + lastChildOffset);
-                const column = lastItemDom instanceof HTMLElement
-                    ? lastItemDom.getBoundingClientRect()
-                    : listDom.getBoundingClientRect();
+                const lastChildDom = view.nodeDOM(ownerPos + 1 + lastChildOffset);
+                const column = lastChildDom instanceof HTMLElement
+                    ? lastChildDom.getBoundingClientRect()
+                    : ownerDom.getBoundingClientRect();
                 boundaries.push({
                     pos,
-                    y: listDom.getBoundingClientRect().bottom,
+                    y: ownerDom.getBoundingClientRect().bottom,
                     kind,
                     left: column.left,
                     width: column.width,
