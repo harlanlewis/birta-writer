@@ -9,6 +9,7 @@
  * hand, so the popup itself imports neither the engine nor the plugin.
  */
 import type { EditorView } from "@milkdown/prose/view";
+import { closeTopmostLayer, registerEscapeLayer } from "../ui/escapeLayers";
 import "./proofread.css";
 
 /** One button inside a finding section. */
@@ -97,12 +98,25 @@ export function showFindingsPopup(view: EditorView, anchorPos: number, findings:
         if (!popup.contains(e.target as Node)) { hideLintPopup(); }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape") { hideLintPopup(); }
+        if (e.key === "Escape") {
+            // Consume (the old bare hide let the key fall through to the
+            // block-selection keymap, closing the popup AND selecting the
+            // block) and route through the Escape-layer stack, so a surface
+            // opened after this popup — the find bar, say — closes first
+            // and the popup takes the next Escape. The registry can't be
+            // empty while this capture handler is alive, but keep the
+            // direct hide as a belt-and-braces fallback.
+            e.preventDefault();
+            e.stopPropagation();
+            if (!closeTopmostLayer()) { hideLintPopup(); }
+        }
     };
+    const escapeLayerOff = registerEscapeLayer(hideLintPopup);
     document.addEventListener("mousedown", onMouseDown, true);
     document.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("scroll", hideLintPopup, true);
     cleanup = () => {
+        escapeLayerOff();
         document.removeEventListener("mousedown", onMouseDown, true);
         document.removeEventListener("keydown", onKeyDown, true);
         window.removeEventListener("scroll", hideLintPopup, true);

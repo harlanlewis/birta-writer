@@ -17,6 +17,7 @@ import { createButton, createSeparator, setupApplyOnBlur } from "@/ui/dom";
 import { applyTooltip } from "@/ui/tooltip";
 import { attachImgPathComplete, resolveToWebviewUri } from './imgPathComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
+import { registerEscapeLayer } from "@/ui/escapeLayers";
 import './imageView.css';
 
 // ─── webviewUri ↔ relPath bidirectional map (written by index.ts when init/revert messages arrive) ─────
@@ -71,7 +72,14 @@ function showGlobalLightbox(src: string, alt: string): void {
     document.body.appendChild(lb);
     activeLightbox = lb;
 
+    // Escape layer: with focus still in editor content, blockKeys' Escape
+    // wiring closes the lightbox first (topmost surface) instead of
+    // block-selecting beneath it; the document listener below is the
+    // fallback for focus elsewhere.
+    const escapeLayerOff = registerEscapeLayer(close);
+
     function close(): void {
+        escapeLayerOff();
         if (activeLightbox && document.body.contains(activeLightbox)) {
             document.body.removeChild(activeLightbox);
         }
@@ -80,8 +88,12 @@ function showGlobalLightbox(src: string, alt: string): void {
     }
 
     function onKeyDown(e: KeyboardEvent): void {
-        if (e.key === "Escape") {
+        // defaultPrevented: a layer above (or this one, via the stack)
+        // already consumed the key — one Escape must close exactly one
+        // surface. stopPropagation keeps the chord from the workbench.
+        if (e.key === "Escape" && !e.defaultPrevented) {
             e.preventDefault();
+            e.stopPropagation();
             close();
         }
     }
