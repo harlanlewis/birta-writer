@@ -464,28 +464,28 @@
                 "category": "WYSIWYG Markdown Editor"
             },
             {
-                "command": "markdownWysiwyg.editor.foldSection",
-                "title": "%command.editor.foldSection.title%",
-                "category": "WYSIWYG Markdown Editor"
-            },
-            {
-                "command": "markdownWysiwyg.editor.unfoldSection",
-                "title": "%command.editor.unfoldSection.title%",
-                "category": "WYSIWYG Markdown Editor"
-            },
-            {
-                "command": "markdownWysiwyg.editor.foldAllSections",
-                "title": "%command.editor.foldAllSections.title%",
-                "category": "WYSIWYG Markdown Editor"
-            },
-            {
-                "command": "markdownWysiwyg.editor.unfoldAllSections",
-                "title": "%command.editor.unfoldAllSections.title%",
-                "category": "WYSIWYG Markdown Editor"
-            },
-            {
                 "command": "markdownWysiwyg.editor.openShortcutsHelp",
                 "title": "%command.editor.openShortcutsHelp.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.fold",
+                "title": "%command.editor.fold.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.unfold",
+                "title": "%command.editor.unfold.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.foldAll",
+                "title": "%command.editor.foldAll.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.unfoldAll",
+                "title": "%command.editor.unfoldAll.title%",
                 "category": "WYSIWYG Markdown Editor"
             }
         ],
@@ -642,13 +642,13 @@
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             },
             {
-                "command": "markdownWysiwyg.editor.foldSection",
+                "command": "markdownWysiwyg.editor.fold",
                 "key": "ctrl+shift+[",
                 "mac": "cmd+alt+[",
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             },
             {
-                "command": "markdownWysiwyg.editor.unfoldSection",
+                "command": "markdownWysiwyg.editor.unfold",
                 "key": "ctrl+shift+]",
                 "mac": "cmd+alt+]",
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
@@ -993,23 +993,23 @@
                     "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
                 },
                 {
-                    "command": "markdownWysiwyg.editor.foldSection",
-                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-                },
-                {
-                    "command": "markdownWysiwyg.editor.unfoldSection",
-                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-                },
-                {
-                    "command": "markdownWysiwyg.editor.foldAllSections",
-                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-                },
-                {
-                    "command": "markdownWysiwyg.editor.unfoldAllSections",
-                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
-                },
-                {
                     "command": "markdownWysiwyg.editor.openShortcutsHelp",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.fold",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.unfold",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.foldAll",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.unfoldAll",
                     "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
                 }
             ],

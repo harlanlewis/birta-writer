@@ -111,7 +111,7 @@ describe("shortcutsHelp — content", () => {
         expect(text).toContain("Esc first closes the open menu, popup, or find bar.");
         // Rebindable commands appear by NAME, sourced from the registry
         expect(text).toContain("Open Block Menu");
-        expect(text).toContain("Fold Section");
+        expect(text).toContain("Folding: Fold · Unfold · Fold All · Unfold All");
         expect(text).toContain("Select All Occurrences");
         // Group items carry no kbd chips (names only)
         const groupKbds = panel()!.querySelectorAll(".shortcuts-help__group kbd");

@@ -154,16 +154,20 @@ export const EDITOR_COMMANDS = [
     { id: "insertParagraphAfter", title: "Insert Paragraph Below", palette: true, sections: [] },
     { id: "insertParagraphBefore", title: "Insert Paragraph Above", palette: true, sections: [] },
     // Keyboard sequence 3: the gutter block menu opened from the caret's
-    // block and heading-section folding. `openShortcutsHelp` (the sequence's
-    // read-only cheatsheet overlay, declared in the toolbar group above) is
-    // deliberately distinct from `openKeyboardShortcuts`, which opens VS
-    // Code's native Keyboard Shortcuts UI and remains the customize/rebind
-    // path.
+    // block. `openShortcutsHelp` (the sequence's read-only cheatsheet
+    // overlay, declared in the toolbar group above) is deliberately distinct
+    // from `openKeyboardShortcuts`, which opens VS Code's native Keyboard
+    // Shortcuts UI and remains the customize/rebind path.
     { id: "openBlockMenu", title: "Open Block Menu", palette: true, sections: [] },
-    { id: "foldSection", title: "Fold Section", palette: true, sections: [] },
-    { id: "unfoldSection", title: "Unfold Section", palette: true, sections: [] },
-    { id: "foldAllSections", title: "Fold All Sections", palette: true, sections: [] },
-    { id: "unfoldAllSections", title: "Unfold All Sections", palette: true, sections: [] },
+    // Fold grammar (MAR-110): fold/unfold act on the innermost foldable
+    // block containing the caret (heading section or callout), mirroring the
+    // built-in editor's Cmd+Option+[ / ] defaults. Fold All / Unfold All are
+    // palette + block-menu only: VS Code's Cmd+K fold chords are unavailable
+    // here because Cmd+K is bound to insertLink in this editor.
+    { id: "fold", title: "Fold", palette: true, sections: [] },
+    { id: "unfold", title: "Unfold", palette: true, sections: [] },
+    { id: "foldAll", title: "Fold All", palette: true, sections: [] },
+    { id: "unfoldAll", title: "Unfold All", palette: true, sections: [] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

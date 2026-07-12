@@ -22,7 +22,7 @@ import type { EditorState } from "@milkdown/prose/state";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
 import { BlockRangeSelection } from "../../plugins/blockRange";
-import { foldedSectionEnds, isContainerNode, isListNode } from "../../plugins/headingFold";
+import { foldedHiddenRanges, foldedSectionEnds, isContainerNode, isListNode } from "../../plugins/headingFold";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
@@ -232,27 +232,25 @@ export function scrollVelocityFor(clientY: number): number {
 export function visibleBoundaryPositions(
     state: EditorState,
 ): { pos: number; kind: "block" | "item"; ownerPos?: number }[] {
-    const hidden: [number, number][] = [];
-    for (const [headingPos, end] of foldedSectionEnds(state)) {
-        const heading = state.doc.nodeAt(headingPos);
-        if (heading) {
-            hidden.push([headingPos + heading.nodeSize, end]);
-        }
-    }
+    // One fold-range map for every fold kind (MAR-110): heading sections
+    // AND collapsed callout bodies — a drop must never land in either.
+    const hidden = foldedHiddenRanges(state);
     const positions = blockBoundaryPositions(state.doc);
     if (hidden.length === 0) {
         return positions;
     }
-    return positions.filter(({ pos }) => !hidden.some(([from, to]) => pos >= from && pos < to));
+    return positions.filter(({ pos }) => !hidden.some((r) => pos >= r.from && pos < r.to));
 }
 
-/** True when `el` sits inside a collapsed callout's hidden body. Callout
- * folding is view-only by design (never a doc attr, so the state-based
- * fold filter in visibleBoundaryPositions can't see it) — only the DOM
- * knows. Hidden geometry (visibility:hidden, height:0) must never win the
- * nearest-y drop contest: a bottom-edge drop would commit into the fold
- * and the dragged block would vanish, the collapsed-callout analog of the
- * heading-section bug this file already filters. */
+/** True when `el` sits inside a collapsed callout's hidden body. The
+ * state-based filter in visibleBoundaryPositions DOES see callout folds
+ * (the unified fold grammar keeps them in plugin state), but its `pos < r.to`
+ * deliberately admits the end-of-owner slot at `pos === range.to` — for a
+ * collapsed callout that slot's measuring DOM lives inside the hidden body.
+ * This DOM check catches exactly that residual case: hidden geometry
+ * (visibility:hidden, height:0) must never win the nearest-y drop contest,
+ * or a bottom-edge drop would commit into the fold and the dragged block
+ * would vanish. */
 function inCollapsedCalloutBody(el: Element): boolean {
     return el.closest(".callout.collapsed .callout-body") !== null;
 }

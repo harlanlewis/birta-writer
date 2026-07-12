@@ -1,26 +1,31 @@
 /**
  * components/blockMenu/turnInto.ts
  *
- * The block-conversion matrix behind the gutter menu's Turn-into section —
+ * The concrete block converters behind the gutter menu's Turn-into section —
  * pure position-targeted transforms (no DOM), unit-tested directly.
  *
- * Sources and targets are the convertible top-level kinds (TurnIntoKind).
- * The rules, chosen so every conversion is a predictable markdown edit:
+ * WHICH conversions are offered, and which converter runs for a pair, is
+ * decided in webview/blockCapabilities.ts (`canConvert` / `convertAt`) —
+ * legality is derived from per-type shape declarations there, and this
+ * module only supplies the mechanisms:
  *   - P/H ↔ P/H: retype in place (attr-preserving) — setHeadingLevelAt.
  *   - P/H → list/quote/callout: retype a heading down to prose, then run the
- *     exact selection-based command the toolbar runs (wrap semantics).
+ *     exact selection-based command the toolbar runs — wrapProseIn.
  *   - list ↔ list: retype the node (bullet/ordered), with the task flavor as
- *     a per-item `checked` attr sweep.
+ *     a per-item `checked` attr sweep — retypeList.
  *   - list → P/H: unwrap — each item's children become top-level blocks; with
- *     a heading target, each item's leading paragraph becomes a heading.
+ *     a heading target, each item's leading paragraph becomes a heading —
+ *     unwrapListTo.
+ *   - list → quote/callout: wrap the whole list — wrapListIn.
  *   - quote ↔ callout: retype in place (same content shape; callout attrs
- *     all default).
+ *     all default) — retypeContainer.
  *   - quote/callout → P/H: unwrap the wrapper; with a heading target the
- *     first unwrapped paragraph becomes the heading.
+ *     first unwrapped paragraph becomes the heading — unwrapContainerTo.
  *   - quote/callout → list: each direct paragraph child becomes an item
- *     (bails, no-op, when the content isn't all paragraphs).
+ *     (bails, no-op, when the content isn't all paragraphs) — containerToList.
  *   - anything → code block: the block's literal markdown source goes inside
- *     the fence (serializer-faithful, lossless in the markdown sense).
+ *     the fence (serializer-faithful, lossless in the markdown sense) —
+ *     turnIntoCodeBlock.
  *   - code block → anything: NOT offered (needs a per-block re-parse; the
  *     source-peek work, MAR-20, is the natural home for that).
  */
@@ -29,124 +34,9 @@ import type { EditorView } from "@milkdown/prose/view";
 import { Fragment } from "@milkdown/prose/model";
 import type { Node as ProseNode, NodeType } from "@milkdown/prose/model";
 import { TextSelection } from "@milkdown/prose/state";
-import { getHeadingLevel, setHeadingLevelAt } from "../../plugins/headingFold";
+import { setHeadingLevelAt } from "../../plugins/headingFold";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
-
-export type TurnIntoKind =
-    | "paragraph"
-    | "h1" | "h2" | "h3" | "h4" | "h5" | "h6"
-    | "bulletList" | "orderedList" | "taskList"
-    | "blockquote" | "callout" | "codeBlock";
-
-const HEADING_KINDS: readonly TurnIntoKind[] = ["h1", "h2", "h3", "h4", "h5", "h6"];
-const LIST_KINDS: readonly TurnIntoKind[] = ["bulletList", "orderedList", "taskList"];
-
-function headingLevelOf(kind: TurnIntoKind): number {
-    const idx = HEADING_KINDS.indexOf(kind);
-    return idx === -1 ? 0 : idx + 1;
-}
-
-function isProseKind(kind: TurnIntoKind): boolean {
-    return kind === "paragraph" || HEADING_KINDS.includes(kind);
-}
-
-/**
- * True when a paragraph carries actual text content — at least one inline
- * child that is neither an image nor an html atom, ignoring whitespace-only
- * text. Image-only and HTML-only paragraphs are visual blocks, not prose
- * (MAR-79), so they get an actions-only menu.
- */
-export function isTextBearingParagraph(node: ProseNode): boolean {
-    if (node.childCount === 0) {
-        return true; // a blank line the user is about to type on
-    }
-    let sawAtom = false;
-    let sawContent = false;
-    node.forEach((child) => {
-        const name = child.type.name;
-        if (name === "image" || name === "html") {
-            sawAtom = true;
-            return;
-        }
-        if (child.isText && !child.text?.trim()) {
-            return;
-        }
-        sawContent = true;
-    });
-    // Whitespace-only paragraphs (no atoms at all) are still prose — only a
-    // paragraph whose real content is images/html is a visual block.
-    return sawContent || !sawAtom;
-}
-
-/** A bullet list whose items carry `checked` renders (and serializes) as a
- * task list — the single probe shared by the menu and the gutter glyphs. */
-export function isTaskListNode(node: ProseNode): boolean {
-    const first = node.firstChild;
-    return node.type.name === "bullet_list" && first !== null && first.attrs["checked"] != null;
-}
-
-/**
- * The Turn-into kind of the top-level node at `pos`, or null for blocks the
- * section can't name (tables, HR, image/html paragraphs, raw blocks…) —
- * those get an actions-only menu.
- */
-export function turnIntoKindAt(view: EditorView, pos: number): TurnIntoKind | null {
-    const node = view.state.doc.nodeAt(pos);
-    if (!node) {
-        return null;
-    }
-    switch (node.type.name) {
-        case "paragraph":
-            return isTextBearingParagraph(node) ? "paragraph" : null;
-        case "heading":
-            return `h${Math.min(Math.max(getHeadingLevel(node), 1), 6)}` as TurnIntoKind;
-        case "blockquote":
-            return "blockquote";
-        case "callout":
-            return "callout";
-        case "code_block":
-            return "codeBlock";
-        case "bullet_list":
-            return isTaskListNode(node) ? "taskList" : "bulletList";
-        case "ordered_list":
-            return "orderedList";
-        default:
-            return null;
-    }
-}
-
-/**
- * Whether converting the block at `pos` to `target` is offered. Follows the
- * matrix in the module doc: code blocks convert only via their own fence
- * (source re-parse is MAR-20 territory), and quote/callout → list needs
- * all-paragraph content.
- */
-export function canTurnInto(view: EditorView, pos: number, target: TurnIntoKind): boolean {
-    const source = turnIntoKindAt(view, pos);
-    if (source === null) {
-        return false;
-    }
-    if (source === target) {
-        return true; // the filled current row (a no-op pick)
-    }
-    if (source === "codeBlock") {
-        return false;
-    }
-    if (target === "codeBlock") {
-        return true;
-    }
-    if ((source === "blockquote" || source === "callout") && LIST_KINDS.includes(target)) {
-        const node = view.state.doc.nodeAt(pos)!;
-        let allParagraphs = node.childCount > 0;
-        node.forEach((child) => {
-            if (child.type.name !== "paragraph") {
-                allParagraphs = false;
-            }
-        });
-        return allParagraphs;
-    }
-    return true;
-}
+import { conversionKindAt, type ConversionKind } from "../../blockCapabilities";
 
 /**
  * Places the caret just inside the block at `pos`. Two jobs: the selection-
@@ -194,7 +84,7 @@ export function blockMarkdownAt(
 }
 
 /** any → code block: the literal markdown source goes inside the fence. */
-function turnIntoCodeBlock(view: EditorView, pos: number, getEditor: GetEditor): boolean {
+export function turnIntoCodeBlock(view: EditorView, pos: number, getEditor: GetEditor): boolean {
     const node = view.state.doc.nodeAt(pos);
     const source = blockMarkdownAt(view, pos, getEditor);
     const codeType = view.state.schema.nodes["code_block"];
@@ -209,9 +99,40 @@ function turnIntoCodeBlock(view: EditorView, pos: number, getEditor: GetEditor):
     return true;
 }
 
+/**
+ * P/H → list/quote/callout: retype a heading down to prose, then run the
+ * toolbar's own selection-based wrap command so the menu can never drift
+ * from toolbar behavior.
+ */
+export function wrapProseIn(
+    view: EditorView,
+    pos: number,
+    source: ConversionKind,
+    target: ConversionKind,
+    getEditor: GetEditor,
+): boolean {
+    if (source !== "paragraph") {
+        setHeadingLevelAt(view, pos, 0);
+    }
+    selectInto(view, pos);
+    const wrapCommands: Partial<Record<ConversionKind, string>> = {
+        bulletList: "toggleBulletList",
+        orderedList: "toggleOrderedList",
+        taskList: "toggleTaskList",
+        blockquote: "toggleBlockquote",
+        callout: "insertCallout",
+    };
+    const commandId = wrapCommands[target];
+    if (!commandId) {
+        return false;
+    }
+    runEditorCommand(commandId, getEditor);
+    return true;
+}
+
 /** list → prose: items' children become top-level blocks; a heading target
  * turns each item's leading paragraph into a heading. */
-function unwrapListTo(view: EditorView, pos: number, level: number): boolean {
+export function unwrapListTo(view: EditorView, pos: number, level: number): boolean {
     const list = view.state.doc.nodeAt(pos);
     const headingType = view.state.schema.nodes["heading"];
     if (!list) {
@@ -236,7 +157,7 @@ function unwrapListTo(view: EditorView, pos: number, level: number): boolean {
 
 /** list ↔ list: retype the node; the task flavor is a per-item `checked`
  * attr sweep (checked:false to become tasks, null to stop being tasks). */
-function retypeList(view: EditorView, pos: number, target: TurnIntoKind): boolean {
+export function retypeList(view: EditorView, pos: number, target: ConversionKind): boolean {
     const list = view.state.doc.nodeAt(pos);
     const bullet = view.state.schema.nodes["bullet_list"];
     const ordered = view.state.schema.nodes["ordered_list"];
@@ -262,9 +183,22 @@ function retypeList(view: EditorView, pos: number, target: TurnIntoKind): boolea
     return true;
 }
 
+/** list → quote/callout: wrap the whole list — "- a / - b" becomes
+ * "> - a / > - b" (items travel intact, task state included). */
+export function wrapListIn(view: EditorView, pos: number, target: ConversionKind): boolean {
+    const node = view.state.doc.nodeAt(pos);
+    const wrapType = view.state.schema.nodes[target === "callout" ? "callout" : "blockquote"];
+    if (!node || !wrapType) {
+        return false;
+    }
+    const wrapped = wrapType.createChecked(null, node);
+    view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, wrapped));
+    return true;
+}
+
 /** quote/callout → prose: unwrap; a heading target retypes the first
  * unwrapped paragraph. */
-function unwrapContainerTo(view: EditorView, pos: number, level: number): boolean {
+export function unwrapContainerTo(view: EditorView, pos: number, level: number): boolean {
     const node = view.state.doc.nodeAt(pos);
     if (!node || node.childCount === 0) {
         return false;
@@ -293,7 +227,7 @@ function withCalloutTitle(view: EditorView, node: ProseNode, content: Fragment):
 
 /** quote/callout → list: each direct paragraph child becomes an item (a
  * callout's title leads as its own item). */
-function containerToList(view: EditorView, pos: number, target: TurnIntoKind): boolean {
+export function containerToList(view: EditorView, pos: number, target: ConversionKind): boolean {
     const node = view.state.doc.nodeAt(pos);
     const itemType = view.state.schema.nodes["list_item"];
     const listType = view.state.schema.nodes[target === "orderedList" ? "ordered_list" : "bullet_list"];
@@ -321,7 +255,7 @@ function containerToList(view: EditorView, pos: number, target: TurnIntoKind): b
 /** container ↔ container (quote ↔ callout): retype in place — same content
  * shape, and every callout attr has a default. A titled callout's title is
  * prepended as prose on the way OUT (a blockquote can't carry it). */
-function retypeContainer(view: EditorView, pos: number, target: TurnIntoKind): boolean {
+export function retypeContainer(view: EditorView, pos: number, target: ConversionKind): boolean {
     const node = view.state.doc.nodeAt(pos);
     const nodeType = view.state.schema.nodes[target === "callout" ? "callout" : "blockquote"];
     if (!node || !nodeType) {
@@ -339,75 +273,40 @@ function retypeContainer(view: EditorView, pos: number, target: TurnIntoKind): b
     return true;
 }
 
+// ── Legacy predicate (fidelity-gate oracle) ─────────────────────────────────
+
+const LIST_KINDS: readonly ConversionKind[] = ["bulletList", "orderedList", "taskList"];
+
 /**
- * Convert the block at `pos` to `target`, per the matrix above. Position-
- * targeted throughout; refocuses the editor. No-ops (returns false) when the
- * conversion isn't offered or nothing changes.
+ * @deprecated The original hand-written pair matrix, superseded by
+ * `canConvert` in webview/blockCapabilities.ts. Kept VERBATIM as the oracle
+ * for the fidelity gate in webview/__tests__/blockCapabilities.test.ts,
+ * which asserts the derived predicate agrees with it cell for cell. Delete
+ * both together once the capability registry has bedded in.
  */
-export function turnBlockInto(
-    view: EditorView,
-    pos: number,
-    target: TurnIntoKind,
-    getEditor: GetEditor,
-): boolean {
-    if (!canTurnInto(view, pos, target)) {
+export function canTurnInto(view: EditorView, pos: number, target: ConversionKind): boolean {
+    const source = conversionKindAt(view, pos);
+    if (source === null) {
         return false;
     }
-    const source = turnIntoKindAt(view, pos);
-    if (source === null || source === target) {
+    if (source === target) {
+        return true; // the filled current row (a no-op pick)
+    }
+    if (source === "codeBlock") {
         return false;
     }
-    let changed = false;
     if (target === "codeBlock") {
-        changed = turnIntoCodeBlock(view, pos, getEditor);
-    } else if (isProseKind(source) && isProseKind(target)) {
-        changed = setHeadingLevelAt(view, pos, headingLevelOf(target));
-    } else if (isProseKind(source)) {
-        // P/H → list/quote/callout: retype a heading down to prose, then run
-        // the toolbar's own selection-based wrap command so the menu can
-        // never drift from toolbar behavior.
-        if (source !== "paragraph") {
-            setHeadingLevelAt(view, pos, 0);
-        }
-        selectInto(view, pos);
-        const wrapCommands: Partial<Record<TurnIntoKind, string>> = {
-            bulletList: "toggleBulletList",
-            orderedList: "toggleOrderedList",
-            taskList: "toggleTaskList",
-            blockquote: "toggleBlockquote",
-            callout: "insertCallout",
-        };
-        const commandId = wrapCommands[target];
-        if (commandId) {
-            runEditorCommand(commandId, getEditor);
-            changed = true;
-        }
-    } else if (LIST_KINDS.includes(source)) {
-        if (LIST_KINDS.includes(target)) {
-            changed = retypeList(view, pos, target);
-        } else if (isProseKind(target) || target === "paragraph") {
-            changed = unwrapListTo(view, pos, headingLevelOf(target));
-        } else if (target === "blockquote" || target === "callout") {
-            // Wrap the whole list — "- a / - b" becomes "> - a / > - b".
-            const node = view.state.doc.nodeAt(pos)!;
-            const wrapType = view.state.schema.nodes[target === "callout" ? "callout" : "blockquote"];
-            if (wrapType) {
-                const wrapped = wrapType.createChecked(null, node);
-                view.dispatch(view.state.tr.replaceWith(pos, pos + node.nodeSize, wrapped));
-                changed = true;
+        return true;
+    }
+    if ((source === "blockquote" || source === "callout") && LIST_KINDS.includes(target)) {
+        const node = view.state.doc.nodeAt(pos)!;
+        let allParagraphs = node.childCount > 0;
+        node.forEach((child) => {
+            if (child.type.name !== "paragraph") {
+                allParagraphs = false;
             }
-        }
-    } else if (source === "blockquote" || source === "callout") {
-        if (isProseKind(target)) {
-            changed = unwrapContainerTo(view, pos, headingLevelOf(target));
-        } else if (LIST_KINDS.includes(target)) {
-            changed = containerToList(view, pos, target);
-        } else if (target === "blockquote" || target === "callout") {
-            changed = retypeContainer(view, pos, target);
-        }
+        });
+        return allParagraphs;
     }
-    if (changed) {
-        view.focus();
-    }
-    return changed;
+    return true;
 }

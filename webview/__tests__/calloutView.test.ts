@@ -22,7 +22,8 @@ import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "@milkdown/prose/view";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { createCalloutView, calloutLabel } from "../components/callout";
-import { escapeCalloutTitle, markerWithTitle, parseCalloutMarker } from "../plugins/callouts";
+import { escapeCalloutTitle, markerWithFold, markerWithTitle, parseCalloutMarker } from "../plugins/callouts";
+import { headingFoldPlugin } from "../plugins/headingFold";
 
 async function makeEditor(markdown: string): Promise<{
     editor: Editor;
@@ -40,6 +41,10 @@ async function makeEditor(markdown: string): Promise<{
         })
         .use(pureCommonmark)
         .use(gfm)
+        // Fold state is owned by the fold plugin (MAR-110): it seeds the
+        // `[!kind]-` default, renders the gutter chevron, and stamps the
+        // `collapsed` class onto the NodeView as a decoration.
+        .use(headingFoldPlugin)
         .create();
     const view = editor.action((ctx) => ctx.get(editorViewCtx));
     return { editor, container, view };
@@ -103,7 +108,8 @@ describe("callout NodeView chrome", () => {
 });
 
 describe("folding is visual only", () => {
-    it("chevron clicks toggle the class but never touch the document", async () => {
+    it("a [!kind]- marker should start collapsed, and gutter chevron clicks toggle without touching the document", async () => {
+        // Arrange: the T1 default (syntax `-` marker) seeds the fold plugin.
         const { editor, container, view } = await makeEditor(
             "> [!tip]- Folded\n> Hidden.\n",
         );
@@ -111,20 +117,55 @@ describe("folding is visual only", () => {
         const docBefore = view.state.doc;
         expect(callout.classList.contains("collapsed")).toBe(true);
 
-        q(container, ".callout-fold").dispatchEvent(
-            new MouseEvent("click", { bubbles: true }),
-        );
-        expect(callout.classList.contains("collapsed")).toBe(false);
+        // Act + Assert: the chevron lives in the callout's GUTTER now
+        // (MAR-110), not the title bar; each click flips only view state.
+        const chevron = () => q(container, ".callout .heading-fold-toggle");
+        chevron().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(q(container, ".callout").classList.contains("collapsed")).toBe(false);
 
-        q(container, ".callout-fold").dispatchEvent(
-            new MouseEvent("click", { bubbles: true }),
-        );
-        expect(callout.classList.contains("collapsed")).toBe(true);
+        chevron().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(q(container, ".callout").classList.contains("collapsed")).toBe(true);
 
-        // Reference equality: no transaction was dispatched at all.
+        // Reference equality: the doc was never touched (zero-step toggles).
         expect(view.state.doc).toBe(docBefore);
         expect(editor.action(getMarkdown())).toBe("> [!tip]- Folded\n> Hidden.\n");
         await editor.destroy();
+    });
+
+    it("the collapsed ellipsis should expand on click without touching the document", async () => {
+        const { editor, container, view } = await makeEditor(
+            "> [!tip]- Folded\n> Hidden.\n",
+        );
+        const docBefore = view.state.doc;
+        expect(q(container, ".callout").classList.contains("collapsed")).toBe(true);
+
+        q(container, ".callout-fold-ellipsis").dispatchEvent(
+            new MouseEvent("click", { bubbles: true, cancelable: true }),
+        );
+        expect(q(container, ".callout").classList.contains("collapsed")).toBe(false);
+        expect(view.state.doc).toBe(docBefore);
+        await editor.destroy();
+    });
+
+    it("a marker-less callout with a body should still get a gutter chevron (expanded)", async () => {
+        const { editor, container } = await makeEditor("> [!note] Title\n> Body.\n");
+        expect(q(container, ".callout").classList.contains("collapsed")).toBe(false);
+        expect(container.querySelector(".callout .heading-fold-toggle")).not.toBeNull();
+        await editor.destroy();
+    });
+
+    it("an empty callout should not be foldable", async () => {
+        const { editor, container } = await makeEditor("> [!note]\n");
+        expect(container.querySelector(".callout .heading-fold-toggle")).toBeNull();
+        await editor.destroy();
+    });
+});
+
+describe("markerWithFold", () => {
+    it("adds and removes the fold marker while preserving type case and title bytes", () => {
+        expect(markerWithFold("[!TIP] My title", "-")).toBe("[!TIP]- My title");
+        expect(markerWithFold("[!tip]- My title", "")).toBe("[!tip] My title");
+        expect(markerWithFold("[!note]+", "-")).toBe("[!note]-");
     });
 });
 

@@ -130,6 +130,12 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
             "Shift-ArrowUp",
         ],
         "webview/plugins/formatKeymap.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
+        // headingFold: the fold-boundary reveal guard also covers Mod-Enter
+        // (insert paragraph below targets the same collapsed-heading
+        // boundary as plain Enter); it never consumes the key — it only
+        // unfolds first — so it must sit in the same synchronous PM keymap
+        // chain as insertParagraph's binding, not in a contributed chord.
+        "webview/plugins/headingFold.ts": ["Mod-Enter"],
         "webview/plugins/history.ts": ["Mod-Shift-z", "Mod-y", "Mod-z"],
         // insertParagraph: Mod-Enter must beat the preset's exit-code-block
         // binding synchronously (registered before the presets, returning

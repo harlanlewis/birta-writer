@@ -18,6 +18,7 @@ import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
 import { normalizeGutterMarkersMode, gutterMarkersBodyClass, DEFAULT_GUTTER_MARKERS_MODE } from "../shared/gutterMarkers";
+import { normalizeFoldingControlsMode, foldingBodyClasses, DEFAULT_FOLDING_CONTROLS_MODE, type FoldingControlsMode } from "../shared/foldingControls";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -1001,6 +1002,7 @@ export class MarkdownEditorProvider
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
         const frontmatterExpanded = cfg.get<boolean>("frontmatterExpanded", true);
         const gutterMarkers = normalizeGutterMarkersMode(cfg.get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE));
+        const folding = this._getFoldingConfig(document.uri);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
         const toolbar = MarkdownEditorProvider.getToolbarConfig();
         const documentUri = document.uri.toString();
@@ -1015,6 +1017,7 @@ export class MarkdownEditorProvider
             codeBlockWordWrap ? "code-block-word-wrap" : "",
             tocRight ? "toc-right" : "",
             gutterMarkersBodyClass(gutterMarkers) ?? "",
+            ...foldingBodyClasses(folding.controls, folding.enabled),
         ].filter(Boolean).join(" ");
 
         return `<!DOCTYPE html>
@@ -1078,6 +1081,39 @@ export class MarkdownEditorProvider
             return fallback;
         }
         return Math.min(max, Math.max(min, Math.round(value as number)));
+    }
+
+    /**
+     * The fold-affordance config for one document, derived from the user's
+     * own editor settings (no `markdownWysiwyg.*` knob — MAR-110). Read
+     * scoped to the document URI: `editor.*` is resource- and
+     * language-scoped (`[markdown]` overrides, multi-root workspaces), the
+     * codeBlockWordWrap pattern.
+     */
+    private _getFoldingConfig(documentUri: vscode.Uri): { controls: FoldingControlsMode; enabled: boolean } {
+        const editorCfg = vscode.workspace.getConfiguration("editor", documentUri);
+        return {
+            controls: normalizeFoldingControlsMode(
+                editorCfg.get<string>("showFoldingControls", DEFAULT_FOLDING_CONTROLS_MODE),
+            ),
+            enabled: editorCfg.get<boolean>("folding", true) !== false,
+        };
+    }
+
+    /**
+     * Live path for `editor.showFoldingControls` / `editor.folding` changes:
+     * because the settings are resource-scoped, this re-resolves per open
+     * document and posts per-webview — never one global postToAll value.
+     */
+    public broadcastFoldingConfig(): void {
+        for (const [uriKey, panel] of this._webviewPanels) {
+            const folding = this._getFoldingConfig(vscode.Uri.parse(uriKey));
+            panel.webview.postMessage({
+                type: "setFoldingControls",
+                controls: folding.controls,
+                enabled: folding.enabled,
+            } satisfies ToWebviewMessage);
+        }
     }
 
     private _getCodeBlockWordWrap(

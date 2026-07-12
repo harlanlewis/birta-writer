@@ -1,8 +1,11 @@
 /**
- * Tests for the keyboard fold commands (plugins/foldCommands.ts): the
- * directional foldSection/unfoldSection pair and the wholesale
- * foldAllSections/unfoldAllSections, all driving headingFold's plugin state
- * through its metas — plus the `setAll` reducer branch itself.
+ * Tests for the keyboard fold commands (fold/unfold/foldAll/unfoldAll —
+ * plugins/headingFold.ts): the directional foldAtCaret/unfoldAtCaret pair
+ * and the wholesale foldAllCommand/unfoldAllCommand, all driving the fold
+ * plugin state through its metas. The boundary-head probe (a non-empty
+ * FORWARD selection resolves its foldable at head−1, never the block AFTER
+ * the selection) is regression-tested here — foldPlugin.test.ts covers the
+ * broader grammar (callouts, persistence, reveals).
  *
  * Drives the REAL Milkdown editor (real parser, real schema, the production
  * serialization config) so section ranges and position math match production.
@@ -15,13 +18,16 @@ import type { EditorView } from "@milkdown/prose/view";
 import { TextSelection } from "@milkdown/prose/state";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { BlockRangeSelection } from "../plugins/blockRange";
-import { cachedFoldRanges, headingFoldPlugin, headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/headingFold";
 import {
-    foldAllSections,
-    foldSection,
-    unfoldAllSections,
-    unfoldSection,
-} from "../plugins/foldCommands";
+    cachedFoldRanges,
+    foldAllCommand,
+    foldAtCaret,
+    foldPluginKey,
+    headingFoldPlugin,
+    unfoldAllCommand,
+    unfoldAtCaret,
+    type FoldMeta,
+} from "../plugins/headingFold";
 
 let editors: Editor[] = [];
 
@@ -52,6 +58,7 @@ afterEach(async () => {
     }
     editors = [];
     document.body.innerHTML = "";
+    document.body.className = "";
 });
 
 /** Document positions of every heading, in document order. */
@@ -66,7 +73,7 @@ function headingPositions(v: EditorView): number[] {
 }
 
 function folded(v: EditorView): ReadonlySet<number> {
-    return headingFoldPluginKey.getState(v.state)!.folded;
+    return foldPluginKey.getState(v.state)!.folded;
 }
 
 function setCaret(v: EditorView, pos: number): void {
@@ -76,7 +83,7 @@ function setCaret(v: EditorView, pos: number): void {
 /** Runs a command against the live view, counting dispatched transactions. */
 function run(
     v: EditorView,
-    cmd: typeof foldSection,
+    cmd: typeof foldAtCaret,
 ): { applied: boolean; dispatches: number } {
     let dispatches = 0;
     const applied = cmd(v.state, (tr) => {
@@ -90,7 +97,7 @@ function run(
 // nesting (Inner inside Top) and siblings (A vs Top) are represented.
 const OUTLINE = "## A\n\nalpha body\n\n# Top\n\ntop body\n\n## Inner\n\ninner body";
 
-describe("foldSection", () => {
+describe("foldAtCaret", () => {
     it("a caret inside a section body should fold it and land the caret on the heading text", async () => {
         // Arrange: caret in "alpha body" (the paragraph after H2 A)
         const editor = await makeEditor(OUTLINE);
@@ -100,7 +107,7 @@ describe("foldSection", () => {
         setCaret(v, hA! + headingNode.nodeSize + 2);
 
         // Act
-        const { applied, dispatches } = run(v, foldSection);
+        const { applied, dispatches } = run(v, foldAtCaret);
 
         // Assert: folded, caret rescued onto the heading's own text — never
         // orphaned inside the now-hidden body.
@@ -119,7 +126,7 @@ describe("foldSection", () => {
         setCaret(v, v.state.doc.content.size - 2);
 
         // Act
-        const { applied } = run(v, foldSection);
+        const { applied } = run(v, foldAtCaret);
 
         // Assert
         expect(applied).toBe(true);
@@ -136,7 +143,7 @@ describe("foldSection", () => {
         const before = v.state.selection.head;
 
         // Act
-        const { applied } = run(v, foldSection);
+        const { applied } = run(v, foldAtCaret);
 
         // Assert: folded, caret untouched (it was never in the hidden body)
         expect(applied).toBe(true);
@@ -144,16 +151,34 @@ describe("foldSection", () => {
         expect(v.state.selection.head).toBe(before);
     });
 
-    it("an already-folded section should return false with no dispatch (directional)", async () => {
-        // Arrange: fold A, caret on its heading line
+    it("an already-folded innermost section should bubble to the still-open ancestor", async () => {
+        // Arrange: fold Inner, caret stays on Inner's (visible) heading line
+        const editor = await makeEditor(OUTLINE);
+        const v = view(editor);
+        const [, hTop, hInner] = headingPositions(v);
+        setCaret(v, hInner! + 2);
+        expect(run(v, foldAtCaret).applied).toBe(true);
+        expect(folded(v).has(hInner!)).toBe(true);
+
+        // Act: the fold chord again — VS Code fold-at-cursor bubbling
+        const { applied } = run(v, foldAtCaret);
+
+        // Assert: the ancestor folded; Inner stayed folded (never toggled open)
+        expect(applied).toBe(true);
+        expect(folded(v).has(hTop!)).toBe(true);
+        expect(folded(v).has(hInner!)).toBe(true);
+    });
+
+    it("an already-folded section with no foldable ancestor should return false with no dispatch (directional)", async () => {
+        // Arrange: fold A (a top-level section), caret on its heading line
         const editor = await makeEditor(OUTLINE);
         const v = view(editor);
         const [hA] = headingPositions(v);
         setCaret(v, hA! + 2);
-        expect(run(v, foldSection).applied).toBe(true);
+        expect(run(v, foldAtCaret).applied).toBe(true);
 
         // Act: the fold chord again — must NOT toggle back open
-        const { applied, dispatches } = run(v, foldSection);
+        const { applied, dispatches } = run(v, foldAtCaret);
 
         // Assert
         expect(applied).toBe(false);
@@ -168,7 +193,7 @@ describe("foldSection", () => {
         setCaret(v, 2);
 
         // Act + Assert
-        const { applied, dispatches } = run(v, foldSection);
+        const { applied, dispatches } = run(v, foldAtCaret);
         expect(applied).toBe(false);
         expect(dispatches).toBe(0);
     });
@@ -177,7 +202,8 @@ describe("foldSection", () => {
         // Arrange: `## A / alpha / ## B / beta`; Escape-select "alpha" — a
         // forward BlockRangeSelection whose head sits at the block's END
         // boundary, a depth-0 position EQUAL to `## B`'s offset. Resolving
-        // the head inclusively folded B (regression).
+        // the head inclusively folded B (regression — the boundary-head
+        // probe resolves at head−1 for non-empty forward selections).
         const editor = await makeEditor("## A\n\nalpha\n\n## B\n\nbeta");
         const v = view(editor);
         const [hA, hB] = headingPositions(v);
@@ -188,7 +214,7 @@ describe("foldSection", () => {
         v.dispatch(v.state.tr.setSelection(range!));
 
         // Act
-        const { applied } = run(v, foldSection);
+        const { applied } = run(v, foldAtCaret);
 
         // Assert: A folded, B untouched — and the caret rescue fired (the
         // selection overlapped A's now-hidden body), landing on A's heading.
@@ -214,7 +240,7 @@ describe("foldSection", () => {
         v.dispatch(v.state.tr.setSelection(range!));
 
         // Act + Assert: B folds (the section the head points into)
-        const { applied } = run(v, foldSection);
+        const { applied } = run(v, foldAtCaret);
         expect(applied).toBe(true);
         expect(folded(v).has(hB!)).toBe(true);
         expect(folded(v).has(hA!)).toBe(false);
@@ -228,7 +254,7 @@ describe("foldSection", () => {
 
         // Act: capture the transaction the command builds
         const captured: Array<{ getMeta(name: string): unknown }> = [];
-        foldSection(v.state, (tr) => {
+        foldAtCaret(v.state, (tr) => {
             captured.push(tr);
             v.dispatch(tr);
         }, v);
@@ -239,18 +265,18 @@ describe("foldSection", () => {
     });
 });
 
-describe("unfoldSection", () => {
+describe("unfoldAtCaret", () => {
     it("a caret on a folded heading line should unfold that section", async () => {
         // Arrange: fold A from its body, caret now rests on the heading
         const editor = await makeEditor(OUTLINE);
         const v = view(editor);
         const [hA] = headingPositions(v);
         setCaret(v, hA! + 2);
-        run(v, foldSection);
+        run(v, foldAtCaret);
         expect(folded(v).has(hA!)).toBe(true);
 
         // Act
-        const { applied } = run(v, unfoldSection);
+        const { applied } = run(v, unfoldAtCaret);
 
         // Assert
         expect(applied).toBe(true);
@@ -264,12 +290,12 @@ describe("unfoldSection", () => {
         const v = view(editor);
         const [, hTop, hInner] = headingPositions(v);
         v.dispatch(v.state.tr
-            .setMeta(headingFoldPluginKey, { type: "toggle", pos: hTop! } satisfies HeadingFoldMeta)
+            .setMeta(foldPluginKey, { type: "toggle", pos: hTop! } satisfies FoldMeta)
             .setMeta("addToHistory", false));
         setCaret(v, v.state.doc.content.size - 2);
 
         // Act
-        const { applied } = run(v, unfoldSection);
+        const { applied } = run(v, unfoldAtCaret);
 
         // Assert: Top (the innermost folded section containing the caret)
         // opened; Inner was never folded.
@@ -278,25 +304,37 @@ describe("unfoldSection", () => {
         expect(folded(v).has(hInner!)).toBe(false);
     });
 
-    it("both ancestor and own section folded should unfold the innermost first", async () => {
-        // Arrange: fold Top AND Inner, caret in Inner's body
+    it("both ancestor and own section folded should progressively reveal: outer fold first, then the inner", async () => {
+        // Arrange: fold Top AND Inner, then drop the caret into Inner's
+        // (doubly hidden) body. The caret skip-over guard forbids a caret
+        // inside hidden content, so it is ejected onto Top's visible heading
+        // line BEFORE any command runs — the old "unfold the innermost fold
+        // around a hidden caret" state is unreachable for empty carets.
         const editor = await makeEditor(OUTLINE);
         const v = view(editor);
         const [, hTop, hInner] = headingPositions(v);
         for (const pos of [hTop!, hInner!]) {
             v.dispatch(v.state.tr
-                .setMeta(headingFoldPluginKey, { type: "toggle", pos } satisfies HeadingFoldMeta)
+                .setMeta(foldPluginKey, { type: "toggle", pos } satisfies FoldMeta)
                 .setMeta("addToHistory", false));
         }
         setCaret(v, v.state.doc.content.size - 2);
+        const topNode = v.state.doc.nodeAt(hTop!)!;
+        expect(v.state.selection.head).toBeLessThan(hTop! + topNode.nodeSize); // ejected out of hidden content
 
-        // Act
-        const { applied } = run(v, unfoldSection);
+        // Act: unfold at the ejected caret — the fold AT the caret opens
+        const first = run(v, unfoldAtCaret);
 
-        // Assert: Inner opened, Top still folded — repeated chords walk outward.
-        expect(applied).toBe(true);
+        // Assert: Top opened, Inner still folded (progressive disclosure)
+        expect(first.applied).toBe(true);
+        expect(folded(v).has(hTop!)).toBe(false);
+        expect(folded(v).has(hInner!)).toBe(true);
+
+        // Act again from Inner's now-visible heading line: Inner opens too
+        setCaret(v, hInner! + 2);
+        const second = run(v, unfoldAtCaret);
+        expect(second.applied).toBe(true);
         expect(folded(v).has(hInner!)).toBe(false);
-        expect(folded(v).has(hTop!)).toBe(true);
     });
 
     it("an Escape-selected COLLAPSED heading (block range spanning its hidden body) should unfold ITS section, not the next", async () => {
@@ -308,7 +346,7 @@ describe("unfoldSection", () => {
         const v = view(editor);
         const [hA, hB] = headingPositions(v);
         setCaret(v, hA! + 2);
-        run(v, foldSection);
+        run(v, foldAtCaret);
         expect(folded(v).has(hA!)).toBe(true);
         const foldEnd = cachedFoldRanges(v.state.doc).get(hA!)!.to;
         expect(foldEnd).toBe(hB!); // A's hidden body ends where B begins
@@ -317,7 +355,7 @@ describe("unfoldSection", () => {
         v.dispatch(v.state.tr.setSelection(range!));
 
         // Act
-        const { applied } = run(v, unfoldSection);
+        const { applied } = run(v, unfoldAtCaret);
 
         // Assert: A opened; B (never folded) untouched
         expect(applied).toBe(true);
@@ -331,20 +369,20 @@ describe("unfoldSection", () => {
         const v = view(editor);
         const [hA, hTop] = headingPositions(v);
         v.dispatch(v.state.tr
-            .setMeta(headingFoldPluginKey, { type: "toggle", pos: hA! } satisfies HeadingFoldMeta)
+            .setMeta(foldPluginKey, { type: "toggle", pos: hA! } satisfies FoldMeta)
             .setMeta("addToHistory", false));
         const topNode = v.state.doc.nodeAt(hTop!)!;
         setCaret(v, hTop! + topNode.nodeSize + 2);
 
         // Act + Assert
-        const { applied, dispatches } = run(v, unfoldSection);
+        const { applied, dispatches } = run(v, unfoldAtCaret);
         expect(applied).toBe(false);
         expect(dispatches).toBe(0);
         expect(folded(v).has(hA!)).toBe(true);
     });
 });
 
-describe("foldAllSections", () => {
+describe("foldAllCommand", () => {
     it("an unfolded outline should fold every foldable heading at once", async () => {
         // Arrange
         const editor = await makeEditor(OUTLINE);
@@ -353,7 +391,7 @@ describe("foldAllSections", () => {
         setCaret(v, 2);
 
         // Act
-        const { applied, dispatches } = run(v, foldAllSections);
+        const { applied, dispatches } = run(v, foldAllCommand);
 
         // Assert: one transaction, all three sections folded
         expect(applied).toBe(true);
@@ -364,21 +402,26 @@ describe("foldAllSections", () => {
         }
     });
 
-    it("a caret deep in a nested body should relocate to the OUTERMOST enclosing heading", async () => {
+    it("a caret deep in a nested body should be ejected out of the hidden content", async () => {
         // Arrange: caret in "inner body" — after fold-all, Inner's own
-        // heading line hides inside Top's folded body; only Top stays visible.
+        // heading line hides inside Top's folded body; only Top stays
+        // visible. The skip-over guard must not leave the caret stranded
+        // inside display:none content.
         const editor = await makeEditor(OUTLINE);
         const v = view(editor);
-        const [, hTop] = headingPositions(v);
         setCaret(v, v.state.doc.content.size - 2);
 
         // Act
-        run(v, foldAllSections);
+        run(v, foldAllCommand);
 
-        // Assert: caret on Top's own text
-        const topNode = v.state.doc.nodeAt(hTop!)!;
-        expect(v.state.selection.head).toBeGreaterThan(hTop!);
-        expect(v.state.selection.head).toBeLessThan(hTop! + topNode.nodeSize);
+        // Assert: the caret sits outside every hidden range
+        const hiddenRanges = [...cachedFoldRanges(v.state.doc)]
+            .filter(([pos, range]) => range !== null && folded(v).has(pos))
+            .map(([, range]) => range!);
+        const head = v.state.selection.head;
+        for (const range of hiddenRanges) {
+            expect(head < range.from || head >= range.to).toBe(true);
+        }
     });
 
     it("a caret outside every section should stay where it is", async () => {
@@ -389,24 +432,24 @@ describe("foldAllSections", () => {
         const before = v.state.selection.head;
 
         // Act
-        const { applied } = run(v, foldAllSections);
+        const { applied } = run(v, foldAllCommand);
 
         // Assert
         expect(applied).toBe(true);
         expect(v.state.selection.head).toBe(before);
     });
 
-    it("everything already folded should return false with no dispatch", async () => {
+    it("running twice should be idempotent (same folded set, no toggling open)", async () => {
         // Arrange
         const editor = await makeEditor(OUTLINE);
         const v = view(editor);
         setCaret(v, 2);
-        expect(run(v, foldAllSections).applied).toBe(true);
+        expect(run(v, foldAllCommand).applied).toBe(true);
+        const after = [...folded(v)].sort((a, b) => a - b);
 
-        // Act + Assert
-        const { applied, dispatches } = run(v, foldAllSections);
-        expect(applied).toBe(false);
-        expect(dispatches).toBe(0);
+        // Act + Assert: fold-all again never unfolds anything
+        run(v, foldAllCommand);
+        expect([...folded(v)].sort((a, b) => a - b)).toEqual(after);
     });
 
     it("a document with no foldable headings should return false", async () => {
@@ -416,23 +459,23 @@ describe("foldAllSections", () => {
         setCaret(v, 2);
 
         // Act + Assert
-        const { applied, dispatches } = run(v, foldAllSections);
+        const { applied, dispatches } = run(v, foldAllCommand);
         expect(applied).toBe(false);
         expect(dispatches).toBe(0);
     });
 });
 
-describe("unfoldAllSections", () => {
+describe("unfoldAllCommand", () => {
     it("a folded outline should unfold everything in one transaction", async () => {
         // Arrange
         const editor = await makeEditor(OUTLINE);
         const v = view(editor);
         setCaret(v, 2);
-        run(v, foldAllSections);
+        run(v, foldAllCommand);
         expect(folded(v).size).toBe(3);
 
         // Act
-        const { applied, dispatches } = run(v, unfoldAllSections);
+        const { applied, dispatches } = run(v, unfoldAllCommand);
 
         // Assert
         expect(applied).toBe(true);
@@ -446,50 +489,8 @@ describe("unfoldAllSections", () => {
         const v = view(editor);
 
         // Act + Assert
-        const { applied, dispatches } = run(v, unfoldAllSections);
+        const { applied, dispatches } = run(v, unfoldAllCommand);
         expect(applied).toBe(false);
         expect(dispatches).toBe(0);
-    });
-});
-
-describe("headingFold setAll meta", () => {
-    it("non-heading positions in the folded payload should be filtered out", async () => {
-        // Arrange
-        const editor = await makeEditor(OUTLINE);
-        const v = view(editor);
-        const [hA] = headingPositions(v);
-
-        // Act: a heading position mixed with a text position (hA+1 resolves
-        // to the heading's text node, not a heading) and a paragraph position
-        const headingNode = v.state.doc.nodeAt(hA!)!;
-        const paragraphPos = hA! + headingNode.nodeSize;
-        v.dispatch(v.state.tr
-            .setMeta(headingFoldPluginKey, {
-                type: "setAll",
-                folded: [hA!, hA! + 1, paragraphPos],
-            } satisfies HeadingFoldMeta)
-            .setMeta("addToHistory", false));
-
-        // Assert: only the real heading survives the reducer
-        expect([...folded(v)]).toEqual([hA!]);
-    });
-
-    it("an empty folded payload should clear every existing fold entry", async () => {
-        // Arrange
-        const editor = await makeEditor(OUTLINE);
-        const v = view(editor);
-        const [hA] = headingPositions(v);
-        v.dispatch(v.state.tr
-            .setMeta(headingFoldPluginKey, { type: "toggle", pos: hA! } satisfies HeadingFoldMeta)
-            .setMeta("addToHistory", false));
-        expect(folded(v).size).toBe(1);
-
-        // Act
-        v.dispatch(v.state.tr
-            .setMeta(headingFoldPluginKey, { type: "setAll", folded: [] } satisfies HeadingFoldMeta)
-            .setMeta("addToHistory", false));
-
-        // Assert
-        expect(folded(v).size).toBe(0);
     });
 });

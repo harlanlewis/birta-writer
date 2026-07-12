@@ -32,6 +32,8 @@ import {
     deleteSelectedBlocks,
     duplicateSelectedBlocks,
     expandSelection,
+    foldAllCommand,
+    foldAtCaret,
     insertCalloutCommand,
     insertFootnoteCommand,
     insertParagraphAfter,
@@ -42,14 +44,10 @@ import {
     transformToLowercase,
     transformToTitleCase,
     transformToUppercase,
+    unfoldAllCommand,
+    unfoldAtCaret,
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
-import {
-    foldAllSections,
-    foldSection,
-    unfoldAllSections,
-    unfoldSection,
-} from "@/plugins/foldCommands";
 import { openBlockMenuAtCaret } from "@/components/blockMenu/openAtCaret";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { lift } from "@milkdown/prose/commands";
@@ -594,22 +592,24 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     shrinkSelection: (getEditor) => runCommand(getEditor, shrinkSelection),
     insertParagraphAfter: (getEditor) => runCommand(getEditor, insertParagraphAfter),
     insertParagraphBefore: (getEditor) => runCommand(getEditor, insertParagraphBefore),
-    // Keyboard sequence 3 (webview/plugins/foldCommands.ts and
-    // webview/components/blockMenu/openAtCaret.ts). openBlockMenu does NOT
-    // use runCommand: the menu takes focus itself, so refocusing the editor
-    // on success would fight it — but a bail (false: inside a table, or a
-    // marker-less block) must refocus, or a palette invocation both does
-    // nothing AND leaves focus wherever the palette dropped it.
+    // Keyboard sequence 3 (webview/components/blockMenu/openAtCaret.ts and
+    // the shortcuts-help overlay). openBlockMenu does NOT use runCommand:
+    // the menu takes focus itself, so refocusing the editor on success would
+    // fight it — but a bail (false: inside a table, or a marker-less block)
+    // must refocus, or a palette invocation both does nothing AND leaves
+    // focus wherever the palette dropped it.
     openBlockMenu: (getEditor) => runProse(getEditor, (view) => {
         if (!openBlockMenuAtCaret(view)) {
             view.focus();
         }
     }),
-    foldSection: (getEditor) => runCommand(getEditor, foldSection),
-    unfoldSection: (getEditor) => runCommand(getEditor, unfoldSection),
-    foldAllSections: (getEditor) => runCommand(getEditor, foldAllSections),
-    unfoldAllSections: (getEditor) => runCommand(getEditor, unfoldAllSections),
     openShortcutsHelp: () => host.openShortcutsHelp?.(),
+    // Fold grammar (MAR-110): the same ProseMirror commands the gutter
+    // chevrons and block menu drive, so every surface shares one fold state.
+    fold: (getEditor) => runCommand(getEditor, foldAtCaret),
+    unfold: (getEditor) => runCommand(getEditor, unfoldAtCaret),
+    foldAll: (getEditor) => runCommand(getEditor, foldAllCommand),
+    unfoldAll: (getEditor) => runCommand(getEditor, unfoldAllCommand),
 };
 
 /** Dispatches an editor command by id; an unknown id is a safe no-op. */

@@ -199,7 +199,8 @@ describe("heading gutter level menu", () => {
             "Paragraph", "Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6",
             "Bullet List", "Ordered List", "Task List", "Blockquote", "Callout", "Code Block",
             "Duplicate", "Copy as Markdown", "Copy Link",
-            "Move Section Up", "Move Section Down", "Delete",
+            "Move Section Up", "Move Section Down",
+            "Fold All", "Unfold All", "Delete",
             "None", "Headings", "All", // the trailing gutter-markers preference trio
         ]);
         // Three labeled sections frame the rows (slash-menu group idiom).

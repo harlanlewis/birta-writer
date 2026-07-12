@@ -75,7 +75,7 @@ const REBINDABLE_GROUPS: readonly { label: string; ids: readonly EditorCommandId
         ids: ["openFind", "openFindReplace", "findNext", "findPrevious", "findSelection", "selectAllOccurrences"],
     },
     { label: "Blocks", ids: ["openBlockMenu", "deleteBlock"] },
-    { label: "Folding", ids: ["foldSection", "unfoldSection", "foldAllSections", "unfoldAllSections"] },
+    { label: "Folding", ids: ["fold", "unfold", "foldAll", "unfoldAll"] },
     {
         label: "Headings & lists",
         ids: [

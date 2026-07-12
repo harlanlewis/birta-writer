@@ -27,12 +27,15 @@ import { Fragment } from "@milkdown/prose/model";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import {
     findHeadingFoldRange,
+    foldAllCommand,
     foldedSectionEnd,
     foldedSectionEnds,
     getHeadingLevel,
     headingFoldPluginKey,
+    unfoldAllCommand,
     type HeadingFoldMeta,
 } from "../../plugins/headingFold";
+import { attrsFromMarker, markerWithFold } from "../../plugins/callouts";
 import { BlockRangeSelection } from "../../plugins/blockRange";
 import { type GetEditor } from "../../editorCommands";
 import { notifyClipboardWrite, notifySetGutterMarkers } from "../../messaging";
@@ -46,6 +49,7 @@ import { t } from "../../i18n";
 import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
 import {
     IconChevronDown,
+    IconChevronRight,
     IconChevronUp,
     IconCopy,
     IconEye,
@@ -54,14 +58,15 @@ import {
     IconLink,
     IconTrash2,
 } from "../../ui/icons";
-import { blockMarkdownAt, canTurnInto, selectInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
+import { blockMarkdownAt, selectInto } from "./turnInto";
+import {
+    canConvert,
+    conversionKindAt,
+    convertAt,
+    type ConversionKind,
+} from "../../blockCapabilities";
 import { flashRange } from "./rangeIndicator";
 import { TextSelection, type EditorState } from "@milkdown/prose/state";
-
-// The conversion matrix and kind helpers live in ./turnInto; re-exported so
-// consumers and tests keep one import surface.
-export { turnIntoKindAt, canTurnInto, turnBlockInto, isTextBearingParagraph } from "./turnInto";
-export type { TurnIntoKind } from "./turnInto";
 
 // ── Editor access ───────────────────────────────────────────────────────────
 // The menu lives behind a ProseMirror widget, which only hands us the view;
@@ -480,7 +485,7 @@ function copyHeadingLink(view: EditorView, pos: number): void {
 // Turn-into rows reuse the slash registry's art wholesale — label, icon,
 // SVG-or-badge slot, and the right-aligned literal-markdown hint — so the two
 // menus present every block type identically (single source, zero drift).
-const SLASH_ID_BY_KIND: Record<TurnIntoKind, string> = {
+const SLASH_ID_BY_KIND: Record<ConversionKind, string> = {
     paragraph: "paragraph",
     h1: "heading1",
     h2: "heading2",
@@ -497,7 +502,7 @@ const SLASH_ID_BY_KIND: Record<TurnIntoKind, string> = {
 };
 
 interface TurnIntoRow {
-    kind: TurnIntoKind;
+    kind: ConversionKind;
     label: string;
     keywords: readonly string[];
     icon: string;
@@ -505,7 +510,7 @@ interface TurnIntoRow {
     hint?: string;
 }
 
-const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as TurnIntoKind[]).map(
+const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as ConversionKind[]).map(
     (kind) => {
         const item = SLASH_MENU_ITEMS.find((entry) => entry.id === SLASH_ID_BY_KIND[kind]);
         return {
@@ -565,7 +570,7 @@ export function openBlockMenu(
     const conversionPos = isItem
         ? view.state.doc.resolve(blockPos).before(view.state.doc.resolve(blockPos).depth)
         : blockPos;
-    const currentKind = turnIntoKindAt(view, conversionPos);
+    const currentKind = conversionKindAt(view, conversionPos);
 
     const menu = document.createElement("div");
     menu.className = "block-menu";
@@ -745,6 +750,8 @@ export function openBlockMenu(
             active?: boolean;
             disabled?: boolean;
             radio?: boolean;
+            /** menuitemcheckbox semantics (aria-checked from `active`). */
+            check?: boolean;
             danger?: boolean;
             icon?: string;
             badge?: string;
@@ -759,9 +766,9 @@ export function openBlockMenu(
         row.type = "button";
         row.className = "block-menu-item";
         row.dataset["mutates"] = opts.mutates === false ? "0" : "1";
-        row.setAttribute("role", opts.radio ? "menuitemradio" : "menuitem");
+        row.setAttribute("role", opts.radio ? "menuitemradio" : opts.check ? "menuitemcheckbox" : "menuitem");
         row.tabIndex = -1;
-        if (opts.radio) {
+        if (opts.radio || opts.check) {
             row.setAttribute("aria-checked", opts.active ? "true" : "false");
         }
         row.classList.toggle("block-menu-item--active", Boolean(opts.active));
@@ -854,7 +861,7 @@ export function openBlockMenu(
     // render their full phrase in the flat list, short name under the header.
     let filterActive = false;
     if (currentKind !== null) {
-        const offered = TURN_INTO_CHOICES.filter(({ kind }) => canTurnInto(view, conversionPos, kind));
+        const offered = TURN_INTO_CHOICES.filter(({ kind }) => canConvert(view, conversionPos, kind));
         for (const choice of offered) {
             const active = choice.kind === currentKind;
             specs.push({
@@ -869,7 +876,7 @@ export function openBlockMenu(
                     ...(choice.hint !== undefined && { hint: choice.hint }),
                     action: () => {
                         if (!active) {
-                            turnBlockInto(view, conversionPos, choice.kind, getEditor);
+                            convertAt(view, conversionPos, choice.kind, getEditor);
                         }
                     },
                 }),
@@ -907,6 +914,40 @@ export function openBlockMenu(
             action: () => copyHeadingLink(view, blockPos),
         });
     }
+    if (anchorNode?.type.name === "callout") {
+        // T1 write path (MAR-110): a deliberate, undoable document edit that
+        // writes/removes the Obsidian `[!kind]-` fold marker — the syntax
+        // sets the DEFAULT state; chevron clicks stay transient and never
+        // touch the marker. Re-synthesized like a kind change (case, title
+        // bytes preserved); the fold meta syncs the visual state to the new
+        // default in the same single-undo-step transaction.
+        const defaultCollapsed = ((anchorNode.attrs["fold"] as string) ?? "") === "-";
+        action(t("Collapsed by default"), ["collapse", "fold", "default", "marker"], {
+            check: true,
+            active: defaultCollapsed,
+            icon: IconChevronRight,
+            action: () => {
+                const node = view.state.doc.nodeAt(blockPos);
+                if (node?.type.name !== "callout") {
+                    return;
+                }
+                const nextFold = defaultCollapsed ? "" : "-";
+                const marker = markerWithFold((node.attrs["marker"] as string) ?? "[!NOTE]", nextFold);
+                const tr = view.state.tr.setNodeMarkup(
+                    blockPos,
+                    null,
+                    attrsFromMarker(marker, node.attrs["attached"] as boolean),
+                );
+                tr.setMeta(headingFoldPluginKey, {
+                    type: "set",
+                    pos: blockPos,
+                    folded: nextFold === "-",
+                } satisfies HeadingFoldMeta);
+                view.dispatch(tr);
+                view.focus();
+            },
+        });
+    }
     action(movesSection ? t("Move Section Up") : t("Move Up"), ["move", "up", "reorder"], {
         icon: IconChevronUp,
         disabled: !canMove(view, blockPos, -1),
@@ -916,6 +957,21 @@ export function openBlockMenu(
         icon: IconChevronDown,
         disabled: !canMove(view, blockPos, 1),
         action: () => moveBlockAt(view, blockPos, 1),
+    });
+    // Document-wide fold verbs (MAR-110) — palette + block menu only (the
+    // Cmd+K fold chords are consumed by insertLink in this editor). Not
+    // block-scoped, so they never pre-place the caret (mutates: false).
+    action(t("Fold All"), ["fold", "collapse", "all", "sections"], {
+        icon: IconChevronRight,
+        mutates: false,
+        disabled: !foldAllCommand(view.state),
+        action: () => foldAllCommand(view.state, view.dispatch),
+    });
+    action(t("Unfold All"), ["unfold", "expand", "all", "sections"], {
+        icon: IconChevronDown,
+        mutates: false,
+        disabled: !unfoldAllCommand(view.state),
+        action: () => unfoldAllCommand(view.state, view.dispatch),
     });
     action(t("Delete"), ["delete", "remove", "trash"], {
         icon: IconTrash2,

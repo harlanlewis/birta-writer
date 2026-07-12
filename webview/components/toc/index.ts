@@ -3,6 +3,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import { applyTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { notifyTocWidth, notifySetTocPosition } from "@/messaging";
+import { revealPosition } from "@/plugins/headingFold";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
 import type { EventManager } from "@/eventManager";
 import {
@@ -343,6 +344,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                     return;
                 }
                 try {
+                    // A heading hidden inside a collapsed ancestor fold is
+                    // an explicit entry intent: unfold everything containing
+                    // it first (the outline deliberately keeps collapsed
+                    // headings), then reveal.
+                    revealPosition(view, pos);
                     const { node } = view.domAtPos(pos + 1);
                     let el: HTMLElement | null =
                         node.nodeType === Node.TEXT_NODE

@@ -151,11 +151,11 @@ describe("editor command keybinding contributions", () => {
         // elsewhere).
         joinLines: [{ mac: "ctrl+j" }],
         // Keyboard sequence 3: list toggles (the Google-Docs/Notion 7/8/9
-        // row), block-type chords (Cmd/Ctrl+Alt+0..6), section folding, and
-        // the caret block menu (Cmd/Ctrl+. — free across package.json,
-        // CLAIMED_SHORTCUTS, and the webview keymaps; VS Code's own Quick
-        // Fix default is editorTextFocus-scoped and inert while the custom
-        // editor is active).
+        // row), block-type chords (Cmd/Ctrl+Alt+0..6), and the caret block
+        // menu (Cmd/Ctrl+. — free across package.json, CLAIMED_SHORTCUTS,
+        // and the webview keymaps; VS Code's own Quick Fix default is
+        // editorTextFocus-scoped and inert while the custom editor is
+        // active).
         toggleOrderedList: [{ key: "ctrl+shift+7", mac: "cmd+shift+7" }],
         toggleBulletList: [{ key: "ctrl+shift+8", mac: "cmd+shift+8" }],
         toggleTaskList: [{ key: "ctrl+shift+9", mac: "cmd+shift+9" }],
@@ -166,12 +166,15 @@ describe("editor command keybinding contributions", () => {
         setHeading4: [{ key: "ctrl+alt+4", mac: "cmd+alt+4" }],
         setHeading5: [{ key: "ctrl+alt+5", mac: "cmd+alt+5" }],
         setHeading6: [{ key: "ctrl+alt+6", mac: "cmd+alt+6" }],
-        // Fold chords: mac keeps ⌘⌥[/] (VS Code's mac fold defaults);
+        openBlockMenu: [{ key: "ctrl+.", mac: "cmd+." }],
+        // VS Code's native fold/unfold defaults (MAR-110): mac keeps ⌘⌥[/];
         // win/linux use ctrl+shift+[/] — VS Code's own fold/unfold defaults
         // there, and ctrl+alt is AltGr-hazardous on international layouts.
-        foldSection: [{ key: "ctrl+shift+[", mac: "cmd+alt+[" }],
-        unfoldSection: [{ key: "ctrl+shift+]", mac: "cmd+alt+]" }],
-        openBlockMenu: [{ key: "ctrl+.", mac: "cmd+." }],
+        // Fold All / Unfold All ship unbound: the Cmd+K chord leader is
+        // consumed by insertLink in this editor, so they live in the palette
+        // + block menu.
+        fold: [{ key: "ctrl+shift+[", mac: "cmd+alt+[" }],
+        unfold: [{ key: "ctrl+shift+]", mac: "cmd+alt+]" }],
     };
 
     it("every editor keybinding should reference a table entry", () => {

@@ -344,6 +344,12 @@ export function activate(context: vscode.ExtensionContext) {
                 );
                 MarkdownEditorProvider.current?.postToAll({ type: "setGutterMarkers", mode });
             }
+            if (e.affectsConfiguration("editor.showFoldingControls")
+                || e.affectsConfiguration("editor.folding")) {
+                // Resource-scoped native settings: the provider re-resolves
+                // per open document and posts per-webview (MAR-110).
+                MarkdownEditorProvider.current?.broadcastFoldingConfig();
+            }
             if (e.affectsConfiguration("markdownWysiwyg.contentWidth")
                 || e.affectsConfiguration("markdownWysiwyg.maxContentWidth")) {
                 const cw = MarkdownEditorProvider.resolveContentWidthConfig();

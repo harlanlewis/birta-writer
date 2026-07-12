@@ -48,7 +48,12 @@ import {
 } from "../components/blockMenu";
 import { selectionCoverRange } from "../components/blockMenu/drag";
 import { BlockRangeSelection } from "./blockRange";
-import { foldedSectionEnds } from "./headingFold";
+import {
+    foldHiddenRange,
+    foldPluginKey,
+    foldedSectionEnds,
+    type FoldMeta,
+} from "./headingFold";
 
 type Command = (state: EditorState, dispatch?: (tr: Transaction) => void, view?: EditorView) => boolean;
 
@@ -402,8 +407,51 @@ export const deleteSelectedBlocks: Command = (state, dispatch, view) => {
     return deleteBlockRange(view, range);
 };
 
+/**
+ * ←/→ while a block range is selected: collapse/expand the selected
+ * foldable block(s) — the universal tree-view grammar (MAR-110). This
+ * deliberately replaces ProseMirror's default collapse-to-caret on these
+ * keys IN BLOCK-SELECTION MODE ONLY (Escape remains the exit, matching how
+ * tree views behave); outside a block range the keys fall through
+ * untouched. With `editor.folding` off the default behavior returns.
+ */
+export function foldSelectedBlocks(fold: boolean): Command {
+    return (state, dispatch) => {
+        const sel = state.selection;
+        if (!(sel instanceof BlockRangeSelection)) {
+            return false;
+        }
+        const foldState = foldPluginKey.getState(state);
+        if (!foldState?.enabled) {
+            return false;
+        }
+        const positions: number[] = [];
+        state.doc.forEach((node, offset) => {
+            if (
+                offset >= sel.from && offset < sel.to &&
+                foldHiddenRange(state.doc, offset) !== null &&
+                foldState.folded.has(offset) !== fold
+            ) {
+                positions.push(offset);
+            }
+        });
+        if (positions.length > 0 && dispatch) {
+            dispatch(
+                state.tr
+                    .setMeta(foldPluginKey, { type: "setMany", positions, folded: fold } satisfies FoldMeta)
+                    .setMeta("addToHistory", false),
+            );
+        }
+        // Consume even when nothing changed: in block-selection mode the
+        // arrows are fold verbs, never a selection exit.
+        return true;
+    };
+}
+
 const blockKeymap = keydownHandler({
     "Escape": toggleBlockSelection,
+    "ArrowLeft": foldSelectedBlocks(true),
+    "ArrowRight": foldSelectedBlocks(false),
     "Shift-ArrowDown": extendBlockSelection(1),
     "Shift-ArrowUp": extendBlockSelection(-1),
     "Mod-a": escalateSelectAll,

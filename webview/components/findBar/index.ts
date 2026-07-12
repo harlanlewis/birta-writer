@@ -16,6 +16,7 @@ import { attachInputUndo } from "@/utils/inputUndo";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { getTopbarBottom, scrollElementBelowTopbar } from "@/utils/headingUtils";
+import { revealPosition } from "@/plugins/headingFold";
 import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
 import {
@@ -530,11 +531,16 @@ export function initFindBar(
         }
         currentIdx = idx;
         count.textContent = `${currentIdx + 1}/${matches.length}`;
-        updateHighlights();
         const view = getEditorView();
         if (!view) {
+            updateHighlights();
             return;
         }
+        // A match inside a folded range auto-unfolds it and leaves it
+        // unfolded (VS Code's Find behavior) — BEFORE measuring, so the
+        // reveal scroll targets a visible element.
+        revealPosition(view, sortPos(matches[idx]));
+        updateHighlights();
         const el = matchElement(view, matches[idx]);
         if (el) {
             const topbarH = getTopbarBottom();
