@@ -132,7 +132,7 @@ export async function run({ page, check, baseUrl }) {
             "Paragraph", "List item", "Blockquote", "Image", "HTML",
             "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
             "Table", "Callout", "Callout", "Directive",
-            "Callout", "Callout", "Blockquote", "Code Block",
+            "Callout", "Callout", "Blockquote", "Code Block", "Table",
             "Blockquote", "Heading", "Blockquote",
         // Nested headings carry an H1-H6 text badge instead of an SVG icon.
         ]) && markers.every((m) => m.svg || m.pill === "Heading"),
@@ -149,7 +149,7 @@ export async function run({ page, check, baseUrl }) {
         }));
     });
     check("nested container children carry their own markers",
-        nested.length === 5 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
+        nested.length === 6 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
     const innerCallout = await page.evaluate(() => {
         const el = [...document.querySelectorAll(".block-gutter-host--child")]
             .find((k) => k.classList.contains("callout"));
@@ -264,10 +264,15 @@ export async function run({ page, check, baseUrl }) {
     // NESTED markers must sit on their block's first visible line too — the
     // regression: the flat --child `top: 0` ignored a nested heading's own
     // padding-top (the H1 badge rode a full line-height above its text) and
-    // a nested quote's padded body. NodeView children (callout, code block)
-    // anchor their gutter inside their body and keep the per-wrapper
-    // calibration — held to the same band here so that stays true.
-    const nestedGeometry = await page.evaluate(() => {
+    // a nested quote's padded body. NodeView children (callout, code block,
+    // table) anchor their gutter inside their body and keep the per-wrapper
+    // calibration — held to the same band here so that stays true. And the
+    // markers must sit CLEAR of every ancestor container's border bar (the
+    // other regression: a callout-in-callout marker straddled the parent's
+    // accent bar). Both invariants are asserted at 100% AND 200% content
+    // font scale: the paddings the calibrations compensate are em-based, so
+    // px-constant calibrations drift off the line as the font grows.
+    const measureNested = () => page.evaluate(() => {
         const out = [];
         for (const el of document.querySelectorAll(".block-gutter-host--child")) {
             const m = el.querySelector(".heading-fold-marker--block");
@@ -290,43 +295,45 @@ export async function run({ page, check, baseUrl }) {
                 if (!textRect) continue;
                 lineCenter = textRect.y + textRect.height / 2;
             } else {
+                const em = parseFloat(getComputedStyle(document.getElementById("editor")).fontSize);
                 const headed = el.querySelector(".callout-title, .directive-header, .code-block-header");
-                const probe = headed ?? el.querySelector("p") ?? el;
+                const probe = headed ?? el.querySelector("p, td") ?? el;
                 const pr = probe.getBoundingClientRect();
-                lineCenter = pr.y + Math.min(12, pr.height / 2);
+                lineCenter = pr.y + Math.min(0.86 * em, pr.height / 2);
             }
-            out.push({ pill: m.dataset.pill, tag: el.tagName,
+            let clearance = Infinity;
+            for (let anc = el.parentElement; anc && !anc.classList.contains("ProseMirror"); anc = anc.parentElement) {
+                if (anc.matches(".callout, .container-directive, blockquote, .mw-table")) {
+                    clearance = Math.min(clearance, Math.round((anc.getBoundingClientRect().left - mr.right) * 10) / 10);
+                }
+            }
+            out.push({ pill: m.dataset.pill, tag: el.tagName, clearance,
                        dy: Math.round((mr.y + mr.height / 2 - lineCenter) * 10) / 10 });
         }
         return out;
     });
-    check("every nested marker aligns with its block's first line (±3px)",
-        nestedGeometry.length === 5 && nestedGeometry.every((g) => Math.abs(g.dy) <= 3),
-        JSON.stringify(nestedGeometry));
-
-    // Horizontally, a nested marker must sit CLEAR of every ancestor
-    // container's border bar — the regression: NodeView children (a callout
-    // in a callout) kept their top-level -10px offset and straddled the
-    // parent's bar, and depth-2 children straddled the grandparent's.
-    const nestedClearance = await page.evaluate(() => {
-        const out = [];
-        for (const el of document.querySelectorAll(".block-gutter-host--child")) {
-            const m = el.querySelector(".heading-fold-marker--block");
-            if (!m) continue;
-            const mr = m.getBoundingClientRect();
-            let worst = Infinity;
-            for (let anc = el.parentElement; anc && !anc.classList.contains("ProseMirror"); anc = anc.parentElement) {
-                if (anc.matches(".callout, .container-directive, blockquote, .mw-table")) {
-                    worst = Math.min(worst, Math.round((anc.getBoundingClientRect().left - mr.right) * 10) / 10);
-                }
-            }
-            out.push({ pill: m.dataset.pill, clearance: worst });
-        }
-        return out;
+    for (const scale of [1, 2]) {
+        await page.evaluate((sc) => {
+            document.documentElement.style.setProperty("--content-font-scale", String(sc));
+        }, scale);
+        await page.evaluate(
+            () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        );
+        const tol = 3 * scale; // the line box itself doubles at 200%
+        const nestedGeometry = await measureNested();
+        check(`every nested marker aligns with its block's first line at ${scale * 100}% (±${tol}px)`,
+            nestedGeometry.length === 6 && nestedGeometry.every((g) => Math.abs(g.dy) <= tol),
+            JSON.stringify(nestedGeometry.filter((g) => Math.abs(g.dy) > tol)));
+        check(`every nested marker clears its ancestor containers' border bars at ${scale * 100}% (≥2px)`,
+            nestedGeometry.length === 6 && nestedGeometry.every((g) => g.clearance >= 2),
+            JSON.stringify(nestedGeometry.filter((g) => g.clearance < 2)));
+    }
+    await page.evaluate(() => {
+        document.documentElement.style.removeProperty("--content-font-scale");
     });
-    check("every nested marker clears its ancestor containers' border bars (≥2px)",
-        nestedClearance.length === 5 && nestedClearance.every((g) => g.clearance >= 2),
-        JSON.stringify(nestedClearance));
+    await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
 
     // Block-range selection must not double-paint: the native ::selection
     // is suppressed (hideselection wins the cascade) while the tint shows.

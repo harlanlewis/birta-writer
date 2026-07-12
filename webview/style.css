@@ -233,6 +233,18 @@ body {
    --content-font-scale is the fontSize setting as a ratio (100% → 1): a
    multiplier over the VS Code editor font size, so editor.fontSize changes
    and window zoom still flow through. */
+/* One absolute "content em" that geometry rules can consume anywhere:
+   registering the property makes the `1em` below compute AT #editor (the
+   content font size), so a rule applied inside an h1 (font-size: 2em)
+   still reads the body em. Gutter calibrations use this to compensate
+   em-based container paddings without drifting when the user scales the
+   content font (fontSize setting / editor.fontSize / zoom). */
+@property --content-em {
+    syntax: "<length>";
+    inherits: true;
+    initial-value: 14px;
+}
+
 #editor {
     font-family: var(--content-font-family, var(
             --vscode-editor-font-family,
@@ -243,6 +255,7 @@ body {
         ));
     font-size: calc(var(--vscode-editor-font-size, 14px) * var(--content-font-scale, 1));
     line-height: 1.6;
+    --content-em: 1em;
 }
 
 /* Browser-native scroll-into-view (initial focus, find-in-page, …) must not
@@ -1728,43 +1741,49 @@ body.block-marqueeing .milkdown .editor {
 
 /* Container blocks pad their content, but the gutter anchors to the host's
    BORDER box (top: 0) — the icon rode 5-8px above the first line. Values
-   match each wrapper's measured padding-top; and per-wrapper `left` zeroes
-   the small horizontal drift so the marker column stays ruler-straight.
-   These descendant selectors also reach a wrapper nested inside a container
-   (its gutter still sits inside its own body, so the same calibration is
-   the right one); the leak onto plain-DOM nested children (heading/quote,
-   whose gutter is a direct child) is neutralized by the --child rules
-   below. */
-.milkdown .editor :is(blockquote, .mw-table) .heading-fold-gutter--block {
-    top: 7.5px;
+   compensate each wrapper's padding-top, expressed against the CONTENT em
+   (--content-em, an absolute length registered at #editor) so the marker
+   stays on the first line when the user scales the content font — the
+   paddings they mirror are em-based, so a px constant drifts off the line
+   at 150-200%. These descendant selectors also reach a wrapper nested
+   inside a container (its gutter still sits inside its own body, so the
+   same calibration is the right one); the leak onto plain-DOM nested
+   children (heading/quote, whose gutter is a direct child) is neutralized
+   by the --child rules below. */
+.milkdown .editor blockquote .heading-fold-gutter--block {
+    top: calc(0.5 * var(--content-em) + 0.5px); /* quote padding-top 0.5em */
+}
+.milkdown .editor .mw-table .heading-fold-gutter--block {
+    top: 7.5px; /* px chrome: 1px cell border + 6px cell padding */
 }
 /* Header-bearing wrappers (callout title bar, directive header, code
    toolbar): the icon aligns with the HEADER line, which sits closer to the
    border box than a padded body does. */
 .milkdown .editor .callout .heading-fold-gutter--block {
-    top: 1.5px;
+    top: calc(0.11 * var(--content-em));
 }
 .milkdown .editor .container-directive .heading-fold-gutter--block {
-    top: 1.5px;
+    top: calc(0.11 * var(--content-em));
 }
 .milkdown .editor .code-block-wrapper .heading-fold-gutter--block {
-    top: 2.5px;
+    top: calc(0.18 * var(--content-em));
     left: -11px;
 }
 .milkdown .editor .footnote-def .heading-fold-gutter--block {
-    top: 5.5px;
+    top: calc(0.39 * var(--content-em));
     left: -12px;
 }
 
 /* Blocks NESTED inside containers (callout/quote/directive children).
    HORIZONTAL: the decoration pass stamps --nested (+ a depth custom
    property) on every child gutter, wherever the wrapper's DOM anchors it,
-   and the marker steps one container-inset (~17px: border bar + padding)
-   further into the margin per nesting level — so its right edge clears
-   EVERY ancestor's border bar instead of straddling the parent's (depth 1
+   and the marker steps one container-inset (border bar + 1em padding, the
+   largest wrapper inset) further into the margin per nesting level — so
+   its right edge clears EVERY ancestor's border bar at any content font
+   scale instead of straddling the parent's (depth 1 at the default 14px
    resolves to the former -26px column). */
 .milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--nested {
-    left: calc(-9px - var(--nested-gutter-depth, 1) * 17px);
+    left: calc(-9px - var(--nested-gutter-depth, 1) * (3px + var(--content-em)));
 }
 /* VERTICAL: only plain-DOM children (headings, blockquotes) anchor their
    gutter as a direct child and match this rule — NodeView wrappers
@@ -1787,6 +1806,14 @@ body.block-marqueeing .milkdown .editor {
 }
 /* Nested blockquotes: the same padded-body calibration as top level. */
 .milkdown .editor blockquote.block-gutter-host--child > .heading-fold-gutter--block {
+    top: calc(0.5 * var(--content-em) + 0.5px);
+}
+/* A table nested in a callout/directive: the container rules above win the
+   cascade tie against the :is(blockquote, .mw-table) rule (equal
+   specificity, later declaration), which seated the table's marker on the
+   header calibration ~6px high. The --child host class breaks the tie in
+   the table's favor. */
+.milkdown .editor .mw-table.block-gutter-host--child .heading-fold-gutter--block {
     top: 7.5px;
 }
 
