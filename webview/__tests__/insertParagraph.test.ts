@@ -295,6 +295,65 @@ describe("insertParagraphBefore (Mod-Shift-Enter)", () => {
         expectCaretInEmptyParagraph(view);
     });
 
+    it("a caret in a code block nested in a blockquote should insert inside the blockquote, before the code block", async () => {
+        const view = await makeEditor("> intro\n>\n> ```js\n> code1\n> ```");
+        placeCaretIn(view, "code1", 2);
+
+        expect(insertParagraphBefore(view.state, view.dispatch)).toBe(true);
+
+        expect(view.state.doc.childCount).toBe(1); // nothing escaped to top level
+        const quote = view.state.doc.child(0);
+        expect(quote.type.name).toBe("blockquote");
+        expect(quote.child(0).textContent).toBe("intro");
+        expect(quote.child(1).type.name).toBe("paragraph");
+        expect(quote.child(1).textContent).toBe("");
+        expect(quote.child(2).type.name).toBe("code_block");
+        expect(quote.child(2).textContent).toBe("code1"); // intact
+        expectCaretInEmptyParagraph(view);
+        const $from = view.state.selection.$from;
+        expect($from.node($from.depth - 1).type.name).toBe("blockquote");
+    });
+
+    it("a caret in a code block nested in a list item should insert inside that item, before the code block", async () => {
+        const view = await makeEditor("- item text\n\n  ```js\n  code2\n  ```\n- second");
+        placeCaretIn(view, "code2", 2);
+
+        expect(insertParagraphBefore(view.state, view.dispatch)).toBe(true);
+
+        const list = view.state.doc.child(0);
+        expect(list.childCount).toBe(2); // still two items
+        const item = list.child(0);
+        expect(item.child(0).textContent).toBe("item text");
+        expect(item.child(1).type.name).toBe("paragraph");
+        expect(item.child(1).textContent).toBe("");
+        expect(item.child(2).type.name).toBe("code_block");
+        expect(item.child(2).textContent).toBe("code2"); // intact
+        expectCaretInEmptyParagraph(view);
+        const $from = view.state.selection.$from;
+        expect($from.node($from.depth - 1).type.name).toBe("list_item");
+    });
+
+    it("a caret in a table nested in a callout should insert inside the callout, before the table", async () => {
+        const view = await makeEditor("> [!NOTE]\n> | a | b |\n> | --- | --- |\n> | c | d |");
+        placeCaretIn(view, "d");
+
+        expect(insertParagraphBefore(view.state, view.dispatch)).toBe(true);
+
+        expect(view.state.doc.childCount).toBe(1); // nothing escaped to top level
+        const callout = view.state.doc.child(0);
+        expect(callout.type.name).toBe("callout");
+        let tableIndex = -1;
+        callout.forEach((node, _offset, i) => {
+            if (node.type.name === "table") { tableIndex = i; }
+        });
+        expect(tableIndex).toBeGreaterThan(0);
+        expect(callout.child(tableIndex - 1).type.name).toBe("paragraph");
+        expect(callout.child(tableIndex - 1).content.size).toBe(0);
+        expectCaretInEmptyParagraph(view);
+        const $from = view.state.selection.$from;
+        expect($from.node($from.depth - 1).type.name).toBe("callout");
+    });
+
     it("a block-range selection should insert before the first selected block", async () => {
         const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
         const range = BlockRangeSelection.tryCreate(

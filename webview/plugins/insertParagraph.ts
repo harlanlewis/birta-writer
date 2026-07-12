@@ -26,8 +26,8 @@
  * (editor.ts), so its bindings win — insertParagraphAfter MUST return false
  * inside a code block or table so the preset's exit behavior keeps working.
  * The preset binds nothing on Mod-Shift-Enter there, so insertParagraphBefore
- * instead inserts an empty paragraph before the enclosing top-level block
- * (rather than being a swallowed dead key).
+ * instead inserts an empty paragraph right before the enclosing code block /
+ * table at its own depth (rather than being a swallowed dead key).
  */
 import { keymap } from "@milkdown/prose/keymap";
 import {
@@ -92,14 +92,27 @@ function insertSiblingParagraph(side: -1 | 1): Command {
         // "after" direction, so insertParagraphAfter falls through. But the
         // preset binds nothing on Mod-Shift-Enter there, so without this the
         // "before" chord would be a dead key (swallowed, no-op). Handle it by
-        // inserting the paragraph before the ENCLOSING top-level block.
+        // inserting the paragraph immediately before the enclosing code
+        // block / table AT ITS OWN DEPTH — a code block nested in a
+        // blockquote / list item / callout gets the paragraph INSIDE that
+        // container, consistent with the container rule above.
         let pos: number;
         if (inPresetExitTerritory(state)) {
             if (side === 1) {
                 return false;
             }
             const $from = state.selection.$from;
-            pos = $from.depth === 0 ? $from.pos : $from.before(1);
+            let before: number | null = null;
+            for (let depth = $from.depth; depth > 0; depth--) {
+                const name = $from.node(depth).type.name;
+                if (name === "code_block" || name === "table") {
+                    before = $from.before(depth);
+                    break;
+                }
+            }
+            // $from can sit outside the code/table when only the $to edge of
+            // the selection is inside one: keep the old top-level placement.
+            pos = before ?? ($from.depth === 0 ? $from.pos : $from.before(1));
         } else {
             pos = insertionPos(state, side);
         }

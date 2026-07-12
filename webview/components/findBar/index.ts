@@ -18,6 +18,7 @@ import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
 import {
     buildQuery,
+    escapeRegExp,
     collectSegments,
     searchSegments,
     searchSourceFallback,
@@ -53,7 +54,7 @@ export interface FindBarController {
      * Cmd+D: seed the query from the selection/word on the first press and
      * select the occurrence at the caret; repeated presses advance the
      * document selection to the next occurrence (wrapping). Re-seeds when the
-     * live selection no longer equals the active query.
+     * live selection no longer corresponds to the active query.
      */
     cycleOccurrence(): void;
     /**
@@ -414,13 +415,18 @@ export function initFindBar(
 
     // ── Search ───────────────────────────────────────────
     /**
-     * Run a search for `query`. When `opts.literal` is set the query is matched
-     * as literal text regardless of the persisted Regex toggle — used by the
-     * seed paths (Cmd+D / Shift+Cmd+L) so selecting `a.b` or `foo(` matches the
-     * selection verbatim rather than as a regex pattern (VS Code always seeds a
-     * literal). The Regex toggle still governs whatever the user types by hand.
+     * Text seeded from a selection/word is text to FIND, not a pattern: when
+     * the Regex toggle is on, write its regex-escaped form into the input so
+     * the field shows exactly what is searched and every later rescan
+     * (replace, toggle clicks) agrees by construction — no one-shot "literal"
+     * flag that a rescan could silently drop.
      */
-    function search(query: string, opts: { literal?: boolean } = {}) {
+    function seedText(raw: string): string {
+        return regexMode ? escapeRegExp(raw) : raw;
+    }
+
+    /** Run a search for `query` under the current toggle state. */
+    function search(query: string) {
         matches = [];
         currentIdx = 0;
         bar.classList.remove("find-bar--invalid");
@@ -434,7 +440,7 @@ export function initFindBar(
         }
 
         const compiled = buildQuery(query, {
-            regex: opts.literal ? false : regexMode,
+            regex: regexMode,
             wholeWord,
             caseSensitive,
         });
@@ -596,7 +602,7 @@ export function initFindBar(
         if (!input.value) {
             const sel = selectionQuery();
             if (sel !== undefined) {
-                input.value = sel;
+                input.value = seedText(sel);
             }
         }
         if (!input.value) {
@@ -664,11 +670,12 @@ export function initFindBar(
 
     /**
      * Cmd+D. Re-seed rule: seed a fresh query (from the selection or the word
-     * at the caret) whenever the bar is not already searching that exact text
-     * — i.e. the bar is closed/empty, or the live selection text differs from
-     * the active query. Otherwise advance to the next occurrence. Because each
-     * step SELECTS its match, the selection equals the query on the following
-     * press, so repeated Cmd+D naturally cycles.
+     * at the caret) whenever the bar is not already searching that text —
+     * i.e. the bar is closed/empty, or the live selection neither spans the
+     * current match nor equals the active query under the case rule in
+     * effect. Otherwise advance to the next occurrence. Because each step
+     * SELECTS its match, the selection spans the current match on the
+     * following press, so repeated Cmd+D naturally cycles.
      */
     function cycleOccurrence() {
         const view = getEditorView();
@@ -677,7 +684,20 @@ export function initFindBar(
         const selText = sel.empty ? "" : view.state.doc.textBetween(sel.from, sel.to);
         const active = input.value;
         const searching = visible && active !== "" && matches.length > 0;
-        const shouldSeed = !searching || selText !== active;
+        // A selection exactly spanning the current match means the user is
+        // mid-cycle: advance even when the occurrence's text differs from the
+        // query by case (default search is case-insensitive) or the input
+        // holds the regex-escaped form of the seed.
+        const cur = matches[currentIdx];
+        const onCurrentMatch =
+            searching && cur !== undefined && cur.kind === "text" &&
+            sel.from === cur.from && sel.to === cur.to;
+        // Otherwise compare selection text and query under the case rule in
+        // effect, so a case-differing occurrence doesn't force a reseed.
+        const sameText = caseSensitive
+            ? selText === active
+            : selText.toLowerCase() === active.toLowerCase();
+        const shouldSeed = !searching || (!onCurrentMatch && !sameText);
 
         if (shouldSeed) {
             const query = selectionOrWordQuery(view);
@@ -692,10 +712,9 @@ export function initFindBar(
             setInSelection(false);
             visible = true;
             bar.classList.add("find-bar--visible");
-            input.value = query;
-            // Seed literally: the raw selection is text to find, not a regex
-            // pattern, even if the Regex toggle was left on (see search()).
-            search(query, { literal: true });
+            // The seed is text to find, not a pattern (see seedText).
+            input.value = seedText(query);
+            search(input.value);
             if (matches.length) {
                 selectMatch(seekCurrent(sel));
             }
@@ -717,15 +736,19 @@ export function initFindBar(
      */
     function selectAllOccurrences() {
         const view = getEditorView();
+        const query = view ? selectionOrWordQuery(view) : undefined;
+        if (query === undefined) {
+            // Nothing under the caret to seed: open with the existing query
+            // and scope untouched, replace row focused (mirroring
+            // cycleOccurrence's no-query fallback).
+            open(undefined, { showReplace: true, focusReplace: true });
+            return;
+        }
         // A fresh occurrence hunt: drop any active find-in-selection scope so
-        // the seeded query searches the whole document.
+        // the seeded query searches the whole document. The seed is text to
+        // find, not a pattern (see seedText).
         setInSelection(false);
-        open(view ? selectionOrWordQuery(view) : undefined, {
-            showReplace: true,
-            focusReplace: true,
-            // Seed literally regardless of the Regex toggle (see search()).
-            seedLiteral: true,
-        });
+        open(seedText(query), { showReplace: true, focusReplace: true });
     }
 
     // ── Replace ──────────────────────────────────────────
@@ -1064,7 +1087,7 @@ export function initFindBar(
     // ── Public API ───────────────────────────────────────
     function open(
         initialQuery?: string,
-        opts?: { showReplace?: boolean; focusReplace?: boolean; seedLiteral?: boolean },
+        opts?: { showReplace?: boolean; focusReplace?: boolean },
     ) {
         visible = true;
         bar.classList.add("find-bar--visible");
@@ -1072,7 +1095,10 @@ export function initFindBar(
             setReplaceVisible(opts.showReplace);
         }
         if (initialQuery === undefined) {
-            initialQuery = selectionQuery();
+            // Pre-fill from the editor selection: text to find, not a
+            // pattern, so escape it under the Regex toggle (see seedText).
+            const sel = selectionQuery();
+            initialQuery = sel === undefined ? undefined : seedText(sel);
         }
         if (initialQuery !== undefined && initialQuery !== input.value) {
             input.value = initialQuery;
@@ -1084,9 +1110,7 @@ export function initFindBar(
             input.focus();
             input.select();
         }
-        // seedLiteral: the query was seeded from a selection, so match it
-        // verbatim regardless of the Regex toggle (see search()).
-        search(input.value, { literal: opts?.seedLiteral });
+        search(input.value);
     }
 
     function close() {

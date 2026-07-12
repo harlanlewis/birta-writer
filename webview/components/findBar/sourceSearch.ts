@@ -29,6 +29,11 @@ export type QueryResult =
     | { re: RegExp; error?: undefined }
     | { re?: undefined; error: string };
 
+/** Escape regex metacharacters so `s` matches itself as a pattern. */
+export function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Compile the find-bar query into a global RegExp.
  * Non-regex input is escaped literally; whole-word wraps the pattern in
@@ -41,9 +46,7 @@ export function buildQuery(query: string, opts: QueryOptions): QueryResult {
     if (query.length > MAX_PATTERN_LENGTH) {
         return { error: "Pattern too long" };
     }
-    let source = opts.regex
-        ? query
-        : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    let source = opts.regex ? query : escapeRegExp(query);
     if (opts.wholeWord) {
         source = `\\b(?:${source})\\b`;
     }
