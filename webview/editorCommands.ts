@@ -44,6 +44,13 @@ import {
     transformToUppercase,
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
+import {
+    foldAllSections,
+    foldSection,
+    unfoldAllSections,
+    unfoldSection,
+} from "@/plugins/foldCommands";
+import { openBlockMenuAtCaret } from "@/components/blockMenu/openAtCaret";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { lift } from "@milkdown/prose/commands";
 import { liftListItem } from "@milkdown/prose/schema-list";
@@ -100,6 +107,10 @@ export interface EditorCommandHost {
     toggleProofread(key: ProofreadOptionKey): void;
     toggleToolbar(): void;
     swapTocSide(): void;
+    // The shortcuts-help overlay (read-only cheatsheet — distinct from
+    // openKeyboardShortcuts, VS Code's native customize/rebind UI). Wired by
+    // webview/index.ts to webview/components/shortcutsHelp.
+    openShortcutsHelp(): void;
 }
 
 let host: Partial<EditorCommandHost> = {};
@@ -583,6 +594,18 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     shrinkSelection: (getEditor) => runCommand(getEditor, shrinkSelection),
     insertParagraphAfter: (getEditor) => runCommand(getEditor, insertParagraphAfter),
     insertParagraphBefore: (getEditor) => runCommand(getEditor, insertParagraphBefore),
+    // Keyboard sequence 3. The fold commands and the caret block-menu opener
+    // are honest no-op scaffolds until their implementations land (see
+    // webview/plugins/foldCommands.ts and
+    // webview/components/blockMenu/openAtCaret.ts). openBlockMenu does NOT
+    // use runCommand: the menu takes focus itself, so refocusing the editor
+    // on success would fight it.
+    openBlockMenu: (getEditor) => runProse(getEditor, (view) => { openBlockMenuAtCaret(view); }),
+    foldSection: (getEditor) => runCommand(getEditor, foldSection),
+    unfoldSection: (getEditor) => runCommand(getEditor, unfoldSection),
+    foldAllSections: (getEditor) => runCommand(getEditor, foldAllSections),
+    unfoldAllSections: (getEditor) => runCommand(getEditor, unfoldAllSections),
+    openShortcutsHelp: () => host.openShortcutsHelp?.(),
 };
 
 /** Dispatches an editor command by id; an unknown id is a safe no-op. */

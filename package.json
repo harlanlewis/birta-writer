@@ -457,6 +457,36 @@
                 "command": "markdownWysiwyg.editor.insertParagraphBefore",
                 "title": "%command.editor.insertParagraphBefore.title%",
                 "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openBlockMenu",
+                "title": "%command.editor.openBlockMenu.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.foldSection",
+                "title": "%command.editor.foldSection.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.unfoldSection",
+                "title": "%command.editor.unfoldSection.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.foldAllSections",
+                "title": "%command.editor.foldAllSections.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.unfoldAllSections",
+                "title": "%command.editor.unfoldAllSections.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openShortcutsHelp",
+                "title": "%command.editor.openShortcutsHelp.title%",
+                "category": "WYSIWYG Markdown Editor"
             }
         ],
         "keybindings": [
@@ -549,6 +579,84 @@
             {
                 "command": "markdownWysiwyg.editor.joinLines",
                 "mac": "ctrl+j",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleOrderedList",
+                "key": "ctrl+shift+7",
+                "mac": "cmd+shift+7",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleBulletList",
+                "key": "ctrl+shift+8",
+                "mac": "cmd+shift+8",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.toggleTaskList",
+                "key": "ctrl+shift+9",
+                "mac": "cmd+shift+9",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setParagraph",
+                "key": "ctrl+alt+0",
+                "mac": "cmd+alt+0",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading1",
+                "key": "ctrl+alt+1",
+                "mac": "cmd+alt+1",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading2",
+                "key": "ctrl+alt+2",
+                "mac": "cmd+alt+2",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading3",
+                "key": "ctrl+alt+3",
+                "mac": "cmd+alt+3",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading4",
+                "key": "ctrl+alt+4",
+                "mac": "cmd+alt+4",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading5",
+                "key": "ctrl+alt+5",
+                "mac": "cmd+alt+5",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.setHeading6",
+                "key": "ctrl+alt+6",
+                "mac": "cmd+alt+6",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.foldSection",
+                "key": "ctrl+alt+[",
+                "mac": "cmd+alt+[",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.unfoldSection",
+                "key": "ctrl+alt+]",
+                "mac": "cmd+alt+]",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.openBlockMenu",
+                "key": "ctrl+.",
+                "mac": "cmd+.",
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             }
         ],
@@ -878,6 +986,30 @@
                 },
                 {
                     "command": "markdownWysiwyg.editor.insertParagraphBefore",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.openBlockMenu",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.foldSection",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.unfoldSection",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.foldAllSections",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.unfoldAllSections",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.openShortcutsHelp",
                     "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
                 }
             ],

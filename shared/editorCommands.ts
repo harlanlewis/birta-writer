@@ -145,6 +145,17 @@ export const EDITOR_COMMANDS = [
     { id: "shrinkSelection", title: "Shrink Selection", palette: true, sections: [] },
     { id: "insertParagraphAfter", title: "Insert Paragraph Below", palette: true, sections: [] },
     { id: "insertParagraphBefore", title: "Insert Paragraph Above", palette: true, sections: [] },
+    // Keyboard sequence 3: the gutter block menu opened from the caret's
+    // block, heading-section folding, and the shortcuts-help overlay.
+    // `openShortcutsHelp` (a read-only cheatsheet overlay) is deliberately
+    // distinct from `openKeyboardShortcuts` above, which opens VS Code's
+    // native Keyboard Shortcuts UI and remains the customize/rebind path.
+    { id: "openBlockMenu", title: "Open Block Menu", palette: true, sections: [] },
+    { id: "foldSection", title: "Fold Section", palette: true, sections: [] },
+    { id: "unfoldSection", title: "Unfold Section", palette: true, sections: [] },
+    { id: "foldAllSections", title: "Fold All Sections", palette: true, sections: [] },
+    { id: "unfoldAllSections", title: "Unfold All Sections", palette: true, sections: [] },
+    { id: "openShortcutsHelp", title: "Keyboard Shortcuts Help", palette: true, sections: [] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

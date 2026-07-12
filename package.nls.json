@@ -140,5 +140,11 @@
   "command.editor.expandSelection.title": "Expand Selection",
   "command.editor.shrinkSelection.title": "Shrink Selection",
   "command.editor.insertParagraphAfter.title": "Insert Paragraph Below",
-  "command.editor.insertParagraphBefore.title": "Insert Paragraph Above"
+  "command.editor.insertParagraphBefore.title": "Insert Paragraph Above",
+  "command.editor.openBlockMenu.title": "Open Block Menu",
+  "command.editor.foldSection.title": "Fold Section",
+  "command.editor.unfoldSection.title": "Unfold Section",
+  "command.editor.foldAllSections.title": "Fold All Sections",
+  "command.editor.unfoldAllSections.title": "Unfold All Sections",
+  "command.editor.openShortcutsHelp.title": "Keyboard Shortcuts Help"
 }

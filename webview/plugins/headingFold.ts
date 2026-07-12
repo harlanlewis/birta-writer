@@ -46,7 +46,14 @@ export type HeadingFoldMeta =
      * fills the gap. (Mapping flags can't express this: a deletion STARTING
      * at the heading maps its entry cleanly onto the next block.)
      */
-    | { type: "delete"; from: number; to: number };
+    | { type: "delete"; from: number; to: number }
+    /**
+     * Replace the folded set wholesale (fold-all / unfold-all commands).
+     * Positions are FINAL-doc heading positions; any that no longer resolve
+     * to a heading are dropped. Same addToHistory:false semantics as
+     * "toggle" — fold state is a view concern, never an undo step.
+     */
+    | { type: "setAll"; folded: number[] };
 type HeadingFoldRange = { from: number; to: number };
 
 /**
@@ -771,7 +778,7 @@ function isHeadingElement(element: Element | null): element is HTMLElement {
     return element instanceof HTMLElement && element.matches("h1,h2,h3,h4,h5,h6");
 }
 
-function findSectionHeadingPosAt(view: EditorView, pos: number): number | null {
+export function findSectionHeadingPosAt(view: EditorView, pos: number): number | null {
     // Innermost heading whose section contains pos — the innermost is the
     // one starting latest. One cached stack walk instead of the old
     // per-heading full-doc scan: this runs on EVERY mousemove over
@@ -852,6 +859,16 @@ export const headingFoldPlugin = $prose(() =>
                         next.delete(meta.pos);
                     } else if (isHeadingNode(newState.doc.nodeAt(meta.pos))) {
                         next.add(meta.pos);
+                    }
+                    folded = next;
+                }
+
+                if (meta?.type === "setAll") {
+                    const next = new Set<number>();
+                    for (const pos of meta.folded) {
+                        if (isHeadingNode(newState.doc.nodeAt(pos))) {
+                            next.add(pos);
+                        }
                     }
                     folded = next;
                 }
