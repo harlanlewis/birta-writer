@@ -257,8 +257,15 @@ export function moveBlockTo(
     // deleteRange (not delete): removing a list's last item must dissolve
     // the emptied list instead of leaving a schema-invalid empty node.
     const tr = view.state.tr.deleteRange(range.from, range.to);
+    const sizeAfterDelete = tr.doc.content.size;
     const insertAt = tr.mapping.map(targetPos);
     tr.insert(insertAt, content);
+    if (tr.doc.content.size < sizeAfterDelete + content.size) {
+        // tr.insert silently no-ops when the slice can't fit (replaceStep
+        // returns null — no throw). Dispatching would commit the DELETE
+        // half alone: a failed move must be a no-op, never a deletion.
+        return false;
+    }
     tr.setMeta(headingFoldPluginKey, {
         type: "move",
         from: range.from,

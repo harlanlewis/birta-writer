@@ -417,3 +417,26 @@ describe("visibleBoundaryPositions (collapsed sections)", () => {
         expect(visibleBoundaryPositions(v.state)).toEqual(blockBoundaryPositions(v.state.doc));
     });
 });
+
+describe("moveBlockTo silent-insert guard", () => {
+    it("a target where the block cannot fit should be a no-op, not a deletion", async () => {
+        const editor = await makeEditor("Alpha\n\n```js\nconst x = 1;\n```");
+        const v = view(editor);
+        const before = markdown(editor);
+        let codeTextPos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "code_block") codeTextPos = pos + 3; // inside the code text
+            return codeTextPos === -1;
+        });
+        expect(codeTextPos).toBeGreaterThan(-1);
+        const range = moveRangeAt(v, 0)!; // the "Alpha" paragraph
+        const moved = moveBlockTo(v, range, codeTextPos);
+        // Whatever the outcome, the paragraph must still exist: a failed
+        // insert (silent replaceStep null) must never dispatch its DELETE
+        // half alone.
+        expect(markdown(editor)).toContain("Alpha");
+        if (!moved) {
+            expect(markdown(editor)).toBe(before);
+        }
+    });
+});

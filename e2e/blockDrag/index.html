@@ -35,6 +35,14 @@
     "",
     "content of B",
     "",
+    "drag me last",
+    "",
+    "> [!tip] L1",
+    "> > [!tip] L2",
+    "> > > [!tip] L3",
+    "> > > > [!tip]- L4",
+    "> > > > deep content",
+    "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

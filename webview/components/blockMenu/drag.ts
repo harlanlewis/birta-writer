@@ -246,6 +246,17 @@ export function visibleBoundaryPositions(
     return positions.filter(({ pos }) => !hidden.some(([from, to]) => pos >= from && pos < to));
 }
 
+/** True when `el` sits inside a collapsed callout's hidden body. Callout
+ * folding is view-only by design (never a doc attr, so the state-based
+ * fold filter in visibleBoundaryPositions can't see it) — only the DOM
+ * knows. Hidden geometry (visibility:hidden, height:0) must never win the
+ * nearest-y drop contest: a bottom-edge drop would commit into the fold
+ * and the dragged block would vanish, the collapsed-callout analog of the
+ * heading-section bug this file already filters. */
+function inCollapsedCalloutBody(el: Element): boolean {
+    return el.closest(".callout.collapsed .callout-body") !== null;
+}
+
 /** Current viewport geometry of every droppable boundary
  * (visibleBoundaryPositions supplies positions/kinds; the DOM supplies ys —
  * item slots also carry their column's left/width for the indented line). */
@@ -262,7 +273,13 @@ function measureBoundaries(view: EditorView): DropBoundary[] {
         }
         const dom = view.nodeDOM(pos);
         if (dom instanceof HTMLElement) {
+            if (inCollapsedCalloutBody(dom)) {
+                continue;
+            }
             const rect = dom.getBoundingClientRect();
+            if (rect.height === 0 && rect.width === 0) {
+                continue; // display:none by any mechanism — not a visible target
+            }
             if (ownerPos !== undefined) {
                 // Owned slots (list items, container children) indent the
                 // indicator to their own column.
@@ -278,6 +295,14 @@ function measureBoundaries(view: EditorView): DropBoundary[] {
             // shadow the outer slot's geometry entirely).
             const ownerDom = view.nodeDOM(ownerPos);
             const ownerNode = doc.nodeAt(ownerPos);
+            // A collapsed callout's own end slot sits inside its hidden
+            // body; an owner buried in a collapsed ancestor is hidden too.
+            if (
+                ownerDom instanceof HTMLElement &&
+                (ownerDom.matches(".callout.collapsed") || inCollapsedCalloutBody(ownerDom))
+            ) {
+                continue;
+            }
             if (ownerDom instanceof HTMLElement && ownerNode && ownerNode.childCount > 0) {
                 let lastChildOffset = 0;
                 ownerNode.forEach((_child: ProseNode, childOffset: number) => {

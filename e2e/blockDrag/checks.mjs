@@ -453,4 +453,47 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Escape");
     await page.$eval(".ProseMirror h1 .heading-fold-toggle", (el) => el.click());
     await page.waitForTimeout(80);
+
+    // ── 10. Collapsed-callout drop safety ──
+    // The fixture nests L1>L2>L3>L4 with L4 collapsed (its body hidden,
+    // view-only — no doc attr, so only the DOM filter can catch it). A drop
+    // at the collapsed callout's bottom edge must never commit into the
+    // hidden body: pre-fix the hidden child slots still competed in the
+    // nearest-y contest and the dragged block vanished into the fold.
+    const dragP = await markerCenter(page, ".ProseMirror > p", "drag me last");
+    const l4 = await page.$eval(".callout .callout .callout .callout.collapsed", (el) => {
+        el.scrollIntoView({ block: "center" });
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, bottom: r.bottom };
+    });
+    await page.mouse.move(dragP.x, dragP.y);
+    await page.mouse.down();
+    await page.mouse.move(dragP.x + 10, dragP.y + 10); // cross the threshold
+    await page.mouse.move(l4.x, l4.bottom - 2, { steps: 12 });
+    await page.waitForTimeout(80);
+    await page.mouse.up();
+    // Updates are debounced 300ms; wait for the post-drop serialization to
+    // flush before reading the LAST one (a matcher on "contains the text"
+    // would accept a stale pre-drop update — the text exists from the
+    // start).
+    await page.waitForTimeout(600);
+    const afterDrop = await page.evaluate(() => {
+        const updates = window.__posted.filter((m) => m.type === "update").map((m) => m.content);
+        return updates[updates.length - 1] ?? null;
+    });
+    // Landing inside a VISIBLE ancestor (L3) at that y is a legitimate
+    // drop; only the collapsed L4's body ("> > > > " depth) is the bug.
+    check("collapsed-callout drop: block is not buried in the hidden body",
+        afterDrop !== null && !afterDrop.split("\n").some((l) => l.startsWith("> > > >") && l.includes("drag me last")),
+        `doc tail=${JSON.stringify(afterDrop?.slice(-260))}`);
+    const dropVisibility = await page.evaluate(() => {
+        const el = [...document.querySelectorAll(".ProseMirror p")]
+            .find((par) => par.textContent.includes("drag me last"));
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { h: Math.round(r.height), hiddenInFold: !!el.closest(".callout.collapsed") };
+    });
+    check("collapsed-callout drop: block stays visible",
+        dropVisibility !== null && dropVisibility.h > 0 && !dropVisibility.hiddenInFold,
+        JSON.stringify(dropVisibility));
 }
