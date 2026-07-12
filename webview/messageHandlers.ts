@@ -12,7 +12,7 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
-import { gutterMarkersBodyClass, GUTTER_MARKERS_BODY_CLASSES, type GutterMarkersMode } from "../shared/gutterMarkers";
+import { applyGutterMarkers } from "./utils/gutterMarkers";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
@@ -51,18 +51,6 @@ export function applyTableWrap(wrap: TableWrapMode): void {
     }
 }
 
-/**
- * Apply the resting gutter-marker visibility mode as a body class. The
- * default ("headings") is the stylesheet baseline, so applying it means
- * removing both override classes (see "Resting gutter markers" in style.css).
- */
-export function applyGutterMarkers(mode: GutterMarkersMode): void {
-    const active = gutterMarkersBodyClass(mode);
-    for (const cls of Object.values(GUTTER_MARKERS_BODY_CLASSES)) {
-        if (cls) document.body.classList.toggle(cls, cls === active);
-    }
-}
-
 // ── Type definitions ───────────────────────────────────────
 
 type ExtractMessage<T extends ToWebviewMessage["type"]> = Extract<ToWebviewMessage, { type: T }>;
@@ -87,6 +75,8 @@ export interface ToolbarController {
     setFontSize(size: number): void;
     /** Update the typography menu's content-width segmented control (and cache the fixed width). */
     setContentWidth(mode: import("../shared/contentWidth").ContentWidthMode, fixedCss?: string): void;
+    /** Update the typography menu's gutter-markers segmented control. */
+    setGutterMarkers(mode: import("../shared/gutterMarkers").GutterMarkersMode): void;
 }
 
 /** Editor state-management interface. */
@@ -251,6 +241,7 @@ export function createMessageHandlers(
         },
         setGutterMarkers(msg) {
             applyGutterMarkers(msg.mode);
+            topbarTb?.setGutterMarkers(msg.mode);
         },
         fmSuggestions(msg) {
             dispatchFmSuggestions(msg.key, msg.values);

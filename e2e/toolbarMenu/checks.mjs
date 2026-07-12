@@ -78,4 +78,56 @@ export async function run({ page, check, baseUrl }) {
         getComputedStyle(el.closest(".tb-fmt-wrap")).getPropertyValue("--tb-menu-gap").trim(),
     );
     check("--tb-menu-gap published to CSS from MENU_GAP", cssVar === "6px", `value="${cssVar}"`);
+
+    // ── 5. Typography menu: the gutter-markers segmented control ──
+    // A captioned None/Headings/All radio row under the width segments; picks
+    // apply the gutter-rest-* body class immediately (menu stays open) and
+    // post setGutterMarkers for the settings round-trip.
+    const fontBtn = '[data-item-id="fontPreset"] .tb-fmt-btn';
+    const fontMenu = '[data-item-id="fontPreset"] .tb-font-menu';
+    const gutterSeg = '.tb-seg-row[aria-label="Gutter markers shown at rest"] .tb-seg-btn';
+    const fontOverflowed = await page.$eval(fontBtn, (el) => !!el.closest(".tb-more-menu"));
+    check("font menu renders on the bar (not overflowed)", !fontOverflowed);
+    await page.hover(fontBtn);
+    await page.waitForTimeout(30);
+    check("hovering the A button opens the typography menu", (await disp(fontMenu)) === "flex");
+    const caption = await page.$eval(`${fontMenu} .tb-seg-caption`, (el) => el.textContent).catch(() => null);
+    check("the gutter segments carry their caption", caption === "Gutter markers", `caption=${caption}`);
+    const segState = () =>
+        page.$$eval(gutterSeg, (els) =>
+            els.map((el) => ({ label: el.textContent, on: el.getAttribute("aria-checked") === "true" })));
+    const atRest = await segState();
+    check("three segments in display order with Headings (default) active",
+        JSON.stringify(atRest) === JSON.stringify([
+            { label: "None", on: false }, { label: "Headings", on: true }, { label: "All", on: false },
+        ]), JSON.stringify(atRest));
+    // Pick None: body class flips, the segment lights, the menu stays open.
+    const noneBox = await page.$eval(gutterSeg, (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(noneBox.x, noneBox.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(30);
+    check("picking None applies the gutter-rest-none body class",
+        await page.evaluate(() => document.body.classList.contains("gutter-rest-none")));
+    check("picking None marks its segment active", (await segState())[0].on === true);
+    check("the menu stays open after a segment pick", (await disp(fontMenu)) === "flex");
+    const postedGutter = await page.evaluate(() =>
+        window.__posted.filter((m) => m.type === "setGutterMarkers").map((m) => m.mode));
+    check("the pick posts setGutterMarkers for the settings round-trip",
+        JSON.stringify(postedGutter) === JSON.stringify(["none"]), JSON.stringify(postedGutter));
+    // Restore the default for any checks that follow.
+    const headingsBox = await page.$$eval(gutterSeg, (els) => {
+        const r = els[1].getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(headingsBox.x, headingsBox.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(30);
+    check("picking Headings clears the override body class",
+        await page.evaluate(() => !document.body.classList.contains("gutter-rest-none")
+            && !document.body.classList.contains("gutter-rest-all")));
 }

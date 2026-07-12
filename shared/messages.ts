@@ -200,6 +200,11 @@ export type ToExtensionMessage =
     // menu; the extension persists it to the `contentWidth` setting, which
     // round-trips back as a `setContentWidth` message.
     | { type: "setContentWidth"; mode: ContentWidthMode }
+    // Resting gutter-marker pick from the typography menu's segments or the
+    // block menu's radio section; the extension persists it to the
+    // `gutterMarkers` setting, which round-trips back as a `setGutterMarkers`
+    // message to every open editor.
+    | { type: "setGutterMarkers"; mode: GutterMarkersMode }
     // Drag-and-drop layout change from customize mode. `item` is set only when
     // the dragged item changed placement (zone, or shown/hidden via the tray);
     // `order` is the left-to-right order of the visible items.

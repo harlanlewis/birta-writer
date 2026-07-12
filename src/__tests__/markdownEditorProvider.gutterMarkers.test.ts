@@ -91,3 +91,52 @@ describe("MarkdownEditorProvider gutter markers", () => {
         expect(cls).not.toContain("gutter-rest-all");
     });
 });
+
+describe("MarkdownEditorProvider setGutterMarkers message", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        resetTextDocumentMocks();
+    });
+
+    async function setupHandler() {
+        mockConfiguration();
+        const provider = new MarkdownEditorProvider(makeContext());
+        const document = makeFakeTextDocument("content\n", vscode.Uri.file("/project/note.md"));
+        const panel = makePanel();
+        await provider.resolveCustomTextEditor(
+            document as unknown as vscode.TextDocument,
+            panel as unknown as vscode.WebviewPanel,
+            makeCancellation(),
+        );
+        return panel.webview.onDidReceiveMessage.mock
+            .calls[0]![0] as unknown as (msg: Record<string, unknown>) => Promise<void>;
+    }
+
+    it("a setGutterMarkers message should persist the mode to the winning scope", async () => {
+        // Arrange
+        const handler = await setupHandler();
+        const update = vi.fn();
+        const cfg = { get: vi.fn((_k: string, d?: unknown) => d), inspect: vi.fn(() => undefined), update };
+        (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue(cfg);
+
+        // Act
+        await handler({ type: "setGutterMarkers", mode: "all" });
+
+        // Assert
+        expect(update).toHaveBeenCalledWith("gutterMarkers", "all", vscode.ConfigurationTarget.Global);
+    });
+
+    it("an out-of-enum mode from the webview should be normalized before the write", async () => {
+        // Arrange
+        const handler = await setupHandler();
+        const update = vi.fn();
+        const cfg = { get: vi.fn((_k: string, d?: unknown) => d), inspect: vi.fn(() => undefined), update };
+        (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue(cfg);
+
+        // Act
+        await handler({ type: "setGutterMarkers", mode: "garbage" });
+
+        // Assert
+        expect(update).toHaveBeenCalledWith("gutterMarkers", "headings", vscode.ConfigurationTarget.Global);
+    });
+});

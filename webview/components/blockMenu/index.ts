@@ -35,7 +35,9 @@ import {
 } from "../../plugins/headingFold";
 import { BlockRangeSelection } from "../../plugins/blockRange";
 import { type GetEditor } from "../../editorCommands";
-import { notifyClipboardWrite } from "../../messaging";
+import { notifyClipboardWrite, notifySetGutterMarkers } from "../../messaging";
+import { GUTTER_MARKERS_DISPLAY_ORDER, type GutterMarkersMode } from "../../../shared/gutterMarkers";
+import { applyGutterMarkers, currentGutterMarkersMode } from "../../utils/gutterMarkers";
 import { slugify } from "../../utils/slug";
 import { getTopbarBottom } from "../../utils/headingUtils";
 import { hideTooltip } from "../../ui/tooltip";
@@ -745,10 +747,13 @@ export function openBlockMenu(
     interface RowSpec {
         label: string;
         keywords: readonly string[];
-        section: "turnInto" | "actions";
+        section: "turnInto" | "actions" | "gutter";
         build: () => HTMLElement;
     }
     const specs: RowSpec[] = [];
+    // Whether the search filter is narrowing (set by renderRows): gutter rows
+    // render their full phrase in the flat list, short name under the header.
+    let filterActive = false;
     if (currentKind !== null) {
         const offered = TURN_INTO_CHOICES.filter(({ kind }) => canTurnInto(view, conversionPos, kind));
         for (const choice of offered) {
@@ -819,6 +824,40 @@ export function openBlockMenu(
         action: () => deleteBlock(view, blockPos),
     });
 
+    // ── Gutter markers (the `markdownWysiwyg.gutterMarkers` setting) ──
+    // A radio trio for which markers stay visible at rest — a display
+    // preference surfaced where the markers live, not a block action. Rows
+    // render their short name under the section header, but the FULL phrase
+    // both in the filtered flat list (where a lone checked "None" without
+    // its header would be unreadable) and as the matcher label (so "gutter"
+    // prefix-matches, while "head" doesn't drop a bare radio row among the
+    // Heading 1–6 conversions).
+    const gutterModeLabels: Record<GutterMarkersMode, string> = {
+        none: t("None"),
+        headings: t("Headings"),
+        all: t("All"),
+    };
+    const activeGutterMode = currentGutterMarkersMode();
+    for (const mode of GUTTER_MARKERS_DISPLAY_ORDER) {
+        const fullLabel = `${t("Gutter markers")}: ${gutterModeLabels[mode]}`;
+        specs.push({
+            label: fullLabel,
+            keywords: ["gutter", "markers", "grabbers", "handles", "rest", "visible"],
+            section: "gutter",
+            build: () => addRow(filterActive ? fullLabel : gutterModeLabels[mode], {
+                radio: true,
+                active: mode === activeGutterMode,
+                mutates: false,
+                action: () => {
+                    if (mode !== activeGutterMode) {
+                        applyGutterMarkers(mode);
+                        notifySetGutterMarkers(mode);
+                    }
+                },
+            }),
+        });
+    }
+
     // ── Render (and re-render per filter keystroke) ──
     // Empty query: today's grouped sections. Non-empty: one flat ranked
     // list across both sections — ranking beats grouping, the slash menu's
@@ -826,6 +865,7 @@ export function openBlockMenu(
     const renderRows = (query: string): void => {
         body.textContent = "";
         const q = query.trim();
+        filterActive = q !== "";
         if (q === "") {
             const turnInto = specs.filter((spec) => spec.section === "turnInto");
             if (turnInto.length > 0) {
@@ -838,6 +878,13 @@ export function openBlockMenu(
             addHeader(t("Actions"));
             for (const spec of specs) {
                 if (spec.section === "actions") {
+                    spec.build();
+                }
+            }
+            addDivider();
+            addHeader(t("Gutter markers"));
+            for (const spec of specs) {
+                if (spec.section === "gutter") {
                     spec.build();
                 }
             }

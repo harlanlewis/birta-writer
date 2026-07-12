@@ -14,6 +14,13 @@ export type GutterMarkersMode = (typeof GUTTER_MARKERS_MODES)[number];
 
 export const DEFAULT_GUTTER_MARKERS_MODE: GutterMarkersMode = "headings";
 
+/**
+ * Presentation order for pickers (segments, radio rows, QuickPick): fewest
+ * to most markers, so the options read as a progression. GUTTER_MARKERS_MODES
+ * stays default-first — it's the settings-enum order.
+ */
+export const GUTTER_MARKERS_DISPLAY_ORDER: readonly GutterMarkersMode[] = ["none", "headings", "all"];
+
 /** Coerce an arbitrary settings value to a known mode (default when unknown). */
 export function normalizeGutterMarkersMode(value: unknown): GutterMarkersMode {
     return (GUTTER_MARKERS_MODES as readonly string[]).includes(value as string)

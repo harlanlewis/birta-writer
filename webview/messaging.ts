@@ -129,6 +129,11 @@ export function notifySetContentWidth(mode: import("../shared/contentWidth").Con
     vscode.postMessage({ type: "setContentWidth", mode });
 }
 
+/** Persist the resting gutter-marker mode; echoes back as setGutterMarkers. */
+export function notifySetGutterMarkers(mode: import("../shared/gutterMarkers").GutterMarkersMode): void {
+    vscode.postMessage({ type: "setGutterMarkers", mode });
+}
+
 export function notifySetToolbarLayout(
     item: { id: string; placement: import("../shared/messages").ToolbarPlacement } | undefined,
     order: string[],

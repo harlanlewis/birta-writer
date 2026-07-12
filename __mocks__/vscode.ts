@@ -314,6 +314,7 @@ export const window = {
     showErrorMessage: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
+    showQuickPick: vi.fn(),
     /**
      * Tab-group state for command routing tests. Mutate
      * `tabGroups.activeTabGroup.activeTab` to simulate the focused tab;

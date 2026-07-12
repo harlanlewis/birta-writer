@@ -567,6 +567,12 @@ export class MarkdownEditorProvider
                     case "setContentWidth":
                         MarkdownEditorProvider.setContentWidth(message.mode);
                         break;
+                    case "setGutterMarkers":
+                        MarkdownEditorProvider.updateSettingRespectingScope(
+                            "gutterMarkers",
+                            normalizeGutterMarkersMode(message.mode),
+                        );
+                        break;
                     case "setToolbarLayout":
                         if (message.item) {
                             MarkdownEditorProvider.updateSettingRespectingScope(

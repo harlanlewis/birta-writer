@@ -11,6 +11,7 @@ import * as path from "path";
 import {
     GUTTER_MARKERS_MODES,
     GUTTER_MARKERS_BODY_CLASSES,
+    GUTTER_MARKERS_DISPLAY_ORDER,
     DEFAULT_GUTTER_MARKERS_MODE,
     normalizeGutterMarkersMode,
     gutterMarkersBodyClass,
@@ -45,6 +46,12 @@ describe("gutterMarkersBodyClass", () => {
 
     it("an out-of-enum value should behave as the default mode", () => {
         expect(gutterMarkersBodyClass("garbage" as never)).toBeNull();
+    });
+});
+
+describe("GUTTER_MARKERS_DISPLAY_ORDER", () => {
+    it("the display order should be a permutation of the modes", () => {
+        expect([...GUTTER_MARKERS_DISPLAY_ORDER].sort()).toEqual([...GUTTER_MARKERS_MODES].sort());
     });
 });
 

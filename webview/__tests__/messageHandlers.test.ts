@@ -4,7 +4,8 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
-import { applyTableWrap, applyGutterMarkers, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
+import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
+import { applyGutterMarkers, currentGutterMarkersMode } from "../utils/gutterMarkers";
 import { setEditorCommandHost } from "../editorCommands";
 import type { ToWebviewMessage, ToolbarConfig } from "../../shared/messages";
 import { FONT_PRESET_STACKS } from "../../shared/fontPresets";
@@ -184,6 +185,23 @@ describe("applyGutterMarkers", () => {
     });
 });
 
+describe("currentGutterMarkersMode", () => {
+    beforeEach(() => {
+        document.body.classList.remove("gutter-rest-none", "gutter-rest-all");
+    });
+
+    it("no body class should read as the default mode", () => {
+        expect(currentGutterMarkersMode()).toBe("headings");
+    });
+
+    it("each applied mode should read back", () => {
+        for (const mode of ["none", "all", "headings"] as const) {
+            applyGutterMarkers(mode);
+            expect(currentGutterMarkersMode()).toBe(mode);
+        }
+    });
+});
+
 describe("setGutterMarkers handler", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -202,6 +220,25 @@ describe("setGutterMarkers handler", () => {
 
         // Assert
         expect(document.body.classList.contains("gutter-rest-all")).toBe(true);
+    });
+
+    it("a setGutterMarkers message should sync the toolbar's segmented control", () => {
+        // Arrange
+        const setGutterMarkers = vi.fn();
+        const deps = {
+            ...stubDeps(),
+            topbarTb: { setGutterMarkers } as unknown as MessageHandlerDeps["topbarTb"],
+        };
+        const handlers = createMessageHandlers(deps);
+
+        // Act
+        handlers.setGutterMarkers?.(
+            { type: "setGutterMarkers", mode: "none" },
+            document.createElement("div"),
+        );
+
+        // Assert
+        expect(setGutterMarkers).toHaveBeenCalledWith("none");
     });
 });
 

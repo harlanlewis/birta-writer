@@ -2,7 +2,42 @@ import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import type { TableWrapMode, FontPreset } from "../shared/messages";
 import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
-import { normalizeGutterMarkersMode, DEFAULT_GUTTER_MARKERS_MODE } from "../shared/gutterMarkers";
+import { normalizeGutterMarkersMode, DEFAULT_GUTTER_MARKERS_MODE, type GutterMarkersMode } from "../shared/gutterMarkers";
+
+/**
+ * "Gutter Markers" in the command palette: a QuickPick of the three resting
+ * modes with the current one marked and preselected. Picking persists the
+ * `gutterMarkers` setting (respecting the winning scope); the config-change
+ * listener in activate() then broadcasts it to every open editor. Exported
+ * for unit testing.
+ */
+export async function promptGutterMarkersMode(): Promise<void> {
+    const current = normalizeGutterMarkersMode(
+        vscode.workspace
+            .getConfiguration("markdownWysiwyg")
+            .get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE),
+    );
+    type ModeItem = vscode.QuickPickItem & { mode: GutterMarkersMode };
+    // Fewest → most markers, the shared display order of the typography-menu
+    // segments and the block menu's radio trio.
+    const base: ModeItem[] = [
+        { mode: "none", label: "None", description: "No grabbers at rest — everything appears on hover" },
+        { mode: "headings", label: "Headings", description: "Heading badges stay visible; other grabbers appear on hover (default)" },
+        { mode: "all", label: "All", description: "Every block's grabber stays visible" },
+    ];
+    const items = base.map((item) => ({
+        ...item,
+        // The palette idiom for "where you are now" (VS Code's own theme /
+        // language pickers): annotate the current row rather than hide it.
+        ...(item.mode === current && { description: `${item.description} — current` }),
+    }));
+    const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: "Gutter grabbers shown at rest (hovering a block always reveals its grabber)",
+    });
+    if (picked && picked.mode !== current) {
+        MarkdownEditorProvider.updateSettingRespectingScope("gutterMarkers", picked.mode);
+    }
+}
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
@@ -188,6 +223,15 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand(
             "markdownWysiwyg.toggleProofreading",
             () => MarkdownEditorProvider.toggleProofreading(),
+        ),
+    );
+
+    // Command-palette picker for the resting gutter-marker mode; the
+    // config-change listener below broadcasts the result to every open editor.
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "markdownWysiwyg.selectGutterMarkers",
+            promptGutterMarkersMode,
         ),
     );
 
