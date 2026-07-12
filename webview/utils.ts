@@ -30,7 +30,10 @@ export function animateCloseLightbox(overlay: HTMLElement, onDone: () => void): 
  * - close button mousedown
  * - clicking the overlay backdrop (e.target === overlay)
  * - the ESC key
- * Returns a cleanup function (removes the keydown listener), to be called in onDone.
+ * Returns an idempotent cleanup (unregisters the Escape layer and removes the
+ * keydown listener). Call it SYNCHRONOUSLY at the start of the close path —
+ * deferring it to a close animation's end leaves a live layer entry that
+ * swallows (and re-triggers close on) a second Escape during the fade.
  */
 export function bindLightboxDismiss(
     overlay: HTMLElement,
