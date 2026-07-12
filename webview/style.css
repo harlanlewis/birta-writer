@@ -1901,6 +1901,31 @@ body.block-marqueeing .milkdown .editor {
     opacity: 0;
 }
 
+/* Content-guard notice (MAR-108): a quiet transient status pill shown when
+   the guard vetoes a gesture that would have changed document content —
+   advisory, non-blocking, fades out on its own (DESIGN_PRINCIPLES: quiet). */
+.content-guard-notice {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1200;
+    max-width: 60ch;
+    padding: 4px 12px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 4px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    font-size: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease-out;
+}
+
+.content-guard-notice--visible {
+    opacity: 1;
+}
+
 /* Per-item gutters (MAR-86): the item's marker sits clear of the native
    bullet/number, further into the margin than the -10px block default.
    (Prefixed to outrank the nested base rule's specificity.) */

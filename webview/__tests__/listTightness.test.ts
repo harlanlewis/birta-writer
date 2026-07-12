@@ -13,6 +13,7 @@ import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { moveBlockAt, moveBlockTo } from "../components/blockMenu";
+import { contentGuardPlugin } from "../plugins/contentGuard";
 
 let editors: Editor[] = [];
 
@@ -28,6 +29,8 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfm)
         .use(headingFoldPlugin)
+        // Real guard in the loop (MAR-108): these suites exercise guarded ops.
+        .use(contentGuardPlugin)
         .create();
     editors.push(editor);
     return editor;

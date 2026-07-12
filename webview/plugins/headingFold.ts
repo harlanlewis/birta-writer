@@ -313,6 +313,39 @@ export function foldedHiddenRanges(
 }
 
 /**
+ * Whether the hidden range owned by `range.pos` makes boundary `target` an
+ * illegal landing site — the ONE open/closed rule every consumer shares
+ * (the move primitive, the drag slot filter, the native-drop guard). The
+ * two fold kinds differ at the range's end:
+ *   - a HEADING hides FOLLOWING sibling blocks: `to` is the first visible
+ *     boundary after the section, a legal slot — half-open;
+ *   - a CALLOUT hides its own body: the end-of-body slot at `to` is still
+ *     inside the collapsed node — inclusive.
+ * `from`/`to` come from the argument (not re-derived), so callers that map
+ * the span through pending steps (contentGuard's drop gate) share the rule.
+ */
+export function hiddenRangeCoversTarget(
+    doc: any,
+    range: { pos: number; from: number; to: number },
+    target: number,
+): boolean {
+    const halfOpen = isHeadingNode(doc.nodeAt(range.pos));
+    return target >= range.from && (halfOpen ? target < range.to : target <= range.to);
+}
+
+/**
+ * True when a block boundary at `pos` sits inside content a collapsed fold
+ * hides — the single target-legality registry (MAR-112). The move primitive
+ * (editing/moveBlocks) rejects such targets and the drag UI
+ * (visibleBoundaryPositions) never offers them, both through this function,
+ * so UI slots and primitive legality cannot drift.
+ */
+export function isHiddenTargetPos(state: EditorState, pos: number): boolean {
+    return foldedHiddenRanges(state).some((range) =>
+        hiddenRangeCoversTarget(state.doc, range, pos));
+}
+
+/**
  * An explicit ENTRY intent into hidden content (Find match navigation, TOC
  * click, goto-symbol): unfold every fold whose hidden range contains `pos`
  * and leave them unfolded — VS Code's reveal semantics. No-op when the
