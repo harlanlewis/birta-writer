@@ -17,7 +17,7 @@ This document is a **living reference** of every content type WYSIWYG Markdown E
 
 ## Heading 2
 
-### #Heading 3
+### Heading 3
 
 #### Heading 4
 
