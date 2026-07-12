@@ -7,6 +7,7 @@
  * once affected only the Debug menu can't recur, because there's one code path.
  */
 import { placeMenu, MENU_GAP } from "./menuPlacement";
+import { registerEscapeLayer } from "@/ui/escapeLayers";
 
 export interface HoverMenuOptions {
     /** Runs immediately before the menu is shown — e.g. repaint checkmarks. */
@@ -22,10 +23,24 @@ export interface HoverMenuOptions {
     hideDelayMs?: number;
 }
 
+export interface HoverMenuHandle {
+    /**
+     * THE close path for this menu — the only one that unregisters the
+     * Escape layer and resets aria-expanded/tb-menu-open. Item handlers
+     * that dismiss the menu after a pick must call this, never hide the
+     * menu element directly (a direct `style.display = "none"` leaks the
+     * layer entry, and the next editor-focused Escape dies on it).
+     */
+    close: () => void;
+    /** Removes the listeners and clears any pending timer. */
+    dispose: () => void;
+}
+
 /**
  * Wire `wrap`'s hover to open/close `menu`, positioned relative to `button`.
- * `wrap` must contain both `button` and `menu` in the DOM. Returns a disposer
- * that removes the listeners and clears any pending timer.
+ * `wrap` must contain both `button` and `menu` in the DOM. Returns the shared
+ * `close` (for item handlers that dismiss after a pick) and a `dispose` that
+ * removes the listeners and clears any pending timer.
  *
  * Keyboard: Enter/Space toggles the menu from the trigger (ArrowDown/ArrowUp
  * always open), arrows rove focus over the menu's rows, Enter/Space activates
@@ -38,9 +53,14 @@ export function wireHoverMenu(
     button: HTMLElement,
     menu: HTMLElement,
     options: HoverMenuOptions = {},
-): () => void {
+): HoverMenuHandle {
     const hideDelay = options.hideDelayMs ?? 0;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    // Escape-layer unregister handle (null while closed): a hover-opened
+    // menu leaves focus in the editor, where Escape routes through the
+    // layer stack (blockKeys) — registering makes that Escape close the
+    // menu instead of block-selecting under it.
+    let escapeOff: (() => void) | null = null;
 
     const cancelHide = (): void => {
         if (hideTimer !== null) {
@@ -57,8 +77,11 @@ export function wireHoverMenu(
         button.setAttribute("aria-expanded", "true");
         // Marks the wrap so its ::after gap-bridge is live only while open.
         wrap.classList.add("tb-menu-open");
+        escapeOff ??= registerEscapeLayer(close);
     };
     const close = (): void => {
+        escapeOff?.();
+        escapeOff = null;
         cancelHide();
         menu.style.display = "none";
         button.setAttribute("aria-expanded", "false");
@@ -139,13 +162,18 @@ export function wireHoverMenu(
     menu.addEventListener("keydown", onMenuKeydown);
     wrap.addEventListener("focusout", onWrapFocusout);
 
-    return (): void => {
-        cancelHide();
-        wrap.removeEventListener("mouseenter", open);
-        wrap.removeEventListener("mouseleave", scheduleHide);
-        menu.removeEventListener("mouseenter", cancelHide);
-        button.removeEventListener("keydown", onButtonKeydown);
-        menu.removeEventListener("keydown", onMenuKeydown);
-        wrap.removeEventListener("focusout", onWrapFocusout);
+    return {
+        close,
+        dispose: (): void => {
+            escapeOff?.();
+            escapeOff = null;
+            cancelHide();
+            wrap.removeEventListener("mouseenter", open);
+            wrap.removeEventListener("mouseleave", scheduleHide);
+            menu.removeEventListener("mouseenter", cancelHide);
+            button.removeEventListener("keydown", onButtonKeydown);
+            menu.removeEventListener("keydown", onMenuKeydown);
+            wrap.removeEventListener("focusout", onWrapFocusout);
+        },
     };
 }

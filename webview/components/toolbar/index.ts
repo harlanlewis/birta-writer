@@ -1021,7 +1021,10 @@ export function initToolbar(
             item.el.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                fontMenu.style.display = "none";
+                // Shared close, never a direct hide: it owns the Escape-layer
+                // unregister (a direct hide leaks the entry and the next
+                // editor-focused Escape dies on it) and the aria state.
+                closeFontMenu();
                 setFontActive(preset);
                 notifySetFontPreset(preset);
             });
@@ -1038,7 +1041,7 @@ export function initToolbar(
         fontSettingsEntry.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            fontMenu.style.display = "none";
+            closeFontMenu();
             notifyOpenSettings("markdownWysiwyg.font");
         });
 
@@ -1062,7 +1065,9 @@ export function initToolbar(
         setContentWidthActive(currentContentWidth);
         setGutterMarkersActive(currentGutterMarkersMode());
 
-        wireHoverMenu(fontWrap, fontBtn, fontMenu);
+        // The item handlers above close over closeFontMenu; they only ever run
+        // after this wiring (the menu must be open to click a row).
+        const { close: closeFontMenu } = wireHoverMenu(fontWrap, fontBtn, fontMenu);
 
         fontWrap.appendChild(fontBtn);
         fontWrap.appendChild(fontMenu);
@@ -1099,13 +1104,15 @@ export function initToolbar(
             e.preventDefault();
             e.stopPropagation();
             action();
-            fmtMenu.style.display = "none";
+            // Shared close (owns the Escape-layer unregister) — never a
+            // direct hide, which would leak the layer entry.
+            closeFmtMenu();
         });
         fmtMenu.appendChild(item.el);
         fmtItems.push(item);
     });
 
-    wireHoverMenu(fmtWrap, fmtBtn, fmtMenu);
+    const { close: closeFmtMenu } = wireHoverMenu(fmtWrap, fmtBtn, fmtMenu);
 
     fmtWrap.appendChild(fmtBtn);
     fmtWrap.appendChild(fmtMenu);
@@ -1321,7 +1328,7 @@ export function initToolbar(
                 e.preventDefault();
                 e.stopPropagation();
                 runEditorCommand(command, getEditor);
-                listMenu.style.display = "none";
+                closeListMenu(); // shared close — owns the Escape-layer unregister
             });
             listMenu.appendChild(row);
             listRows.push({
@@ -1333,7 +1340,7 @@ export function initToolbar(
             });
         }
 
-        wireHoverMenu(listWrap, listBtn, listMenu);
+        const { close: closeListMenu } = wireHoverMenu(listWrap, listBtn, listMenu);
 
         listWrap.appendChild(listBtn);
         listWrap.appendChild(listMenu);
@@ -1381,7 +1388,7 @@ export function initToolbar(
                 e.preventDefault();
                 e.stopPropagation();
                 run();
-                codeMenu.style.display = "none";
+                closeCodeMenu(); // shared close — owns the Escape-layer unregister
             });
             codeMenu.appendChild(row);
             codeRows.push({
@@ -1405,7 +1412,7 @@ export function initToolbar(
         addRow("mermaid", IconNetwork, t("Mermaid Diagram"), () => runEditorCommand("insertCodeBlock", getEditor, "mermaid"));
         addRow("math", IconMath, t("Math Block"), () => runEditorCommand("insertCodeBlock", getEditor, "LaTeX"));
 
-        wireHoverMenu(codeWrap, codeBtn, codeMenu);
+        const { close: closeCodeMenu } = wireHoverMenu(codeWrap, codeBtn, codeMenu);
 
         codeWrap.appendChild(codeBtn);
         codeWrap.appendChild(codeMenu);
@@ -1459,7 +1466,7 @@ export function initToolbar(
                 e.preventDefault();
                 e.stopPropagation();
                 run();
-                quoteMenu.style.display = "none";
+                closeQuoteMenu(); // shared close — owns the Escape-layer unregister
             });
             quoteMenu.appendChild(row);
             quoteRows.push({
@@ -1493,7 +1500,7 @@ export function initToolbar(
             addRow(kind, CALLOUT_ICONS[kind], label, () => runEditorCommand("toggleCallout", getEditor, kind));
         }
 
-        wireHoverMenu(quoteWrap, quoteBtn, quoteMenu);
+        const { close: closeQuoteMenu } = wireHoverMenu(quoteWrap, quoteBtn, quoteMenu);
 
         quoteWrap.appendChild(quoteBtn);
         quoteWrap.appendChild(quoteMenu);
@@ -1529,7 +1536,7 @@ export function initToolbar(
         testLineItem.className = "tb-fmt-item";
         testLineItem.textContent = t("Test get line number");
         testLineItem.addEventListener("click", async () => {
-            dbgMenu.style.display = "none";
+            closeDbgMenu(); // shared close — owns the Escape-layer unregister
             const editor = getEditor();
             if (!editor) {
                 return;
@@ -1588,7 +1595,7 @@ export function initToolbar(
         dbgWrap.appendChild(dbgBtn);
         dbgWrap.appendChild(dbgMenu);
 
-        wireHoverMenu(dbgWrap, dbgBtn, dbgMenu);
+        const { close: closeDbgMenu } = wireHoverMenu(dbgWrap, dbgBtn, dbgMenu);
 
         dbgItem = wrap("debug", dbgWrap);
     }
@@ -1837,7 +1844,7 @@ export function initToolbar(
             entry.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                menu.style.display = "none";
+                closeSettingsMenu(); // shared close — owns the Escape-layer unregister
                 onSelect();
             });
             menu.appendChild(entry);
@@ -1861,7 +1868,7 @@ export function initToolbar(
             }
         }
 
-        wireHoverMenu(wrapEl, gearBtn, menu);
+        const { close: closeSettingsMenu } = wireHoverMenu(wrapEl, gearBtn, menu);
 
         wrapEl.appendChild(gearBtn);
         wrapEl.appendChild(menu);

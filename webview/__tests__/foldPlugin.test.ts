@@ -21,16 +21,19 @@ import {
     foldAtCaret,
     foldHiddenRange,
     foldPluginKey,
+    foldRevealKeymapPlugin,
     foldedHiddenRanges,
     headingFoldPlugin,
     resolveFoldAnchors,
     revealOnBackspace,
     revealOnDelete,
+    revealOnEnter,
     revealPosition,
     unfoldAllCommand,
     unfoldAtCaret,
     type FoldMeta,
 } from "../plugins/headingFold";
+import { insertParagraphAfter } from "../plugins/insertParagraph";
 import { foldSelectedBlocks } from "../plugins/blockKeys";
 import { BlockRangeSelection } from "../plugins/blockRange";
 
@@ -45,12 +48,34 @@ async function makeEditor(markdown: string): Promise<Editor> {
             ctx.set(defaultValueCtx, markdown);
             configureSerialization(ctx);
         })
+        // The reveal keymap registers BEFORE the presets, mirroring
+        // production (editor.ts): its Enter/Mod-Enter guards must run before
+        // the presets' own Enter handling.
+        .use(foldRevealKeymapPlugin)
         .use(pureCommonmark)
         .use(gfm)
         .use(headingFoldPlugin)
         .create();
     editors.push(editor);
     return editor;
+}
+
+/** Document position of the first node of the given type at ANY depth. */
+function deepPosOf(v: EditorView, typeName: string): number {
+    let pos = -1;
+    v.state.doc.descendants((node, offset) => {
+        if (pos === -1 && node.type.name === typeName) {
+            pos = offset;
+        }
+        return pos === -1;
+    });
+    expect(pos, `no ${typeName} at any depth`).toBeGreaterThanOrEqual(0);
+    return pos;
+}
+
+/** Dispatch a real Enter keydown through the view's keymap chain. */
+function pressEnter(v: EditorView): void {
+    v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
 }
 
 function view(editor: Editor): EditorView {
@@ -435,6 +460,24 @@ describe("persistence anchors", () => {
         expect(restored.size).toBe(0);
     });
 
+    it("a persisted anchor for a list-item-nested callout should be dropped on restore", async () => {
+        // Arrange: the callout lives inside a list item — never foldable
+        // (state/decoration parity), so a stale anchor must not resurrect
+        // an invisible fold across tab switches.
+        const editor = await makeEditor("- item\n\n  > [!note] T\n  > hidden body\n\ntail");
+        const v = view(editor);
+        const calloutPos = deepPosOf(v, "callout");
+
+        // Act: an anchor computed for the nested callout (as an older build
+        // could have persisted) must not resolve back into the fold set.
+        const anchors = computeFoldAnchors(v.state.doc, new Set([calloutPos]));
+        const restored = resolveFoldAnchors(v.state.doc, anchors);
+
+        // Assert
+        expect(anchors.callouts).toHaveLength(1);
+        expect(restored.size).toBe(0);
+    });
+
     it("fold changes should persist anchors into the webview state bag", async () => {
         // Arrange
         const { setWebviewState } = await import("../messaging");
@@ -452,5 +495,216 @@ describe("persistence anchors", () => {
             | { foldAnchors?: { headings: string[] } }
             | undefined;
         expect(lastWrite?.foldAnchors?.headings).toEqual(["title:0"]);
+    });
+});
+
+describe("list-item-nested callouts (state/decoration parity)", () => {
+    // The fold DECORATION pass renders chrome only for top-level blocks and
+    // container children; list-item children (emitItemGutters) have no fold
+    // context. The STATE layer must therefore never accept a fold on a
+    // callout with a list_item ancestor — otherwise the fold is invisible
+    // while the caret guard and drop guards still treat the body as hidden.
+    const NESTED = "- item\n\n  > [!note] T\n  > hidden body\n\ntail";
+
+    it("foldAtCaret inside a list-item-nested callout should return false and add no state", async () => {
+        // Arrange
+        const editor = await makeEditor(NESTED);
+        const v = view(editor);
+        const calloutPos = deepPosOf(v, "callout");
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, calloutPos + 3)));
+
+        // Act + Assert
+        expect(foldAtCaret(v.state, v.dispatch)).toBe(false);
+        expect(folded(v).size).toBe(0);
+        expect(foldHiddenRange(v.state.doc, calloutPos)).toBeNull();
+    });
+
+    it("Fold All should fold top-level foldables but never the nested callout", async () => {
+        // Arrange
+        const editor = await makeEditor(`# Top\n\nbody\n\n${NESTED}`);
+        const v = view(editor);
+        const headingPos = posOf(v, "heading");
+        const calloutPos = deepPosOf(v, "callout");
+
+        // Act
+        expect(foldAllCommand(v.state, v.dispatch)).toBe(true);
+
+        // Assert
+        expect(folded(v).has(headingPos)).toBe(true);
+        expect(folded(v).has(calloutPos)).toBe(false);
+        expect(allFoldablePositions(v.state.doc)).not.toContain(calloutPos);
+    });
+
+    it("a toggle/set meta on a list-item-nested callout should be rejected (defense in depth)", async () => {
+        // Arrange
+        const editor = await makeEditor(NESTED);
+        const v = view(editor);
+        const calloutPos = deepPosOf(v, "callout");
+
+        // Act: both meta shapes a stale caller could dispatch directly.
+        toggle(v, calloutPos);
+        v.dispatch(
+            v.state.tr
+                .setMeta(foldPluginKey, { type: "set", pos: calloutPos, folded: true } satisfies FoldMeta)
+                .setMeta("addToHistory", false),
+        );
+
+        // Assert: state never contains an entry the decorations won't render.
+        expect(folded(v).size).toBe(0);
+        expect(foldedHiddenRanges(v.state)).toHaveLength(0);
+    });
+
+    it("a caret placed in the nested callout's body should NOT be ejected", async () => {
+        // Arrange: attempt the fold (rejected), then enter the body.
+        const editor = await makeEditor(NESTED);
+        const v = view(editor);
+        const calloutPos = deepPosOf(v, "callout");
+        toggle(v, calloutPos);
+        const target = calloutPos + 3;
+
+        // Act
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, target)));
+
+        // Assert: the caret guard has nothing hidden to eject from.
+        expect(v.state.selection.from).toBe(target);
+    });
+
+    it("a [!kind]- syntax marker inside a list item should NOT seed a fold", async () => {
+        const editor = await makeEditor("- item\n\n  > [!tip]- Folded\n  > hidden body\n\ntail");
+        const v = view(editor);
+        expect(folded(v).size).toBe(0);
+    });
+});
+
+describe("Enter at a collapsed heading boundary", () => {
+    const DOC = "# A\n\nbody a\n\n# B\n\nbody b";
+
+    /** Collapse the first heading and put the caret at the end of its line. */
+    async function collapseWithCaretAtEnd(doc: string) {
+        const editor = await makeEditor(doc);
+        const v = view(editor);
+        const pos = posOf(v, "heading");
+        toggle(v, pos);
+        const node = v.state.doc.nodeAt(pos)!;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, pos + node.nodeSize - 1)));
+        return { v, pos };
+    }
+
+    it("Enter at the end of a collapsed heading should unfold and insert a visible paragraph", async () => {
+        // Arrange
+        const { v } = await collapseWithCaretAtEnd(DOC);
+
+        // Act
+        pressEnter(v);
+
+        // Assert: the fold is gone, the new paragraph is the heading's next
+        // sibling, and the caret sits inside it — not teleported into "B".
+        expect(folded(v).size).toBe(0);
+        const second = v.state.doc.child(1);
+        expect(second.type.name).toBe("paragraph");
+        expect(second.textContent).toBe("");
+        expect(v.state.selection.$from.parent).toBe(second);
+        expect(document.querySelector(".heading-fold-hidden")).toBeNull();
+    });
+
+    it("repeated Enter should never accrete hidden paragraphs", async () => {
+        // Arrange
+        const { v } = await collapseWithCaretAtEnd(DOC);
+        const blocksBefore = v.state.doc.childCount;
+
+        // Act
+        pressEnter(v);
+        pressEnter(v);
+
+        // Assert: two visible paragraphs added, zero hidden content.
+        expect(v.state.doc.childCount).toBe(blocksBefore + 2);
+        expect(foldedHiddenRanges(v.state)).toHaveLength(0);
+        expect(document.querySelector(".heading-fold-hidden")).toBeNull();
+    });
+
+    it("Enter at doc end on a collapsed trailing heading should still produce a visible paragraph", async () => {
+        // Arrange: the section is the last content — the old failure mode was
+        // a caret snapping back while hidden empty paragraphs accreted.
+        const { v } = await collapseWithCaretAtEnd("# A\n\nbody a");
+
+        // Act
+        pressEnter(v);
+
+        // Assert
+        expect(folded(v).size).toBe(0);
+        expect(v.state.selection.$from.parent.type.name).toBe("paragraph");
+        expect(document.querySelector(".heading-fold-hidden")).toBeNull();
+    });
+
+    it("Mod-Enter (insert paragraph below) should unfold first via the same guard", async () => {
+        // Arrange
+        const { v } = await collapseWithCaretAtEnd(DOC);
+
+        // Act: the production chain — revealOnEnter runs first (registered
+        // before insertParagraphKeymapPlugin), never consumes, and the
+        // insert command then acts on the unfolded state.
+        expect(revealOnEnter(v.state, v.dispatch)).toBe(false);
+        expect(insertParagraphAfter(v.state, v.dispatch, v)).toBe(true);
+
+        // Assert
+        expect(folded(v).size).toBe(0);
+        const second = v.state.doc.child(1);
+        expect(second.type.name).toBe("paragraph");
+        expect(second.textContent).toBe("");
+        expect(v.state.selection.$from.parent).toBe(second);
+        expect(document.querySelector(".heading-fold-hidden")).toBeNull();
+    });
+
+    it("Enter away from any fold boundary should not dispatch and fall through", async () => {
+        // Arrange: collapsed heading exists, but the caret is elsewhere.
+        const editor = await makeEditor(DOC);
+        const v = view(editor);
+        toggle(v, posOf(v, "heading"));
+        const end = v.state.doc.content.size - 1;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, end)));
+        const stateBefore = v.state;
+
+        // Act + Assert: falls through without touching the fold.
+        expect(revealOnEnter(v.state, v.dispatch)).toBe(false);
+        expect(v.state).toBe(stateBefore);
+        expect(folded(v).size).toBe(1);
+    });
+});
+
+describe("stale fold entries on section-less headings", () => {
+    it("a collapsed heading whose section is deleted should reset to open", async () => {
+        // Arrange
+        const editor = await makeEditor("## H\n\nBody\n\n## Next");
+        const v = view(editor);
+        const pos = posOf(v, "heading");
+        toggle(v, pos);
+        const hidden = foldHiddenRange(v.state.doc, pos)!;
+
+        // Act: an edit empties the section (external sync / block delete).
+        v.dispatch(v.state.tr.delete(hidden.from, hidden.to));
+
+        // Assert: the entry is gone — not silently retained on a heading
+        // that owns nothing (no chevron, no ellipsis, no cue).
+        expect(folded(v).size).toBe(0);
+    });
+
+    it("content typed under a heading that lost its section should stay visible", async () => {
+        // Arrange: collapse, then empty the section.
+        const editor = await makeEditor("## H\n\nBody\n\n## Next");
+        const v = view(editor);
+        const pos = posOf(v, "heading");
+        toggle(v, pos);
+        const hidden = foldHiddenRange(v.state.doc, pos)!;
+        v.dispatch(v.state.tr.delete(hidden.from, hidden.to));
+
+        // Act: new content appears under the heading.
+        const paragraph = v.state.schema.nodes["paragraph"]!;
+        const node = v.state.doc.nodeAt(pos)!;
+        v.dispatch(v.state.tr.insert(pos + node.nodeSize, paragraph.create(null, v.state.schema.text("new content"))));
+
+        // Assert: nothing swallows it.
+        expect(folded(v).size).toBe(0);
+        expect(foldedHiddenRanges(v.state)).toHaveLength(0);
+        expect(document.querySelector(".heading-fold-hidden")).toBeNull();
     });
 });

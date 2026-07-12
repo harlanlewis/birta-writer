@@ -44,6 +44,7 @@ import { applyGutterMarkers, currentGutterMarkersMode } from "../../utils/gutter
 import { slugify } from "../../utils/slug";
 import { getTopbarBottom } from "../../utils/headingUtils";
 import { hideTooltip } from "../../ui/tooltip";
+import { registerEscapeLayer } from "../../ui/escapeLayers";
 import { t } from "../../i18n";
 import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
 import {
@@ -720,6 +721,7 @@ export function openBlockMenu(
         if (closeActiveBlockMenu === close) {
             closeActiveBlockMenu = null;
         }
+        escapeLayerOff();
         // The search input owns focus while the menu is open; removing it
         // would strand focus on <body> (dead keyboard) for every close that
         // no action follows — non-mutating picks (Copy as Markdown), the
@@ -1123,6 +1125,11 @@ export function openBlockMenu(
     renderRows("");
 
     closeActiveBlockMenu = close;
+    // Escape-layer bookkeeping: the menu's own document-capture handler
+    // still claims Escape first (it runs before the layer stack ever sees
+    // the key), so registering only keeps the stack's picture of "what is
+    // open" honest — close() drops the entry on every close path.
+    const escapeLayerOff = registerEscapeLayer(close);
     // Synchronous registration is safe: this runs from the marker's `click`,
     // whose mousedown already happened — the next mousedown is genuinely
     // outside. (A deferred add could leak if close() raced the timeout.)

@@ -85,6 +85,33 @@ export function calloutHasBody(node: { childCount: number; firstChild: { childCo
     return !(node.childCount === 1 && (node.firstChild?.childCount ?? 0) === 0);
 }
 
+/**
+ * THE foldable-callout invariant, shared by every layer that can create or
+ * honor a callout fold (the meta guards in apply(), Fold All, fold-at-caret,
+ * persistence restore, syntax seeding, and — via foldHiddenRange — the caret
+ * guard and drop guards): a callout nested inside a list item is NOT
+ * foldable. The decoration pass renders fold chrome only for top-level
+ * blocks and container children (emitContainerChildGutters); list-item
+ * children go through emitItemGutters, which has no fold context, so a fold
+ * entry there would hide nothing visibly while the caret guard ejected
+ * carets from the "hidden" body and drop guards vetoed the region — an
+ * invisible fold, unrecoverable by undo (fold metas are history-exempt).
+ * Feature-completing this (threading fold context through emitItemGutters)
+ * is the future alternative to the restriction.
+ */
+function isFoldableCallout(doc: any, pos: number, node: any): boolean {
+    if (!isCalloutNode(node) || !calloutHasBody(node)) {
+        return false;
+    }
+    const $pos = doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth--) {
+        if ($pos.node(depth).type.name === "list_item") {
+            return false;
+        }
+    }
+    return true;
+}
+
 /** A heading NODE's level attr (the DOM-element twin lives in utils/headingUtils). */
 export function getHeadingLevel(node: { attrs?: Record<string, unknown> }): number {
     const level = node.attrs?.["level"];
@@ -257,7 +284,10 @@ export function foldHiddenRange(doc: any, pos: number): HeadingFoldRange | null 
         // top-level offsets, so a nested heading simply misses.
         return cachedFoldRanges(doc).get(pos) ?? null;
     }
-    if (isCalloutNode(node) && calloutHasBody(node)) {
+    // isFoldableCallout also excludes list-item-nested callouts, so the meta
+    // guards, the caret guard, and the drop guards all inherit the
+    // state/decoration-parity invariant from this one map.
+    if (isFoldableCallout(doc, pos, node)) {
         return { from: pos + 1, to: pos + node.nodeSize - 1 };
     }
     return null;
@@ -314,7 +344,11 @@ function isFoldEntryAt(doc: any, pos: number): boolean {
 function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<number> {
     const next = new Set<number>();
     for (const pos of folded) {
-        if (isFoldEntryAt(doc, pos)) {
+        // The block must still exist AND still hide something: a heading
+        // whose section was emptied by edits (fold range now null) resets to
+        // open. A kept entry would show no chevron and no ellipsis, then
+        // silently swallow the next content to appear under the heading.
+        if (foldHiddenRange(doc, pos) !== null) {
             next.add(pos);
         }
     }
@@ -322,7 +356,8 @@ function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<number> {
 }
 
 /** Every foldable position in the doc: top-level heading sections plus
- * callouts (at any depth) with a body. Drives Fold All. */
+ * foldable callouts (any depth outside list items — see isFoldableCallout).
+ * Drives Fold All. */
 export function allFoldablePositions(doc: any): number[] {
     const positions: number[] = [];
     for (const [pos, range] of cachedFoldRanges(doc)) {
@@ -331,7 +366,7 @@ export function allFoldablePositions(doc: any): number[] {
         }
     }
     doc.descendants((node: any, pos: number) => {
-        if (isCalloutNode(node) && calloutHasBody(node)) {
+        if (isFoldableCallout(doc, pos, node)) {
             positions.push(pos);
         }
         return true;
@@ -426,7 +461,11 @@ export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> 
             pos = childPos;
             node = node.child(index);
         }
-        if (resolved && isCalloutNode(node) && calloutHasBody(node)) {
+        // Same predicate as the live layers: an anchor persisted for a
+        // callout that is no longer foldable (or never was — e.g. a
+        // list-item-nested one from an older build) is dropped, never
+        // restored into an invisible fold.
+        if (resolved && isFoldableCallout(doc, pos, node)) {
             folded.add(pos);
         }
     }
@@ -459,7 +498,7 @@ function persistFoldAnchors(state: EditorState): void {
 function seedSyntaxFolds(doc: any): Set<number> {
     const folded = new Set<number>();
     doc.descendants((node: any, pos: number) => {
-        if (isCalloutNode(node) && node.attrs?.["fold"] === "-" && calloutHasBody(node)) {
+        if (node.attrs?.["fold"] === "-" && isFoldableCallout(doc, pos, node)) {
             folded.add(pos);
         }
         return true;
@@ -1483,7 +1522,9 @@ function foldablesContaining(state: EditorState, pos: number): number[] {
     const $pos = state.doc.resolve(Math.min(pos, state.doc.content.size));
     for (let depth = 1; depth <= $pos.depth; depth++) {
         const node = $pos.node(depth);
-        if (isCalloutNode(node) && calloutHasBody(node)) {
+        // isFoldableCallout keeps list-item-nested callouts out — the fold
+        // command must never target what the decoration pass won't render.
+        if (isCalloutNode(node) && isFoldableCallout(state.doc, $pos.before(depth), node)) {
             candidates.push($pos.before(depth));
         }
     }
@@ -1649,10 +1690,48 @@ export const revealOnDelete: Command = (state, dispatch) => {
     return false;
 };
 
-/** Typing-level fold-boundary guards (plain keys — not rebindable chords). */
+/**
+ * Enter (split) or Mod-Enter (insert paragraph below) with the caret on a
+ * COLLAPSED heading's line: the new block would land at the first position
+ * of the hidden range — instantly display:none — and the caret guard would
+ * then eject the caret into the next visible section (or, at doc end, snap
+ * it back so Enter seemed dead while hidden empty paragraphs accreted).
+ * Unfold first (revealOnBackspace's philosophy: edits at a fold boundary
+ * reveal, never touch hidden content) and ALWAYS return false, so the
+ * default Enter handling proceeds against the now-visible section.
+ */
+export const revealOnEnter: Command = (state, dispatch) => {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState?.enabled || pluginState.folded.size === 0) {
+        return false;
+    }
+    const $from = state.selection.$from;
+    if ($from.depth !== 1) {
+        return false;
+    }
+    const blockStart = $from.before(1);
+    if (
+        !pluginState.folded.has(blockStart) ||
+        !isHeadingNode(state.doc.nodeAt(blockStart)) ||
+        foldHiddenRange(state.doc, blockStart) === null
+    ) {
+        return false;
+    }
+    if (dispatch) {
+        dispatchFold(state, dispatch, blockStart, false);
+    }
+    return false; // never consume — the split/insert runs on the unfolded state
+};
+
+/** Typing-level fold-boundary guards (plain keys — not rebindable chords).
+ * Registered BEFORE the presets and insertParagraphKeymapPlugin (editor.ts):
+ * revealOnEnter must dispatch its unfold before the default Enter /
+ * Mod-Enter handlers read the state. */
 export const foldRevealKeymapPlugin = $prose(() =>
     keymap({
         "Backspace": revealOnBackspace,
         "Delete": revealOnDelete,
+        "Enter": revealOnEnter,
+        "Mod-Enter": revealOnEnter,
     }),
 );

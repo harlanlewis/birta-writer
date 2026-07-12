@@ -13,6 +13,7 @@ import {
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
 import { attachInputUndo } from "@/utils/inputUndo";
+import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { getTopbarBottom, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import { revealPosition } from "@/plugins/headingFold";
 import type { EventManager } from "@/eventManager";
@@ -288,6 +289,20 @@ export function initFindBar(
     let lastNavSel: { from: number; to: number } | null = null;
     /** Elements carrying attr/block highlight classes, for cleanup. */
     let markedEls: HTMLElement[] = [];
+    /** Escape-layer unregister handle (null while the bar is hidden). */
+    let escapeLayerOff: (() => void) | null = null;
+
+    /**
+     * Mark the bar visible and register it on the Escape-layer stack, so an
+     * editor-focused Escape closes it (via blockKeys' Escape wiring) before
+     * any block-selection escalation — the VS Code find-widget layering.
+     * Shared by every open path (open, findFrom, cycleOccurrence).
+     */
+    function show() {
+        visible = true;
+        bar.classList.add("find-bar--visible");
+        escapeLayerOff ??= registerEscapeLayer(close);
+    }
 
     // ── Highlight updates ────────────────────────────────
     const supportsHighlights = () => typeof CSS !== "undefined" && "highlights" in CSS;
@@ -615,8 +630,7 @@ export function initFindBar(
             open(); // nothing to search for: behave like Cmd+F
             return;
         }
-        visible = true;
-        bar.classList.add("find-bar--visible");
+        show();
         search(input.value);
         const view = getEditorView();
         if (view && matches.length) {
@@ -716,8 +730,7 @@ export function initFindBar(
             // find-in-selection scope (and reset its toggle) so seeding a word
             // outside the old scope isn't silently filtered to nothing.
             setInSelection(false);
-            visible = true;
-            bar.classList.add("find-bar--visible");
+            show();
             // The seed is text to find, not a pattern (see seedText).
             input.value = seedText(query);
             search(input.value);
@@ -1062,10 +1075,13 @@ export function initFindBar(
     // Stop mousedown inside the bar from bubbling into the editor
     bar.addEventListener("mousedown", (e) => e.stopPropagation());
 
-    // Esc with focus in the editor content closes the bar (the input handlers
-    // above cover Esc while the bar itself has focus — relevant since find
-    // navigation leaves focus in the editor). Bubble phase so overlays that
-    // claim Escape first (menus, lightbox) win via preventDefault;
+    // Fallback for editor-content Esc keydowns ProseMirror never processes
+    // (focus inside a NodeView's own input/textarea): the primary
+    // editor-focused path is the Escape-layer stack, consulted by blockKeys'
+    // Escape wiring BEFORE any block selection — when it closes this bar it
+    // preventDefaults, and this handler skips. (The input handlers above
+    // cover Esc while the bar itself has focus.) Bubble phase so overlays
+    // that claim Escape first (menus, lightbox) win via preventDefault;
     // stopPropagation keeps the chord from also reaching the workbench.
     eventManager.onDocument("keydown", (e) => {
         if (
@@ -1075,6 +1091,10 @@ export function initFindBar(
             e.target instanceof Element &&
             e.target.closest(".ProseMirror") !== null
         ) {
+            // preventDefault too: sibling document-level Escape fallbacks
+            // (link popup, lightboxes) honor defaultPrevented, so consuming
+            // here keeps one Escape from closing two surfaces.
+            e.preventDefault();
             e.stopPropagation();
             close();
         }
@@ -1095,8 +1115,7 @@ export function initFindBar(
         initialQuery?: string,
         opts?: { showReplace?: boolean; focusReplace?: boolean },
     ) {
-        visible = true;
-        bar.classList.add("find-bar--visible");
+        show();
         if (opts?.showReplace !== undefined) {
             setReplaceVisible(opts.showReplace);
         }
@@ -1120,6 +1139,10 @@ export function initFindBar(
     }
 
     function close() {
+        // Every close path (Esc in an input, the ✕ button, the layer stack)
+        // must drop the layer entry, or a dead one would eat a later Escape.
+        escapeLayerOff?.();
+        escapeLayerOff = null;
         visible = false;
         bar.classList.remove("find-bar--visible");
         bar.classList.remove("find-bar--no-results");

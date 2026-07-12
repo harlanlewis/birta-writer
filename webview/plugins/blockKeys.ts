@@ -6,10 +6,14 @@
  * commits and the drag handles read, so the keyboard, the marquee, and the
  * gutter grabbers all speak one selection language:
  *
- *   - Escape        escalate: a caret, text selection, or node selection
- *                   becomes a block range over the block(s) it touches; a
- *                   block range collapses back to a caret. (Every popup's
- *                   own capture-phase Escape wins first.)
+ *   - Escape        FIRST closes the topmost open transient surface (find
+ *                   bar, pinned link popup, hover menu, lightbox — the
+ *                   ui/escapeLayers.ts stack), consuming the key. Only with
+ *                   no surface open does it escalate: a caret, text
+ *                   selection, or node selection becomes a block range over
+ *                   the block(s) it touches; a block range collapses back
+ *                   to a caret. (Popups that claim Escape at capture phase
+ *                   — slash menu, block menu — still win before this.)
  *   - Shift+↑/↓     grow/shrink a block range one block at a time, honoring
  *                   the anchor direction. Never touches a plain text
  *                   selection — those keep native character extension.
@@ -31,10 +35,11 @@
  * ProseMirror's baseKeymap is appended AFTER user plugins by Milkdown core,
  * so these bindings run first and fall through (return false) cleanly.
  */
-import { keymap } from "@milkdown/prose/keymap";
-import { Selection, TextSelection, type EditorState, type Transaction } from "@milkdown/prose/state";
+import { keydownHandler } from "@milkdown/prose/keymap";
+import { Plugin, Selection, TextSelection, type EditorState, type Transaction } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { $prose } from "@milkdown/utils";
+import { closeTopmostLayer } from "../ui/escapeLayers";
 import {
     deleteBlockRange,
     duplicateBlockRange,
@@ -443,19 +448,48 @@ export function foldSelectedBlocks(fold: boolean): Command {
     };
 }
 
+const blockKeymap = keydownHandler({
+    "Escape": toggleBlockSelection,
+    "ArrowLeft": foldSelectedBlocks(true),
+    "ArrowRight": foldSelectedBlocks(false),
+    "Shift-ArrowDown": extendBlockSelection(1),
+    "Shift-ArrowUp": extendBlockSelection(-1),
+    "Mod-a": escalateSelectAll,
+    "Alt-ArrowDown": moveSelectedBlocks(1),
+    "Alt-ArrowUp": moveSelectedBlocks(-1),
+    "Mod-Shift-ArrowDown": moveSelectedBlocks(1),
+    "Mod-Shift-ArrowUp": moveSelectedBlocks(-1),
+    "Shift-Alt-ArrowDown": duplicateSelectedBlocks(1),
+    "Shift-Alt-ArrowUp": duplicateSelectedBlocks(-1),
+});
+
+/**
+ * The plugin's keydown entry (exported for tests). A plain Escape first
+ * offers the key to the transient-surface stack (ui/escapeLayers.ts): if a
+ * surface closed, the key is consumed WITHOUT touching the selection — the
+ * VS Code/Notion layering (find widget closes before the editor reacts).
+ * The layer check lives here in the wiring, not inside toggleBlockSelection,
+ * so the exported command stays pure. stopPropagation matches how the
+ * overlays' own Escape handlers keep the consumed chord from reaching the
+ * workbench key forwarder (see keyboardShortcuts.ts); an unconsumed Escape
+ * still propagates, since the workbench owns Escape when we don't use it.
+ */
+export function handleBlockKeydown(view: EditorView, event: KeyboardEvent): boolean {
+    if (
+        event.key === "Escape" &&
+        !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
+        closeTopmostLayer()
+    ) {
+        event.stopPropagation();
+        return true;
+    }
+    return blockKeymap(view, event);
+}
+
 export const blockKeysPlugin = $prose(() =>
-    keymap({
-        "Escape": toggleBlockSelection,
-        "ArrowLeft": foldSelectedBlocks(true),
-        "ArrowRight": foldSelectedBlocks(false),
-        "Shift-ArrowDown": extendBlockSelection(1),
-        "Shift-ArrowUp": extendBlockSelection(-1),
-        "Mod-a": escalateSelectAll,
-        "Alt-ArrowDown": moveSelectedBlocks(1),
-        "Alt-ArrowUp": moveSelectedBlocks(-1),
-        "Mod-Shift-ArrowDown": moveSelectedBlocks(1),
-        "Mod-Shift-ArrowUp": moveSelectedBlocks(-1),
-        "Shift-Alt-ArrowDown": duplicateSelectedBlocks(1),
-        "Shift-Alt-ArrowUp": duplicateSelectedBlocks(-1),
+    new Plugin({
+        props: {
+            handleKeyDown: handleBlockKeydown,
+        },
     }),
 );

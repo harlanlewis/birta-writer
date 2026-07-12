@@ -24,6 +24,7 @@ import "./callout.css";
 import type { Node as PMNode } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
 import { t } from "@/i18n";
+import { registerEscapeLayer } from "@/ui/escapeLayers";
 import {
     CALLOUT_KINDS,
     attrsFromMarker,
@@ -221,8 +222,12 @@ export function createCalloutView(
 
     // ── Kind picker menu ────────────────────────────────────────────────────
     let menu: HTMLElement | null = null;
+    /** Escape-layer unregister handle (null while the menu is closed). */
+    let escapeLayerOff: (() => void) | null = null;
     const closeMenu = (refocus = false): void => {
         if (!menu) return;
+        escapeLayerOff?.();
+        escapeLayerOff = null;
         menu.remove();
         menu = null;
         kindButton.setAttribute("aria-expanded", "false");
@@ -278,6 +283,9 @@ export function createCalloutView(
             }
         });
         titleBar.appendChild(menu);
+        // Escape layer: the focused menu's own keydown wins first; this
+        // covers an editor-focused Escape while the menu is open.
+        escapeLayerOff = registerEscapeLayer(() => closeMenu());
         document.addEventListener("mousedown", onOutside, true);
         kindButton.setAttribute("aria-expanded", "true");
         (menu.querySelector(".active") as HTMLButtonElement | null ?? menuItems()[0])?.focus();

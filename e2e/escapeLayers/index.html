@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- e2e harness page for Escape layering: mirrors the provider template
+     (src/MarkdownEditorProvider.ts) with acquireVsCodeApi stubbed. The topbar
+     div boots the real toolbar (its hover dropdowns are one of the layered
+     surfaces under test). -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-widget-border: rgba(128, 128, 128, 0.25);
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-activeSelectionBackground: #094771;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-textLink-foreground: #3794ff;
+    --vscode-editor-font-family: monospace;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: "# Title\n\nAlpha paragraph.\n\nBeta paragraph.\n",
+          syncVersion: 1,
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

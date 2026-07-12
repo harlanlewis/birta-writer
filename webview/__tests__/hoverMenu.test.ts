@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { wireHoverMenu } from "../components/toolbar/hoverMenu";
+import { closeTopmostLayer } from "../ui/escapeLayers";
 
 // Real DOM + fake timers exercise the actual open/close state machine, including
 // the button->menu gap bridge. placeMenu runs inside open(); in jsdom it reads
@@ -25,7 +26,11 @@ function key(k: string): KeyboardEvent {
 }
 
 describe("wireHoverMenu", () => {
-    beforeEach(() => { vi.useFakeTimers(); });
+    beforeEach(() => {
+        vi.useFakeTimers();
+        // Drain layer entries left behind by other tests (module-level stack).
+        while (closeTopmostLayer()) { /* drain */ }
+    });
     afterEach(() => { vi.useRealTimers(); document.body.innerHTML = ""; });
 
     it("opens on wrap hover, running onOpen before showing", () => {
@@ -167,9 +172,40 @@ describe("wireHoverMenu", () => {
         expect(menu.style.display).toBe("none");
     });
 
+    it("the returned close should be the shared close path (Escape layer unregistered)", () => {
+        // The item-pick regression: handlers that dismiss the menu must call
+        // the returned close, not hide the menu element directly — only
+        // close() drops the Escape-layer entry and resets the aria state.
+        const { wrap, button, menu } = build();
+        const { close } = wireHoverMenu(wrap, button, menu);
+        fire(wrap, "mouseenter");
+        expect(closeTopmostLayer()).toBe(true); // open registered a layer...
+        expect(menu.style.display).toBe("none"); // ...whose close closes the menu
+
+        fire(wrap, "mouseenter");
+        close();
+        expect(menu.style.display).toBe("none");
+        expect(button.getAttribute("aria-expanded")).toBe("false");
+        expect(wrap.classList.contains("tb-menu-open")).toBe(false);
+        // The layer entry is gone — nothing left to swallow the next Escape.
+        expect(closeTopmostLayer()).toBe(false);
+    });
+
+    it("a direct style hide (the old item-pick bug) would leak; reopening after close re-registers", () => {
+        const { wrap, button, menu } = build();
+        const { close } = wireHoverMenu(wrap, button, menu);
+        fire(wrap, "mouseenter");
+        close();
+        // Reopen after a proper close: exactly one live layer entry again
+        // (a leaked escapeOff used to suppress re-registration via ??=).
+        fire(wrap, "mouseenter");
+        expect(closeTopmostLayer()).toBe(true);
+        expect(closeTopmostLayer()).toBe(false);
+    });
+
     it("dispose() clears a pending hide and removes the listeners", () => {
         const { wrap, button, menu } = build();
-        const dispose = wireHoverMenu(wrap, button, menu);
+        const { dispose } = wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
         fire(wrap, "mouseleave"); // schedules the hide
         dispose();
