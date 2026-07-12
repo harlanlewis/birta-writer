@@ -3,8 +3,6 @@ import {
     toggleStrongCommand,
     toggleEmphasisCommand,
     toggleInlineCodeCommand,
-    turnIntoTextCommand,
-    wrapInHeadingCommand,
 } from "@milkdown/preset-commonmark";
 import type { Node as PMNode, ResolvedPos } from "@milkdown/prose/model";
 import { toggleStrikethroughCommand } from "@milkdown/preset-gfm";
@@ -32,6 +30,7 @@ import {
 } from "@/ui/icons";
 import { applyTooltip } from "@/ui/tooltip";
 import { t, kbd } from "@/i18n";
+import { runEditorCommand } from "@/editorCommands";
 import { createButton, createSeparator } from "@/ui/dom";
 import './selectionToolbar.css';
 
@@ -247,38 +246,20 @@ export function setupSelectionToolbar(
     fmtMenu.className = "sel-tb-fmt-menu";
     fmtMenu.style.display = "none";
 
+    // Route through the shared command registry (same entries as the main
+    // toolbar / palette) so a heading pick inside a list item lifts the line
+    // out of the list instead of silently no-oping — a heading can't live in
+    // list_item's `paragraph block*` content, so the raw wrapInHeading command
+    // returns false there (MAR-111). The lift logic lives in editorCommands'
+    // setHeading; never duplicate it here.
     const formats: [string, string, () => void][] = [
-        [t("Paragraph"), "P", () => callCmd(getEditor, turnIntoTextCommand)],
-        [
-            t("Heading 1"),
-            "H1",
-            () => callCmd(getEditor, wrapInHeadingCommand, 1),
-        ],
-        [
-            t("Heading 2"),
-            "H2",
-            () => callCmd(getEditor, wrapInHeadingCommand, 2),
-        ],
-        [
-            t("Heading 3"),
-            "H3",
-            () => callCmd(getEditor, wrapInHeadingCommand, 3),
-        ],
-        [
-            t("Heading 4"),
-            "H4",
-            () => callCmd(getEditor, wrapInHeadingCommand, 4),
-        ],
-        [
-            t("Heading 5"),
-            "H5",
-            () => callCmd(getEditor, wrapInHeadingCommand, 5),
-        ],
-        [
-            t("Heading 6"),
-            "H6",
-            () => callCmd(getEditor, wrapInHeadingCommand, 6),
-        ],
+        [t("Paragraph"), "P", () => runEditorCommand("setParagraph", getEditor)],
+        [t("Heading 1"), "H1", () => runEditorCommand("setHeading1", getEditor)],
+        [t("Heading 2"), "H2", () => runEditorCommand("setHeading2", getEditor)],
+        [t("Heading 3"), "H3", () => runEditorCommand("setHeading3", getEditor)],
+        [t("Heading 4"), "H4", () => runEditorCommand("setHeading4", getEditor)],
+        [t("Heading 5"), "H5", () => runEditorCommand("setHeading5", getEditor)],
+        [t("Heading 6"), "H6", () => runEditorCommand("setHeading6", getEditor)],
     ];
 
     const fmtItems: HTMLElement[] = [];
