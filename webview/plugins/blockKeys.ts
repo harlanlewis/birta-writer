@@ -21,6 +21,11 @@
  *   Cmd+Shift+↑/↓   caret's block (headings carry their section) — the same
  *                   moveBlockTo the menu and drag use, so fold state, the
  *                   landing flash, and single-step undo all apply.
+ *   - Shift+Alt+↑/↓ duplicate the selected block range or the caret's block
+ *                   (MAR-103, VS Code copy-line semantics) — the same
+ *                   primitive the menu's Duplicate row uses. Delete Block
+ *                   (contributed Cmd+Shift+K) shares the range logic but has
+ *                   no ProseMirror binding here.
  *
  * Commands are exported for direct unit testing; the keymap is thin wiring.
  * ProseMirror's baseKeymap is appended AFTER user plugins by Milkdown core,
@@ -30,7 +35,12 @@ import { keymap } from "@milkdown/prose/keymap";
 import { Selection, TextSelection, type EditorState, type Transaction } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { $prose } from "@milkdown/utils";
-import { moveBlockAt, moveBlockTo } from "../components/blockMenu";
+import {
+    deleteBlockRange,
+    duplicateBlockRange,
+    moveBlockAt,
+    moveBlockTo,
+} from "../components/blockMenu";
 import { selectionCoverRange } from "../components/blockMenu/drag";
 import { BlockRangeSelection } from "./blockRange";
 import { foldedSectionEnds } from "./headingFold";
@@ -330,20 +340,62 @@ export function moveSelectedBlocks(dir: -1 | 1): Command {
 }
 
 /**
- * Shift+Alt+↑/↓ / palette Duplicate Block Up/Down (MAR-103).
- * STUB: honest no-op until the implementation lands in the follow-up commit;
- * returning false keeps native behavior intact.
+ * The blocks a duplicate/delete acts on: an explicit block-spanning
+ * selection covers exactly what it shows (unit-snapped — a collapsed
+ * heading carries its hidden section); a bare caret gets the block menu's
+ * unit semantics — the innermost list ITEM inside a list, otherwise the
+ * caret's top-level block. Like the menu rows, a caret on a collapsed
+ * heading targets the heading LINE alone (duplicate inserts past the hidden
+ * section; delete simply reveals it).
  */
-export function duplicateSelectedBlocks(_dir: -1 | 1): Command {
-    return () => false;
+function actionRange(state: EditorState, view: EditorView): { from: number; to: number } | null {
+    const rawCover = selectionCoverRange(view);
+    if (rawCover) {
+        return snapToUnits(unitBoundaries(state), rawCover.from, rawCover.to);
+    }
+    const $from = state.selection.$from;
+    for (let depth = $from.depth; depth > 0; depth--) {
+        if ($from.node(depth).type.name === "list_item") {
+            const pos = $from.before(depth);
+            return { from: pos, to: pos + $from.node(depth).nodeSize };
+        }
+    }
+    return blockAt(state, state.selection.from);
 }
 
 /**
- * Contributed Cmd+Shift+K / palette Delete Block: delete the caret's block
- * or the selected block range (MAR-103).
- * STUB: honest no-op until the implementation lands in the follow-up commit.
+ * Shift+Alt+↑/↓ / palette Duplicate Block Up/Down (MAR-103). VS Code
+ * copy-line semantics: down puts the copy after and the selection lands on
+ * the copy; up puts the copy before and the selection stays on the earlier
+ * copy. One undo step (duplicateBlockRange dispatches a single transaction).
  */
-export const deleteSelectedBlocks: Command = () => false;
+export function duplicateSelectedBlocks(dir: -1 | 1): Command {
+    return (state, dispatch, view) => {
+        if (!view || !dispatch) {
+            return false;
+        }
+        const range = actionRange(state, view);
+        if (!range) {
+            return false;
+        }
+        return duplicateBlockRange(view, range, dir, { select: true });
+    };
+}
+
+/**
+ * Contributed Cmd+Shift+K / palette Delete Block (MAR-103): delete the
+ * caret's block or the selected block range in one undo step.
+ */
+export const deleteSelectedBlocks: Command = (state, dispatch, view) => {
+    if (!view || !dispatch) {
+        return false;
+    }
+    const range = actionRange(state, view);
+    if (!range) {
+        return false;
+    }
+    return deleteBlockRange(view, range);
+};
 
 export const blockKeysPlugin = $prose(() =>
     keymap({
@@ -355,5 +407,7 @@ export const blockKeysPlugin = $prose(() =>
         "Alt-ArrowUp": moveSelectedBlocks(-1),
         "Mod-Shift-ArrowDown": moveSelectedBlocks(1),
         "Mod-Shift-ArrowUp": moveSelectedBlocks(-1),
+        "Shift-Alt-ArrowDown": duplicateSelectedBlocks(1),
+        "Shift-Alt-ArrowUp": duplicateSelectedBlocks(-1),
     }),
 );

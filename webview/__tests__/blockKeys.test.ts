@@ -19,6 +19,8 @@ import {
     extendBlockSelection,
     escalateSelectAll,
     moveSelectedBlocks,
+    duplicateSelectedBlocks,
+    deleteSelectedBlocks,
 } from "../plugins/blockKeys";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey } from "../plugins/headingFold";
@@ -383,6 +385,199 @@ describe("fold-aware block units (collapsed headings)", () => {
         extendBlockSelection(1)(view.state, view.dispatch);
         expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to, " "))
             .toBe("Intro Section Body one Body two Next");
+    });
+});
+
+describe("duplicateSelectedBlocks (Shift+Alt+arrows / palette)", () => {
+    /** Index of the top-level block containing the selection head. */
+    function caretBlockIndex(view: EditorView): number {
+        return view.state.doc.resolve(view.state.selection.head).index(0);
+    }
+
+    it("a caret block duplicated down should insert the copy after and land the caret on it", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Beta");
+        expect(duplicateSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Alpha", "Beta", "Beta", "Gamma"]);
+        expect(view.state.selection.empty).toBe(true);
+        expect(caretBlockIndex(view)).toBe(2); // the later copy
+    });
+
+    it("a caret block duplicated up should keep the caret on the earlier copy", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Beta");
+        expect(duplicateSelectedBlocks(-1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Alpha", "Beta", "Beta", "Gamma"]);
+        expect(caretBlockIndex(view)).toBe(1); // the earlier copy
+    });
+
+    it("the FIRST block should duplicate up and the LAST block down (document edges)", async () => {
+        const view = await makeEditor("Alpha\n\nOmega");
+        placeCaretIn(view, "Alpha");
+        expect(duplicateSelectedBlocks(-1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Alpha", "Alpha", "Omega"]);
+        expect(caretBlockIndex(view)).toBe(0);
+        placeCaretIn(view, "Omega");
+        expect(duplicateSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Alpha", "Alpha", "Omega", "Omega"]);
+        expect(caretBlockIndex(view)).toBe(3);
+    });
+
+    it("a block range duplicated down should copy the whole run and select the copy", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Alpha");
+        toggleBlockSelection(view.state, view.dispatch);
+        extendBlockSelection(1)(view.state, view.dispatch); // Alpha + Beta
+        expect(duplicateSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Alpha", "Beta", "Alpha", "Beta", "Gamma"]);
+        const sel = view.state.selection;
+        expect(sel).toBeInstanceOf(BlockRangeSelection);
+        expect(selectedText(view)).toBe("Alpha Beta");
+        expect(view.state.doc.resolve(sel.from).index(0)).toBe(2); // the later run
+    });
+
+    it("a block range duplicated up should keep the selection on the earlier run", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Alpha");
+        toggleBlockSelection(view.state, view.dispatch);
+        extendBlockSelection(1)(view.state, view.dispatch);
+        expect(duplicateSelectedBlocks(-1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Alpha", "Beta", "Alpha", "Beta", "Gamma"]);
+        const sel = view.state.selection;
+        expect(sel).toBeInstanceOf(BlockRangeSelection);
+        expect(sel.from).toBe(0); // the earlier run
+        expect(selectedText(view)).toBe("Alpha Beta");
+    });
+
+    it("a caret in a list item should duplicate the ITEM alone, not the whole list", async () => {
+        const view = await makeEditor("Intro\n\n- one\n- two");
+        let pos = -1;
+        view.state.doc.descendants((node, nodePos) => {
+            if (node.isTextblock && node.textContent === "one") pos = nodePos + 1;
+            return pos === -1;
+        });
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+        expect(duplicateSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
+        const { getMarkdown } = await import("@milkdown/utils");
+        expect(editors[0]!.action(getMarkdown()).trimEnd()).toBe(
+            "Intro\n\n- one\n- one\n- two",
+        );
+    });
+
+    it("a caret inside a blockquote should duplicate the whole top-level block", async () => {
+        const view = await makeEditor("Alpha\n\n> quoted");
+        placeCaretIn(view, "quoted");
+        expect(duplicateSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
+        const { getMarkdown } = await import("@milkdown/utils");
+        expect(editors[0]!.action(getMarkdown()).trimEnd()).toBe(
+            "Alpha\n\n> quoted\n\n> quoted",
+        );
+    });
+
+    it("a COLLAPSED heading's line duplicated down should land past its hidden section", async () => {
+        const view = await makeEditor(
+            "Intro\n\n## Section\n\nBody one\n\n## Next\n\nTail",
+        );
+        let hPos = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading" && node.textContent === "Section") hPos = offset;
+        });
+        view.dispatch(view.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
+        expect(headingFoldPluginKey.getState(view.state)!.folded.has(hPos)).toBe(true);
+        placeCaretIn(view, "Section");
+        expect(duplicateSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
+        // The copy must not vanish into the fold's hidden run.
+        expect(blockOrder(view)).toEqual([
+            "Intro", "Section", "Body one", "Section", "Next", "Tail",
+        ]);
+    });
+
+    it("duplicate then undo should restore the original document in one step", async () => {
+        const view = await makeEditor("Alpha\n\nBeta");
+        placeCaretIn(view, "Alpha");
+        duplicateSelectedBlocks(1)(view.state, view.dispatch, view);
+        expect(blockOrder(view)).toEqual(["Alpha", "Alpha", "Beta"]);
+        undo(view.state, view.dispatch);
+        expect(blockOrder(view)).toEqual(["Alpha", "Beta"]);
+    });
+
+    it("a missing view should be a safe no-op returning false", async () => {
+        const view = await makeEditor("Alpha");
+        placeCaretIn(view, "Alpha");
+        expect(duplicateSelectedBlocks(1)(view.state, view.dispatch)).toBe(false);
+        expect(blockOrder(view)).toEqual(["Alpha"]);
+    });
+});
+
+describe("deleteSelectedBlocks (Cmd+Shift+K / palette)", () => {
+    it("a caret block should be deleted whole", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Beta");
+        expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Alpha", "Gamma"]);
+    });
+
+    it("a block range should be deleted in one undo step", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Alpha");
+        toggleBlockSelection(view.state, view.dispatch);
+        extendBlockSelection(1)(view.state, view.dispatch); // Alpha + Beta
+        expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Gamma"]);
+        undo(view.state, view.dispatch);
+        expect(blockOrder(view)).toEqual(["Alpha", "Beta", "Gamma"]);
+    });
+
+    it("deleting the ONLY block should leave the schema-required empty paragraph", async () => {
+        const view = await makeEditor("Alpha");
+        placeCaretIn(view, "Alpha");
+        expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(true);
+        expect(view.state.doc.childCount).toBe(1);
+        expect(view.state.doc.textContent).toBe("");
+    });
+
+    it("a caret in a list item should delete the ITEM alone", async () => {
+        const view = await makeEditor("Intro\n\n- one\n- two");
+        let pos = -1;
+        view.state.doc.descendants((node, nodePos) => {
+            if (node.isTextblock && node.textContent === "one") pos = nodePos + 1;
+            return pos === -1;
+        });
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+        expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(true);
+        const { getMarkdown } = await import("@milkdown/utils");
+        expect(editors[0]!.action(getMarkdown()).trimEnd()).toBe("Intro\n\n- two");
+    });
+
+    it("deleting a list's LAST item should dissolve the emptied list", async () => {
+        const view = await makeEditor("Intro\n\n- solo\n\nTail");
+        let pos = -1;
+        view.state.doc.descendants((node, nodePos) => {
+            if (node.isTextblock && node.textContent === "solo") pos = nodePos + 1;
+            return pos === -1;
+        });
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+        expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Intro", "Tail"]);
+    });
+
+    it("a caret on a COLLAPSED heading should delete the line alone, revealing its section", async () => {
+        const view = await makeEditor("Intro\n\n## Section\n\nBody one\n\nTail");
+        let hPos = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading" && node.textContent === "Section") hPos = offset;
+        });
+        view.dispatch(view.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
+        placeCaretIn(view, "Section");
+        expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Intro", "Body one", "Tail"]);
+    });
+
+    it("a missing view should be a safe no-op returning false", async () => {
+        const view = await makeEditor("Alpha");
+        placeCaretIn(view, "Alpha");
+        expect(deleteSelectedBlocks(view.state, view.dispatch)).toBe(false);
+        expect(blockOrder(view)).toEqual(["Alpha"]);
     });
 });
 
