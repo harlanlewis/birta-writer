@@ -116,6 +116,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Tables get a gutter grabber too**: tables now show the table icon in the gutter (hover the table body to reveal it) with the actions-only block menu — duplicate, copy as markdown, move, delete — and drag-to-move, like every other block. Table conversions stay off the menu; the table's own grips and insert bars are unchanged.
+- **Footnote markers reveal from the footnote itself**: hovering a footnote definition's content now reveals its gutter marker — previously only the empty gutter strip to its left did (same fix covers the table marker).
+- **Item grabber spacing evened out**: the gap between a list item's grabber icon and its bullet/number/checkbox is now visually consistent across list flavors — bullets no longer show a much larger gap than numbered items (the offsets are tuned to each flavor's marker ink, not the box).
 - **Tab indents just the current list item**: pressing Tab on an item that has nested sub-items now indents that item alone — its children keep their level and become its siblings (previously the whole subtree was dragged one level deeper). Shift-Tab remains the exact inverse.
 - **Alt+↑/↓ in a list moves the item, not the list**: with the caret in a list item (at any nesting depth), the move-block keys now reorder that item among its siblings; previously they moved the entire list as one block.
 - **Cmd+A escalation works inside VS Code**: the chord was reaching VS Code's own webview select-all, whose full-document selection immediately stomped the ladder — it's now claimed by the editor while focus is in the document (overlay inputs keep native select-all).

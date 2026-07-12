@@ -1565,7 +1565,10 @@ body.toolbar-hidden::before {
    reveal rule stays at 5 class-level — the marker's own state rules (also
    5, placed later) must still win their tie. */
 .milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--block .heading-fold-marker--block,
-.milkdown .editor .code-block-wrapper:where(.block-gutter-host):hover .heading-fold-marker--block {
+/* NodeView blocks nest the gutter below wrapper chrome (code: inside pre;
+   footnote: inside -content; table: inside the table element), so the
+   direct-child reveal above never fires for them — descendant variant. */
+.milkdown .editor :is(.code-block-wrapper, .footnote-def, .mw-table):where(.block-gutter-host):hover .heading-fold-marker--block {
     opacity: 0.55;
 }
 
@@ -1705,12 +1708,22 @@ body.block-marqueeing .milkdown .editor {
     left: -34px;
 }
 
+/* Per-flavor nudges: the -34px base puts every marker in one column, but
+   the PERCEIVED gap is icon → the item's ::marker ink, and that ink
+   differs — an ordered "1." is ~13px wide, a bullet dot ~6px, a task
+   checkbox starts at the li edge. Offsets tuned so the icon sits ~11px
+   from each flavor's ink instead of a constant distance from the box. */
+.milkdown .editor ul > li.block-gutter-host--item:not([data-item-type="task"]) > .heading-fold-gutter--block {
+    left: -28px;
+}
+.milkdown .editor ol > li.block-gutter-host--item > .heading-fold-gutter--block {
+    left: -36px;
+}
 /* Task items render their checkbox inside the li box, which starts ~21px
    further left than a bullet/ordered li at the same depth — the shared
-   -34px offset would push their marker that much deeper into the gutter.
-   Pull it back so every item marker at a given depth shares one column. */
+   base offset would push their marker that much deeper into the gutter. */
 .milkdown .editor li[data-item-type="task"].block-gutter-host--item > .heading-fold-gutter--block {
-    left: -13px;
+    left: -15px;
 }
 
 /* Gutter markers now carry the same SVG icons as their slash-menu rows

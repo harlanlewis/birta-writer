@@ -131,8 +131,34 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(markers.map((m) => m.pill)) === JSON.stringify([
             "Paragraph", "List item", "Blockquote", "Image", "HTML",
             "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
+            "Table",
         ]) && markers.every((m) => m.svg),
         `markers=${JSON.stringify(markers)}`);
+
+    // NodeView blocks nest the gutter below wrapper chrome — hovering the
+    // block BODY must still reveal the marker (descendant reveal variant).
+    for (const [sel, name] of [
+        [".ProseMirror .mw-table", "table"],
+        [".ProseMirror .footnote-def", "footnote"],
+    ]) {
+        const pt = await page.$eval(sel, (el) => {
+            el.scrollIntoView({ block: "center" });
+            const r = el.getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + Math.min(12, r.height / 2) };
+        });
+        await page.mouse.move(pt.x, pt.y);
+        await page.waitForTimeout(150);
+        const revealed = await page.$eval(sel, (el) => {
+            const m = el.querySelector(".heading-fold-marker");
+            return m ? Number(getComputedStyle(m).opacity) : -1;
+        });
+        check(`${name} marker reveals when hovering the block body`,
+            revealed > 0.3, `opacity=${revealed}`);
+    }
+    // Restore the viewport the earlier checks were measured against.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(120);
 
     // Mermaid boots into PREVIEW mode (code area collapsed, not
     // display:none-d) — its gutter marker must still be measurable there.
@@ -145,19 +171,24 @@ export async function run({ page, check, baseUrl }) {
     check("mermaid marker measurable while the diagram previews",
         mermaidMarker !== null && mermaidMarker.h > 0, JSON.stringify(mermaidMarker));
 
-    // Task items indent their li box for the checkbox; the marker column
-    // must still line up with the plain list item's marker.
-    const itemColumns = await page.evaluate(() => {
-        const xs = [];
-        for (const li of document.querySelectorAll(".ProseMirror li")) {
+    // Item markers sit at per-flavor offsets (tuned to the ::marker ink —
+    // bullet dot vs "1." vs checkbox), but every one must stay inside the
+    // gutter, clear of its content, within a tight band: a task li's box
+    // starts ~21px left of a bullet's, and an unadjusted shared offset once
+    // pushed its marker 21px out of column.
+    const itemMarkers = await page.evaluate(() =>
+        [...document.querySelectorAll(".ProseMirror li")].flatMap((li) => {
             const m = li.querySelector(":scope > .heading-fold-gutter > .heading-fold-marker");
-            if (m) xs.push(Math.round(m.getBoundingClientRect().x));
-        }
-        return xs;
-    });
-    check("task and list item markers share one gutter column",
-        itemColumns.length >= 2 && Math.max(...itemColumns) - Math.min(...itemColumns) <= 2,
-        `xs=${JSON.stringify(itemColumns)}`);
+            const c = li.querySelector(":scope > p, :scope > div");
+            if (!m || !c) return [];
+            return [{
+                task: li.getAttribute("data-item-type") === "task",
+                gap: Math.round(c.getBoundingClientRect().x - m.getBoundingClientRect().right),
+            }];
+        }));
+    check("every item marker sits in the gutter within the tuned band",
+        itemMarkers.length >= 2 && itemMarkers.every(({ gap }) => gap >= 18 && gap <= 40),
+        `gaps=${JSON.stringify(itemMarkers)}`);
 
     // Each glyph marker must sit in the LEFT GUTTER of its own block — the
     // in-NodeView anchoring (code block) is the fragile part. Hover the block

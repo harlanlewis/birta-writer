@@ -16,6 +16,7 @@ import {
     IconNetwork,
     IconPilcrow,
     IconQuote,
+    IconTable,
     IconTerminal,
 } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
@@ -406,6 +407,10 @@ function blockMarkerSpec(node: any): MarkerSpec | null {
         }
         case "footnote_definition":
             return { key: "fn", icon: IconFootnote, label: t("Footnote") };
+        case "table":
+            // The menu gives kind-less blocks an actions-only menu (no Turn
+            // into that would mangle a table); grab/menu/drag all apply.
+            return { key: "table", icon: IconTable, label: t("Table") };
         default:
             return null;
     }

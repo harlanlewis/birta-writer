@@ -274,6 +274,10 @@ describe("block markers for every top-level type", () => {
                 "",
                 "<div>raw</div>",
                 "",
+                "| a | b |",
+                "| --- | --- |",
+                "| c | d |",
+                "",
             ].join("\n"),
         );
         view(editor);
@@ -282,7 +286,7 @@ describe("block markers for every top-level type", () => {
         ).map((el) => el.dataset["pill"]);
         expect(pills).toEqual([
             "Paragraph", "List item", "List item", "Task",
-            "Blockquote", "Code Block", "Image", "HTML",
+            "Blockquote", "Code Block", "Image", "HTML", "Table",
         ]);
         // The P marker keeps its historical class; other markers don't.
         expect(document.querySelectorAll(".heading-fold-marker--paragraph")).toHaveLength(1);
