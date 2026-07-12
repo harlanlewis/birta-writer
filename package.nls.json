@@ -138,6 +138,6 @@
   "command.editor.transformToTitleCase.title": "Transform to Title Case",
   "command.editor.expandSelection.title": "Expand Selection",
   "command.editor.shrinkSelection.title": "Shrink Selection",
-  "command.editor.insertParagraphAfter.title": "Insert Paragraph After",
-  "command.editor.insertParagraphBefore.title": "Insert Paragraph Before"
+  "command.editor.insertParagraphAfter.title": "Insert Paragraph Below",
+  "command.editor.insertParagraphBefore.title": "Insert Paragraph Above"
 }

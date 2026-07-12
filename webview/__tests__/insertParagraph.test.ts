@@ -266,24 +266,33 @@ describe("insertParagraphBefore (Mod-Shift-Enter)", () => {
         expect($from.node(1).childCount).toBe(2); // list still has two items
     });
 
-    it("a caret inside a code block should return false and leave the doc unchanged", async () => {
+    it("a caret inside a code block should insert an empty paragraph before it (the preset owns only Mod-Enter there)", async () => {
+        // The preset's Mod-Enter (exit code) owns the "after" direction, but
+        // it binds nothing on Mod-Shift-Enter — so "before" must act rather
+        // than be a swallowed dead key. It inserts before the code block,
+        // which stays intact.
         const view = await makeEditor("```js\nconst x = 1;\n```");
         placeCaretIn(view, "const x = 1;", 3);
-        const before = view.state.doc;
 
-        expect(insertParagraphBefore(view.state, view.dispatch)).toBe(false);
+        expect(insertParagraphBefore(view.state, view.dispatch)).toBe(true);
 
-        expect(view.state.doc.eq(before)).toBe(true);
+        expect(view.state.doc.child(0).type.name).toBe("paragraph");
+        expect(view.state.doc.child(0).textContent).toBe("");
+        expect(view.state.doc.child(1).type.name).toBe("code_block");
+        expect(view.state.doc.child(1).textContent).toBe("const x = 1;"); // intact
+        expectCaretInEmptyParagraph(view);
     });
 
-    it("a caret inside a table cell should return false and leave the doc unchanged", async () => {
+    it("a caret inside a table cell should insert an empty paragraph before the table", async () => {
         const view = await makeEditor("| a | b |\n| --- | --- |\n| c | d |");
         placeCaretIn(view, "d");
-        const before = view.state.doc;
 
-        expect(insertParagraphBefore(view.state, view.dispatch)).toBe(false);
+        expect(insertParagraphBefore(view.state, view.dispatch)).toBe(true);
 
-        expect(view.state.doc.eq(before)).toBe(true);
+        expect(view.state.doc.child(0).type.name).toBe("paragraph");
+        expect(view.state.doc.child(0).textContent).toBe("");
+        expect(view.state.doc.child(1).type.name).toBe("table"); // intact
+        expectCaretInEmptyParagraph(view);
     });
 
     it("a block-range selection should insert before the first selected block", async () => {

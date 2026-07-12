@@ -45,7 +45,7 @@ import { keymap } from "@milkdown/prose/keymap";
 import type { Mark } from "@milkdown/prose/model";
 import { TextSelection, type Command, type EditorState } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
-import { escalateSelectAll, toggleBlockSelection } from "./blockKeys";
+import { escalateSelectAll, toggleBlockSelection, unitBoundaries } from "./blockKeys";
 import { BlockRangeSelection } from "./blockRange";
 import { foldedSectionEnds } from "./headingFold";
 
@@ -58,26 +58,6 @@ interface Range {
 const WORD_CHAR = /[\p{L}\p{N}_]/u;
 
 const isWordChar = (ch: string | undefined): boolean => ch !== undefined && WORD_CHAR.test(ch);
-
-/**
- * The document as visible units — one entry per top-level block, a collapsed
- * heading fused with its hidden section. Minimal local copy of blockKeys'
- * private unitBoundaries (not exported there); flagged for consolidation.
- */
-function visibleUnits(state: EditorState): Range[] {
-    const sectionEnds = foldedSectionEnds(state);
-    const units: Range[] = [];
-    let skipUntil = 0;
-    state.doc.forEach((node, offset) => {
-        if (offset < skipUntil) {
-            return;
-        }
-        const end = sectionEnds.get(offset) ?? offset + node.nodeSize;
-        units.push({ from: offset, to: end });
-        skipUntil = end;
-    });
-    return units;
-}
 
 /**
  * The word under/adjacent to `pos` inside its textblock, per the header's
@@ -249,7 +229,7 @@ export const shrinkSelection: Command = (state, dispatch) => {
         return false;
     }
     if (sel instanceof BlockRangeSelection) {
-        const units = visibleUnits(state);
+        const units = unitBoundaries(state);
         const covered = units.filter((u) => u.from >= sel.from && u.to <= sel.to);
         if (covered.length > 1) {
             // Multi-unit (e.g. everything) → the single unit at the
@@ -267,9 +247,17 @@ export const shrinkSelection: Command = (state, dispatch) => {
             return true;
         }
         // Single unit → its text (a caret for an empty block; a leaf block
-        // like an HR has no interior text positions — nothing below).
+        // like an HR has no interior text positions — nothing below). A
+        // COLLAPSED heading's unit spans its hidden section too, so shrink to
+        // the heading's OWN text — otherwise the tail lands inside the
+        // display:none body and typing would replace invisible content. This
+        // mirrors escalateSelectAll's un-snapped text rung: ⌘A and shrink
+        // agree that a collapsed heading's text is the heading line alone.
+        const collapsed = foldedSectionEnds(state).has(sel.from);
+        const headingNode = collapsed ? doc.nodeAt(sel.from) : null;
+        const textEnd = headingNode ? sel.from + headingNode.nodeSize - 1 : sel.to - 1;
         const $start = doc.resolve(Math.min(sel.from + 1, doc.content.size));
-        const $end = doc.resolve(Math.max(0, sel.to - 1));
+        const $end = doc.resolve(Math.max(0, textEnd));
         const blockText = TextSelection.between($start, $end);
         if (blockText.from < sel.from || blockText.to > sel.to) {
             return false;

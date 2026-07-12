@@ -12,6 +12,7 @@ import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import { undo } from "@milkdown/prose/history";
 import type { EditorView } from "@milkdown/prose/view";
+import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { historyPlugin } from "../plugins/history";
 import { joinLinesCommand } from "../plugins/joinLines";
@@ -67,6 +68,11 @@ function blockTexts(view: EditorView): string[] {
         texts.push(node.textContent);
     });
     return texts;
+}
+
+/** The document serialized back to markdown (the round-trip that matters). */
+function serialize(): string {
+    return editors[editors.length - 1]!.action(getMarkdown()).trimEnd();
 }
 
 /** Count `hardbreak` nodes in the whole document. */
@@ -140,6 +146,48 @@ describe("caret join of sibling paragraphs", () => {
         const last = paragraph.lastChild!;
         expect(first.marks.some((m) => m.type.name === "strong")).toBe(true);
         expect(last.marks.some((m) => m.type.name === "emphasis")).toBe(true);
+    });
+
+    it("the seam space should land OUTSIDE a link (non-inclusive mark, round-trip safe)", async () => {
+        // Arrange — a link paragraph followed by plain text. Inheriting the
+        // link mark onto the seam space would save `[foo ](url)bar`, silently
+        // rewriting the markdown.
+        const view = await makeEditor("[foo](http://x.com)\n\nbar");
+        placeCaretIn(view, "foo", 1);
+
+        // Act
+        const handled = joinLinesCommand(view.state, view.dispatch);
+
+        // Assert — the space is not part of the link.
+        expect(handled).toBe(true);
+        expect(serialize()).toBe("[foo](http://x.com) bar");
+    });
+
+    it("the seam space should land OUTSIDE an inline code span", async () => {
+        // Arrange
+        const view = await makeEditor("`foo`\n\nbar");
+        placeCaretIn(view, "foo", 1);
+
+        // Act
+        const handled = joinLinesCommand(view.state, view.dispatch);
+
+        // Assert — the space is not pulled into the code span.
+        expect(handled).toBe(true);
+        expect(serialize()).toBe("`foo` bar");
+    });
+
+    it("the seam space CAN stay inside a mark that spans both lines", async () => {
+        // Arrange — emphasis runs across the seam (both lines emphasized), so
+        // the space is genuinely inside a continuous run and keeps the mark.
+        const view = await makeEditor("*foo*\n\n*bar*");
+        placeCaretIn(view, "foo", 1);
+
+        // Act
+        const handled = joinLinesCommand(view.state, view.dispatch);
+
+        // Assert — one emphasized run "foo bar", the seam space included.
+        expect(handled).toBe(true);
+        expect(serialize()).toBe("*foo bar*");
     });
 
     it("a heading caret should absorb the following paragraph", async () => {

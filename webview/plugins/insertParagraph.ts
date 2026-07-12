@@ -23,9 +23,11 @@
  *
  * CONSTRAINT: the commonmark preset already binds Mod-Enter to exit code
  * blocks and tables. This plugin is registered BEFORE the presets
- * (editor.ts), so its bindings win — the commands MUST return false whenever
- * the selection is inside a code block or table so the preset's exit
- * behavior keeps working.
+ * (editor.ts), so its bindings win — insertParagraphAfter MUST return false
+ * inside a code block or table so the preset's exit behavior keeps working.
+ * The preset binds nothing on Mod-Shift-Enter there, so insertParagraphBefore
+ * instead inserts an empty paragraph before the enclosing top-level block
+ * (rather than being a swallowed dead key).
  */
 import { keymap } from "@milkdown/prose/keymap";
 import {
@@ -39,8 +41,8 @@ import { BlockRangeSelection } from "./blockRange";
 
 /**
  * True when either selection edge sits inside a code block or table — the
- * preset's own Mod-Enter (exit code / exit table) owns those; we must fall
- * through (schema names per codeBlockSelectAll.ts / blockKeys.ts).
+ * preset's own Mod-Enter (exit code / exit table) owns the "after" direction
+ * there (schema names per codeBlockSelectAll.ts / blockKeys.ts).
  */
 function inPresetExitTerritory(state: EditorState): boolean {
     for (const $pos of [state.selection.$from, state.selection.$to]) {
@@ -83,10 +85,24 @@ function insertionPos(state: EditorState, side: -1 | 1): number {
 function insertSiblingParagraph(side: -1 | 1): Command {
     return (state, dispatch) => {
         const paragraph = state.schema.nodes["paragraph"];
-        if (!paragraph || inPresetExitTerritory(state)) {
+        if (!paragraph) {
             return false;
         }
-        const pos = insertionPos(state, side);
+        // Inside a code block / table the preset's Mod-Enter (exit) owns the
+        // "after" direction, so insertParagraphAfter falls through. But the
+        // preset binds nothing on Mod-Shift-Enter there, so without this the
+        // "before" chord would be a dead key (swallowed, no-op). Handle it by
+        // inserting the paragraph before the ENCLOSING top-level block.
+        let pos: number;
+        if (inPresetExitTerritory(state)) {
+            if (side === 1) {
+                return false;
+            }
+            const $from = state.selection.$from;
+            pos = $from.depth === 0 ? $from.pos : $from.before(1);
+        } else {
+            pos = insertionPos(state, side);
+        }
         const $pos = state.doc.resolve(pos);
         const index = $pos.index();
         if (!$pos.parent.canReplaceWith(index, index, paragraph)) {

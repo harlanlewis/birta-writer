@@ -174,11 +174,22 @@ function seamAfter(doc: PMNode, anchor: number, limit: number | null): Seam | "b
     return makeSeam(doc, contentEnd, target.contentStart, contentStart, target.contentEnd);
 }
 
-/** Delete the seam and insert its space, inheriting the marks left of it. */
+/** Delete the seam and insert its space, giving the space only the marks that
+ *  run CONTINUOUSLY across the seam — those present on the text node on both
+ *  sides. Inheriting the left side's marks unconditionally pulled the space
+ *  into a run that ends at the seam: a link or inline-code left line rewrote
+ *  the saved markdown (`[foo](url)` + `bar` → `[foo ](url)bar`; `` `foo` `` +
+ *  `bar` → `` `foo `bar ``), a phase-0 fidelity break. (This schema sets no
+ *  `inclusive: false` on link/code, so the marks() boundary convention can't
+ *  be relied on; the intersection is the schema-independent rule.) Emphasis
+ *  that genuinely spans both lines still carries the space. */
 function applySeam(tr: Transaction, seam: Seam): void {
     tr.delete(seam.a, seam.b);
     if (seam.space) {
-        const marks = tr.doc.resolve(seam.a).marks();
+        const $seam = tr.doc.resolve(seam.a);
+        const left = $seam.nodeBefore?.marks ?? [];
+        const right = $seam.nodeAfter?.marks;
+        const marks = right ? left.filter((m) => m.isInSet(right)) : [];
         tr.insert(seam.a, tr.doc.type.schema.text(" ", marks));
     }
 }

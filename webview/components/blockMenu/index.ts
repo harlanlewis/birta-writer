@@ -172,6 +172,11 @@ export function duplicateBlockRange(
     }
     view.dispatch(tr);
     view.focus();
+    // "Here's where it landed" — the same landing flash a move gets. A
+    // block-range duplicate already reads its destination from the selection
+    // tint on the copy, but a caret duplicate otherwise makes a second block
+    // appear with no feedback; flashing the copy covers both.
+    flashRange(view, insertAt, insertAt + content.size);
     return true;
 }
 

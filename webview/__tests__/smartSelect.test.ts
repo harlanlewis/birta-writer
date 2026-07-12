@@ -10,7 +10,7 @@ import { gfm } from "@milkdown/preset-gfm";
 import { NodeSelection, TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { configureSerialization, pureCommonmark } from "../serialization";
-import { headingFoldPlugin } from "../plugins/headingFold";
+import { headingFoldPlugin, headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/headingFold";
 import { expandSelection, shrinkSelection } from "../plugins/smartSelect";
 import { BlockRangeSelection } from "../plugins/blockRange";
 
@@ -316,5 +316,33 @@ describe("shrinkSelection retrace", () => {
             TextSelection.create(view.state.doc, 3, 7),
         ));
         expect(shrink(view)).toBe(false);
+    });
+});
+
+describe("shrinkSelection over a collapsed heading", () => {
+    it("a collapsed-heading unit should shrink to the heading's OWN text, not the hidden body", async () => {
+        // Arrange — a heading owning a body section, then a sibling heading
+        // that bounds it. "Heading" spans [0,9); "Body" [9,15); "Next" at 15.
+        const view = await makeEditor("# Heading\n\nBody\n\n# Next");
+        view.dispatch(
+            view.state.tr.setMeta(headingFoldPluginKey, {
+                type: "toggle",
+                pos: 0,
+            } satisfies HeadingFoldMeta),
+        );
+        // The unit for the collapsed heading spans its hidden section too.
+        const unit = BlockRangeSelection.tryCreate(view.state.doc, 0, 15);
+        expect(unit).not.toBeNull();
+        view.dispatch(view.state.tr.setSelection(unit!));
+
+        // Act
+        expect(shrink(view)).toBe(true);
+
+        // Assert — the shrunk text stays inside the heading line; it never
+        // extends into the folded body (which begins at position 9).
+        const sel = view.state.selection;
+        expect(sel).toBeInstanceOf(TextSelection);
+        expect(selectedText(view)).toBe("Heading");
+        expect(sel.to).toBeLessThanOrEqual(9);
     });
 });

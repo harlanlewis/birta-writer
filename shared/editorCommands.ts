@@ -137,8 +137,8 @@ export const EDITOR_COMMANDS = [
     { id: "transformToTitleCase", title: "Transform to Title Case", palette: true, sections: [] },
     { id: "expandSelection", title: "Expand Selection", palette: true, sections: [] },
     { id: "shrinkSelection", title: "Shrink Selection", palette: true, sections: [] },
-    { id: "insertParagraphAfter", title: "Insert Paragraph After", palette: true, sections: [] },
-    { id: "insertParagraphBefore", title: "Insert Paragraph Before", palette: true, sections: [] },
+    { id: "insertParagraphAfter", title: "Insert Paragraph Below", palette: true, sections: [] },
+    { id: "insertParagraphBefore", title: "Insert Paragraph Above", palette: true, sections: [] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

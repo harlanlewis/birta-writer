@@ -63,7 +63,7 @@ function blockAt(state: EditorState, pos: number): { from: number; to: number } 
  * must never split them (selecting/moving the heading alone would orphan
  * invisible content) nor extend into them one hidden block at a time.
  */
-function unitBoundaries(state: EditorState): { from: number; to: number }[] {
+export function unitBoundaries(state: EditorState): { from: number; to: number }[] {
     const sectionEnds = foldedSectionEnds(state); // one doc pass, not one per fold
     const units: { from: number; to: number }[] = [];
     let skipUntil = 0;
