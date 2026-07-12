@@ -129,6 +129,7 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | `markdownWysiwyg.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
 | `markdownWysiwyg.smartLinks`         | boolean | `true`      | Resolve local links the way your site generator does: workspace-root paths, ancestor content roots, `.md`/`index.md` suffixes, and `[[wikilink]]` targets |
 | `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
+| `markdownWysiwyg.gutterMarkers`      | string  | `"headings"` | Which block grabbers stay visible at rest: `headings` (H1–H6 badges), `none`, or `all`; hovering a block always reveals its grabber |
 
 ***
 

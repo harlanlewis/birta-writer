@@ -12,6 +12,7 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
+import { gutterMarkersBodyClass, GUTTER_MARKERS_BODY_CLASSES, type GutterMarkersMode } from "../shared/gutterMarkers";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
@@ -47,6 +48,18 @@ export function applyTableWrap(wrap: TableWrapMode): void {
         case "none":
             root.style.setProperty("--tbl-ow", "normal");
             break;
+    }
+}
+
+/**
+ * Apply the resting gutter-marker visibility mode as a body class. The
+ * default ("headings") is the stylesheet baseline, so applying it means
+ * removing both override classes (see "Resting gutter markers" in style.css).
+ */
+export function applyGutterMarkers(mode: GutterMarkersMode): void {
+    const active = gutterMarkersBodyClass(mode);
+    for (const cls of Object.values(GUTTER_MARKERS_BODY_CLASSES)) {
+        if (cls) document.body.classList.toggle(cls, cls === active);
     }
 }
 
@@ -235,6 +248,9 @@ export function createMessageHandlers(
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
+        },
+        setGutterMarkers(msg) {
+            applyGutterMarkers(msg.mode);
         },
         fmSuggestions(msg) {
             dispatchFmSuggestions(msg.key, msg.values);

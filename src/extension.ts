@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import type { TableWrapMode, FontPreset } from "../shared/messages";
 import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
+import { normalizeGutterMarkersMode, DEFAULT_GUTTER_MARKERS_MODE } from "../shared/gutterMarkers";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
@@ -272,6 +273,14 @@ export function activate(context: vscode.ExtensionContext) {
                     .getConfiguration("markdownWysiwyg")
                     .get<string>("tocPosition", "right") === "left" ? "left" : "right";
                 MarkdownEditorProvider.current?.postToAll({ type: "setTocPosition", position });
+            }
+            if (e.affectsConfiguration("markdownWysiwyg.gutterMarkers")) {
+                const mode = normalizeGutterMarkersMode(
+                    vscode.workspace
+                        .getConfiguration("markdownWysiwyg")
+                        .get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE),
+                );
+                MarkdownEditorProvider.current?.postToAll({ type: "setGutterMarkers", mode });
             }
             if (e.affectsConfiguration("markdownWysiwyg.contentWidth")
                 || e.affectsConfiguration("markdownWysiwyg.maxContentWidth")) {

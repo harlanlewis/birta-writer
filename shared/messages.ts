@@ -6,6 +6,7 @@
 
 import type { EditorCommandId } from "./editorCommands";
 import type { ContentWidthMode } from "./contentWidth";
+import type { GutterMarkersMode } from "./gutterMarkers";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
@@ -267,6 +268,8 @@ export type ToWebviewMessage =
     | { type: "setContentWidth"; cssValue: string; isAuto: boolean; mode: ContentWidthMode }
     // Live TOC dock-side update (left/right), echoed after `tocPosition` changes.
     | { type: "setTocPosition"; position: TocPosition }
+    // Live resting gutter-marker visibility update, after `gutterMarkers` changes.
+    | { type: "setGutterMarkers"; mode: GutterMarkersMode }
     | { type: "lintResults"; id: number; results: LintBlockResult[] }
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).

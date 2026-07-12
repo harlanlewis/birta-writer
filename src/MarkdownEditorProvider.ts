@@ -17,6 +17,7 @@ import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConf
 import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
+import { normalizeGutterMarkersMode, gutterMarkersBodyClass, DEFAULT_GUTTER_MARKERS_MODE } from "../shared/gutterMarkers";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -993,6 +994,7 @@ export class MarkdownEditorProvider
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
         const frontmatterExpanded = cfg.get<boolean>("frontmatterExpanded", true);
+        const gutterMarkers = normalizeGutterMarkersMode(cfg.get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE));
         const proofread = MarkdownEditorProvider.getProofreadConfig();
         const toolbar = MarkdownEditorProvider.getToolbarConfig();
         const documentUri = document.uri.toString();
@@ -1006,6 +1008,7 @@ export class MarkdownEditorProvider
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
             tocRight ? "toc-right" : "",
+            gutterMarkersBodyClass(gutterMarkers) ?? "",
         ].filter(Boolean).join(" ");
 
         return `<!DOCTYPE html>

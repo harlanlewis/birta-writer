@@ -2,7 +2,7 @@
     "name": "md-wysiwyg-editor",
     "displayName": "WYSIWYG Markdown Editor",
     "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-    "version": "0.2.151",
+    "version": "0.2.152",
     "publisher": "harlanlewis",
     "engines": {
         "vscode": "^1.80.0"
@@ -12,7 +12,6 @@
         "workspace",
         "ui"
     ],
-    "icon": "images/icon.jpg",
     "categories": [
         "Formatters",
         "Other"
@@ -1040,6 +1039,22 @@
                         "%config.tableWrap.normal%",
                         "%config.tableWrap.aggressive%"
                     ]
+                },
+                "markdownWysiwyg.gutterMarkers": {
+                    "order": 11,
+                    "type": "string",
+                    "enum": [
+                        "headings",
+                        "none",
+                        "all"
+                    ],
+                    "enumDescriptions": [
+                        "%config.gutterMarkers.headings%",
+                        "%config.gutterMarkers.none%",
+                        "%config.gutterMarkers.all%"
+                    ],
+                    "default": "headings",
+                    "description": "%config.gutterMarkers.description%"
                 },
                 "markdownWysiwyg.defaultMode": {
                     "order": 1,

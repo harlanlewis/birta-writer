@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
-import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
+import { applyTableWrap, applyGutterMarkers, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
 import { setEditorCommandHost } from "../editorCommands";
 import type { ToWebviewMessage, ToolbarConfig } from "../../shared/messages";
 import { FONT_PRESET_STACKS } from "../../shared/fontPresets";
@@ -141,6 +141,67 @@ describe("requestSwitchToTextEditor handler", () => {
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "switchToTextEditor",
         });
+    });
+});
+
+describe("applyGutterMarkers", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.classList.remove("gutter-rest-none", "gutter-rest-all");
+    });
+
+    it("the none mode should add gutter-rest-none only", () => {
+        applyGutterMarkers("none");
+        expect(document.body.classList.contains("gutter-rest-none")).toBe(true);
+        expect(document.body.classList.contains("gutter-rest-all")).toBe(false);
+    });
+
+    it("the all mode should add gutter-rest-all only", () => {
+        applyGutterMarkers("all");
+        expect(document.body.classList.contains("gutter-rest-all")).toBe(true);
+        expect(document.body.classList.contains("gutter-rest-none")).toBe(false);
+    });
+
+    it("switching modes should replace the previous class", () => {
+        applyGutterMarkers("none");
+        applyGutterMarkers("all");
+        expect(document.body.classList.contains("gutter-rest-none")).toBe(false);
+        expect(document.body.classList.contains("gutter-rest-all")).toBe(true);
+    });
+
+    it("the headings mode should clear both override classes", () => {
+        applyGutterMarkers("all");
+        applyGutterMarkers("headings");
+        expect(document.body.classList.contains("gutter-rest-none")).toBe(false);
+        expect(document.body.classList.contains("gutter-rest-all")).toBe(false);
+    });
+
+    it("an unknown mode should behave as the default (headings)", () => {
+        applyGutterMarkers("all");
+        applyGutterMarkers("hover" as never);
+        expect(document.body.classList.contains("gutter-rest-none")).toBe(false);
+        expect(document.body.classList.contains("gutter-rest-all")).toBe(false);
+    });
+});
+
+describe("setGutterMarkers handler", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.classList.remove("gutter-rest-none", "gutter-rest-all");
+    });
+
+    it("a setGutterMarkers message should apply the mode's body class", () => {
+        // Arrange
+        const handlers = createMessageHandlers(stubDeps());
+
+        // Act
+        handlers.setGutterMarkers?.(
+            { type: "setGutterMarkers", mode: "all" },
+            document.createElement("div"),
+        );
+
+        // Assert
+        expect(document.body.classList.contains("gutter-rest-all")).toBe(true);
     });
 });
 

@@ -457,6 +457,101 @@ export async function run({ page, check, baseUrl }) {
     check("hovering a list reveals its - marker", listMarkerOpacity > 0.4,
         `opacity=${listMarkerOpacity}`);
 
+    // ── Resting modes (`markdownWysiwyg.gutterMarkers`): the extension maps
+    // the setting to a body class (none → gutter-rest-none, all →
+    // gutter-rest-all; default headings → neither), so toggling the classes
+    // here exercises exactly what a settings change does. ──
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.mouse.move(0, 0); // park: nothing content-hovered
+    await page.waitForTimeout(120);
+    const pRest = () => page.$eval(pMarker, (el) => parseFloat(getComputedStyle(el).opacity));
+    const hBadgeSel = ".ProseMirror > h2 > .heading-fold-gutter .heading-fold-marker";
+    const hRest = () => page.$eval(hBadgeSel, (el) => parseFloat(getComputedStyle(el).opacity));
+    // Markers transition opacity over 120ms — every class toggle below must
+    // outwait the transition before sampling the computed value.
+    const setBodyClasses = async (add, remove = []) => {
+        await page.evaluate(({ add, remove }) => {
+            document.body.classList.remove(...remove);
+            document.body.classList.add(...add);
+        }, { add, remove });
+        await page.waitForTimeout(200);
+    };
+
+    check("default mode: heading badge rests visible", (await hRest()) > 0.5, `opacity=${await hRest()}`);
+    check("default mode: block marker rests hidden", (await pRest()) === 0, `opacity=${await pRest()}`);
+
+    await setBodyClasses(["gutter-rest-all"]);
+    check("rest-all: block marker rests at the badges' contrast",
+        Math.abs((await pRest()) - 0.7) < 0.05, `opacity=${await pRest()}`);
+    check("rest-all: heading badge unchanged", (await hRest()) > 0.5, `opacity=${await hRest()}`);
+    // Typing quiet must NOT hide at-rest markers in this mode — they are
+    // ambient chrome like the badges, not a hover reveal to suppress.
+    await setBodyClasses(["gutter-quiet"]);
+    check("rest-all: quiet-while-typing leaves at-rest markers visible",
+        (await pRest()) > 0.5, `opacity=${await pRest()}`);
+    await setBodyClasses(["gutter-rest-none"], ["gutter-quiet", "gutter-rest-all"]);
+    check("rest-none: heading badge rests hidden", (await hRest()) === 0, `opacity=${await hRest()}`);
+    check("rest-none: block marker rests hidden", (await pRest()) === 0, `opacity=${await pRest()}`);
+    // Hovering the heading reveals its badge at resting contrast…
+    const h2Box = await page.$eval(".ProseMirror > h2", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, left: r.x };
+    });
+    await page.mouse.move(h2Box.x, h2Box.y);
+    await page.waitForTimeout(150);
+    await page.mouse.move(h2Box.x + 1, h2Box.y); // hover-chain jiggle (see check 3)
+    await page.waitForTimeout(50);
+    const revealedBadge = await hRest();
+    check("rest-none: hovering the heading reveals its badge at resting contrast",
+        revealedBadge > 0.5 && revealedBadge < 0.9, `opacity=${revealedBadge}`);
+    // …and the badge's own hover still brings full contrast (its state rules
+    // are excluded from the mode rules, not out-specified).
+    const badgeBox = await page.$eval(hBadgeSel, (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(h2Box.left + 4, badgeBox.y);
+    await page.waitForTimeout(80);
+    await page.mouse.move(badgeBox.x, badgeBox.y, { steps: 20 });
+    await page.waitForTimeout(150);
+    check("rest-none: hovering the badge itself gives full contrast",
+        (await hRest()) === 1, `opacity=${await hRest()}`);
+    // A COLLAPSED heading's badge must stay visible even in this mode — the
+    // collapsed-state rule outranks the hide rule, so folded content stays
+    // discoverable. Collapse via the chevron (hovered right now), park the
+    // pointer, measure, then unfold (the chevron stays visible while
+    // collapsed, so no re-hover is needed to click it again).
+    const chevronBox = await page.$eval(".ProseMirror > h2 > .heading-fold-gutter .heading-fold-toggle", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.mouse.click(chevronBox.x, chevronBox.y);
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(250);
+    const collapsedState = await page.$eval(".ProseMirror > h2", (el) => ({
+        collapsed: el.classList.contains("heading-fold-heading--collapsed"),
+        badge: parseFloat(getComputedStyle(el.querySelector(".heading-fold-marker")).opacity),
+    }));
+    check("rest-none: a collapsed heading's badge stays visible at rest",
+        collapsedState.collapsed && collapsedState.badge >= 0.7,
+        JSON.stringify(collapsedState));
+    await page.mouse.click(chevronBox.x, chevronBox.y); // unfold
+    await page.waitForTimeout(200);
+    const refolded = await page.$eval(".ProseMirror > h2", (el) =>
+        el.classList.contains("heading-fold-heading--collapsed"));
+    check("rest-none: the heading unfolds again", !refolded, `collapsed=${refolded}`);
+    // In this mode the badge IS a hover reveal — typing quiet suppresses it.
+    await page.mouse.move(h2Box.x, h2Box.y);
+    await page.waitForTimeout(100);
+    await setBodyClasses(["gutter-quiet"]);
+    check("rest-none: quiet-while-typing suppresses the heading-hover reveal",
+        (await hRest()) === 0, `opacity=${await hRest()}`);
+    await setBodyClasses([], ["gutter-quiet", "gutter-rest-none"]);
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(200);
+    check("back to default: heading badge rests visible again", (await hRest()) > 0.5,
+        `opacity=${await hRest()}`);
+
     // ── 4e. The code block's marker opens its menu (the one gutter that sits
     // nested inside a NodeView's contentDOM — posAtDOM must still resolve). ──
     const codeMarkerBox = await page.$eval(
