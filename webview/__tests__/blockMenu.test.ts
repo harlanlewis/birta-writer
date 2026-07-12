@@ -927,3 +927,60 @@ describe("heading section semantics", () => {
         expect(markdown(editor)).toBe("# B\n\ncontent B\n\n# A\n\ncontent A");
     });
 });
+
+describe("moves around collapsed sections (fold-aware moveTargetFor)", () => {
+    /** "Intro | ## Section (collapsed) [Body one, Body two] | ## Next | After"
+     * — "## Next" terminates the collapsed section, so "After" is the first
+     * non-member block below it (any plain block directly after a section is
+     * structurally part of it). */
+    async function makeFolded(): Promise<Editor> {
+        const editor = await makeEditor(
+            "Intro\n\n## Section\n\nBody one\n\nBody two\n\n## Next\n\nAfter",
+        );
+        const v = view(editor);
+        let hPos = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading" && node.textContent === "Section") hPos = offset;
+        });
+        expect(hPos).toBeGreaterThan(-1);
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
+        expect(headingFoldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
+        return editor;
+    }
+
+    function blockPosOf(v: EditorView, text: string): number {
+        let pos = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.textContent === text) pos = offset;
+        });
+        expect(pos, `top-level block "${text}" not found`).toBeGreaterThan(-1);
+        return pos;
+    }
+
+    it("Move Down above a collapsed section should hop the WHOLE hidden unit", async () => {
+        const editor = await makeFolded();
+        const v = view(editor);
+        // The bug: Intro landed between the collapsed heading and its hidden
+        // body — display:none, an apparent deletion.
+        expect(moveBlockAt(v, blockPosOf(v, "Intro"), 1)).toBe(true);
+        expect(markdown(editor)).toBe(
+            "## Section\n\nBody one\n\nBody two\n\nIntro\n\n## Next\n\nAfter",
+        );
+    });
+
+    it("Move Up on the heading below a collapsed section should hop the whole unit", async () => {
+        const editor = await makeFolded();
+        const v = view(editor);
+        expect(moveBlockAt(v, blockPosOf(v, "Next"), -1)).toBe(true);
+        expect(markdown(editor)).toBe(
+            "Intro\n\n## Next\n\nAfter\n\n## Section\n\nBody one\n\nBody two",
+        );
+    });
+
+    it("with nothing collapsed a block still hops exactly one neighbor", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        const v = view(editor);
+        expect(moveBlockAt(v, blockPosOf(v, "Alpha"), 1)).toBe(true);
+        expect(markdown(editor)).toBe("Beta\n\nAlpha\n\nGamma");
+    });
+});

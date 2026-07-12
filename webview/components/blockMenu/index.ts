@@ -27,6 +27,7 @@ import { Fragment } from "@milkdown/prose/model";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import {
     findHeadingFoldRange,
+    foldedSectionEnds,
     getHeadingLevel,
     headingFoldPluginKey,
     type HeadingFoldMeta,
@@ -49,7 +50,7 @@ import {
 } from "../../ui/icons";
 import { blockMarkdownAt, canTurnInto, selectInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
 import { flashRange } from "./rangeIndicator";
-import { TextSelection } from "@milkdown/prose/state";
+import { TextSelection, type EditorState } from "@milkdown/prose/state";
 
 // The conversion matrix and kind helpers live in ./turnInto; re-exported so
 // consumers and tests keep one import surface.
@@ -124,38 +125,50 @@ function deleteBlock(view: EditorView, pos: number): boolean {
 /**
  * Where a move in `dir` would land, or null at a document edge.
  *
- * A non-heading block hops exactly one top-level block. A heading (moving as
- * a section) hops a whole neighboring UNIT, so sections never interleave:
+ * A non-heading block hops exactly one visible UNIT — a collapsed heading
+ * and its hidden section count as one (landing between them would drop the
+ * moved block into display:none, an apparent deletion). A heading (moving
+ * as a section) hops a whole neighboring section UNIT, so sections never
+ * interleave:
  *   - down: if the next block is a heading, hop its entire fold range;
  *   - up: hop to the start of the outermost section that ends exactly where
  *     this one starts (candidates whose fold range ends at `range.from`;
  *     ancestors don't qualify — their ranges extend past us).
  */
 function moveTargetFor(
-    doc: ProseNode,
+    state: EditorState,
     range: { from: number; to: number },
     isHeading: boolean,
     dir: -1 | 1,
 ): number | null {
+    const doc = state.doc;
+    const sectionEnds = foldedSectionEnds(state);
     if (dir === 1) {
         const nextNode = doc.nodeAt(range.to);
         if (!nextNode) {
             return null;
         }
-        let hopEnd = range.to + nextNode.nodeSize;
+        // A collapsed next heading hides its section: hop the whole unit.
+        let hopEnd = sectionEnds.get(range.to) ?? range.to + nextNode.nodeSize;
         if (isHeading && nextNode.type.name === "heading") {
             const section = findHeadingFoldRange(doc, range.to, getHeadingLevel(nextNode));
             if (section) {
-                hopEnd = section.to;
+                hopEnd = Math.max(hopEnd, section.to);
             }
         }
         return hopEnd;
     }
     let prevStart: number | null = null;
+    let skipUntil = 0;
     doc.forEach((node: ProseNode, offset: number) => {
-        if (offset + node.nodeSize <= range.from) {
-            prevStart = offset; // last one wins — the block just before
+        if (offset < skipUntil) {
+            return; // hidden inside a collapsed section — not a landing spot
         }
+        const end = sectionEnds.get(offset) ?? offset + node.nodeSize;
+        if (end <= range.from) {
+            prevStart = offset; // last one wins — the visible unit just before
+        }
+        skipUntil = end;
     });
     if (prevStart === null) {
         return null;
@@ -297,7 +310,7 @@ export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean
     const nested = doc.resolve(pos).depth > 0;
     const target = nested
         ? moveNestedTarget(view, pos, dir)
-        : moveTargetFor(doc, range, node?.type.name === "heading", dir);
+        : moveTargetFor(view.state, range, node?.type.name === "heading", dir);
     if (target === null) {
         return false;
     }
@@ -314,7 +327,7 @@ function canMove(view: EditorView, pos: number, dir: -1 | 1): boolean {
     if (view.state.doc.resolve(pos).depth > 0) {
         return moveNestedTarget(view, pos, dir) !== null;
     }
-    return moveTargetFor(view.state.doc, range, node?.type.name === "heading", dir) !== null;
+    return moveTargetFor(view.state, range, node?.type.name === "heading", dir) !== null;
 }
 
 /**

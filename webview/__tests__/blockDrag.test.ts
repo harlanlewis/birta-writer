@@ -18,7 +18,9 @@ import { mockVscodeApi } from "./setup";
 import {
     blockBoundaryPositions,
     dropTargetFor,
+    visibleBoundaryPositions,
 } from "../components/blockMenu/drag";
+import { headingFoldPluginKey } from "../plugins/headingFold";
 
 let editors: Editor[] = [];
 let activeEditor: Editor | null = null;
@@ -362,5 +364,56 @@ describe("moveBlockTo", () => {
         expect(markdown(editor)).toBe("Beta\n\nAlpha");
         undo(v.state, v.dispatch);
         expect(markdown(editor)).toBe("Alpha\n\nBeta");
+    });
+});
+
+describe("visibleBoundaryPositions (collapsed sections)", () => {
+    /** "Intro | ## Section (collapsed) [Body one, Body two] | ## Next |
+     * After" — "## Next" terminates the collapsed section, so the hidden
+     * range is [headingEnd, next heading). */
+    async function makeFolded(): Promise<{ v: EditorView; headingEnd: number; sectionEnd: number }> {
+        const editor = await makeEditor(
+            "Intro\n\n## Section\n\nBody one\n\nBody two\n\n## Next\n\nAfter",
+        );
+        const v = view(editor);
+        let hPos = -1;
+        let hEnd = -1;
+        let sectionEnd = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading" && node.textContent === "Section") {
+                hPos = offset;
+                hEnd = offset + node.nodeSize;
+            }
+            if (node.type.name === "heading" && node.textContent === "Next") {
+                sectionEnd = offset;
+            }
+        });
+        expect(hPos).toBeGreaterThan(-1);
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
+        expect(headingFoldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(true);
+        return { v, headingEnd: hEnd, sectionEnd };
+    }
+
+    it("boundaries inside the hidden range should be dropped (a drop there vanishes the block)", async () => {
+        const { v, headingEnd, sectionEnd } = await makeFolded();
+        const hiddenBefore = blockBoundaryPositions(v.state.doc)
+            .filter(({ pos }) => pos >= headingEnd && pos < sectionEnd);
+        expect(hiddenBefore.length).toBeGreaterThan(0); // the bug's raw material
+        const visible = visibleBoundaryPositions(v.state);
+        expect(visible.some(({ pos }) => pos >= headingEnd && pos < sectionEnd)).toBe(false);
+    });
+
+    it("the boundary at the section's end and all visible boundaries should survive", async () => {
+        const { v, headingEnd, sectionEnd } = await makeFolded();
+        const visible = visibleBoundaryPositions(v.state).map(({ pos }) => pos);
+        expect(visible).toContain(0); // before Intro
+        expect(visible).toContain(sectionEnd); // first slot after the unit
+        expect(visible).toContain(v.state.doc.content.size); // doc end
+    });
+
+    it("with nothing collapsed it should equal blockBoundaryPositions", async () => {
+        const editor = await makeEditor("Alpha\n\n## Section\n\nBody\n\nOmega");
+        const v = view(editor);
+        expect(visibleBoundaryPositions(v.state)).toEqual(blockBoundaryPositions(v.state.doc));
     });
 });

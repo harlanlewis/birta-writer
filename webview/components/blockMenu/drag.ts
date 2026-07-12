@@ -221,14 +221,39 @@ export function scrollVelocityFor(clientY: number): number {
     return topDepth > bottomDepth ? -speed : speed;
 }
 
+/**
+ * blockBoundaryPositions minus every slot hidden inside a collapsed
+ * section: those blocks are display:none, so their rects measure at y=0 —
+ * a drag toward the viewport top would silently commit the drop into the
+ * hidden range and the dragged block would vanish mid-fold. The boundary
+ * AT the section's end (the first visible slot after the unit) survives.
+ * Exported for unit testing.
+ */
+export function visibleBoundaryPositions(
+    state: EditorState,
+): { pos: number; kind: "block" | "item"; ownerPos?: number }[] {
+    const hidden: [number, number][] = [];
+    for (const [headingPos, end] of foldedSectionEnds(state)) {
+        const heading = state.doc.nodeAt(headingPos);
+        if (heading) {
+            hidden.push([headingPos + heading.nodeSize, end]);
+        }
+    }
+    const positions = blockBoundaryPositions(state.doc);
+    if (hidden.length === 0) {
+        return positions;
+    }
+    return positions.filter(({ pos }) => !hidden.some(([from, to]) => pos >= from && pos < to));
+}
+
 /** Current viewport geometry of every droppable boundary
- * (blockBoundaryPositions supplies positions/kinds; the DOM supplies ys —
+ * (visibleBoundaryPositions supplies positions/kinds; the DOM supplies ys —
  * item slots also carry their column's left/width for the indented line). */
 function measureBoundaries(view: EditorView): DropBoundary[] {
     const { doc } = view.state;
     const boundaries: DropBoundary[] = [];
     let lastBlockBottom: number | null = null;
-    for (const { pos, kind, ownerPos } of blockBoundaryPositions(doc)) {
+    for (const { pos, kind, ownerPos } of visibleBoundaryPositions(view.state)) {
         if (kind === "block" && pos === doc.content.size) {
             if (lastBlockBottom !== null) {
                 boundaries.push({ pos, y: lastBlockBottom, kind });
