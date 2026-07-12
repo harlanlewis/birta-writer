@@ -27,6 +27,7 @@ import { Fragment } from "@milkdown/prose/model";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import {
     findHeadingFoldRange,
+    foldedSectionEnd,
     foldedSectionEnds,
     getHeadingLevel,
     headingFoldPluginKey,
@@ -92,13 +93,16 @@ export function moveRangeAt(view: EditorView, pos: number): { from: number; to: 
     return { from: pos, to: nodeEnd };
 }
 
-/** Duplicate the node at `pos`, inserting the copy right after it. */
+/** Duplicate the node at `pos`, inserting the copy right after it — or,
+ * for a COLLAPSED heading, after its hidden section: `pos + nodeSize` is
+ * the first hidden position, where the copy would vanish into the fold. */
 function duplicateBlock(view: EditorView, pos: number): boolean {
     const node = view.state.doc.nodeAt(pos);
     if (!node) {
         return false;
     }
-    view.dispatch(view.state.tr.insert(pos + node.nodeSize, node));
+    const insertAt = foldedSectionEnd(view.state, pos) ?? pos + node.nodeSize;
+    view.dispatch(view.state.tr.insert(insertAt, node));
     view.focus();
     return true;
 }

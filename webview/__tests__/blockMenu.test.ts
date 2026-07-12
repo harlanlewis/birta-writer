@@ -977,6 +977,20 @@ describe("moves around collapsed sections (fold-aware moveTargetFor)", () => {
         );
     });
 
+    it("Duplicate on a collapsed heading should insert the copy AFTER the hidden section", async () => {
+        const editor = await makeFolded();
+        const v = view(editor);
+        const markerEl = markers().find((m) => m.dataset["pill"] === "H2");
+        expect(markerEl).toBeDefined();
+        const menu = openMenuOn(markerEl!);
+        pickRow(menu, "Duplicate");
+        // The copy lands after "Body two" (visible), not at the first hidden
+        // position inside the collapsed section.
+        expect(markdown(editor)).toBe(
+            "Intro\n\n## Section\n\nBody one\n\nBody two\n\n## Section\n\n## Next\n\nAfter",
+        );
+    });
+
     it("with nothing collapsed a block still hops exactly one neighbor", async () => {
         const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
         const v = view(editor);
