@@ -357,10 +357,16 @@ function createHeadingFoldGutter(
  * with — so every top-level block's conversions and actions are as reachable
  * as a heading's. No fold chevron: only headings own sections.
  */
-function createBlockGutter(view: EditorView, spec: MarkerSpec): HTMLElement {
+function createBlockGutter(view: EditorView, spec: MarkerSpec, nestedDepth?: number): HTMLElement {
     const gutter = document.createElement("span");
     gutter.className = "heading-fold-gutter heading-fold-gutter--block";
     gutter.contentEditable = "false";
+    if (nestedDepth !== undefined) {
+        // Container children: the CSS positions the marker clear of every
+        // ancestor container's border bar, one inset step per nesting level.
+        gutter.classList.add("heading-fold-gutter--nested");
+        gutter.style.setProperty("--nested-gutter-depth", String(nestedDepth));
+    }
 
     const marker = document.createElement("button");
     marker.type = "button";
@@ -516,6 +522,7 @@ function emitContainerChildGutters(
     containerPos: number,
     decorations: Decoration[] | null,
     parts: string[] | null,
+    depth = 1,
 ): void {
     container.forEach((child: any, offset: number) => {
         const childPos = containerPos + 1 + offset;
@@ -526,7 +533,10 @@ function emitContainerChildGutters(
         }
         const spec = nestedChildSpec(child);
         if (spec !== null) {
-            parts?.push(`c${spec.key}`);
+            // Depth is part of the identity: it drives the marker's gutter
+            // column (--nested-gutter-depth), so a block that re-nests must
+            // re-render its widget, not reuse the old one.
+            parts?.push(`c${depth}${spec.key}`);
             decorations?.push(
                 Decoration.node(childPos, childPos + child.nodeSize, {
                     class: "block-gutter-host block-gutter-host--child",
@@ -535,15 +545,15 @@ function emitContainerChildGutters(
             decorations?.push(
                 Decoration.widget(
                     childPos + 1,
-                    (view: EditorView) => createBlockGutter(view, spec),
-                    { key: `g:${spec.key}`, side: -1 },
+                    (view: EditorView) => createBlockGutter(view, spec, depth),
+                    { key: `g:${spec.key}:n${depth}`, side: -1 },
                 ),
             );
         } else {
             parts?.push("·");
         }
         if (isContainerNode(child)) {
-            emitContainerChildGutters(child, childPos, decorations, parts);
+            emitContainerChildGutters(child, childPos, decorations, parts, depth + 1);
         }
     });
 }

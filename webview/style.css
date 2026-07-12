@@ -1756,16 +1756,24 @@ body.block-marqueeing .milkdown .editor {
     left: -12px;
 }
 
-/* Blocks NESTED inside containers (callout/quote/directive children): the
-   marker sits in the container's padding, just left of the child block.
-   Only plain-DOM children (headings, blockquotes) anchor their gutter as a
-   direct child and match this rule — NodeView wrappers (callout, directive,
-   code, table) nest theirs inside their body and keep the per-wrapper
-   calibrations above at any depth. `top: 0` resets those same wrapper
-   descendant rules leaking onto plain children; the per-flavor rules below
-   then re-apply each child's own first-line offset. */
+/* Blocks NESTED inside containers (callout/quote/directive children).
+   HORIZONTAL: the decoration pass stamps --nested (+ a depth custom
+   property) on every child gutter, wherever the wrapper's DOM anchors it,
+   and the marker steps one container-inset (~17px: border bar + padding)
+   further into the margin per nesting level — so its right edge clears
+   EVERY ancestor's border bar instead of straddling the parent's (depth 1
+   resolves to the former -26px column). */
+.milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--nested {
+    left: calc(-9px - var(--nested-gutter-depth, 1) * 17px);
+}
+/* VERTICAL: only plain-DOM children (headings, blockquotes) anchor their
+   gutter as a direct child and match this rule — NodeView wrappers
+   (callout, directive, code, table) nest theirs inside their body and keep
+   the per-wrapper calibrations above at any depth. `top: 0` resets those
+   same wrapper descendant rules leaking onto plain children; the
+   per-flavor rules below then re-apply each child's own first-line
+   offset. */
 .milkdown .editor .block-gutter-host--child > .heading-fold-gutter--block {
-    left: -26px;
     top: 0;
 }
 /* Nested headings: the same first-line compensation the top-level

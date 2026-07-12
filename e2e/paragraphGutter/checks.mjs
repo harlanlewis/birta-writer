@@ -132,7 +132,7 @@ export async function run({ page, check, baseUrl }) {
             "Paragraph", "List item", "Blockquote", "Image", "HTML",
             "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
             "Table", "Callout", "Callout", "Directive",
-            "Callout", "Callout", "Code Block",
+            "Callout", "Callout", "Blockquote", "Code Block",
             "Blockquote", "Heading", "Blockquote",
         // Nested headings carry an H1-H6 text badge instead of an SVG icon.
         ]) && markers.every((m) => m.svg || m.pill === "Heading"),
@@ -149,7 +149,7 @@ export async function run({ page, check, baseUrl }) {
         }));
     });
     check("nested container children carry their own markers",
-        nested.length === 4 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
+        nested.length === 5 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
     const innerCallout = await page.evaluate(() => {
         const el = [...document.querySelectorAll(".block-gutter-host--child")]
             .find((k) => k.classList.contains("callout"));
@@ -301,8 +301,32 @@ export async function run({ page, check, baseUrl }) {
         return out;
     });
     check("every nested marker aligns with its block's first line (±3px)",
-        nestedGeometry.length === 4 && nestedGeometry.every((g) => Math.abs(g.dy) <= 3),
+        nestedGeometry.length === 5 && nestedGeometry.every((g) => Math.abs(g.dy) <= 3),
         JSON.stringify(nestedGeometry));
+
+    // Horizontally, a nested marker must sit CLEAR of every ancestor
+    // container's border bar — the regression: NodeView children (a callout
+    // in a callout) kept their top-level -10px offset and straddled the
+    // parent's bar, and depth-2 children straddled the grandparent's.
+    const nestedClearance = await page.evaluate(() => {
+        const out = [];
+        for (const el of document.querySelectorAll(".block-gutter-host--child")) {
+            const m = el.querySelector(".heading-fold-marker--block");
+            if (!m) continue;
+            const mr = m.getBoundingClientRect();
+            let worst = Infinity;
+            for (let anc = el.parentElement; anc && !anc.classList.contains("ProseMirror"); anc = anc.parentElement) {
+                if (anc.matches(".callout, .container-directive, blockquote, .mw-table")) {
+                    worst = Math.min(worst, Math.round((anc.getBoundingClientRect().left - mr.right) * 10) / 10);
+                }
+            }
+            out.push({ pill: m.dataset.pill, clearance: worst });
+        }
+        return out;
+    });
+    check("every nested marker clears its ancestor containers' border bars (≥2px)",
+        nestedClearance.length === 5 && nestedClearance.every((g) => g.clearance >= 2),
+        JSON.stringify(nestedClearance));
 
     // Block-range selection must not double-paint: the native ::selection
     // is suppressed (hideselection wins the cascade) while the tint shows.
