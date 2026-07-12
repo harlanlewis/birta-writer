@@ -53,14 +53,15 @@ import {
     IconLink,
     IconTrash2,
 } from "../../ui/icons";
-import { blockMarkdownAt, canTurnInto, selectInto, turnBlockInto, turnIntoKindAt, type TurnIntoKind } from "./turnInto";
+import { blockMarkdownAt, selectInto } from "./turnInto";
+import {
+    canConvert,
+    conversionKindAt,
+    convertAt,
+    type ConversionKind,
+} from "../../blockCapabilities";
 import { flashRange } from "./rangeIndicator";
 import { TextSelection, type EditorState } from "@milkdown/prose/state";
-
-// The conversion matrix and kind helpers live in ./turnInto; re-exported so
-// consumers and tests keep one import surface.
-export { turnIntoKindAt, canTurnInto, turnBlockInto, isTextBearingParagraph } from "./turnInto";
-export type { TurnIntoKind } from "./turnInto";
 
 // ── Editor access ───────────────────────────────────────────────────────────
 // The menu lives behind a ProseMirror widget, which only hands us the view;
@@ -479,7 +480,7 @@ function copyHeadingLink(view: EditorView, pos: number): void {
 // Turn-into rows reuse the slash registry's art wholesale — label, icon,
 // SVG-or-badge slot, and the right-aligned literal-markdown hint — so the two
 // menus present every block type identically (single source, zero drift).
-const SLASH_ID_BY_KIND: Record<TurnIntoKind, string> = {
+const SLASH_ID_BY_KIND: Record<ConversionKind, string> = {
     paragraph: "paragraph",
     h1: "heading1",
     h2: "heading2",
@@ -496,7 +497,7 @@ const SLASH_ID_BY_KIND: Record<TurnIntoKind, string> = {
 };
 
 interface TurnIntoRow {
-    kind: TurnIntoKind;
+    kind: ConversionKind;
     label: string;
     keywords: readonly string[];
     icon: string;
@@ -504,7 +505,7 @@ interface TurnIntoRow {
     hint?: string;
 }
 
-const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as TurnIntoKind[]).map(
+const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as ConversionKind[]).map(
     (kind) => {
         const item = SLASH_MENU_ITEMS.find((entry) => entry.id === SLASH_ID_BY_KIND[kind]);
         return {
@@ -564,7 +565,7 @@ export function openBlockMenu(
     const conversionPos = isItem
         ? view.state.doc.resolve(blockPos).before(view.state.doc.resolve(blockPos).depth)
         : blockPos;
-    const currentKind = turnIntoKindAt(view, conversionPos);
+    const currentKind = conversionKindAt(view, conversionPos);
 
     const menu = document.createElement("div");
     menu.className = "block-menu";
@@ -852,7 +853,7 @@ export function openBlockMenu(
     // render their full phrase in the flat list, short name under the header.
     let filterActive = false;
     if (currentKind !== null) {
-        const offered = TURN_INTO_CHOICES.filter(({ kind }) => canTurnInto(view, conversionPos, kind));
+        const offered = TURN_INTO_CHOICES.filter(({ kind }) => canConvert(view, conversionPos, kind));
         for (const choice of offered) {
             const active = choice.kind === currentKind;
             specs.push({
@@ -867,7 +868,7 @@ export function openBlockMenu(
                     ...(choice.hint !== undefined && { hint: choice.hint }),
                     action: () => {
                         if (!active) {
-                            turnBlockInto(view, conversionPos, choice.kind, getEditor);
+                            convertAt(view, conversionPos, choice.kind, getEditor);
                         }
                     },
                 }),

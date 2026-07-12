@@ -18,12 +18,12 @@ import { insertCalloutCommand } from "../plugins/callouts";
 import { undo } from "@milkdown/prose/history";
 import {
     setBlockMenuContext,
-    turnIntoKindAt,
     moveRangeAt,
     moveBlockAt,
     moveBlockTo,
     headingAnchorSlug,
 } from "../components/blockMenu";
+import { conversionKindAt } from "../blockCapabilities";
 import { TextSelection } from "@milkdown/prose/state";
 import { mockVscodeApi } from "./setup";
 
@@ -94,7 +94,7 @@ afterEach(async () => {
     document.body.innerHTML = "";
 });
 
-describe("turnIntoKindAt", () => {
+describe("conversionKindAt", () => {
     it("each top-level block type should map to its Turn-into kind", async () => {
         const editor = await makeEditor(
             [
@@ -121,7 +121,7 @@ describe("turnIntoKindAt", () => {
         const v = view(editor);
         const kinds: (string | null)[] = [];
         v.state.doc.forEach((_node, offset) => {
-            kinds.push(turnIntoKindAt(v, offset));
+            kinds.push(conversionKindAt(v, offset));
         });
         expect(kinds).toEqual([
             "paragraph",
@@ -140,7 +140,7 @@ describe("turnIntoKindAt", () => {
         const v = view(editor);
         const kinds: (string | null)[] = [];
         v.state.doc.forEach((_node, offset) => {
-            kinds.push(turnIntoKindAt(v, offset));
+            kinds.push(conversionKindAt(v, offset));
         });
         expect(kinds).toEqual([null, null]);
     });
@@ -156,7 +156,7 @@ describe("turnIntoKindAt", () => {
         v.state.doc.forEach((node, offset) => {
             if (!node.textContent.trim()) wsPos = offset;
         });
-        expect(turnIntoKindAt(v, wsPos)).toBe("paragraph");
+        expect(conversionKindAt(v, wsPos)).toBe("paragraph");
         const pills = Array.from(document.querySelectorAll<HTMLElement>(".heading-fold-marker--block"))
             .map((el) => el.dataset["pill"]);
         expect(pills).toEqual(["Paragraph", "Paragraph"]);
@@ -560,7 +560,7 @@ describe("more turn-into round-trips", () => {
     it("an H5 source should convert to a list (retype to prose, then wrap)", async () => {
         const editor = await makeEditor("##### Five");
         const v = view(editor);
-        expect(turnIntoKindAt(v, 0)).toBe("h5");
+        expect(conversionKindAt(v, 0)).toBe("h5");
         pickRow(openMenuOn(markers()[0]!), "Ordered List");
         expect(markdown(editor)).toBe("1. Five");
     });
