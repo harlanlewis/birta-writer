@@ -355,6 +355,12 @@ export async function createEditor(
         // false inside code blocks/tables so the preset's exit-block Mod-Enter
         // keeps working).
         .use(smartSelectKeymapPlugin)
+        // Fold-boundary reveals (Backspace/Delete/Enter at a fold edge expand
+        // instead of editing hidden or invisible content). Before
+        // insertParagraphKeymapPlugin and the presets: revealOnEnter must
+        // dispatch its unfold (it never consumes the key) before the default
+        // Enter / Mod-Enter handlers act, so the new block lands visibly.
+        .use(foldRevealKeymapPlugin)
         .use(insertParagraphKeymapPlugin)
         .use(pureCommonmark)
         .use(gfm)
@@ -376,9 +382,6 @@ export async function createEditor(
         .use(selectionPlugin)
         .use(pendingRangePlugin)
         .use(headingFoldPlugin)
-        // Fold-boundary reveals (Backspace/Delete at a fold edge expand
-        // instead of editing hidden content) — before the base keymap.
-        .use(foldRevealKeymapPlugin)
         .use(headingStickyPlugin)
         .use(caretScrollMarginPlugin)
         .use(formatKeymapPlugin)

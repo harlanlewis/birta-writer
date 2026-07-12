@@ -242,13 +242,15 @@ export function visibleBoundaryPositions(
     return positions.filter(({ pos }) => !hidden.some((r) => pos >= r.from && pos < r.to));
 }
 
-/** True when `el` sits inside a collapsed callout's hidden body. Callout
- * folding is view-only by design (never a doc attr, so the state-based
- * fold filter in visibleBoundaryPositions can't see it) — only the DOM
- * knows. Hidden geometry (visibility:hidden, height:0) must never win the
- * nearest-y drop contest: a bottom-edge drop would commit into the fold
- * and the dragged block would vanish, the collapsed-callout analog of the
- * heading-section bug this file already filters. */
+/** True when `el` sits inside a collapsed callout's hidden body. The
+ * state-based filter in visibleBoundaryPositions DOES see callout folds
+ * (the unified fold grammar keeps them in plugin state), but its `pos < r.to`
+ * deliberately admits the end-of-owner slot at `pos === range.to` — for a
+ * collapsed callout that slot's measuring DOM lives inside the hidden body.
+ * This DOM check catches exactly that residual case: hidden geometry
+ * (visibility:hidden, height:0) must never win the nearest-y drop contest,
+ * or a bottom-edge drop would commit into the fold and the dragged block
+ * would vanish. */
 function inCollapsedCalloutBody(el: Element): boolean {
     return el.closest(".callout.collapsed .callout-body") !== null;
 }
