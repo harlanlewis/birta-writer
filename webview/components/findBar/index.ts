@@ -1085,6 +1085,10 @@ export function initFindBar(
             e.target instanceof Element &&
             e.target.closest(".ProseMirror") !== null
         ) {
+            // preventDefault too: sibling document-level Escape fallbacks
+            // (link popup, lightboxes) honor defaultPrevented, so consuming
+            // here keeps one Escape from closing two surfaces.
+            e.preventDefault();
             e.stopPropagation();
             close();
         }

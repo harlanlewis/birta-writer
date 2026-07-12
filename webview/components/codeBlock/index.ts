@@ -477,6 +477,11 @@ export function createCodeBlockView(
     const ZOOM_MIN = 0.05, ZOOM_MAX = 10.0, ZOOM_BTN = 0.25;
     const PAN_STEP = 80;
     let lbActiveLightbox: HTMLElement | null = null;
+    // bindLightboxDismiss cleanup (Escape-layer entry + document key
+    // listener) for the open lightbox; null while no lightbox is open OR
+    // once a close has begun. Held at NodeView scope so destroy() can run it
+    // when the view dies with the lightbox open (external sync/revert).
+    let lbDismissCleanup: (() => void) | null = null;
     // Element showing the current zoom percentage (center of the overlay)
     let zoomValueDisplay: HTMLButtonElement | null = null;
     let isWordWrap = shouldWordWrapCodeBlock();
@@ -1136,6 +1141,13 @@ export function createCodeBlockView(
 
         // ── Close (with fade-out animation + write back to ProseMirror)
         function closeLb(): void {
+            if (!lbDismissCleanup) return; // close already ran (e.g. X during the fade)
+            // Synchronous teardown of the Escape layer + document listener:
+            // deferring it to animationend swallowed a second Escape during
+            // the close fade (and re-ran this close). Only the DOM/animation
+            // teardown stays deferred.
+            lbDismissCleanup();
+            lbDismissCleanup = null;
             const newCode = textarea.value;
             const originalCode = codeEl.textContent ?? "";
             if (newCode !== originalCode) {
@@ -1158,11 +1170,10 @@ export function createCodeBlockView(
             detachTextareaUndo();
             animateCloseLightbox(overlay, () => {
                 lbActiveLightbox = null;
-                removeKeyListener();
             });
         }
 
-        const removeKeyListener = bindLightboxDismiss(overlay, lbCloseBtn, closeLb);
+        lbDismissCleanup = bindLightboxDismiss(overlay, lbCloseBtn, closeLb);
     }
 
     // ── Mermaid diagram fullscreen ─────────────────────────
@@ -1411,6 +1422,12 @@ export function createCodeBlockView(
 
         // ── Close (write back to ProseMirror) ──────────────────────────
         function closeLb(): void {
+            if (!lbDismissCleanup) return; // close already ran (e.g. X during the fade)
+            // Synchronous teardown of the Escape layer + document listener
+            // (see the code lightbox's closeLb): only DOM/animation teardown
+            // stays deferred to animationend.
+            lbDismissCleanup();
+            lbDismissCleanup = null;
             const newCode = textarea.value;
             if (newCode !== originalCode) {
                 const pos = getPos();
@@ -1431,11 +1448,10 @@ export function createCodeBlockView(
             gutterResizeObserver?.disconnect();
             animateCloseLightbox(overlay, () => {
                 lbActiveLightbox = null;
-                removeKeyListener();
             });
         }
 
-        const removeKeyListener = bindLightboxDismiss(overlay, lbCloseBtn, closeLb);
+        lbDismissCleanup = bindLightboxDismiss(overlay, lbCloseBtn, closeLb);
     }
 
     return {
@@ -1500,7 +1516,14 @@ export function createCodeBlockView(
             if (lineNumberRaf !== null) cancelAnimationFrame(lineNumberRaf);
             lineNumberResizeObserver?.disconnect();
             mermaidPreview.removeEventListener("wheel", onPreviewWheel);
+            // A NodeView can die with its lightbox open (external sync /
+            // revert replacing the node): drop the Escape-layer entry and
+            // the document key listener too, or a dead layer entry would
+            // silently swallow the next Escape.
+            lbDismissCleanup?.();
+            lbDismissCleanup = null;
             if (lbActiveLightbox && document.body.contains(lbActiveLightbox)) {
+                unlockBodyScroll();
                 document.body.removeChild(lbActiveLightbox);
                 lbActiveLightbox = null;
             }

@@ -23,10 +23,24 @@ export interface HoverMenuOptions {
     hideDelayMs?: number;
 }
 
+export interface HoverMenuHandle {
+    /**
+     * THE close path for this menu — the only one that unregisters the
+     * Escape layer and resets aria-expanded/tb-menu-open. Item handlers
+     * that dismiss the menu after a pick must call this, never hide the
+     * menu element directly (a direct `style.display = "none"` leaks the
+     * layer entry, and the next editor-focused Escape dies on it).
+     */
+    close: () => void;
+    /** Removes the listeners and clears any pending timer. */
+    dispose: () => void;
+}
+
 /**
  * Wire `wrap`'s hover to open/close `menu`, positioned relative to `button`.
- * `wrap` must contain both `button` and `menu` in the DOM. Returns a disposer
- * that removes the listeners and clears any pending timer.
+ * `wrap` must contain both `button` and `menu` in the DOM. Returns the shared
+ * `close` (for item handlers that dismiss after a pick) and a `dispose` that
+ * removes the listeners and clears any pending timer.
  *
  * Keyboard: Enter/Space toggles the menu from the trigger (ArrowDown/ArrowUp
  * always open), arrows rove focus over the menu's rows, Enter/Space activates
@@ -39,7 +53,7 @@ export function wireHoverMenu(
     button: HTMLElement,
     menu: HTMLElement,
     options: HoverMenuOptions = {},
-): () => void {
+): HoverMenuHandle {
     const hideDelay = options.hideDelayMs ?? 0;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
     // Escape-layer unregister handle (null while closed): a hover-opened
@@ -148,15 +162,18 @@ export function wireHoverMenu(
     menu.addEventListener("keydown", onMenuKeydown);
     wrap.addEventListener("focusout", onWrapFocusout);
 
-    return (): void => {
-        escapeOff?.();
-        escapeOff = null;
-        cancelHide();
-        wrap.removeEventListener("mouseenter", open);
-        wrap.removeEventListener("mouseleave", scheduleHide);
-        menu.removeEventListener("mouseenter", cancelHide);
-        button.removeEventListener("keydown", onButtonKeydown);
-        menu.removeEventListener("keydown", onMenuKeydown);
-        wrap.removeEventListener("focusout", onWrapFocusout);
+    return {
+        close,
+        dispose: (): void => {
+            escapeOff?.();
+            escapeOff = null;
+            cancelHide();
+            wrap.removeEventListener("mouseenter", open);
+            wrap.removeEventListener("mouseleave", scheduleHide);
+            menu.removeEventListener("mouseenter", cancelHide);
+            button.removeEventListener("keydown", onButtonKeydown);
+            menu.removeEventListener("keydown", onMenuKeydown);
+            wrap.removeEventListener("focusout", onWrapFocusout);
+        },
     };
 }

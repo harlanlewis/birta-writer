@@ -95,6 +95,12 @@ function createFakeView(doc: PmNode, selection?: { from: number; to: number }): 
     };
 }
 
+// The previous setup()'s document-level listeners must not survive into the
+// next test: a stale bar left open would consume (preventDefault) a document
+// Escape before the current bar's own fallback sees it. In production there
+// is exactly one find bar per webview; disposing here mirrors that.
+let lastEventManager: ReturnType<typeof createEventManager> | null = null;
+
 function setup(
     doc: PmNode,
     opts: { view?: EditorView | null; selection?: { from: number; to: number }; source?: string } = {},
@@ -104,11 +110,15 @@ function setup(
     editor.id = "editor";
     document.body.appendChild(editor);
 
+    lastEventManager?.dispose();
+    const eventManager = createEventManager();
+    lastEventManager = eventManager;
+
     const fake = createFakeView(doc, opts.selection);
     const findBar = initFindBar(
         () => (opts.view === undefined ? fake.view : opts.view),
         () => opts.source ?? "",
-        createEventManager(),
+        eventManager,
     );
 
     const bar = document.querySelector(".find-bar") as HTMLElement;
@@ -1270,6 +1280,28 @@ describe("initFindBar Escape layering (editor-focused Esc)", () => {
         handleBlockKeydown(view, escapeEvent());
         expect(findBar.isOpen()).toBe(false);
         // No second entry left behind.
+        expect(closeTopmostLayer()).toBe(false);
+    });
+
+    it("the document fallback should consume the Escape it closes on (preventDefault)", () => {
+        // The fallback path: focus inside editor content that ProseMirror's
+        // keymap never processes (a NodeView's own input). Sibling
+        // document-level Escape fallbacks (link popup, lightboxes) honor
+        // defaultPrevented — without it, one keypress closed two surfaces.
+        const { findBar } = setup(mkDoc(p("foo bar")), { selection: { from: 2, to: 2 } });
+        findBar.open("foo");
+        const pmHost = document.createElement("div");
+        pmHost.className = "ProseMirror";
+        const inner = document.createElement("span");
+        pmHost.appendChild(inner);
+        document.body.appendChild(pmHost);
+
+        const e = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+        inner.dispatchEvent(e);
+
+        expect(findBar.isOpen()).toBe(false);
+        expect(e.defaultPrevented).toBe(true);
+        // The close dropped the layer entry too.
         expect(closeTopmostLayer()).toBe(false);
     });
 });

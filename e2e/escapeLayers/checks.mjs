@@ -94,4 +94,38 @@ export async function run({ page, check, baseUrl }) {
     await page.keyboard.press("Escape");
     await settle();
     check("final Escape reaches the block grammar", await tintVisible());
+
+    // ── 3. Keyboard item pick must not leak the menu's Escape layer ──
+    // The regression: item handlers dismissed the dropdown with a direct
+    // style hide instead of the shared close, leaving the layer entry
+    // registered — the NEXT editor-focused Escape was silently swallowed.
+    await page.keyboard.press("Escape"); // collapse the tint back to a caret
+    await settle();
+    check("caret restored before the pick scenario", !(await tintVisible()));
+
+    const listBtnSel = '[data-item-id="listMenu"] .tb-fmt-btn';
+    await page.evaluate((sel) => document.querySelector(sel).focus(), listBtnSel);
+    await page.keyboard.press("Enter"); // opens the menu, focuses the first row
+    await settle();
+    check("Lists menu opens via keyboard", (await menuDisplay()) === "flex");
+    check(
+        "first row holds focus",
+        await page.evaluate(() => document.activeElement?.classList.contains("tb-list-item") ?? false),
+    );
+
+    await page.keyboard.press("Enter"); // pick: must route through the shared close
+    await settle();
+    check("menu closes after the keyboard pick", (await menuDisplay()) === "none");
+    check(
+        "trigger aria-expanded resets after the pick",
+        (await page.$eval(listBtnSel, (el) => el.getAttribute("aria-expanded"))) === "false",
+    );
+
+    // Focus back in the document: the very next Escape must reach the block
+    // grammar — a leaked layer entry would swallow it (the reproduced bug).
+    await page.evaluate(() => document.querySelector(".ProseMirror").focus());
+    await settle();
+    await page.keyboard.press("Escape");
+    await settle();
+    check("first Escape after the pick block-selects (no dead Escape)", await tintVisible());
 }
