@@ -329,6 +329,22 @@ export function moveSelectedBlocks(dir: -1 | 1): Command {
     };
 }
 
+/**
+ * Shift+Alt+↑/↓ / palette Duplicate Block Up/Down (MAR-103).
+ * STUB: honest no-op until the implementation lands in the follow-up commit;
+ * returning false keeps native behavior intact.
+ */
+export function duplicateSelectedBlocks(_dir: -1 | 1): Command {
+    return () => false;
+}
+
+/**
+ * Contributed Cmd+Shift+K / palette Delete Block: delete the caret's block
+ * or the selected block range (MAR-103).
+ * STUB: honest no-op until the implementation lands in the follow-up commit.
+ */
+export const deleteSelectedBlocks: Command = () => false;
+
 export const blockKeysPlugin = $prose(() =>
     keymap({
         "Escape": toggleBlockSelection,

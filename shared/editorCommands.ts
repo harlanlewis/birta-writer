@@ -121,6 +121,24 @@ export const EDITOR_COMMANDS = [
     // toolbar and the TOC dock side (mirroring the panel's own flip button).
     { id: "toggleToolbar", title: "Toggle Toolbar", palette: true, sections: [] },
     { id: "swapTocSide", title: "Swap Table of Contents Side", palette: true, sections: [] },
+    // Keyboard canon (VS Code text-editing parity). Duplicate/smart-select/
+    // insert-paragraph default chords are hardcoded ProseMirror keymaps —
+    // they collide with native contenteditable behavior and need synchronous
+    // default-suppression (see webview/keyboardShortcuts.ts); these palette
+    // entries expose the same actions, and users can bind ADDITIONAL chords.
+    { id: "duplicateBlockUp", title: "Duplicate Block Up", palette: true, sections: [] },
+    { id: "duplicateBlockDown", title: "Duplicate Block Down", palette: true, sections: [] },
+    { id: "deleteBlock", title: "Delete Block", palette: true, sections: [] },
+    // Contributed Ctrl+J on macOS only — VS Code parity (unbound elsewhere).
+    { id: "joinLines", title: "Join Lines", palette: true, sections: [] },
+    // Palette-only, like the built-in editor's transform commands.
+    { id: "transformToUppercase", title: "Transform to Uppercase", palette: true, sections: [] },
+    { id: "transformToLowercase", title: "Transform to Lowercase", palette: true, sections: [] },
+    { id: "transformToTitleCase", title: "Transform to Title Case", palette: true, sections: [] },
+    { id: "expandSelection", title: "Expand Selection", palette: true, sections: [] },
+    { id: "shrinkSelection", title: "Shrink Selection", palette: true, sections: [] },
+    { id: "insertParagraphAfter", title: "Insert Paragraph After", palette: true, sections: [] },
+    { id: "insertParagraphBefore", title: "Insert Paragraph Before", palette: true, sections: [] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

@@ -62,6 +62,8 @@ import {
     proofreadPlugin,
     selectionPlugin,
     slashMenuPlugin,
+    smartSelectKeymapPlugin,
+    insertParagraphKeymapPlugin,
     tabKeymapPlugin,
     blockKeysPlugin,
     tableKeymapPlugin,
@@ -347,6 +349,12 @@ export async function createEditor(
         // against a formula) are narrowly guarded and must beat every other handler.
         .use(mathInlineEditPlugin)
         .use(tableKeymapPlugin)
+        // Smart-select chords beat native contenteditable selection keys;
+        // insertParagraph's Mod-Enter beats the preset's (its commands return
+        // false inside code blocks/tables so the preset's exit-block Mod-Enter
+        // keeps working).
+        .use(smartSelectKeymapPlugin)
+        .use(insertParagraphKeymapPlugin)
         .use(pureCommonmark)
         .use(gfm)
         // After gfm so the extended cell schemas (null alignment default —

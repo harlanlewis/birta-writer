@@ -12,12 +12,14 @@
  *
  * What remains hardcoded (and therefore claimed) are the typing-level keys
  * ProseMirror must handle synchronously inside the webview: formatting
- * (Mod+B/I/E, Mod+Shift+X), history (Mod+Z/Shift+Z/Y), and Tab. These cannot
- * be routed through the extension host because the keystroke's default action
- * (native contenteditable formatting, focus traversal, workbench side
+ * (Mod+B/I/E, Mod+Shift+X), history (Mod+Z/Shift+Z/Y), Tab, and the
+ * block/selection chords (Shift+Alt+Arrows duplicate, the smart-select
+ * arrows, Mod+Enter insert-paragraph). These cannot be routed through the
+ * extension host because the keystroke's default action (native
+ * contenteditable formatting/selection, focus traversal, workbench side
  * effects like Cmd+B toggling the sidebar) has to be suppressed at the event
  * itself. Users can still bind ADDITIONAL chords to the corresponding
- * `markdownWysiwyg.editor.toggle*` commands; only these defaults are fixed.
+ * `markdownWysiwyg.editor.*` commands; only these defaults are fixed.
  */
 
 import { fallbackKeyFromKeyCode, type EventManager } from "./eventManager";
@@ -67,6 +69,22 @@ export interface ClaimedShortcut {
      */
     mod?: boolean;
     shift?: boolean;
+    /** Alt must be pressed (unlisted modifiers must NOT be — exact match). */
+    alt?: boolean;
+    /**
+     * Raw Ctrl pressed IN ADDITION to `mod` — macOS-only chords like
+     * Ctrl+Shift+Cmd+Arrow (smart select). Meaningless off macOS, where
+     * `mod` already is Ctrl; pair with `mac: true`.
+     */
+    ctrl?: boolean;
+    /** Platform gate: true = macOS only, false = Windows/Linux only. */
+    mac?: boolean;
+    /**
+     * Claimed only inside ProseMirror content (like the Tab and Mod+A
+     * special cases): in overlay inputs (find bar, toolbars) the chord keeps
+     * its native behavior and stays visible to the workbench.
+     */
+    content?: boolean;
 }
 
 /**
@@ -85,6 +103,24 @@ export const CLAIMED_SHORTCUTS: readonly ClaimedShortcut[] = [
     { key: "z", mod: true },                // undo
     { key: "z", mod: true, shift: true },   // redo
     { key: "y", mod: true },                // redo
+    // Block/selection chords (all content-scoped: overlay inputs keep their
+    // native caret/selection behavior). These MUTATE the document or
+    // selection, so unlike the unclaimed Alt+Arrow move chords they are
+    // claimed even though VS Code's own defaults on them are
+    // editorTextFocus-scoped — a user-bound workbench action on the same
+    // chord must never fire alongside the edit.
+    // blockKeys plugin: duplicate block up/down
+    { key: "arrowup", shift: true, alt: true, content: true },
+    { key: "arrowdown", shift: true, alt: true, content: true },
+    // smartSelect plugin: expand/shrink selection (platform-split chords;
+    // on macOS Shift+Alt+Arrows stay native word-wise selection)
+    { key: "arrowright", mod: true, ctrl: true, shift: true, mac: true, content: true },
+    { key: "arrowleft", mod: true, ctrl: true, shift: true, mac: true, content: true },
+    { key: "arrowright", shift: true, alt: true, mac: false, content: true },
+    { key: "arrowleft", shift: true, alt: true, mac: false, content: true },
+    // insertParagraph plugin: Mod-Enter / Mod-Shift-Enter
+    { key: "enter", mod: true, content: true },
+    { key: "enter", mod: true, shift: true, content: true },
 ];
 
 /** Whether a keydown matches a combo the editor handles itself. */
@@ -100,8 +136,6 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
         );
     }
 
-    if (e.altKey) { return false; }
-
     // Mod+A is the block-selection escalation ladder (blockKeys plugin:
     // block text → block → everything), claimed only inside ProseMirror
     // content: VS Code binds its own webview select-all to Cmd+A while a
@@ -111,7 +145,7 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
     // workbench/native behavior. Inside content the key is always handled
     // (the ladder, a table's native select-all via baseKeymap, or
     // codeBlockSelectAll's capture handler), so nothing is lost.
-    if (e.key.toLowerCase() === "a" && !e.shiftKey) {
+    if (e.key.toLowerCase() === "a" && !e.shiftKey && !e.altKey) {
         const primary = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
         return (
             primary &&
@@ -120,25 +154,35 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
         );
     }
 
-    // Everything else is claimed document-wide: the whole webview document
-    // is editor UI (content, topbar, TOC, find bar, ...), and these combos
-    // must not trigger workbench actions no matter which part has focus.
+    // The listed combos are claimed document-wide unless `content`-scoped:
+    // the whole webview document is editor UI (content, topbar, TOC, find
+    // bar, ...), and these combos must not trigger workbench actions no
+    // matter which part has focus.
     const eventKey = e.key.toLowerCase();
     // prosemirror-keymap also resolves bindings via base[event.keyCode] when
     // the produced char is non-ASCII (non-Latin layouts: Russian Ctrl+Z has
     // key "я", keyCode 90 → PM handles Mod-z). The guard must claim those
     // too, or the chord leaks to the workbench and the action fires twice.
     const fallbackKey = fallbackKeyFromKeyCode(e);
+    const inContent =
+        e.target instanceof Element && e.target.closest(".ProseMirror") !== null;
     for (const s of CLAIMED_SHORTCUTS) {
         if (eventKey !== s.key && fallbackKey !== s.key) { continue; }
+        if (s.mac !== undefined && s.mac !== isMac) { continue; }
+        if (s.content && !inContent) { continue; }
+        if (e.shiftKey !== !!s.shift) { continue; }
+        if (e.altKey !== !!s.alt) { continue; }
         if (s.mod) {
-            // Platform primary modifier only (see ClaimedShortcut.mod)
+            // Platform primary modifier (see ClaimedShortcut.mod), plus the
+            // optional explicit Ctrl for macOS smart-select chords.
             const primary = isMac
-                ? e.metaKey && !e.ctrlKey
+                ? e.metaKey && e.ctrlKey === !!s.ctrl
                 : e.ctrlKey && !e.metaKey;
             if (!primary) { continue; }
+        } else if (e.metaKey || e.ctrlKey) {
+            // Exact matching: an unlisted primary modifier disqualifies.
+            continue;
         }
-        if (e.shiftKey !== !!s.shift) { continue; }
         return true;
     }
     return false;

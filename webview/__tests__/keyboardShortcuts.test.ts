@@ -266,6 +266,11 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
     it("CLAIMED_SHORTCUTS should be exactly the ProseMirror typing-level combos", () => {
         // Direct snapshot: catches non-letter claims (digits, symbols, named
         // keys) that the letter sweeps below cannot see.
+        // DELIBERATE EXTENSION (keyboard canon): the content-scoped block/
+        // selection chords below (duplicate, smart select, insert paragraph)
+        // are hardcoded ProseMirror keymaps and are claimed so a user-bound
+        // workbench action on the same chord can never fire alongside the
+        // edit. Each is permanently un-rebindable inside content.
         expect(CLAIMED_SHORTCUTS).toEqual([
             { key: "b", mod: true },
             { key: "i", mod: true },
@@ -274,7 +279,92 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
             { key: "z", mod: true },
             { key: "z", mod: true, shift: true },
             { key: "y", mod: true },
+            { key: "arrowup", shift: true, alt: true, content: true },
+            { key: "arrowdown", shift: true, alt: true, content: true },
+            { key: "arrowright", mod: true, ctrl: true, shift: true, mac: true, content: true },
+            { key: "arrowleft", mod: true, ctrl: true, shift: true, mac: true, content: true },
+            { key: "arrowright", shift: true, alt: true, mac: false, content: true },
+            { key: "arrowleft", shift: true, alt: true, mac: false, content: true },
+            { key: "enter", mod: true, content: true },
+            { key: "enter", mod: true, shift: true, content: true },
         ]);
+    });
+
+    // ── Block/selection chords (content-scoped claims) ───────────────────
+
+    it.each([
+        ["Shift+Alt+ArrowUp (duplicate up)", "ArrowUp"],
+        ["Shift+Alt+ArrowDown (duplicate down)", "ArrowDown"],
+    ] as const)("%s inside content should be stopped on macOS", (_label, code) => {
+        init(true);
+        pressKey(code, { key: code, altKey: true, shiftKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Shift+Alt+ArrowDown inside content should be stopped on Windows/Linux", () => {
+        init(false);
+        pressKey("ArrowDown", { key: "ArrowDown", altKey: true, shiftKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Shift+Alt+ArrowDown in an overlay input should keep propagating (content-scoped)", () => {
+        init(true);
+        pressKey("ArrowDown", { key: "ArrowDown", altKey: true, shiftKey: true }, document.body);
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+
+    it("bare Alt+ArrowDown (move block) should keep propagating — deliberately unclaimed", () => {
+        init(true);
+        pressKey("ArrowDown", { key: "ArrowDown", altKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+
+    it("Ctrl+Shift+Cmd+ArrowRight inside content should be stopped on macOS (smart select)", () => {
+        init(true);
+        pressKey(
+            "ArrowRight",
+            { key: "ArrowRight", metaKey: true, ctrlKey: true, shiftKey: true },
+            proseMirrorEl,
+        );
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Shift+Alt+ArrowRight on macOS should keep propagating (native word-wise selection)", () => {
+        init(true);
+        pressKey("ArrowRight", { key: "ArrowRight", altKey: true, shiftKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+
+    it("Shift+Alt+ArrowRight inside content should be stopped on Windows/Linux (smart select)", () => {
+        init(false);
+        pressKey("ArrowRight", { key: "ArrowRight", altKey: true, shiftKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+Enter and Cmd+Shift+Enter inside content should be stopped (insert paragraph)", () => {
+        init(true);
+        pressKey("Enter", { key: "Enter", metaKey: true }, proseMirrorEl);
+        pressKey("Enter", { key: "Enter", metaKey: true, shiftKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Ctrl+Enter inside content should be stopped on Windows/Linux (insert paragraph)", () => {
+        init(false);
+        pressKey("Enter", { key: "Enter", ctrlKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+Enter in an overlay input should keep propagating (find bar handles it locally)", () => {
+        init(true);
+        pressKey("Enter", { key: "Enter", metaKey: true }, document.body);
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+
+    it("plain Enter inside content should keep propagating (no modifier — not claimed)", () => {
+        init(true);
+        const event = pressKey("Enter", { key: "Enter" }, proseMirrorEl);
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+        expect(event.defaultPrevented).toBe(false);
     });
 
     /** Letters whose Mod+<letter> chord the guard swallowed. */

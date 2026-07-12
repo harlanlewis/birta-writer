@@ -29,15 +29,25 @@ import {
 } from "@milkdown/preset-commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
 import {
+    deleteSelectedBlocks,
+    duplicateSelectedBlocks,
+    expandSelection,
     insertCalloutCommand,
     insertFootnoteCommand,
+    insertParagraphAfter,
+    insertParagraphBefore,
+    joinLinesCommand,
+    shrinkSelection,
     toggleHighlightCommand,
+    transformToLowercase,
+    transformToTitleCase,
+    transformToUppercase,
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { lift } from "@milkdown/prose/commands";
 import { liftListItem } from "@milkdown/prose/schema-list";
-import { TextSelection } from "@milkdown/prose/state";
+import { TextSelection, type Command } from "@milkdown/prose/state";
 import { DOMSerializer, Fragment } from "@milkdown/prose/model";
 import {
     addColumnAfter,
@@ -119,6 +129,16 @@ function runProse(
     editor.action((ctx) => {
         const view = ctx.get(editorViewCtx);
         fn(view);
+    });
+}
+
+/** Runs a plain ProseMirror keymap command against the live view, refocusing
+ * the editor when it applied (palette invocations move focus out of it). */
+function runCommand(getEditor: GetEditor, cmd: Command): void {
+    runProse(getEditor, (view) => {
+        if (cmd(view.state, view.dispatch, view)) {
+            view.focus();
+        }
     });
 }
 
@@ -547,6 +567,20 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     toggleStyleCheck: () => host.toggleProofread?.("styleCheck"),
     toggleToolbar: () => host.toggleToolbar?.(),
     swapTocSide: () => host.swapTocSide?.(),
+    // Keyboard canon: same commands the hardcoded ProseMirror keymaps run
+    // (blockKeys / smartSelect / insertParagraph), so palette and keyboard
+    // can never diverge.
+    duplicateBlockUp: (getEditor) => runCommand(getEditor, duplicateSelectedBlocks(-1)),
+    duplicateBlockDown: (getEditor) => runCommand(getEditor, duplicateSelectedBlocks(1)),
+    deleteBlock: (getEditor) => runCommand(getEditor, deleteSelectedBlocks),
+    joinLines: (getEditor) => runCommand(getEditor, joinLinesCommand),
+    transformToUppercase: (getEditor) => runCommand(getEditor, transformToUppercase),
+    transformToLowercase: (getEditor) => runCommand(getEditor, transformToLowercase),
+    transformToTitleCase: (getEditor) => runCommand(getEditor, transformToTitleCase),
+    expandSelection: (getEditor) => runCommand(getEditor, expandSelection),
+    shrinkSelection: (getEditor) => runCommand(getEditor, shrinkSelection),
+    insertParagraphAfter: (getEditor) => runCommand(getEditor, insertParagraphAfter),
+    insertParagraphBefore: (getEditor) => runCommand(getEditor, insertParagraphBefore),
 };
 
 /** Dispatches an editor command by id; an unknown id is a safe no-op. */
