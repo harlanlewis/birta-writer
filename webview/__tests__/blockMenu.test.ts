@@ -18,12 +18,12 @@ import { insertCalloutCommand } from "../plugins/callouts";
 import { undo } from "@milkdown/prose/history";
 import {
     setBlockMenuContext,
-    turnIntoKindAt,
     moveRangeAt,
     moveBlockAt,
     moveBlockTo,
     headingAnchorSlug,
 } from "../components/blockMenu";
+import { conversionKindAt } from "../blockCapabilities";
 import { TextSelection } from "@milkdown/prose/state";
 import { mockVscodeApi } from "./setup";
 
@@ -94,7 +94,7 @@ afterEach(async () => {
     document.body.innerHTML = "";
 });
 
-describe("turnIntoKindAt", () => {
+describe("conversionKindAt", () => {
     it("each top-level block type should map to its Turn-into kind", async () => {
         const editor = await makeEditor(
             [
@@ -121,7 +121,7 @@ describe("turnIntoKindAt", () => {
         const v = view(editor);
         const kinds: (string | null)[] = [];
         v.state.doc.forEach((_node, offset) => {
-            kinds.push(turnIntoKindAt(v, offset));
+            kinds.push(conversionKindAt(v, offset));
         });
         expect(kinds).toEqual([
             "paragraph",
@@ -140,7 +140,7 @@ describe("turnIntoKindAt", () => {
         const v = view(editor);
         const kinds: (string | null)[] = [];
         v.state.doc.forEach((_node, offset) => {
-            kinds.push(turnIntoKindAt(v, offset));
+            kinds.push(conversionKindAt(v, offset));
         });
         expect(kinds).toEqual([null, null]);
     });
@@ -156,7 +156,7 @@ describe("turnIntoKindAt", () => {
         v.state.doc.forEach((node, offset) => {
             if (!node.textContent.trim()) wsPos = offset;
         });
-        expect(turnIntoKindAt(v, wsPos)).toBe("paragraph");
+        expect(conversionKindAt(v, wsPos)).toBe("paragraph");
         const pills = Array.from(document.querySelectorAll<HTMLElement>(".heading-fold-marker--block"))
             .map((el) => el.dataset["pill"]);
         expect(pills).toEqual(["Paragraph", "Paragraph"]);
@@ -250,7 +250,8 @@ describe("Turn into — non-prose sources", () => {
         expect(labels).not.toContain("Paragraph");
         expect(labels).not.toContain("Code Block");
         expect(labels).toEqual([
-            "Duplicate", "Copy as Markdown", "Move Up", "Move Down", "Delete",
+            "Duplicate", "Copy as Markdown", "Move Up", "Move Down",
+            "Fold All", "Unfold All", "Delete",
             // The gutter-markers preference section trails every menu.
             "None", "Headings", "All",
         ]);
@@ -560,7 +561,7 @@ describe("more turn-into round-trips", () => {
     it("an H5 source should convert to a list (retype to prose, then wrap)", async () => {
         const editor = await makeEditor("##### Five");
         const v = view(editor);
-        expect(turnIntoKindAt(v, 0)).toBe("h5");
+        expect(conversionKindAt(v, 0)).toBe("h5");
         pickRow(openMenuOn(markers()[0]!), "Ordered List");
         expect(markdown(editor)).toBe("1. Five");
     });
@@ -665,10 +666,11 @@ describe("keyboard highlight with disabled rows", () => {
         expect(hlLabel()).toBe("Paragraph"); // first enabled row
         pressKey("ArrowUp");
         expect(hlLabel()).toBe("All"); // wrapped to the last row (gutter trio), skipping disabled rows
-        // Sanity: the disabled rows really are excluded from the highlight list.
+        // Sanity: the disabled rows really are excluded from the highlight
+        // list (a lone unfoldable paragraph also disables the fold verbs).
         const disabled = Array.from(menu.querySelectorAll('[aria-disabled="true"] .block-menu-item-label'))
             .map((el) => el.textContent);
-        expect(disabled).toEqual(["Move Up", "Move Down"]);
+        expect(disabled).toEqual(["Move Up", "Move Down", "Fold All", "Unfold All"]);
     });
 
     it("typing in the search input should filter to a flat ranked list and Enter should activate", async () => {
@@ -1163,5 +1165,64 @@ describe("moves around collapsed sections (fold-aware moveTargetFor)", () => {
         const v = view(editor);
         expect(moveBlockAt(v, blockPosOf(v, "Alpha"), 1)).toBe(true);
         expect(markdown(editor)).toBe("Beta\n\nAlpha\n\nGamma");
+    });
+});
+
+describe("Collapsed by default (callout fold marker, MAR-110)", () => {
+    /** The callout's gutter marker (pill "Callout"). */
+    function calloutMarker(): HTMLButtonElement {
+        const markerEl = markers().find((m) => m.dataset["pill"] === "Callout");
+        expect(markerEl, "callout gutter marker not rendered").toBeDefined();
+        return markerEl!;
+    }
+
+    it("checking the row should write the `-` marker as one undo step and collapse", async () => {
+        // Arrange
+        const editor = await makeEditor("> [!note] Title\n> Body.");
+        const v = view(editor);
+        const menu = openMenuOn(calloutMarker());
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Collapsed by default")!;
+        expect(row.getAttribute("role")).toBe("menuitemcheckbox");
+        expect(row.getAttribute("aria-checked")).toBe("false");
+
+        // Act
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        // Assert: the marker carries `-` (case and title bytes preserved),
+        // the fold state synced to the new default, one undo step reverts.
+        expect(markdown(editor)).toBe("> [!note]- Title\n> Body.");
+        let calloutPos = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.type.name === "callout") calloutPos = offset;
+        });
+        expect(headingFoldPluginKey.getState(v.state)!.folded.has(calloutPos)).toBe(true);
+        undo(v.state, v.dispatch);
+        expect(markdown(editor)).toBe("> [!note] Title\n> Body.");
+    });
+
+    it("unchecking the row should remove the `-` marker and expand", async () => {
+        // Arrange
+        const editor = await makeEditor("> [!TIP]- Kept title\n> Body.");
+        const v = view(editor);
+        const menu = openMenuOn(calloutMarker());
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Collapsed by default")!;
+        expect(row.getAttribute("aria-checked")).toBe("true");
+
+        // Act
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        // Assert
+        expect(markdown(editor)).toBe("> [!TIP] Kept title\n> Body.");
+        expect(headingFoldPluginKey.getState(v.state)!.folded.size).toBe(0);
+    });
+
+    it("a non-callout block's menu should not offer the row", async () => {
+        const editor = await makeEditor("Just a paragraph");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item-label")).map((el) => el.textContent);
+        expect(labels).not.toContain("Collapsed by default");
     });
 });

@@ -140,5 +140,9 @@
   "command.editor.expandSelection.title": "Expand Selection",
   "command.editor.shrinkSelection.title": "Shrink Selection",
   "command.editor.insertParagraphAfter.title": "Insert Paragraph Below",
-  "command.editor.insertParagraphBefore.title": "Insert Paragraph Above"
+  "command.editor.insertParagraphBefore.title": "Insert Paragraph Above",
+  "command.editor.fold.title": "Fold",
+  "command.editor.unfold.title": "Unfold",
+  "command.editor.foldAll.title": "Fold All",
+  "command.editor.unfoldAll.title": "Unfold All"
 }

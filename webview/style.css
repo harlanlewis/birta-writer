@@ -944,6 +944,32 @@ body.editor-width-auto {
             display: none !important;
         }
 
+        /* Collapsed `…` (MAR-110): VS Code's folded-region idiom — the
+           block's first visible unit stays and a dim ellipsis chip trails
+           it. The tint is the editor's native folded-range color; the
+           hidden-block count lives in the tooltip/aria-label, never inline
+           (quiet by default). Clicking expands. */
+        .fold-ellipsis {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 0.4em;
+            padding: 0 0.5em;
+            border: 0;
+            border-radius: 3px;
+            background: var(--vscode-editor-foldBackground);
+            color: var(--vscode-descriptionForeground);
+            font-family: inherit;
+            font-size: 0.85em;
+            line-height: 1.5;
+            cursor: pointer;
+            user-select: none;
+            vertical-align: baseline;
+        }
+
+        .fold-ellipsis:hover {
+            color: var(--vscode-foreground);
+        }
+
         @media (max-width: 720px) {
             .heading-fold-gutter {
                 left: -6px;
@@ -1671,6 +1697,36 @@ body.toolbar-hidden::before {
     opacity: 1;
     color: var(--vscode-foreground);
     background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Fold chevrons on foldable non-heading blocks (callouts, MAR-110): the
+   same reveal grammar as headings — hovering the block (with no deeper
+   host hovered) surfaces its own chevron, hovering the gutter keeps it,
+   and a COLLAPSED block's chevron is always resident (it is state, not
+   chrome — the keystroke-quiet rule never applies to it). */
+.milkdown .editor .callout:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .callout-body > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--foldable:hover .heading-fold-toggle,
+.milkdown .editor .callout.collapsed > .callout-body > .heading-fold-gutter--foldable .heading-fold-toggle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Fold-affordance visibility derived from the user's own editor config
+   (MAR-110, no new setting). The baseline above is VS Code's default
+   `editor.showFoldingControls: "mouseover"`. */
+
+/* "always": every foldable block's chevron is resident. */
+body.fold-controls-always .milkdown .editor .heading-fold-toggle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* "never": no chevrons anywhere — existing folds keep their `…` (state,
+   not control) and the fold commands still work, VS Code's semantics. The
+   sticky heading's toggle mirrors VS Code sticky scroll and hides too. */
+body.fold-controls-never .milkdown .editor .heading-fold-toggle,
+body.fold-controls-never .heading-sticky-toggle {
+    display: none;
 }
 
 /* Resting gutter markers (`markdownWysiwyg.gutterMarkers`). The baseline —

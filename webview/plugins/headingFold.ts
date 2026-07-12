@@ -1,6 +1,14 @@
 import type { EditorView } from "@milkdown/prose/view";
 import { Decoration, DecorationSet } from "@milkdown/prose/view";
-import { Plugin, PluginKey, TextSelection, type EditorState } from "@milkdown/prose/state";
+import { keymap } from "@milkdown/prose/keymap";
+import {
+    Plugin,
+    Selection,
+    TextSelection,
+    type Command,
+    type EditorState,
+    type Transaction,
+} from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 import {
     IconAlertCircle,
@@ -20,50 +28,39 @@ import {
     IconTerminal,
 } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
+import { createFoldEllipsis } from "../ui/foldEllipsis";
+import { foldingEnabled } from "../utils/foldingControls";
+import { slugify } from "../utils/slug";
+import { getWebviewState, setWebviewState } from "../messaging";
 import { t } from "../i18n";
 // Runtime-only cycle (blockMenu imports this module's pure helpers back);
 // both sides touch the other only inside event handlers / decoration passes,
 // matching the slashMenu plugin ↔ component precedent.
 import { closeBlockMenu, openBlockMenu } from "../components/blockMenu";
-import { isTaskListNode, isTextBearingParagraph } from "../components/blockMenu/turnInto";
+import { isTextBearingParagraph } from "../blockCapabilities";
 import { selectionCoverRange, wireMarkerDrag } from "../components/blockMenu/drag";
 import { hideRangeVeil, showRangeVeil } from "../components/blockMenu/rangeIndicator";
 import { wireMarquee } from "../components/blockMenu/marquee";
 
-export type HeadingFoldMeta =
-    | { type: "toggle"; pos: number }
-    /**
-     * A block move (menu Move rows / drag-drop): content in [from, to) was
-     * deleted and re-inserted with its start at `insertAt` (a FINAL-doc
-     * position). Position mapping alone can't follow relocated content —
-     * without this meta a collapsed heading's fold entry would land on
-     * whatever block filled the old gap, collapsing the wrong section.
-     */
-    | { type: "move"; from: number; to: number; insertAt: number }
-    /**
-     * A block deletion (menu Delete): fold entries inside [from, to) die with
-     * their heading instead of being position-mapped onto whatever heading
-     * fills the gap. (Mapping flags can't express this: a deletion STARTING
-     * at the heading maps its entry cleanly onto the next block.)
-     */
-    | { type: "delete"; from: number; to: number };
+// The key, state shape, and meta vocabulary live in ./foldState (a
+// dependency-light module NodeViews can import without cycling through the
+// menu component graph); re-exported here as the historical import surface.
+import {
+    foldPluginKey,
+    type FoldMeta,
+    type FoldPluginState,
+} from "./foldState";
+
+export {
+    foldPluginKey,
+    headingFoldPluginKey,
+    type FoldMeta,
+    type FoldPluginState,
+    type HeadingFoldMeta,
+    type HeadingFoldState,
+} from "./foldState";
+
 type HeadingFoldRange = { from: number; to: number };
-
-/**
- * Plugin state: the folded heading positions PLUS the cached decoration set
- * and the structural fingerprint it was built for. Caching here (instead of
- * rebuilding in props.decorations on every state read) is what keeps typing
- * O(1)-ish: selection-only transactions return the identical state object,
- * and structure-preserving edits merely position-map the existing set — no
- * widget DOM is recreated.
- */
-export interface HeadingFoldState {
-    readonly folded: ReadonlySet<number>;
-    readonly decorations: DecorationSet;
-    readonly fingerprint: string;
-}
-
-export const headingFoldPluginKey = new PluginKey<HeadingFoldState>("heading-fold");
 
 type ProseNodeLike = {
     type: { name: string };
@@ -73,6 +70,19 @@ type ProseNodeLike = {
 
 function isHeadingNode(node: ProseNodeLike | null | undefined): node is ProseNodeLike {
     return node?.type.name === "heading";
+}
+
+function isCalloutNode(node: { type: { name: string } } | null | undefined): boolean {
+    return node?.type.name === "callout";
+}
+
+/**
+ * A callout is foldable whenever it has a body (MAR-110 — no longer only
+ * when the source carries a `+`/`-` marker): anything beyond one empty
+ * paragraph counts.
+ */
+export function calloutHasBody(node: { childCount: number; firstChild: { childCount: number } | null }): boolean {
+    return !(node.childCount === 1 && (node.firstChild?.childCount ?? 0) === 0);
 }
 
 /** A heading NODE's level attr (the DOM-element twin lives in utils/headingUtils). */
@@ -204,7 +214,7 @@ export function findHeadingFoldRange(doc: any, headingPos: number, headingLevel?
  * would re-walk the doc for each collapsed heading.
  */
 export function foldedSectionEnds(state: EditorState): ReadonlyMap<number, number> {
-    const pluginState = headingFoldPluginKey.getState(state);
+    const pluginState = foldPluginKey.getState(state);
     if (!pluginState || pluginState.folded.size === 0) {
         return EMPTY_FOLD_MAP;
     }
@@ -226,20 +236,235 @@ export function foldedSectionEnd(state: EditorState, blockPos: number): number |
     if (!isHeadingNode(node)) {
         return null;
     }
-    if (!headingFoldPluginKey.getState(state)?.folded.has(blockPos)) {
+    if (!foldPluginKey.getState(state)?.folded.has(blockPos)) {
         return null;
     }
     return findHeadingFoldRange(state.doc, blockPos)?.to ?? null;
 }
 
-function cleanFoldedHeadingPositions(doc: any, folded: Iterable<number>): Set<number> {
+/**
+ * The content range a fold at `pos` HIDES when collapsed, or null when the
+ * block isn't foldable. The two kinds differ in where the hidden content
+ * lives: a heading hides its following section (blocks OUTSIDE the node),
+ * a callout hides its own body (blocks INSIDE the node). Everything that
+ * needs to reason about invisible content — drop guards, reveal-on-navigate,
+ * the caret skip-over — derives from this one map.
+ */
+export function foldHiddenRange(doc: any, pos: number): HeadingFoldRange | null {
+    const node = doc.nodeAt(pos);
+    if (isHeadingNode(node)) {
+        // Only top-level headings own sections; the ranges map is keyed by
+        // top-level offsets, so a nested heading simply misses.
+        return cachedFoldRanges(doc).get(pos) ?? null;
+    }
+    if (isCalloutNode(node) && calloutHasBody(node)) {
+        return { from: pos + 1, to: pos + node.nodeSize - 1 };
+    }
+    return null;
+}
+
+/** Every currently-hidden range (both kinds), with its owning fold position. */
+export function foldedHiddenRanges(
+    state: EditorState,
+): { pos: number; from: number; to: number }[] {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState || pluginState.folded.size === 0) {
+        return [];
+    }
+    const out: { pos: number; from: number; to: number }[] = [];
+    for (const pos of pluginState.folded) {
+        const range = foldHiddenRange(state.doc, pos);
+        if (range) {
+            out.push({ pos, from: range.from, to: range.to });
+        }
+    }
+    return out;
+}
+
+/**
+ * An explicit ENTRY intent into hidden content (Find match navigation, TOC
+ * click, goto-symbol): unfold every fold whose hidden range contains `pos`
+ * and leave them unfolded — VS Code's reveal semantics. No-op when the
+ * target is already visible.
+ */
+export function revealPosition(view: EditorView, pos: number): void {
+    const containing = foldedHiddenRanges(view.state).filter(
+        (r) => pos >= r.from && pos < r.to,
+    );
+    if (containing.length === 0) {
+        return;
+    }
+    view.dispatch(
+        view.state.tr
+            .setMeta(foldPluginKey, {
+                type: "setMany",
+                positions: containing.map((r) => r.pos),
+                folded: false,
+            } satisfies FoldMeta)
+            .setMeta("addToHistory", false),
+    );
+}
+
+/** Whether `pos` holds a block the fold plugin may keep an entry for. */
+function isFoldEntryAt(doc: any, pos: number): boolean {
+    const node = doc.nodeAt(pos);
+    return isHeadingNode(node) || isCalloutNode(node);
+}
+
+function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<number> {
     const next = new Set<number>();
     for (const pos of folded) {
-        if (isHeadingNode(doc.nodeAt(pos))) {
+        if (isFoldEntryAt(doc, pos)) {
             next.add(pos);
         }
     }
     return next;
+}
+
+/** Every foldable position in the doc: top-level heading sections plus
+ * callouts (at any depth) with a body. Drives Fold All. */
+export function allFoldablePositions(doc: any): number[] {
+    const positions: number[] = [];
+    for (const [pos, range] of cachedFoldRanges(doc)) {
+        if (range) {
+            positions.push(pos);
+        }
+    }
+    doc.descendants((node: any, pos: number) => {
+        if (isCalloutNode(node) && calloutHasBody(node)) {
+            positions.push(pos);
+        }
+        return true;
+    });
+    return positions;
+}
+
+// ─── T2 persistence (webview state bag, structural anchors) ─────────────────
+
+/**
+ * Fold state persisted as structural anchors, not positions — absolute
+ * positions rot across external edits/reverts. Headings anchor as
+ * `slug:occurrenceIndex` (the link-anchor identity scheme, shared/slug.ts);
+ * callouts as a root-relative child-index path (`"2"`, `"1/0"`). On restore,
+ * anchors that no longer resolve are dropped silently (never guess).
+ */
+export interface FoldAnchors {
+    headings: string[];
+    callouts: string[];
+}
+
+const FOLD_ANCHORS_STATE_KEY = "foldAnchors";
+
+export function computeFoldAnchors(doc: any, folded: ReadonlySet<number>): FoldAnchors {
+    const headings: string[] = [];
+    const callouts: string[] = [];
+    if (folded.size === 0) {
+        return { headings, callouts };
+    }
+    const counts = new Map<string, number>();
+    doc.forEach((node: any, offset: number) => {
+        if (!isHeadingNode(node)) {
+            return;
+        }
+        const slug = slugify((node as { textContent?: string }).textContent ?? "");
+        const occurrence = counts.get(slug) ?? 0;
+        counts.set(slug, occurrence + 1);
+        if (folded.has(offset)) {
+            headings.push(`${slug}:${occurrence}`);
+        }
+    });
+    for (const pos of folded) {
+        if (!isCalloutNode(doc.nodeAt(pos))) {
+            continue;
+        }
+        const $pos = doc.resolve(pos);
+        const path: number[] = [];
+        for (let depth = 0; depth <= $pos.depth; depth++) {
+            path.push($pos.index(depth));
+        }
+        callouts.push(path.join("/"));
+    }
+    return { headings, callouts };
+}
+
+export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> {
+    const folded = new Set<number>();
+    const wanted = new Set(anchors.headings);
+    if (wanted.size > 0) {
+        const ranges = cachedFoldRanges(doc);
+        const counts = new Map<string, number>();
+        doc.forEach((node: any, offset: number) => {
+            if (!isHeadingNode(node)) {
+                return;
+            }
+            const slug = slugify((node as { textContent?: string }).textContent ?? "");
+            const occurrence = counts.get(slug) ?? 0;
+            counts.set(slug, occurrence + 1);
+            if (wanted.has(`${slug}:${occurrence}`) && ranges.get(offset)) {
+                folded.add(offset);
+            }
+        });
+    }
+    for (const encoded of anchors.callouts) {
+        const path = encoded.split("/").map(Number);
+        if (path.length === 0 || path.some((i) => !Number.isInteger(i) || i < 0)) {
+            continue;
+        }
+        let node: any = doc;
+        let pos = 0;
+        let resolved = true;
+        for (let depth = 0; depth < path.length; depth++) {
+            const index = path[depth]!;
+            if (index >= node.childCount) {
+                resolved = false;
+                break;
+            }
+            let childPos = depth === 0 ? 0 : pos + 1;
+            for (let sibling = 0; sibling < index; sibling++) {
+                childPos += node.child(sibling).nodeSize;
+            }
+            pos = childPos;
+            node = node.child(index);
+        }
+        if (resolved && isCalloutNode(node) && calloutHasBody(node)) {
+            folded.add(pos);
+        }
+    }
+    return folded;
+}
+
+function readPersistedFoldAnchors(): FoldAnchors | null {
+    const raw = getWebviewState()?.[FOLD_ANCHORS_STATE_KEY];
+    if (!raw || typeof raw !== "object") {
+        return null;
+    }
+    const partial = raw as Partial<FoldAnchors>;
+    const strings = (value: unknown): string[] =>
+        Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+    return { headings: strings(partial.headings), callouts: strings(partial.callouts) };
+}
+
+function persistFoldAnchors(state: EditorState): void {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState) {
+        return;
+    }
+    setWebviewState({
+        ...(getWebviewState() ?? {}),
+        [FOLD_ANCHORS_STATE_KEY]: computeFoldAnchors(state.doc, pluginState.folded),
+    });
+}
+
+/** T1 default state from syntax: `[!kind]-` callouts start collapsed. */
+function seedSyntaxFolds(doc: any): Set<number> {
+    const folded = new Set<number>();
+    doc.descendants((node: any, pos: number) => {
+        if (isCalloutNode(node) && node.attrs?.["fold"] === "-" && calloutHasBody(node)) {
+            folded.add(pos);
+        }
+        return true;
+    });
+    return folded;
 }
 
 /**
@@ -321,6 +546,73 @@ function createMarkerButton(
     return marker;
 }
 
+/**
+ * The one fold-chevron protocol, shared by heading gutters and callout
+ * gutters (MAR-110): derive the block position at interaction time, dispatch
+ * the shared toggle meta with zero steps and no history entry, and eject a
+ * selection that would otherwise end up inside the newly hidden range.
+ */
+function createFoldToggle(view: EditorView, gutter: HTMLElement, collapsed: boolean): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "heading-fold-toggle";
+    button.innerHTML = collapsed ? IconChevronRight : IconChevronDown;
+    const tipText = collapsed ? t("Expand content") : t("Collapse content");
+    button.setAttribute("aria-label", tipText);
+    button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    applyTooltip(button, tipText, { placement: "above" });
+
+    button.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    });
+    // Same contentEditable leak as the markers: Enter/Space on the focused
+    // chevron must toggle the fold, not type into the document.
+    button.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.stopPropagation();
+            button.click();
+        }
+    });
+    button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const blockPos = gutterBlockPos(view, gutter);
+        const node = blockPos === null ? null : view.state.doc.nodeAt(blockPos);
+        if (blockPos === null || !(isHeadingNode(node) || isCalloutNode(node))) {
+            return;
+        }
+
+        const tr = view.state.tr
+            .setMeta(foldPluginKey, { type: "toggle", pos: blockPos } satisfies FoldMeta)
+            .setMeta("addToHistory", false);
+
+        if (!collapsed) {
+            const range = foldHiddenRange(view.state.doc, blockPos);
+            if (
+                range &&
+                view.state.selection.from < range.to &&
+                view.state.selection.to > range.from
+            ) {
+                // A heading keeps a visible caret home on its own line; a
+                // collapsed callout has none, so the caret lands just before.
+                tr.setSelection(
+                    isHeadingNode(node)
+                        ? TextSelection.near(tr.doc.resolve(Math.min(blockPos + 1, tr.doc.content.size)))
+                        : Selection.near(tr.doc.resolve(blockPos), -1),
+                );
+            }
+        }
+
+        view.dispatch(tr);
+        view.focus();
+        hideTooltip();
+    });
+    return button;
+}
+
 function createHeadingFoldGutter(
     view: EditorView,
     level: number,
@@ -352,61 +644,15 @@ function createHeadingFoldGutter(
         return gutter;
     }
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "heading-fold-toggle";
-    button.innerHTML = collapsed ? IconChevronRight : IconChevronDown;
-    const tipText = collapsed ? t("Expand content") : t("Collapse content");
-    button.setAttribute("aria-label", tipText);
-    button.setAttribute("aria-expanded", collapsed ? "false" : "true");
-    applyTooltip(button, tipText, { placement: "above" });
-
-    button.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-    });
-    // Same contentEditable leak as the markers: Enter/Space on the focused
-    // chevron must toggle the fold, not type into the document.
-    button.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            event.stopPropagation();
-            button.click();
-        }
-    });
-    button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const headingPos = gutterBlockPos(view, gutter);
-        const node = headingPos === null ? null : view.state.doc.nodeAt(headingPos);
-        if (headingPos === null || !isHeadingNode(node)) {
-            return;
-        }
-
-        const tr = view.state.tr
-            .setMeta(headingFoldPluginKey, { type: "toggle", pos: headingPos } satisfies HeadingFoldMeta)
-            .setMeta("addToHistory", false);
-
-        if (!collapsed) {
-            const range = findHeadingFoldRange(view.state.doc, headingPos, getHeadingLevel(node));
-            if (
-                range &&
-                view.state.selection.from < range.to &&
-                view.state.selection.to > range.from
-            ) {
-                tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(headingPos + 1, tr.doc.content.size))));
-            }
-        }
-
-        view.dispatch(tr);
-        view.focus();
-        hideTooltip();
-    });
-
-    gutter.appendChild(button);
+    gutter.appendChild(createFoldToggle(view, gutter, collapsed));
     gutter.appendChild(marker);
     return gutter;
+}
+
+/** Chevron state for a foldable non-heading block's gutter (callouts). */
+interface GutterFoldInfo {
+    foldable: boolean;
+    collapsed: boolean;
 }
 
 /**
@@ -414,11 +660,17 @@ function createHeadingFoldGutter(
  * (pilcrow, list flavor, quote, code, image, …), invisible until its block
  * is hovered (CSS), opening the block menu at full contrast when interacted
  * with — so every top-level block's conversions and actions are as reachable
- * as a heading's. No fold chevron: only headings own sections.
+ * as a heading's. Foldable blocks (callouts with a body) get the same fold
+ * chevron headings carry, left of the marker (MAR-110).
  */
-function createBlockGutter(view: EditorView, spec: MarkerSpec, nestedDepth?: number): HTMLElement {
+function createBlockGutter(
+    view: EditorView,
+    spec: MarkerSpec,
+    nestedDepth?: number,
+    fold?: GutterFoldInfo,
+): HTMLElement {
     const gutter = document.createElement("span");
-    gutter.className = "heading-fold-gutter heading-fold-gutter--block";
+    gutter.className = `heading-fold-gutter heading-fold-gutter--block${fold?.foldable ? " heading-fold-gutter--foldable" : ""}`;
     gutter.contentEditable = "false";
     if (nestedDepth !== undefined) {
         // Container children: the CSS positions the marker clear of every
@@ -450,6 +702,9 @@ function createBlockGutter(view: EditorView, spec: MarkerSpec, nestedDepth?: num
         },
     );
 
+    if (fold?.foldable) {
+        gutter.appendChild(createFoldToggle(view, gutter, fold.collapsed));
+    }
     gutter.appendChild(marker);
     return gutter;
 }
@@ -569,6 +824,7 @@ function emitContainerChildGutters(
     containerPos: number,
     decorations: Decoration[] | null,
     parts: string[] | null,
+    foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
     depth = 1,
 ): void {
     container.forEach((child: any, offset: number) => {
@@ -580,29 +836,52 @@ function emitContainerChildGutters(
         }
         const spec = nestedChildSpec(child);
         if (spec !== null) {
+            const fold = calloutFoldInfo(child, childPos, foldCtx);
+            const foldKey = foldKeyPart(fold);
             // Depth is part of the identity: it drives the marker's gutter
             // column (--nested-gutter-depth), so a block that re-nests must
             // re-render its widget, not reuse the old one.
-            parts?.push(`c${depth}${spec.key}`);
+            parts?.push(`c${depth}${spec.key}${foldKey}`);
             decorations?.push(
                 Decoration.node(childPos, childPos + child.nodeSize, {
-                    class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}`,
+                    class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}${fold?.collapsed ? " collapsed" : ""}`,
                 }),
             );
             decorations?.push(
                 Decoration.widget(
                     childPos + 1,
-                    (view: EditorView) => createBlockGutter(view, spec, depth),
-                    { key: `g:${spec.key}:n${depth}`, side: -1 },
+                    (view: EditorView) => createBlockGutter(view, spec, depth, fold ?? undefined),
+                    { key: `g:${spec.key}:n${depth}${foldKey}`, side: -1 },
                 ),
             );
         } else {
             parts?.push("·");
         }
         if (isContainerNode(child)) {
-            emitContainerChildGutters(child, childPos, decorations, parts, depth + 1);
+            emitContainerChildGutters(child, childPos, decorations, parts, foldCtx, depth + 1);
         }
     });
+}
+
+/** Fold info for a callout block's gutter, or null for everything else
+ * (and for everything while `editor.folding` is off — zero fold chrome). */
+function calloutFoldInfo(
+    node: any,
+    pos: number,
+    foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
+): GutterFoldInfo | null {
+    if (!foldCtx.enabled || !isCalloutNode(node)) {
+        return null;
+    }
+    return { foldable: calloutHasBody(node), collapsed: foldCtx.folded.has(pos) };
+}
+
+/** The widget-key / fingerprint suffix a fold state contributes. */
+function foldKeyPart(fold: GutterFoldInfo | null): string {
+    if (!fold) {
+        return "";
+    }
+    return `${fold.collapsed ? "c" : "o"}${fold.foldable ? "f" : "l"}`;
 }
 
 /** The marker for ONE list item: the icon of its list flavor (matching the
@@ -667,30 +946,67 @@ function structureFingerprint(
     doc: any,
     folded: ReadonlySet<number>,
     ranges: Map<number, HeadingFoldRange | null>,
+    enabled: boolean,
 ): string {
-    const parts: string[] = [];
+    const foldCtx = { folded, enabled };
+    const parts: string[] = [enabled ? "E" : "D"];
     doc.forEach((node: any, offset: number) => {
         if (isHeadingNode(node)) {
-            const collapsed = folded.has(offset);
-            const foldable = Boolean(ranges.get(offset));
+            const collapsed = enabled && folded.has(offset);
+            const foldable = enabled && Boolean(ranges.get(offset));
             parts.push(`h${getHeadingLevel(node)}${collapsed ? "c" : ""}${foldable ? "f" : ""}`);
         } else if (isListNode(node)) {
             parts.push("L");
             emitItemGutters(node, offset, null, parts);
         } else {
-            parts.push(blockMarkerSpec(node)?.key ?? "·");
+            const fold = calloutFoldInfo(node, offset, foldCtx);
+            parts.push(`${blockMarkerSpec(node)?.key ?? "·"}${foldKeyPart(fold)}`);
             if (isContainerNode(node)) {
-                emitContainerChildGutters(node, offset, null, parts);
+                emitContainerChildGutters(node, offset, null, parts, foldCtx);
             }
         }
     });
     return parts.join("|");
 }
 
-function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): DecorationSet {
+/** The heading's collapsed `…` widget (mirrors `editor.unfoldOnClickAfterEndOfLine`):
+ * expand is a `set` meta targeting the heading derived at CLICK time. */
+function createHeadingEllipsis(view: EditorView, hiddenCount: number): HTMLElement {
+    const ellipsis = createFoldEllipsis(hiddenCount, () => {
+        if (!ellipsis.dom.isConnected) {
+            return;
+        }
+        try {
+            const $pos = view.state.doc.resolve(view.posAtDOM(ellipsis.dom, 0));
+            if ($pos.depth < 1 || !isHeadingNode($pos.node(1))) {
+                return;
+            }
+            view.dispatch(
+                view.state.tr
+                    .setMeta(foldPluginKey, {
+                        type: "set",
+                        pos: $pos.before(1),
+                        folded: false,
+                    } satisfies FoldMeta)
+                    .setMeta("addToHistory", false),
+            );
+            view.focus();
+        } catch {
+            /* widget no longer resolvable — nothing to expand */
+        }
+    });
+    return ellipsis.dom;
+}
+
+function buildHeadingFoldDecorations(
+    doc: any,
+    folded: ReadonlySet<number>,
+    enabled: boolean,
+): DecorationSet {
     const decorations: Decoration[] = [];
-    const hiddenRanges: HeadingFoldRange[] = [];
+    const collapsedSections: { pos: number; node: any; range: HeadingFoldRange }[] = [];
     const ranges = computeFoldRanges(doc);
+    const foldCtx = { folded, enabled };
 
     doc.forEach((node: any, offset: number) => {
         if (!isHeadingNode(node)) {
@@ -703,31 +1019,36 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
                 return;
             }
             const spec = blockMarkerSpec(node);
+            const fold = calloutFoldInfo(node, offset, foldCtx);
             if (spec !== null) {
                 decorations.push(
                     Decoration.node(offset, offset + node.nodeSize, {
-                        class: "block-gutter-host",
+                        // "collapsed" drives the callout NodeView's hidden
+                        // body (components/callout/callout.css) — fold state
+                        // reaches the NodeView as a decoration class, never
+                        // as node state (the doc stays untouched).
+                        class: `block-gutter-host${fold?.collapsed ? " collapsed" : ""}`,
                     }),
                 );
                 decorations.push(
                     Decoration.widget(
                         offset + 1,
-                        (view: EditorView) => createBlockGutter(view, spec),
+                        (view: EditorView) => createBlockGutter(view, spec, undefined, fold ?? undefined),
                         // Stable, position-free key: same-glyph widgets reuse
                         // their DOM across rebuilds (matching is ordinal).
-                        { key: `g:${spec.key}`, side: -1 },
+                        { key: `g:${spec.key}${foldKeyPart(fold)}`, side: -1 },
                     ),
                 );
             }
             if (isContainerNode(node)) {
-                emitContainerChildGutters(node, offset, decorations, null);
+                emitContainerChildGutters(node, offset, decorations, null, foldCtx);
             }
             return;
         }
 
         const level = getHeadingLevel(node);
-        const collapsed = folded.has(offset);
-        const range = ranges.get(offset) ?? null;
+        const collapsed = enabled && folded.has(offset);
+        const range = enabled ? ranges.get(offset) ?? null : null;
         const foldable = Boolean(range);
 
         decorations.push(
@@ -748,13 +1069,23 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
         );
 
         if (collapsed && range) {
-            hiddenRanges.push(range);
+            collapsedSections.push({ pos: offset, node, range });
         }
     });
 
-    if (hiddenRanges.length > 0) {
+    if (collapsedSections.length > 0) {
+        // Hidden-block classes, plus the per-section counts the `…` tooltips
+        // report — one extra pass, only while something is collapsed.
+        const hiddenCounts = new Map<number, number>();
         doc.forEach((node: any, offset: number) => {
-            if (hiddenRanges.some((range) => offset >= range.from && offset < range.to)) {
+            let hidden = false;
+            for (const section of collapsedSections) {
+                if (offset >= section.range.from && offset < section.range.to) {
+                    hiddenCounts.set(section.pos, (hiddenCounts.get(section.pos) ?? 0) + 1);
+                    hidden = true;
+                }
+            }
+            if (hidden) {
                 decorations.push(
                     Decoration.node(offset, offset + node.nodeSize, {
                         class: "heading-fold-hidden",
@@ -762,6 +1093,16 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
                 );
             }
         });
+        for (const section of collapsedSections) {
+            const count = hiddenCounts.get(section.pos) ?? 0;
+            decorations.push(
+                Decoration.widget(
+                    section.pos + section.node.nodeSize - 1,
+                    (view: EditorView) => createHeadingEllipsis(view, count),
+                    { key: `e:${count}`, side: 1 },
+                ),
+            );
+        }
     }
 
     return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;
@@ -799,20 +1140,34 @@ function getHeadingElementAtPos(view: EditorView, pos: number): HTMLElement | nu
 }
 
 export const headingFoldPlugin = $prose(() =>
-    new Plugin<HeadingFoldState>({
-        key: headingFoldPluginKey,
+    new Plugin<FoldPluginState>({
+        key: foldPluginKey,
         state: {
             init: (_config, state) => {
-                const folded = new Set<number>();
+                // `editor.folding: false` disables the layer wholesale: no
+                // seeds, no restore, zero fold chrome in the decorations.
+                const enabled = foldingEnabled();
+                let folded: Set<number> = new Set();
+                if (enabled) {
+                    // Persisted view state wins when present (it is the full
+                    // fold state, including "user expanded a [!kind]- callout");
+                    // a first open seeds from the syntax defaults (T1).
+                    const persisted = readPersistedFoldAnchors();
+                    folded = persisted
+                        ? resolveFoldAnchors(state.doc, persisted)
+                        : seedSyntaxFolds(state.doc);
+                }
                 return {
                     folded,
-                    decorations: buildHeadingFoldDecorations(state.doc, folded),
-                    fingerprint: structureFingerprint(state.doc, folded, computeFoldRanges(state.doc)),
+                    enabled,
+                    decorations: buildHeadingFoldDecorations(state.doc, folded, enabled),
+                    fingerprint: structureFingerprint(state.doc, folded, computeFoldRanges(state.doc), enabled),
                 };
             },
             apply(tr, value, _oldState, newState) {
-                const meta = tr.getMeta(headingFoldPluginKey) as HeadingFoldMeta | undefined;
+                const meta = tr.getMeta(foldPluginKey) as FoldMeta | undefined;
                 let folded: ReadonlySet<number> = value.folded;
+                let enabled = value.enabled;
 
                 if (tr.docChanged) {
                     const move = meta?.type === "move" ? meta : null;
@@ -823,7 +1178,7 @@ export const headingFoldPlugin = $prose(() =>
                         // content to its new location.
                         if (move && pos >= move.from && pos < move.to) {
                             const relocated = move.insertAt + (pos - move.from);
-                            if (isHeadingNode(newState.doc.nodeAt(relocated))) {
+                            if (isFoldEntryAt(newState.doc, relocated)) {
                                 next.add(relocated);
                             }
                             continue;
@@ -832,33 +1187,65 @@ export const headingFoldPlugin = $prose(() =>
                         if (del && pos >= del.from && pos < del.to) {
                             continue;
                         }
-                        // Forward assoc: an entry must FOLLOW its heading when
-                        // content is inserted exactly at the heading's start
+                        // Forward assoc: an entry must FOLLOW its block when
+                        // content is inserted exactly at the block's start
                         // (duplicating the block above, dropping a section
                         // there). Backward assoc left the entry at the old
                         // offset — the newly inserted block inherited the
-                        // collapse while the real heading expanded.
+                        // collapse while the real block expanded.
                         const mapped = tr.mapping.map(pos);
-                        if (isHeadingNode(newState.doc.nodeAt(mapped))) {
+                        if (isFoldEntryAt(newState.doc, mapped)) {
                             next.add(mapped);
                         }
                     }
-                    folded = cleanFoldedHeadingPositions(newState.doc, next);
+                    folded = cleanFoldedPositions(newState.doc, next);
                 }
 
-                if (meta?.type === "toggle") {
-                    const next = new Set<number>(folded);
-                    if (next.has(meta.pos)) {
-                        next.delete(meta.pos);
-                    } else if (isHeadingNode(newState.doc.nodeAt(meta.pos))) {
-                        next.add(meta.pos);
+                switch (meta?.type) {
+                    case "toggle": {
+                        const next = new Set<number>(folded);
+                        if (next.has(meta.pos)) {
+                            next.delete(meta.pos);
+                        } else if (enabled && foldHiddenRange(newState.doc, meta.pos)) {
+                            next.add(meta.pos);
+                        }
+                        folded = next;
+                        break;
                     }
-                    folded = next;
+                    case "set":
+                    case "setMany": {
+                        const positions = meta.type === "set" ? [meta.pos] : meta.positions;
+                        const next = new Set<number>(folded);
+                        for (const pos of positions) {
+                            if (!meta.folded) {
+                                next.delete(pos);
+                            } else if (enabled && foldHiddenRange(newState.doc, pos)) {
+                                next.add(pos);
+                            }
+                        }
+                        folded = next;
+                        break;
+                    }
+                    case "foldAll":
+                        if (enabled) {
+                            folded = new Set(allFoldablePositions(newState.doc));
+                        }
+                        break;
+                    case "unfoldAll":
+                        folded = new Set();
+                        break;
+                    case "setEnabled":
+                        enabled = meta.enabled;
+                        if (!enabled) {
+                            // The layer going off expands every UI-only fold.
+                            folded = new Set();
+                        }
+                        break;
                 }
 
                 // Selection-only transaction, nothing folded/unfolded: the
                 // state is untouched — zero decoration work per caret move.
-                if (!tr.docChanged && folded === value.folded) {
+                if (!tr.docChanged && folded === value.folded && enabled === value.enabled) {
                     return value;
                 }
 
@@ -866,10 +1253,11 @@ export const headingFoldPlugin = $prose(() =>
                     newState.doc,
                     folded,
                     computeFoldRanges(newState.doc),
+                    enabled,
                 );
                 if (fingerprint === value.fingerprint) {
                     if (!tr.docChanged) {
-                        return { folded, fingerprint, decorations: value.decorations };
+                        return { folded, enabled, fingerprint, decorations: value.decorations };
                     }
                     // Structure (and therefore every rendered gutter) is
                     // unchanged — just map positions; widget DOM survives.
@@ -880,19 +1268,55 @@ export const headingFoldPlugin = $prose(() =>
                     // identical structure implies an identical count.
                     const mapped = value.decorations.map(tr.mapping, newState.doc);
                     if (mapped.find().length === value.decorations.find().length) {
-                        return { folded, fingerprint, decorations: mapped };
+                        return { folded, enabled, fingerprint, decorations: mapped };
                     }
                 }
                 return {
                     folded,
+                    enabled,
                     fingerprint,
-                    decorations: buildHeadingFoldDecorations(newState.doc, folded),
+                    decorations: buildHeadingFoldDecorations(newState.doc, folded, enabled),
                 };
             },
         },
+        /**
+         * Caret skip-over (VS Code semantics): a bare caret must never rest
+         * inside a hidden range — vertical motion, Home/End, or programmatic
+         * selection landing there is mapped just past the fold, in the
+         * direction of travel. Explicit entry intents unfold FIRST
+         * (revealPosition), so this only catches accidental entries.
+         */
+        appendTransaction(_trs, oldState, newState) {
+            const pluginState = foldPluginKey.getState(newState);
+            if (!pluginState?.enabled || pluginState.folded.size === 0) {
+                return null;
+            }
+            const sel = newState.selection;
+            if (!sel.empty) {
+                return null;
+            }
+            const pos = sel.from;
+            const containing = foldedHiddenRanges(newState).filter(
+                (r) => pos >= r.from && pos < r.to,
+            );
+            if (containing.length === 0) {
+                return null;
+            }
+            const from = Math.min(...containing.map((r) => r.from));
+            const to = Math.max(...containing.map((r) => r.to));
+            const forward = pos >= oldState.selection.from;
+            const target =
+                forward && to < newState.doc.content.size
+                    ? Selection.near(newState.doc.resolve(to), 1)
+                    : Selection.near(newState.doc.resolve(from), -1);
+            if (target.eq(sel)) {
+                return null;
+            }
+            return newState.tr.setSelection(target).setMeta("addToHistory", false);
+        },
         props: {
             decorations(state) {
-                return headingFoldPluginKey.getState(state)?.decorations ?? DecorationSet.empty;
+                return foldPluginKey.getState(state)?.decorations ?? DecorationSet.empty;
             },
         },
         view(view) {
@@ -1008,6 +1432,20 @@ export const headingFoldPlugin = $prose(() =>
                     if (updatedView.state.doc !== prevState.doc) {
                         closeBlockMenu();
                     }
+                    // T2 persistence: write structural anchors into the
+                    // webview state bag whenever the fold set changes (or a
+                    // doc edit shifts what existing anchors point at) — the
+                    // same bag as scrollY/fmCollapsed, so folds survive the
+                    // tab-hide webview teardown.
+                    const foldState = foldPluginKey.getState(updatedView.state);
+                    const prevFoldState = foldPluginKey.getState(prevState);
+                    if (
+                        foldState && prevFoldState && foldState.enabled &&
+                        (foldState.folded !== prevFoldState.folded ||
+                            (updatedView.state.doc !== prevState.doc && foldState.folded.size > 0))
+                    ) {
+                        persistFoldAnchors(updatedView.state);
+                    }
                     syncSelectionCover();
                     if (hoveredGutter && !view.dom.contains(hoveredGutter)) {
                         hoveredGutter = null;
@@ -1028,5 +1466,193 @@ export const headingFoldPlugin = $prose(() =>
                 },
             };
         },
+    }),
+);
+
+// ─── Fold commands (MAR-110: markdownWysiwyg.editor.fold/unfold/…) ──────────
+
+/** Every foldable containing `pos` (heading line or section; callout node),
+ * innermost first. */
+function foldablesContaining(state: EditorState, pos: number): number[] {
+    const candidates: number[] = [];
+    for (const [candidate, range] of cachedFoldRanges(state.doc)) {
+        if (range && pos >= candidate && pos < range.to) {
+            candidates.push(candidate);
+        }
+    }
+    const $pos = state.doc.resolve(Math.min(pos, state.doc.content.size));
+    for (let depth = 1; depth <= $pos.depth; depth++) {
+        const node = $pos.node(depth);
+        if (isCalloutNode(node) && calloutHasBody(node)) {
+            candidates.push($pos.before(depth));
+        }
+    }
+    return candidates.sort((a, b) => b - a);
+}
+
+/** Dispatch a single idempotent fold/unfold with the shared invariants:
+ * zero steps, no history entry, selection ejected out of hidden content. */
+function dispatchFold(
+    state: EditorState,
+    dispatch: (tr: Transaction) => void,
+    pos: number,
+    folded: boolean,
+): void {
+    const tr = state.tr
+        .setMeta(foldPluginKey, { type: "set", pos, folded } satisfies FoldMeta)
+        .setMeta("addToHistory", false);
+    if (folded) {
+        const range = foldHiddenRange(state.doc, pos);
+        if (range && state.selection.from < range.to && state.selection.to > range.from) {
+            tr.setSelection(
+                isHeadingNode(state.doc.nodeAt(pos))
+                    ? TextSelection.near(tr.doc.resolve(Math.min(pos + 1, tr.doc.content.size)))
+                    : Selection.near(tr.doc.resolve(pos), -1),
+            );
+        }
+    }
+    dispatch(tr);
+}
+
+/**
+ * Fold the innermost foldable containing the caret; when it is already
+ * folded, bubble to the nearest still-open foldable ancestor (VS Code's
+ * fold-at-cursor semantics).
+ */
+export const foldAtCaret: Command = (state, dispatch) => {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState?.enabled) {
+        return false;
+    }
+    for (const pos of foldablesContaining(state, state.selection.from)) {
+        if (!pluginState.folded.has(pos)) {
+            if (dispatch) {
+                dispatchFold(state, dispatch, pos, true);
+            }
+            return true;
+        }
+    }
+    return false;
+};
+
+/** Unfold the innermost folded foldable at the caret. */
+export const unfoldAtCaret: Command = (state, dispatch) => {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState?.enabled) {
+        return false;
+    }
+    for (const pos of foldablesContaining(state, state.selection.from)) {
+        if (pluginState.folded.has(pos)) {
+            if (dispatch) {
+                dispatchFold(state, dispatch, pos, false);
+            }
+            return true;
+        }
+    }
+    return false;
+};
+
+export const foldAllCommand: Command = (state, dispatch) => {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState?.enabled) {
+        return false;
+    }
+    if (allFoldablePositions(state.doc).length === 0) {
+        return false;
+    }
+    if (dispatch) {
+        dispatch(
+            state.tr
+                .setMeta(foldPluginKey, { type: "foldAll" } satisfies FoldMeta)
+                .setMeta("addToHistory", false),
+        );
+    }
+    return true;
+};
+
+export const unfoldAllCommand: Command = (state, dispatch) => {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState?.enabled || pluginState.folded.size === 0) {
+        return false;
+    }
+    if (dispatch) {
+        dispatch(
+            state.tr
+                .setMeta(foldPluginKey, { type: "unfoldAll" } satisfies FoldMeta)
+                .setMeta("addToHistory", false),
+        );
+    }
+    return true;
+};
+
+// ─── Backspace/Delete at a fold boundary: reveal, never edit hidden content ─
+
+/** Backspace at the start of a top-level textblock whose previous visible
+ * neighbor is a collapsed fold: expand it instead of deleting into it. */
+export const revealOnBackspace: Command = (state, dispatch) => {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState?.enabled || pluginState.folded.size === 0) {
+        return false;
+    }
+    const sel = state.selection;
+    const $from = sel.$from;
+    if (!sel.empty || $from.depth !== 1 || $from.parentOffset !== 0) {
+        return false;
+    }
+    const blockStart = $from.before(1);
+    // A collapsed heading's hidden section ending exactly here…
+    const section = foldedHiddenRanges(state).find((r) => r.to === blockStart);
+    if (section) {
+        if (dispatch) {
+            dispatchFold(state, dispatch, section.pos, false);
+        }
+        return true;
+    }
+    // …or a collapsed callout immediately before (its body is the hidden part).
+    const before = state.doc.resolve(blockStart).nodeBefore;
+    if (before && isCalloutNode(before) && pluginState.folded.has(blockStart - before.nodeSize)) {
+        if (dispatch) {
+            dispatchFold(state, dispatch, blockStart - before.nodeSize, false);
+        }
+        return true;
+    }
+    return false;
+};
+
+/** Delete at the end of a collapsed heading line (forward-deleting into its
+ * hidden section) or just before a collapsed callout: expand instead. */
+export const revealOnDelete: Command = (state, dispatch) => {
+    const pluginState = foldPluginKey.getState(state);
+    if (!pluginState?.enabled || pluginState.folded.size === 0) {
+        return false;
+    }
+    const sel = state.selection;
+    const $from = sel.$from;
+    if (!sel.empty || $from.depth !== 1 || $from.parentOffset !== $from.parent.content.size) {
+        return false;
+    }
+    const blockStart = $from.before(1);
+    if (pluginState.folded.has(blockStart) && isHeadingNode(state.doc.nodeAt(blockStart))) {
+        if (dispatch) {
+            dispatchFold(state, dispatch, blockStart, false);
+        }
+        return true;
+    }
+    const blockEnd = $from.after(1);
+    const after = state.doc.resolve(blockEnd).nodeAfter;
+    if (after && isCalloutNode(after) && pluginState.folded.has(blockEnd)) {
+        if (dispatch) {
+            dispatchFold(state, dispatch, blockEnd, false);
+        }
+        return true;
+    }
+    return false;
+};
+
+/** Typing-level fold-boundary guards (plain keys — not rebindable chords). */
+export const foldRevealKeymapPlugin = $prose(() =>
+    keymap({
+        "Backspace": revealOnBackspace,
+        "Delete": revealOnDelete,
     }),
 );

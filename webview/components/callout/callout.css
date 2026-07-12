@@ -93,28 +93,16 @@
         }
     }
 
-    .callout-fold {
+    /* Collapsed `…` (MAR-110): the shared fold-ellipsis component mounted in
+       the title bar, shown only while the fold plugin's decoration marks the
+       callout collapsed. The base .fold-ellipsis look lives in style.css;
+       the extra .callout-title level outranks it for the display toggle. */
+    .callout-title .callout-fold-ellipsis {
+        display: none;
+    }
+
+    &.collapsed .callout-title .callout-fold-ellipsis {
         display: inline-flex;
-        border: none;
-        background: none;
-        padding: 4px;
-        margin-left: auto;
-        /* Hug the right edge: the title bar's 0.9em side padding left the
-           small button floating too far inboard. */
-        margin-right: -6px;
-        color: inherit;
-        cursor: pointer;
-        border-radius: 3px;
-        transition: transform 0.15s ease;
-
-        svg {
-            width: 16px;
-            height: 16px;
-        }
-
-        &:hover {
-            background: color-mix(in srgb, var(--callout-accent) 15%, transparent);
-        }
     }
 
     .callout-body {
@@ -148,10 +136,6 @@
             .heading-fold-gutter--block {
                 visibility: visible;
             }
-        }
-
-        .callout-fold {
-            transform: rotate(-90deg);
         }
     }
 

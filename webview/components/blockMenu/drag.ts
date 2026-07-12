@@ -22,7 +22,7 @@ import type { EditorState } from "@milkdown/prose/state";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
 import { BlockRangeSelection } from "../../plugins/blockRange";
-import { foldedSectionEnds, isContainerNode, isListNode } from "../../plugins/headingFold";
+import { foldedHiddenRanges, foldedSectionEnds, isContainerNode, isListNode } from "../../plugins/headingFold";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
@@ -232,18 +232,14 @@ export function scrollVelocityFor(clientY: number): number {
 export function visibleBoundaryPositions(
     state: EditorState,
 ): { pos: number; kind: "block" | "item"; ownerPos?: number }[] {
-    const hidden: [number, number][] = [];
-    for (const [headingPos, end] of foldedSectionEnds(state)) {
-        const heading = state.doc.nodeAt(headingPos);
-        if (heading) {
-            hidden.push([headingPos + heading.nodeSize, end]);
-        }
-    }
+    // One fold-range map for every fold kind (MAR-110): heading sections
+    // AND collapsed callout bodies — a drop must never land in either.
+    const hidden = foldedHiddenRanges(state);
     const positions = blockBoundaryPositions(state.doc);
     if (hidden.length === 0) {
         return positions;
     }
-    return positions.filter(({ pos }) => !hidden.some(([from, to]) => pos >= from && pos < to));
+    return positions.filter(({ pos }) => !hidden.some((r) => pos >= r.from && pos < r.to));
 }
 
 /** True when `el` sits inside a collapsed callout's hidden body. Callout

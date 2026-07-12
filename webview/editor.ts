@@ -39,6 +39,7 @@ import {
     codeBlockSelectAllPlugin,
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,
+    foldRevealKeymapPlugin,
     formatKeymapPlugin,
     headingAbsoluteInputRule,
     headingEmptyDeletePlugin,
@@ -375,6 +376,9 @@ export async function createEditor(
         .use(selectionPlugin)
         .use(pendingRangePlugin)
         .use(headingFoldPlugin)
+        // Fold-boundary reveals (Backspace/Delete at a fold edge expand
+        // instead of editing hidden content) — before the base keymap.
+        .use(foldRevealKeymapPlugin)
         .use(headingStickyPlugin)
         .use(caretScrollMarginPlugin)
         .use(formatKeymapPlugin)

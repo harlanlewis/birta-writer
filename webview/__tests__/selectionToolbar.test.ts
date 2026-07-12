@@ -1,9 +1,17 @@
 /**
- * Selection toolbar link button tests: the floating selection toolbar renders
- * a link button after the inline-code button, its mousedown invokes the
- * openLinkPrompt callback (the same prompt behind the main toolbar button and
- * Cmd/Ctrl+K) without destroying the editor selection, and the button is
- * hidden in table cell-selection mode.
+ * Selection toolbar tests.
+ *
+ * Link button: the floating selection toolbar renders a link button after the
+ * inline-code button, its mousedown invokes the openLinkPrompt callback (the
+ * same prompt behind the main toolbar button and Cmd/Ctrl+K) without
+ * destroying the editor selection, and the button is hidden in table
+ * cell-selection mode.
+ *
+ * Format menu: the P/H1–H6 picks must route through the shared editor-command
+ * registry so they behave exactly like the main toolbar — in particular a
+ * heading pick inside a list item lifts the line out of the list instead of
+ * silently no-oping (MAR-111).
+ *
  * acquireVsCodeApi is injected globally by setup.ts.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -14,9 +22,10 @@ import {
     editorViewCtx,
 } from "@milkdown/core";
 import { gfm } from "@milkdown/preset-gfm";
-import { TextSelection } from "@milkdown/prose/state";
+import { Selection, TextSelection } from "@milkdown/prose/state";
 import { CellSelection } from "@milkdown/prose/tables";
 import type { EditorView } from "@milkdown/prose/view";
+import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import {
     setupSelectionToolbar,
@@ -67,6 +76,27 @@ function mousedown(el: Element): MouseEvent {
     el.dispatchEvent(e);
     return e;
 }
+
+/** Find the format-menu item carrying the given short label (P, H1…H6). */
+function fmtItem(label: string): HTMLElement {
+    const item = Array.from(
+        document.querySelectorAll<HTMLElement>(".sel-tb-fmt-item"),
+    ).find((el) => el.textContent === label);
+    expect(item, `format menu item ${label}`).toBeTruthy();
+    return item!;
+}
+
+/** Put the caret just inside the first text node whose content equals `text`. */
+function caretInText(v: EditorView, text: string): void {
+    let pos = -1;
+    v.state.doc.descendants((n, p) => {
+        if (pos < 0 && n.isText && n.text === text) { pos = p; }
+    });
+    if (pos < 0) { throw new Error(`text not found: ${text}`); }
+    v.dispatch(v.state.tr.setSelection(Selection.near(v.state.doc.resolve(pos + 1))));
+}
+
+const md = (editor: Editor): string => editor.action(getMarkdown()).trim();
 
 describe("selection toolbar link button", () => {
     let editor: Editor | null = null;
@@ -246,5 +276,96 @@ describe("selection toolbar link button", () => {
         );
         expect(boldBtn).not.toBeNull();
         expect(boldBtn!.style.display).not.toBe("none");
+    });
+});
+
+describe("selection toolbar format menu", () => {
+    let editor: Editor | null = null;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+    });
+
+    afterEach(async () => {
+        if (editor) {
+            await editor.destroy();
+            editor = null;
+        }
+    });
+
+    it("picking H1 with the caret inside a list item should lift the line out and make it a heading (MAR-111)", async () => {
+        // Arrange — caret on the middle item of a bullet list
+        editor = await makeEditor("- one\n- two\n- three");
+        const v = view(editor);
+        setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+        );
+        caretInText(v, "two");
+
+        // Act — click the H1 entry of the format dropdown
+        mousedown(fmtItem("H1"));
+
+        // Assert — same result as the main toolbar's Heading 1: the line is
+        // promoted out of the list, splitting it (not a silent no-op)
+        expect(md(editor)).toBe("- one\n\n# two\n\n- three");
+    });
+
+    it("picking H3 with the caret inside a nested list item should promote it to a top-level heading", async () => {
+        // Arrange
+        editor = await makeEditor("- a\n  - b\n  - c");
+        const v = view(editor);
+        setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+        );
+        caretInText(v, "b");
+
+        // Act
+        mousedown(fmtItem("H3"));
+
+        // Assert — lifted out of both list levels
+        const out = md(editor);
+        expect(out).toContain("### b");
+        expect(out).not.toContain("- ### b");
+    });
+
+    it("picking H2 on a plain paragraph should apply the heading", async () => {
+        // Arrange
+        editor = await makeEditor("plain paragraph");
+        const v = view(editor);
+        setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+        );
+        caretInText(v, "plain paragraph");
+
+        // Act
+        mousedown(fmtItem("H2"));
+
+        // Assert
+        expect(md(editor)).toBe("## plain paragraph");
+    });
+
+    it("picking P on a heading should convert it back to a paragraph", async () => {
+        // Arrange
+        editor = await makeEditor("## Heading");
+        const v = view(editor);
+        setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+        );
+        caretInText(v, "Heading");
+
+        // Act
+        mousedown(fmtItem("P"));
+
+        // Assert
+        expect(md(editor)).toBe("Heading");
     });
 });

@@ -145,6 +145,15 @@ export const EDITOR_COMMANDS = [
     { id: "shrinkSelection", title: "Shrink Selection", palette: true, sections: [] },
     { id: "insertParagraphAfter", title: "Insert Paragraph Below", palette: true, sections: [] },
     { id: "insertParagraphBefore", title: "Insert Paragraph Above", palette: true, sections: [] },
+    // Fold grammar (MAR-110): fold/unfold act on the innermost foldable
+    // block containing the caret (heading section or callout), mirroring the
+    // built-in editor's Cmd+Option+[ / ] defaults. Fold All / Unfold All are
+    // palette + block-menu only: VS Code's Cmd+K fold chords are unavailable
+    // here because Cmd+K is bound to insertLink in this editor.
+    { id: "fold", title: "Fold", palette: true, sections: [] },
+    { id: "unfold", title: "Unfold", palette: true, sections: [] },
+    { id: "foldAll", title: "Fold All", palette: true, sections: [] },
+    { id: "unfoldAll", title: "Unfold All", palette: true, sections: [] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

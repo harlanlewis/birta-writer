@@ -32,6 +32,8 @@ import {
     deleteSelectedBlocks,
     duplicateSelectedBlocks,
     expandSelection,
+    foldAllCommand,
+    foldAtCaret,
     insertCalloutCommand,
     insertFootnoteCommand,
     insertParagraphAfter,
@@ -42,6 +44,8 @@ import {
     transformToLowercase,
     transformToTitleCase,
     transformToUppercase,
+    unfoldAllCommand,
+    unfoldAtCaret,
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { insertInlineMathCommand } from "@/plugins/math";
@@ -583,6 +587,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     shrinkSelection: (getEditor) => runCommand(getEditor, shrinkSelection),
     insertParagraphAfter: (getEditor) => runCommand(getEditor, insertParagraphAfter),
     insertParagraphBefore: (getEditor) => runCommand(getEditor, insertParagraphBefore),
+    // Fold grammar (MAR-110): the same ProseMirror commands the gutter
+    // chevrons and block menu drive, so every surface shares one fold state.
+    fold: (getEditor) => runCommand(getEditor, foldAtCaret),
+    unfold: (getEditor) => runCommand(getEditor, unfoldAtCaret),
+    foldAll: (getEditor) => runCommand(getEditor, foldAllCommand),
+    unfoldAll: (getEditor) => runCommand(getEditor, unfoldAllCommand),
 };
 
 /** Dispatches an editor command by id; an unknown id is a safe no-op. */
