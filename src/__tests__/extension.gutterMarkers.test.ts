@@ -1,15 +1,26 @@
 /**
- * The "Gutter Markers" palette command: a QuickPick of the three resting
- * modes — the current one annotated — whose pick persists the setting via
- * the scope-respecting write. The broadcast to open editors is the
- * config-change listener's job (covered by the webview handler tests).
+ * The "Gutter Markers" palette command: a createQuickPick of the three
+ * resting modes — the current one annotated AND preselected (so Enter
+ * straight after opening is a no-op, never an accidental switch) — whose
+ * accept persists the setting via the scope-respecting write. The broadcast
+ * to open editors is the config-change listener's job (covered by the
+ * webview handler tests).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
 
 import { promptGutterMarkersMode } from "../extension";
 
-const showQuickPick = vscode.window.showQuickPick as ReturnType<typeof vi.fn>;
+const createQuickPick = vscode.window.createQuickPick as ReturnType<typeof vi.fn>;
+
+type FakeQuickPick = {
+    items: Array<{ mode: string; label: string; description: string }>;
+    activeItems: Array<{ mode: string }>;
+    selectedItems: Array<{ mode: string }>;
+    onDidAccept: ReturnType<typeof vi.fn>;
+    onDidHide: ReturnType<typeof vi.fn>;
+    show: ReturnType<typeof vi.fn>;
+};
 
 function mockConfiguration(get?: (key: string, defaultValue?: unknown) => unknown) {
     const update = vi.fn();
@@ -22,45 +33,66 @@ function mockConfiguration(get?: (key: string, defaultValue?: unknown) => unknow
     return { update };
 }
 
+/** Start the prompt and hand back the live fake QuickPick plus the promise. */
+function openPrompt(): { qp: FakeQuickPick; done: Promise<void> } {
+    const done = promptGutterMarkersMode();
+    const qp = createQuickPick.mock.results.at(-1)!.value as FakeQuickPick;
+    return { qp, done };
+}
+
+const accept = (qp: FakeQuickPick, mode: string): void => {
+    qp.selectedItems = [qp.items.find((i) => i.mode === mode)!];
+    (qp.onDidAccept.mock.calls[0]![0] as () => void)();
+};
+
+const dismiss = (qp: FakeQuickPick): void => {
+    (qp.onDidHide.mock.calls[0]![0] as () => void)();
+};
+
 describe("promptGutterMarkersMode", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it("picking a different mode should persist it to the winning scope", async () => {
+    it("accepting a different mode should persist it to the winning scope", async () => {
         // Arrange: current = default (headings)
         const { update } = mockConfiguration();
-        showQuickPick.mockResolvedValue({ mode: "all", label: "All" });
 
         // Act
-        await promptGutterMarkersMode();
+        const { qp, done } = openPrompt();
+        accept(qp, "all");
+        await done;
 
         // Assert
         expect(update).toHaveBeenCalledWith("gutterMarkers", "all", vscode.ConfigurationTarget.Global);
     });
 
-    it("the current mode's row should be annotated as current", async () => {
+    it("the current mode should be annotated and preselected, in display order", async () => {
         // Arrange
         mockConfiguration((key, d) => (key === "gutterMarkers" ? "none" : d));
-        showQuickPick.mockResolvedValue(undefined);
 
         // Act
-        await promptGutterMarkersMode();
+        const { qp, done } = openPrompt();
+        dismiss(qp);
+        await done;
 
         // Assert
-        const items = showQuickPick.mock.calls[0]![0] as Array<{ mode: string; description: string }>;
-        expect(items.map((i) => i.mode)).toEqual(["none", "headings", "all"]);
-        expect(items.find((i) => i.mode === "none")!.description).toMatch(/current$/);
-        expect(items.find((i) => i.mode === "headings")!.description).not.toMatch(/current$/);
+        expect(qp.show).toHaveBeenCalled();
+        expect(qp.items.map((i) => i.mode)).toEqual(["none", "headings", "all"]);
+        expect(qp.items.find((i) => i.mode === "none")!.description).toMatch(/current$/);
+        expect(qp.items.find((i) => i.mode === "headings")!.description).not.toMatch(/current$/);
+        // Preselection is what makes Enter-on-open a no-op.
+        expect(qp.activeItems.map((i) => i.mode)).toEqual(["none"]);
     });
 
-    it("picking the current mode should write nothing", async () => {
+    it("accepting the current mode should write nothing", async () => {
         // Arrange
         const { update } = mockConfiguration((key, d) => (key === "gutterMarkers" ? "all" : d));
-        showQuickPick.mockResolvedValue({ mode: "all", label: "All" });
 
         // Act
-        await promptGutterMarkersMode();
+        const { qp, done } = openPrompt();
+        accept(qp, "all");
+        await done;
 
         // Assert
         expect(update).not.toHaveBeenCalled();
@@ -69,10 +101,11 @@ describe("promptGutterMarkersMode", () => {
     it("dismissing the picker should write nothing", async () => {
         // Arrange
         const { update } = mockConfiguration();
-        showQuickPick.mockResolvedValue(undefined);
 
         // Act
-        await promptGutterMarkersMode();
+        const { qp, done } = openPrompt();
+        dismiss(qp);
+        await done;
 
         // Assert
         expect(update).not.toHaveBeenCalled();

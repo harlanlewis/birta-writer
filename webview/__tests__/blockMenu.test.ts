@@ -945,6 +945,16 @@ describe("gutter markers section", () => {
         const checked = radios.filter((el) => el.getAttribute("aria-checked") === "true");
         expect(checked).toHaveLength(1);
         expect(checked[0]!.querySelector(".block-menu-item-label")?.textContent).toBe("Headings");
+        // Row art: eye-off / H1 badge / eye — no bare slots in this menu.
+        const art = radios.map((el) => ({
+            icon: !!el.querySelector(".block-menu-item-icon svg"),
+            badge: el.querySelector(".block-menu-item-badge")?.textContent ?? null,
+        }));
+        expect(art).toEqual([
+            { icon: true, badge: null },
+            { icon: false, badge: "H1" },
+            { icon: true, badge: null },
+        ]);
     });
 
     it("the checked row should follow the body class", async () => {

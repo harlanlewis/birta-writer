@@ -47,6 +47,8 @@ import {
     IconChevronDown,
     IconChevronUp,
     IconCopy,
+    IconEye,
+    IconEyeOff,
     IconFileText,
     IconLink,
     IconTrash2,
@@ -927,22 +929,29 @@ export function openBlockMenu(
     // its header would be unreadable) and as the matcher label (so "gutter"
     // prefix-matches, while "head" doesn't drop a bare radio row among the
     // Heading 1–6 conversions).
-    const gutterModeLabels: Record<GutterMarkersMode, string> = {
-        none: t("None"),
-        headings: t("Headings"),
-        all: t("All"),
+    // Row art in the menu's own language: eye-off = hidden at rest, the H1
+    // badge = the heading badges, eye = everything visible (the eye pair is
+    // the same show/hide vocabulary as the editor-switch commands' $(eye)
+    // icons) — every other row carries art, so bare slots read as broken.
+    const gutterModeRows: Record<GutterMarkersMode, { label: string; icon?: string; badge?: string }> = {
+        none: { label: t("None"), icon: IconEyeOff },
+        headings: { label: t("Headings"), badge: "H1" },
+        all: { label: t("All"), icon: IconEye },
     };
     const activeGutterMode = currentGutterMarkersMode();
     for (const mode of GUTTER_MARKERS_DISPLAY_ORDER) {
-        const fullLabel = `${t("Gutter markers")}: ${gutterModeLabels[mode]}`;
+        const rowArt = gutterModeRows[mode];
+        const fullLabel = `${t("Gutter markers")}: ${rowArt.label}`;
         specs.push({
             label: fullLabel,
             keywords: ["gutter", "markers", "grabbers", "handles", "rest", "visible"],
             section: "gutter",
-            build: () => addRow(filterActive ? fullLabel : gutterModeLabels[mode], {
+            build: () => addRow(filterActive ? fullLabel : rowArt.label, {
                 radio: true,
                 active: mode === activeGutterMode,
                 mutates: false,
+                ...(rowArt.icon !== undefined && { icon: rowArt.icon }),
+                ...(rowArt.badge !== undefined && { badge: rowArt.badge }),
                 action: () => {
                     if (mode !== activeGutterMode) {
                         applyGutterMarkers(mode);
