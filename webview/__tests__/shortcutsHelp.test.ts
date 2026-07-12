@@ -109,6 +109,7 @@ describe("shortcutsHelp — content", () => {
         expect(text).toContain("Duplicate copies the block alone");
         expect(text).toContain("Inside a code block or table: exits it instead.");
         expect(text).toContain("Esc first closes the open menu, popup, or find bar.");
+        expect(text).toContain("Collapse / expand the selected foldable block");
         // Rebindable commands appear by NAME, sourced from the registry
         expect(text).toContain("Open Block Menu");
         expect(text).toContain("Folding: Fold · Unfold · Fold All · Unfold All");

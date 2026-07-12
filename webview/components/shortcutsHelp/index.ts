@@ -251,6 +251,7 @@ function buildPanel(): HTMLDivElement {
     addRow([keys("Mod-Enter")], t("Insert paragraph below"),
         t("Inside a code block or table: exits it instead."));
     addRow([keys("Mod-Shift-Enter")], t("Insert paragraph above"));
+    addRow(["←", "→"], t("Collapse / expand the selected foldable block"));
     addRow(["Tab", keys("Shift-Tab")], t("Indent / outdent a list item; next / previous table cell"));
 
     addSection(t("Formatting & history"));
