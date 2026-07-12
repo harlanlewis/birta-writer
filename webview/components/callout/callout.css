@@ -117,37 +117,6 @@
         }
     }
 
-    /* Delete button: same chrome as the fold button, but error-tinted and
-       revealed only on callout hover / focus-within (or keyboard focus) so it
-       never clutters the header. */
-    .callout-delete {
-        display: inline-flex;
-        border: none;
-        background: none;
-        padding: 2px;
-        color: inherit;
-        cursor: pointer;
-        border-radius: 3px;
-        opacity: 0;
-        transition: opacity 0.15s ease;
-
-        svg {
-            width: 14px;
-            height: 14px;
-        }
-
-        &:hover {
-            color: var(--vscode-errorForeground);
-            background: color-mix(in srgb, var(--vscode-errorForeground) 15%, transparent);
-        }
-    }
-
-    &:hover .callout-delete,
-    &:focus-within .callout-delete,
-    .callout-delete:focus-visible {
-        opacity: 1;
-    }
-
     .callout-body {
         padding: 0.25em 0.9em 0.5em;
 

@@ -41,7 +41,6 @@ import {
     IconOctagonAlert,
     IconPencil,
     IconQuote,
-    IconTrash2,
     IconX,
     IconZap,
 } from "@/ui/icons";
@@ -186,15 +185,7 @@ export function createCalloutView(
     foldButton.title = t("Collapse / expand");
     foldButton.setAttribute("aria-label", t("Collapse / expand"));
 
-    // ── Delete button: reveal-on-hover, removes the whole callout node ───────
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "callout-delete";
-    deleteButton.innerHTML = IconTrash2;
-    deleteButton.title = t("Delete callout");
-    deleteButton.setAttribute("aria-label", t("Delete callout"));
-
-    titleBar.append(kindButton, titleSpan, foldButton, deleteButton);
+    titleBar.append(kindButton, titleSpan, foldButton);
 
     const content = document.createElement("div");
     content.className = "callout-body";
@@ -223,26 +214,6 @@ export function createCalloutView(
     foldButton.addEventListener("click", () => {
         collapsed = !collapsed;
         renderCollapsed();
-    });
-
-    // ── Delete (removes the callout node in place — mirrors the image view) ──
-    const deleteCallout = (): void => {
-        if (typeof getPos !== "function") return;
-        const pos = getPos();
-        if (pos === undefined) return;
-        view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
-        view.focus();
-    };
-    // Match the other chrome buttons: mousedown only guards focus/selection;
-    // click performs the action so Enter/Space activate it natively.
-    deleteButton.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-    });
-    deleteButton.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        deleteCallout();
     });
 
     // ── Kind picker menu ────────────────────────────────────────────────────

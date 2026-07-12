@@ -229,32 +229,6 @@ describe("title editing", () => {
     });
 });
 
-describe("deleting a callout in place", () => {
-    it("activating the delete control should remove the callout node from the document", async () => {
-        const { editor, container, view } = await makeEditor(
-            "> [!note] My title\n> Body.\n",
-        );
-        expect(container.querySelector(".callout")).not.toBeNull();
-        let calloutCount = 0;
-        view.state.doc.descendants((n) => {
-            if (n.type.name === "callout") calloutCount += 1;
-        });
-        expect(calloutCount).toBe(1);
-
-        q(container, ".callout-delete").dispatchEvent(
-            new MouseEvent("click", { bubbles: true }),
-        );
-
-        let remaining = 0;
-        view.state.doc.descendants((n) => {
-            if (n.type.name === "callout") remaining += 1;
-        });
-        expect(remaining).toBe(0);
-        expect(container.querySelector(".callout")).toBeNull();
-        await editor.destroy();
-    });
-});
-
 describe("calloutLabel", () => {
     it("prefers the title, else the capitalized raw type", () => {
         const fake = (attrs: Record<string, unknown>) => ({ attrs }) as never;
