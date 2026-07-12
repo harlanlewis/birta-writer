@@ -120,6 +120,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Moving a heading nested inside a callout/quote is safe**: it moves as a single block. Previously its "section" was computed with top-level math, and Move Up could delete everything between the container and the next top-level heading.
+- **Nested grabbers drag their own block**: with a multi-block selection covering a container, grabbing a nested child's handle now moves that child, not the entire selection (the container's own handle still moves the whole covered run, and only the container's marker lights as "covered").
+- **Hovering a callout/directive reveals only its own grabber** — nested children's markers no longer all pop at once; each reveals on its own hover. The drag veil for a nested block also indents to the block's own column instead of dimming a strip of its parent container.
 - **Collapsed callout padding is symmetric** (the title bar now carries the bottom whitespace the hidden body used to provide), and the fold chevron is larger and sits closer to the callout's right edge.
 - **Block selection no longer double-paints**: with blocks selected (Escape, marquee, Shift+arrows), the native blue text highlight leaked through under the block tint — two competing blues that read as a glitch, especially in light themes. The tint is the single selection visual now.
 - **Gutter icons align with the first line everywhere**: markers on quotes, callouts, directives, code blocks, tables, and footnotes rode several pixels above their block's first visible line (anchored to the box corner instead of the content); every marker now centers on the first line and the whole gutter column is pixel-straight. Revealed markers are also a touch higher-contrast.

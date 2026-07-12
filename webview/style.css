@@ -1567,8 +1567,20 @@ body.toolbar-hidden::before {
 .milkdown .editor .block-gutter-host:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--block .heading-fold-marker--block,
 /* NodeView blocks nest the gutter below wrapper chrome (code: inside pre;
    footnote: inside -content; table: inside the table element), so the
-   direct-child reveal above never fires for them — descendant variant. */
-.milkdown .editor :is(.code-block-wrapper, .footnote-def, .mw-table, .callout, .container-directive):where(.block-gutter-host):where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-marker--block {
+   direct-child reveal above never fires for them — descendant variant.
+   The trailing :where(:not(...)) keeps it to the container's OWN marker:
+   without it, hovering a callout's title would pop every nested child's
+   marker at once (they reveal on THEIR hover via the direct-child rule). */
+.milkdown .editor :is(.code-block-wrapper, .footnote-def, .mw-table, .callout, .container-directive):where(.block-gutter-host):where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-marker--block:where(:not(.block-gutter-host--child .heading-fold-marker--block)) {
+    opacity: 0.7;
+}
+
+/* Child hosts (nested wrapper blocks): hovering the CHILD reveals its own
+   marker — the rule above deliberately can't reach it (the exclusion keeps
+   a hovered container from popping every nested marker at once). The
+   double-child :not caps this at two wrapper levels; deeper nesting keeps
+   the menu/keyboard/covered paths. */
+.milkdown .editor .block-gutter-host--child:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-marker--block:where(:not(.block-gutter-host--child .block-gutter-host--child .heading-fold-marker--block)) {
     opacity: 0.7;
 }
 

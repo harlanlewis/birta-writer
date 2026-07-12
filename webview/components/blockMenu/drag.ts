@@ -477,8 +477,13 @@ export function wireMarkerDrag(
                 // covered run (the selection is KEPT — history then restores
                 // it on undo).
                 const cover = selectionCoverRange(view);
+                // Only a TOP-LEVEL block's marker adopts the cover: a
+                // nested child's marker still drags its own block even
+                // inside a covered container (the handle you grab is the
+                // block you move).
                 const multi = Boolean(
-                    range && cover && range.from >= cover.from && range.from < cover.to,
+                    range && cover && range.from >= cover.from && range.from < cover.to &&
+                    view.state.doc.resolve(range.from).depth === 0,
                 );
                 wasMulti = multi;
                 if (multi) {

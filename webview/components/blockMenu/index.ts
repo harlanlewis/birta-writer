@@ -79,7 +79,12 @@ export function moveRangeAt(view: EditorView, pos: number): { from: number; to: 
         return null;
     }
     const nodeEnd = pos + node.nodeSize;
-    if (node.type.name === "heading") {
+    // Section semantics are a TOP-LEVEL concept: findHeadingFoldRange walks
+    // top-level offsets, so for a heading nested in a container it would
+    // return an end OUTSIDE the container — moveBlockTo's deleteRange would
+    // then destroy everything up to the next top-level heading. A nested
+    // heading moves as a single block.
+    if (node.type.name === "heading" && view.state.doc.resolve(pos).depth === 0) {
         const range = findHeadingFoldRange(view.state.doc, pos, getHeadingLevel(node));
         return { from: pos, to: range ? range.to : nodeEnd };
     }

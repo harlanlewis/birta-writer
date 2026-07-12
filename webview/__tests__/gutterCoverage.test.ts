@@ -100,11 +100,21 @@ describe("every block type has a grabber", () => {
             "image_ref": "inline atom (![alt][ref] chip)",
             "link_definition": "allowlisted leaf atom (see NO_MARKER_ALLOWLIST)",
         };
-        const pluginsDir = path.join(REPO_ROOT, "webview", "plugins");
+        // Walk ALL of webview/ (not just plugins/) so a node schema defined
+        // anywhere fails the guard.
+        const files: string[] = [];
+        const walk = (dir: string): void => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (entry.name === "__tests__" || entry.name === "node_modules") continue;
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (entry.name.endsWith(".ts")) files.push(full);
+            }
+        };
+        walk(path.join(REPO_ROOT, "webview"));
         const ids: string[] = [];
-        for (const file of fs.readdirSync(pluginsDir)) {
-            if (!file.endsWith(".ts")) continue;
-            const source = fs.readFileSync(path.join(pluginsDir, file), "utf8");
+        for (const full of files) {
+            const source = fs.readFileSync(full, "utf8");
             for (const match of source.matchAll(/\$nodeSchema[(<][^)]*?["']([\w-]+)["']/g)) {
                 ids.push(match[1]!);
             }

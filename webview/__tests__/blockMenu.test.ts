@@ -21,6 +21,7 @@ import {
     turnIntoKindAt,
     moveRangeAt,
     moveBlockAt,
+    moveBlockTo,
     headingAnchorSlug,
 } from "../components/blockMenu";
 import { TextSelection } from "@milkdown/prose/state";
@@ -315,6 +316,74 @@ describe("block markers for every top-level type", () => {
             ".block-gutter-host:not(.block-gutter-host--child) > .heading-fold-gutter > .heading-fold-marker--block",
         );
         expect(outer.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("moving a NESTED heading moves the heading alone — never a phantom section", async () => {
+        // Regression: findHeadingFoldRange walks top-level offsets, so a
+        // nested heading's "section" once reached OUTSIDE its container and
+        // Move Up deleted everything to the next top-level heading.
+        const editor = await makeEditor(
+            "> intro\n>\n> ## Nested\n>\n> body\n\nAfter one\n\nAfter two",
+        );
+        const v = view(editor);
+        let hPos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "heading") hPos = pos;
+            return hPos === -1;
+        });
+        expect(moveBlockAt(v, hPos, -1)).toBe(true);
+        const { getMarkdown } = await import("@milkdown/utils");
+        expect(editor.action(getMarkdown()).trimEnd()).toBe(
+            "> ## Nested\n>\n> intro\n>\n> body\n\nAfter one\n\nAfter two",
+        );
+    });
+
+    it("deleting a container's only child should leave a valid document", async () => {
+        const editor = await makeEditor("> only line");
+        const v = view(editor);
+        let paraPos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "paragraph") paraPos = pos;
+            return paraPos === -1;
+        });
+        // Delete via the same deleteRange the menu row uses.
+        v.dispatch(v.state.tr.deleteRange(paraPos, paraPos + v.state.doc.nodeAt(paraPos)!.nodeSize));
+        expect(() => v.state.doc.check()).not.toThrow();
+    });
+
+    it("moveBlockTo can extract a nested block to the top level and nest one back in", async () => {
+        const editor = await makeEditor("> alpha\n>\n> ```js\n> one\n> ```\n\nOutside");
+        const v = view(editor);
+        const { getMarkdown } = await import("@milkdown/utils");
+        let codePos = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.type.name === "code_block") codePos = pos;
+            return codePos === -1;
+        });
+        const codeSize = v.state.doc.nodeAt(codePos)!.nodeSize;
+        // Extract: drop at the document end (a top-level slot).
+        expect(moveBlockTo(v, { from: codePos, to: codePos + codeSize }, v.state.doc.content.size)).toBe(true);
+        expect(() => v.state.doc.check()).not.toThrow();
+        expect(editor.action(getMarkdown()).trimEnd()).toBe(
+            "> alpha\n\nOutside\n\n```js\none\n```",
+        );
+        // Nest back in: drop the "Outside" paragraph inside the quote,
+        // after "alpha".
+        let outsidePos = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.textContent === "Outside") outsidePos = offset;
+        });
+        let alphaEnd = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.isTextblock && node.textContent === "alpha") alphaEnd = pos + node.nodeSize;
+            return alphaEnd === -1;
+        });
+        const outsideSize = v.state.doc.nodeAt(outsidePos)!.nodeSize;
+        expect(moveBlockTo(v, { from: outsidePos, to: outsidePos + outsideSize }, alphaEnd)).toBe(true);
+        expect(() => v.state.doc.check()).not.toThrow();
+        expect(editor.action(getMarkdown()).trimEnd()).toBe(
+            "> alpha\n>\n> Outside\n\n```js\none\n```",
+        );
     });
 
     it("a nested block's menu Move rows hop container siblings", async () => {

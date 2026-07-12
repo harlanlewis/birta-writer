@@ -856,7 +856,14 @@ export const headingFoldPlugin = $prose(() =>
                         // querySelectorAll: a covered LIST carries one marker
                         // per item — every one must surface, not just the
                         // first, or "all of these move together" undersells.
+                        // Container CHILDREN stay quiet though: the
+                        // container's own marker is the "this moves" cue,
+                        // and child markers now drag their own block, not
+                        // the cover.
                         for (const markerEl of dom.querySelectorAll<HTMLElement>(".heading-fold-marker")) {
+                            if (markerEl.closest(".block-gutter-host--child")) {
+                                continue;
+                            }
                             markerEl.classList.add("heading-fold-marker--covered");
                             coveredMarkers.push(markerEl);
                         }

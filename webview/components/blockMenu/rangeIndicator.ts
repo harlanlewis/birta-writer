@@ -57,6 +57,16 @@ function measureRange(
     if (top === null || bottom === null || bottom <= top) {
         return null;
     }
+    // Nested ranges (a container's child, a list item) veil THEIR column,
+    // matching the drop indicator's indent — a full editor-width band would
+    // dim a strip of the parent container's chrome.
+    if (view.state.doc.resolve(Math.min(range.from, view.state.doc.content.size)).depth > 0) {
+        const dom = view.nodeDOM(range.from);
+        if (dom instanceof HTMLElement) {
+            const rect = dom.getBoundingClientRect();
+            return { top, bottom, left: rect.left, width: rect.width };
+        }
+    }
     const editorRect = view.dom.getBoundingClientRect();
     return { top, bottom, left: editorRect.left, width: editorRect.width };
 }

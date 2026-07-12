@@ -170,6 +170,34 @@ export async function run({ page, check, baseUrl }) {
     });
     check("hovering the inner callout reveals ITS marker",
         innerReveal.inner > 0.5, JSON.stringify(innerReveal));
+
+    // Hovering the OUTER callout's title must reveal only the outer marker
+    // — not pop the whole nested column at once.
+    const outerTitle = await page.evaluate(() => {
+        const outer = [...document.querySelectorAll(".ProseMirror > .callout")]
+            .find((c) => c.textContent.includes("Outer"));
+        outer.scrollIntoView({ block: "center" });
+        const r = outer.querySelector(".callout-title").getBoundingClientRect();
+        return { x: r.x + 40, y: r.y + r.height / 2 };
+    });
+    await page.mouse.move(outerTitle.x, outerTitle.y);
+    await page.waitForTimeout(150);
+    const outerReveal = await page.evaluate(() => {
+        const outer = [...document.querySelectorAll(".ProseMirror > .callout")]
+            .find((c) => c.textContent.includes("Outer"));
+        const own = outer.querySelector(":scope > .callout-body > .heading-fold-gutter .heading-fold-marker");
+        const childMarkers = [...outer.querySelectorAll(".block-gutter-host--child .heading-fold-marker")];
+        return {
+            own: own ? Number(getComputedStyle(own).opacity) : -1,
+            children: childMarkers.map((m) => Number(getComputedStyle(m).opacity)),
+        };
+    });
+    check("outer-callout hover reveals only its OWN marker (children stay quiet)",
+        outerReveal.own > 0.5 && outerReveal.children.every((o) => o < 0.1),
+        JSON.stringify(outerReveal));
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(120);
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.mouse.move(0, 0);
     await page.waitForTimeout(120);
