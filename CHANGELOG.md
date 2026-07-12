@@ -120,6 +120,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Nested-block grabbers align with their block's first line**: a heading inside a quote or callout showed its H badge a full line-height above the heading text, and a quote nested in a container had its grabber riding above the first line — both now sit on the text line, matching how top-level grabbers align.
 - **Block-selection keyboard commands are O(doc) on heavily folded documents**: Escape/extend/move recomputed every collapsed section's extent with one full document walk per fold; they now batch it into a single pass (~3ms → well under 1ms on a 300-block document with 20 folds).
 - **A nested heading's menu says "Move Up", not "Move Section Up"** — section semantics (and the label promising them) are top-level only.
 - **Moving a heading nested inside a callout/quote is safe**: it moves as a single block. Previously its "section" was computed with top-level math, and Move Up could delete everything between the container and the next top-level heading.

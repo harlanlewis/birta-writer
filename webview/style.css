@@ -1730,8 +1730,11 @@ body.block-marqueeing .milkdown .editor {
    BORDER box (top: 0) — the icon rode 5-8px above the first line. Values
    match each wrapper's measured padding-top; and per-wrapper `left` zeroes
    the small horizontal drift so the marker column stays ruler-straight.
-   (Only the wrapper's own gutter can match — nested blocks never carry
-   gutters, so no inner-block collisions.) */
+   These descendant selectors also reach a wrapper nested inside a container
+   (its gutter still sits inside its own body, so the same calibration is
+   the right one); the leak onto plain-DOM nested children (heading/quote,
+   whose gutter is a direct child) is neutralized by the --child rules
+   below. */
 .milkdown .editor :is(blockquote, .mw-table) .heading-fold-gutter--block {
     top: 7.5px;
 }
@@ -1754,10 +1757,29 @@ body.block-marqueeing .milkdown .editor {
 }
 
 /* Blocks NESTED inside containers (callout/quote/directive children): the
-   marker sits in the container's padding, just left of the child block. */
+   marker sits in the container's padding, just left of the child block.
+   Only plain-DOM children (headings, blockquotes) anchor their gutter as a
+   direct child and match this rule — NodeView wrappers (callout, directive,
+   code, table) nest theirs inside their body and keep the per-wrapper
+   calibrations above at any depth. `top: 0` resets those same wrapper
+   descendant rules leaking onto plain children; the per-flavor rules below
+   then re-apply each child's own first-line offset. */
 .milkdown .editor .block-gutter-host--child > .heading-fold-gutter--block {
     left: -26px;
     top: 0;
+}
+/* Nested headings: the same first-line compensation the top-level
+   .heading-fold-gutter rule provides — top: 1em cancels the heading's own
+   1em padding-top, and the 1.3em height matches its line-height so the
+   centered badge sits on the text line (the flat top: 0 above left it a
+   full padding-height too high). */
+.milkdown .editor :is(h1, h2, h3, h4, h5, h6).block-gutter-host--child > .heading-fold-gutter--block {
+    top: 1em;
+    height: 1.3em;
+}
+/* Nested blockquotes: the same padded-body calibration as top level. */
+.milkdown .editor blockquote.block-gutter-host--child > .heading-fold-gutter--block {
+    top: 7.5px;
 }
 
 /* Per-flavor nudges: the -34px base puts every marker in one column, but

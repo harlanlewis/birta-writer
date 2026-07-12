@@ -133,11 +133,14 @@ export async function run({ page, check, baseUrl }) {
             "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
             "Table", "Callout", "Callout", "Directive",
             "Callout", "Callout", "Code Block",
-        ]) && markers.every((m) => m.svg),
+            "Blockquote", "Heading", "Blockquote",
+        // Nested headings carry an H1-H6 text badge instead of an SVG icon.
+        ]) && markers.every((m) => m.svg || m.pill === "Heading"),
         `markers=${JSON.stringify(markers)}`);
 
-    // Nested children (a callout in a callout, a code block in a callout)
-    // are grabbable units: child markers exist and reveal on THEIR hover.
+    // Nested children (a callout in a callout, a code block in a callout,
+    // a heading and a quote inside a blockquote) are grabbable units: child
+    // markers exist and reveal on THEIR hover.
     const nested = await page.evaluate(() => {
         const kids = [...document.querySelectorAll(".block-gutter-host--child")];
         return kids.map((el) => ({
@@ -146,7 +149,7 @@ export async function run({ page, check, baseUrl }) {
         }));
     });
     check("nested container children carry their own markers",
-        nested.length === 2 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
+        nested.length === 4 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
     const innerCallout = await page.evaluate(() => {
         const el = [...document.querySelectorAll(".block-gutter-host--child")]
             .find((k) => k.classList.contains("callout"));
@@ -257,6 +260,49 @@ export async function run({ page, check, baseUrl }) {
     const topLevelXs = geometry.map((g) => g.cx);
     check("top-level markers share one column (±1px)",
         Math.max(...topLevelXs) - Math.min(...topLevelXs) <= 1.2, JSON.stringify(geometry));
+
+    // NESTED markers must sit on their block's first visible line too — the
+    // regression: the flat --child `top: 0` ignored a nested heading's own
+    // padding-top (the H1 badge rode a full line-height above its text) and
+    // a nested quote's padded body. NodeView children (callout, code block)
+    // anchor their gutter inside their body and keep the per-wrapper
+    // calibration — held to the same band here so that stays true.
+    const nestedGeometry = await page.evaluate(() => {
+        const out = [];
+        for (const el of document.querySelectorAll(".block-gutter-host--child")) {
+            const m = el.querySelector(".heading-fold-marker--block");
+            if (!m) continue;
+            const mr = m.getBoundingClientRect();
+            let lineCenter;
+            if (/^H[1-6]$/.test(el.tagName)) {
+                // The badge belongs on the heading's TEXT line, which its
+                // padding-top pushes well below the border-box top.
+                const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+                let tn, textRect = null;
+                while ((tn = walker.nextNode())) {
+                    if (tn.textContent.trim() && !tn.parentElement.closest(".heading-fold-gutter")) {
+                        const range = document.createRange();
+                        range.selectNodeContents(tn);
+                        textRect = range.getBoundingClientRect();
+                        break;
+                    }
+                }
+                if (!textRect) continue;
+                lineCenter = textRect.y + textRect.height / 2;
+            } else {
+                const headed = el.querySelector(".callout-title, .directive-header, .code-block-header");
+                const probe = headed ?? el.querySelector("p") ?? el;
+                const pr = probe.getBoundingClientRect();
+                lineCenter = pr.y + Math.min(12, pr.height / 2);
+            }
+            out.push({ pill: m.dataset.pill, tag: el.tagName,
+                       dy: Math.round((mr.y + mr.height / 2 - lineCenter) * 10) / 10 });
+        }
+        return out;
+    });
+    check("every nested marker aligns with its block's first line (±3px)",
+        nestedGeometry.length === 4 && nestedGeometry.every((g) => Math.abs(g.dy) <= 3),
+        JSON.stringify(nestedGeometry));
 
     // Block-range selection must not double-paint: the native ::selection
     // is suppressed (hideselection wins the cascade) while the tint shows.
