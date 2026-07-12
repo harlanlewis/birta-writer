@@ -50,6 +50,16 @@
     "| --- | --- |",
     "| c | d |",
     "",
+    "> [!note] A Callout",
+    "> callout body",
+    "",
+    "> [!tip]- Folded Callout",
+    "> hidden body",
+    "",
+    ":::note A Directive",
+    "directive body",
+    ":::",
+    "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

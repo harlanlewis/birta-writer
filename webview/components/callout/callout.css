@@ -154,8 +154,22 @@
     }
 
     &.collapsed {
+        /* Collapse via visibility, not display:none: the block's gutter
+           marker (heading-fold widget) lives inside the body, and display
+           on an ancestor is un-overridable — visibility lets the marker's
+           own visibility:visible keep the grabber alive while folded
+           (same fix as the code block's preview mode). */
         .callout-body {
-            display: none;
+            visibility: hidden;
+            height: 0;
+            min-height: 0;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+
+            .heading-fold-gutter--block {
+                visibility: visible;
+            }
         }
 
         .callout-fold {

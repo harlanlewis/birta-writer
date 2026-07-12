@@ -59,7 +59,7 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.move(paraBox.x + 1, paraBox.y);
     await page.waitForTimeout(50);
     const subtle = parseFloat(await opacity());
-    check("paragraph hover: P at the heading markers' resting contrast", subtle > 0.4 && subtle < 0.7, `opacity=${subtle}`);
+    check("paragraph hover: P at the heading markers' resting contrast", subtle > 0.5 && subtle < 0.9, `opacity=${subtle}`);
 
     // ── 4. Mousing from the text TO the marker keeps it alive (gap bridge) ──
     // The regression: leaving the paragraph's text box dropped :hover and the
@@ -131,7 +131,7 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(markers.map((m) => m.pill)) === JSON.stringify([
             "Paragraph", "List item", "Blockquote", "Image", "HTML",
             "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
-            "Table",
+            "Table", "Callout", "Callout", "Directive",
         ]) && markers.every((m) => m.svg),
         `markers=${JSON.stringify(markers)}`);
 
@@ -140,6 +140,9 @@ export async function run({ page, check, baseUrl }) {
     for (const [sel, name] of [
         [".ProseMirror .mw-table", "table"],
         [".ProseMirror .footnote-def", "footnote"],
+        [".ProseMirror .callout:not(.collapsed)", "callout"],
+        [".ProseMirror .callout.collapsed", "FOLDED callout"],
+        [".ProseMirror .container-directive", "directive"],
     ]) {
         const pt = await page.$eval(sel, (el) => {
             el.scrollIntoView({ block: "center" });

@@ -394,7 +394,10 @@ function blockMarkerSpec(node: any): MarkerSpec | null {
         case "blockquote":
             return { key: "quote", icon: IconQuote, label: t("Blockquote") };
         case "callout":
+        case "notion_callout":
             return { key: "callout", icon: IconAlertCircle, label: t("Callout") };
+        case "container_directive":
+            return { key: "directive", icon: IconAlertCircle, label: t("Directive") };
         case "code_block": {
             const language = String(node.attrs?.["language"] ?? "").toLowerCase();
             if (language === "mermaid") {

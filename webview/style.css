@@ -769,7 +769,7 @@ body.editor-width-auto {
             font-family: var(--vscode-editor-font-family, monospace);
             font-size: 0.95rem;
             line-height: 1;
-            opacity: 0.55;
+            opacity: 0.7;
             cursor: pointer;
             pointer-events: auto;
             transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
@@ -1568,8 +1568,8 @@ body.toolbar-hidden::before {
 /* NodeView blocks nest the gutter below wrapper chrome (code: inside pre;
    footnote: inside -content; table: inside the table element), so the
    direct-child reveal above never fires for them — descendant variant. */
-.milkdown .editor :is(.code-block-wrapper, .footnote-def, .mw-table):where(.block-gutter-host):hover .heading-fold-marker--block {
-    opacity: 0.55;
+.milkdown .editor :is(.code-block-wrapper, .footnote-def, .mw-table, .callout, .container-directive):where(.block-gutter-host):hover .heading-fold-marker--block {
+    opacity: 0.7;
 }
 
 /* The marker's own state must win over the block-hover rule above — equal
@@ -1659,7 +1659,7 @@ body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--blo
    any of them moves the whole run. Placed after the quiet-while-typing rule
    so keyboard-built selections (shift+arrows) still show it. */
 .milkdown .editor .heading-fold-marker--covered {
-    opacity: 0.55;
+    opacity: 0.7;
 }
 
 /* ProseMirror stamps this class on its root while the active selection is
