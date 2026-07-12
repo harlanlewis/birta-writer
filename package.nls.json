@@ -97,7 +97,8 @@
   "command.editor.openFindReplace.title": "Replace",
   "command.editor.findNext.title": "Find Next",
   "command.editor.findPrevious.title": "Find Previous",
-  "command.editor.findSelection.title": "Find & Replace Selection",
+  "command.editor.findSelection.title": "Select Next Occurrence",
+  "command.editor.selectAllOccurrences.title": "Select All Occurrences",
   "command.editor.toggleToc.title": "Toggle Table of Contents",
   "command.editor.editFrontmatter.title": "Edit Frontmatter",
   "command.editor.tableInsertRowAbove.title": "Insert Row Above",
@@ -128,5 +129,16 @@
   "command.editor.toggleGrammarCheck.title": "Check Grammar",
   "command.editor.toggleStyleCheck.title": "Check Style",
   "command.editor.toggleToolbar.title": "Toggle Toolbar",
-  "command.editor.swapTocSide.title": "Swap Table of Contents Side"
+  "command.editor.swapTocSide.title": "Swap Table of Contents Side",
+  "command.editor.duplicateBlockUp.title": "Duplicate Block Up",
+  "command.editor.duplicateBlockDown.title": "Duplicate Block Down",
+  "command.editor.deleteBlock.title": "Delete Block",
+  "command.editor.joinLines.title": "Join Lines",
+  "command.editor.transformToUppercase.title": "Transform to Uppercase",
+  "command.editor.transformToLowercase.title": "Transform to Lowercase",
+  "command.editor.transformToTitleCase.title": "Transform to Title Case",
+  "command.editor.expandSelection.title": "Expand Selection",
+  "command.editor.shrinkSelection.title": "Shrink Selection",
+  "command.editor.insertParagraphAfter.title": "Insert Paragraph Below",
+  "command.editor.insertParagraphBefore.title": "Insert Paragraph Above"
 }

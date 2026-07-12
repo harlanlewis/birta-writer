@@ -97,37 +97,132 @@ export function moveRangeAt(view: EditorView, pos: number): { from: number; to: 
     return { from: pos, to: nodeEnd };
 }
 
-/** Duplicate the node at `pos`, inserting the copy right after it — or,
- * for a COLLAPSED heading, after its hidden section: `pos + nodeSize` is
- * the first hidden position, where the copy would vanish into the fold. */
+/**
+ * Duplicate the sibling blocks in [range.from, range.to) as ONE undo step.
+ * `dir` picks where the copy lands: 1 = after the range — and after the
+ * hidden section of a trailing COLLAPSED heading (inserting at range.to
+ * would drop the copy into display:none), -1 = before it. With `select`,
+ * the selection follows VS Code's copy-line semantics: duplicate-down lands
+ * on the later run (the copy), duplicate-up stays on the earlier one — a
+ * caret keeps its offset inside its block (the runs are identical), a block
+ * range covers the whole run. Exported for the keyboard layer (blockKeys);
+ * the menu's Duplicate row uses the single-node wrapper below.
+ */
+export function duplicateBlockRange(
+    view: EditorView,
+    range: { from: number; to: number },
+    dir: -1 | 1,
+    opts?: { select?: boolean },
+): boolean {
+    const { state } = view;
+    const { doc } = state;
+    // Collect the copied children directly from their common parent (the
+    // moveBlockTo idiom): a doc.slice through a LIST would wrap the items
+    // in a phantom open list node. Works uniformly for top-level blocks
+    // (parent = doc) and list items (parent = list).
+    const $from = doc.resolve(range.from);
+    const parent = $from.depth === 0 ? doc : $from.parent;
+    const base = $from.depth === 0 ? 0 : $from.start();
+    const copied: ProseNode[] = [];
+    let lastPos = -1;
+    parent.forEach((child: ProseNode, offset: number) => {
+        const childPos = base + offset;
+        if (childPos >= range.from && childPos < range.to) {
+            copied.push(child);
+            lastPos = childPos;
+        }
+    });
+    if (copied.length === 0) {
+        return false;
+    }
+    const content = Fragment.from(copied);
+    let insertAt = dir === 1 ? range.to : range.from;
+    if (dir === 1 && lastPos >= 0) {
+        const sectionEnd = foldedSectionEnd(state, lastPos);
+        if (sectionEnd !== null && sectionEnd > insertAt) {
+            insertAt = sectionEnd;
+        }
+    }
+    const tr = state.tr.insert(insertAt, content);
+    if (tr.doc.content.size < doc.content.size + content.size) {
+        // tr.insert silently no-ops when the content can't fit (replaceStep
+        // returns null); a failed duplicate must change nothing.
+        return false;
+    }
+    if (opts?.select) {
+        const runStart = dir === 1 ? insertAt : range.from;
+        const sel = state.selection;
+        if (sel instanceof BlockRangeSelection) {
+            const runRange = BlockRangeSelection.tryCreate(
+                tr.doc, runStart, runStart + content.size,
+            );
+            if (runRange) {
+                tr.setSelection(runRange);
+            }
+        } else {
+            // Caret/text: same offset within the target run. Explicit even
+            // for dir -1 (numerically unchanged positions) — the default
+            // insert mapping would push the selection onto the later run.
+            const delta = runStart - range.from;
+            const clamp = (pos: number): number =>
+                Math.max(0, Math.min(pos + delta, tr.doc.content.size));
+            tr.setSelection(TextSelection.between(
+                tr.doc.resolve(clamp(sel.anchor)),
+                tr.doc.resolve(clamp(sel.head)),
+            ));
+        }
+    }
+    view.dispatch(tr);
+    view.focus();
+    // "Here's where it landed" — the same landing flash a move gets. A
+    // block-range duplicate already reads its destination from the selection
+    // tint on the copy, but a caret duplicate otherwise makes a second block
+    // appear with no feedback; flashing the copy covers both.
+    flashRange(view, insertAt, insertAt + content.size);
+    return true;
+}
+
+/** Duplicate the node at `pos`, inserting the copy right after it — or, for
+ * a COLLAPSED heading, after its hidden section (see duplicateBlockRange). */
 function duplicateBlock(view: EditorView, pos: number): boolean {
     const node = view.state.doc.nodeAt(pos);
     if (!node) {
         return false;
     }
-    const insertAt = foldedSectionEnd(view.state, pos) ?? pos + node.nodeSize;
-    view.dispatch(view.state.tr.insert(insertAt, node));
+    return duplicateBlockRange(view, { from: pos, to: pos + node.nodeSize }, 1);
+}
+
+/**
+ * Delete the blocks in [range.from, range.to) as one step (deleteRange
+ * fills the schema-required empty paragraph when the last block goes). The
+ * fold meta stops a collapsed heading's fold entry from transferring to
+ * whatever fills the gap. Exported for the keyboard layer (blockKeys).
+ */
+export function deleteBlockRange(
+    view: EditorView,
+    range: { from: number; to: number },
+): boolean {
+    if (range.to <= range.from) {
+        return false;
+    }
+    const tr = view.state.tr.deleteRange(range.from, range.to);
+    tr.setMeta(headingFoldPluginKey, {
+        type: "delete",
+        from: range.from,
+        to: range.to,
+    } satisfies HeadingFoldMeta);
+    view.dispatch(tr);
     view.focus();
     return true;
 }
 
-/** Delete the node at `pos` (deleteRange fills the schema-required empty
- * paragraph when the last block goes). The fold meta stops a collapsed
- * heading's fold entry from transferring to whatever fills the gap. */
+/** Delete the node at `pos` (see deleteBlockRange). */
 function deleteBlock(view: EditorView, pos: number): boolean {
     const node = view.state.doc.nodeAt(pos);
     if (!node) {
         return false;
     }
-    const tr = view.state.tr.deleteRange(pos, pos + node.nodeSize);
-    tr.setMeta(headingFoldPluginKey, {
-        type: "delete",
-        from: pos,
-        to: pos + node.nodeSize,
-    } satisfies HeadingFoldMeta);
-    view.dispatch(tr);
-    view.focus();
-    return true;
+    return deleteBlockRange(view, { from: pos, to: pos + node.nodeSize });
 }
 
 /**

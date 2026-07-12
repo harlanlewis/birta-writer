@@ -517,6 +517,363 @@ describe("initFindBar tab order", () => {
     });
 });
 
+describe("initFindBar occurrence cycling (cycleOccurrence / Cmd+D)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    // "foo bar foo baz foo": foo at 1..4, 9..12, 17..20
+    const threeFoos = () => mkDoc(p("foo bar foo baz foo"));
+
+    it("the first press should seed from the caret word and select that occurrence", () => {
+        const { findBar, count, getState, setSelection } = setup(threeFoos());
+        setSelection(2); // caret inside the first "foo"
+        findBar.cycleOccurrence();
+        expect(findBar.isOpen()).toBe(true);
+        expect(count.textContent).toBe("1/3");
+        const sel = getState().selection;
+        expect(sel.from).toBe(1);
+        expect(sel.to).toBe(4);
+    });
+
+    it("repeated presses should advance the document selection through occurrences", () => {
+        const { findBar, count, getState, setSelection } = setup(threeFoos());
+        setSelection(2);
+        findBar.cycleOccurrence();
+        findBar.cycleOccurrence();
+        let sel = getState().selection;
+        expect(sel.from).toBe(9);
+        expect(sel.to).toBe(12);
+        expect(count.textContent).toBe("2/3");
+        findBar.cycleOccurrence();
+        sel = getState().selection;
+        expect(sel.from).toBe(17);
+        expect(count.textContent).toBe("3/3");
+    });
+
+    it("advancing past the last occurrence should wrap to the first", () => {
+        const { findBar, count, getState, setSelection } = setup(threeFoos());
+        setSelection(2);
+        findBar.cycleOccurrence(); // 1/3
+        findBar.cycleOccurrence(); // 2/3
+        findBar.cycleOccurrence(); // 3/3
+        findBar.cycleOccurrence(); // wrap → 1/3
+        expect(count.textContent).toBe("1/3");
+        expect(getState().selection.from).toBe(1);
+    });
+
+    it("changing the selection to different text should re-seed the query", () => {
+        // "foo bar foo bar": foo at 1..4, 9..12; bar at 5..8, 13..16
+        const { findBar, count, getState, setSelection } = setup(mkDoc(p("foo bar foo bar")));
+        setSelection(2);
+        findBar.cycleOccurrence(); // seeds "foo"
+        expect(count.textContent).toBe("1/2");
+        setSelection(5, 8); // user selects "bar"
+        findBar.cycleOccurrence(); // re-seeds "bar"
+        expect(count.textContent).toBe("1/2");
+        const sel = getState().selection;
+        expect(getState().doc.textBetween(sel.from, sel.to)).toBe("bar");
+    });
+
+    it("a press with nothing under the caret should fall back to opening the find bar", () => {
+        // caret between the two spaces has no word to seed
+        const { findBar, findInput } = setup(mkDoc(p("foo  bar")), { selection: { from: 5, to: 5 } });
+        findBar.cycleOccurrence();
+        expect(findBar.isOpen()).toBe(true);
+        expect(document.activeElement).toBe(findInput);
+    });
+
+    it("a regex-metachar seed with Regex mode on should match literally, not as a pattern", () => {
+        // "a.b axb a.b": a.b at 1..4, axb at 5..8, a.b at 9..12. As a regex,
+        // "a.b" would also match "axb"; the seed must stay literal.
+        const { findBar, bar, count, getState, setSelection } = setup(mkDoc(p("a.b axb a.b")));
+        const btnRegex = bar.querySelector('button[aria-label="Use Regular Expression"]') as HTMLButtonElement;
+        click(btnRegex); // leave Regex mode on, as a prior search would
+        setSelection(1, 4); // select the first "a.b"
+        findBar.cycleOccurrence();
+        expect(count.textContent).toBe("1/2"); // literal "a.b" ×2, not "axb"
+        const sel = getState().selection;
+        expect(getState().doc.textBetween(sel.from, sel.to)).toBe("a.b");
+    });
+
+    it("an invalid-regex seed with Regex mode on should still find the literal", () => {
+        // "foo(" is not a valid pattern; as a regex the seed would dead-end
+        // with "Invalid pattern" and select nothing.
+        const { findBar, bar, count, getState, setSelection } = setup(mkDoc(p("foo( bar foo(")));
+        const btnRegex = bar.querySelector('button[aria-label="Use Regular Expression"]') as HTMLButtonElement;
+        click(btnRegex);
+        setSelection(1, 5); // select the first "foo("
+        findBar.cycleOccurrence();
+        expect(bar.classList.contains("find-bar--invalid")).toBe(false);
+        expect(count.textContent).toBe("1/2");
+        const sel = getState().selection;
+        expect(getState().doc.textBetween(sel.from, sel.to)).toBe("foo(");
+    });
+
+    it("cycling should advance through case-differing occurrences without stalling", () => {
+        // "Foo foo FOO": Foo 1..4, foo 5..8, FOO 9..12. Default search is
+        // case-insensitive, so a press landing on a different-cased
+        // occurrence must still advance (a case-sensitive text comparison
+        // used to force a visible no-op reseed here).
+        const { findBar, count, getState, setSelection } = setup(mkDoc(p("Foo foo FOO")));
+        setSelection(2); // caret in "Foo"
+        findBar.cycleOccurrence(); // seeds "Foo"
+        expect(count.textContent).toBe("1/3");
+        expect(getState().selection.from).toBe(1);
+        findBar.cycleOccurrence();
+        expect(getState().selection.from).toBe(5);
+        findBar.cycleOccurrence(); // selection text "foo" differs from "Foo" only by case
+        expect(getState().selection.from).toBe(9);
+        expect(count.textContent).toBe("3/3");
+        findBar.cycleOccurrence(); // wrap
+        expect(getState().selection.from).toBe(1);
+    });
+
+    it("a fresh seed should clear an active find-in-selection scope", () => {
+        // "foo bar baz qux": scope over "foo bar" (1..8), then Cmd+D "baz"
+        // (9..12), which lies outside the scope — without clearing it the seed
+        // would be filtered to zero matches.
+        const { findBar, bar, count, getState, setSelection } = setup(mkDoc(p("foo bar baz qux")));
+        findBar.open();
+        setSelection(1, 8);
+        const btnInSelection = bar.querySelector('button[aria-label="Find in Selection"]') as HTMLButtonElement;
+        click(btnInSelection);
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("true");
+        setSelection(9, 12); // "baz", outside the scope
+        findBar.cycleOccurrence();
+        expect(count.textContent).toBe("1/1");
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("false");
+        const sel = getState().selection;
+        expect(getState().doc.textBetween(sel.from, sel.to)).toBe("baz");
+    });
+});
+
+describe("initFindBar selectAllOccurrences (Shift+Cmd+L)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    it("should seed from the selection, focus the replace input, and highlight every match", () => {
+        const { findBar, bar, replaceInput, findInput, count } = setup(mkDoc(p("foo bar foo")), {
+            selection: { from: 1, to: 4 },
+        });
+        findBar.selectAllOccurrences();
+        expect(findBar.isOpen()).toBe(true);
+        expect(bar.classList.contains("find-bar--replace-visible")).toBe(true);
+        expect(document.activeElement).toBe(replaceInput);
+        expect(findInput.value).toBe("foo");
+        expect(count.textContent).toBe("1/2");
+    });
+
+    it("with nothing to seed it should keep the query and scope and just open the replace row", () => {
+        // "foo foo foo" (para 0..13) + "!?!" (text 14..17): a caret in the
+        // punctuation-only paragraph has no word to seed. That must not
+        // destroy the active find-in-selection scope or re-run the query.
+        const { findBar, bar, findInput, replaceInput, count, setSelection } =
+            setup(mkDoc(p("foo foo foo"), p("!?!")));
+        findBar.open("foo");
+        setSelection(1, 8); // scope over the first two occurrences
+        const btnInSelection = bar.querySelector(
+            'button[aria-label="Find in Selection"]',
+        ) as HTMLButtonElement;
+        click(btnInSelection);
+        expect(count.textContent).toBe("1/2");
+        setSelection(15); // caret between "!" and "?": nothing to seed
+        findBar.selectAllOccurrences();
+        expect(findInput.value).toBe("foo"); // query untouched
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("true"); // scope kept
+        expect(count.textContent).toBe("1/2");
+        expect(bar.classList.contains("find-bar--replace-visible")).toBe(true);
+        expect(document.activeElement).toBe(replaceInput);
+    });
+
+    it("with nothing to seed it should not reinterpret a typed regex as a literal", () => {
+        // Regex toggle ON with a hand-typed pattern: reopening via Shift+Cmd+L
+        // from a spot with no word must keep matching it as the regex the
+        // toggle advertises (the one-shot literal flag used to demote it).
+        const { findBar, findInput, count, btnRegex, setSelection } =
+            setup(mkDoc(p("foo fo+ foo"), p("!?!")));
+        click(btnRegex);
+        findBar.open("fo+"); // matches "foo", "fo", "foo"
+        expect(count.textContent).toBe("1/3");
+        findBar.close();
+        setSelection(15); // caret in the punctuation-only paragraph
+        findBar.selectAllOccurrences();
+        expect(findInput.value).toBe("fo+");
+        expect(count.textContent).toBe("1/3"); // still a regex, as the toggle shows
+    });
+});
+
+describe("initFindBar seeded queries under Regex mode", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    // Seeds are text to FIND, not patterns: with the Regex toggle persisted
+    // ON they are written regex-escaped into the input, so the field shows
+    // exactly what is searched and every rescan (replace, toggles) agrees.
+
+    it("a Cmd+D seed should write the regex-escaped text into the input", () => {
+        const { findBar, findInput, count, btnRegex, setSelection } =
+            setup(mkDoc(p("a.b axb a.b")));
+        click(btnRegex); // Regex toggle left ON from an earlier search
+        setSelection(1, 4); // select the first "a.b"
+        findBar.cycleOccurrence();
+        expect(findInput.value).toBe("a\\.b");
+        expect(count.textContent).toBe("1/2"); // the two a.b, never axb
+    });
+
+    it("stepped replace after a Cmd+D seed should never touch regex-only lookalikes", () => {
+        // The one-shot literal flag used to let the post-replace rescan
+        // reinterpret "a.b" as a regex and step into (then destroy) "axb".
+        const { findBar, replaceInput, btnReplace, btnRegex, count, docText, setSelection } =
+            setup(mkDoc(p("a.b axb a.b")));
+        click(btnRegex);
+        setSelection(1, 4);
+        findBar.cycleOccurrence();
+        replaceInput.value = "X";
+        click(btnReplace);
+        expect(docText()).toBe("X axb a.b");
+        expect(count.textContent).toBe("1/1"); // rescan stayed on the escaped literal
+        click(btnReplace);
+        expect(docText()).toBe("X axb X"); // the other a.b — axb untouched
+    });
+
+    it("replace-all rescans after a Shift+Cmd+L seed should stay on the escaped literal", () => {
+        const { findBar, findInput, replaceInput, btnReplaceAll, btnRegex, count, docText } =
+            setup(mkDoc(p("a.b axb a.b")), { selection: { from: 1, to: 4 } });
+        click(btnRegex);
+        findBar.selectAllOccurrences();
+        expect(findInput.value).toBe("a\\.b");
+        expect(count.textContent).toBe("1/2");
+        replaceInput.value = "X";
+        click(btnReplaceAll);
+        expect(docText()).toBe("X axb X");
+        expect(count.textContent).toBe("No results"); // not a regex hit on "axb"
+        click(btnReplaceAll); // a second Cmd+Enter is a no-op, not data loss
+        expect(docText()).toBe("X axb X");
+    });
+
+    it("clicking a toggle after a metachar seed should keep the query valid", () => {
+        // "foo(" as a regex is an invalid pattern; the escaped seed survives
+        // the toggle handler's rescan instead of flipping to Invalid pattern.
+        const { findBar, bar, findInput, count, btnRegex, btnCase, setSelection } =
+            setup(mkDoc(p("foo( bar foo(")));
+        click(btnRegex);
+        setSelection(1, 5); // select the first "foo("
+        findBar.cycleOccurrence();
+        expect(findInput.value).toBe("foo\\(");
+        expect(count.textContent).toBe("1/2");
+        click(btnCase);
+        expect(bar.classList.contains("find-bar--invalid")).toBe(false);
+        expect(count.textContent).toBe("1/2");
+    });
+
+    it("Cmd+F with a metachar selection should seed the escaped literal too", () => {
+        // The plain open() seed path shares the same escaping, so Cmd+F over
+        // "a.b" with Regex ON searches the selection, not a wildcard pattern.
+        const { findBar, bar, findInput, count, btnRegex } =
+            setup(mkDoc(p("a.b axb")), { selection: { from: 1, to: 4 } });
+        click(btnRegex);
+        findBar.open();
+        expect(findInput.value).toBe("a\\.b");
+        expect(bar.classList.contains("find-bar--invalid")).toBe(false);
+        expect(count.textContent).toBe("1/1");
+    });
+});
+
+describe("initFindBar find in selection", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    const btnInSelectionOf = (bar: HTMLElement) =>
+        bar.querySelector('button[aria-label="Find in Selection"]') as HTMLButtonElement;
+
+    it("toggling on should exclude matches outside the captured range from navigation", () => {
+        // "foo foo foo": foo at 1..4, 5..8, 9..12
+        const { findBar, bar, count, setSelection } = setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo");
+        expect(count.textContent).toBe("1/3");
+        setSelection(1, 8); // covers the first two occurrences
+        const btnInSelection = btnInSelectionOf(bar);
+        click(btnInSelection);
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("true");
+        expect(count.textContent).toBe("1/2");
+    });
+
+    it("replace all should only rewrite matches inside the captured range", () => {
+        const { findBar, bar, replaceInput, btnReplaceAll, docText, setSelection } =
+            setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo", { showReplace: true });
+        setSelection(1, 8);
+        click(btnInSelectionOf(bar));
+        replaceInput.value = "baz";
+        click(btnReplaceAll);
+        expect(docText()).toBe("baz baz foo");
+    });
+
+    it("toggling off should restore the full-document match set", () => {
+        const { findBar, bar, count, setSelection } = setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo");
+        setSelection(1, 8);
+        const btnInSelection = btnInSelectionOf(bar);
+        click(btnInSelection);
+        expect(count.textContent).toBe("1/2");
+        click(btnInSelection);
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("false");
+        expect(count.textContent).toBe("1/3");
+    });
+
+    it("toggling on with a collapsed caret should not latch the toggle or restrict the search", () => {
+        const { findBar, bar, count, setSelection } = setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo");
+        expect(count.textContent).toBe("1/3");
+        setSelection(5); // collapsed caret — nothing to scope
+        const btnInSelection = btnInSelectionOf(bar);
+        click(btnInSelection);
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("false");
+        expect(count.textContent).toBe("1/3"); // search stays global
+    });
+
+    it("replace all with a length-changing replacement should rewrite the in-scope matches (post-edit count is approximate)", () => {
+        // The scope is a single contiguous range that is NOT remapped across
+        // length-changing edits, so after growing each "foo" the rescanned
+        // scope no longer lines up with the visual region — the replacement
+        // itself is correct, but the follow-up count is only approximate.
+        const { findBar, bar, count, replaceInput, btnReplaceAll, docText, setSelection } =
+            setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo", { showReplace: true });
+        setSelection(1, 8); // covers the first two "foo"
+        click(btnInSelectionOf(bar));
+        expect(count.textContent).toBe("1/2");
+        replaceInput.value = "fooo";
+        click(btnReplaceAll);
+        // Both in-scope matches were rewritten; the trailing "foo" is untouched.
+        expect(docText()).toBe("fooo fooo foo");
+        // Approximate rescan: the unchanged 1..8 range now covers only the
+        // first grown match, so the post-edit count reads 1/1, not 0/0.
+        expect(count.textContent).toBe("1/1");
+    });
+
+    it("closing the bar should drop the in-selection scope", () => {
+        const { findBar, bar, count, setSelection } = setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo");
+        setSelection(1, 8);
+        const btnInSelection = btnInSelectionOf(bar);
+        click(btnInSelection);
+        expect(count.textContent).toBe("1/2");
+        findBar.close();
+        findBar.open("foo");
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("false");
+        expect(count.textContent).toBe("1/3");
+    });
+});
+
 describe("initFindBar toggle accelerators", () => {
     beforeEach(() => {
         vi.clearAllMocks();

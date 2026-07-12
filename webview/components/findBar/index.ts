@@ -8,6 +8,7 @@ import {
     IconChevronRight,
     IconReplace,
     IconReplaceAll,
+    IconFindSelection,
     IconX,
 } from "@/ui/icons";
 import { t, kbd } from "@/i18n";
@@ -17,6 +18,7 @@ import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
 import {
     buildQuery,
+    escapeRegExp,
     collectSegments,
     searchSegments,
     searchSourceFallback,
@@ -48,6 +50,19 @@ export interface FindBarController {
     findNext(): void;
     /** Cmd+Shift+G / Shift+F3: previous match while the editor keeps focus. */
     findPrev(): void;
+    /**
+     * Cmd+D: seed the query from the selection/word on the first press and
+     * select the occurrence at the caret; repeated presses advance the
+     * document selection to the next occurrence (wrapping). Re-seeds when the
+     * live selection no longer corresponds to the active query.
+     */
+    cycleOccurrence(): void;
+    /**
+     * Shift+Cmd+L: seed the query from the selection/word, open with the
+     * replace row focused and every occurrence highlighted — one keystroke
+     * from Replace All.
+     */
+    selectAllOccurrences(): void;
 }
 
 /** Document-order sort position of a match. */
@@ -190,6 +205,14 @@ export function initFindBar(
     btnRegex.setAttribute("aria-label", t("Use Regular Expression"));
     btnRegex.setAttribute("aria-pressed", "false");
 
+    const btnInSelection = createButton({
+        className: "find-bar__btn",
+        icon: IconFindSelection,
+        title: `${t("Find in Selection")} (${toggleKbd("L")})`,
+    });
+    btnInSelection.setAttribute("aria-label", t("Find in Selection"));
+    btnInSelection.setAttribute("aria-pressed", "false");
+
     const btnClose = createButton({
         className: "find-bar__btn",
         icon: IconX,
@@ -197,7 +220,7 @@ export function initFindBar(
     });
     btnClose.setAttribute("aria-label", t("Close"));
 
-    findRow.append(input, count, btnPrev, btnNext, sep, btnCase, btnWord, btnRegex, btnClose);
+    findRow.append(input, count, btnPrev, btnNext, sep, btnCase, btnWord, btnRegex, btnInSelection, btnClose);
 
     // Replace row (hidden until toggled)
     const replaceRow = document.createElement("div");
@@ -242,6 +265,16 @@ export function initFindBar(
     let caseSensitive = false;
     let wholeWord = false;
     let regexMode = false;
+    /** Find-in-selection scope: search + replace-all stay within this range. */
+    let inSelection = false;
+    /**
+     * The document range captured when Find-in-Selection was switched on
+     * (null = whole document). Contiguous single-range only; positions are
+     * NOT remapped across edits, so a replace-all that shifts the document
+     * leaves the range approximate for the subsequent rescan (see notes on
+     * the toggle handler).
+     */
+    let selectionScope: { from: number; to: number } | null = null;
     let matches: SearchMatch[] = [];
     let currentIdx = 0;
     let debounceTimer = 0;
@@ -381,6 +414,18 @@ export function initFindBar(
     }
 
     // ── Search ───────────────────────────────────────────
+    /**
+     * Text seeded from a selection/word is text to FIND, not a pattern: when
+     * the Regex toggle is on, write its regex-escaped form into the input so
+     * the field shows exactly what is searched and every later rescan
+     * (replace, toggle clicks) agrees by construction — no one-shot "literal"
+     * flag that a rescan could silently drop.
+     */
+    function seedText(raw: string): string {
+        return regexMode ? escapeRegExp(raw) : raw;
+    }
+
+    /** Run a search for `query` under the current toggle state. */
     function search(query: string) {
         matches = [];
         currentIdx = 0;
@@ -394,7 +439,11 @@ export function initFindBar(
             return;
         }
 
-        const compiled = buildQuery(query, { regex: regexMode, wholeWord, caseSensitive });
+        const compiled = buildQuery(query, {
+            regex: regexMode,
+            wholeWord,
+            caseSensitive,
+        });
         if (compiled.error !== undefined) {
             count.textContent = t("Invalid pattern");
             bar.classList.add("find-bar--invalid");
@@ -428,6 +477,18 @@ export function initFindBar(
         matches = [...segMatches, ...blockMatches].sort(
             (a, b) => sortPos(a) - sortPos(b) || sortSub(a) - sortSub(b),
         );
+
+        // Find-in-selection: keep only matches inside the captured range.
+        if (inSelection && selectionScope) {
+            const { from, to } = selectionScope;
+            matches = matches.filter((m) => {
+                if (m.kind === "text") {
+                    return m.from >= from && m.to <= to;
+                }
+                const pos = sortPos(m);
+                return pos >= from && pos <= to;
+            });
+        }
 
         if (matches.length) {
             count.textContent = `1/${matches.length}`;
@@ -541,7 +602,7 @@ export function initFindBar(
         if (!input.value) {
             const sel = selectionQuery();
             if (sel !== undefined) {
-                input.value = sel;
+                input.value = seedText(sel);
             }
         }
         if (!input.value) {
@@ -557,6 +618,137 @@ export function initFindBar(
             scrollToMatch(idx);
             placeCaret(matches[idx]);
         }
+    }
+
+    // ── Occurrence cycling (Cmd+D / Shift+Cmd+L) ─────────
+
+    /**
+     * Index of the match at the caret — the one containing `sel.from`, else
+     * the first at/after it, wrapping to 0. Unlike seekFromCaret (which lands
+     * on the NEXT match, for "find next"), Cmd+D's first press selects the
+     * occurrence the user is already sitting in.
+     */
+    function seekCurrent(sel: { from: number; to: number }): number {
+        for (let i = 0; i < matches.length; i++) {
+            const m = matches[i];
+            const start = sortPos(m);
+            const end = m.kind === "text" ? m.to : start;
+            if (start <= sel.from && sel.from <= end) { return i; }
+            if (start >= sel.from) { return i; }
+        }
+        return 0;
+    }
+
+    /**
+     * Move the document selection to span match `idx` (text matches only —
+     * attr/block matches have no addressable range, so they only scroll into
+     * view). Selecting the whole match lets the user type to replace it, which
+     * is the point of Cmd+D. Refocuses the editor and records the nav baseline.
+     */
+    function selectMatch(idx: number) {
+        if (!matches[idx]) { return; }
+        scrollToMatch(idx);
+        const view = getEditorView();
+        if (!view) {
+            lastNavSel = null;
+            return;
+        }
+        const m = matches[idx];
+        if (m.kind === "text") {
+            try {
+                view.dispatch(
+                    view.state.tr.setSelection(TextSelection.create(view.state.doc, m.from, m.to)),
+                );
+                view.focus();
+            } catch {
+                /* unmappable position (stale match): keep the old selection */
+            }
+        }
+        const sel = view.state.selection;
+        lastNavSel = { from: sel.from, to: sel.to };
+    }
+
+    /**
+     * Cmd+D. Re-seed rule: seed a fresh query (from the selection or the word
+     * at the caret) whenever the bar is not already searching that text —
+     * i.e. the bar is closed/empty, or the live selection neither spans the
+     * current match nor equals the active query under the case rule in
+     * effect. Otherwise advance to the next occurrence. Because each step
+     * SELECTS its match, the selection spans the current match on the
+     * following press, so repeated Cmd+D naturally cycles.
+     */
+    function cycleOccurrence() {
+        const view = getEditorView();
+        if (!view) { return; }
+        const sel = view.state.selection;
+        const selText = sel.empty ? "" : view.state.doc.textBetween(sel.from, sel.to);
+        const active = input.value;
+        const searching = visible && active !== "" && matches.length > 0;
+        // A selection exactly spanning the current match means the user is
+        // mid-cycle: advance even when the occurrence's text differs from the
+        // query by case (default search is case-insensitive) or the input
+        // holds the regex-escaped form of the seed.
+        const cur = matches[currentIdx];
+        const onCurrentMatch =
+            searching && cur !== undefined && cur.kind === "text" &&
+            sel.from === cur.from && sel.to === cur.to;
+        // Otherwise compare selection text and query under the case rule in
+        // effect, so a case-differing occurrence doesn't force a reseed.
+        const sameText = caseSensitive
+            ? selText === active
+            : selText.toLowerCase() === active.toLowerCase();
+        const shouldSeed = !searching || (!onCurrentMatch && !sameText);
+
+        if (shouldSeed) {
+            const query = selectionOrWordQuery(view);
+            if (query === undefined) {
+                // Nothing under the caret to seed: fall back to plain Find.
+                open();
+                return;
+            }
+            // A fresh occurrence hunt is a new global search: drop any active
+            // find-in-selection scope (and reset its toggle) so seeding a word
+            // outside the old scope isn't silently filtered to nothing.
+            setInSelection(false);
+            visible = true;
+            bar.classList.add("find-bar--visible");
+            // The seed is text to find, not a pattern (see seedText).
+            input.value = seedText(query);
+            search(input.value);
+            if (matches.length) {
+                selectMatch(seekCurrent(sel));
+            }
+            return;
+        }
+
+        if (!matches.length) { return; }
+        const moved =
+            lastNavSel !== null &&
+            (sel.from !== lastNavSel.from || sel.to !== lastNavSel.to);
+        const idx = moved ? seekCurrent(sel) : (currentIdx + 1) % matches.length;
+        selectMatch(idx);
+    }
+
+    /**
+     * Shift+Cmd+L. Seed from the selection/word and open with the replace row
+     * focused, every occurrence highlighted — the pragmatic "change every X"
+     * entry point (type a replacement, Cmd+Enter to replace all).
+     */
+    function selectAllOccurrences() {
+        const view = getEditorView();
+        const query = view ? selectionOrWordQuery(view) : undefined;
+        if (query === undefined) {
+            // Nothing under the caret to seed: open with the existing query
+            // and scope untouched, replace row focused (mirroring
+            // cycleOccurrence's no-query fallback).
+            open(undefined, { showReplace: true, focusReplace: true });
+            return;
+        }
+        // A fresh occurrence hunt: drop any active find-in-selection scope so
+        // the seeded query searches the whole document. The seed is text to
+        // find, not a pattern (see seedText).
+        setInSelection(false);
+        open(seedText(query), { showReplace: true, focusReplace: true });
     }
 
     // ── Replace ──────────────────────────────────────────
@@ -814,6 +1006,34 @@ export function initFindBar(
     bindToggle(btnWord, () => wholeWord, (v) => { wholeWord = v; });
     bindToggle(btnRegex, () => regexMode, (v) => { regexMode = v; });
 
+    // Find-in-selection captures the editor selection AT toggle time (VS
+    // Code's widget behavior); switching off drops the scope. Toggling on with
+    // a collapsed caret has no range to scope, so we stay OFF rather than latch
+    // a pressed-but-inert toggle (a button that looks active but doesn't
+    // restrict the search).
+    function setInSelection(on: boolean) {
+        if (on) {
+            const view = getEditorView();
+            const sel = view?.state.selection;
+            if (sel && !sel.empty) {
+                selectionScope = { from: sel.from, to: sel.to };
+                inSelection = true;
+            } else {
+                selectionScope = null;
+                inSelection = false;
+            }
+        } else {
+            selectionScope = null;
+            inSelection = false;
+        }
+        btnInSelection.classList.toggle("find-bar__btn--active", inSelection);
+        btnInSelection.setAttribute("aria-pressed", String(inSelection));
+    }
+    btnInSelection.addEventListener("click", () => {
+        setInSelection(!inSelection);
+        search(input.value);
+    });
+
     // Toggle accelerators (see toggleKbd above) work from anywhere in the
     // bar, mirroring VS Code's find widget.
     bar.addEventListener("keydown", (e) => {
@@ -824,6 +1044,7 @@ export function initFindBar(
         const btn = e.code === "KeyC" ? btnCase
             : e.code === "KeyW" ? btnWord
             : e.code === "KeyR" ? btnRegex
+            : e.code === "KeyL" ? btnInSelection
             : null;
         if (btn) {
             e.preventDefault();
@@ -874,7 +1095,10 @@ export function initFindBar(
             setReplaceVisible(opts.showReplace);
         }
         if (initialQuery === undefined) {
-            initialQuery = selectionQuery();
+            // Pre-fill from the editor selection: text to find, not a
+            // pattern, so escape it under the Regex toggle (see seedText).
+            const sel = selectionQuery();
+            initialQuery = sel === undefined ? undefined : seedText(sel);
         }
         if (initialQuery !== undefined && initialQuery !== input.value) {
             input.value = initialQuery;
@@ -899,6 +1123,11 @@ export function initFindBar(
         count.textContent = "";
         hint.textContent = "";
         hint.hidden = true;
+        // Drop the find-in-selection scope so a later reopen never searches a
+        // stale range from a previous selection.
+        if (inSelection) {
+            setInSelection(false);
+        }
         // Hand focus back to the editor (VS Code convention on closing find)
         getEditorView()?.focus();
     }
@@ -909,5 +1138,7 @@ export function initFindBar(
         isOpen: () => visible,
         findNext: () => findFrom(1),
         findPrev: () => findFrom(-1),
+        cycleOccurrence,
+        selectAllOccurrences,
     };
 }

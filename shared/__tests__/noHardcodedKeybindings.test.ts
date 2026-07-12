@@ -111,20 +111,37 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
         // the Alt/Mod-Shift move chords share the same command layer and
         // stay PM-level with them. Mod-a is the escalation ladder (block
         // text → block → all blocks) and must fall through to baseKeymap's
-        // selectAll in tables. None are claimed by the key-leak guard:
-        // VS Code's own Alt+arrow / Cmd+Shift+arrow defaults are
-        // editorTextFocus-scoped and inert while a webview has focus.
+        // selectAll in tables. Only the Shift-Alt duplicate chords are
+        // claimed by the key-leak guard (content-scoped — they mutate the
+        // document); the rest stay unclaimed: VS Code's own Alt+arrow /
+        // Cmd+Shift+arrow defaults are editorTextFocus-scoped and inert
+        // while a webview has focus.
         "webview/plugins/blockKeys.ts": [
             "Alt-ArrowDown",
             "Alt-ArrowUp",
             "Mod-Shift-ArrowDown",
             "Mod-Shift-ArrowUp",
             "Mod-a",
+            "Shift-Alt-ArrowDown",
+            "Shift-Alt-ArrowUp",
             "Shift-ArrowDown",
             "Shift-ArrowUp",
         ],
         "webview/plugins/formatKeymap.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
         "webview/plugins/history.ts": ["Mod-Shift-z", "Mod-y", "Mod-z"],
+        // insertParagraph: Mod-Enter must beat the preset's exit-code-block
+        // binding synchronously (registered before the presets, returning
+        // false in those contexts); claimed by the key-leak guard.
+        "webview/plugins/insertParagraph.ts": ["Mod-Enter", "Mod-Shift-Enter"],
+        // smartSelect: chords collide with native contenteditable selection
+        // extension and need synchronous default-suppression; platform-split
+        // to mirror the built-in editor; claimed by the key-leak guard.
+        "webview/plugins/smartSelect.ts": [
+            "Ctrl-Shift-Cmd-ArrowLeft",
+            "Ctrl-Shift-Cmd-ArrowRight",
+            "Shift-Alt-ArrowLeft",
+            "Shift-Alt-ArrowRight",
+        ],
         "webview/plugins/tableKeymap.ts": ["Shift-Tab"],
         // kbd() tooltip labels naming fixed local keys only
         "webview/components/findBar/index.ts": ["Mod-Enter", "Shift-Enter"],

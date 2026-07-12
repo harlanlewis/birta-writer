@@ -2,7 +2,7 @@
     "name": "md-wysiwyg-editor",
     "displayName": "WYSIWYG Markdown Editor",
     "description": "WYSIWYG Markdown Editor: a WYSIWYG Markdown editor with live table editing",
-    "version": "0.2.155",
+    "version": "0.2.157",
     "publisher": "harlanlewis",
     "engines": {
         "vscode": "^1.80.0"
@@ -244,6 +244,11 @@
                 "category": "WYSIWYG Markdown Editor"
             },
             {
+                "command": "markdownWysiwyg.editor.selectAllOccurrences",
+                "title": "%command.editor.selectAllOccurrences.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
                 "command": "markdownWysiwyg.editor.toggleToc",
                 "title": "%command.editor.toggleToc.title%",
                 "category": "WYSIWYG Markdown Editor"
@@ -397,6 +402,61 @@
                 "command": "markdownWysiwyg.editor.swapTocSide",
                 "title": "%command.editor.swapTocSide.title%",
                 "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.duplicateBlockUp",
+                "title": "%command.editor.duplicateBlockUp.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.duplicateBlockDown",
+                "title": "%command.editor.duplicateBlockDown.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.deleteBlock",
+                "title": "%command.editor.deleteBlock.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.joinLines",
+                "title": "%command.editor.joinLines.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.transformToUppercase",
+                "title": "%command.editor.transformToUppercase.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.transformToLowercase",
+                "title": "%command.editor.transformToLowercase.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.transformToTitleCase",
+                "title": "%command.editor.transformToTitleCase.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.expandSelection",
+                "title": "%command.editor.expandSelection.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.shrinkSelection",
+                "title": "%command.editor.shrinkSelection.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertParagraphAfter",
+                "title": "%command.editor.insertParagraphAfter.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
+                "command": "markdownWysiwyg.editor.insertParagraphBefore",
+                "title": "%command.editor.insertParagraphBefore.title%",
+                "category": "WYSIWYG Markdown Editor"
             }
         ],
         "keybindings": [
@@ -472,6 +532,23 @@
                 "command": "markdownWysiwyg.editor.findSelection",
                 "key": "ctrl+d",
                 "mac": "cmd+d",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.selectAllOccurrences",
+                "key": "ctrl+shift+l",
+                "mac": "cmd+shift+l",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.deleteBlock",
+                "key": "ctrl+shift+k",
+                "mac": "cmd+shift+k",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
+                "command": "markdownWysiwyg.editor.joinLines",
+                "mac": "ctrl+j",
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             }
         ],
@@ -632,6 +709,10 @@
                     "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
                 },
                 {
+                    "command": "markdownWysiwyg.editor.selectAllOccurrences",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
                     "command": "markdownWysiwyg.editor.toggleToc",
                     "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
                 },
@@ -753,6 +834,50 @@
                 },
                 {
                     "command": "markdownWysiwyg.editor.swapTocSide",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.duplicateBlockUp",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.duplicateBlockDown",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.deleteBlock",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.joinLines",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.transformToUppercase",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.transformToLowercase",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.transformToTitleCase",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.expandSelection",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.shrinkSelection",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertParagraphAfter",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.insertParagraphBefore",
                     "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
                 }
             ],
