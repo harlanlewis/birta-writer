@@ -216,18 +216,17 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
  * e.g. "ta" ranks Table above items merely containing "ta". Empty query
  * returns everything in registry (grouped) order.
  */
-export function filterSlashItems(
-    items: readonly SlashMenuItem[],
-    query: string,
-): SlashMenuItem[] {
+export function filterSlashItems<
+    T extends { label: string; keywords: readonly string[]; searchOnly?: boolean },
+>(items: readonly T[], query: string): T[] {
     const q = query.trim().toLowerCase();
     if (!q) {
         // The browsable list: search-only rows exist for parity, not scanning.
         return items.filter((item) => !item.searchOnly);
     }
-    const labelPrefix: SlashMenuItem[] = [];
-    const keywordPrefix: SlashMenuItem[] = [];
-    const substring: SlashMenuItem[] = [];
+    const labelPrefix: T[] = [];
+    const keywordPrefix: T[] = [];
+    const substring: T[] = [];
     for (const item of items) {
         const label = item.label.toLowerCase();
         if (label.startsWith(q)) {

@@ -17,6 +17,9 @@ import { $prose } from "@milkdown/utils";
 export interface PendingRange {
     from: number;
     to: number;
+    /** Decoration class; defaults to the palette pending highlight. The
+     * slash menu reuses this plugin for its "/query" pill. */
+    class?: string;
 }
 
 const pendingRangeKey = new PluginKey<DecorationSet>("MD_PENDING_RANGE");
@@ -43,7 +46,7 @@ export const pendingRangePlugin = $prose(
                         }
                         return DecorationSet.create(tr.doc, [
                             Decoration.inline(meta.from, meta.to, {
-                                class: "pending-range",
+                                class: meta.class ?? "pending-range",
                             }),
                         ]);
                     }

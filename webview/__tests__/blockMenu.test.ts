@@ -641,27 +641,71 @@ describe("undo restores the caret at the acted-on block (no scroll-to-top)", () 
     });
 });
 
-describe("keyboard roving with disabled rows", () => {
-    it("ArrowUp from the first row should wrap to Delete, skipping disabled moves", async () => {
+describe("keyboard highlight with disabled rows", () => {
+    it("arrows from the search input should highlight around, skipping disabled moves", async () => {
         // Single block: Move Up AND Move Down are both disabled.
         const editor = await makeEditor("Alpha");
         view(editor);
         const marker = markers()[0]!;
         marker.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
         const menu = document.querySelector<HTMLElement>(".block-menu")!;
-        const focusedLabel = () =>
-            (document.activeElement as HTMLElement).querySelector(".block-menu-item-label")?.textContent;
-        expect(focusedLabel()).toBe("Paragraph"); // keyboard open lands on the active row
+        // Focus lands in the search input (the Notion pattern), not a row.
+        const search = menu.querySelector<HTMLInputElement>(".block-menu-search")!;
+        expect(document.activeElement).toBe(search);
+        const hlLabel = () =>
+            menu.querySelector(".block-menu-item--hl .block-menu-item-label")?.textContent;
+        expect(hlLabel()).toBeUndefined(); // browsing: no pre-highlight
         const pressKey = (key: string): void =>
             document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-        pressKey("ArrowUp");
-        expect(focusedLabel()).toBe("Delete"); // wrapped, skipping disabled rows
         pressKey("ArrowDown");
-        expect(focusedLabel()).toBe("Paragraph"); // and back
-        // Sanity: the disabled rows really are excluded from the roving list.
+        expect(hlLabel()).toBe("Paragraph"); // first enabled row
+        pressKey("ArrowUp");
+        expect(hlLabel()).toBe("Delete"); // wrapped, skipping disabled rows
+        // Sanity: the disabled rows really are excluded from the highlight list.
         const disabled = Array.from(menu.querySelectorAll('[aria-disabled="true"] .block-menu-item-label'))
             .map((el) => el.textContent);
         expect(disabled).toEqual(["Move Up", "Move Down"]);
+    });
+
+    it("typing in the search input should filter to a flat ranked list and Enter should activate", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        const marker = markers()[0]!;
+        marker.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const search = menu.querySelector<HTMLInputElement>(".block-menu-search")!;
+        // Grouped view has section headers; filtering collapses them.
+        expect(menu.querySelectorAll(".block-menu-header").length).toBeGreaterThan(0);
+        search.value = "dup";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(menu.querySelectorAll(".block-menu-header").length).toBe(0);
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item-label"))
+            .map((el) => el.textContent);
+        expect(labels).toEqual(["Duplicate"]);
+        // Top match pre-highlighted; Enter activates it.
+        expect(menu.querySelector(".block-menu-item--hl .block-menu-item-label")?.textContent)
+            .toBe("Duplicate");
+        search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        expect(document.querySelector(".block-menu")).toBeNull(); // acted and closed
+        const texts: string[] = [];
+        v.state.doc.forEach((node) => texts.push(node.textContent));
+        expect(texts).toEqual(["Alpha", "Alpha", "Beta"]); // duplicated
+    });
+
+    it("a query matching nothing should show the empty state, and clearing restores groups", async () => {
+        const editor = await makeEditor("Alpha");
+        view(editor);
+        markers()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const search = menu.querySelector<HTMLInputElement>(".block-menu-search")!;
+        search.value = "zzz";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(menu.querySelector(".block-menu-empty")).not.toBeNull();
+        expect(menu.querySelectorAll(".block-menu-item").length).toBe(0);
+        search.value = "";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        expect(menu.querySelector(".block-menu-empty")).toBeNull();
+        expect(menu.querySelectorAll(".block-menu-header").length).toBeGreaterThan(0);
     });
 });
 

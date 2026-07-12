@@ -77,7 +77,20 @@ export async function run({ page, check, baseUrl }) {
     check("exactly one toolbar show/hide toggle row", barToggle.length === 1, JSON.stringify(l));
     check("toolbar toggle reads 'Hide' while visible", barToggle[0] === "Hide Toolbar", barToggle[0]);
 
-    // ── 6. Nesting flexibility: block inserts work INSIDE a callout ──
+    // ── 6. The typed "/query" reads as UI input while the menu is open ──
+    // (the Notion affordance: a quiet pill over the text feeding the filter,
+    // cleared the moment the menu closes.)
+    await open("head");
+    const pill = await page.evaluate(
+        () => document.querySelector(".ProseMirror .slash-query")?.textContent ?? null);
+    check("typed /query carries the pill highlight while the menu is open",
+        pill === "/head", `pill=${JSON.stringify(pill)}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    check("dismissing the menu clears the pill",
+        await page.evaluate(() => document.querySelector(".ProseMirror .slash-query") === null));
+
+    // ── 7. Nesting flexibility: block inserts work INSIDE a callout ──
     // Policy: anything block-level inserts wherever the schema allows block
     // content — callout types included (the old gate hid them on the stale
     // premise that insertCallout toggles; it wrapIn-NESTS). Each case opens

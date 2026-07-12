@@ -37,6 +37,7 @@ import {
     type SlashMenuItem,
     type SlashMenuState,
 } from "../components/slashMenu/registry";
+import { setPendingRange } from "./pendingRange";
 
 /**
  * A slash construct ending at the caret: "/" at block start or after
@@ -271,6 +272,7 @@ class SlashMenuController {
         if (match.query !== this.lastQuery) {
             this.lastQuery = match.query;
             this.menu.setQuery(match.query);
+            this.syncQueryPill(match);
             this.syncAriaExpanded();
         }
         this.positionMenu();
@@ -343,6 +345,7 @@ class SlashMenuController {
             },
         });
         this.menu.setQuery(match.query);
+        this.syncQueryPill(match);
         this.positionMenu();
 
         this.view.dom.setAttribute("aria-haspopup", "listbox");
@@ -366,6 +369,7 @@ class SlashMenuController {
         this.menu.destroy();
         this.menu = null;
         this.lastQuery = null;
+        this.syncQueryPill(null);
         document.removeEventListener("mousedown", this.onDocMousedown, true);
         window.removeEventListener("blur", this.onWindowBlur);
         window.removeEventListener("scroll", this.onScroll, { capture: true });
@@ -373,6 +377,23 @@ class SlashMenuController {
         this.view.dom.removeAttribute("aria-expanded");
         this.view.dom.removeAttribute("aria-controls");
         this.view.dom.removeAttribute("aria-activedescendant");
+    }
+
+    /** The Notion affordance: the "/query" text feeding the filter reads
+     *  as UI input, not document prose, while the menu is open. Reuses the
+     *  pendingRange decoration plugin with a dedicated class. Deferred a
+     *  microtask: this runs from the plugin view's update(), and a
+     *  re-entrant dispatch inside applyTransaction breaks Milkdown's own
+     *  state plumbing. */
+    private syncQueryPill(match: MatchContext | null): void {
+        const range = match === null
+            ? null
+            : { from: match.slashPos, to: match.caret, class: "slash-query" };
+        queueMicrotask(() => {
+            if (!this.view.isDestroyed) {
+                setPendingRange(this.view, range);
+            }
+        });
     }
 
     /** aria-expanded must track real visibility — the zero-match state

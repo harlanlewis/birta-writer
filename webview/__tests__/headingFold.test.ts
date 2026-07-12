@@ -371,7 +371,7 @@ describe("heading gutter level menu", () => {
         expect(levelMenu()).toBeNull();
     });
 
-    it("a keyboard open should move focus onto the current-level row", async () => {
+    it("a keyboard open should focus the search input, current level marked", async () => {
         // Arrange
         const editor = await makeEditor("## Title");
         view(editor);
@@ -379,29 +379,33 @@ describe("heading gutter level menu", () => {
         // Act: a keyboard-activated button click reports detail 0
         marker().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
 
-        // Assert: the H2 row is focused so arrows/Enter drive it immediately
+        // Assert: focus lands in the "Search actions…" input (the Notion
+        // pattern) with the current type accent-marked in the list below.
+        expect(document.activeElement).toBe(levelMenu()!.querySelector(".block-menu-search"));
         const active = levelMenu()!.querySelector<HTMLElement>(".block-menu-item--active");
-        expect(document.activeElement).toBe(active);
         expect(active!.querySelector(".block-menu-item-label")!.textContent).toBe("Heading 2");
     });
 
-    it("arrow keys should rove focus and Enter should activate the focused row", async () => {
-        // Arrange: keyboard-open on H2 (focus lands on the H2 row, index 2)
+    it("arrow keys should move the highlight and Enter should activate it", async () => {
+        // Arrange: keyboard-open on H2, focus in the search input
         const editor = await makeEditor("## Title");
         const v = view(editor);
         marker().dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
 
-        // Act: ArrowUp → H1 row, then Enter activates it. Keydowns dispatch from
-        // the focused row so the capture handler sees it as event.target.
+        // Act: ArrowDown highlights the first row (Paragraph), then Enter
+        // activates it. Keydowns dispatch from the focused search input so
+        // the capture handler sees it as event.target.
         const pressKey = (key: string): void =>
             document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-        pressKey("ArrowUp");
-        expect((document.activeElement as HTMLElement).querySelector(".block-menu-item-label")!.textContent).toBe("Heading 1");
+        pressKey("ArrowDown");
+        expect(levelMenu()!.querySelector(".block-menu-item--hl .block-menu-item-label")!.textContent)
+            .toBe("Paragraph");
         pressKey("Enter");
 
-        // Assert: heading retyped to H1, menu closed
+        // Assert: heading retyped to a paragraph, menu closed
         expect(levelMenu()).toBeNull();
-        expect(v.state.doc.nodeAt(firstHeadingPos(v))!.attrs["level"]).toBe(1);
+        expect(v.state.doc.child(0).type.name).toBe("paragraph");
+        expect(v.state.doc.child(0).textContent).toBe("Title");
     });
 
     it("Escape should close a keyboard-opened menu and return focus to the marker", async () => {

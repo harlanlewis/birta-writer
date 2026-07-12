@@ -40,7 +40,7 @@ import { slugify } from "../../utils/slug";
 import { getTopbarBottom } from "../../utils/headingUtils";
 import { hideTooltip } from "../../ui/tooltip";
 import { t } from "../../i18n";
-import { SLASH_MENU_ITEMS } from "../slashMenu/registry";
+import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
 import {
     IconChevronDown,
     IconChevronUp,
@@ -399,6 +399,7 @@ const SLASH_ID_BY_KIND: Record<TurnIntoKind, string> = {
 interface TurnIntoRow {
     kind: TurnIntoKind;
     label: string;
+    keywords: readonly string[];
     icon: string;
     badge?: string;
     hint?: string;
@@ -410,6 +411,8 @@ const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as TurnI
         return {
             kind,
             label: item?.label ?? kind,
+            // The registry's search keywords power this menu's filter too.
+            keywords: item?.keywords ?? [],
             icon: item?.icon ?? "",
             ...(item?.badge !== undefined && { badge: item.badge }),
             ...(item?.hint !== undefined && { hint: item.hint }),
@@ -467,6 +470,21 @@ export function openBlockMenu(
     menu.className = "block-menu";
     menu.setAttribute("role", "menu");
 
+    // ── "Search actions…" (the Notion pattern): a default-focused filter
+    // input; typing narrows both sections to one flat ranked list, sharing
+    // the slash menu's matcher and the registry's keywords. ──
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "block-menu-search";
+    search.placeholder = t("Search actions…");
+    search.setAttribute("aria-label", t("Search actions"));
+    menu.appendChild(search);
+    // Rows re-render per keystroke into their own container so the input
+    // (and its focus/caret) is never rebuilt.
+    const body = document.createElement("div");
+    body.className = "block-menu-body";
+    menu.appendChild(body);
+
     const onDocMouseDown = (event: MouseEvent): void => {
         const target = event.target as Node;
         if (!menu.contains(target) && !anchor.contains(target)) {
@@ -475,25 +493,63 @@ export function openBlockMenu(
     };
     const rowEls = (): HTMLElement[] =>
         Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item:not([aria-disabled='true'])"));
-    const focusRow = (el: HTMLElement | undefined): void => {
-        el?.focus();
+    // Focus stays in the search input; arrows move a VIRTUAL highlight over
+    // the rows (the slash menu's combobox model), mirrored to AT via
+    // aria-activedescendant. Mouse hover/click on rows is unchanged.
+    let hlIdx = -1;
+    let rowIdSeq = 0;
+    const clearHl = (): void => {
+        hlIdx = -1;
+        rowEls().forEach((row) => row.classList.remove("block-menu-item--hl"));
+        search.removeAttribute("aria-activedescendant");
     };
-    // Keyboard model mirrors the toolbar dropdowns: arrows rove over rows,
-    // Enter/Space activate by replaying the mousedown the row listens for,
-    // Escape closes and restores marker focus. Document-level capture so
-    // Escape works whether the menu was opened by mouse or keyboard.
+    /** Wraps into [0, rows) — pass hlIdx±1 to step (from -1, ArrowDown
+     * lands on the first row and ArrowUp on the last). */
+    const setHl = (idx: number): void => {
+        const list = rowEls();
+        if (list.length === 0) {
+            clearHl();
+            return;
+        }
+        hlIdx = ((idx % list.length) + list.length) % list.length;
+        list.forEach((row, i) => row.classList.toggle("block-menu-item--hl", i === hlIdx));
+        const current = list[hlIdx]!;
+        if (!current.id) {
+            current.id = `block-menu-row-${++rowIdSeq}`;
+        }
+        search.setAttribute("aria-activedescendant", current.id);
+        current.scrollIntoView?.({ block: "nearest" });
+    };
+    // Escape closes from anywhere (document capture); with focus in the
+    // search input, arrows drive the highlight and Enter activates it.
+    // Rows themselves stay focusable (Tab) with the old roving behavior.
     const onKeyDown = (event: KeyboardEvent): void => {
         if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
             close();
             // Keyboard users get their focus back on the marker; a mouse
-            // open never moved focus, so return it to the editor (the marker
-            // may also have been destroyed by a decoration rebuild).
+            // open never moved focus into the editor chrome, so return it
+            // to the editor (the marker may also have been destroyed by a
+            // decoration rebuild).
             if (viaKeyboard && anchor.isConnected) {
                 anchor.focus();
             } else {
                 view.focus();
+            }
+            return;
+        }
+        if (event.target === search) {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                event.stopPropagation();
+                setHl(hlIdx + (event.key === "ArrowDown" ? 1 : -1));
+            } else if (event.key === "Enter") {
+                event.preventDefault();
+                event.stopPropagation();
+                const list = rowEls();
+                const target = list[hlIdx >= 0 ? hlIdx : 0];
+                target?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
             }
             return;
         }
@@ -505,7 +561,7 @@ export function openBlockMenu(
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             const delta = event.key === "ArrowDown" ? 1 : -1;
-            focusRow(list[(idx + delta + list.length) % list.length]);
+            list[(idx + delta + list.length) % list.length]?.focus();
         } else if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             list[idx]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
@@ -640,60 +696,76 @@ export function openBlockMenu(
                 opts.action();
             }
         });
-        menu.appendChild(row);
+        body.appendChild(row);
         return row;
     };
     const addHeader = (label: string): void => {
         const header = document.createElement("div");
         header.className = "block-menu-header";
         header.textContent = label;
-        menu.appendChild(header);
+        body.appendChild(header);
     };
     const addDivider = (): void => {
         const divider = document.createElement("div");
         divider.className = "block-menu-divider";
         divider.setAttribute("role", "separator");
-        menu.appendChild(divider);
+        body.appendChild(divider);
     };
 
-    // ── Turn into ──
-    // Blocks with no nameable kind (tables, HR, image/html paragraphs, raw
-    // blocks) get an actions-only menu; conversions the matrix can't perform
-    // for THIS source (e.g. anything from a code block) are hidden rather
-    // than disabled — a never-possible row is noise, unlike the move rows'
-    // temporarily-impossible edges below.
-    let activeRow: HTMLElement | null = null;
+    // ── Row specs ──
+    // Both sections as filterable specs: `build` renders via addRow, and
+    // label+keywords feed the slash menu's matcher (filterSlashItems) when
+    // the user types in the search input. Blocks with no nameable kind
+    // (tables, HR, image/html paragraphs, raw blocks) get an actions-only
+    // menu; conversions the matrix can't perform for THIS source (e.g.
+    // anything from a code block) are hidden rather than disabled — a
+    // never-possible row is noise, unlike the move rows' temporarily-
+    // impossible edges.
+    interface RowSpec {
+        label: string;
+        keywords: readonly string[];
+        section: "turnInto" | "actions";
+        build: () => HTMLElement;
+    }
+    const specs: RowSpec[] = [];
     if (currentKind !== null) {
-        addHeader(isItem ? t("Turn list into") : t("Turn into"));
         const offered = TURN_INTO_CHOICES.filter(({ kind }) => canTurnInto(view, conversionPos, kind));
         for (const choice of offered) {
             const active = choice.kind === currentKind;
-            const row = addRow(choice.label, {
-                radio: true,
-                active,
-                icon: choice.icon,
-                ...(choice.badge !== undefined && { badge: choice.badge }),
-                ...(choice.hint !== undefined && { hint: choice.hint }),
-                action: () => {
-                    if (!active) {
-                        turnBlockInto(view, conversionPos, choice.kind, getEditor);
-                    }
-                },
+            specs.push({
+                label: choice.label,
+                keywords: choice.keywords,
+                section: "turnInto",
+                build: () => addRow(choice.label, {
+                    radio: true,
+                    active,
+                    icon: choice.icon,
+                    ...(choice.badge !== undefined && { badge: choice.badge }),
+                    ...(choice.hint !== undefined && { hint: choice.hint }),
+                    action: () => {
+                        if (!active) {
+                            turnBlockInto(view, conversionPos, choice.kind, getEditor);
+                        }
+                    },
+                }),
             });
-            if (active) {
-                activeRow = row;
-            }
         }
-        addDivider();
     }
-
-    // ── Actions ──
-    addHeader(t("Actions"));
-    addRow(t("Duplicate"), { icon: IconCopy, action: () => duplicateBlock(view, blockPos) });
+    const action = (
+        label: string,
+        keywords: readonly string[],
+        opts: Parameters<typeof addRow>[1],
+    ): void => {
+        specs.push({ label, keywords, section: "actions", build: () => addRow(label, opts) });
+    };
+    action(t("Duplicate"), ["duplicate", "copy", "clone"], {
+        icon: IconCopy,
+        action: () => duplicateBlock(view, blockPos),
+    });
     // Direct block serialization — the shared copyAsMarkdown command prefers
     // a non-empty ambient selection, which would violate this menu's
     // by-position contract (select text in block A, copy block B → get A).
-    addRow(t("Copy as Markdown"), {
+    action(t("Copy as Markdown"), ["copy", "markdown", "clipboard", "source"], {
         icon: IconFileText,
         mutates: false,
         action: () => {
@@ -704,23 +776,71 @@ export function openBlockMenu(
         },
     });
     if (isHeading) {
-        addRow(t("Copy Link"), {
+        action(t("Copy Link"), ["link", "anchor", "copy", "url"], {
             icon: IconLink,
             mutates: false,
             action: () => copyHeadingLink(view, blockPos),
         });
     }
-    addRow(movesSection ? t("Move Section Up") : t("Move Up"), {
+    action(movesSection ? t("Move Section Up") : t("Move Up"), ["move", "up", "reorder"], {
         icon: IconChevronUp,
         disabled: !canMove(view, blockPos, -1),
         action: () => moveBlockAt(view, blockPos, -1),
     });
-    addRow(movesSection ? t("Move Section Down") : t("Move Down"), {
+    action(movesSection ? t("Move Section Down") : t("Move Down"), ["move", "down", "reorder"], {
         icon: IconChevronDown,
         disabled: !canMove(view, blockPos, 1),
         action: () => moveBlockAt(view, blockPos, 1),
     });
-    addRow(t("Delete"), { icon: IconTrash2, danger: true, action: () => deleteBlock(view, blockPos) });
+    action(t("Delete"), ["delete", "remove", "trash"], {
+        icon: IconTrash2,
+        danger: true,
+        action: () => deleteBlock(view, blockPos),
+    });
+
+    // ── Render (and re-render per filter keystroke) ──
+    // Empty query: today's grouped sections. Non-empty: one flat ranked
+    // list across both sections — ranking beats grouping, the slash menu's
+    // rule — with the top row pre-highlighted so Enter always acts.
+    const renderRows = (query: string): void => {
+        body.textContent = "";
+        const q = query.trim();
+        if (q === "") {
+            const turnInto = specs.filter((spec) => spec.section === "turnInto");
+            if (turnInto.length > 0) {
+                addHeader(isItem ? t("Turn list into") : t("Turn into"));
+                for (const spec of turnInto) {
+                    spec.build();
+                }
+                addDivider();
+            }
+            addHeader(t("Actions"));
+            for (const spec of specs) {
+                if (spec.section === "actions") {
+                    spec.build();
+                }
+            }
+        } else {
+            const ranked = filterSlashItems(specs, q);
+            if (ranked.length === 0) {
+                const empty = document.createElement("div");
+                empty.className = "block-menu-empty";
+                empty.textContent = t("No matching actions");
+                body.appendChild(empty);
+            }
+            for (const spec of ranked) {
+                spec.build();
+            }
+        }
+        if (q === "") {
+            clearHl(); // browsing: no pre-highlight, grouped sections
+        } else {
+            setHl(0); // filtering: top match pre-highlighted so Enter acts
+        }
+        naturalHeight = 0; // content changed — remeasure before positioning
+        position();
+    };
+    search.addEventListener("input", () => renderRows(search.value));
 
     // The target-block tint (the Editor.js/Notion "what will this hit" cue)
     // is pure CSS: hosts match `:has(.heading-fold-marker--menu-open)`.
@@ -747,6 +867,9 @@ export function openBlockMenu(
     // which would force double reflows and clamp the menu's own scrollTop.
     let naturalHeight = 0;
     function position(): void {
+        if (!menu.isConnected) {
+            return;
+        }
         const rect = anchor.getBoundingClientRect();
         const topbarBottom = getTopbarBottom();
         const mw = menu.offsetWidth;
@@ -769,6 +892,7 @@ export function openBlockMenu(
         menu.style.left = `${Math.round(left)}px`;
         menu.style.top = `${Math.round(Math.max(topbarBottom + 8, top))}px`;
     }
+    renderRows("");
     position();
 
     closeActiveBlockMenu = close;
@@ -782,7 +906,8 @@ export function openBlockMenu(
     window.addEventListener("blur", onWindowBlur);
     hideTooltip();
 
-    if (viaKeyboard) {
-        focusRow(activeRow ?? rowEls()[0]);
-    }
+    // The search input is focused for BOTH open modes (the Notion pattern:
+    // the menu opens ready to filter). Escape still restores marker/editor
+    // focus per the open mode above.
+    search.focus();
 }

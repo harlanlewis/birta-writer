@@ -56,13 +56,50 @@
     flex-direction: column;
     min-width: 200px;
     /* max-height is set per-open by position(): the space actually available
-       on the chosen side of the anchor, minus the topbar. */
-    overflow-y: auto;
+       on the chosen side of the anchor, minus the topbar. The ROWS scroll
+       (.block-menu-body); the search input stays pinned. */
     padding: 4px 0;
     background: var(--vscode-editorHoverWidget-background);
     border: 1px solid var(--vscode-editorHoverWidget-border);
     border-radius: 5px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* "Search actions…" — the filter input pinned above the rows (the rows
+   re-render below it per keystroke; the input itself is never rebuilt). */
+.block-menu-search {
+    flex: none;
+    margin: 4px 8px 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-editorHoverWidget-border);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font: inherit;
+    font-size: 12px;
+
+    &::placeholder {
+        color: var(--vscode-input-placeholderForeground);
+    }
+
+    &:focus {
+        outline: none;
+        border-color: var(--vscode-focusBorder);
+    }
+}
+
+/* Rows live in their own scroll region below the pinned search input. */
+.block-menu-body {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.block-menu-empty {
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    user-select: none;
 }
 
 .block-menu-item {
@@ -133,6 +170,12 @@
     color: var(--vscode-descriptionForeground);
 }
 
+/* Keyboard highlight while focus sits in the search input (the virtual
+   aria-activedescendant row) — same wash as hover, one highlight model. */
+.block-menu-item--hl {
+    background: var(--vscode-list-hoverBackground);
+}
+
 /* Current type: accent-filled row — the toolbar Format-menu idiom (this IS
    the Format menu's semantics, reached from the gutter). */
 .block-menu-item--active,
@@ -164,6 +207,15 @@
     height: 1px;
     margin: 4px 0;
     background: var(--vscode-editorHoverWidget-border);
+}
+
+/* The typed "/query" while the slash menu is open — the text feeding the
+   filter reads as UI input, not document prose (the Notion affordance).
+   Quiet: the ambient hover wash, no accent. Rendered via the pendingRange
+   decoration plugin with this dedicated class. */
+.ProseMirror .slash-query {
+    background: var(--vscode-toolbar-hoverBackground);
+    border-radius: 3px;
 }
 
 /* The block a menu is open FOR: a quiet tint so Duplicate/Delete's target is

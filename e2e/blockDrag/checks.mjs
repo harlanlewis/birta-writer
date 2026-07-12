@@ -341,18 +341,42 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.click(clearPt.x, clearPt.y);
     await page.waitForTimeout(80);
 
-    // ── 6. Typing while the menu is open closes it (doc-change close) ──
+    // ── 6. Typing while the menu is open FILTERS it (the search input is
+    // default-focused — the Notion pattern), and Escape closes it with
+    // focus returned to the editor; the document is never touched. ──
     const pOnceMore = await markerCenter(page, ".ProseMirror > p");
     await page.mouse.click(pOnceMore.x, pOnceMore.y);
     await page.waitForTimeout(100);
     check("menu open before typing", (await page.$(".block-menu")) !== null);
-    await page.keyboard.type("x");
+    check("search input is focused on open",
+        await page.evaluate(() => document.activeElement?.className === "block-menu-search"));
+    const pTextBefore = await page.evaluate(() =>
+        document.querySelector(".ProseMirror > p")?.textContent);
+    await page.keyboard.type("dup");
     await page.waitForTimeout(100);
-    check("typing closes the block menu", (await page.$(".block-menu")) === null);
+    const filtered = await page.$$eval(".block-menu .block-menu-item-label",
+        (els) => els.map((el) => el.textContent));
+    check("typing filters the block menu to matching rows",
+        JSON.stringify(filtered) === JSON.stringify(["Duplicate"]), JSON.stringify(filtered));
+    const docWhileFiltering = await page.evaluate(() =>
+        document.querySelector(".ProseMirror > p")?.textContent);
+    check("filter keystrokes never reach the document",
+        docWhileFiltering === pTextBefore, `p=${docWhileFiltering} before=${pTextBefore}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(100);
+    check("Escape closes the filtered menu", (await page.$(".block-menu")) === null);
+    // Put the caret in the first paragraph for the block-selection checks
+    // (the old flow typed into it; the filter deliberately doesn't).
+    const pClick = await page.$eval(".ProseMirror > p", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + 30, y: r.y + r.height / 2 };
+    });
+    await page.mouse.click(pClick.x, pClick.y);
+    await page.waitForTimeout(80);
 
     // ── 7. Keyboard block selection (BlockRangeSelection, MAR-82) ──
-    // Caret is in the first paragraph from the typing above. Escape
-    // escalates to a block range: tint + hidden native selection.
+    // Escape escalates the caret to a block range: tint + hidden native
+    // selection.
     await page.keyboard.press("Escape");
     await page.waitForTimeout(100);
     const escState = await page.evaluate(() => ({
