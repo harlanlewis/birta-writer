@@ -264,22 +264,20 @@ function insertFootnote(getEditor: GetEditor): void {
     getEditor()?.action((ctx) => ctx.get(editorViewCtx).focus());
 }
 
-/** Callout toggle: lifts out when already inside one, wraps otherwise
- * (mirrors toggleWrap, with the kind carried through to the command). */
+/** Wraps the selection in a callout of the given kind. Always a wrap —
+ * callouts nest at any depth (block+), so inserting one inside a callout
+ * NESTS rather than lifting out (the old toggle made "/tip" inside a note
+ * silently destroy the outer callout). Unwrapping lives in the block
+ * menu's turn-into, where it reads as an explicit conversion. */
 function insertCallout(getEditor: GetEditor, args?: unknown): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
-        if (isInNode(view, "callout")) {
-            lift(view.state, view.dispatch);
-            return;
-        }
         ctx.get(commandsCtx).call(
             insertCalloutCommand.key as never,
             typeof args === "string" ? args : undefined,
         );
-        view.focus();
+        ctx.get(editorViewCtx).focus();
     });
 }
 

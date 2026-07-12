@@ -35,7 +35,7 @@
       if (msg.type === "ready") {
         window.postMessage({
           type: "init",
-          content: "# Title\n\nSome text.\n",
+          content: "# Title\n\nSome text.\n\n> [!note] Outer\n> callout body here.\n",
           syncVersion: 1,
         }, "*");
       }

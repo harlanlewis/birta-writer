@@ -143,13 +143,12 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
             case "blockquote":
                 hidden.add("blockquote");
                 break;
-            case "callout":
-                // insertCallout is the same lift-out toggle as blockquote —
-                // hide the base row AND every per-type row inside a callout.
-                for (const id of CALLOUT_ITEM_IDS) {
-                    hidden.add(id);
-                }
-                break;
+            // Callout rows stay AVAILABLE inside callouts: insertCallout is
+            // wrapIn — it NESTS (callouts are block+ at any depth, and the
+            // typed `[!tip] ` input rule already nests), unlike the
+            // list/quote toggles above, which would lift. Nesting
+            // flexibility is the policy; table cells below stay the one
+            // hard restriction (cells are paragraph-only).
             case "list_item":
             case "task_list_item":
                 if (node.attrs["checked"] != null) {

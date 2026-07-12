@@ -76,4 +76,56 @@ export async function run({ page, check, baseUrl }) {
     const barToggle = l.filter((x) => /^(Show|Hide) Toolbar$/.test(x));
     check("exactly one toolbar show/hide toggle row", barToggle.length === 1, JSON.stringify(l));
     check("toolbar toggle reads 'Hide' while visible", barToggle[0] === "Hide Toolbar", barToggle[0]);
+
+    // ── 6. Nesting flexibility: block inserts work INSIDE a callout ──
+    // Policy: anything block-level inserts wherever the schema allows block
+    // content — callout types included (the old gate hid them on the stale
+    // premise that insertCallout toggles; it wrapIn-NESTS). Each case opens
+    // the menu at the start of the callout's body paragraph, picks the top
+    // row with Enter, and asserts the node serialized INSIDE the callout.
+    async function openInCalloutBody(query) {
+        await page.goto(`${baseUrl}/index.html`);
+        await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+        await page.waitForFunction(
+            () => /callout body here/.test(document.querySelector(".ProseMirror")?.textContent ?? ""),
+            { timeout: 10000 },
+        );
+        await page.waitForTimeout(300);
+        await page.evaluate(() => {
+            const par = [...document.querySelectorAll(".ProseMirror .callout p")]
+                .find((el) => el.textContent.includes("callout body here"));
+            par.scrollIntoView({ block: "center" });
+        });
+        await page.locator(".ProseMirror .callout p", { hasText: "callout body here" }).click();
+        await page.keyboard.press("Home");
+        await page.keyboard.type(`/${query}`, { delay: 60 });
+        await page.waitForSelector(SLASH, { state: "visible", timeout: 10000 });
+        await page.waitForTimeout(200);
+    }
+    const nestedDoc = async (wanted) => {
+        for (let i = 0; i < 30; i++) {
+            const updates = await page.evaluate(() =>
+                window.__posted.filter((m) => m.type === "update").map((m) => m.content));
+            const last = updates[updates.length - 1];
+            if (last && wanted.test(last)) return last;
+            await page.waitForTimeout(100);
+        }
+        const updates = await page.evaluate(() =>
+            window.__posted.filter((m) => m.type === "update").map((m) => m.content));
+        return updates[updates.length - 1] ?? null;
+    };
+    for (const [query, firstRow, pattern, name] of [
+        ["tip", "Tip", /^> > \[!tip\]/im, "a nested tip callout"],
+        ["table", "Table", /^> \|/m, "a table"],
+        ["code", "Code Block", /^> ```/m, "a code block"],
+        ["horiz", "Horizontal Rule", /^> ---/m, "a divider"],
+    ]) {
+        await openInCalloutBody(query);
+        const first = await page.$eval(`${SLASH} .slash-menu-item-label`, (el) => el.textContent);
+        check(`inside a callout, /${query} offers ${firstRow}`, first === firstRow, `first=${first}`);
+        await page.keyboard.press("Enter");
+        const doc = await nestedDoc(pattern);
+        check(`picking ${firstRow} inside a callout lands ${name} INSIDE it`,
+            doc !== null && pattern.test(doc), `doc=${JSON.stringify(doc)}`);
+    }
 }

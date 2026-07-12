@@ -515,3 +515,39 @@ describe("pure gates", () => {
         expect(contextHiddenItemIds(v.state.selection.$from)).toEqual(new Set());
     });
 });
+
+describe("contextHiddenItemIds — nesting policy", () => {
+    /** $from resolved inside the block containing `text`. */
+    async function fromInside(markdown: string, text: string) {
+        const editor = await makeEditor(markdown);
+        const v = view(editor);
+        let inside = -1;
+        v.state.doc.descendants((node, pos) => {
+            if (node.isTextblock && node.textContent === text) inside = pos + 1;
+            return inside === -1;
+        });
+        expect(inside, `textblock "${text}" not found`).toBeGreaterThan(-1);
+        return v.state.doc.resolve(inside);
+    }
+
+    it("a callout ancestor should hide NO callout rows (insertCallout nests, not toggles)", async () => {
+        const $from = await fromInside("> [!note] Title\n> body text", "body text");
+        const hidden = contextHiddenItemIds($from);
+        for (const id of ["callout", "callout-tip", "callout-note", "callout-warning"]) {
+            expect(hidden.has(id), `${id} should stay available inside a callout`).toBe(false);
+        }
+    });
+
+    it("a bullet-list ancestor should still hide the bulletList toggle row", async () => {
+        const $from = await fromInside("- item text", "item text");
+        expect(contextHiddenItemIds($from).has("bulletList")).toBe(true);
+    });
+
+    it("a table cell should still hide every block-level row (no table in table)", async () => {
+        const $from = await fromInside("| a |\n| --- |\n| cell text |", "cell text");
+        const hidden = contextHiddenItemIds($from);
+        for (const id of ["table", "codeBlock", "callout", "heading1", "divider"]) {
+            expect(hidden.has(id), `${id} should be hidden in a table cell`).toBe(true);
+        }
+    });
+});
