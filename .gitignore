@@ -11,3 +11,4 @@ releases/
 .claude/settings.local.json
 .env
 .env.*
+.e2e-shots/
