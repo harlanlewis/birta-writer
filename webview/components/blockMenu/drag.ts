@@ -22,7 +22,7 @@ import type { EditorState } from "@milkdown/prose/state";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
 import { BlockRangeSelection } from "../../plugins/blockRange";
-import { foldedSectionEnd } from "../../plugins/headingFold";
+import { foldedSectionEnds, isContainerNode, isListNode } from "../../plugins/headingFold";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
@@ -53,19 +53,6 @@ export function blockBoundaryPositions(
     doc: ProseNode,
 ): { pos: number; kind: "block" | "item"; ownerPos?: number }[] {
     const positions: { pos: number; kind: "block" | "item"; ownerPos?: number }[] = [];
-    const isList = (node: ProseNode): boolean =>
-        node.type.name === "bullet_list" || node.type.name === "ordered_list";
-    const isContainer = (node: ProseNode): boolean => {
-        switch (node.type.name) {
-            case "blockquote":
-            case "callout":
-            case "notion_callout":
-            case "container_directive":
-                return true;
-            default:
-                return false;
-        }
-    };
     const walkList = (list: ProseNode, listPos: number): void => {
         let lastEnd = listPos + 1;
         list.forEach((item: ProseNode, offset: number) => {
@@ -73,7 +60,7 @@ export function blockBoundaryPositions(
             positions.push({ pos: itemPos, kind: "item", ownerPos: listPos });
             lastEnd = itemPos + item.nodeSize;
             item.forEach((child: ProseNode, childOffset: number) => {
-                if (isList(child)) {
+                if (isListNode(child)) {
                     walkList(child, itemPos + 1 + childOffset);
                 }
             });
@@ -92,9 +79,9 @@ export function blockBoundaryPositions(
             const childPos = containerPos + 1 + offset;
             positions.push({ pos: childPos, kind: "block", ownerPos: containerPos });
             lastEnd = childPos + child.nodeSize;
-            if (isList(child)) {
+            if (isListNode(child)) {
                 walkList(child, childPos);
-            } else if (isContainer(child)) {
+            } else if (isContainerNode(child)) {
                 walkContainer(child, childPos);
             }
         });
@@ -102,9 +89,9 @@ export function blockBoundaryPositions(
     };
     doc.forEach((node: ProseNode, offset: number) => {
         positions.push({ pos: offset, kind: "block" });
-        if (isList(node)) {
+        if (isListNode(node)) {
             walkList(node, offset);
-        } else if (isContainer(node)) {
+        } else if (isContainerNode(node)) {
             walkContainer(node, offset);
         }
     });
@@ -184,15 +171,16 @@ function expandCoverOverFolds(
     state: EditorState,
     range: { from: number; to: number },
 ): { from: number; to: number } {
+    const sectionEnds = foldedSectionEnds(state); // one doc pass, not one per fold
+    if (sectionEnds.size === 0) {
+        return range;
+    }
     let to = range.to;
-    state.doc.forEach((_node: ProseNode, offset: number) => {
-        if (offset >= range.from && offset < to) {
-            const sectionEnd = foldedSectionEnd(state, offset);
-            if (sectionEnd !== null && sectionEnd > to) {
-                to = sectionEnd;
-            }
+    for (const [pos, end] of sectionEnds) {
+        if (pos >= range.from && pos < to && end > to) {
+            to = end;
         }
-    });
+    }
     return to === range.to ? range : { from: range.from, to };
 }
 

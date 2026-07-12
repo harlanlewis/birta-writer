@@ -180,11 +180,13 @@ function moveTargetFor(
 }
 
 /**
- * Sibling-hop target for a LIST ITEM move: the previous sibling's start or
- * the next sibling's end, null at the list's edge. Items move within their
- * own list from the menu (drag handles cross-list refile).
+ * Sibling-hop target for any NESTED block's move (list items, container
+ * children — the walk is parent-generic via $pos.index/posAtIndex): the
+ * previous sibling's start or the next sibling's end, null at the parent's
+ * edge. Nested blocks move within their own parent from the menu (drag
+ * handles cross-parent refile).
  */
-function moveItemTarget(view: EditorView, itemPos: number, dir: -1 | 1): number | null {
+function moveNestedTarget(view: EditorView, itemPos: number, dir: -1 | 1): number | null {
     const $pos = view.state.doc.resolve(itemPos);
     if ($pos.depth === 0) {
         return null;
@@ -294,7 +296,7 @@ export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean
     // the doc-level walk (which also carries heading sections).
     const nested = doc.resolve(pos).depth > 0;
     const target = nested
-        ? moveItemTarget(view, pos, dir)
+        ? moveNestedTarget(view, pos, dir)
         : moveTargetFor(doc, range, node?.type.name === "heading", dir);
     if (target === null) {
         return false;
@@ -310,7 +312,7 @@ function canMove(view: EditorView, pos: number, dir: -1 | 1): boolean {
     }
     const node = view.state.doc.nodeAt(pos);
     if (view.state.doc.resolve(pos).depth > 0) {
-        return moveItemTarget(view, pos, dir) !== null;
+        return moveNestedTarget(view, pos, dir) !== null;
     }
     return moveTargetFor(view.state.doc, range, node?.type.name === "heading", dir) !== null;
 }
@@ -425,6 +427,9 @@ export function openBlockMenu(
     // stale ACTION impossible — same philosophy as tableCmd's cellPos bail.
     const anchorNode = view.state.doc.nodeAt(blockPos);
     const isHeading = anchorNode?.type.name === "heading";
+    // Section semantics (and the "Move Section" label) are top-level only —
+    // a nested heading moves as a single block among its siblings.
+    const movesSection = isHeading && view.state.doc.resolve(blockPos).depth === 0;
     const isItem = anchorNode?.type.name === "list_item";
     // An ITEM's marker still offers the LIST-level conversions (turn the
     // whole list ordered/task/prose/…): actions target the item, Turn-into
@@ -681,12 +686,12 @@ export function openBlockMenu(
             action: () => copyHeadingLink(view, blockPos),
         });
     }
-    addRow(isHeading ? t("Move Section Up") : t("Move Up"), {
+    addRow(movesSection ? t("Move Section Up") : t("Move Up"), {
         icon: IconChevronUp,
         disabled: !canMove(view, blockPos, -1),
         action: () => moveBlockAt(view, blockPos, -1),
     });
-    addRow(isHeading ? t("Move Section Down") : t("Move Down"), {
+    addRow(movesSection ? t("Move Section Down") : t("Move Down"), {
         icon: IconChevronDown,
         disabled: !canMove(view, blockPos, 1),
         action: () => moveBlockAt(view, blockPos, 1),

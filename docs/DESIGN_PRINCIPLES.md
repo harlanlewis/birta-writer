@@ -74,16 +74,61 @@ mount path and never as a reaction to the user's first keystroke. The editor is
 interactive before the first proofread pass runs. (Enforced by the deferred
 first pass in `proofread.ts`; measured by `e2e/perf/`.)
 
-## Chrome mirrors the source and stays out of the way
+## Chrome mirrors the block and stays out of the way
 
-- **Gutter marks reflect the Markdown, dimmed.** Headings show their literal
-  hashes (`#`, `##`, … `######`) in the monospace editor font at low opacity —
-  a level cue that reads as source, not a custom badge. Chrome like this is
-  non-interactive (`pointer-events: none`) except for deliberate controls (the
-  fold chevron).
+- **Gutter marks show what the block is, dimmed.** Every marker is the block's
+  slash-menu icon (headings an `H1`–`H6` badge, list items their flavor's
+  icon), drawn from the same icon set as the slash menu so the two can never
+  drift. Markers are quiet at rest and interactive by design — they are the
+  block's primary control (see "The gutter is the handle" below).
 - **Theme tokens only.** All color comes from `--vscode-*` variables so light
   and dark themes both work; accents use `var(--vscode-focusBorder)` with no
   literal fallback. No custom hex. (See `CLAUDE.md` → Architecture constraints.)
+
+## The gutter is the handle
+
+Every block — top-level, nested in a container, or an individual list item —
+gets exactly one control: its gutter marker. **One affordance, two verbs:
+click opens the block menu, drag moves the block.** No anonymous `⠿` badge,
+no `+` insert button — insertion belongs to the slash menu and typing.
+
+- **Markers are revealed, never resident.** They appear on hovering the block
+  or its gutter at low contrast and brighten on direct hover/focus. **Any
+  keystroke hides them until the mouse moves** — the gutter never flickers
+  alongside the caret. (`body.gutter-quiet`, `webview/plugins/headingFold.ts`.)
+- **"Selected" and "moving" are different states with different treatments.**
+  A block-range selection paints the **tint** — the editor's own selection
+  color, whole-block, with the native text highlight suppressed so nothing
+  double-paints (`.block-range-tint`). A drag dims its run with the **veil** —
+  reduced opacity says "in transit", never "selected" (`.block-drag-veil`).
+  Both come from one overlay module (`blockMenu/rangeIndicator.ts`); a new
+  "these blocks" state must pick tint (state) or veil (motion), never invent
+  a third treatment.
+- **Covered markers are the secondary affordance.** While a selection spans
+  blocks, every covered block's marker surfaces
+  (`.heading-fold-marker--covered`) — dragging any of them moves the run. A
+  nested block's marker is exempt: the handle you grab is always the block
+  you move.
+- **Drag chrome answers three questions and nothing more**: what's moving
+  (the pill — block name or count, `.block-drag-pill`), where it will land
+  (the accent drop line, indented to the target depth), and where it landed
+  (a brief landing flash, `.block-drop-flash`). Accents are
+  `var(--vscode-focusBorder)`; the pill and tooltips are inverted chips built
+  from the theme's own foreground/background. While a drag or marquee is
+  live, every other hover surface (tooltips, popups, marker reveals) stays
+  quiet.
+- **The marquee acquires; it never steals.** Rubber-band block selection
+  starts only outside text content (the margins); pointer-down inside text is
+  always native text selection. The rectangle is accent-bordered with a faint
+  fill (`.block-marquee`) and covered blocks tint live beneath it.
+- **The keyboard reaches everything the mouse can, with one grammar.** Escape
+  escalates caret → block (and collapses back); Shift+↑/↓ grow or shrink the
+  range from its anchor; Cmd+A ladders text → block → document; Alt+↑/↓ and
+  Cmd+Shift+↑/↓ move through the same machinery as drag.
+  (`webview/plugins/blockKeys.ts`, `blockRange.ts`.)
+- **Structure travels whole.** A heading brings its section, a list item its
+  subtree, and collapsed content always moves with its block — no operation
+  may orphan invisible text. One gesture is one undo step.
 
 ## When these collide
 

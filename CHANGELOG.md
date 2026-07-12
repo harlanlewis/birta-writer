@@ -120,6 +120,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Block-selection keyboard commands are O(doc) on heavily folded documents**: Escape/extend/move recomputed every collapsed section's extent with one full document walk per fold; they now batch it into a single pass (~3ms → well under 1ms on a 300-block document with 20 folds).
+- **A nested heading's menu says "Move Up", not "Move Section Up"** — section semantics (and the label promising them) are top-level only.
 - **Moving a heading nested inside a callout/quote is safe**: it moves as a single block. Previously its "section" was computed with top-level math, and Move Up could delete everything between the container and the next top-level heading.
 - **Nested grabbers drag their own block**: with a multi-block selection covering a container, grabbing a nested child's handle now moves that child, not the entire selection (the container's own handle still moves the whole covered run, and only the container's marker lights as "covered").
 - **Hovering a callout/directive reveals only its own grabber** — nested children's markers no longer all pop at once; each reveals on its own hover. The drag veil for a nested block also indents to the block's own column instead of dimming a strip of its parent container.

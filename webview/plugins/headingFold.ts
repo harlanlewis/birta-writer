@@ -180,6 +180,30 @@ export function findHeadingFoldRange(doc: any, headingPos: number, headingLevel?
  * carries the invisible body (orphaning it would let a move/delete act on
  * content the user can't see).
  */
+/**
+ * Every collapsed heading's section end in ONE doc pass (computeFoldRanges
+ * is a single stack walk) — callers that consult many positions (unit maps,
+ * cover expansion) use this instead of per-position foldedSectionEnd, which
+ * would re-walk the doc for each collapsed heading.
+ */
+export function foldedSectionEnds(state: EditorState): ReadonlyMap<number, number> {
+    const pluginState = headingFoldPluginKey.getState(state);
+    if (!pluginState || pluginState.folded.size === 0) {
+        return EMPTY_FOLD_MAP;
+    }
+    const ranges = computeFoldRanges(state.doc);
+    const ends = new Map<number, number>();
+    for (const pos of pluginState.folded) {
+        const range = ranges.get(pos);
+        if (range) {
+            ends.set(pos, range.to);
+        }
+    }
+    return ends;
+}
+
+const EMPTY_FOLD_MAP: ReadonlyMap<number, number> = new Map();
+
 export function foldedSectionEnd(state: EditorState, blockPos: number): number | null {
     const node = state.doc.nodeAt(blockPos);
     if (!isHeadingNode(node)) {
@@ -445,14 +469,17 @@ export function blockMarkerSpec(node: any): MarkerSpec | null {
     }
 }
 
-/** True for the two list container types (items are the draggable units). */
-function isListNode(node: any): boolean {
+/** True for the two list container types (items are the draggable units).
+ * Exported: the single source of the grabbable-structure taxonomy (the drag
+ * boundary walker consumes it too). */
+export function isListNode(node: any): boolean {
     return node.type.name === "bullet_list" || node.type.name === "ordered_list";
 }
 
 /** Containers whose direct block children are grabbable units of their own
- * (all are `content: "block+"`, so drops between their children are legal). */
-function isContainerNode(node: any): boolean {
+ * (all are `content: "block+"`, so drops between their children are legal).
+ * Exported alongside isListNode as the taxonomy's single source. */
+export function isContainerNode(node: any): boolean {
     switch (node.type.name) {
         case "blockquote":
         case "callout":

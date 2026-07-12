@@ -17,11 +17,15 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 1. **Fidelity and trust first — it's existential.** The #1 trust-killer in every competitor's tracker is round-trip infidelity: "it reformatted my file", "it lost content". One competitor was un-published from the Marketplace over exactly this ([unotes](https://github.com/ryanmcalister/unotes)); upstream has a live corruption report ([git-xing#14](https://github.com/git-xing/md-wysiwyg-editor/issues/14)); MarkText's most-reacted bug is "document is modified just by opening it" ([marktext#2189](https://github.com/marktext/marktext/issues/2189)). One corruption event sends a user back to raw mode permanently. This fork's minimal-diff serializer, round-trip regression corpus, and destructive-diff save guard exist because of this.
 2. **VS Code parity second.** The custom-editor API deliberately provides nothing — no find, no undo integration, no search reveal ("that's all intentionally left up to extensions", [microsoft/vscode#86802](https://github.com/microsoft/vscode/issues/86802)) — so parity users feel daily is hand-built here: find/replace, command palette and context-menu commands, Go-to-Symbol, user-rebindable keybindings, theme fidelity.
 3. **Parser and syntax breadth third.** Math, footnotes, frontmatter, reference links — and anything the schema can't represent must degrade to *visible but safe*, never a silent deletion, so the editor is trustworthy on any file.
-4. **Interaction patterns last.** Slash commands, smart paste, richer keyboard interaction — the polish that makes the editor *preferred* rather than merely tolerated, worth investing in only once the layers beneath it hold.
+4. **Interaction patterns last.** The polish that makes the editor *preferred* rather than merely tolerated, invested in once the layers beneath it held: slash commands, a full block-interaction system (gutter grabbers on every block, a block menu, drag-to-move, marquee and keyboard block selection) — with smart paste still ahead.
 
 ***
 
 ## Features
+
+### Blocks: grab, move, convert
+
+Every block — paragraphs, headings, list items (at any depth), quotes, callouts, directives, code blocks, tables, images, footnotes, even blocks nested inside callouts and quotes — has a gutter grabber showing its slash-menu icon. **Click it for the block menu** (turn into, duplicate, copy as markdown, move, delete; headings get copy-link and whole-section moves), **drag it to move the block** — with an accent drop line, auto-scroll, and one-step undo. Select many blocks with a **marquee drag in the margins** or from the keyboard (**Escape** selects the current block, **Shift+↑/↓** extend, **Cmd+A** ladders block → document, **Alt+↑/↓** move), then drag any covered grabber to move them all. Headings carry their sections, collapsed content always travels with its heading, and Tab/Shift-Tab indent list items one level without dragging their children along.
 
 ### Rich Text Editing
 
@@ -41,7 +45,7 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 
 ### Code Blocks
 
-- Syntax highlighting for 20+ languages: Bash, C, C++, C#, CSS, Go, HTML, Java, JavaScript, JSON, Markdown, PHP, Python, Ruby, Rust, SQL, Swift, TypeScript, YAML
+- Syntax highlighting for ~66 languages (grammars load lazily, so they cost nothing at launch)
 - Language picker with search filter
 - One-click copy button
 - Drag the bottom handle to resize the code block height
@@ -58,7 +62,7 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 - **Paste** an image from the clipboard, **drag-and-drop** a file, or use the **file picker** to insert images
 - Local storage with MD5 deduplication — images are always saved to your workspace and are **never uploaded off your machine**
 - Click an image to select it; click again to open a lightbox preview
-- Toolbar for editing alt text, renaming the file, or deleting the image
+- Click-to-edit caption (the alt text) and a delete control
 
 ### Theming
 

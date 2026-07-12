@@ -33,7 +33,7 @@ import { $prose } from "@milkdown/utils";
 import { moveBlockAt, moveBlockTo } from "../components/blockMenu";
 import { selectionCoverRange } from "../components/blockMenu/drag";
 import { BlockRangeSelection } from "./blockRange";
-import { foldedSectionEnd } from "./headingFold";
+import { foldedSectionEnds } from "./headingFold";
 
 type Command = (state: EditorState, dispatch?: (tr: Transaction) => void, view?: EditorView) => boolean;
 
@@ -54,13 +54,14 @@ function blockAt(state: EditorState, pos: number): { from: number; to: number } 
  * invisible content) nor extend into them one hidden block at a time.
  */
 function unitBoundaries(state: EditorState): { from: number; to: number }[] {
+    const sectionEnds = foldedSectionEnds(state); // one doc pass, not one per fold
     const units: { from: number; to: number }[] = [];
     let skipUntil = 0;
     state.doc.forEach((node, offset) => {
         if (offset < skipUntil) {
             return; // hidden inside a collapsed section — part of its unit
         }
-        const end = foldedSectionEnd(state, offset) ?? offset + node.nodeSize;
+        const end = sectionEnds.get(offset) ?? offset + node.nodeSize;
         units.push({ from: offset, to: end });
         skipUntil = end;
     });
