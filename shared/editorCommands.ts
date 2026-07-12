@@ -103,7 +103,15 @@ export const EDITOR_COMMANDS = [
     // shows the one that matches its state); the palette and slash menu use the
     // single `toggleToolbar` below instead, so they are palette:false here.
     { id: "hideToolbar", title: "Hide Toolbar", palette: false, sections: ["toolbar"] },
-    { id: "openKeyboardShortcuts", title: "Keyboard Shortcuts", palette: false, sections: ["toolbar"] },
+    // Help (the read-only cheatsheet overlay) sits directly above Customize
+    // (openKeyboardShortcuts — VS Code's native rebind UI): learn first,
+    // rebind second. See the sequence-3 comment below for why the two stay
+    // distinct commands.
+    { id: "openShortcutsHelp", title: "Keyboard Shortcuts Help", palette: true, sections: ["toolbar"] },
+    // "Customize Shortcuts" (not "Keyboard Shortcuts"): the bare name was a
+    // near-collision with "Keyboard Shortcuts Help" above, and the overlay's
+    // own button already uses this verb-first label. Command ID unchanged.
+    { id: "openKeyboardShortcuts", title: "Customize Shortcuts", palette: false, sections: ["toolbar"] },
     { id: "openExtensionSettings", title: "Settings", palette: false, sections: ["toolbar"] },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
@@ -145,6 +153,12 @@ export const EDITOR_COMMANDS = [
     { id: "shrinkSelection", title: "Shrink Selection", palette: true, sections: [] },
     { id: "insertParagraphAfter", title: "Insert Paragraph Below", palette: true, sections: [] },
     { id: "insertParagraphBefore", title: "Insert Paragraph Above", palette: true, sections: [] },
+    // Keyboard sequence 3: the gutter block menu opened from the caret's
+    // block. `openShortcutsHelp` (the sequence's read-only cheatsheet
+    // overlay, declared in the toolbar group above) is deliberately distinct
+    // from `openKeyboardShortcuts`, which opens VS Code's native Keyboard
+    // Shortcuts UI and remains the customize/rebind path.
+    { id: "openBlockMenu", title: "Open Block Menu", palette: true, sections: [] },
     // Fold grammar (MAR-110): fold/unfold act on the innermost foldable
     // block containing the caret (heading section or callout), mirroring the
     // built-in editor's Cmd+Option+[ / ] defaults. Fold All / Unfold All are

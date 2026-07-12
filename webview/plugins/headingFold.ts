@@ -1,4 +1,5 @@
 import type { EditorView } from "@milkdown/prose/view";
+import type { Node as ProseMirrorNode } from "@milkdown/prose/model";
 import { Decoration, DecorationSet } from "@milkdown/prose/view";
 import { keymap } from "@milkdown/prose/keymap";
 import {
@@ -1151,14 +1152,22 @@ function isHeadingElement(element: Element | null): element is HTMLElement {
     return element instanceof HTMLElement && element.matches("h1,h2,h3,h4,h5,h6");
 }
 
-function findSectionHeadingPosAt(view: EditorView, pos: number): number | null {
+export function findSectionHeadingPosAt(view: EditorView, pos: number): number | null {
+    return sectionHeadingPosAt(view.state.doc, pos);
+}
+
+/**
+ * Doc-based body of findSectionHeadingPosAt, for callers that run on
+ * (state, dispatch) with no view in hand.
+ */
+export function sectionHeadingPosAt(doc: ProseMirrorNode, pos: number): number | null {
     // Innermost heading whose section contains pos — the innermost is the
     // one starting latest. One cached stack walk instead of the old
     // per-heading full-doc scan: this runs on EVERY mousemove over
     // non-heading content, where the old shape was O(headings × doc) and
     // measured 2.6ms/event on a 500-heading document.
     let headingPos: number | null = null;
-    for (const [candidate, range] of cachedFoldRanges(view.state.doc)) {
+    for (const [candidate, range] of cachedFoldRanges(doc)) {
         if (
             range && candidate <= pos && pos < range.to &&
             (headingPos === null || candidate > headingPos)
@@ -1556,6 +1565,23 @@ function dispatchFold(
 }
 
 /**
+ * The position the caret fold/unfold commands resolve their foldable at. A
+ * non-empty FORWARD selection (Escape's block range, a node selection) puts
+ * `head` at the range's END boundary — a depth-0 position equal to the NEXT
+ * block's offset, which foldablesContaining would treat inclusively and
+ * resolve to the FOLLOWING section. Step one position back inside the
+ * selected content instead (the depth-0 nodeBefore rule openAtCaret.ts
+ * applies). Backward selections and plain carets already point at (or into)
+ * the intended content and are left alone.
+ */
+function foldProbePos(state: EditorState): number {
+    const { selection } = state;
+    return !selection.empty && selection.head > selection.anchor
+        ? selection.head - 1
+        : selection.head;
+}
+
+/**
  * Fold the innermost foldable containing the caret; when it is already
  * folded, bubble to the nearest still-open foldable ancestor (VS Code's
  * fold-at-cursor semantics).
@@ -1565,7 +1591,7 @@ export const foldAtCaret: Command = (state, dispatch) => {
     if (!pluginState?.enabled) {
         return false;
     }
-    for (const pos of foldablesContaining(state, state.selection.from)) {
+    for (const pos of foldablesContaining(state, foldProbePos(state))) {
         if (!pluginState.folded.has(pos)) {
             if (dispatch) {
                 dispatchFold(state, dispatch, pos, true);
@@ -1582,7 +1608,7 @@ export const unfoldAtCaret: Command = (state, dispatch) => {
     if (!pluginState?.enabled) {
         return false;
     }
-    for (const pos of foldablesContaining(state, state.selection.from)) {
+    for (const pos of foldablesContaining(state, foldProbePos(state))) {
         if (pluginState.folded.has(pos)) {
             if (dispatch) {
                 dispatchFold(state, dispatch, pos, false);

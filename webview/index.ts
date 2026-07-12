@@ -47,6 +47,7 @@ import type { Editor } from "@milkdown/core";
 import { renderFrontmatterPanel, focusFrontmatterPanel } from "./components/frontmatter";
 import { runEditorCommand, setEditorCommandHost } from "./editorCommands";
 import { setBlockMenuContext } from "./components/blockMenu";
+import { openShortcutsHelp } from "./components/shortcutsHelp";
 import { setSlashMenuHost } from "./plugins";
 import { revealPosition } from "./plugins/headingFold";
 import { initContextMenu } from "./components/contextMenu";
@@ -295,6 +296,8 @@ setEditorCommandHost({
     },
     editFrontmatter: () => focusFrontmatterPanel(),
     editRawMarkdown: switchToSource,
+    // Shortcuts-help cheatsheet overlay (scaffold: no-op until it lands).
+    openShortcutsHelp: () => openShortcutsHelp(),
 });
 
 // The slash menu executes every pick through the same editor-command registry

@@ -98,7 +98,16 @@ export class BlockRangeSelection extends Selection {
 // rejected (TS2611).
 (BlockRangeSelection.prototype as { visible: boolean }).visible = false;
 
-Selection.jsonID("blockRange", BlockRangeSelection);
+// Guarded: prosemirror-state keeps ONE process-global jsonID registry, but a
+// fresh module graph (vi.resetModules() test harnesses) re-evaluates this
+// module and would throw a duplicate-registration RangeError. Losing the
+// re-registration is harmless — deserialization falls back to the first
+// instance's class, and fold/selection state is view-only anyway.
+try {
+    Selection.jsonID("blockRange", BlockRangeSelection);
+} catch {
+    // already registered by a previous instance of this module
+}
 
 /**
  * History bookmark: prosemirror-history stores one per undo step, so a

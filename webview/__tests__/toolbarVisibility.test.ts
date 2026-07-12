@@ -90,7 +90,8 @@ describe("toolbar visibility", () => {
         expect(rows).toEqual([
             "Customize Toolbar",
             "Hide Toolbar",
-            "Keyboard Shortcuts",
+            "Keyboard Shortcuts Help",
+            "Customize Shortcuts",
             "Settings",
         ]);
     });

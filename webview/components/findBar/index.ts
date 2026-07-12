@@ -14,6 +14,7 @@ import {
 import { t, kbd } from "@/i18n";
 import { attachInputUndo } from "@/utils/inputUndo";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { getTopbarBottom, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import { revealPosition } from "@/plugins/headingFold";
 import type { EventManager } from "@/eventManager";
@@ -299,6 +300,9 @@ export function initFindBar(
      * Shared by every open path (open, findFrom, cycleOccurrence).
      */
     function show() {
+        // The bar shares its dock rect with the shortcuts-help overlay;
+        // claiming closes the overlay if it is open (see ui/dockExclusive.ts).
+        claimDock("find-bar", close);
         visible = true;
         bar.classList.add("find-bar--visible");
         escapeLayerOff ??= registerEscapeLayer(close);
@@ -1143,6 +1147,7 @@ export function initFindBar(
         // must drop the layer entry, or a dead one would eat a later Escape.
         escapeLayerOff?.();
         escapeLayerOff = null;
+        releaseDock("find-bar");
         visible = false;
         bar.classList.remove("find-bar--visible");
         bar.classList.remove("find-bar--no-results");
