@@ -23,6 +23,7 @@ import { highlight, ensureGrammars } from "@/highlighter";
 import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
 import { attachInputUndo } from "@/utils/inputUndo";
 import { createButton } from "@/ui/dom";
+import { registerEscapeLayer } from "@/ui/escapeLayers";
 import './codeBlock.css';
 
 const shouldAutoConvertCodeBlock = (): boolean =>
@@ -242,6 +243,8 @@ function createLangPicker(
 
     let isOpen = false;
     let activeIndex = -1;
+    /** Escape-layer unregister handle (null while the dropdown is closed). */
+    let escapeLayerOff: (() => void) | null = null;
 
     function scrollListItemIntoView(item: HTMLElement): void {
         const itemTop = item.offsetTop;
@@ -309,6 +312,9 @@ function createLangPicker(
 
     function open(): void {
         isOpen = true;
+        // Escape layer: search-input Esc self-closes, but an editor-focused
+        // Esc while the picker is open must close it before block-selecting.
+        escapeLayerOff ??= registerEscapeLayer(close);
         const rect = triggerBtn.getBoundingClientRect();
         const dropW = Math.max(rect.width, 160);
         dropdown.style.left = `${rect.left}px`;
@@ -342,6 +348,8 @@ function createLangPicker(
     }
 
     function close(): void {
+        escapeLayerOff?.();
+        escapeLayerOff = null;
         isOpen = false;
         dropdown.style.display = "none";
         triggerBtn.classList.remove("lang-picker-btn--open");

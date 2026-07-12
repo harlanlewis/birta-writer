@@ -13,6 +13,9 @@ import { Schema, type Node as PmNode, type Mark } from "@milkdown/prose/model";
 import { EditorState, TextSelection, type Transaction } from "@milkdown/prose/state";
 import { createEventManager } from "../eventManager";
 import { initFindBar, selectionOrWordQuery } from "../components/findBar";
+import { handleBlockKeydown } from "../plugins/blockKeys";
+import { BlockRangeSelection } from "../plugins/blockRange";
+import { registerEscapeLayer, closeTopmostLayer } from "../ui/escapeLayers";
 
 // ── Test schema ──────────────────────────────────────────
 const schema = new Schema({
@@ -132,6 +135,7 @@ function setup(
         btnReplace, btnReplaceAll, btnToggle, btnNext, btnPrev,
         btnCase, btnWord, btnRegex,
         docText,
+        view: fake.view,
         getState: fake.getState,
         getDispatchCount: fake.getDispatchCount,
         getFocusCount: fake.getFocusCount,
@@ -1193,5 +1197,79 @@ describe("initFindBar replace", () => {
         // the cursor just moves on to the next match
         expect(getDispatchCount()).toBe(0);
         expect(count.textContent).toBe("2/2");
+    });
+});
+
+describe("initFindBar Escape layering (editor-focused Esc)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        // Drain layer entries left behind by earlier tests — bars opened and
+        // never closed register on the module-level Escape stack.
+        while (closeTopmostLayer()) { /* drain */ }
+    });
+
+    const escapeEvent = () =>
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+
+    it("editor-focused Escape should close the bar first, leave the selection, then block-select", () => {
+        const { findBar, view, getState } = setup(mkDoc(p("foo bar foo")), {
+            selection: { from: 2, to: 2 },
+        });
+        findBar.open("foo");
+        const before = getState().selection;
+
+        // First Escape (routed through blockKeys' wiring, as when focus is
+        // in editor content): closes the bar, selection untouched.
+        expect(handleBlockKeydown(view, escapeEvent())).toBe(true);
+        expect(findBar.isOpen()).toBe(false);
+        expect(getState().selection.eq(before)).toBe(true);
+
+        // Second Escape: no layer left — the block grammar engages.
+        expect(handleBlockKeydown(view, escapeEvent())).toBe(true);
+        expect(getState().selection).toBeInstanceOf(BlockRangeSelection);
+    });
+
+    it("a menu opened above the bar should close first; the bar takes the next Escape", () => {
+        const { findBar, view } = setup(mkDoc(p("foo bar foo")), {
+            selection: { from: 2, to: 2 },
+        });
+        findBar.open("foo");
+        // A surface opened after the bar (e.g. a toolbar hover menu).
+        let menuOpen = true;
+        const offMenu = registerEscapeLayer(() => { menuOpen = false; offMenu(); });
+
+        handleBlockKeydown(view, escapeEvent());
+        expect(menuOpen).toBe(false);
+        expect(findBar.isOpen()).toBe(true); // stack order: menu first
+
+        handleBlockKeydown(view, escapeEvent());
+        expect(findBar.isOpen()).toBe(false);
+    });
+
+    it("closing via the input's own Escape should unregister the layer (no dead entry)", () => {
+        const { findBar, findInput, view, getState } = setup(mkDoc(p("foo bar")), {
+            selection: { from: 2, to: 2 },
+        });
+        findBar.open("foo");
+        findInput.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+        );
+        expect(findBar.isOpen()).toBe(false);
+        // A dead layer entry would swallow this Escape; instead the block
+        // grammar must engage immediately.
+        handleBlockKeydown(view, escapeEvent());
+        expect(getState().selection).toBeInstanceOf(BlockRangeSelection);
+    });
+
+    it("reopening after a close should register exactly one layer", () => {
+        const { findBar, view } = setup(mkDoc(p("foo bar")), { selection: { from: 2, to: 2 } });
+        findBar.open("foo");
+        findBar.close();
+        findBar.open("foo");
+        findBar.open("foo"); // second open while visible: must not double-register
+        handleBlockKeydown(view, escapeEvent());
+        expect(findBar.isOpen()).toBe(false);
+        // No second entry left behind.
+        expect(closeTopmostLayer()).toBe(false);
     });
 });

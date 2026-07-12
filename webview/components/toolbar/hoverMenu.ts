@@ -7,6 +7,7 @@
  * once affected only the Debug menu can't recur, because there's one code path.
  */
 import { placeMenu, MENU_GAP } from "./menuPlacement";
+import { registerEscapeLayer } from "@/ui/escapeLayers";
 
 export interface HoverMenuOptions {
     /** Runs immediately before the menu is shown — e.g. repaint checkmarks. */
@@ -41,6 +42,11 @@ export function wireHoverMenu(
 ): () => void {
     const hideDelay = options.hideDelayMs ?? 0;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    // Escape-layer unregister handle (null while closed): a hover-opened
+    // menu leaves focus in the editor, where Escape routes through the
+    // layer stack (blockKeys) — registering makes that Escape close the
+    // menu instead of block-selecting under it.
+    let escapeOff: (() => void) | null = null;
 
     const cancelHide = (): void => {
         if (hideTimer !== null) {
@@ -57,8 +63,11 @@ export function wireHoverMenu(
         button.setAttribute("aria-expanded", "true");
         // Marks the wrap so its ::after gap-bridge is live only while open.
         wrap.classList.add("tb-menu-open");
+        escapeOff ??= registerEscapeLayer(close);
     };
     const close = (): void => {
+        escapeOff?.();
+        escapeOff = null;
         cancelHide();
         menu.style.display = "none";
         button.setAttribute("aria-expanded", "false");
@@ -140,6 +149,8 @@ export function wireHoverMenu(
     wrap.addEventListener("focusout", onWrapFocusout);
 
     return (): void => {
+        escapeOff?.();
+        escapeOff = null;
         cancelHide();
         wrap.removeEventListener("mouseenter", open);
         wrap.removeEventListener("mouseleave", scheduleHide);

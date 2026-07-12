@@ -4,7 +4,7 @@
  * extend/shrink (and its never-steal-text-selection gate), and Alt/Cmd+Shift
  * arrow moves through the shared moveBlockTo machinery.
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
@@ -21,7 +21,9 @@ import {
     moveSelectedBlocks,
     duplicateSelectedBlocks,
     deleteSelectedBlocks,
+    handleBlockKeydown,
 } from "../plugins/blockKeys";
+import { registerEscapeLayer, closeTopmostLayer } from "../ui/escapeLayers";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey } from "../plugins/headingFold";
 import { NodeSelection } from "@milkdown/prose/state";
@@ -119,6 +121,69 @@ describe("toggleBlockSelection (Escape)", () => {
         expect(toggleBlockSelection(view.state, view.dispatch)).toBe(true);
         expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
         expect(selectedText(view)).toBe("Alpha beta gamma");
+    });
+});
+
+describe("handleBlockKeydown (Escape layering)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        // Drain layer entries left behind by other tests (module-level stack).
+        while (closeTopmostLayer()) { /* drain */ }
+    });
+
+    const escapeEvent = () =>
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+
+    it("Escape with an open layer should close it, consume the key, and leave the selection alone", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Beta");
+        const before = view.state.selection;
+        const close = vi.fn();
+        registerEscapeLayer(close);
+        const event = escapeEvent();
+        const stop = vi.spyOn(event, "stopPropagation");
+        expect(handleBlockKeydown(view, event)).toBe(true);
+        expect(close).toHaveBeenCalledTimes(1);
+        // Consumed WITHOUT touching the selection — no block escalation.
+        expect(view.state.selection.eq(before)).toBe(true);
+        // The consumed chord must not reach the workbench key forwarder.
+        expect(stop).toHaveBeenCalled();
+    });
+
+    it("Escape with no layers should run the existing escalate/collapse grammar", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Beta");
+        expect(handleBlockKeydown(view, escapeEvent())).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        expect(handleBlockKeydown(view, escapeEvent())).toBe(true);
+        expect(view.state.selection.empty).toBe(true);
+    });
+
+    it("one Escape should close exactly one layer, topmost first", async () => {
+        const view = await makeEditor("Alpha\n\nBeta");
+        placeCaretIn(view, "Beta");
+        const closes: string[] = [];
+        const offLower = registerEscapeLayer(() => { closes.push("lower"); offLower(); });
+        const offUpper = registerEscapeLayer(() => { closes.push("upper"); offUpper(); });
+        handleBlockKeydown(view, escapeEvent());
+        expect(closes).toEqual(["upper"]);
+        handleBlockKeydown(view, escapeEvent());
+        expect(closes).toEqual(["upper", "lower"]);
+        // Third Escape: nothing left — the block grammar takes over.
+        handleBlockKeydown(view, escapeEvent());
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+    });
+
+    it("a modified Escape (Shift+Escape) should not touch the layer stack", async () => {
+        const view = await makeEditor("Alpha");
+        const close = vi.fn();
+        const off = registerEscapeLayer(close);
+        const event = new KeyboardEvent("keydown", {
+            key: "Escape", shiftKey: true, bubbles: true, cancelable: true,
+        });
+        handleBlockKeydown(view, event);
+        expect(close).not.toHaveBeenCalled();
+        off();
     });
 });
 

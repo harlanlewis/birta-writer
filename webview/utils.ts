@@ -1,5 +1,7 @@
 // ─── Global shared utility functions ─────────────────────────────────────
 
+import { registerEscapeLayer } from "./ui/escapeLayers";
+
 /** Lock body scrolling (called when opening a fullscreen/modal view) */
 export function lockBodyScroll(): void {
     document.body.style.overflow = "hidden";
@@ -35,11 +37,25 @@ export function bindLightboxDismiss(
     closeBtn: HTMLElement,
     onClose: () => void,
 ): () => void {
+    // Registered as an Escape layer: with focus in editor content, blockKeys'
+    // Escape wiring closes the lightbox (topmost surface) instead of
+    // block-selecting beneath it. The document listener stays as the fallback
+    // for focus outside ProseMirror (the lightbox's own textarea/buttons);
+    // the defaultPrevented guard keeps one Escape from closing two surfaces,
+    // and stopPropagation keeps the consumed chord from the workbench.
+    const escapeLayerOff = registerEscapeLayer(onClose);
     const onKey = (e: KeyboardEvent) => {
-        if (e.key === "Escape") { e.preventDefault(); onClose(); }
+        if (e.key === "Escape" && !e.defaultPrevented) {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+        }
     };
     closeBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); onClose(); });
     overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) onClose(); });
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+        escapeLayerOff();
+        document.removeEventListener("keydown", onKey);
+    };
 }

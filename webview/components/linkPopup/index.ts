@@ -22,6 +22,7 @@ import {
 import { createLinkFormatSwitch, wikiAllowedFor } from "@/ui/formatSwitch";
 import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
 import { setPendingRange } from "@/plugins/pendingRange";
+import { registerEscapeLayer } from "@/ui/escapeLayers";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -404,6 +405,10 @@ export function setupLinkPopup(
     // Stale-reply guard + debounce for the resolved-target hint.
     let resolveGeneration = 0;
     let resolveDebounce: ReturnType<typeof setTimeout> | null = null;
+    // Escape-layer unregister handle (null while hidden). Registered on both
+    // open paths so an editor-focused Escape closes the popup (via blockKeys'
+    // layer check) before any block-selection escalation.
+    let escapeLayerOff: (() => void) | null = null;
 
     function clearHoverTimer(): void {
         if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
@@ -551,6 +556,7 @@ export function setupLinkPopup(
 
         // Position (viewport rect of the hovered anchor).
         popup.style.display = "flex";
+        escapeLayerOff ??= registerEscapeLayer(hidePopup);
         positionPopupAt(anchorEl.getBoundingClientRect());
     }
 
@@ -611,6 +617,7 @@ export function setupLinkPopup(
         btnEdit.style.display = "none";
         btnRemove.style.display = "none";
         popup.style.display = "flex";
+        escapeLayerOff ??= registerEscapeLayer(hidePopup);
 
         updatePopupContent(currentLink);
         setEditMode(true); // expands the body, highlights the range, focuses text
@@ -628,6 +635,9 @@ export function setupLinkPopup(
     }
 
     function hidePopup(): void {
+        // Every close path unregisters the Escape layer (idempotent).
+        escapeLayerOff?.();
+        escapeLayerOff = null;
         clearHideTimer();
         clearHoverTimer();
         resolveGeneration++;
@@ -1069,12 +1079,18 @@ export function setupLinkPopup(
         hidePopup();
     });
 
-    // Escape closes an open (esp. pinned) popup when focus isn't in the edit
-    // inputs — those handle Escape themselves and refocus the editor.
+    // Fallback: Escape closes an open (esp. pinned) popup when focus is
+    // neither in the edit inputs (they handle Escape themselves and refocus
+    // the editor) nor in editor content (there the Escape-layer stack closes
+    // it via blockKeys, which preventDefaults — honored below so one Escape
+    // never closes two surfaces). stopPropagation keeps the consumed chord
+    // from the workbench key forwarder, matching the other overlays.
     document.addEventListener("keydown", (e) => {
         if (e.key !== "Escape") return;
+        if (e.defaultPrevented) return; // a layer above already claimed it
         if (popup.style.display === "none") return;
         if (popup.contains(document.activeElement)) return;
+        e.stopPropagation();
         hidePopup();
         getView()?.focus();
     });
