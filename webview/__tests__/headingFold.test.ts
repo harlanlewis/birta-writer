@@ -245,7 +245,9 @@ describe("heading gutter level menu", () => {
         const v = view(editor);
         const pMarker = document.querySelector<HTMLButtonElement>(".heading-fold-marker--paragraph");
         expect(pMarker).not.toBeNull();
-        expect(pMarker!.textContent).toBe("P");
+        // The marker is the slash menu's Paragraph icon (pilcrow SVG).
+        expect(pMarker!.querySelector("svg")).not.toBeNull();
+        expect(pMarker!.dataset["pill"]).toBe("Paragraph");
 
         // Act: open the menu and pick H2 (rows are P,H1,H2 → index 2)
         clickMouse(pMarker!, "click");
@@ -330,7 +332,7 @@ describe("heading gutter level menu", () => {
         // Grow the first paragraph so every later position shifts.
         v.dispatch(v.state.tr.insertText("xxxxx", 1));
         const heading = Array.from(document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker"))
-            .find((m) => m.textContent === "##")!;
+            .find((m) => m.textContent === "H2")!;
         clickMouse(heading, "click");
         const menu = levelMenu()!;
         expect(menu.querySelector(".block-menu-item--active .block-menu-item-label")!.textContent).toBe("Heading 2");

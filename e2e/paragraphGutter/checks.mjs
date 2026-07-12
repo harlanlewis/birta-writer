@@ -30,11 +30,11 @@ export async function run({ page, check, baseUrl }) {
     const opacity = () => page.$eval(pMarker, (el) => getComputedStyle(el).opacity);
 
 
-    // ── 1. Exactly one paragraph marker: the top-level TEXT paragraph only.
-    // The fixture also carries an image-only line and a raw-html line — both
-    // parse as top-level paragraphs but must NOT get the P marker (MAR-79). ──
+    // ── 1. P markers on the two top-level TEXT paragraphs only. The fixture
+    // also carries an image-only line and a raw-html line — both parse as
+    // top-level paragraphs but must NOT get the P marker (MAR-79). ──
     const markerCount = await page.$$eval(".heading-fold-marker--paragraph", (els) => els.length);
-    check("only the top-level text paragraph gets a P marker (not image/html blocks)", markerCount === 1, `count=${markerCount}`);
+    check("only the top-level text paragraphs get P markers (not image/html blocks)", markerCount === 2, `count=${markerCount}`);
     const inListOrQuote = await page.$$eval(
         "li .heading-fold-marker--paragraph, blockquote .heading-fold-marker--paragraph",
         (els) => els.length,
@@ -122,13 +122,42 @@ export async function run({ page, check, baseUrl }) {
     check("## marker's enlarged box does not overlap the fold chevron",
         chevronGap !== null && chevronGap >= -0.5, `gap=${chevronGap?.toFixed(1)}`);
 
-    // ── 4d. Every top-level block type carries its glyph marker ──
-    // Fixture order: text P, list -, quote >, image ![], html <>, code ```.
-    const glyphs = await page.$$eval(".heading-fold-marker--block", (els) =>
-        els.map((el) => el.textContent));
-    check("block glyph markers cover list/quote/image/html/code",
-        JSON.stringify(glyphs) === JSON.stringify(["P", "-", ">", "![]", "<>", "```"]),
-        `glyphs=${JSON.stringify(glyphs)}`);
+    // ── 4d. Every top-level block type carries its icon marker ──
+    // Fixture order: text P, list item, quote, image, html, code — each
+    // showing its slash-menu row's SVG icon (data-pill names the type).
+    const markers = await page.$$eval(".heading-fold-marker--block", (els) =>
+        els.map((el) => ({ pill: el.dataset.pill, svg: !!el.querySelector("svg") })));
+    check("block icon markers cover every fixture block type",
+        JSON.stringify(markers.map((m) => m.pill)) === JSON.stringify([
+            "Paragraph", "List item", "Blockquote", "Image", "HTML",
+            "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
+        ]) && markers.every((m) => m.svg),
+        `markers=${JSON.stringify(markers)}`);
+
+    // Mermaid boots into PREVIEW mode (code area collapsed, not
+    // display:none-d) — its gutter marker must still be measurable there.
+    const mermaidMarker = await page.evaluate(() => {
+        const el = [...document.querySelectorAll(".heading-fold-marker--block")]
+            .find((m) => m.dataset.pill === "Mermaid Diagram");
+        const r = el?.getBoundingClientRect();
+        return r ? { x: Math.round(r.x), h: Math.round(r.height) } : null;
+    });
+    check("mermaid marker measurable while the diagram previews",
+        mermaidMarker !== null && mermaidMarker.h > 0, JSON.stringify(mermaidMarker));
+
+    // Task items indent their li box for the checkbox; the marker column
+    // must still line up with the plain list item's marker.
+    const itemColumns = await page.evaluate(() => {
+        const xs = [];
+        for (const li of document.querySelectorAll(".ProseMirror li")) {
+            const m = li.querySelector(":scope > .heading-fold-gutter > .heading-fold-marker");
+            if (m) xs.push(Math.round(m.getBoundingClientRect().x));
+        }
+        return xs;
+    });
+    check("task and list item markers share one gutter column",
+        itemColumns.length >= 2 && Math.max(...itemColumns) - Math.min(...itemColumns) <= 2,
+        `xs=${JSON.stringify(itemColumns)}`);
 
     // Each glyph marker must sit in the LEFT GUTTER of its own block — the
     // in-NodeView anchoring (code block) is the fragile part. Hover the block
@@ -217,9 +246,9 @@ export async function run({ page, check, baseUrl }) {
     }
     check("paragraph promoted to H2 in the serialized doc", promoted !== null);
 
-    // The promoted block is now a heading — it gets the heading gutter (##),
-    // and the paragraph marker count drops to zero.
+    // The promoted block is now a heading — it gets the heading gutter, and
+    // the P-marker count drops by one (the footnote-body paragraph keeps its).
     await page.waitForTimeout(150);
     const after = await page.$$eval(".heading-fold-marker--paragraph", (els) => els.length);
-    check("promoted block no longer carries a P marker", after === 0, `count=${after}`);
+    check("promoted block no longer carries a P marker", after === 1, `count=${after}`);
 }

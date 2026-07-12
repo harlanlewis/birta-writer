@@ -156,9 +156,9 @@ describe("turnIntoKindAt", () => {
             if (!node.textContent.trim()) wsPos = offset;
         });
         expect(turnIntoKindAt(v, wsPos)).toBe("paragraph");
-        const glyphs = Array.from(document.querySelectorAll(".heading-fold-marker--block"))
-            .map((el) => el.textContent);
-        expect(glyphs).toEqual(["P", "P"]);
+        const pills = Array.from(document.querySelectorAll<HTMLElement>(".heading-fold-marker--block"))
+            .map((el) => el.dataset["pill"]);
+        expect(pills).toEqual(["Paragraph", "Paragraph"]);
     });
 });
 
@@ -277,11 +277,14 @@ describe("block markers for every top-level type", () => {
             ].join("\n"),
         );
         view(editor);
-        const glyphs = Array.from(
-            document.querySelectorAll(".heading-fold-marker--block"),
-        ).map((el) => el.textContent);
-        expect(glyphs).toEqual(["P", "-", "1.", "[ ]", ">", "```", "![]", "<>"]);
-        // The P marker keeps its historical class; glyph markers don't.
+        const pills = Array.from(
+            document.querySelectorAll<HTMLElement>(".heading-fold-marker--block"),
+        ).map((el) => el.dataset["pill"]);
+        expect(pills).toEqual([
+            "Paragraph", "List item", "List item", "Task",
+            "Blockquote", "Code Block", "Image", "HTML",
+        ]);
+        // The P marker keeps its historical class; other markers don't.
         expect(document.querySelectorAll(".heading-fold-marker--paragraph")).toHaveLength(1);
     });
 });

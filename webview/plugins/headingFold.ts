@@ -2,7 +2,22 @@ import type { EditorView } from "@milkdown/prose/view";
 import { Decoration, DecorationSet } from "@milkdown/prose/view";
 import { Plugin, PluginKey, TextSelection } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
-import { IconChevronDown, IconChevronRight } from "../ui/icons";
+import {
+    IconAlertCircle,
+    IconCheckSquare,
+    IconChevronDown,
+    IconChevronRight,
+    IconCode,
+    IconFootnote,
+    IconImage,
+    IconList,
+    IconListOrdered,
+    IconMath,
+    IconNetwork,
+    IconPilcrow,
+    IconQuote,
+    IconTerminal,
+} from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
 import { t } from "../i18n";
 // Runtime-only cycle (blockMenu imports this module's pure helpers back);
@@ -63,14 +78,6 @@ function isHeadingNode(node: ProseNodeLike | null | undefined): node is ProseNod
 export function getHeadingLevel(node: { attrs?: Record<string, unknown> }): number {
     const level = node.attrs?.["level"];
     return typeof level === "number" ? level : 1;
-}
-
-/**
- * The gutter label for a heading: its literal Markdown hashes (`#`..`######`).
- * A level cue that reads as source, iA-Writer-style. Exported for unit testing.
- */
-export function headingMarker(level: number): string {
-    return "#".repeat(Math.min(Math.max(level, 1), 6));
 }
 
 /**
@@ -216,7 +223,10 @@ function createHeadingFoldGutter(
     const marker = document.createElement("button");
     marker.type = "button";
     marker.className = "heading-fold-marker";
-    marker.textContent = headingMarker(level);
+    // "H2" badge — the same identity the slash menu's heading rows show in
+    // their icon slot (the literal ## hashes remain in each row's hint).
+    marker.textContent = `H${Math.min(Math.max(level, 1), 6)}`;
+    marker.dataset["pill"] = `H${Math.min(Math.max(level, 1), 6)}`;
     marker.setAttribute("aria-label", t("Block options"));
     marker.setAttribute("aria-haspopup", "menu");
     marker.setAttribute("aria-expanded", "false");
@@ -298,13 +308,13 @@ function createHeadingFoldGutter(
 }
 
 /**
- * The non-heading twin of the heading gutter: a source-mirroring glyph (`P`,
- * `-`, `>`, ``` …) that is invisible until its block is hovered (CSS), and
- * opens the block menu at full contrast when interacted with — so every
- * top-level block's conversions and actions are as reachable as a heading's.
- * No fold chevron: only headings own sections.
+ * The non-heading twin of the heading gutter: the block's slash-menu icon
+ * (pilcrow, list flavor, quote, code, image, …), invisible until its block
+ * is hovered (CSS), opening the block menu at full contrast when interacted
+ * with — so every top-level block's conversions and actions are as reachable
+ * as a heading's. No fold chevron: only headings own sections.
  */
-function createBlockGutter(view: EditorView, glyph: string): HTMLElement {
+function createBlockGutter(view: EditorView, spec: MarkerSpec): HTMLElement {
     const gutter = document.createElement("span");
     gutter.className = "heading-fold-gutter heading-fold-gutter--block";
     gutter.contentEditable = "false";
@@ -313,8 +323,9 @@ function createBlockGutter(view: EditorView, glyph: string): HTMLElement {
     marker.type = "button";
     // --paragraph kept as the P marker's stable test/back-compat hook; every
     // hover-revealed marker (including P) carries --block for shared styling.
-    marker.className = `heading-fold-marker heading-fold-marker--block${glyph === "P" ? " heading-fold-marker--paragraph" : ""}`;
-    marker.textContent = glyph;
+    marker.className = `heading-fold-marker heading-fold-marker--block${spec.key === "P" ? " heading-fold-marker--paragraph" : ""}`;
+    marker.innerHTML = spec.icon;
+    marker.dataset["pill"] = spec.label;
     // Same label as the heading markers: it's the same block menu.
     marker.setAttribute("aria-label", t("Block options"));
     marker.setAttribute("aria-haspopup", "menu");
@@ -354,11 +365,19 @@ function createBlockGutter(view: EditorView, glyph: string): HTMLElement {
  * (an hr can't host the in-block widget this gutter rides on; both join in
  * MAR-19's overlay-based drag handle).
  */
-function blockMarkerGlyph(node: any): string | null {
+/** A gutter marker's rendering: the same icon its slash-menu row uses, a
+ * stable fingerprint/widget key, and the human name the drag pill shows. */
+export interface MarkerSpec {
+    key: string;
+    icon: string;
+    label: string;
+}
+
+function blockMarkerSpec(node: any): MarkerSpec | null {
     switch (node.type.name) {
         case "paragraph": {
             if (isTextBearingParagraph(node)) {
-                return "P";
+                return { key: "P", icon: IconPilcrow, label: t("Paragraph") };
             }
             let sawImage = false;
             node.forEach((child: any) => {
@@ -366,15 +385,27 @@ function blockMarkerGlyph(node: any): string | null {
                     sawImage = true;
                 }
             });
-            return sawImage ? "![]" : "<>";
+            return sawImage
+                ? { key: "img", icon: IconImage, label: t("Image") }
+                : { key: "html", icon: IconCode, label: t("HTML") };
         }
         // Lists get PER-ITEM markers (emitItemGutters), not a list-level one.
         case "blockquote":
-            return ">";
+            return { key: "quote", icon: IconQuote, label: t("Blockquote") };
         case "callout":
-            return "[!]";
-        case "code_block":
-            return "```";
+            return { key: "callout", icon: IconAlertCircle, label: t("Callout") };
+        case "code_block": {
+            const language = String(node.attrs?.["language"] ?? "").toLowerCase();
+            if (language === "mermaid") {
+                return { key: "mermaid", icon: IconNetwork, label: t("Mermaid Diagram") };
+            }
+            if (language === "latex" || language === "tex" || language === "katex") {
+                return { key: "math", icon: IconMath, label: t("Math Block") };
+            }
+            return { key: "code", icon: IconTerminal, label: t("Code Block") };
+        }
+        case "footnote_definition":
+            return { key: "fn", icon: IconFootnote, label: t("Footnote") };
         default:
             return null;
     }
@@ -385,22 +416,16 @@ function isListNode(node: any): boolean {
     return node.type.name === "bullet_list" || node.type.name === "ordered_list";
 }
 
-/**
- * The source-mirroring glyph for ONE list item: its actual ordinal in an
- * ordered list ("3."), its checkbox state in a task list ("[ ]"/"[x]"),
- * or "-" in a bullet list.
- */
-function itemGlyph(listNode: any, item: any, index: number): string {
+/** The marker for ONE list item: the icon of its list flavor (matching the
+ * slash menu's Bullet/Ordered/Task rows), uniform across items. */
+function itemMarkerSpec(listNode: any, item: any): MarkerSpec {
     if (item.attrs["checked"] != null) {
-        return item.attrs["checked"] ? "[x]" : "[ ]";
+        return { key: "task", icon: IconCheckSquare, label: t("Task") };
     }
     if (listNode.type.name === "ordered_list") {
-        // Honor the list's start number — a list sourced "3. / 4." must
-        // show 3. and 4., not 1. and 2.
-        const start = Number(listNode.attrs["order"] ?? 1);
-        return `${(Number.isFinite(start) ? start : 1) + index}.`;
+        return { key: "ol", icon: IconListOrdered, label: t("List item") };
     }
-    return "-";
+    return { key: "ul", icon: IconList, label: t("List item") };
 }
 
 /**
@@ -416,10 +441,10 @@ function emitItemGutters(
     decorations: Decoration[] | null,
     parts: string[] | null,
 ): void {
-    listNode.forEach((item: any, offset: number, index: number) => {
+    listNode.forEach((item: any, offset: number) => {
         const itemPos = listPos + 1 + offset;
-        const glyph = itemGlyph(listNode, item, index);
-        parts?.push(`i${glyph}`);
+        const spec = itemMarkerSpec(listNode, item);
+        parts?.push(`i${spec.key}`);
         decorations?.push(
             Decoration.node(itemPos, itemPos + item.nodeSize, {
                 class: "block-gutter-host block-gutter-host--item",
@@ -428,8 +453,8 @@ function emitItemGutters(
         decorations?.push(
             Decoration.widget(
                 itemPos + 1,
-                (view: EditorView) => createBlockGutter(view, glyph),
-                { key: `g:${glyph}`, side: -1 },
+                (view: EditorView) => createBlockGutter(view, spec),
+                { key: `g:${spec.key}`, side: -1 },
             ),
         );
         // Nested lists inside the item: their items are units too.
@@ -464,7 +489,7 @@ function structureFingerprint(
             parts.push("L");
             emitItemGutters(node, offset, null, parts);
         } else {
-            parts.push(blockMarkerGlyph(node) ?? "·");
+            parts.push(blockMarkerSpec(node)?.key ?? "·");
         }
     });
     return parts.join("|");
@@ -485,8 +510,8 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
                 emitItemGutters(node, offset, decorations, null);
                 return;
             }
-            const glyph = blockMarkerGlyph(node);
-            if (glyph !== null) {
+            const spec = blockMarkerSpec(node);
+            if (spec !== null) {
                 decorations.push(
                     Decoration.node(offset, offset + node.nodeSize, {
                         class: "block-gutter-host",
@@ -495,10 +520,10 @@ function buildHeadingFoldDecorations(doc: any, folded: ReadonlySet<number>): Dec
                 decorations.push(
                     Decoration.widget(
                         offset + 1,
-                        (view: EditorView) => createBlockGutter(view, glyph),
+                        (view: EditorView) => createBlockGutter(view, spec),
                         // Stable, position-free key: same-glyph widgets reuse
                         // their DOM across rebuilds (matching is ordinal).
-                        { key: `g:${glyph}`, side: -1 },
+                        { key: `g:${spec.key}`, side: -1 },
                     ),
                 );
             }

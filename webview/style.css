@@ -1705,6 +1705,41 @@ body.block-marqueeing .milkdown .editor {
     left: -34px;
 }
 
+/* Task items render their checkbox inside the li box, which starts ~21px
+   further left than a bullet/ordered li at the same depth — the shared
+   -34px offset would push their marker that much deeper into the gutter.
+   Pull it back so every item marker at a given depth shares one column. */
+.milkdown .editor li[data-item-type="task"].block-gutter-host--item > .heading-fold-gutter--block {
+    left: -13px;
+}
+
+/* Gutter markers now carry the same SVG icons as their slash-menu rows
+   (headings keep their H1–H6 text badge). Size the icon to the glyph box
+   so hit targets and hover chrome are unchanged. */
+.milkdown .editor .heading-fold-marker--block svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+}
+
+/* A code block in PREVIEW mode (mermaid diagram / math render) collapses
+   its source `pre` instead of display:none-ing it: the block's gutter
+   marker lives inside, and visibility (unlike display) lets the marker opt
+   back in — the grabber stays alive while the diagram is showing. */
+.milkdown .editor .code-pre--preview-hidden {
+    visibility: hidden;
+    height: 0 !important;
+    max-height: 0 !important;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    overflow: hidden;
+}
+.milkdown .editor .code-pre--preview-hidden .heading-fold-gutter--block {
+    visibility: visible;
+}
+
 /* Marquee rectangle (MAR-82 v1): drag from the margins to block-select.
    Accent-bordered with a faint accent fill — the covered blocks show the
    selection tint live underneath. */

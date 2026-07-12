@@ -92,21 +92,22 @@ describe("blockBoundaryPositions", () => {
 });
 
 describe("per-item list drag/menu (MAR-86)", () => {
-    it("every list item gets its own marker with a source-true glyph", async () => {
+    it("every list item gets its own marker with its list flavor's icon", async () => {
         const editor = await makeEditor("1. first\n2. second\n\n- [x] done\n- [ ] todo");
         view(editor);
-        const glyphs = Array.from(document.querySelectorAll(".heading-fold-marker--block"))
-            .map((el) => el.textContent);
-        expect(glyphs).toEqual(["1.", "2.", "[x]", "[ ]"]);
+        const pills = Array.from(document.querySelectorAll<HTMLElement>(".heading-fold-marker--block"))
+            .map((el) => el.dataset["pill"]);
+        expect(pills).toEqual(["List item", "List item", "Task", "Task"]);
+        // Icons, not text: every marker carries its slash-menu row's SVG.
+        for (const el of document.querySelectorAll(".heading-fold-marker--block")) {
+            expect(el.querySelector("svg")).not.toBeNull();
+        }
     });
 
-    it("an ordered list starting at 3 shows 3. and 4. — the real ordinals", async () => {
+    it("copying an item from a list starting at 3 carries ITS real ordinal", async () => {
         const editor = await makeEditor("3. a\n4. b");
         view(editor);
-        const glyphs = Array.from(document.querySelectorAll(".heading-fold-marker--block"))
-            .map((el) => el.textContent);
-        expect(glyphs).toEqual(["3.", "4."]);
-        // And copying the second item carries ITS ordinal, not the start.
+        // Copying the second item carries ITS ordinal, not the start.
         const markerEls = Array.from(document.querySelectorAll<HTMLButtonElement>(".heading-fold-marker"));
         markerEls[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
         const menu = document.querySelector<HTMLElement>(".block-menu")!;

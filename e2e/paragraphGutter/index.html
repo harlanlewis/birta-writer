@@ -36,6 +36,16 @@
     "let x = 1",
     "```",
     "",
+    "- [ ] a task item",
+    "",
+    "```mermaid",
+    "graph TD; A-->B;",
+    "```",
+    "",
+    "body with a footnote[^1]",
+    "",
+    "[^1]: footnote definition body",
+    "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

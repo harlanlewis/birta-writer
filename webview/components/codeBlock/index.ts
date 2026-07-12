@@ -894,7 +894,11 @@ export function createCodeBlockView(
         toggleBtn.innerHTML = IconCode;
         toggleBtn.classList.add("code-view-toggle-btn--active");
         toggleTooltip.setText(t("Edit Code"));
-        pre.style.display = "none";
+        // Collapse rather than display:none: the block's gutter marker
+        // (heading-fold widget) lives inside `pre`, and display:none on an
+        // ancestor is un-overridable — visibility is, so the marker's own
+        // visibility:visible keeps the grabber alive in preview mode.
+        pre.classList.add("code-pre--preview-hidden");
         previewEl().style.display = "flex";
         wordWrapBtn.style.display = "none";
     }
@@ -905,7 +909,7 @@ export function createCodeBlockView(
         toggleBtn.innerHTML = IconEye;
         toggleBtn.classList.remove("code-view-toggle-btn--active");
         toggleTooltip.setText(previewTip());
-        pre.style.display = "";
+        pre.classList.remove("code-pre--preview-hidden");
         mermaidPreview.style.display = "none";
         latexPreview.style.display = "none";
         wordWrapBtn.style.display = "inline-flex";
