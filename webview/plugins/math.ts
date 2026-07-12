@@ -156,6 +156,11 @@ export const mathInlineSchema = $nodeSchema(mathInlineId, () => ({
     content: "text*",
     marks: "",
     code: true,
+    // Kept draggable deliberately (MAR-108): an in-document drag commits via
+    // ProseMirror's native drop handler, which the content guard
+    // (plugins/contentGuard.ts) now gates — a drop that loses or duplicates
+    // the formula, or lands in folded-hidden content, is vetoed. The gesture
+    // earns its (previously unguarded) risk.
     draggable: true,
     parseDOM: [
         {

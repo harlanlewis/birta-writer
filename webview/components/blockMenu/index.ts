@@ -59,6 +59,8 @@ import {
     IconTrash2,
 } from "../../ui/icons";
 import { blockMarkdownAt, selectInto } from "./turnInto";
+import { moveBlocks } from "../../editing/moveBlocks";
+import { tagContentGuard } from "../../plugins/contentGuard";
 import {
     canConvert,
     conversionKindAt,
@@ -178,7 +180,16 @@ export function duplicateBlockRange(
             ));
         }
     }
+    // Content-guard contract (MAR-108): a duplicate gains exactly this copy.
+    tagContentGuard(tr, { kind: "duplicate", gained: content });
+    const docBefore = view.state.doc;
     view.dispatch(tr);
+    if (view.state.doc === docBefore) {
+        // Guard veto — the transaction never applied. Report a truthful
+        // no-op and skip the landing flash (its positions describe a doc
+        // that doesn't exist).
+        return false;
+    }
     view.focus();
     // "Here's where it landed" — the same landing flash a move gets. A
     // block-range duplicate already reads its destination from the selection
@@ -324,90 +335,13 @@ function moveNestedTarget(view: EditorView, itemPos: number, dir: -1 | 1): numbe
     return $pos.posAtIndex(index + 1) + parent.child(index + 1).nodeSize;
 }
 
-/**
- * Move `range` so it starts at boundary `targetPos`, as a single transaction
- * (one undo step). Returns false for no-op targets (inside/adjacent to the
- * range). Carries the fold-preserving move meta so a collapsed section stays
- * collapsed at its destination — and nothing else inherits its fold.
- * Exported for unit testing; shared by the menu's Move rows and drag-drop.
- */
-export function moveBlockTo(
-    view: EditorView,
-    range: { from: number; to: number },
-    targetPos: number,
-    opts?: { selectRun?: boolean },
-): boolean {
-    if (targetPos >= range.from && targetPos <= range.to) {
-        return false;
-    }
-    const { doc } = view.state;
-    // Collect the moved children directly from their common parent — a
-    // doc.slice through a LIST would wrap the items in a phantom list node
-    // (open slice), nesting a list inside the drop target. Works uniformly
-    // for top-level blocks (parent = doc) and list items (parent = list).
-    const $from = doc.resolve(range.from);
-    const parent = $from.depth === 0 ? doc : $from.parent;
-    const base = $from.depth === 0 ? 0 : $from.start();
-    const moved: ProseNode[] = [];
-    parent.forEach((child: ProseNode, offset: number) => {
-        const childPos = base + offset;
-        if (childPos >= range.from && childPos < range.to) {
-            moved.push(child);
-        }
-    });
-    if (moved.length === 0) {
-        return false;
-    }
-    const content = Fragment.from(moved);
-    // deleteRange (not delete): removing a list's last item must dissolve
-    // the emptied list instead of leaving a schema-invalid empty node.
-    const tr = view.state.tr.deleteRange(range.from, range.to);
-    const sizeAfterDelete = tr.doc.content.size;
-    const insertAt = tr.mapping.map(targetPos);
-    tr.insert(insertAt, content);
-    if (tr.doc.content.size < sizeAfterDelete + content.size) {
-        // tr.insert silently no-ops when the slice can't fit (replaceStep
-        // returns null — no throw). Dispatching would commit the DELETE
-        // half alone: a failed move must be a no-op, never a deletion.
-        return false;
-    }
-    tr.setMeta(headingFoldPluginKey, {
-        type: "move",
-        from: range.from,
-        to: range.to,
-        insertAt,
-    } satisfies HeadingFoldMeta);
-    // The selection rides the moved content — redo then restores it (and the
-    // scroll) at the destination instead of jumping to a stale spot. Multi-
-    // block drops keep the whole run selected (the Tiptap post-drop
-    // convention) so it stays grabbable for another drag; single moves get a
-    // plain caret.
-    if (opts?.selectRun) {
-        const runEnd = insertAt + content.size;
-        // Top-level runs stay selected as a real block range (leaf blocks
-        // included); item-level ranges (inside a list) would snap outward
-        // to the whole list, so they keep the text-span fallback.
-        const runRange = tr.doc.resolve(insertAt).depth === 0
-            ? BlockRangeSelection.tryCreate(tr.doc, insertAt, runEnd)
-            : null;
-        tr.setSelection(
-            runRange ??
-            TextSelection.between(
-                tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size)),
-                tr.doc.resolve(Math.max(0, Math.min(runEnd - 1, tr.doc.content.size))),
-            ),
-        );
-    } else {
-        tr.setSelection(
-            TextSelection.near(tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size))),
-        );
-    }
-    view.dispatch(tr);
-    view.focus();
-    // Landing flash at the destination — positions are valid in the new doc.
-    flashRange(view, insertAt, insertAt + content.size);
-    return true;
-}
+// The move primitive was extracted to editing/moveBlocks (MAR-112): the
+// hardened structural contract — source-range integrity, explicit canReplace
+// fit, fold-hidden target legality, the content-guard tag, and the fold move
+// meta — lives there. Re-exported under its historical name so the menu's
+// Move rows, drag-drop, the keyboard layer, and the test surface keep one
+// import site.
+export { moveBlocks as moveBlockTo } from "../../editing/moveBlocks";
 
 /**
  * Move the block (heading: its section) one unit up or down. Returns false
@@ -430,7 +364,7 @@ export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean
     if (target === null) {
         return false;
     }
-    return moveBlockTo(view, range, target);
+    return moveBlocks(view, range, target);
 }
 
 /** Whether a move in `dir` has somewhere to go (drives row disabling). */

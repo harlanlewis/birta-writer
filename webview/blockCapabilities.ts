@@ -44,6 +44,9 @@ import {
     wrapListIn,
     wrapProseIn,
 } from "./components/blockMenu/turnInto";
+// Runtime-only cycle (contentGuard → headingFold → blockMenu → this module);
+// auditConversion is only called inside convertAt's body.
+import { auditConversion } from "./plugins/contentGuard";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────
 
@@ -462,32 +465,38 @@ export function convertAt(
         return false; // the filled current row is a legal no-op pick
     }
     const override = OVERRIDES.find((entry) => entry.from === source && entry.to === target);
-    let changed = false;
-    if (override) {
-        changed = override.convert(view, pos, target, getEditor);
-    } else if (target === "codeBlock") {
-        changed = turnIntoCodeBlock(view, pos, getEditor);
-    } else {
+    // Content-guard audit (MAR-108): the pair's declared effect is the
+    // contract; undeclared deltas are logged (warn-only — see GUARD_MODE).
+    // Gesture-scoped rather than per-transaction because the wrap path
+    // dispatches through replayed toolbar commands (multi-dispatch).
+    const changed = auditConversion(view, contentEffectOf(source, target), () => {
+        if (override) {
+            return override.convert(view, pos, target, getEditor);
+        }
+        if (target === "codeBlock") {
+            return turnIntoCodeBlock(view, pos, getEditor);
+        }
         const fromShape = capabilityOfKind(source).shape;
         const toShape = capabilityOfKind(target).shape;
         if (fromShape === "textblock" && toShape === "textblock") {
-            changed = setHeadingLevelAt(view, pos, headingLevelOf(target));
+            return setHeadingLevelAt(view, pos, headingLevelOf(target));
         } else if (fromShape === "textblock") {
-            changed = wrapProseIn(view, pos, source, target, getEditor);
+            return wrapProseIn(view, pos, source, target, getEditor);
         } else if (fromShape === "list" && toShape === "list") {
-            changed = retypeList(view, pos, target);
+            return retypeList(view, pos, target);
         } else if (fromShape === "list" && toShape === "textblock") {
-            changed = unwrapListTo(view, pos, headingLevelOf(target));
+            return unwrapListTo(view, pos, headingLevelOf(target));
         } else if (fromShape === "list" && toShape === "wrapper") {
-            changed = wrapListIn(view, pos, target);
+            return wrapListIn(view, pos, target);
         } else if (fromShape === "wrapper" && toShape === "textblock") {
-            changed = unwrapContainerTo(view, pos, headingLevelOf(target));
+            return unwrapContainerTo(view, pos, headingLevelOf(target));
         } else if (fromShape === "wrapper" && toShape === "list") {
-            changed = containerToList(view, pos, target);
+            return containerToList(view, pos, target);
         } else if (fromShape === "wrapper" && toShape === "wrapper") {
-            changed = retypeContainer(view, pos, target);
+            return retypeContainer(view, pos, target);
         }
-    }
+        return false;
+    });
     if (changed) {
         view.focus();
     }

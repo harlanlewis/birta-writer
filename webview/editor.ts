@@ -36,6 +36,7 @@ import {
     caretScrollMarginPlugin,
     cellClickFixPlugin,
     codeBlockBackspacePlugin,
+    contentGuardPlugin,
     codeBlockSelectAllPlugin,
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,
@@ -396,6 +397,10 @@ export async function createEditor(
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
         .use(blockKeysPlugin)
+        // Content-conservation guard (MAR-108): filterTransaction is
+        // consulted for every plugin regardless of registration order, so
+        // the guard sees the final transaction wherever it sits in the list.
+        .use(contentGuardPlugin)
         .use(cellClickFixPlugin)
         .use(listSpreadNormalizePlugin)
         .use(trailingHrParagraphPlugin)

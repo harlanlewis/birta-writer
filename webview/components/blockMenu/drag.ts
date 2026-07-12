@@ -20,9 +20,16 @@
 import type { EditorView } from "@milkdown/prose/view";
 import type { EditorState } from "@milkdown/prose/state";
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
+import { closeBlockMenu, moveRangeAt } from "./index";
+import { moveBlocks } from "../../editing/moveBlocks";
 import { BlockRangeSelection } from "../../plugins/blockRange";
-import { foldedHiddenRanges, foldedSectionEnds, isContainerNode, isListNode } from "../../plugins/headingFold";
+import {
+    foldedHiddenRanges,
+    foldedSectionEnds,
+    hiddenRangeCoversTarget,
+    isContainerNode,
+    isListNode,
+} from "../../plugins/headingFold";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
@@ -226,8 +233,11 @@ export function scrollVelocityFor(clientY: number): number {
  * section: those blocks are display:none, so their rects measure at y=0 —
  * a drag toward the viewport top would silently commit the drop into the
  * hidden range and the dragged block would vanish mid-fold. The boundary
- * AT the section's end (the first visible slot after the unit) survives.
- * Exported for unit testing.
+ * AT a heading section's end (the first visible slot after the unit)
+ * survives; a collapsed callout's end-of-body slot does not (both per
+ * hiddenRangeCoversTarget — the SAME legality registry moveBlocks enforces,
+ * so the slots the UI offers and the targets the primitive accepts cannot
+ * drift). Exported for unit testing.
  */
 export function visibleBoundaryPositions(
     state: EditorState,
@@ -239,18 +249,19 @@ export function visibleBoundaryPositions(
     if (hidden.length === 0) {
         return positions;
     }
-    return positions.filter(({ pos }) => !hidden.some((r) => pos >= r.from && pos < r.to));
+    return positions.filter(
+        ({ pos }) => !hidden.some((r) => hiddenRangeCoversTarget(state.doc, r, pos)),
+    );
 }
 
 /** True when `el` sits inside a collapsed callout's hidden body. The
- * state-based filter in visibleBoundaryPositions DOES see callout folds
- * (the unified fold grammar keeps them in plugin state), but its `pos < r.to`
- * deliberately admits the end-of-owner slot at `pos === range.to` — for a
- * collapsed callout that slot's measuring DOM lives inside the hidden body.
- * This DOM check catches exactly that residual case: hidden geometry
- * (visibility:hidden, height:0) must never win the nearest-y drop contest,
- * or a bottom-edge drop would commit into the fold and the dragged block
- * would vanish. */
+ * state-based filter in visibleBoundaryPositions excludes every fold-hidden
+ * slot (callout end-of-body included, via hiddenRangeCoversTarget); this DOM
+ * check stays as the residual defense for hidden GEOMETRY the fold state
+ * can't see — a slot whose measuring DOM sits display:none/height:0 by any
+ * other mechanism must never win the nearest-y drop contest, or a
+ * bottom-edge drop would commit into it and the dragged block would
+ * vanish. */
 function inCollapsedCalloutBody(el: Element): boolean {
     return el.closest(".callout.collapsed .callout-body") !== null;
 }
@@ -575,7 +586,7 @@ export function wireMarkerDrag(
             const commitMulti = wasMulti;
             stop();
             if (commit) {
-                moveBlockTo(view, commitRange!, commitTarget!.pos, { selectRun: commitMulti });
+                moveBlocks(view, commitRange!, commitTarget!.pos, { selectRun: commitMulti });
             }
         };
 

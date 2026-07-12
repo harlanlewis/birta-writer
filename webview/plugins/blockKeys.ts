@@ -23,8 +23,9 @@
  *                   handler preempts inside fences).
  *   - Alt+↑/↓ and   move the selected block range (staying selected) or the
  *   Cmd+Shift+↑/↓   caret's block (headings carry their section) — the same
- *                   moveBlockTo the menu and drag use, so fold state, the
- *                   landing flash, and single-step undo all apply.
+ *                   moveBlocks primitive (editing/moveBlocks) the menu and
+ *                   drag use, so fold state, the landing flash, and
+ *                   single-step undo all apply.
  *   - Shift+Alt+↑/↓ duplicate the selected block range or the caret's block
  *                   (MAR-103, VS Code copy-line semantics) — the same
  *                   primitive the menu's Duplicate row uses. Delete Block
@@ -44,8 +45,8 @@ import {
     deleteBlockRange,
     duplicateBlockRange,
     moveBlockAt,
-    moveBlockTo,
 } from "../components/blockMenu";
+import { moveBlocks } from "../editing/moveBlocks";
 import { selectionCoverRange } from "../components/blockMenu/drag";
 import { BlockRangeSelection } from "./blockRange";
 import {
@@ -327,7 +328,7 @@ export function moveSelectedBlocks(dir: -1 | 1): Command {
             if (target === null) {
                 return true; // at a document edge — consume, no-op
             }
-            return moveBlockTo(view, cover, target, { selectRun: true });
+            return moveBlocks(view, cover, target, { selectRun: true });
         }
         // Bare caret in a list: move the ITEM among its siblings (innermost
         // item wins for nesting), never the whole list.
