@@ -90,9 +90,13 @@ export function sinkItemKeepingChildren(listItemType: NodeType) {
             const barePos = listPos + 1 + itemsBefore.size;
             const mapOffset = (pos: number): number =>
                 Math.min(barePos + 1 + Math.max(0, pos - (itemPos + 1)), barePos + bare.nodeSize - 1);
+            // A range whose head reached into the (relocated) sublist can't
+            // be restored faithfully — collapse to the mapped start instead
+            // of faking a span over content that moved elsewhere.
+            const headStaysInBare = $to.pos - (itemPos + 1) <= bare.content.size;
             tr.setSelection(TextSelection.between(
                 tr.doc.resolve(mapOffset($from.pos)),
-                tr.doc.resolve(mapOffset($to.pos)),
+                tr.doc.resolve(mapOffset(headStaysInBare ? $to.pos : $from.pos)),
             ));
             dispatch(tr.scrollIntoView());
         }

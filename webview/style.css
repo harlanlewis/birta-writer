@@ -1668,9 +1668,15 @@ body.gutter-quiet .milkdown .editor .block-gutter-host .heading-fold-marker--blo
    suppress its paint: the block-range tint above is the ONE visual language
    for "these blocks are selected". PM ships these rules in its own
    stylesheet, which this bundle does not include. */
+/* The editor-scoped theme rule (`.milkdown .editor ::selection`, 0,2,0)
+   outranks a bare `.ProseMirror-hideselection *::selection` (0,1,1) — the
+   native highlight would double-paint under the block tint. Match its
+   scope and add the state class so suppression always wins. */
+.milkdown .editor.ProseMirror-hideselection ::selection,
 .ProseMirror-hideselection *::selection {
     background: transparent;
 }
+.milkdown .editor.ProseMirror-hideselection,
 .ProseMirror-hideselection {
     caret-color: transparent;
 }
@@ -1706,6 +1712,33 @@ body.block-marqueeing .milkdown .editor {
    (Prefixed to outrank the nested base rule's specificity.) */
 .milkdown .editor .block-gutter-host--item > .heading-fold-gutter--block {
     left: -34px;
+}
+
+/* Container blocks pad their content, but the gutter anchors to the host's
+   BORDER box (top: 0) — the icon rode 5-8px above the first line. Values
+   match each wrapper's measured padding-top; and per-wrapper `left` zeroes
+   the small horizontal drift so the marker column stays ruler-straight.
+   (Only the wrapper's own gutter can match — nested blocks never carry
+   gutters, so no inner-block collisions.) */
+.milkdown .editor :is(blockquote, .mw-table) .heading-fold-gutter--block {
+    top: 7.5px;
+}
+/* Header-bearing wrappers (callout title bar, directive header, code
+   toolbar): the icon aligns with the HEADER line, which sits closer to the
+   border box than a padded body does. */
+.milkdown .editor .callout .heading-fold-gutter--block {
+    top: 1.5px;
+}
+.milkdown .editor .container-directive .heading-fold-gutter--block {
+    top: 1.5px;
+}
+.milkdown .editor .code-block-wrapper .heading-fold-gutter--block {
+    top: 2.5px;
+    left: -11px;
+}
+.milkdown .editor .footnote-def .heading-fold-gutter--block {
+    top: 5.5px;
+    left: -12px;
 }
 
 /* Per-flavor nudges: the -34px base puts every marker in one column, but

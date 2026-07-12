@@ -31,10 +31,17 @@ function measureRange(
         const dom = view.nodeDOM(offset);
         if (dom instanceof HTMLElement) {
             const rect = dom.getBoundingClientRect();
+            // Folded-hidden blocks (display:none) report all-zero rects — a
+            // fold-expanded cover ends with them, and letting one overwrite
+            // `bottom` would zero the veil out of existence. Measure the
+            // VISIBLE extent only.
+            if (rect.width === 0 && rect.height === 0) {
+                return;
+            }
             if (top === null) {
                 top = rect.top;
             }
-            bottom = rect.bottom;
+            bottom = Math.max(bottom ?? rect.bottom, rect.bottom);
         }
     });
     // Ranges that don't align to top-level children (a list ITEM) measure

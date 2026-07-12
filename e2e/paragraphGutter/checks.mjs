@@ -163,6 +163,57 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.move(0, 0);
     await page.waitForTimeout(120);
 
+    // Marker geometry: every block marker sits in ONE column and aligns
+    // with its block's first VISIBLE line (wrapper blocks compensate for
+    // their padding/header chrome — the icon must never ride the corner).
+    const geometry = await page.evaluate(() => {
+        const out = [];
+        for (const el of document.querySelector(".ProseMirror").children) {
+            const m = el.querySelector(".heading-fold-marker--block");
+            // Item markers live in their own per-flavor columns — this check
+            // is about TOP-LEVEL block markers only.
+            if (!m || m.closest(".block-gutter-host--item")) continue;
+            const headed = el.querySelector(".callout-title, .directive-header, .code-block-header");
+            const probe = headed ?? el.querySelector("p, td, code, .footnote-def-content p") ?? el;
+            const pr = probe.getBoundingClientRect();
+            const mr = m.getBoundingClientRect();
+            const lineCenter = pr.y + Math.min(12, pr.height / 2);
+            out.push({ pill: m.dataset.pill,
+                       dy: Math.round((mr.y + mr.height / 2 - lineCenter) * 10) / 10,
+                       cx: Math.round((mr.x + mr.width / 2) * 10) / 10 });
+        }
+        return out;
+    });
+    check("every marker aligns with its block's first line (±3px)",
+        geometry.length >= 8 && geometry.every((g) => Math.abs(g.dy) <= 3),
+        JSON.stringify(geometry.filter((g) => Math.abs(g.dy) > 3)));
+    const topLevelXs = geometry.map((g) => g.cx);
+    check("top-level markers share one column (±1px)",
+        Math.max(...topLevelXs) - Math.min(...topLevelXs) <= 1.2, JSON.stringify(geometry));
+
+    // Block-range selection must not double-paint: the native ::selection
+    // is suppressed (hideselection wins the cascade) while the tint shows.
+    const firstP = await page.$eval(".ProseMirror > p", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + 30, y: r.y + 8 };
+    });
+    await page.mouse.click(firstP.x, firstP.y);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(120);
+    const selectionPaint = await page.evaluate(() => {
+        const root = document.querySelector(".ProseMirror");
+        return {
+            hide: root.classList.contains("ProseMirror-hideselection"),
+            bg: getComputedStyle(root.querySelector("p"), "::selection").backgroundColor,
+            tint: getComputedStyle(document.querySelector(".block-range-tint")).display !== "none",
+        };
+    });
+    check("block selection: native paint suppressed, tint shown",
+        selectionPaint.hide && selectionPaint.bg === "rgba(0, 0, 0, 0)" && selectionPaint.tint,
+        JSON.stringify(selectionPaint));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(80);
+
     // Mermaid boots into PREVIEW mode (code area collapsed, not
     // display:none-d) — its gutter marker must still be measurable there.
     const mermaidMarker = await page.evaluate(() => {

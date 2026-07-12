@@ -422,4 +422,35 @@ export async function run({ page, check, baseUrl }) {
     check("Cmd+A step 3 selects every block", step3 >= 3, `covered=${step3} of ${blocks}`);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(80);
+
+    // ── 9. Folded section: Escape selects heading + hidden body, tint shows ──
+    // (Regression: a fold-expanded cover ends with zero-rect hidden blocks,
+    // which once zeroed the veil's measured bottom → no tint at all.)
+    const h1 = await page.$eval(".ProseMirror h1", (el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x + 30, y: r.y + r.height / 2 };
+    });
+    await page.mouse.click(h1.x, h1.y);
+    await page.waitForTimeout(80);
+    await page.$eval(".ProseMirror h1 .heading-fold-toggle", (el) => el.click());
+    await page.waitForTimeout(120);
+    check("section folded", await page.$eval(".ProseMirror h1", (el) =>
+        el.classList.contains("heading-fold-heading--collapsed")));
+    await page.mouse.click(h1.x, h1.y);
+    await page.waitForTimeout(80);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(120);
+    const foldTint = await page.evaluate(() => {
+        const tint = document.querySelector(".block-range-tint");
+        if (!tint) return null;
+        const style = getComputedStyle(tint);
+        const r = tint.getBoundingClientRect();
+        return { shown: style.display !== "none", h: Math.round(r.height) };
+    });
+    check("Escape on a folded heading paints the selection tint",
+        foldTint !== null && foldTint.shown && foldTint.h > 10, JSON.stringify(foldTint));
+    // Unfold + clear for cleanliness.
+    await page.keyboard.press("Escape");
+    await page.$eval(".ProseMirror h1 .heading-fold-toggle", (el) => el.click());
+    await page.waitForTimeout(80);
 }

@@ -288,9 +288,10 @@ export function moveSelectedBlocks(dir: -1 | 1): Command {
         // The cover is fold-expanded by selectionCoverRange (a collapsed
         // heading carries its hidden section); targets hop whole visible
         // UNITS so a move never lands inside another collapsed section.
-        const cover = selectionCoverRange(view);
-        if (cover) {
+        const rawCover = selectionCoverRange(view);
+        if (rawCover) {
             const units = unitBoundaries(state);
+            const cover = snapToUnits(units, rawCover.from, rawCover.to);
             const first = units.findIndex((u) => u.from === cover.from);
             const last = units.findIndex((u) => u.to === cover.to);
             if (first < 0 || last < 0) {
