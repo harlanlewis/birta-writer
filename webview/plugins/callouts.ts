@@ -169,6 +169,18 @@ export function markerWithKind(marker: string, kind: CalloutKind): string {
 }
 
 /**
+ * The marker line for a fold-default change (the block menu's "Collapsed by
+ * default" row): type, case, and raw title bytes preserved, the fold marker
+ * swapped. This is the one deliberate write path for the `+`/`-` marker —
+ * interactive chevron toggling stays visual-only (see components/callout).
+ */
+export function markerWithFold(marker: string, fold: "" | "+" | "-"): string {
+    const parts = parseCalloutMarker(marker);
+    if (!parts) return `[!NOTE]${fold}`;
+    return `[!${parts.rawType}]${fold}${parts.rest}`;
+}
+
+/**
  * Backslash-escapes the characters that would give a typed title inline
  * meaning on reparse (emphasis, code, links/wikilinks, autolink/html, math,
  * highlight, strikethrough, escapes, references). A formatted marker line is

@@ -150,6 +150,11 @@ describe("editor command keybinding contributions", () => {
         // VS Code parity: Join Lines ships bound on macOS only (palette
         // elsewhere).
         joinLines: [{ mac: "ctrl+j" }],
+        // VS Code's native fold/unfold defaults (MAR-110). Fold All /
+        // Unfold All ship unbound: the Cmd+K chord leader is consumed by
+        // insertLink in this editor, so they live in the palette + block menu.
+        fold: [{ key: "ctrl+shift+[", mac: "cmd+alt+[" }],
+        unfold: [{ key: "ctrl+shift+]", mac: "cmd+alt+]" }],
     };
 
     it("every editor keybinding should reference a table entry", () => {

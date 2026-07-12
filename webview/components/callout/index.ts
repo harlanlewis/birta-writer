@@ -1,12 +1,17 @@
 /**
  * Callout NodeView (MAR-27) — the visual chrome for `callout` nodes
- * (plugins/callouts.ts): kind icon + accent color, an editable title, an
- * optional fold chevron, and a keyboard-accessible kind-picker menu.
+ * (plugins/callouts.ts): kind icon + accent color, an editable title, a
+ * collapsed-state ellipsis, and a keyboard-accessible kind-picker menu.
  *
  * Invariants:
- *   - Folding is VISUAL ONLY. Collapsing/expanding toggles a class; the
- *     document (and the `[!type]-` marker) is never touched, so reading a
- *     file can never dirty it.
+ *   - Folding is VISUAL ONLY. Fold state is OWNED by the fold plugin
+ *     (plugins/headingFold.ts, MAR-110): the chevron lives in the block's
+ *     gutter, the `collapsed` class arrives as a node decoration, and this
+ *     view only renders the `…` ellipsis and dispatches the shared fold
+ *     meta. The document (and the `[!type]-` marker) is never touched by
+ *     collapsing/expanding, so reading a file can never dirty it. (The one
+ *     deliberate marker write is the block menu's "Collapsed by default"
+ *     row — a real document edit, like changing the kind.)
  *   - Changing the kind or title IS a document edit: the marker attr is
  *     re-synthesized (markerWithKind / markerWithTitle — case, fold, and
  *     raw bytes preserved where untouched) and dispatched as one
@@ -26,12 +31,13 @@ import {
     markerWithTitle,
     type CalloutKind,
 } from "@/plugins/callouts";
+import { createFoldEllipsis } from "@/ui/foldEllipsis";
+import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import {
     IconAlertTriangle,
     IconBug,
     IconCheck,
     IconCheckCircle,
-    IconChevronDown,
     IconClipboardList,
     IconHelpCircle,
     IconInfo,
@@ -178,14 +184,23 @@ export function createCalloutView(
         titleSpan.contentEditable = "true";
     }
 
-    const foldButton = document.createElement("button");
-    foldButton.type = "button";
-    foldButton.className = "callout-fold";
-    foldButton.innerHTML = IconChevronDown;
-    foldButton.title = t("Collapse / expand");
-    foldButton.setAttribute("aria-label", t("Collapse / expand"));
+    // ── Collapsed `…` (MAR-110): the NodeView mount of the shared fold
+    //    ellipsis. Visible only while the host carries the `collapsed`
+    //    class (a node decoration from the fold plugin); clicking expands
+    //    by dispatching the shared fold meta — zero steps, no history.
+    const ellipsis = createFoldEllipsis(initialNode.childCount, () => {
+        const pos = getPos();
+        if (pos === undefined) return;
+        view.dispatch(
+            view.state.tr
+                .setMeta(foldPluginKey, { type: "set", pos, folded: false } satisfies FoldMeta)
+                .setMeta("addToHistory", false),
+        );
+        view.focus();
+    });
+    ellipsis.dom.classList.add("callout-fold-ellipsis");
 
-    titleBar.append(kindButton, titleSpan, foldButton);
+    titleBar.append(kindButton, titleSpan, ellipsis.dom);
 
     const content = document.createElement("div");
     content.className = "callout-body";
@@ -203,18 +218,6 @@ export function createCalloutView(
             ),
         );
     };
-
-    // ── Fold (visual only — never rewrites the marker) ──────────────────────
-    let collapsed = ((node.attrs["fold"] as string) ?? "") === "-";
-    const renderCollapsed = (): void => {
-        dom.classList.toggle("collapsed", collapsed);
-        foldButton.setAttribute("aria-expanded", String(!collapsed));
-    };
-    foldButton.addEventListener("mousedown", (e) => e.preventDefault());
-    foldButton.addEventListener("click", () => {
-        collapsed = !collapsed;
-        renderCollapsed();
-    });
 
     // ── Kind picker menu ────────────────────────────────────────────────────
     let menu: HTMLElement | null = null;
@@ -328,11 +331,9 @@ export function createCalloutView(
             "placeholder",
             ((node.attrs["title"] as string) ?? "") === "",
         );
-        const hasFold = ((node.attrs["fold"] as string) ?? "") !== "";
-        foldButton.style.display = hasFold ? "" : "none";
+        ellipsis.setCount(node.childCount);
     };
     render();
-    renderCollapsed();
 
     return {
         dom,

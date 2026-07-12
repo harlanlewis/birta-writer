@@ -48,6 +48,7 @@ import { renderFrontmatterPanel, focusFrontmatterPanel } from "./components/fron
 import { runEditorCommand, setEditorCommandHost } from "./editorCommands";
 import { setBlockMenuContext } from "./components/blockMenu";
 import { setSlashMenuHost } from "./plugins";
+import { revealPosition } from "./plugins/headingFold";
 import { initContextMenu } from "./components/contextMenu";
 import {
     handleGetProjectImages,
@@ -95,6 +96,16 @@ function scrollToSourceLine(
     const children = view.dom.children;
     if (blockIdx >= children.length) {
         return;
+    }
+    // Goto-symbol / scroll-to-line is an explicit entry intent: a target
+    // hidden inside a folded range unfolds it first (VS Code semantics) —
+    // a display:none block would otherwise measure at y=0.
+    if (blockIdx < view.state.doc.childCount) {
+        let blockPos = 0;
+        for (let i = 0; i < blockIdx; i++) {
+            blockPos += view.state.doc.child(i).nodeSize;
+        }
+        revealPosition(view, blockPos);
     }
     const el = children[blockIdx] as HTMLElement;
     if (!el) {
