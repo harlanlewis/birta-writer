@@ -143,3 +143,4 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 
 - **Editable inline/block HTML** is not yet supported — embedded HTML renders read-only, and editing it requires switching to the raw text editor
 - **Global search navigation**: clicking a search result for a `.md` file may not scroll to the matched line in WYSIWYG mode when multiple `.md` files are open simultaneously
+- **True multi-caret editing, column (box) selection, and transpose** are deliberately not reimplemented — pop to the raw editor for those (⇧⌘M "Edit Raw Markdown", which round-trips losslessly); in-editor, ⌘D occurrence cycling and regex Replace All cover the common "change every X" cases
