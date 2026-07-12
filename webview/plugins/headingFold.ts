@@ -779,13 +779,21 @@ function isHeadingElement(element: Element | null): element is HTMLElement {
 }
 
 export function findSectionHeadingPosAt(view: EditorView, pos: number): number | null {
+    return sectionHeadingPosAt(view.state.doc, pos);
+}
+
+/**
+ * Doc-based body of findSectionHeadingPosAt — the fold keymap commands
+ * (plugins/foldCommands.ts) run on (state, dispatch) with no view in hand.
+ */
+export function sectionHeadingPosAt(doc: any, pos: number): number | null {
     // Innermost heading whose section contains pos — the innermost is the
     // one starting latest. One cached stack walk instead of the old
     // per-heading full-doc scan: this runs on EVERY mousemove over
     // non-heading content, where the old shape was O(headings × doc) and
     // measured 2.6ms/event on a 500-heading document.
     let headingPos: number | null = null;
-    for (const [candidate, range] of cachedFoldRanges(view.state.doc)) {
+    for (const [candidate, range] of cachedFoldRanges(doc)) {
         if (
             range && candidate <= pos && pos < range.to &&
             (headingPos === null || candidate > headingPos)
