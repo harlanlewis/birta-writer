@@ -1,0 +1,192 @@
+/* ── Shortcuts Help — right-docked cheatsheet panel (find-bar idiom) ── */
+
+.shortcuts-help {
+    position: fixed;
+    top: calc(var(--editor-topbar-height, 40px) + 6px);
+    right: 16px;
+    /* Same band as the find bar (see findBar.css): above the sticky heading
+       title (1100), below the topbar and its dropdown menus (1200). */
+    z-index: 1180;
+    width: min(420px, calc(100vw - 32px));
+    max-height: calc(100vh - var(--editor-topbar-height, 40px) - 22px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 0 14px 12px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.1s ease, transform 0.1s ease;
+    pointer-events: none;
+
+    &.shortcuts-help--visible {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }
+
+    &:focus {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: -1px;
+    }
+}
+
+/* Header stays put while the list scrolls beneath it */
+.shortcuts-help__header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0 8px;
+    background: var(--vscode-editorWidget-background);
+    border-bottom: 1px solid var(--vscode-editorWidget-border);
+}
+
+.shortcuts-help__header-icon {
+    display: flex;
+    align-items: center;
+    opacity: 0.8;
+
+    & svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+.shortcuts-help__title {
+    flex: 1;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.shortcuts-help__section-title {
+    margin: 12px 0 2px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vscode-descriptionForeground);
+}
+
+.shortcuts-help__row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 3px 0;
+}
+
+.shortcuts-help__keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    flex: 0 0 auto;
+    max-width: 45%;
+}
+
+.shortcuts-help__label {
+    flex: 1;
+    min-width: 0;
+}
+
+.shortcuts-help__note {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Key chips use VS Code's own keybinding-label tokens so they read exactly
+   like chords in the native Keyboard Shortcuts UI. */
+.shortcuts-help kbd {
+    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 0 5px;
+    border-radius: 3px;
+    background: var(--vscode-keybindingLabel-background);
+    color: var(--vscode-keybindingLabel-foreground);
+    border: 1px solid var(--vscode-keybindingLabel-border);
+    border-bottom-color: var(--vscode-keybindingLabel-bottomBorder);
+    box-shadow: inset 0 -1px 0 var(--vscode-keybindingLabel-bottomBorder);
+    white-space: nowrap;
+}
+
+/* Rebindable commands: name-only groups */
+.shortcuts-help__group {
+    padding: 2px 0;
+}
+
+.shortcuts-help__group-name {
+    font-weight: 600;
+}
+
+.shortcuts-help__group-items {
+    color: var(--vscode-descriptionForeground);
+}
+
+.shortcuts-help__footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--vscode-editorWidget-border);
+}
+
+/* Icon-only close button (find-bar button anatomy) */
+.shortcuts-help__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+
+    & svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    &:hover {
+        background: var(--vscode-toolbar-hoverBackground);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: -1px;
+    }
+}
+
+.shortcuts-help__customize {
+    padding: 3px 12px;
+    border: none;
+    border-radius: 2px;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+
+    &:hover {
+        background: var(--vscode-button-hoverBackground);
+    }
+
+    &:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 1px;
+    }
+}

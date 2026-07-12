@@ -103,6 +103,11 @@ export const EDITOR_COMMANDS = [
     // shows the one that matches its state); the palette and slash menu use the
     // single `toggleToolbar` below instead, so they are palette:false here.
     { id: "hideToolbar", title: "Hide Toolbar", palette: false, sections: ["toolbar"] },
+    // Help (the read-only cheatsheet overlay) sits directly above Customize
+    // (openKeyboardShortcuts — VS Code's native rebind UI): learn first,
+    // rebind second. See the sequence-3 comment below for why the two stay
+    // distinct commands.
+    { id: "openShortcutsHelp", title: "Keyboard Shortcuts Help", palette: true, sections: ["toolbar"] },
     { id: "openKeyboardShortcuts", title: "Keyboard Shortcuts", palette: false, sections: ["toolbar"] },
     { id: "openExtensionSettings", title: "Settings", palette: false, sections: ["toolbar"] },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
@@ -146,16 +151,16 @@ export const EDITOR_COMMANDS = [
     { id: "insertParagraphAfter", title: "Insert Paragraph Below", palette: true, sections: [] },
     { id: "insertParagraphBefore", title: "Insert Paragraph Above", palette: true, sections: [] },
     // Keyboard sequence 3: the gutter block menu opened from the caret's
-    // block, heading-section folding, and the shortcuts-help overlay.
-    // `openShortcutsHelp` (a read-only cheatsheet overlay) is deliberately
-    // distinct from `openKeyboardShortcuts` above, which opens VS Code's
-    // native Keyboard Shortcuts UI and remains the customize/rebind path.
+    // block and heading-section folding. `openShortcutsHelp` (the sequence's
+    // read-only cheatsheet overlay, declared in the toolbar group above) is
+    // deliberately distinct from `openKeyboardShortcuts`, which opens VS
+    // Code's native Keyboard Shortcuts UI and remains the customize/rebind
+    // path.
     { id: "openBlockMenu", title: "Open Block Menu", palette: true, sections: [] },
     { id: "foldSection", title: "Fold Section", palette: true, sections: [] },
     { id: "unfoldSection", title: "Unfold Section", palette: true, sections: [] },
     { id: "foldAllSections", title: "Fold All Sections", palette: true, sections: [] },
     { id: "unfoldAllSections", title: "Unfold All Sections", palette: true, sections: [] },
-    { id: "openShortcutsHelp", title: "Keyboard Shortcuts Help", palette: true, sections: [] },
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**

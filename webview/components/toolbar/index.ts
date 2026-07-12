@@ -68,6 +68,7 @@ import {
 import { GUTTER_MARKERS_DISPLAY_ORDER, type GutterMarkersMode } from "../../../shared/gutterMarkers";
 import { applyGutterMarkers, currentGutterMarkersMode } from "../../utils/gutterMarkers";
 import { TOOLBAR_MENU_COMMANDS } from "../../../shared/editorCommands";
+import { openShortcutsHelp } from "../shortcutsHelp";
 import './toolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -1851,6 +1852,9 @@ export function initToolbar(
         const menuActions: Record<string, () => void> = {
             customizeToolbar: () => startCustomize(),
             hideToolbar: () => setToolbarVisible(false),
+            // Help (the in-editor cheatsheet overlay) above Customize (the
+            // native UI) — table order in TOOLBAR_MENU_COMMANDS.
+            openShortcutsHelp: () => openShortcutsHelp(),
             openKeyboardShortcuts: () => notifyOpenKeybindings(),
             openExtensionSettings: () => notifyOpenSettings(),
         };

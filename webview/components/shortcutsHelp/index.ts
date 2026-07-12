@@ -2,28 +2,297 @@
  * webview/components/shortcutsHelp/index.ts
  *
  * The keyboard-shortcuts HELP overlay (markdownWysiwyg.editor.
- * openShortcutsHelp) — a read-only cheatsheet. Deliberately distinct from
- * `openKeyboardShortcuts`, which opens VS Code's native Keyboard Shortcuts
- * UI and remains the customize/rebind path; this overlay should link to it
- * with a button rather than duplicating it.
+ * openShortcutsHelp) — a read-only cheatsheet, right-docked below the topbar
+ * like the find bar. Deliberately distinct from `openKeyboardShortcuts`,
+ * which opens VS Code's native Keyboard Shortcuts UI and remains the
+ * customize/rebind path; this overlay links to it with a button rather than
+ * duplicating it.
  *
- * SCAFFOLD: empty opener until the cheatsheet implementer lands it. The
- * real implementation MUST:
- *   - register with webview/ui/escapeLayers.ts (`registerEscapeLayer`) while
- *     open, and unregister on close, so Escape closes surfaces in order;
- *   - NEVER print rebindable chords: contributed keybindings can be rebound
- *     and the webview cannot query the user's effective bindings, so any
- *     printed default may be wrong (the policy noHardcodedKeybindings.test.ts
- *     enforces for kbd()/tooltip labels applies here too). Only fixed-grammar
- *     keys — typing-level ProseMirror keymap chords, Escape, Tab, arrows —
- *     may be named; for everything rebindable, point at the native Keyboard
- *     Shortcuts UI via the existing `openKeyboardShortcuts` command;
- *   - keep launch cost at zero: this module is in the eager import graph
- *     (webview/index.ts wires it into the command host), so build the
- *     overlay DOM lazily on first open, never at module load.
+ * Content policy (the noHardcodedKeybindings.test.ts philosophy):
+ *   - Only the FIXED grammar is printed with keys: the typing-level
+ *     ProseMirror keymap chords (formatKeymap, history, blockKeys,
+ *     smartSelect, insertParagraph, tab/table keymaps) plus Escape/Tab.
+ *     These are hardcoded and un-rebindable (see CLAIMED_SHORTCUTS in
+ *     webview/keyboardShortcuts.ts), so a printed key can never lie.
+ *   - Everything rebindable is listed by NAME only, with one note and a
+ *     "Customize Shortcuts" button that opens the native Keyboard Shortcuts
+ *     UI (the one place effective bindings are always accurate).
+ *
+ * Launch cost is zero: this module is in the eager import graph
+ * (webview/index.ts wires it into the command host), so the overlay DOM is
+ * built lazily on the first open, never at module load.
+ *
+ * Escape layering: while open the overlay registers on the
+ * ui/escapeLayers.ts stack; EVERY close path (Esc, the ✕ button, an outside
+ * click, re-invoking the command) unregisters, so a dead entry never
+ * swallows a later Escape.
  */
+import "./shortcutsHelp.css";
+import { t, kbd } from "@/i18n";
+import { createButton } from "@/ui/dom";
+import { IconKeyboard, IconX } from "@/ui/icons";
+import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { notifyOpenKeybindings } from "@/messaging";
+import { EDITOR_COMMANDS, type EditorCommandId } from "../../../shared/editorCommands";
 
-/** Open the shortcuts-help overlay. SCAFFOLD: no-op. */
+/**
+ * kbd() output post-processing: kbd() upper-cases the final key segment
+ * (fine for letters — ⌘B), but named keys and the raw Ctrl/Cmd tokens of the
+ * macOS smart-select chord need their display glyphs.
+ */
+const KEY_DISPLAY: readonly [RegExp, string][] = [
+    [/ARROWUP/g, "↑"],
+    [/ARROWDOWN/g, "↓"],
+    [/ARROWLEFT/g, "←"],
+    [/ARROWRIGHT/g, "→"],
+    [/ENTER/g, "Enter"],
+    [/TAB/g, "Tab"],
+    // Only ever produced by the macOS smart-select chord ("Ctrl-…-Cmd-…");
+    // on Windows/Linux kbd() renders Mod as mixed-case "Ctrl", untouched.
+    [/CTRL/g, "⌃"],
+    [/CMD/g, "⌘"],
+];
+
+/** Platform display for a fixed ProseMirror chord: "Mod-Shift-ArrowUp" → ⌘⇧↑ / Ctrl+Shift+↑. */
+function keys(chord: string): string {
+    let out = kbd(chord);
+    for (const [re, glyph] of KEY_DISPLAY) {
+        out = out.replace(re, glyph);
+    }
+    return out;
+}
+
+/**
+ * Rebindable commands shown by NAME only, grouped. Titles come from the
+ * command registry so the overlay can never drift from the palette. Commands
+ * whose fixed default chord is already printed in the grammar sections
+ * (bold, undo, duplicate, …) are deliberately not repeated here.
+ */
+const REBINDABLE_GROUPS: readonly { label: string; ids: readonly EditorCommandId[] }[] = [
+    {
+        label: "Find",
+        ids: ["openFind", "openFindReplace", "findNext", "findPrevious", "findSelection", "selectAllOccurrences"],
+    },
+    { label: "Blocks", ids: ["openBlockMenu", "deleteBlock"] },
+    { label: "Folding", ids: ["foldSection", "unfoldSection", "foldAllSections", "unfoldAllSections"] },
+    {
+        label: "Headings & lists",
+        ids: [
+            "setParagraph", "setHeading1", "setHeading2", "setHeading3", "setHeading4",
+            "setHeading5", "setHeading6", "toggleBulletList", "toggleOrderedList",
+            "toggleTaskList", "toggleBlockquote",
+        ],
+    },
+    {
+        label: "Insert",
+        ids: [
+            "insertLink", "insertImage", "insertTable", "insertCodeBlock",
+            "insertMath", "insertFootnote", "insertCallout", "insertHorizontalRule",
+        ],
+    },
+    {
+        label: "Text",
+        ids: [
+            "toggleHighlight", "clearFormatting", "transformToUppercase",
+            "transformToLowercase", "transformToTitleCase", "joinLines",
+        ],
+    },
+    {
+        label: "View",
+        ids: [
+            "toggleToc", "swapTocSide", "toggleToolbar", "editFrontmatter",
+            "increaseFontSize", "decreaseFontSize",
+        ],
+    },
+];
+
+// ── Module state (the overlay is a singleton, built once) ────────────────
+let panel: HTMLDivElement | null = null;
+let visible = false;
+/** Escape-layer unregister handle (null while hidden). */
+let layerOff: (() => void) | null = null;
+
+/** Outside click closes (capture phase, so stopped mousedowns still count). */
+function onDocMousedown(e: MouseEvent): void {
+    if (panel && e.target instanceof Node && !panel.contains(e.target)) {
+        close();
+    }
+}
+
+function close(): void {
+    if (!visible) {
+        return;
+    }
+    visible = false;
+    // Every close path funnels here: drop the layer entry (idempotent) or a
+    // dead one would eat a later Escape.
+    layerOff?.();
+    layerOff = null;
+    panel?.classList.remove("shortcuts-help--visible");
+    document.removeEventListener("mousedown", onDocMousedown, true);
+    // Hand focus back to the editor (the find bar's close convention).
+    document.querySelector<HTMLElement>(".ProseMirror")?.focus();
+}
+
+/** Open the shortcuts-help overlay; invoking it while open closes it. */
 export function openShortcutsHelp(): void {
-    // SCAFFOLD: no overlay yet.
+    if (visible) {
+        close();
+        return;
+    }
+    panel ??= buildPanel();
+    visible = true;
+    panel.classList.add("shortcuts-help--visible");
+    layerOff ??= registerEscapeLayer(close);
+    document.addEventListener("mousedown", onDocMousedown, true);
+    // Focus lands inside so Esc/Tab work immediately; arrows scroll the list.
+    panel.focus();
+}
+
+// ── DOM (lazy, one-time) ─────────────────────────────────────────────────
+
+function buildPanel(): HTMLDivElement {
+    const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
+    const el = document.createElement("div");
+    el.className = "shortcuts-help";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", t("Keyboard Shortcuts Help"));
+    el.tabIndex = -1;
+
+    // Header
+    const header = document.createElement("div");
+    header.className = "shortcuts-help__header";
+    const headerIcon = document.createElement("span");
+    headerIcon.className = "shortcuts-help__header-icon";
+    headerIcon.setAttribute("aria-hidden", "true");
+    headerIcon.innerHTML = IconKeyboard;
+    const title = document.createElement("h2");
+    title.className = "shortcuts-help__title";
+    title.textContent = t("Keyboard Shortcuts");
+    const btnClose = createButton({
+        className: "shortcuts-help__close",
+        icon: IconX,
+        title: `${t("Close")} (Esc)`,
+        onClick: close,
+    });
+    header.append(headerIcon, title, btnClose);
+    el.appendChild(header);
+
+    const addSection = (label: string): void => {
+        const h = document.createElement("h3");
+        h.className = "shortcuts-help__section-title";
+        h.textContent = label;
+        el.appendChild(h);
+    };
+    const addRow = (keyLabels: string[], label: string, note?: string): void => {
+        const row = document.createElement("div");
+        row.className = "shortcuts-help__row";
+        const keysEl = document.createElement("span");
+        keysEl.className = "shortcuts-help__keys";
+        for (const k of keyLabels) {
+            const chip = document.createElement("kbd");
+            chip.textContent = k;
+            keysEl.appendChild(chip);
+        }
+        const labelEl = document.createElement("span");
+        labelEl.className = "shortcuts-help__label";
+        labelEl.textContent = label;
+        if (note) {
+            const noteEl = document.createElement("div");
+            noteEl.className = "shortcuts-help__note";
+            noteEl.textContent = note;
+            labelEl.appendChild(noteEl);
+        }
+        row.append(keysEl, labelEl);
+        el.appendChild(row);
+    };
+
+    // ── The fixed grammar — every chord below is a hardcoded typing-level
+    // ProseMirror keymap (verified against blockKeys/smartSelect/
+    // insertParagraph/tabKeymap/formatKeymap/history + CLAIMED_SHORTCUTS),
+    // so printing it can never contradict the user's keybindings. ──
+    addSection(t("Selection"));
+    addRow(["Esc"], t("Select the block; again to collapse back to the caret"),
+        t("Esc first closes the open menu, popup, or find bar."));
+    addRow([keys("Shift-ArrowUp"), keys("Shift-ArrowDown")], t("Grow / shrink a block selection"));
+    addRow([keys("Mod-a")], t("Select more: block text → block → document"));
+    addRow(
+        isMac
+            ? [keys("Ctrl-Shift-Cmd-ArrowRight"), keys("Ctrl-Shift-Cmd-ArrowLeft")]
+            : [keys("Shift-Alt-ArrowRight"), keys("Shift-Alt-ArrowLeft")],
+        t("Expand / shrink the selection by structure"),
+    );
+
+    addSection(t("Blocks"));
+    addRow(
+        [keys("Alt-ArrowUp"), keys("Alt-ArrowDown"), keys("Mod-Shift-ArrowUp"), keys("Mod-Shift-ArrowDown")],
+        t("Move block up / down"),
+        t("Move carries a heading's whole section."),
+    );
+    addRow(
+        [keys("Shift-Alt-ArrowUp"), keys("Shift-Alt-ArrowDown")],
+        t("Duplicate block above / below"),
+        t("Duplicate copies the block alone — it never drags a section along."),
+    );
+    addRow([keys("Mod-Enter")], t("Insert paragraph below"),
+        t("Inside a code block or table: exits it instead."));
+    addRow([keys("Mod-Shift-Enter")], t("Insert paragraph above"));
+    addRow(["Tab", keys("Shift-Tab")], t("Indent / outdent a list item; next / previous table cell"));
+
+    addSection(t("Formatting & history"));
+    addRow([keys("Mod-b")], t("Bold"));
+    addRow([keys("Mod-i")], t("Italic"));
+    addRow([keys("Mod-e")], t("Inline Code"));
+    addRow([keys("Mod-Shift-x")], t("Strikethrough"));
+    addRow([keys("Mod-z")], t("Undo"));
+    addRow([keys("Mod-Shift-z"), keys("Mod-y")], t("Redo"));
+
+    // ── Rebindable commands: names only — their keys live in (and may be
+    // changed via) VS Code's Keyboard Shortcuts, so printing a default here
+    // could show a wrong chord. ──
+    addSection(t("Customizable commands"));
+    const titleOf = new Map<string, string>(EDITOR_COMMANDS.map((c) => [c.id, c.title]));
+    for (const group of REBINDABLE_GROUPS) {
+        const div = document.createElement("div");
+        div.className = "shortcuts-help__group";
+        const name = document.createElement("span");
+        name.className = "shortcuts-help__group-name";
+        name.textContent = `${t(group.label)}: `;
+        const items = document.createElement("span");
+        items.className = "shortcuts-help__group-items";
+        items.textContent = group.ids.map((id) => t(titleOf.get(id) ?? id)).join(" · ");
+        div.append(name, items);
+        el.appendChild(div);
+    }
+
+    const footer = document.createElement("div");
+    footer.className = "shortcuts-help__footer";
+    const note = document.createElement("span");
+    note.className = "shortcuts-help__note";
+    note.textContent = t("These commands' keys are shown — and customizable — in VS Code's Keyboard Shortcuts.");
+    const btnCustomize = createButton({
+        className: "shortcuts-help__customize",
+        label: t("Customize Shortcuts"),
+        onClick: () => {
+            close();
+            notifyOpenKeybindings();
+        },
+    });
+    footer.append(note, btnCustomize);
+    el.appendChild(footer);
+
+    // Esc closes from anywhere inside the panel; with editor focus the
+    // escape-layer stack (blockKeys' Escape wiring) covers it instead.
+    el.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+        }
+    });
+    // Keep clicks inside the panel out of the editor (find-bar convention).
+    el.addEventListener("mousedown", (e) => e.stopPropagation());
+
+    document.body.appendChild(el);
+    return el;
 }

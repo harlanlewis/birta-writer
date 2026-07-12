@@ -147,6 +147,35 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
         "webview/plugins/tableKeymap.ts": ["Shift-Tab"],
         // kbd() tooltip labels naming fixed local keys only
         "webview/components/findBar/index.ts": ["Mod-Enter", "Shift-Enter"],
+        // shortcutsHelp: the cheatsheet overlay prints ONLY the fixed
+        // typing-level grammar above (kbd() display of the same un-rebindable
+        // chords already allowlisted for their keymap plugins); rebindable
+        // commands are listed by name with no keys.
+        "webview/components/shortcutsHelp/index.ts": [
+            "Alt-ArrowDown",
+            "Alt-ArrowUp",
+            "Ctrl-Shift-Cmd-ArrowLeft",
+            "Ctrl-Shift-Cmd-ArrowRight",
+            "Mod-Enter",
+            "Mod-Shift-ArrowDown",
+            "Mod-Shift-ArrowUp",
+            "Mod-Shift-Enter",
+            "Mod-Shift-x",
+            "Mod-Shift-z",
+            "Mod-a",
+            "Mod-b",
+            "Mod-e",
+            "Mod-i",
+            "Mod-y",
+            "Mod-z",
+            "Shift-Alt-ArrowDown",
+            "Shift-Alt-ArrowLeft",
+            "Shift-Alt-ArrowRight",
+            "Shift-Alt-ArrowUp",
+            "Shift-ArrowDown",
+            "Shift-ArrowUp",
+            "Shift-Tab",
+        ],
         "webview/components/selectionToolbar/index.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
         "webview/components/toolbar/index.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
     };
