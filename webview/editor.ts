@@ -40,6 +40,7 @@ import {
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,
     formatKeymapPlugin,
+    headingAbsoluteInputRule,
     headingEmptyDeletePlugin,
     headingFoldPlugin,
     headingStickyPlugin,
@@ -362,6 +363,7 @@ export async function createEditor(
         .use(codeBlockBackspacePlugin)
         .use(codeBlockSelectAllPlugin)
         .use(headingEmptyDeletePlugin)
+        .use(headingAbsoluteInputRule)
         .use(selectionPlugin)
         .use(pendingRangePlugin)
         .use(headingFoldPlugin)

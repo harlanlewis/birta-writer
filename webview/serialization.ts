@@ -12,6 +12,7 @@ import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallout
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
+import { headingInputReplacedPlugins } from "./plugins/headingInput";
 import {
     sourceStyleHandlers,
     sourceStylePlugin,
@@ -118,6 +119,9 @@ export const pureCommonmark = [
         }
         if (sourceStyleReplacedPlugins.has(plugin)) return false;
         if (tableBreakReplacedPlugins.has(plugin)) return false;
+        // Stock `#` input rule ADDS hashes to an existing heading's level;
+        // headingAbsoluteInputRule (plugins/headingInput.ts) replaces it.
+        if (headingInputReplacedPlugins.has(plugin)) return false;
         const displayName = (plugin as { meta?: { displayName?: string } }).meta?.displayName;
         return !(displayName?.includes("remarkInlineLinkPlugin"));
     }),

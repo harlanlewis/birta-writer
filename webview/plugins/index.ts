@@ -11,6 +11,7 @@ export {
 export { formatKeymapPlugin } from "./formatKeymap";
 export { headingEmptyDeletePlugin } from "./headingEmptyDelete";
 export { headingFoldPlugin } from "./headingFold";
+export { headingAbsoluteInputRule } from "./headingInput";
 export { headingStickyPlugin } from "./headingSticky";
 export { historyKeymapPlugin, historyPlugin } from "./history";
 export {
