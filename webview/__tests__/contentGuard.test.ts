@@ -220,10 +220,13 @@ describe("guard veto — tagged moves", () => {
         expect(notice!.textContent).not.toBe("");
     });
 
-    it("moveBlockTo should return false and skip the landing flash on a veto", async () => {
+    it("a code-block interior target should be refused by the primitive BEFORE the guard fires", async () => {
         // The latent bug the guard exposed: an interior target inside a code
         // block "fits" by SPLITTING the block (the size check passes), so
-        // before MAR-108 this committed a mangled document. The guard vetoes.
+        // before MAR-108 this committed a mangled document. Since MAR-112 the
+        // move primitive's explicit-fit check refuses it pre-transaction —
+        // the guard (which used to veto it as the last line of defense)
+        // never even sees a transaction.
         const editor = await makeEditor("Alpha\n\n```js\nconst x = 1;\n```");
         const v = view(editor);
         const before = markdown(editor);
@@ -237,7 +240,12 @@ describe("guard veto — tagged moves", () => {
         expect(moveBlockTo(v, range, codeTextPos)).toBe(false);
         expect(markdown(editor)).toBe(before);
         expect(flashRange).not.toHaveBeenCalled();
-        expect(guardErrors().length).toBeGreaterThan(0);
+        // Refused structurally, loudly, upstream of the guard: a [moveBlocks]
+        // diagnostic, and NO [ContentGuard] veto.
+        expect(guardErrors()).toEqual([]);
+        expect(
+            errorSpy.mock.calls.some((args) => String(args[0]).includes("[moveBlocks]")),
+        ).toBe(true);
     });
 
     it("a legal move should flash its landing and report success", async () => {
