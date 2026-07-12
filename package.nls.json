@@ -91,6 +91,7 @@
   "command.editor.insertMath.title": "Insert Math",
   "command.editor.insertFootnote.title": "Insert Footnote",
   "command.editor.insertCallout.title": "Insert Callout",
+  "command.editor.toggleCallout.title": "Toggle Callout",
   "command.editor.openFind.title": "Find",
   "command.editor.openFindReplace.title": "Replace",
   "command.editor.findNext.title": "Find Next",

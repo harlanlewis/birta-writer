@@ -53,6 +53,10 @@ export const EDITOR_COMMANDS = [
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },
     { id: "insertCallout", title: "Insert Callout", palette: true, sections: [] },
+    // Toolbar Quote-dropdown semantics (menuitemcheckbox rows): same-kind
+    // lifts out, different-kind retypes in place, outside wraps. Not in the
+    // palette — insertCallout is the plain insert everywhere else.
+    { id: "toggleCallout", title: "Toggle Callout", palette: false, sections: [] },
     { id: "openFind", title: "Find", palette: true, sections: [] },
     { id: "openFindReplace", title: "Replace", palette: true, sections: [] },
     // Find navigation is contributed (rather than handled as hardcoded webview

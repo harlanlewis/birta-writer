@@ -692,6 +692,47 @@ describe("keyboard highlight with disabled rows", () => {
         expect(texts).toEqual(["Alpha", "Alpha", "Beta"]); // duplicated
     });
 
+    it("Enter immediately after open must NOT mutate the document (no highlight, no action)", async () => {
+        // The regression: Enter with no visible highlight fell back to row 0
+        // and silently converted the block to Paragraph.
+        const editor = await makeEditor("## Title");
+        const v = view(editor);
+        const before = markdown(editor);
+        markers()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const search = menu.querySelector<HTMLInputElement>(".block-menu-search")!;
+        search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        expect(document.querySelector(".block-menu")).not.toBeNull(); // still open
+        expect(markdown(editor)).toBe(before);
+        expect(v.state.doc.child(0).type.name).toBe("heading");
+    });
+
+    it("a keydown during IME composition must not drive the menu", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const before = markdown(editor);
+        markers()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        const search = menu.querySelector<HTMLInputElement>(".block-menu-search")!;
+        search.value = "del";
+        search.dispatchEvent(new Event("input", { bubbles: true }));
+        // A composition-committing Enter (isComposing) must not fire Delete.
+        search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, isComposing: true } as KeyboardEventInit));
+        expect(document.querySelector(".block-menu")).not.toBeNull();
+        expect(markdown(editor)).toBe(before);
+    });
+
+    it("a non-mutating pick should hand focus back to the editor, not <body>", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        markers()[0]!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0 }));
+        const menu = document.querySelector<HTMLElement>(".block-menu")!;
+        expect(document.activeElement).toBe(menu.querySelector(".block-menu-search"));
+        pickRow(menu, "Copy as Markdown");
+        expect(document.querySelector(".block-menu")).toBeNull();
+        // Focus must not be stranded on <body>: typing should reach the doc.
+        expect(v.dom.contains(document.activeElement) || document.activeElement === v.dom).toBe(true);
+    });
+
     it("a query matching nothing should show the empty state, and clearing restores groups", async () => {
         const editor = await makeEditor("Alpha");
         view(editor);

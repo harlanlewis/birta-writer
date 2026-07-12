@@ -209,6 +209,11 @@
                 "category": "WYSIWYG Markdown Editor"
             },
             {
+                "command": "markdownWysiwyg.editor.toggleCallout",
+                "title": "%command.editor.toggleCallout.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
                 "command": "markdownWysiwyg.editor.openFind",
                 "title": "%command.editor.openFind.title%",
                 "category": "WYSIWYG Markdown Editor"
@@ -596,6 +601,10 @@
                 {
                     "command": "markdownWysiwyg.editor.insertCallout",
                     "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.toggleCallout",
+                    "when": "false"
                 },
                 {
                     "command": "markdownWysiwyg.editor.openFind",

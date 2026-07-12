@@ -96,9 +96,9 @@ export function opensSlashMenu(tr: Transaction): boolean {
  */
 /**
  * Every callout registry id — the always-browsable base row plus the five
- * search-only per-type rows. They share the base callout's context rules
- * (hidden inside a callout; hidden in a table cell), so this one list keeps
- * both call sites in lockstep.
+ * search-only per-type rows. Their one remaining context rule is the
+ * table-cell gate below (cells are paragraph-only); inside callouts they
+ * stay available and NEST (see contextHiddenItemIds).
  */
 const CALLOUT_ITEM_IDS = [
     "callout",
@@ -390,9 +390,16 @@ class SlashMenuController {
             ? null
             : { from: match.slashPos, to: match.caret, class: "slash-query" };
         queueMicrotask(() => {
-            if (!this.view.isDestroyed) {
-                setPendingRange(this.view, range);
+            if (this.view.isDestroyed) {
+                return;
             }
+            // The positions were captured before the deferral — a same-task
+            // transaction (a pick deleting the /query) can shrink the doc
+            // under them, and out-of-range decorations throw.
+            if (range && range.to > this.view.state.doc.content.size) {
+                return;
+            }
+            setPendingRange(this.view, range);
         });
     }
 

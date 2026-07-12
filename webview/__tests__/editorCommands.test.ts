@@ -32,6 +32,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import { CellSelection, TableMap } from "@milkdown/prose/tables";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { editorCommands, runEditorCommand, setEditorCommandHost } from "../editorCommands";
+import { insertCalloutCommand } from "../plugins";
 import { mockVscodeApi } from "./setup";
 
 /** A lightweight fake editor whose action() hands back a mock ctx. */
@@ -416,5 +417,72 @@ describe("runEditorCommand", () => {
         const { editor, call } = fakeEditor();
         expect(() => runEditorCommand("doesNotExist", () => editor)).not.toThrow();
         expect(call).not.toHaveBeenCalled();
+    });
+});
+
+describe("toggleCallout (toolbar Quote-dropdown checkbox semantics)", () => {
+    async function makeEditor(markdown: string): Promise<Editor> {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        return Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, markdown);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfm)
+            .use(insertCalloutCommand)
+            .create();
+    }
+    const view = (editor: Editor): EditorView => editor.action((ctx) => ctx.get(editorViewCtx));
+    const caretIn = (v: EditorView, text: string): void => {
+        let pos = -1;
+        v.state.doc.descendants((node, nodePos) => {
+            if (node.isTextblock && node.textContent === text) pos = nodePos + 1;
+            return pos === -1;
+        });
+        expect(pos, `textblock "${text}" not found`).toBeGreaterThan(-1);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, pos)));
+    };
+    const calloutAttrs = (v: EditorView): { kind: string; title: string }[] => {
+        const out: { kind: string; title: string }[] = [];
+        v.state.doc.descendants((node) => {
+            if (node.type.name === "callout") {
+                out.push({ kind: node.attrs["kind"] as string, title: node.attrs["title"] as string });
+            }
+        });
+        return out;
+    };
+
+    afterEach(() => {
+        document.body.innerHTML = "";
+    });
+
+    it("clicking the CHECKED kind should lift out of the callout", async () => {
+        const editor = await makeEditor("> [!tip] My title\n> body text\n");
+        const v = view(editor);
+        caretIn(v, "body text");
+        runEditorCommand("toggleCallout", () => editor, "tip");
+        expect(calloutAttrs(v)).toEqual([]); // unwrapped
+        await editor.destroy();
+    });
+
+    it("clicking a DIFFERENT kind should retype in place, keeping the title", async () => {
+        const editor = await makeEditor("> [!tip] My title\n> body text\n");
+        const v = view(editor);
+        caretIn(v, "body text");
+        runEditorCommand("toggleCallout", () => editor, "warning");
+        expect(calloutAttrs(v)).toEqual([{ kind: "warning", title: "My title" }]);
+        await editor.destroy();
+    });
+
+    it("outside any callout it should wrap (plain insert)", async () => {
+        const editor = await makeEditor("plain paragraph\n");
+        const v = view(editor);
+        caretIn(v, "plain paragraph");
+        runEditorCommand("toggleCallout", () => editor, "note");
+        expect(calloutAttrs(v).map((c) => c.kind)).toEqual(["note"]);
+        await editor.destroy();
     });
 });

@@ -430,9 +430,10 @@ export function closeBlockMenu(): void {
 }
 
 /**
- * Open the block menu anchored to a gutter marker. `viaKeyboard` moves focus
- * onto the current-type row so arrows/Enter can drive it; a mouse open leaves
- * focus in the editor (mirrors the toolbar dropdowns).
+ * Open the block menu anchored to a gutter marker. Both open modes focus
+ * the "Search actions…" input (the Notion pattern); `viaKeyboard` only
+ * decides where focus RETURNS on Escape (the marker) vs any other close
+ * (the editor).
  */
 export function openBlockMenu(
     view: EditorView,
@@ -521,9 +522,15 @@ export function openBlockMenu(
         current.scrollIntoView?.({ block: "nearest" });
     };
     // Escape closes from anywhere (document capture); with focus in the
-    // search input, arrows drive the highlight and Enter activates it.
-    // Rows themselves stay focusable (Tab) with the old roving behavior.
+    // search input, arrows drive the highlight, Enter activates it, and Tab
+    // steps it (focus never leaves the input — the combobox model).
     const onKeyDown = (event: KeyboardEvent): void => {
+        // Never interrupt IME composition: the keydown that commits (Enter)
+        // or navigates candidates (arrows) must reach the input untouched —
+        // the slash menu's rule (slashMenu.ts), applied to this input too.
+        if (event.isComposing) {
+            return;
+        }
         if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
@@ -539,32 +546,29 @@ export function openBlockMenu(
             }
             return;
         }
-        if (event.target === search) {
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                event.stopPropagation();
-                setHl(hlIdx + (event.key === "ArrowDown" ? 1 : -1));
-            } else if (event.key === "Enter") {
-                event.preventDefault();
-                event.stopPropagation();
-                const list = rowEls();
-                const target = list[hlIdx >= 0 ? hlIdx : 0];
-                target?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        if (event.target !== search) {
+            return;
+        }
+        if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Tab") {
+            // Tab joins the arrows: focus stays in the input (tabbing out
+            // would land on the scrollable row container, a dead end) and
+            // steps the highlight instead.
+            event.preventDefault();
+            event.stopPropagation();
+            const back = event.key === "ArrowUp" || (event.key === "Tab" && event.shiftKey);
+            setHl(hlIdx + (back ? -1 : 1));
+        } else if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            // Only a VISIBLE highlight may act: in browse mode nothing is
+            // highlighted and Enter must be a no-op — a `?? first row`
+            // fallback here silently converted the block to the first
+            // turn-into choice (Paragraph) with zero on-screen indication.
+            if (hlIdx >= 0) {
+                rowEls()[hlIdx]?.dispatchEvent(
+                    new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+                );
             }
-            return;
-        }
-        const list = rowEls();
-        const idx = list.indexOf(event.target as HTMLElement);
-        if (idx === -1) {
-            return;
-        }
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            const delta = event.key === "ArrowDown" ? 1 : -1;
-            list[(idx + delta + list.length) % list.length]?.focus();
-        } else if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            list[idx]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
         }
     };
     const onFocusOut = (event: FocusEvent): void => {
@@ -611,6 +615,15 @@ export function openBlockMenu(
     function close(): void {
         if (closeActiveBlockMenu === close) {
             closeActiveBlockMenu = null;
+        }
+        // The search input owns focus while the menu is open; removing it
+        // would strand focus on <body> (dead keyboard) for every close that
+        // no action follows — non-mutating picks (Copy as Markdown), the
+        // already-active radio row, scroll-away, doc-change. Hand focus
+        // back to the editor; Escape's keyboard branch re-targets the
+        // marker right after, and mutating actions re-focus anyway.
+        if (menu.contains(document.activeElement)) {
+            view.focus();
         }
         anchor.classList.remove("heading-fold-marker--menu-open");
         if (anchor.isConnected) {
@@ -676,6 +689,14 @@ export function openBlockMenu(
             hint.textContent = opts.hint;
             row.appendChild(hint);
         }
+        // Hover and keyboard share ONE highlight: pointing at a row moves
+        // the same --hl the arrows move, so Enter always fires the row
+        // that looks selected (the slash menu's lesson).
+        row.addEventListener("mouseover", () => {
+            if (!opts.disabled) {
+                setHl(rowEls().indexOf(row));
+            }
+        });
         row.addEventListener("mousedown", (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -893,7 +914,6 @@ export function openBlockMenu(
         menu.style.top = `${Math.round(Math.max(topbarBottom + 8, top))}px`;
     }
     renderRows("");
-    position();
 
     closeActiveBlockMenu = close;
     // Synchronous registration is safe: this runs from the marker's `click`,

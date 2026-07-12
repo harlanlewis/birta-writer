@@ -33,6 +33,7 @@ import {
     insertFootnoteCommand,
     toggleHighlightCommand,
 } from "@/plugins";
+import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { lift } from "@milkdown/prose/commands";
 import { liftListItem } from "@milkdown/prose/schema-list";
@@ -268,7 +269,8 @@ function insertFootnote(getEditor: GetEditor): void {
  * callouts nest at any depth (block+), so inserting one inside a callout
  * NESTS rather than lifting out (the old toggle made "/tip" inside a note
  * silently destroy the outer callout). Unwrapping lives in the block
- * menu's turn-into, where it reads as an explicit conversion. */
+ * menu's turn-into and the toolbar's toggleCallout, where it reads as an
+ * explicit conversion. */
 function insertCallout(getEditor: GetEditor, args?: unknown): void {
     const editor = getEditor();
     if (!editor) { return; }
@@ -278,6 +280,41 @@ function insertCallout(getEditor: GetEditor, args?: unknown): void {
             typeof args === "string" ? args : undefined,
         );
         ctx.get(editorViewCtx).focus();
+    });
+}
+
+/** The toolbar Quote dropdown's callout rows are menuitemcheckbox: the
+ * checked row must UNCHECK (lift out), a different kind must move the
+ * check (retype the innermost callout in place, title/fold preserved via
+ * markerWithKind), and outside any callout it wraps. insertCallout itself
+ * stays a plain nest-anywhere insert for the slash/block menus. */
+function toggleCallout(getEditor: GetEditor, args?: unknown): void {
+    const editor = getEditor();
+    if (!editor) { return; }
+    const kind = calloutKind(typeof args === "string" ? args : "note");
+    editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const { $from } = view.state.selection;
+        for (let depth = $from.depth; depth > 0; depth--) {
+            const node = $from.node(depth);
+            if (node.type.name !== "callout") {
+                continue;
+            }
+            if (calloutKind((node.attrs["kind"] as string) ?? "note") === kind) {
+                lift(view.state, view.dispatch);
+            } else {
+                const marker = markerWithKind((node.attrs["marker"] as string) ?? "[!NOTE]", kind);
+                view.dispatch(view.state.tr.setNodeMarkup(
+                    $from.before(depth),
+                    null,
+                    attrsFromMarker(marker, node.attrs["attached"] as boolean),
+                ));
+            }
+            view.focus();
+            return;
+        }
+        ctx.get(commandsCtx).call(insertCalloutCommand.key as never, kind);
+        view.focus();
     });
 }
 
@@ -473,6 +510,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertFootnote: (getEditor) => insertFootnote(getEditor),
     // Optional string arg = callout kind ("warning" from the slash menu / picker)
     insertCallout: (getEditor, args) => insertCallout(getEditor, args),
+    toggleCallout: (getEditor, args) => toggleCallout(getEditor, args),
     openFind: () => host.openFind?.(),
     openFindReplace: () => host.openFindReplace?.(),
     findNext: () => host.findNext?.(),

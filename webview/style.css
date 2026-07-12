@@ -171,9 +171,14 @@
 }
 
 /* Keyboard highlight while focus sits in the search input (the virtual
-   aria-activedescendant row) — same wash as hover, one highlight model. */
+   aria-activedescendant row) — the hover wash plus a focus ring so it
+   stays legible ON TOP of the current-type accent row in the filtered
+   flat list ("what Enter hits" must always be the row that looks
+   selected). */
 .block-menu-item--hl {
     background: var(--vscode-list-hoverBackground);
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
 }
 
 /* Current type: accent-filled row — the toolbar Format-menu idiom (this IS

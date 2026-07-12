@@ -1420,7 +1420,10 @@ export function initToolbar(
             ["caution", t("Caution")],
         ];
         for (const [kind, label] of calloutKinds) {
-            addRow(kind, CALLOUT_ICONS[kind], label, () => runEditorCommand("insertCallout", getEditor, kind));
+            // toggleCallout keeps the checkbox honest: the checked kind
+            // lifts out, another kind retypes in place, outside wraps —
+            // insertCallout itself now always nests (slash/block menus).
+            addRow(kind, CALLOUT_ICONS[kind], label, () => runEditorCommand("toggleCallout", getEditor, kind));
         }
 
         wireHoverMenu(quoteWrap, quoteBtn, quoteMenu);
