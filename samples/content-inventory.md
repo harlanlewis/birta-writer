@@ -128,14 +128,20 @@ cell:
 - Second item
   - Nested item
   - Another nested item
+    - Deeply nested item
+      - Even more deeply nested item
+
 - Third item with `code` and a [link](https://example.com)
 
 ### Ordered list
 
 1. First step
 2. Second step
+
    1. Sub-step a
    2. Sub-step b
+      1. Deeply nested step
+         1. Even more deeply nested step
 3. Third step
 
 ### Task list
