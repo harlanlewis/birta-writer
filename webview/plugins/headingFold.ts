@@ -25,7 +25,7 @@ import { t } from "../i18n";
 // both sides touch the other only inside event handlers / decoration passes,
 // matching the slashMenu plugin ↔ component precedent.
 import { closeBlockMenu, openBlockMenu } from "../components/blockMenu";
-import { isTaskListNode, isTextBearingParagraph } from "../components/blockMenu/turnInto";
+import { isTextBearingParagraph } from "../blockCapabilities";
 import { selectionCoverRange, wireMarkerDrag } from "../components/blockMenu/drag";
 import { hideRangeVeil, showRangeVeil } from "../components/blockMenu/rangeIndicator";
 import { wireMarquee } from "../components/blockMenu/marquee";
