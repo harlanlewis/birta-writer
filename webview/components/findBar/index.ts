@@ -413,7 +413,14 @@ export function initFindBar(
     }
 
     // ── Search ───────────────────────────────────────────
-    function search(query: string) {
+    /**
+     * Run a search for `query`. When `opts.literal` is set the query is matched
+     * as literal text regardless of the persisted Regex toggle — used by the
+     * seed paths (Cmd+D / Shift+Cmd+L) so selecting `a.b` or `foo(` matches the
+     * selection verbatim rather than as a regex pattern (VS Code always seeds a
+     * literal). The Regex toggle still governs whatever the user types by hand.
+     */
+    function search(query: string, opts: { literal?: boolean } = {}) {
         matches = [];
         currentIdx = 0;
         bar.classList.remove("find-bar--invalid");
@@ -426,7 +433,11 @@ export function initFindBar(
             return;
         }
 
-        const compiled = buildQuery(query, { regex: regexMode, wholeWord, caseSensitive });
+        const compiled = buildQuery(query, {
+            regex: opts.literal ? false : regexMode,
+            wholeWord,
+            caseSensitive,
+        });
         if (compiled.error !== undefined) {
             count.textContent = t("Invalid pattern");
             bar.classList.add("find-bar--invalid");
@@ -675,10 +686,16 @@ export function initFindBar(
                 open();
                 return;
             }
+            // A fresh occurrence hunt is a new global search: drop any active
+            // find-in-selection scope (and reset its toggle) so seeding a word
+            // outside the old scope isn't silently filtered to nothing.
+            setInSelection(false);
             visible = true;
             bar.classList.add("find-bar--visible");
             input.value = query;
-            search(query);
+            // Seed literally: the raw selection is text to find, not a regex
+            // pattern, even if the Regex toggle was left on (see search()).
+            search(query, { literal: true });
             if (matches.length) {
                 selectMatch(seekCurrent(sel));
             }
@@ -700,9 +717,14 @@ export function initFindBar(
      */
     function selectAllOccurrences() {
         const view = getEditorView();
+        // A fresh occurrence hunt: drop any active find-in-selection scope so
+        // the seeded query searches the whole document.
+        setInSelection(false);
         open(view ? selectionOrWordQuery(view) : undefined, {
             showReplace: true,
             focusReplace: true,
+            // Seed literally regardless of the Regex toggle (see search()).
+            seedLiteral: true,
         });
     }
 
@@ -962,16 +984,24 @@ export function initFindBar(
     bindToggle(btnRegex, () => regexMode, (v) => { regexMode = v; });
 
     // Find-in-selection captures the editor selection AT toggle time (VS
-    // Code's widget behavior); switching off drops the scope. Empty selection
-    // → no captured range, so the toggle turns on but does not restrict.
+    // Code's widget behavior); switching off drops the scope. Toggling on with
+    // a collapsed caret has no range to scope, so we stay OFF rather than latch
+    // a pressed-but-inert toggle (a button that looks active but doesn't
+    // restrict the search).
     function setInSelection(on: boolean) {
-        inSelection = on;
         if (on) {
             const view = getEditorView();
             const sel = view?.state.selection;
-            selectionScope = sel && !sel.empty ? { from: sel.from, to: sel.to } : null;
+            if (sel && !sel.empty) {
+                selectionScope = { from: sel.from, to: sel.to };
+                inSelection = true;
+            } else {
+                selectionScope = null;
+                inSelection = false;
+            }
         } else {
             selectionScope = null;
+            inSelection = false;
         }
         btnInSelection.classList.toggle("find-bar__btn--active", inSelection);
         btnInSelection.setAttribute("aria-pressed", String(inSelection));
@@ -1034,7 +1064,7 @@ export function initFindBar(
     // ── Public API ───────────────────────────────────────
     function open(
         initialQuery?: string,
-        opts?: { showReplace?: boolean; focusReplace?: boolean },
+        opts?: { showReplace?: boolean; focusReplace?: boolean; seedLiteral?: boolean },
     ) {
         visible = true;
         bar.classList.add("find-bar--visible");
@@ -1054,7 +1084,9 @@ export function initFindBar(
             input.focus();
             input.select();
         }
-        search(input.value);
+        // seedLiteral: the query was seeded from a selection, so match it
+        // verbatim regardless of the Regex toggle (see search()).
+        search(input.value, { literal: opts?.seedLiteral });
     }
 
     function close() {
