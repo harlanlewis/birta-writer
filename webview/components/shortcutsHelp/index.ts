@@ -32,6 +32,7 @@ import { t, kbd } from "@/i18n";
 import { createButton } from "@/ui/dom";
 import { IconKeyboard, IconX } from "@/ui/icons";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { notifyOpenKeybindings } from "@/messaging";
 import { EDITOR_COMMANDS, type EditorCommandId } from "../../../shared/editorCommands";
 
@@ -100,10 +101,18 @@ const REBINDABLE_GROUPS: readonly { label: string; ids: readonly EditorCommandId
     {
         label: "View",
         ids: [
-            "toggleToc", "swapTocSide", "toggleToolbar", "editFrontmatter",
+            "toggleToc", "swapTocSide", "toggleToolbar", "customizeToolbar",
+            "editFrontmatter", "editRawMarkdown",
+        ],
+    },
+    {
+        label: "Fonts",
+        ids: [
+            "fontEditor", "fontSans", "fontSerif", "fontMono",
             "increaseFontSize", "decreaseFontSize",
         ],
     },
+    { label: "Proofreading", ids: ["toggleSpellCheck", "toggleGrammarCheck", "toggleStyleCheck"] },
 ];
 
 // ── Module state (the overlay is a singleton, built once) ────────────────
@@ -128,6 +137,7 @@ function close(): void {
     // dead one would eat a later Escape.
     layerOff?.();
     layerOff = null;
+    releaseDock("shortcuts-help");
     panel?.classList.remove("shortcuts-help--visible");
     document.removeEventListener("mousedown", onDocMousedown, true);
     // Hand focus back to the editor (the find bar's close convention).
@@ -141,6 +151,10 @@ export function openShortcutsHelp(): void {
         return;
     }
     panel ??= buildPanel();
+    // The overlay shares its dock rect with the find bar; claiming closes
+    // the bar if it is open (see ui/dockExclusive.ts) — otherwise the bar
+    // would sit invisibly underneath with focus in an unseeable input.
+    claimDock("shortcuts-help", close);
     visible = true;
     panel.classList.add("shortcuts-help--visible");
     layerOff ??= registerEscapeLayer(close);

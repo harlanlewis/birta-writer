@@ -210,6 +210,42 @@ describe("openBlockMenuAtCaret", () => {
         expect(openMarker()!.dataset["pill"]).toBe("H2");
     });
 
+    it("a block-range selection whose head block is a LIST should fall back to the head-side (last) item's marker", async () => {
+        // Arrange: forward block range over the whole doc — the head block is
+        // the list, which carries no list-level marker (items own them); the
+        // no-fallback shape made ⌘. a silent no-op here (regression).
+        const editor = await makeEditor("Alpha\n\n- one\n- two");
+        const v = view(editor);
+        const range = BlockRangeSelection.tryCreate(v.state.doc, 0, v.state.doc.content.size);
+        expect(range).not.toBeNull();
+        v.dispatch(v.state.tr.setSelection(range!));
+
+        // Act
+        const opened = openBlockMenuAtCaret(v);
+
+        // Assert: anchored to the LAST item (the head side of a forward
+        // selection), matching gutter unit semantics.
+        expect(opened).toBe(true);
+        expect(openMarker()!.closest("li")!.textContent).toBe("two");
+    });
+
+    it("a BACKWARD block-range selection headed at a list should fall back to its FIRST item's marker", async () => {
+        // Arrange: backward range (anchor at the end, head at 0) — the head
+        // block is the list from its start side.
+        const editor = await makeEditor("- one\n- two\n\nOmega");
+        const v = view(editor);
+        const range = BlockRangeSelection.tryCreate(v.state.doc, v.state.doc.content.size, 0);
+        expect(range).not.toBeNull();
+        v.dispatch(v.state.tr.setSelection(range!));
+
+        // Act
+        const opened = openBlockMenuAtCaret(v);
+
+        // Assert
+        expect(opened).toBe(true);
+        expect(openMarker()!.closest("li")!.textContent).toBe("one");
+    });
+
     it("Escape after a keyboard open should close the menu and focus the anchor marker", async () => {
         // Arrange
         const editor = await makeEditor("Alpha paragraph");

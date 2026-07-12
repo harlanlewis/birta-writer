@@ -91,7 +91,7 @@ describe("toolbar visibility", () => {
             "Customize Toolbar",
             "Hide Toolbar",
             "Keyboard Shortcuts Help",
-            "Keyboard Shortcuts",
+            "Customize Shortcuts",
             "Settings",
         ]);
     });

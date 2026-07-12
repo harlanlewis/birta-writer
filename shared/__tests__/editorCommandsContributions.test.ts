@@ -166,8 +166,11 @@ describe("editor command keybinding contributions", () => {
         setHeading4: [{ key: "ctrl+alt+4", mac: "cmd+alt+4" }],
         setHeading5: [{ key: "ctrl+alt+5", mac: "cmd+alt+5" }],
         setHeading6: [{ key: "ctrl+alt+6", mac: "cmd+alt+6" }],
-        foldSection: [{ key: "ctrl+alt+[", mac: "cmd+alt+[" }],
-        unfoldSection: [{ key: "ctrl+alt+]", mac: "cmd+alt+]" }],
+        // Fold chords: mac keeps ⌘⌥[/] (VS Code's mac fold defaults);
+        // win/linux use ctrl+shift+[/] — VS Code's own fold/unfold defaults
+        // there, and ctrl+alt is AltGr-hazardous on international layouts.
+        foldSection: [{ key: "ctrl+shift+[", mac: "cmd+alt+[" }],
+        unfoldSection: [{ key: "ctrl+shift+]", mac: "cmd+alt+]" }],
         openBlockMenu: [{ key: "ctrl+.", mac: "cmd+." }],
     };
 

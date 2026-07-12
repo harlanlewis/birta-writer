@@ -594,13 +594,17 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     shrinkSelection: (getEditor) => runCommand(getEditor, shrinkSelection),
     insertParagraphAfter: (getEditor) => runCommand(getEditor, insertParagraphAfter),
     insertParagraphBefore: (getEditor) => runCommand(getEditor, insertParagraphBefore),
-    // Keyboard sequence 3. The fold commands and the caret block-menu opener
-    // are honest no-op scaffolds until their implementations land (see
-    // webview/plugins/foldCommands.ts and
+    // Keyboard sequence 3 (webview/plugins/foldCommands.ts and
     // webview/components/blockMenu/openAtCaret.ts). openBlockMenu does NOT
     // use runCommand: the menu takes focus itself, so refocusing the editor
-    // on success would fight it.
-    openBlockMenu: (getEditor) => runProse(getEditor, (view) => { openBlockMenuAtCaret(view); }),
+    // on success would fight it — but a bail (false: inside a table, or a
+    // marker-less block) must refocus, or a palette invocation both does
+    // nothing AND leaves focus wherever the palette dropped it.
+    openBlockMenu: (getEditor) => runProse(getEditor, (view) => {
+        if (!openBlockMenuAtCaret(view)) {
+            view.focus();
+        }
+    }),
     foldSection: (getEditor) => runCommand(getEditor, foldSection),
     unfoldSection: (getEditor) => runCommand(getEditor, unfoldSection),
     foldAllSections: (getEditor) => runCommand(getEditor, foldAllSections),

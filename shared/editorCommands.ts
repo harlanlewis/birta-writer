@@ -108,7 +108,10 @@ export const EDITOR_COMMANDS = [
     // rebind second. See the sequence-3 comment below for why the two stay
     // distinct commands.
     { id: "openShortcutsHelp", title: "Keyboard Shortcuts Help", palette: true, sections: ["toolbar"] },
-    { id: "openKeyboardShortcuts", title: "Keyboard Shortcuts", palette: false, sections: ["toolbar"] },
+    // "Customize Shortcuts" (not "Keyboard Shortcuts"): the bare name was a
+    // near-collision with "Keyboard Shortcuts Help" above, and the overlay's
+    // own button already uses this verb-first label. Command ID unchanged.
+    { id: "openKeyboardShortcuts", title: "Customize Shortcuts", palette: false, sections: ["toolbar"] },
     { id: "openExtensionSettings", title: "Settings", palette: false, sections: ["toolbar"] },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC

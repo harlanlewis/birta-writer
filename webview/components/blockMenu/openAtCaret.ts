@@ -17,6 +17,7 @@
  * the gutter back in mid-typing.
  */
 import type { EditorView } from "@milkdown/prose/view";
+import { isListNode } from "../../plugins/headingFold";
 import { openBlockMenu } from "./index";
 
 /** The block position a marker's gutter widget belongs to (the widget sits
@@ -90,6 +91,25 @@ export function openBlockMenuAtCaret(view: EditorView): boolean {
             if (markerBlockPos(view, marker) === pos) {
                 openBlockMenu(view, pos, marker, /* viaKeyboard */ true);
                 return true;
+            }
+        }
+        // A LIST node carries no marker of its own — its items do (gutter
+        // unit semantics). A depth-0 candidate can be a whole list (block
+        // range / node selection over it): fall back to the head-side ITEM —
+        // the last item when the block sits behind the head (forward
+        // selection), the first when it sits after (backward).
+        const node = view.state.doc.nodeAt(pos);
+        if (node && isListNode(node)) {
+            const useLast = pos < selection.head;
+            const item = useLast ? node.lastChild : node.firstChild;
+            if (item) {
+                const itemPos = useLast ? pos + node.nodeSize - 1 - item.nodeSize : pos + 1;
+                for (const marker of dom.querySelectorAll<HTMLElement>(".heading-fold-marker")) {
+                    if (markerBlockPos(view, marker) === itemPos) {
+                        openBlockMenu(view, itemPos, marker, /* viaKeyboard */ true);
+                        return true;
+                    }
+                }
             }
         }
     }

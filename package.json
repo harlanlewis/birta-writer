@@ -643,13 +643,13 @@
             },
             {
                 "command": "markdownWysiwyg.editor.foldSection",
-                "key": "ctrl+alt+[",
+                "key": "ctrl+shift+[",
                 "mac": "cmd+alt+[",
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             },
             {
                 "command": "markdownWysiwyg.editor.unfoldSection",
-                "key": "ctrl+alt+]",
+                "key": "ctrl+shift+]",
                 "mac": "cmd+alt+]",
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             },

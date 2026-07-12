@@ -1,4 +1,5 @@
 import type { EditorView } from "@milkdown/prose/view";
+import type { Node as ProseMirrorNode } from "@milkdown/prose/model";
 import { Decoration, DecorationSet } from "@milkdown/prose/view";
 import { Plugin, PluginKey, TextSelection, type EditorState } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
@@ -786,7 +787,7 @@ export function findSectionHeadingPosAt(view: EditorView, pos: number): number |
  * Doc-based body of findSectionHeadingPosAt — the fold keymap commands
  * (plugins/foldCommands.ts) run on (state, dispatch) with no view in hand.
  */
-export function sectionHeadingPosAt(doc: any, pos: number): number | null {
+export function sectionHeadingPosAt(doc: ProseMirrorNode, pos: number): number | null {
     // Innermost heading whose section contains pos — the innermost is the
     // one starting latest. One cached stack walk instead of the old
     // per-heading full-doc scan: this runs on EVERY mousemove over

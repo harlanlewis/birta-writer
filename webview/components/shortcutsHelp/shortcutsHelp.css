@@ -19,7 +19,7 @@
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: 4px;
     box-shadow: 0 2px 8px var(--vscode-widget-shadow);
-    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-family: var(--vscode-font-family);
     font-size: 12px;
     line-height: 1.5;
     opacity: 0;
@@ -107,7 +107,7 @@
 /* Key chips use VS Code's own keybinding-label tokens so they read exactly
    like chords in the native Keyboard Shortcuts UI. */
 .shortcuts-help kbd {
-    font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
+    font-family: var(--vscode-font-family);
     font-size: 11px;
     line-height: 1.4;
     padding: 0 5px;

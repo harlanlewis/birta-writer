@@ -46,6 +46,23 @@ function rescueSelection(
 }
 
 /**
+ * The position both single-section commands resolve their section at. A
+ * non-empty FORWARD selection (Escape's block range, a node selection) puts
+ * `head` at the range's END boundary — a depth-0 position equal to the NEXT
+ * block's offset, which sectionHeadingPosAt would treat inclusively and
+ * resolve to the FOLLOWING section. Step one position back inside the
+ * selected content instead (the depth-0 nodeBefore rule openAtCaret.ts
+ * applies). Backward selections and plain carets already point at (or into)
+ * the intended content and are left alone.
+ */
+function sectionProbePos(state: EditorState): number {
+    const { selection } = state;
+    return !selection.empty && selection.head > selection.anchor
+        ? selection.head - 1
+        : selection.head;
+}
+
+/**
  * Fold the section containing the caret (the innermost one — matching the
  * chevron the section-hover highlight points at). Already folded, or no
  * enclosing section → false; the chord pair is directional, so this never
@@ -56,7 +73,7 @@ export const foldSection: Command = (state, dispatch) => {
     if (!folded) {
         return false;
     }
-    const headingPos = sectionHeadingPosAt(state.doc, state.selection.head);
+    const headingPos = sectionHeadingPosAt(state.doc, sectionProbePos(state));
     if (headingPos === null || folded.has(headingPos)) {
         return false;
     }
@@ -84,7 +101,7 @@ export const unfoldSection: Command = (state, dispatch) => {
     if (!folded || folded.size === 0) {
         return false;
     }
-    const pos = state.selection.head;
+    const pos = sectionProbePos(state);
     let headingPos: number | null = null;
     for (const [candidate, range] of cachedFoldRanges(state.doc)) {
         if (

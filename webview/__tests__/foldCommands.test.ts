@@ -14,7 +14,8 @@ import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import { TextSelection } from "@milkdown/prose/state";
 import { configureSerialization, pureCommonmark } from "../serialization";
-import { headingFoldPlugin, headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/headingFold";
+import { BlockRangeSelection } from "../plugins/blockRange";
+import { cachedFoldRanges, headingFoldPlugin, headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/headingFold";
 import {
     foldAllSections,
     foldSection,
@@ -172,6 +173,53 @@ describe("foldSection", () => {
         expect(dispatches).toBe(0);
     });
 
+    it("a forward block-range selection over a section's last body block should fold ITS section, not the next", async () => {
+        // Arrange: `## A / alpha / ## B / beta`; Escape-select "alpha" — a
+        // forward BlockRangeSelection whose head sits at the block's END
+        // boundary, a depth-0 position EQUAL to `## B`'s offset. Resolving
+        // the head inclusively folded B (regression).
+        const editor = await makeEditor("## A\n\nalpha\n\n## B\n\nbeta");
+        const v = view(editor);
+        const [hA, hB] = headingPositions(v);
+        const alphaStart = hA! + v.state.doc.nodeAt(hA!)!.nodeSize;
+        const range = BlockRangeSelection.tryCreate(v.state.doc, alphaStart, hB!);
+        expect(range).not.toBeNull();
+        expect(range!.head).toBe(hB!); // the boundary collision under test
+        v.dispatch(v.state.tr.setSelection(range!));
+
+        // Act
+        const { applied } = run(v, foldSection);
+
+        // Assert: A folded, B untouched — and the caret rescue fired (the
+        // selection overlapped A's now-hidden body), landing on A's heading.
+        expect(applied).toBe(true);
+        expect(folded(v).has(hA!)).toBe(true);
+        expect(folded(v).has(hB!)).toBe(false);
+        const aNode = v.state.doc.nodeAt(hA!)!;
+        expect(v.state.selection.head).toBeGreaterThan(hA!);
+        expect(v.state.selection.head).toBeLessThan(hA! + aNode.nodeSize);
+    });
+
+    it("a BACKWARD block-range selection should keep resolving at its head (the range start)", async () => {
+        // Arrange: backward range over "beta" — head at beta's START, which
+        // is inside B's section; the boundary rule must not disturb this.
+        const editor = await makeEditor("## A\n\nalpha\n\n## B\n\nbeta");
+        const v = view(editor);
+        const [hA, hB] = headingPositions(v);
+        const betaStart = hB! + v.state.doc.nodeAt(hB!)!.nodeSize;
+        const range = BlockRangeSelection.tryCreate(
+            v.state.doc, v.state.doc.content.size, betaStart,
+        );
+        expect(range).not.toBeNull();
+        v.dispatch(v.state.tr.setSelection(range!));
+
+        // Act + Assert: B folds (the section the head points into)
+        const { applied } = run(v, foldSection);
+        expect(applied).toBe(true);
+        expect(folded(v).has(hB!)).toBe(true);
+        expect(folded(v).has(hA!)).toBe(false);
+    });
+
     it("the fold dispatch should carry addToHistory:false (fold state is not an undo step)", async () => {
         // Arrange
         const editor = await makeEditor(OUTLINE);
@@ -249,6 +297,32 @@ describe("unfoldSection", () => {
         expect(applied).toBe(true);
         expect(folded(v).has(hInner!)).toBe(false);
         expect(folded(v).has(hTop!)).toBe(true);
+    });
+
+    it("an Escape-selected COLLAPSED heading (block range spanning its hidden body) should unfold ITS section, not the next", async () => {
+        // Arrange: fold A, then select it the way Escape does on a collapsed
+        // heading — a forward block range over heading + hidden body, whose
+        // head is the fold range's END boundary (= `## B`'s offset). The
+        // inclusive head resolution unfolded B instead (regression).
+        const editor = await makeEditor("## A\n\nalpha\n\n## B\n\nbeta");
+        const v = view(editor);
+        const [hA, hB] = headingPositions(v);
+        setCaret(v, hA! + 2);
+        run(v, foldSection);
+        expect(folded(v).has(hA!)).toBe(true);
+        const foldEnd = cachedFoldRanges(v.state.doc).get(hA!)!.to;
+        expect(foldEnd).toBe(hB!); // A's hidden body ends where B begins
+        const range = BlockRangeSelection.tryCreate(v.state.doc, hA!, foldEnd);
+        expect(range).not.toBeNull();
+        v.dispatch(v.state.tr.setSelection(range!));
+
+        // Act
+        const { applied } = run(v, unfoldSection);
+
+        // Assert: A opened; B (never folded) untouched
+        expect(applied).toBe(true);
+        expect(folded(v).has(hA!)).toBe(false);
+        expect(folded(v).has(hB!)).toBe(false);
     });
 
     it("nothing folded around the caret should return false with no dispatch", async () => {

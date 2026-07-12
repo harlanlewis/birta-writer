@@ -202,7 +202,7 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     // Help (the in-editor cheatsheet overlay) before Customize (the native
     // Keyboard Shortcuts UI) — the gear-menu order (TOOLBAR_MENU_COMMANDS).
     { id: "keyboardShortcutsHelp", group: "actions", label: t("Keyboard Shortcuts Help"), icon: IconKeyboard, keywords: ["shortcuts", "keyboard", "help", "cheatsheet", "keys"], commandId: "openShortcutsHelp", searchOnly: true },
-    { id: "keyboardShortcuts", group: "actions", label: t("Keyboard Shortcuts"), icon: IconKeyboard, keywords: ["keyboard", "shortcuts", "keys", "bindings", "keybindings"], commandId: "openKeyboardShortcuts", searchOnly: true },
+    { id: "keyboardShortcuts", group: "actions", label: t("Customize Shortcuts"), icon: IconKeyboard, keywords: ["keyboard", "shortcuts", "keys", "bindings", "keybindings", "customize", "rebind"], commandId: "openKeyboardShortcuts", searchOnly: true },
     { id: "settings", group: "actions", label: t("Settings"), icon: IconSettings, keywords: ["settings", "preferences", "options", "configure"], commandId: "openExtensionSettings", searchOnly: true },
     // Checks-menu parity: the three master toggles (the per-style sub-checks
     // stay in the Checks dropdown — configuration detail, not a toolbar item).
