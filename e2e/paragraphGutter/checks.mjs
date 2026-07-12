@@ -132,7 +132,7 @@ export async function run({ page, check, baseUrl }) {
             "Paragraph", "List item", "Blockquote", "Image", "HTML",
             "Code Block", "Task", "Mermaid Diagram", "Paragraph", "Footnote",
             "Table", "Callout", "Callout", "Directive",
-            "Callout", "Callout", "Blockquote", "Code Block", "Table",
+            "Callout", "Callout", "Blockquote", "Code Block", "Code Block", "Table",
             "Blockquote", "Heading", "Blockquote",
         // Nested headings carry an H1-H6 text badge instead of an SVG icon.
         ]) && markers.every((m) => m.svg || m.pill === "Heading"),
@@ -149,7 +149,7 @@ export async function run({ page, check, baseUrl }) {
         }));
     });
     check("nested container children carry their own markers",
-        nested.length === 6 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
+        nested.length === 7 && nested.every((n) => n.pill !== null), JSON.stringify(nested));
     const innerCallout = await page.evaluate(() => {
         const el = [...document.querySelectorAll(".block-gutter-host--child")]
             .find((k) => k.classList.contains("callout"));
@@ -173,6 +173,35 @@ export async function run({ page, check, baseUrl }) {
     });
     check("hovering the inner callout reveals ITS marker",
         innerReveal.inner > 0.5, JSON.stringify(innerReveal));
+
+    // A NodeView block TWO containers deep (code in callout in callout) must
+    // reveal its own marker on hover too — the old reveal rule capped the
+    // descendant variant at two child levels, leaving an invisible but
+    // active button in the margin.
+    const deepCode = await page.evaluate(() => {
+        const el = document.querySelector(".callout .callout .code-block-wrapper");
+        if (!el) return null;
+        el.scrollIntoView({ block: "center" });
+        const r = el.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + Math.min(12, r.height / 2) };
+    });
+    check("depth-2 code block found", deepCode !== null);
+    await page.mouse.move(deepCode.x, deepCode.y);
+    await page.waitForTimeout(150);
+    await page.mouse.move(deepCode.x + 1, deepCode.y);
+    await page.waitForTimeout(80);
+    const deepReveal = await page.evaluate(() => {
+        const el = document.querySelector(".callout .callout .code-block-wrapper");
+        const m = el?.querySelector(".heading-fold-marker");
+        const parentOwn = el?.closest(".callout.block-gutter-host--child")
+            ?.querySelector(":scope > .callout-body > .heading-fold-gutter .heading-fold-marker");
+        return {
+            own: m ? Number(getComputedStyle(m).opacity) : -1,
+            parent: parentOwn ? Number(getComputedStyle(parentOwn).opacity) : -1,
+        };
+    });
+    check("hovering a depth-2 NodeView block reveals ITS marker (parent stays quiet)",
+        deepReveal.own > 0.5 && deepReveal.parent < 0.1, JSON.stringify(deepReveal));
 
     // Hovering the OUTER callout's title must reveal only the outer marker
     // — not pop the whole nested column at once.
@@ -322,10 +351,10 @@ export async function run({ page, check, baseUrl }) {
         const tol = 3 * scale; // the line box itself doubles at 200%
         const nestedGeometry = await measureNested();
         check(`every nested marker aligns with its block's first line at ${scale * 100}% (±${tol}px)`,
-            nestedGeometry.length === 6 && nestedGeometry.every((g) => Math.abs(g.dy) <= tol),
+            nestedGeometry.length === 7 && nestedGeometry.every((g) => Math.abs(g.dy) <= tol),
             JSON.stringify(nestedGeometry.filter((g) => Math.abs(g.dy) > tol)));
         check(`every nested marker clears its ancestor containers' border bars at ${scale * 100}% (≥2px)`,
-            nestedGeometry.length === 6 && nestedGeometry.every((g) => g.clearance >= 2),
+            nestedGeometry.length === 7 && nestedGeometry.every((g) => g.clearance >= 2),
             JSON.stringify(nestedGeometry.filter((g) => g.clearance < 2)));
     }
     await page.evaluate(() => {

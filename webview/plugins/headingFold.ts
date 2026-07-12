@@ -150,6 +150,23 @@ export function computeFoldRanges(doc: any): Map<number, HeadingFoldRange | null
 }
 
 /**
+ * computeFoldRanges memoized on the doc (ProseMirror docs are immutable, so
+ * the doc reference is a perfect cache key). Per-mousemove and per-keystroke
+ * callers share one walk per document version instead of each paying their
+ * own.
+ */
+const foldRangesByDoc = new WeakMap<object, Map<number, HeadingFoldRange | null>>();
+
+export function cachedFoldRanges(doc: any): Map<number, HeadingFoldRange | null> {
+    let ranges = foldRangesByDoc.get(doc);
+    if (!ranges) {
+        ranges = computeFoldRanges(doc);
+        foldRangesByDoc.set(doc, ranges);
+    }
+    return ranges;
+}
+
+/**
  * The content range ONE heading owns (see computeFoldRanges for the map the
  * decoration pass uses). A direct scan — the block menu / drag handle call
  * this per action, sometimes in loops, so it mustn't build the whole map.
@@ -191,7 +208,7 @@ export function foldedSectionEnds(state: EditorState): ReadonlyMap<number, numbe
     if (!pluginState || pluginState.folded.size === 0) {
         return EMPTY_FOLD_MAP;
     }
-    const ranges = computeFoldRanges(state.doc);
+    const ranges = cachedFoldRanges(state.doc);
     const ends = new Map<number, number>();
     for (const pos of pluginState.folded) {
         const range = ranges.get(pos);
@@ -244,33 +261,28 @@ function gutterBlockPos(view: EditorView, gutter: HTMLElement): number | null {
     }
 }
 
-function createHeadingFoldGutter(
+/**
+ * The one marker-button protocol, shared by heading badges and block icons
+ * so the click/drag/menu/aria wiring can never diverge between them (it has
+ * churned across four critique-round commits; a one-sided fix would make
+ * headings and paragraphs respond differently).
+ *
+ * `name` is the block's identity for assistive tech ("H2 — Block options",
+ * "Table — Block options"): with the action alone, a screen-reader scan
+ * heard an undifferentiated stream of identical buttons.
+ */
+function createMarkerButton(
     view: EditorView,
-    level: number,
-    collapsed: boolean,
-    foldable: boolean,
-): HTMLElement {
-    const gutter = document.createElement("span");
-    gutter.className = `heading-fold-gutter${foldable ? " heading-fold-gutter--foldable" : ""}`;
-    gutter.contentEditable = "false";
-
-    // The marker is a button: clicking its literal Markdown hashes (`#`..
-    // `######`) opens a menu to retype the heading (P / H1–H6) — a level cue
-    // that doubles as a level control, iA-Writer-style. The widget key encodes
-    // `level`, so the hashes repaint live as the heading level changes (via the
-    // heading commands, this menu, or a typed `#`-space). Setext headings carry
-    // no hashes in their source but still show `#`/`##` here — the gutter is a
-    // level cue in this WYSIWYG view, not a byte mirror, and their source
-    // round-trips as setext untouched. It sits to the RIGHT of the fold chevron
-    // (distinct click targets), so the two never overlap.
+    gutter: HTMLElement,
+    name: string,
+    className: string,
+    render: (el: HTMLButtonElement) => void,
+): HTMLButtonElement {
     const marker = document.createElement("button");
     marker.type = "button";
-    marker.className = "heading-fold-marker";
-    // "H2" badge — the same identity the slash menu's heading rows show in
-    // their icon slot (the literal ## hashes remain in each row's hint).
-    marker.textContent = `H${Math.min(Math.max(level, 1), 6)}`;
-    marker.dataset["pill"] = `H${Math.min(Math.max(level, 1), 6)}`;
-    marker.setAttribute("aria-label", t("Block options"));
+    marker.className = className;
+    render(marker);
+    marker.setAttribute("aria-label", `${name} — ${t("Block options")}`);
     marker.setAttribute("aria-haspopup", "menu");
     marker.setAttribute("aria-expanded", "false");
     applyTooltip(marker, t("Click for options · Drag to move"), { placement: "above" });
@@ -278,6 +290,16 @@ function createHeadingFoldGutter(
     marker.addEventListener("mousedown", (event) => {
         event.preventDefault();
         event.stopPropagation();
+    });
+    // The widget lives inside the contentEditable root, so activation keys
+    // on a FOCUSED marker would bubble to ProseMirror and type into the
+    // document; handle them here as button activation instead.
+    marker.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.stopPropagation();
+            marker.click();
+        }
     });
     marker.addEventListener("click", (event) => {
         event.preventDefault();
@@ -296,6 +318,34 @@ function createHeadingFoldGutter(
         openBlockMenu(view, pos, marker, event.detail === 0);
     });
     wireMarkerDrag(view, marker, () => gutterBlockPos(view, gutter));
+    return marker;
+}
+
+function createHeadingFoldGutter(
+    view: EditorView,
+    level: number,
+    collapsed: boolean,
+    foldable: boolean,
+): HTMLElement {
+    const gutter = document.createElement("span");
+    gutter.className = `heading-fold-gutter${foldable ? " heading-fold-gutter--foldable" : ""}`;
+    gutter.contentEditable = "false";
+
+    // The marker is a button: clicking the level badge opens a menu to
+    // retype the heading (P / H1–H6) — a level cue that doubles as a level
+    // control, iA-Writer-style. The widget key encodes `level`, so the badge
+    // repaints live as the heading level changes (via the heading commands,
+    // this menu, or a typed `#`-space). Setext headings carry no hashes in
+    // their source but still show the badge — the gutter is a level cue in
+    // this WYSIWYG view, not a byte mirror, and their source round-trips as
+    // setext untouched. It sits to the RIGHT of the fold chevron (distinct
+    // click targets), so the two never overlap. "H2" is the same identity
+    // the slash menu's heading rows show in their icon slot.
+    const badge = `H${Math.min(Math.max(level, 1), 6)}`;
+    const marker = createMarkerButton(view, gutter, badge, "heading-fold-marker", (el) => {
+        el.textContent = badge;
+        el.dataset["pill"] = badge;
+    });
 
     if (!foldable) {
         gutter.appendChild(marker);
@@ -314,6 +364,15 @@ function createHeadingFoldGutter(
     button.addEventListener("mousedown", (event) => {
         event.preventDefault();
         event.stopPropagation();
+    });
+    // Same contentEditable leak as the markers: Enter/Space on the focused
+    // chevron must toggle the fold, not type into the document.
+    button.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.stopPropagation();
+            button.click();
+        }
     });
     button.addEventListener("click", (event) => {
         event.preventDefault();
@@ -364,44 +423,32 @@ function createBlockGutter(view: EditorView, spec: MarkerSpec, nestedDepth?: num
     if (nestedDepth !== undefined) {
         // Container children: the CSS positions the marker clear of every
         // ancestor container's border bar, one inset step per nesting level.
+        // The capped depth CLASS pairs with the same class on the host so
+        // hover-reveal can address "this host's own gutter" even when the
+        // wrapper's NodeView buries it under chrome (see the reveal rules
+        // in style.css — a plain descendant selector would pop deeper
+        // children's markers along with the hovered host's own).
         gutter.classList.add("heading-fold-gutter--nested");
+        gutter.classList.add(`heading-fold-gutter--d${Math.min(nestedDepth, 6)}`);
         gutter.style.setProperty("--nested-gutter-depth", String(nestedDepth));
     }
 
-    const marker = document.createElement("button");
-    marker.type = "button";
     // --paragraph kept as the P marker's stable test/back-compat hook; every
     // hover-revealed marker (including P) carries --block for shared styling.
-    marker.className = `heading-fold-marker heading-fold-marker--block${spec.key === "P" ? " heading-fold-marker--paragraph" : ""}`;
-    if (spec.text !== undefined) {
-        marker.textContent = spec.text;
-    } else {
-        marker.innerHTML = spec.icon;
-    }
-    marker.dataset["pill"] = spec.label;
-    // Same label as the heading markers: it's the same block menu.
-    marker.setAttribute("aria-label", t("Block options"));
-    marker.setAttribute("aria-haspopup", "menu");
-    marker.setAttribute("aria-expanded", "false");
-    applyTooltip(marker, t("Click for options · Drag to move"), { placement: "above" });
-    marker.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-    });
-    marker.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (marker.dataset["dragged"]) {
-            delete marker.dataset["dragged"];
-            return;
-        }
-        const pos = gutterBlockPos(view, gutter);
-        if (pos === null) {
-            return;
-        }
-        openBlockMenu(view, pos, marker, event.detail === 0);
-    });
-    wireMarkerDrag(view, marker, () => gutterBlockPos(view, gutter));
+    const marker = createMarkerButton(
+        view,
+        gutter,
+        spec.label,
+        `heading-fold-marker heading-fold-marker--block${spec.key === "P" ? " heading-fold-marker--paragraph" : ""}`,
+        (el) => {
+            if (spec.text !== undefined) {
+                el.textContent = spec.text;
+            } else {
+                el.innerHTML = spec.icon;
+            }
+            el.dataset["pill"] = spec.label;
+        },
+    );
 
     gutter.appendChild(marker);
     return gutter;
@@ -539,7 +586,7 @@ function emitContainerChildGutters(
             parts?.push(`c${depth}${spec.key}`);
             decorations?.push(
                 Decoration.node(childPos, childPos + child.nodeSize, {
-                    class: "block-gutter-host block-gutter-host--child",
+                    class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}`,
                 }),
             );
             decorations?.push(
@@ -725,20 +772,20 @@ function isHeadingElement(element: Element | null): element is HTMLElement {
 }
 
 function findSectionHeadingPosAt(view: EditorView, pos: number): number | null {
+    // Innermost heading whose section contains pos — the innermost is the
+    // one starting latest. One cached stack walk instead of the old
+    // per-heading full-doc scan: this runs on EVERY mousemove over
+    // non-heading content, where the old shape was O(headings × doc) and
+    // measured 2.6ms/event on a 500-heading document.
     let headingPos: number | null = null;
-    const searchTo = Math.min(Math.max(pos, 0), view.state.doc.content.size);
-
-    view.state.doc.nodesBetween(0, searchTo, (node, nodePos) => {
-        if (!isHeadingNode(node)) {
-            return;
+    for (const [candidate, range] of cachedFoldRanges(view.state.doc)) {
+        if (
+            range && candidate <= pos && pos < range.to &&
+            (headingPos === null || candidate > headingPos)
+        ) {
+            headingPos = candidate;
         }
-
-        const range = findHeadingFoldRange(view.state.doc, nodePos, getHeadingLevel(node));
-        if (range && nodePos <= pos && pos < range.to) {
-            headingPos = nodePos;
-        }
-    });
-
+    }
     return headingPos;
 }
 

@@ -1590,10 +1590,19 @@ body.toolbar-hidden::before {
 
 /* Child hosts (nested wrapper blocks): hovering the CHILD reveals its own
    marker — the rule above deliberately can't reach it (the exclusion keeps
-   a hovered container from popping every nested marker at once). The
-   double-child :not caps this at two wrapper levels; deeper nesting keeps
-   the menu/keyboard/covered paths. */
-.milkdown .editor .block-gutter-host--child:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-marker--block:where(:not(.block-gutter-host--child .block-gutter-host--child .heading-fold-marker--block)) {
+   a hovered container from popping every nested marker at once). "Its own
+   marker" is the gutter whose depth class matches the hovered host's (the
+   decoration pass stamps both) — a bare descendant selector can't tell the
+   hovered host's gutter from its children's, and the old double-child cap
+   left everything at depth ≥ 2 with an invisible but active button. Depth
+   classes cap at 6; a d6 host hovered around d7+ children may co-reveal
+   them — beyond any real document. */
+.milkdown .editor .block-gutter-host--d1:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d1 .heading-fold-marker--block,
+.milkdown .editor .block-gutter-host--d2:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d2 .heading-fold-marker--block,
+.milkdown .editor .block-gutter-host--d3:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d3 .heading-fold-marker--block,
+.milkdown .editor .block-gutter-host--d4:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d4 .heading-fold-marker--block,
+.milkdown .editor .block-gutter-host--d5:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d5 .heading-fold-marker--block,
+.milkdown .editor .block-gutter-host--d6:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--d6 .heading-fold-marker--block {
     opacity: 0.7;
 }
 
