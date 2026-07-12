@@ -145,6 +145,7 @@ describe("editor command keybinding contributions", () => {
         findNext: [{ key: "f3" }, { mac: "cmd+g" }],
         findPrevious: [{ key: "shift+f3" }, { mac: "cmd+shift+g" }],
         findSelection: [{ key: "ctrl+d", mac: "cmd+d" }],
+        selectAllOccurrences: [{ key: "ctrl+shift+l", mac: "cmd+shift+l" }],
         deleteBlock: [{ key: "ctrl+shift+k", mac: "cmd+shift+k" }],
         // VS Code parity: Join Lines ships bound on macOS only (palette
         // elsewhere).

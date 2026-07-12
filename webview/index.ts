@@ -38,7 +38,7 @@ import { getTopbarBottom } from "./utils/headingUtils";
 import { setupLinkPopup } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
 import { initPathComplete } from "./components/pathLink/pathComplete";
-import { initFindBar, selectionOrWordQuery } from "./components/findBar";
+import { initFindBar } from "./components/findBar";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
 import { initToc } from "./components/toc";
@@ -269,13 +269,11 @@ setEditorCommandHost({
     openFindReplace: () => findBar.open(undefined, { showReplace: true }),
     findNext: () => findBar.findNext(),
     findPrevious: () => findBar.findPrev(),
-    findSelection: () => {
-        const view = getEditorView();
-        findBar.open(view ? selectionOrWordQuery(view) : undefined, {
-            showReplace: true,
-            focusReplace: true,
-        });
-    },
+    // Cmd+D: cycle the document selection through occurrences of the word/
+    // selection (the bar handles seed-vs-advance internally).
+    findSelection: () => findBar.cycleOccurrence(),
+    // Shift+Cmd+L: highlight every occurrence, focused on the replace input.
+    selectAllOccurrences: () => findBar.selectAllOccurrences(),
     toggleToc: () => toc.toggle(),
     // Side-switch: flip to the opposite edge, mirroring the panel's own flip
     // button (optimistic apply + persist the tocPosition setting).

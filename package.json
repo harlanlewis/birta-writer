@@ -244,6 +244,11 @@
                 "category": "WYSIWYG Markdown Editor"
             },
             {
+                "command": "markdownWysiwyg.editor.selectAllOccurrences",
+                "title": "%command.editor.selectAllOccurrences.title%",
+                "category": "WYSIWYG Markdown Editor"
+            },
+            {
                 "command": "markdownWysiwyg.editor.toggleToc",
                 "title": "%command.editor.toggleToc.title%",
                 "category": "WYSIWYG Markdown Editor"
@@ -530,6 +535,12 @@
                 "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
             },
             {
+                "command": "markdownWysiwyg.editor.selectAllOccurrences",
+                "key": "ctrl+shift+l",
+                "mac": "cmd+shift+l",
+                "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+            },
+            {
                 "command": "markdownWysiwyg.editor.deleteBlock",
                 "key": "ctrl+shift+k",
                 "mac": "cmd+shift+k",
@@ -695,6 +706,10 @@
                 },
                 {
                     "command": "markdownWysiwyg.editor.findSelection",
+                    "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
+                },
+                {
+                    "command": "markdownWysiwyg.editor.selectAllOccurrences",
                     "when": "activeCustomEditorId == 'markdownWysiwyg.editor'"
                 },
                 {

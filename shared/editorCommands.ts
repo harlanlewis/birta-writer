@@ -64,7 +64,13 @@ export const EDITOR_COMMANDS = [
     // defaults in package.json mirror the built-in editor's find bindings.
     { id: "findNext", title: "Find Next", palette: true, sections: [] },
     { id: "findPrevious", title: "Find Previous", palette: true, sections: [] },
-    { id: "findSelection", title: "Find & Replace Selection", palette: true, sections: [] },
+    // Cmd+D: seed from the selection/word, then advance the document selection
+    // to each next occurrence (the single-selection analog of VS Code's "Add
+    // Selection To Next Find Match").
+    { id: "findSelection", title: "Select Next Occurrence", palette: true, sections: [] },
+    // Shift+Cmd+L: seed from the selection/word and open focused on the replace
+    // input with every occurrence highlighted — one keystroke from Replace All.
+    { id: "selectAllOccurrences", title: "Select All Occurrences", palette: true, sections: [] },
     { id: "toggleToc", title: "Toggle Table of Contents", palette: true, sections: [] },
     { id: "editFrontmatter", title: "Edit Frontmatter", palette: true, sections: [] },
     { id: "tableInsertRowAbove", title: "Insert Row Above", palette: false, sections: ["table"] },

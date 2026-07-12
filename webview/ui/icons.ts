@@ -57,6 +57,9 @@ export const IconPanelRight = svg(`<rect x="3" y="3" width="18" height="18" rx="
 export const IconArrowLeftRight = svg(`<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>`);
 export const IconReplace    = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/>`);
 export const IconReplaceAll = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/><path d="M14 14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2"/>`);
+// Scope-to-selection: corner brackets framing a line of text (VS Code's
+// find-in-selection toggle).
+export const IconFindSelection = svg(`<path d="M8 4H6a2 2 0 0 0-2 2v2"/><path d="M4 16v2a2 2 0 0 0 2 2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M20 16v2a2 2 0 0 1-2 2h-2"/><line x1="8" y1="12" x2="16" y2="12"/>`);
 export const IconPilcrow = svg(`<path d="M13 4v16"/><path d="M17 4v16"/><path d="M19 4H9.5a4.5 4.5 0 0 0 0 9H13"/>`);
 // Checks menu (spelling/grammar/style toggles): a list-of-checks glyph — the
 // "A"-based spell-check icon reads too much like the font picker next to it.

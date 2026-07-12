@@ -517,6 +517,151 @@ describe("initFindBar tab order", () => {
     });
 });
 
+describe("initFindBar occurrence cycling (cycleOccurrence / Cmd+D)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    // "foo bar foo baz foo": foo at 1..4, 9..12, 17..20
+    const threeFoos = () => mkDoc(p("foo bar foo baz foo"));
+
+    it("the first press should seed from the caret word and select that occurrence", () => {
+        const { findBar, count, getState, setSelection } = setup(threeFoos());
+        setSelection(2); // caret inside the first "foo"
+        findBar.cycleOccurrence();
+        expect(findBar.isOpen()).toBe(true);
+        expect(count.textContent).toBe("1/3");
+        const sel = getState().selection;
+        expect(sel.from).toBe(1);
+        expect(sel.to).toBe(4);
+    });
+
+    it("repeated presses should advance the document selection through occurrences", () => {
+        const { findBar, count, getState, setSelection } = setup(threeFoos());
+        setSelection(2);
+        findBar.cycleOccurrence();
+        findBar.cycleOccurrence();
+        let sel = getState().selection;
+        expect(sel.from).toBe(9);
+        expect(sel.to).toBe(12);
+        expect(count.textContent).toBe("2/3");
+        findBar.cycleOccurrence();
+        sel = getState().selection;
+        expect(sel.from).toBe(17);
+        expect(count.textContent).toBe("3/3");
+    });
+
+    it("advancing past the last occurrence should wrap to the first", () => {
+        const { findBar, count, getState, setSelection } = setup(threeFoos());
+        setSelection(2);
+        findBar.cycleOccurrence(); // 1/3
+        findBar.cycleOccurrence(); // 2/3
+        findBar.cycleOccurrence(); // 3/3
+        findBar.cycleOccurrence(); // wrap → 1/3
+        expect(count.textContent).toBe("1/3");
+        expect(getState().selection.from).toBe(1);
+    });
+
+    it("changing the selection to different text should re-seed the query", () => {
+        // "foo bar foo bar": foo at 1..4, 9..12; bar at 5..8, 13..16
+        const { findBar, count, getState, setSelection } = setup(mkDoc(p("foo bar foo bar")));
+        setSelection(2);
+        findBar.cycleOccurrence(); // seeds "foo"
+        expect(count.textContent).toBe("1/2");
+        setSelection(5, 8); // user selects "bar"
+        findBar.cycleOccurrence(); // re-seeds "bar"
+        expect(count.textContent).toBe("1/2");
+        const sel = getState().selection;
+        expect(getState().doc.textBetween(sel.from, sel.to)).toBe("bar");
+    });
+
+    it("a press with nothing under the caret should fall back to opening the find bar", () => {
+        // caret between the two spaces has no word to seed
+        const { findBar, findInput } = setup(mkDoc(p("foo  bar")), { selection: { from: 5, to: 5 } });
+        findBar.cycleOccurrence();
+        expect(findBar.isOpen()).toBe(true);
+        expect(document.activeElement).toBe(findInput);
+    });
+});
+
+describe("initFindBar selectAllOccurrences (Shift+Cmd+L)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    it("should seed from the selection, focus the replace input, and highlight every match", () => {
+        const { findBar, bar, replaceInput, findInput, count } = setup(mkDoc(p("foo bar foo")), {
+            selection: { from: 1, to: 4 },
+        });
+        findBar.selectAllOccurrences();
+        expect(findBar.isOpen()).toBe(true);
+        expect(bar.classList.contains("find-bar--replace-visible")).toBe(true);
+        expect(document.activeElement).toBe(replaceInput);
+        expect(findInput.value).toBe("foo");
+        expect(count.textContent).toBe("1/2");
+    });
+});
+
+describe("initFindBar find in selection", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+
+    const btnInSelectionOf = (bar: HTMLElement) =>
+        bar.querySelector('button[aria-label="Find in Selection"]') as HTMLButtonElement;
+
+    it("toggling on should exclude matches outside the captured range from navigation", () => {
+        // "foo foo foo": foo at 1..4, 5..8, 9..12
+        const { findBar, bar, count, setSelection } = setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo");
+        expect(count.textContent).toBe("1/3");
+        setSelection(1, 8); // covers the first two occurrences
+        const btnInSelection = btnInSelectionOf(bar);
+        click(btnInSelection);
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("true");
+        expect(count.textContent).toBe("1/2");
+    });
+
+    it("replace all should only rewrite matches inside the captured range", () => {
+        const { findBar, bar, replaceInput, btnReplaceAll, docText, setSelection } =
+            setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo", { showReplace: true });
+        setSelection(1, 8);
+        click(btnInSelectionOf(bar));
+        replaceInput.value = "baz";
+        click(btnReplaceAll);
+        expect(docText()).toBe("baz baz foo");
+    });
+
+    it("toggling off should restore the full-document match set", () => {
+        const { findBar, bar, count, setSelection } = setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo");
+        setSelection(1, 8);
+        const btnInSelection = btnInSelectionOf(bar);
+        click(btnInSelection);
+        expect(count.textContent).toBe("1/2");
+        click(btnInSelection);
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("false");
+        expect(count.textContent).toBe("1/3");
+    });
+
+    it("closing the bar should drop the in-selection scope", () => {
+        const { findBar, bar, count, setSelection } = setup(mkDoc(p("foo foo foo")));
+        findBar.open("foo");
+        setSelection(1, 8);
+        const btnInSelection = btnInSelectionOf(bar);
+        click(btnInSelection);
+        expect(count.textContent).toBe("1/2");
+        findBar.close();
+        findBar.open("foo");
+        expect(btnInSelection.getAttribute("aria-pressed")).toBe("false");
+        expect(count.textContent).toBe("1/3");
+    });
+});
+
 describe("initFindBar toggle accelerators", () => {
     beforeEach(() => {
         vi.clearAllMocks();

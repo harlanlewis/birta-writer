@@ -83,6 +83,7 @@ export interface EditorCommandHost {
     findNext(): void;
     findPrevious(): void;
     findSelection(): void;
+    selectAllOccurrences(): void;
     toggleToc(): void;
     editFrontmatter(): void;
     editRawMarkdown(): void;
@@ -536,6 +537,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     findNext: () => host.findNext?.(),
     findPrevious: () => host.findPrevious?.(),
     findSelection: () => host.findSelection?.(),
+    selectAllOccurrences: () => host.selectAllOccurrences?.(),
     toggleToc: () => host.toggleToc?.(),
     editFrontmatter: () => host.editFrontmatter?.(),
     tableInsertRowAbove: (getEditor, args) => tableCmd(getEditor, addRowBefore, args),
