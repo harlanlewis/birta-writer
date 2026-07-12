@@ -25,6 +25,7 @@ import {
     computeRoundTripProtection,
 } from "../utils/minimalDiff";
 import { createTableView } from "../components/table/tableView";
+import { contentGuardPlugin } from "../plugins/contentGuard";
 
 const TABLE_MD = "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n";
 
@@ -41,6 +42,8 @@ async function makeEditor(markdown: string): Promise<Editor> {
         })
         .use(pureCommonmark)
         .use(gfm)
+        // Real guard in the loop (MAR-108): these suites exercise guarded ops.
+        .use(contentGuardPlugin)
         .create();
 }
 

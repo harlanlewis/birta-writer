@@ -59,6 +59,7 @@ import {
     IconTrash2,
 } from "../../ui/icons";
 import { blockMarkdownAt, selectInto } from "./turnInto";
+import { tagContentGuard } from "../../plugins/contentGuard";
 import {
     canConvert,
     conversionKindAt,
@@ -178,7 +179,16 @@ export function duplicateBlockRange(
             ));
         }
     }
+    // Content-guard contract (MAR-108): a duplicate gains exactly this copy.
+    tagContentGuard(tr, { kind: "duplicate", gained: content });
+    const docBefore = view.state.doc;
     view.dispatch(tr);
+    if (view.state.doc === docBefore) {
+        // Guard veto — the transaction never applied. Report a truthful
+        // no-op and skip the landing flash (its positions describe a doc
+        // that doesn't exist).
+        return false;
+    }
     view.focus();
     // "Here's where it landed" — the same landing flash a move gets. A
     // block-range duplicate already reads its destination from the selection
@@ -402,7 +412,18 @@ export function moveBlockTo(
             TextSelection.near(tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size))),
         );
     }
+    // Content-guard contract (MAR-108): a move conserves content exactly
+    // (modulo dissolving a parent it emptied).
+    tagContentGuard(tr, { kind: "move" });
+    const docBefore = view.state.doc;
     view.dispatch(tr);
+    if (view.state.doc === docBefore) {
+        // Guard veto — view.dispatch returns nothing, so this doc-identity
+        // check is how the primitive learns the transaction never applied.
+        // Skip the flash (its positions describe the never-created doc) and
+        // return false so drag/menu/keyboard callers report truthfully.
+        return false;
+    }
     view.focus();
     // Landing flash at the destination — positions are valid in the new doc.
     flashRange(view, insertAt, insertAt + content.size);

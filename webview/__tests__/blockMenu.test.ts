@@ -14,6 +14,7 @@ import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
+import { contentGuardPlugin } from "../plugins/contentGuard";
 import { insertCalloutCommand } from "../plugins/callouts";
 import { undo } from "@milkdown/prose/history";
 import {
@@ -45,6 +46,9 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(gfm)
         .use(headingFoldPlugin)
         .use(historyPlugin)
+        // Real guard in the loop: these suites exercise moves/duplicates,
+        // which must now pass the content-conservation guard (MAR-108).
+        .use(contentGuardPlugin)
         .use(insertCalloutCommand)
         .create();
     editors.push(editor);

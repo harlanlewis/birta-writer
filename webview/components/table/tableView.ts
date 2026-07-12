@@ -48,6 +48,7 @@ import {
 import { IconPlus } from "@/ui/icons";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
+import { tagContentGuard } from "@/plugins/contentGuard";
 
 type GetPos = () => number | undefined;
 
@@ -893,11 +894,17 @@ class TableController {
                 d.from1,
                 target,
             );
+            // Conservation by construction (reorder rebuilds the table from
+            // the same node objects) — tagged anyway so the content guard
+            // (MAR-108) covers this mover for free.
             this.view.dispatch(
-                this.view.state.tr.replaceWith(
-                    live.pos,
-                    live.pos + live.node.nodeSize,
-                    newTable,
+                tagContentGuard(
+                    this.view.state.tr.replaceWith(
+                        live.pos,
+                        live.pos + live.node.nodeSize,
+                        newTable,
+                    ),
+                    { kind: "move" },
                 ),
             );
             this.selectRowRange(target, target + span);
@@ -909,10 +916,13 @@ class TableController {
                 target,
             );
             this.view.dispatch(
-                this.view.state.tr.replaceWith(
-                    live.pos,
-                    live.pos + live.node.nodeSize,
-                    newTable,
+                tagContentGuard(
+                    this.view.state.tr.replaceWith(
+                        live.pos,
+                        live.pos + live.node.nodeSize,
+                        newTable,
+                    ),
+                    { kind: "move" },
                 ),
             );
             this.selectColRange(target, target + span);

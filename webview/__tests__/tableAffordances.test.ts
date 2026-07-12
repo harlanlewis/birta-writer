@@ -29,6 +29,8 @@ import {
     nearestTargets,
 } from "../components/table/tableView";
 
+import { contentGuardPlugin } from "../plugins/contentGuard";
+
 const TABLE_MD = "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |\n| 4 | 5 | 6 |\n";
 
 async function makeEditor(markdown: string): Promise<Editor> {
@@ -43,6 +45,8 @@ async function makeEditor(markdown: string): Promise<Editor> {
         })
         .use(pureCommonmark)
         .use(gfm)
+        // Real guard in the loop (MAR-108): these suites exercise guarded ops.
+        .use(contentGuardPlugin)
         .create();
 }
 

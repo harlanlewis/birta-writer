@@ -32,6 +32,7 @@ import {
     conversionKindAt,
 } from "../blockCapabilities";
 import { canTurnInto } from "../components/blockMenu/turnInto";
+import { contentGuardPlugin } from "../plugins/contentGuard";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -48,6 +49,8 @@ async function makeEditor(markdown: string): Promise<Editor> {
         })
         .use(pureCommonmark)
         .use(gfm)
+        // Real guard in the loop (MAR-108): these suites exercise guarded ops.
+        .use(contentGuardPlugin)
         .create();
     editors.push(editor);
     return editor;

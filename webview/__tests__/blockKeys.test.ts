@@ -12,6 +12,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import { configureSerialization, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
+import { contentGuardPlugin } from "../plugins/contentGuard";
 import { undo } from "@milkdown/prose/history";
 import {
     isBlockSpanning,
@@ -43,6 +44,9 @@ async function makeEditor(markdown: string): Promise<EditorView> {
         .use(gfm)
         .use(headingFoldPlugin)
         .use(historyPlugin)
+        // Real guard in the loop: these suites exercise moves/duplicates,
+        // which must now pass the content-conservation guard (MAR-108).
+        .use(contentGuardPlugin)
         .create();
     editors.push(editor);
     return editor.action((ctx) => ctx.get(editorViewCtx));
