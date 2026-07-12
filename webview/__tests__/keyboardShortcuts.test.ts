@@ -236,6 +236,24 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         expect(workbenchForwarder).toHaveBeenCalledTimes(1);
     });
 
+    it("Cmd+A inside the ProseMirror content should be stopped (escalation ladder)", () => {
+        init(true);
+        pressKey("KeyA", { key: "a", metaKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("Cmd+A outside the editor content (overlay input) should keep propagating", () => {
+        init(true);
+        pressKey("KeyA", { key: "a", metaKey: true }, document.body);
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+
+    it("Cmd+Shift+A should keep propagating (only the bare chord is the ladder)", () => {
+        init(true);
+        pressKey("KeyA", { key: "A", metaKey: true, shiftKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).toHaveBeenCalledTimes(1);
+    });
+
     // ── Claimed-set exhaustiveness ───────────────────────────────────────
     // Policy guard (behavioral half; the source-scan half lives in
     // shared/__tests__/noHardcodedKeybindings.test.ts): pin the claim list
@@ -276,7 +294,9 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
     it("Cmd+<letter> (macOS) should claim exactly the ProseMirror typing-level set", () => {
         init(true);
         expect(claimedLetters((l) => ({ key: l, metaKey: true }))).toEqual(
-            ["b", "e", "i", "y", "z"], // bold, inline code, italic, redo, undo
+            // select-all ladder (in-content only), bold, inline code,
+            // italic, redo, undo
+            ["a", "b", "e", "i", "y", "z"],
         );
     });
 
@@ -290,7 +310,7 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
     it("Ctrl+<letter> (Windows/Linux) should claim exactly the ProseMirror typing-level set", () => {
         init(false);
         expect(claimedLetters((l) => ({ key: l, ctrlKey: true }))).toEqual(
-            ["b", "e", "i", "y", "z"],
+            ["a", "b", "e", "i", "y", "z"],
         );
     });
 });

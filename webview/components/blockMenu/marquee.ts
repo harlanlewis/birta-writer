@@ -24,7 +24,7 @@
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { BlockRangeSelection } from "../../plugins/blockRange";
-import { SCROLL_STEP, SCROLL_ZONE, selectionCoverRange } from "./drag";
+import { scrollVelocityFor, selectionCoverRange } from "./drag";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 
 const MARQUEE_THRESHOLD = 4;
@@ -209,7 +209,11 @@ export function wireMarquee(view: EditorView): () => void {
             if (scrollDir === 0 || !active) {
                 return;
             }
-            window.scrollBy(0, scrollDir * SCROLL_STEP);
+            const velocity = scrollVelocityFor(lastClientY);
+            if (velocity === 0) {
+                return;
+            }
+            window.scrollBy(0, velocity);
             applyGeometry();
             scrollRaf = requestAnimationFrame(scrollLoop);
         };
@@ -236,9 +240,7 @@ export function wireMarquee(view: EditorView): () => void {
             lastClientX = move.clientX;
             lastClientY = move.clientY;
             applyGeometry();
-            const nextDir =
-                move.clientY < SCROLL_ZONE ? -1 :
-                move.clientY > window.innerHeight - SCROLL_ZONE ? 1 : 0;
+            const nextDir = Math.sign(scrollVelocityFor(move.clientY));
             if (nextDir !== scrollDir) {
                 scrollDir = nextDir;
                 if (scrollDir !== 0 && !scrollRaf) {

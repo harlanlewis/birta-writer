@@ -144,8 +144,31 @@ const DRAG_THRESHOLD = 4;
 /** Viewport margin (px) inside which the window auto-scrolls.
  * Shared with the marquee so both pointer sessions scroll identically. */
 export const SCROLL_ZONE = 80;
-/** Max auto-scroll speed (px per frame). */
-export const SCROLL_STEP = 24;
+/** Auto-scroll speed range (px per frame). */
+const SCROLL_MIN = 2;
+const SCROLL_MAX = 40;
+/** How far past the viewport edge keeps accelerating (as a zone multiple). */
+const SCROLL_OVERSHOOT = 1.5;
+
+/**
+ * Signed auto-scroll velocity (px per frame) for a pointer at `clientY`:
+ * zero outside the edge zones, then a quadratic ramp with depth — barely
+ * inside the zone creeps at SCROLL_MIN, the viewport edge is already brisk,
+ * and dragging PAST the edge keeps accelerating up to SCROLL_MAX (the
+ * dnd-kit/Figma convention: distance is the throttle, so 1px into the zone
+ * never sprints). Shared by the drag and marquee sessions.
+ */
+export function scrollVelocityFor(clientY: number): number {
+    const topDepth = SCROLL_ZONE - clientY;
+    const bottomDepth = clientY - (window.innerHeight - SCROLL_ZONE);
+    const depth = Math.max(topDepth, bottomDepth);
+    if (depth <= 0) {
+        return 0;
+    }
+    const t = Math.min(depth / SCROLL_ZONE, SCROLL_OVERSHOOT) / SCROLL_OVERSHOOT;
+    const speed = SCROLL_MIN + (SCROLL_MAX - SCROLL_MIN) * t * t;
+    return topDepth > bottomDepth ? -speed : speed;
+}
 
 /** Current viewport geometry of every droppable boundary
  * (blockBoundaryPositions supplies positions/kinds; the DOM supplies ys —
@@ -243,14 +266,14 @@ function hidePill(): void {
 }
 
 /** Pill label: the marker glyph, plus a count when a section drags along. */
-function pillLabel(view: EditorView, glyph: string, range: { from: number; to: number }): string {
+function pillLabel(view: EditorView, name: string, range: { from: number; to: number }): string {
     let blocks = 0;
     view.state.doc.forEach((node: ProseNode, offset: number) => {
         if (offset >= range.from && offset < range.to) {
             blocks++;
         }
     });
-    return blocks > 1 ? `${glyph}  ${blocks} blocks` : glyph;
+    return blocks > 1 ? `${blocks} blocks` : name;
 }
 
 function showIndicator(view: EditorView, target: DropBoundary): void {
@@ -302,8 +325,9 @@ export function wireMarkerDrag(
         let startDoc: ProseNode | null = null;
 
         const scrollLoop = (): void => {
-            if (scrollDir !== 0) {
-                window.scrollBy(0, scrollDir * SCROLL_STEP);
+            const velocity = scrollDir === 0 ? 0 : scrollVelocityFor(lastPointerY);
+            if (velocity !== 0) {
+                window.scrollBy(0, velocity);
                 // Geometry shifted under the pointer — remeasure and re-aim.
                 boundaries = measureBoundaries(view).filter((b) => b.kind === draggedKind);
                 if (range) {
@@ -416,7 +440,7 @@ export function wireMarkerDrag(
                 hideTooltip();
                 marker.classList.add("heading-fold-marker--dragging");
                 document.body.classList.add("block-dragging");
-                label = pillLabel(view, marker.textContent ?? "", range);
+                label = pillLabel(view, marker.dataset["pill"] ?? marker.textContent ?? "", range);
                 showRangeVeil(view, range);
             }
             move.preventDefault();
@@ -427,9 +451,7 @@ export function wireMarkerDrag(
             } else {
                 hideIndicator();
             }
-            const nextDir =
-                move.clientY < SCROLL_ZONE ? -1 :
-                move.clientY > window.innerHeight - SCROLL_ZONE ? 1 : 0;
+            const nextDir = Math.sign(scrollVelocityFor(move.clientY));
             if (nextDir !== scrollDir) {
                 scrollDir = nextDir;
                 if (scrollDir !== 0 && !scrollRaf) {

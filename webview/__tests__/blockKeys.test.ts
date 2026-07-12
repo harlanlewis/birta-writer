@@ -291,3 +291,37 @@ describe("extendBlockSelection honors the anchor", () => {
         expect(view.state.selection.to).toBe(view.state.doc.content.size);
     });
 });
+
+describe("moveSelectedBlocks in lists", () => {
+    it("a caret in a list item should move the ITEM, not the whole list", async () => {
+        const view = await makeEditor("Intro\n\n- one\n- two\n- three");
+        // Caret into "two".
+        let pos = -1;
+        view.state.doc.descendants((node, nodePos) => {
+            if (node.isTextblock && node.textContent === "two") pos = nodePos + 1;
+            return pos === -1;
+        });
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+        expect(moveSelectedBlocks(-1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Intro", "twoonethree"]);
+        const { getMarkdown } = await import("@milkdown/utils");
+        expect(editors[0]!.action(getMarkdown()).trimEnd()).toBe(
+            "Intro\n\n- two\n- one\n- three",
+        );
+    });
+
+    it("a caret in a NESTED item should move it among its own siblings", async () => {
+        const view = await makeEditor("- outer\n  - alpha\n  - beta");
+        let pos = -1;
+        view.state.doc.descendants((node, nodePos) => {
+            if (node.isTextblock && node.textContent === "beta") pos = nodePos + 1;
+            return pos === -1;
+        });
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, pos)));
+        expect(moveSelectedBlocks(-1)(view.state, view.dispatch, view)).toBe(true);
+        const { getMarkdown } = await import("@milkdown/utils");
+        expect(editors[0]!.action(getMarkdown()).trimEnd()).toBe(
+            "- outer\n  - beta\n  - alpha",
+        );
+    });
+});

@@ -249,8 +249,17 @@ export function moveSelectedBlocks(dir: -1 | 1): Command {
             }
             return moveBlockTo(view, cover, target, { selectRun: true });
         }
-        // Bare caret: moveBlockAt carries heading sections and hops
-        // neighboring units, exactly like the menu rows.
+        // Bare caret in a list: move the ITEM among its siblings (innermost
+        // item wins for nesting), never the whole list.
+        const $from = state.selection.$from;
+        for (let depth = $from.depth; depth > 0; depth--) {
+            if ($from.node(depth).type.name === "list_item") {
+                moveBlockAt(view, $from.before(depth), dir);
+                return true;
+            }
+        }
+        // Bare caret elsewhere: moveBlockAt carries heading sections and
+        // hops neighboring units, exactly like the menu rows.
         const block = blockAt(state, state.selection.from);
         if (!block) {
             return false;

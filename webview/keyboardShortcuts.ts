@@ -102,6 +102,24 @@ function isEditorClaimedKey(e: KeyboardEvent, isMac: boolean): boolean {
 
     if (e.altKey) { return false; }
 
+    // Mod+A is the block-selection escalation ladder (blockKeys plugin:
+    // block text → block → everything), claimed only inside ProseMirror
+    // content: VS Code binds its own webview select-all to Cmd+A while a
+    // webview has focus, and letting the chord leak fires an
+    // execCommand('selectAll') that stomps the ladder with a full-document
+    // selection right after PM sets ours. Overlay inputs keep the
+    // workbench/native behavior. Inside content the key is always handled
+    // (the ladder, a table's native select-all via baseKeymap, or
+    // codeBlockSelectAll's capture handler), so nothing is lost.
+    if (e.key.toLowerCase() === "a" && !e.shiftKey) {
+        const primary = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+        return (
+            primary &&
+            e.target instanceof Element &&
+            e.target.closest(".ProseMirror") !== null
+        );
+    }
+
     // Everything else is claimed document-wide: the whole webview document
     // is editor UI (content, topbar, TOC, find bar, ...), and these combos
     // must not trigger workbench actions no matter which part has focus.
