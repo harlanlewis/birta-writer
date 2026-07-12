@@ -23,7 +23,10 @@ function isListNode(node: ProseNode | null | undefined): node is ProseNode {
  *
  * The item's leading content joins its former sublist as its first item, and
  * that list attaches to the previous sibling (merging into the previous
- * sibling's own trailing list when it has one). Shift-Tab (preset
+ * sibling's own trailing list when it has one). On mixed list types THE
+ * SURVIVING LIST KEEPS ITS TYPE — merging adopts the previous sibling's
+ * trailing list's type; otherwise the item's own sublist type persists
+ * (children keep their numbering) — one rule, two cases. Shift-Tab (preset
  * liftListItem) is already the exact inverse: lifting an item makes its
  * following siblings its children. Returns false for items without a
  * sublist — plain sinkListItem handles those. Exported for unit testing.
@@ -79,12 +82,18 @@ export function sinkItemKeepingChildren(listItemType: NodeType) {
 
         if (dispatch) {
             const tr = state.tr.replaceWith(prevPos, itemPos + item.nodeSize, newPrev);
-            // Caret back where it was, inside the (moved) bare item: the new
-            // list is newPrev's last child; `bare` sits after itemsBefore.
+            // Selection back where it was, inside the (moved) bare item: the
+            // new list is newPrev's last child; `bare` sits after
+            // itemsBefore. Item content maps 1:1 into `bare`, so both ends
+            // of a range selection survive the sink.
             const listPos = prevPos + 1 + newPrev.content.size - newPrev.lastChild!.nodeSize;
             const barePos = listPos + 1 + itemsBefore.size;
-            const offsetInItem = $from.pos - (itemPos + 1);
-            tr.setSelection(TextSelection.near(tr.doc.resolve(barePos + 1 + offsetInItem)));
+            const mapOffset = (pos: number): number =>
+                Math.min(barePos + 1 + Math.max(0, pos - (itemPos + 1)), barePos + bare.nodeSize - 1);
+            tr.setSelection(TextSelection.between(
+                tr.doc.resolve(mapOffset($from.pos)),
+                tr.doc.resolve(mapOffset($to.pos)),
+            ));
             dispatch(tr.scrollIntoView());
         }
         return true;

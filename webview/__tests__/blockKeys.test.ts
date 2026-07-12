@@ -21,6 +21,8 @@ import {
     moveSelectedBlocks,
 } from "../plugins/blockKeys";
 import { BlockRangeSelection } from "../plugins/blockRange";
+import { headingFoldPluginKey } from "../plugins/headingFold";
+import { NodeSelection } from "@milkdown/prose/state";
 
 let editors: Editor[] = [];
 
@@ -323,5 +325,83 @@ describe("moveSelectedBlocks in lists", () => {
         expect(editors[0]!.action(getMarkdown()).trimEnd()).toBe(
             "- outer\n  - beta\n  - alpha",
         );
+    });
+});
+
+describe("fold-aware block units (collapsed headings)", () => {
+    async function makeFolded(): Promise<EditorView> {
+        const view = await makeEditor(
+            "Intro\n\n## Section\n\nBody one\n\nBody two\n\n## Next\n\nTail",
+        );
+        let hPos = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading" && node.textContent === "Section") hPos = offset;
+        });
+        expect(hPos).toBeGreaterThan(-1);
+        view.dispatch(view.state.tr.setMeta(headingFoldPluginKey, { type: "toggle", pos: hPos }));
+        expect(headingFoldPluginKey.getState(view.state)!.folded.has(hPos)).toBe(true);
+        return view;
+    }
+
+    it("Escape on a collapsed heading should select the heading WITH its hidden section", async () => {
+        const view = await makeFolded();
+        placeCaretIn(view, "Section");
+        toggleBlockSelection(view.state, view.dispatch);
+        const sel = view.state.selection;
+        expect(sel).toBeInstanceOf(BlockRangeSelection);
+        expect(view.state.doc.textBetween(sel.from, sel.to, " "))
+            .toBe("Section Body one Body two");
+    });
+
+    it("moving a collapsed heading's selection should carry the hidden body", async () => {
+        const view = await makeFolded();
+        placeCaretIn(view, "Section");
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(moveSelectedBlocks(1)(view.state, view.dispatch, view)).toBe(true);
+        // Hops ONE visible unit ("## Next" is expanded, so its heading line
+        // alone) — but the collapsed section moved as an atom: heading and
+        // hidden body land together, never separated.
+        expect(blockOrder(view)).toEqual([
+            "Intro", "Next", "Section", "Body one", "Body two", "Tail",
+        ]);
+        // Still one selected unit, still collapsed at its destination.
+        const sel = view.state.selection;
+        expect(view.state.doc.textBetween(sel.from, sel.to, " "))
+            .toBe("Section Body one Body two");
+    });
+
+    it("Shift+Down from the block above should absorb the WHOLE collapsed unit", async () => {
+        const view = await makeFolded();
+        placeCaretIn(view, "Intro");
+        toggleBlockSelection(view.state, view.dispatch);
+        extendBlockSelection(1)(view.state, view.dispatch);
+        const sel = view.state.selection;
+        // Not just the heading line — the hidden body came too.
+        expect(view.state.doc.textBetween(sel.from, sel.to, " "))
+            .toBe("Intro Section Body one Body two");
+        // And the next step lands on "Next", never inside the hidden run.
+        extendBlockSelection(1)(view.state, view.dispatch);
+        expect(view.state.doc.textBetween(view.state.selection.from, view.state.selection.to, " "))
+            .toBe("Intro Section Body one Body two Next");
+    });
+});
+
+describe("escalateSelectAll with a NodeSelection", () => {
+    it("a selected HR should climb block → all, not jump to all", async () => {
+        const view = await makeEditor("alpha\n\n---\n\nomega");
+        let hrPos = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (node.type.name === "hr") hrPos = offset;
+        });
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, hrPos)));
+        expect(escalateSelectAll(view.state, view.dispatch)).toBe(true);
+        const sel = view.state.selection;
+        expect(sel).toBeInstanceOf(BlockRangeSelection);
+        expect(sel.from).toBe(hrPos);
+        expect(sel.to).toBe(hrPos + 1);
+        // Second press: everything.
+        escalateSelectAll(view.state, view.dispatch);
+        expect(view.state.selection.from).toBe(0);
+        expect(view.state.selection.to).toBe(view.state.doc.content.size);
     });
 });

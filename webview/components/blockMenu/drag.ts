@@ -18,9 +18,11 @@
  *   - Escape cancels, mouseup commits (one transaction, one undo step).
  */
 import type { EditorView } from "@milkdown/prose/view";
+import type { EditorState } from "@milkdown/prose/state";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { closeBlockMenu, moveBlockTo, moveRangeAt } from "./index";
 import { BlockRangeSelection } from "../../plugins/blockRange";
+import { foldedSectionEnd } from "../../plugins/headingFold";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
@@ -120,7 +122,7 @@ export function selectionCoverRange(view: EditorView): { from: number; to: numbe
     // An explicit block range IS its own cover — including a single block
     // (Escape's block selection paints and drags like any covered run).
     if (sel instanceof BlockRangeSelection) {
-        return { from: sel.from, to: sel.to };
+        return expandCoverOverFolds(view.state, { from: sel.from, to: sel.to });
     }
     if (sel.empty) {
         return null;
@@ -136,7 +138,30 @@ export function selectionCoverRange(view: EditorView): { from: number; to: numbe
             blocks++;
         }
     });
-    return blocks > 1 ? { from, to } : null;
+    return blocks > 1 ? expandCoverOverFolds(view.state, { from, to }) : null;
+}
+
+/**
+ * A cover that includes a COLLAPSED heading must also carry its hidden
+ * section — the fold decoration hides those sibling blocks, but they are
+ * real content: moving the heading without them would strand invisible
+ * blocks under a new owner (and the fold would swallow whatever happens to
+ * follow the drop). Offsets ascend, so growing `to` mid-walk is safe.
+ */
+function expandCoverOverFolds(
+    state: EditorState,
+    range: { from: number; to: number },
+): { from: number; to: number } {
+    let to = range.to;
+    state.doc.forEach((_node: ProseNode, offset: number) => {
+        if (offset >= range.from && offset < to) {
+            const sectionEnd = foldedSectionEnd(state, offset);
+            if (sectionEnd !== null && sectionEnd > to) {
+                to = sectionEnd;
+            }
+        }
+    });
+    return to === range.to ? range : { from: range.from, to };
 }
 
 /** Pixels of pointer travel before a mousedown becomes a drag. */
@@ -159,13 +184,19 @@ const SCROLL_OVERSHOOT = 1.5;
  * never sprints). Shared by the drag and marquee sessions.
  */
 export function scrollVelocityFor(clientY: number): number {
-    const topDepth = SCROLL_ZONE - clientY;
-    const bottomDepth = clientY - (window.innerHeight - SCROLL_ZONE);
+    // Clamp the zones on short viewports so a dead band always exists in
+    // the middle — otherwise every pointer position would auto-scroll.
+    const zone = Math.min(SCROLL_ZONE, Math.floor(window.innerHeight / 3));
+    if (zone <= 0) {
+        return 0;
+    }
+    const topDepth = zone - clientY;
+    const bottomDepth = clientY - (window.innerHeight - zone);
     const depth = Math.max(topDepth, bottomDepth);
     if (depth <= 0) {
         return 0;
     }
-    const t = Math.min(depth / SCROLL_ZONE, SCROLL_OVERSHOOT) / SCROLL_OVERSHOOT;
+    const t = Math.min(depth / zone, SCROLL_OVERSHOOT) / SCROLL_OVERSHOOT;
     const speed = SCROLL_MIN + (SCROLL_MAX - SCROLL_MIN) * t * t;
     return topDepth > bottomDepth ? -speed : speed;
 }
@@ -273,7 +304,7 @@ function pillLabel(view: EditorView, name: string, range: { from: number; to: nu
             blocks++;
         }
     });
-    return blocks > 1 ? `${blocks} blocks` : name;
+    return blocks > 1 ? `${blocks} ${t("blocks")}` : name;
 }
 
 function showIndicator(view: EditorView, target: DropBoundary): void {

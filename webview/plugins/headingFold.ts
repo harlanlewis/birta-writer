@@ -1,6 +1,6 @@
 import type { EditorView } from "@milkdown/prose/view";
 import { Decoration, DecorationSet } from "@milkdown/prose/view";
-import { Plugin, PluginKey, TextSelection } from "@milkdown/prose/state";
+import { Plugin, PluginKey, TextSelection, type EditorState } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 import {
     IconAlertCircle,
@@ -171,6 +171,24 @@ export function findHeadingFoldRange(doc: any, headingPos: number, headingLevel?
         }
     });
     return from < to ? { from, to } : null;
+}
+
+/**
+ * If the block at `blockPos` is a COLLAPSED foldable heading, the end of its
+ * hidden section — else null. The block keyboard layer and the selection
+ * cover use it so an explicit block selection over a folded heading always
+ * carries the invisible body (orphaning it would let a move/delete act on
+ * content the user can't see).
+ */
+export function foldedSectionEnd(state: EditorState, blockPos: number): number | null {
+    const node = state.doc.nodeAt(blockPos);
+    if (!isHeadingNode(node)) {
+        return null;
+    }
+    if (!headingFoldPluginKey.getState(state)?.folded.has(blockPos)) {
+        return null;
+    }
+    return findHeadingFoldRange(state.doc, blockPos)?.to ?? null;
 }
 
 function cleanFoldedHeadingPositions(doc: any, folded: Iterable<number>): Set<number> {
@@ -361,10 +379,11 @@ function createBlockGutter(view: EditorView, spec: MarkerSpec): HTMLElement {
  * principle the heading hashes established): `-`/`1.`/`[ ]` lists, `>` quote,
  * `[!]` callout, ``` code, `![]` standalone image, `<>` raw HTML.
  *
- * Deliberately absent for now: tables (rich chrome of their own — grips,
- * insert bars; a second control would double up) and leaf atoms like `---`
- * (an hr can't host the in-block widget this gutter rides on; both join in
- * MAR-19's overlay-based drag handle).
+ * Deliberately absent: leaf atoms — `---` (hr) and orphaned
+ * link_definitions — which have no content position for the in-block widget
+ * to ride on (nodeSize 1); they'd need an overlay-based handle. Tables DO
+ * get a marker (grab/menu/drag) alongside their own grips/insert bars —
+ * the two serve different jobs (block-level vs cell-level).
  */
 /** A gutter marker's rendering: the same icon its slash-menu row uses, a
  * stable fingerprint/widget key, and the human name the drag pill shows. */
@@ -431,7 +450,7 @@ function itemMarkerSpec(listNode: any, item: any): MarkerSpec {
         return { key: "task", icon: IconCheckSquare, label: t("Task") };
     }
     if (listNode.type.name === "ordered_list") {
-        return { key: "ol", icon: IconListOrdered, label: t("List item") };
+        return { key: "ol", icon: IconListOrdered, label: t("Numbered item") };
     }
     return { key: "ul", icon: IconList, label: t("List item") };
 }
@@ -750,8 +769,10 @@ export const headingFoldPlugin = $prose(() =>
                     }
                     const dom = view.nodeDOM(offset);
                     if (dom instanceof HTMLElement) {
-                        const markerEl = dom.querySelector<HTMLElement>(".heading-fold-marker");
-                        if (markerEl) {
+                        // querySelectorAll: a covered LIST carries one marker
+                        // per item — every one must surface, not just the
+                        // first, or "all of these move together" undersells.
+                        for (const markerEl of dom.querySelectorAll<HTMLElement>(".heading-fold-marker")) {
                             markerEl.classList.add("heading-fold-marker--covered");
                             coveredMarkers.push(markerEl);
                         }

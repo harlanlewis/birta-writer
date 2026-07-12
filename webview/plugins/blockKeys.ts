@@ -33,6 +33,7 @@ import { $prose } from "@milkdown/utils";
 import { moveBlockAt, moveBlockTo } from "../components/blockMenu";
 import { selectionCoverRange } from "../components/blockMenu/drag";
 import { BlockRangeSelection } from "./blockRange";
+import { foldedSectionEnd } from "./headingFold";
 
 type Command = (state: EditorState, dispatch?: (tr: Transaction) => void, view?: EditorView) => boolean;
 
@@ -44,6 +45,45 @@ function blockAt(state: EditorState, pos: number): { from: number; to: number } 
         return after ? { from: pos, to: pos + after.nodeSize } : null;
     }
     return { from: $pos.before(1), to: $pos.after(1) };
+}
+
+/**
+ * The document as VISIBLE units: one entry per top-level block, except that
+ * a collapsed heading and its hidden section are ONE unit — the keyboard
+ * must never split them (selecting/moving the heading alone would orphan
+ * invisible content) nor extend into them one hidden block at a time.
+ */
+function unitBoundaries(state: EditorState): { from: number; to: number }[] {
+    const units: { from: number; to: number }[] = [];
+    let skipUntil = 0;
+    state.doc.forEach((node, offset) => {
+        if (offset < skipUntil) {
+            return; // hidden inside a collapsed section — part of its unit
+        }
+        const end = foldedSectionEnd(state, offset) ?? offset + node.nodeSize;
+        units.push({ from: offset, to: end });
+        skipUntil = end;
+    });
+    return units;
+}
+
+/** Snap [from, to] outward to whole visible units. */
+function snapToUnits(
+    units: { from: number; to: number }[],
+    from: number,
+    to: number,
+): { from: number; to: number } {
+    let start = from;
+    let end = to;
+    for (const unit of units) {
+        if (unit.from <= from && from < unit.to) {
+            start = unit.from;
+        }
+        if (unit.from < to && to <= unit.to) {
+            end = unit.to;
+        }
+    }
+    return { from: start, to: end };
 }
 
 /**
@@ -85,10 +125,13 @@ export const toggleBlockSelection: Command = (state, dispatch) => {
         }
         return true;
     }
-    const range = BlockRangeSelection.tryCreate(state.doc, sel.from, sel.to);
-    if (!range) {
+    const raw = BlockRangeSelection.tryCreate(state.doc, sel.from, sel.to);
+    if (!raw) {
         return false;
     }
+    // Unit-snap: a collapsed heading selects WITH its hidden section.
+    const unit = snapToUnits(unitBoundaries(state), raw.from, raw.to);
+    const range = BlockRangeSelection.tryCreate(state.doc, unit.from, unit.to) ?? raw;
     if (dispatch) {
         dispatch(state.tr.setSelection(range));
     }
@@ -117,53 +160,55 @@ export function extendBlockSelection(dir: -1 | 1): Command {
             return false;
         }
         const { doc } = state;
-        let { anchor, head } = range;
-        const backward = head < anchor;
+        const units = unitBoundaries(state);
+        // Work on unit indices: a collapsed heading + hidden section is one
+        // step, so the head never lands inside invisible content.
+        const snapped = snapToUnits(units, range.from, range.to);
+        const backward = range.head < range.anchor;
+        const first = units.findIndex((u) => u.from === snapped.from);
+        const last = units.findIndex((u) => u.to === snapped.to);
+        if (first < 0 || last < 0) {
+            return true; // unit map out of sync — consume rather than misfire
+        }
+        let anchor: number;
+        let head: number;
         if (!backward) {
-            // Head at the range's end boundary.
-            const $head = doc.resolve(head);
             if (dir === 1) {
-                if (!$head.nodeAfter) {
+                if (last + 1 >= units.length) {
                     return true; // doc end — consume, no change
                 }
-                head += $head.nodeAfter.nodeSize;
+                anchor = snapped.from;
+                head = units[last + 1]!.to;
+            } else if (last > first) {
+                anchor = snapped.from;
+                head = units[last - 1]!.to;
             } else {
-                const shrunk = $head.nodeBefore ? head - $head.nodeBefore.nodeSize : head;
-                if (shrunk > anchor) {
-                    head = shrunk;
-                } else {
-                    // One block left and shift points the other way: FLIP
-                    // around the anchor block (it always stays selected) —
-                    // the range grows upward from its start instead.
-                    const $from = doc.resolve(range.from);
-                    if (!$from.nodeBefore) {
-                        return true;
-                    }
-                    anchor = range.to;
-                    head = range.from - $from.nodeBefore.nodeSize;
-                }
-            }
-        } else {
-            // Head at the range's start boundary.
-            const $head = doc.resolve(head);
-            if (dir === -1) {
-                if (!$head.nodeBefore) {
+                // One unit left and shift points the other way: FLIP around
+                // the anchor unit (it always stays selected, the Notion
+                // contract) — the range grows upward from its start instead.
+                if (first === 0) {
                     return true;
                 }
-                head -= $head.nodeBefore.nodeSize;
-            } else {
-                const shrunk = $head.nodeAfter ? head + $head.nodeAfter.nodeSize : head;
-                if (shrunk < anchor) {
-                    head = shrunk;
-                } else {
-                    // Mirror flip: grow downward from the range's end.
-                    const $to = doc.resolve(range.to);
-                    if (!$to.nodeAfter) {
-                        return true;
-                    }
-                    anchor = range.from;
-                    head = range.to + $to.nodeAfter.nodeSize;
+                anchor = snapped.to;
+                head = units[first - 1]!.from;
+            }
+        } else {
+            if (dir === -1) {
+                if (first === 0) {
+                    return true;
                 }
+                anchor = snapped.to;
+                head = units[first - 1]!.from;
+            } else if (first < last) {
+                anchor = snapped.to;
+                head = units[first + 1]!.from;
+            } else {
+                // Mirror flip: grow downward from the range's end.
+                if (last + 1 >= units.length) {
+                    return true;
+                }
+                anchor = snapped.from;
+                head = units[last + 1]!.to;
             }
         }
         if (dispatch) {
@@ -199,28 +244,33 @@ export const escalateSelectAll: Command = (state, dispatch) => {
         }
         return true; // already everything — consume, stable
     }
-    const first = blockAt(state, sel.from);
-    const last = blockAt(state, sel.to);
-    if (!first || !last) {
+    // The unit(s) the selection touches. tryCreate handles every selection
+    // shape (caret, text, NodeSelection on a leaf like an HR) uniformly.
+    const raw = BlockRangeSelection.tryCreate(doc, sel.from, sel.to);
+    if (!raw) {
         return false;
     }
-    if (first.from !== last.from) {
-        // Already spanning blocks — go straight to everything.
+    const units = unitBoundaries(state);
+    const unit = snapToUnits(units, raw.from, raw.to);
+    const isOneUnit = units.some((u) => u.from === unit.from && u.to === unit.to);
+    if (!isOneUnit) {
+        // Already spanning units — go straight to everything.
         if (dispatch) {
             dispatch(state.tr.setSelection(all));
         }
         return true;
     }
-    // One block: select its text; if that's already selected (or it has
-    // none), step up to the block itself.
-    const $start = doc.resolve(Math.min(first.from + 1, doc.content.size));
-    const $end = doc.resolve(Math.max(0, first.to - 1));
+    // One unit: select its text; if that's already selected (or it has
+    // none), step up to the unit itself (a collapsed heading brings its
+    // hidden section).
+    const $start = doc.resolve(Math.min(raw.from + 1, doc.content.size));
+    const $end = doc.resolve(Math.max(0, raw.to - 1));
     const blockText = TextSelection.between($start, $end);
     const hasAllText = blockText.empty || (sel.from <= blockText.from && sel.to >= blockText.to);
     if (dispatch) {
         dispatch(state.tr.setSelection(
             hasAllText
-                ? (BlockRangeSelection.tryCreate(doc, first.from, first.to) ?? all)
+                ? (BlockRangeSelection.tryCreate(doc, unit.from, unit.to) ?? all)
                 : blockText,
         ));
     }
@@ -235,14 +285,22 @@ export function moveSelectedBlocks(dir: -1 | 1): Command {
         }
         // An explicit selection moves exactly what it covers (a selected
         // heading moves alone); only a bare caret gets unit semantics.
+        // The cover is fold-expanded by selectionCoverRange (a collapsed
+        // heading carries its hidden section); targets hop whole visible
+        // UNITS so a move never lands inside another collapsed section.
         const cover = selectionCoverRange(view);
         if (cover) {
+            const units = unitBoundaries(state);
+            const first = units.findIndex((u) => u.from === cover.from);
+            const last = units.findIndex((u) => u.to === cover.to);
+            if (first < 0 || last < 0) {
+                return true; // unit map out of sync — consume rather than misfire
+            }
             let target: number | null;
             if (dir === -1) {
-                const before = state.doc.resolve(cover.from).nodeBefore;
-                target = before ? cover.from - before.nodeSize : null;
+                target = first > 0 ? units[first - 1]!.from : null;
             } else {
-                target = blockAt(state, cover.to)?.to ?? null;
+                target = last + 1 < units.length ? units[last + 1]!.to : null;
             }
             if (target === null) {
                 return true; // at a document edge — consume, no-op

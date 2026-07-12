@@ -1568,7 +1568,7 @@ body.toolbar-hidden::before {
 /* NodeView blocks nest the gutter below wrapper chrome (code: inside pre;
    footnote: inside -content; table: inside the table element), so the
    direct-child reveal above never fires for them — descendant variant. */
-.milkdown .editor :is(.code-block-wrapper, .footnote-def, .mw-table, .callout, .container-directive):where(.block-gutter-host):hover .heading-fold-marker--block {
+.milkdown .editor :is(.code-block-wrapper, .footnote-def, .mw-table, .callout, .container-directive):where(.block-gutter-host):where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-marker--block {
     opacity: 0.7;
 }
 

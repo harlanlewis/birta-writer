@@ -97,7 +97,7 @@ describe("per-item list drag/menu (MAR-86)", () => {
         view(editor);
         const pills = Array.from(document.querySelectorAll<HTMLElement>(".heading-fold-marker--block"))
             .map((el) => el.dataset["pill"]);
-        expect(pills).toEqual(["List item", "List item", "Task", "Task"]);
+        expect(pills).toEqual(["Numbered item", "Numbered item", "Task", "Task"]);
         // Icons, not text: every marker carries its slash-menu row's SVG.
         for (const el of document.querySelectorAll(".heading-fold-marker--block")) {
             expect(el.querySelector("svg")).not.toBeNull();

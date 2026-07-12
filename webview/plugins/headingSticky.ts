@@ -3,7 +3,7 @@ import { Plugin, TextSelection } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
-import { headingFoldPluginKey, type HeadingFoldMeta } from "./headingFold";
+import { findHeadingFoldRange, headingFoldPluginKey, type HeadingFoldMeta } from "./headingFold";
 import { t } from "../i18n";
 import {
     getTopbarBottom,
@@ -15,28 +15,6 @@ import {
 } from "../utils/headingUtils";
 
 const HEADING_STICKY_ACTIVE_CHANGE_EVENT = "heading-sticky-active-change";
-
-function findHeadingFoldRange(view: EditorView, headingPos: number): { from: number; to: number } | null {
-    const headingNode = view.state.doc.nodeAt(headingPos);
-    if (!headingNode || headingNode.type.name !== "heading") {
-        return null;
-    }
-
-    const headingLevel = headingNode.attrs["level"] as number;
-    const from = headingPos + headingNode.nodeSize;
-    let to = view.state.doc.content.size;
-    view.state.doc.forEach((node, offset) => {
-        if (offset <= headingPos || node.type.name !== "heading") {
-            return;
-        }
-        const level = node.attrs["level"] as number;
-        if (level <= headingLevel && to === view.state.doc.content.size) {
-            to = offset;
-        }
-    });
-
-    return from < to ? { from, to } : null;
-}
 
 function scrollHeadingIntoStickyPosition(view: EditorView, headingPos: number): void {
     requestAnimationFrame(() => {
@@ -89,25 +67,33 @@ function setStickyContent(
             event.preventDefault();
             event.stopPropagation();
 
+            // Derive the position at CLICK time: updateSticky refreshes
+            // data-heading-pos on every state update, while this handler's
+            // captured `headingPos` goes stale whenever content above the
+            // heading shifts without changing its text/collapsed state
+            // (external sync, find-replace) — the gutter's own rule
+            // (gutterBlockPos) applied to the sticky clone.
+            const livePos = Number(sticky.dataset["headingPos"] ?? headingPos);
+
             const tr = view.state.tr
-                .setMeta(headingFoldPluginKey, { type: "toggle", pos: headingPos } satisfies HeadingFoldMeta)
+                .setMeta(headingFoldPluginKey, { type: "toggle", pos: livePos } satisfies HeadingFoldMeta)
                 .setMeta("addToHistory", false);
 
             if (!collapsed) {
-                const range = findHeadingFoldRange(view, headingPos);
+                const range = findHeadingFoldRange(view.state.doc, livePos);
                 if (
                     range &&
                     view.state.selection.from < range.to &&
                     view.state.selection.to > range.from
                 ) {
-                    tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(headingPos + 1, tr.doc.content.size))));
+                    tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(livePos + 1, tr.doc.content.size))));
                 }
             }
 
             view.dispatch(tr);
             view.focus();
             hideTooltip();
-            scrollHeadingIntoStickyPosition(view, headingPos);
+            scrollHeadingIntoStickyPosition(view, livePos);
         });
         gutter.appendChild(button);
     }

@@ -285,7 +285,7 @@ describe("block markers for every top-level type", () => {
             document.querySelectorAll<HTMLElement>(".heading-fold-marker--block"),
         ).map((el) => el.dataset["pill"]);
         expect(pills).toEqual([
-            "Paragraph", "List item", "List item", "Task",
+            "Paragraph", "List item", "Numbered item", "Task",
             "Blockquote", "Code Block", "Image", "HTML", "Table",
         ]);
         // The P marker keeps its historical class; other markers don't.
