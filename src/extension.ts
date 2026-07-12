@@ -3,13 +3,18 @@ import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import type { TableWrapMode, FontPreset } from "../shared/messages";
 import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { normalizeGutterMarkersMode, DEFAULT_GUTTER_MARKERS_MODE, type GutterMarkersMode } from "../shared/gutterMarkers";
+import { scanHeadings } from "./utils/headingScan";
+import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
 /**
  * "Gutter Markers" in the command palette: a QuickPick of the three resting
- * modes with the current one marked and preselected. Picking persists the
- * `gutterMarkers` setting (respecting the winning scope); the config-change
- * listener in activate() then broadcasts it to every open editor. Exported
- * for unit testing.
+ * modes with the current one annotated AND preselected — createQuickPick, not
+ * showQuickPick, because only it can set activeItems, and without that Enter
+ * straight after opening would silently switch a `headings` user to the first
+ * row (the gotoSymbol picker's idiom). Picking persists the `gutterMarkers`
+ * setting (respecting the winning scope); the config-change listener in
+ * activate() then broadcasts it to every open editor. Exported for unit
+ * testing.
  */
 export async function promptGutterMarkersMode(): Promise<void> {
     const current = normalizeGutterMarkersMode(
@@ -21,25 +26,38 @@ export async function promptGutterMarkersMode(): Promise<void> {
     // Fewest → most markers, the shared display order of the typography-menu
     // segments and the block menu's radio trio.
     const base: ModeItem[] = [
-        { mode: "none", label: "None", description: "No grabbers at rest — everything appears on hover" },
-        { mode: "headings", label: "Headings", description: "Heading badges stay visible; other grabbers appear on hover (default)" },
-        { mode: "all", label: "All", description: "Every block's grabber stays visible" },
+        { mode: "none", label: "None", description: vscode.l10n.t("No grabbers at rest — everything appears on hover") },
+        { mode: "headings", label: "Headings", description: vscode.l10n.t("Heading badges stay visible; other grabbers appear on hover (default)") },
+        { mode: "all", label: "All", description: vscode.l10n.t("Every block's grabber stays visible") },
     ];
     const items = base.map((item) => ({
         ...item,
         // The palette idiom for "where you are now" (VS Code's own theme /
         // language pickers): annotate the current row rather than hide it.
-        ...(item.mode === current && { description: `${item.description} — current` }),
+        ...(item.mode === current && { description: `${item.description} — ${vscode.l10n.t("current")}` }),
     }));
-    const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: "Gutter grabbers shown at rest (hovering a block always reveals its grabber)",
+    const quickPick = vscode.window.createQuickPick<ModeItem>();
+    quickPick.title = vscode.l10n.t("Gutter Markers");
+    quickPick.placeholder = vscode.l10n.t("Grabbers shown at rest (hovering a block always reveals its grabber)");
+    quickPick.items = items;
+    quickPick.activeItems = items.filter((item) => item.mode === current);
+    const picked = await new Promise<ModeItem | undefined>((resolve) => {
+        quickPick.onDidAccept(() => {
+            resolve(quickPick.selectedItems[0]);
+            quickPick.hide();
+        });
+        // Fires on Escape AND after an accept's hide(); the promise is
+        // already settled in the latter case, so this resolve is a no-op.
+        quickPick.onDidHide(() => {
+            resolve(undefined);
+            quickPick.dispose();
+        });
+        quickPick.show();
     });
     if (picked && picked.mode !== current) {
         MarkdownEditorProvider.updateSettingRespectingScope("gutterMarkers", picked.mode);
     }
 }
-import { scanHeadings } from "./utils/headingScan";
-import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
 /**
  * Sync workbench.editorAssociations based on defaultMode:

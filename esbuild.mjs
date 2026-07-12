@@ -4,6 +4,15 @@ import path from 'path';
 
 const isProduction = process.argv.includes('--production');
 const isWatch = process.argv.includes('--watch');
+
+// Production (vscode:prepublish) builds start from a clean dist/: chunk file
+// names are content-hashed, so repeated dev builds accumulate stale chunks
+// that vsce would happily package — the 0.2.154 VSIX shipped ~400 dead chunk
+// files (21.5 MB where the real bundle is ~11 MB). Dev/watch builds skip the
+// wipe so a running Extension Development Host never loses files under it.
+if (isProduction && !isWatch) {
+    fs.rmSync('dist', { recursive: true, force: true });
+}
 // `--metafile` writes dist/webview.meta.json for bundle analysis (see
 // e2e/perf-bundle.mjs). Off by default so normal builds stay lean.
 const withMetafile = process.argv.includes('--metafile');

@@ -310,11 +310,35 @@ export class TabInputCustom {
     ) {}
 }
 
+/**
+ * Minimal createQuickPick fake: records assigned items/activeItems and lets a
+ * test fire the accept/hide handlers via `qp.onDidAccept.mock.calls[0][0]()`.
+ * Grab the instance from `window.createQuickPick.mock.results[n].value`.
+ */
+function makeFakeQuickPick() {
+    return {
+        items: [] as unknown[],
+        activeItems: [] as unknown[],
+        selectedItems: [] as unknown[],
+        title: "",
+        placeholder: "",
+        matchOnDescription: false,
+        onDidAccept: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidHide: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidChangeActive: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidChangeValue: vi.fn(() => ({ dispose: vi.fn() })),
+        show: vi.fn(),
+        hide: vi.fn(),
+        dispose: vi.fn(),
+    };
+}
+
 export const window = {
     showErrorMessage: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
     showQuickPick: vi.fn(),
+    createQuickPick: vi.fn(makeFakeQuickPick),
     /**
      * Tab-group state for command routing tests. Mutate
      * `tabGroups.activeTabGroup.activeTab` to simulate the focused tab;
