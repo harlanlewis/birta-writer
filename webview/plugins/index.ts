@@ -10,7 +10,14 @@ export {
 } from "./footnotes";
 export { formatKeymapPlugin } from "./formatKeymap";
 export { headingEmptyDeletePlugin } from "./headingEmptyDelete";
-export { headingFoldPlugin } from "./headingFold";
+export {
+    foldAllCommand,
+    foldAtCaret,
+    foldRevealKeymapPlugin,
+    headingFoldPlugin,
+    unfoldAllCommand,
+    unfoldAtCaret,
+} from "./headingFold";
 export { headingAbsoluteInputRule } from "./headingInput";
 export { headingStickyPlugin } from "./headingSticky";
 export { historyKeymapPlugin, historyPlugin } from "./history";

@@ -13,6 +13,8 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
 import { applyGutterMarkers } from "./utils/gutterMarkers";
+import { applyFoldingControls } from "./utils/foldingControls";
+import { foldPluginKey, type FoldMeta } from "./plugins/foldState";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
@@ -242,6 +244,20 @@ export function createMessageHandlers(
         setGutterMarkers(msg) {
             applyGutterMarkers(msg.mode);
             topbarTb?.setGutterMarkers(msg.mode);
+        },
+        setFoldingControls(msg) {
+            // Chevron residency is pure CSS (body classes); the enabled flag
+            // also reaches the fold plugin so disabling `editor.folding`
+            // expands every UI-only fold and stops all fold decoration work.
+            applyFoldingControls(msg.controls, msg.enabled);
+            const view = getEditorView();
+            if (view) {
+                view.dispatch(
+                    view.state.tr
+                        .setMeta(foldPluginKey, { type: "setEnabled", enabled: msg.enabled } satisfies FoldMeta)
+                        .setMeta("addToHistory", false),
+                );
+            }
         },
         fmSuggestions(msg) {
             dispatchFmSuggestions(msg.key, msg.values);
