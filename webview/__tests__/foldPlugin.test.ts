@@ -506,16 +506,20 @@ describe("list-item-nested callouts (state/decoration parity)", () => {
     // while the caret guard and drop guards still treat the body as hidden.
     const NESTED = "- item\n\n  > [!note] T\n  > hidden body\n\ntail";
 
-    it("foldAtCaret inside a list-item-nested callout should return false and add no state", async () => {
-        // Arrange
+    it("foldAtCaret inside a list-item-nested callout should fold the ITEM, never the callout", async () => {
+        // Arrange: since MAR-125 the containing list item is itself a
+        // foldable (it has a descendant block: the callout), so the fold
+        // command targets IT — the callout stays unfoldable (no chrome).
         const editor = await makeEditor(NESTED);
         const v = view(editor);
         const calloutPos = deepPosOf(v, "callout");
+        const itemPos = deepPosOf(v, "list_item");
         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, calloutPos + 3)));
 
         // Act + Assert
-        expect(foldAtCaret(v.state, v.dispatch)).toBe(false);
-        expect(folded(v).size).toBe(0);
+        expect(foldAtCaret(v.state, v.dispatch)).toBe(true);
+        expect(folded(v).has(itemPos)).toBe(true);
+        expect(folded(v).has(calloutPos)).toBe(false);
         expect(foldHiddenRange(v.state.doc, calloutPos)).toBeNull();
     });
 
