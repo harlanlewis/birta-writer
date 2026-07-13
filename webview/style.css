@@ -628,6 +628,53 @@ body.editor-width-auto {
     }
 }
 
+/* ─── Fixed-width content beside a docked TOC ───
+   In fixed-width mode the content box is capped at --editor-max-width and
+   centered with `margin: 0 auto` (below), which centers it in the WHOLE
+   viewport and ignores the drawer — a wide docked panel then overlaps the
+   content. When the panel is docked OPEN, re-center the box in the space
+   BESIDE the drawer instead: reserve --toc-editor-offset on the docked side
+   (enough that the content column clears the panel by --toc-content-gap), then
+   split the leftover room evenly. When that room is tighter than the content's
+   max-width the split term clamps to 0, pinning the box's start edge at the
+   reserve — so the start of the content is always visible, never pushed under
+   the drawer or off the viewport's start edge. Overlay mode floats over the
+   content (a dismissable popover shown when the viewport is too narrow to dock),
+   so it keeps the plain full-viewport centering and is intentionally not handled
+   here. The reserve is a physical margin on the physical dock side, so it is
+   correct whichever side (left or right) the drawer is docked on. */
+body:not(.editor-width-auto) {
+    &.toc-open:not(.toc-right) {
+        #editor,
+        .frontmatter-panel {
+            --toc-editor-offset: max(
+                0px,
+                calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+            );
+            margin-left: calc(
+                var(--toc-editor-offset) +
+                max(0px, (100% - var(--toc-editor-offset) - var(--editor-max-width)) / 2)
+            );
+            margin-right: auto;
+        }
+    }
+
+    &.toc-right.toc-open {
+        #editor,
+        .frontmatter-panel {
+            --toc-editor-offset: max(
+                0px,
+                calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-right-padding, 48px))
+            );
+            margin-right: calc(
+                var(--toc-editor-offset) +
+                max(0px, (100% - var(--toc-editor-offset) - var(--editor-max-width)) / 2)
+            );
+            margin-left: auto;
+        }
+    }
+}
+
 @media (max-width: 720px) {
     #editor {
         padding-left: 60px;
