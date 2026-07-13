@@ -124,7 +124,7 @@ Keeping the backlog honest is as important as filing it. Close the loop when wor
 - **Sequencing signal**: the `phase-*` labels are the roadmap spine (`phase-0-fidelity` is existential — round-trip trust — and comes first; then `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`). Within a phase, order by `priority`. `phase-1-vscode-parity` is largely retired (shipped in 0.2.3).
 - **Periodically reconcile**: when asked what's next or to review the backlog, cross-check open issues against the CHANGELOG and git history, close anything already shipped, and re-scope tickets whose premise the code has outgrown.
 
-Project intent and ordering principles live in `README.md` ("Why this fork").
+Project intent and ordering principles live in `README.md` ("Why this fork"); the brand brief and the Birta Writer naming decision are recorded in `docs/POSITIONING.md` (full candidate/rejection record in Linear MAR-134).
 
 ---
 
