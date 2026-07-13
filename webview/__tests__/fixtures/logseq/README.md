@@ -29,11 +29,14 @@ real graph and update the fixture. Tracked by MAR-131 / MAR-132 / MAR-133.
   of the above.
 - `journal.md` — a smaller journal-style page (`NOW`, inline refs/tags).
 
-## What the tests currently show
+## How these fixtures are tested
 
-- Opening/saving an **untouched** file is byte-identical (the minimalDiff
-  protection layer rescues serializer churn on lines the user didn't touch).
-- Editing a **top-level** block changes only that block.
-- Editing a **tab-indented** block collapses its sibling subtree's tabs to
-  spaces; editing an **org-cookie** line escapes it (`[#A]` → `\[#A]`). These
-  are the residual gaps MAR-131 closes.
+- **`roundTripCorpus.test.ts`** auto-discovers every `.md` here (this README is
+  skipped) and enforces the general trust contract shared by all fixtures:
+  invariant A (untouched → byte-identical) and invariant B (a real edit
+  preserves every original line, in order).
+- **`logseqRoundTrip.test.ts`** pins only the Logseq-*specific* residual gaps
+  (which assert non-identity, so they can't live in the corpus): editing a
+  **tab-indented** block collapses its sibling subtree's tabs to spaces, and
+  editing an **org-cookie** line escapes it (`[#A]` → `\[#A]`). MAR-131 closes
+  these.

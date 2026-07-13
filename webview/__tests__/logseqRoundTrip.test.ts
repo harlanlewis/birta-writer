@@ -1,29 +1,20 @@
 /**
- * Logseq round-trip characterization (phase-0-fidelity).
+ * Logseq-specific round-trip gaps (phase-0-fidelity).
  *
- * Logseq stores file-based graphs as `.md` whose whole document is an outliner:
- * every block is a `- ` bullet, tab indentation encodes the block tree, and
- * page/block properties (`key:: value`), refs (`[[Page]]`, `((uuid))`), macros
- * (`{{query}}`, `{{embed}}`), `#tags`, and org-style task markers
- * (`TODO`/`DOING`/`[#A]`/`SCHEDULED:`/`:LOGBOOK:`) live inside those bullets.
- * See fixtures/logseq/README.md for the format assumptions these files encode.
+ * The GENERAL trust contract — untouched files are byte-identical (invariant A)
+ * and a real edit preserves every original line (invariant B) — is enforced for
+ * the Logseq fixtures by the shared corpus harness (roundTripCorpus.test.ts),
+ * which auto-discovers fixtures/logseq/*.md. Do not duplicate A/B here.
  *
- * These tests drive the REAL production serializer AND the real save-path merge
- * (the wikiLinks.test.ts harness + minimalDiff), because what reaches disk is
- * never the raw serializer output — it is `applyMinimalChanges(saved,
- * serialized, protection)`, which re-emits only the regions the user actually
- * changed. So the meaningful question is not "does a full re-serialize churn?"
- * (it does) but "when the user edits one block, what happens to the rest?".
+ * This file pins the Logseq-SPECIFIC churn that the corpus can't express,
+ * because these assertions document *non*-identity: what still goes wrong when
+ * the user edits a fragile block. The blast radius is local (only the edited
+ * block's region), but within it:
+ *   - a tab-indented block's subtree collapses tabs to spaces, and
+ *   - an edited org-cookie line picks up a `\` escape (`[#A]` -> `\[#A]`).
+ * Tighten these toward byte-identity as MAR-131 lands; don't delete them.
  *
- * Contracts, in order of what a user feels:
- *   1. GUARANTEE — opening/saving an untouched file is byte-identical.
- *   2. GUARANTEE — editing a top-level block changes ONLY that block; the rest
- *      of the file (tabs, org cookies, heading-as-block) survives verbatim.
- *   3. KNOWN GAPS — editing a *fragile* block churns its own local region:
- *      tab indentation collapses to spaces across the edited block's sibling
- *      subtree, and an edited `[#A]`/timestamp line picks up a `\` escape. The
- *      blast radius is local, not the whole file. Tighten these toward
- *      byte-identity as fidelity work lands (MAR-131), don't delete them.
+ * See fixtures/logseq/README.md for the (synthetic) fixture format assumptions.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
@@ -52,73 +43,40 @@ async function serialize(markdown: string): Promise<string> {
     return out;
 }
 
-interface Loaded {
-    saved: string;
-    baseline: string;
-    protection: ReturnType<typeof computeRoundTripProtection>;
-}
+const PAGE = readFileSync(resolve(__dirname, "fixtures/logseq/page.md"), "utf8");
 
-// One editor spin-up per fixture, shared across every test that needs it.
-const cache = new Map<string, Promise<Loaded>>();
-function load(name: string): Promise<Loaded> {
-    let hit = cache.get(name);
-    if (!hit) {
-        hit = (async () => {
-            const saved = readFileSync(resolve(__dirname, `fixtures/logseq/${name}.md`), "utf8");
-            const baseline = await serialize(saved);
-            return { saved, baseline, protection: computeRoundTripProtection(saved, baseline) };
-        })();
-        cache.set(name, hit);
+// One editor spin-up for the page fixture, shared across the gap cases below.
+let cached: Promise<{ baseline: string; protection: ReturnType<typeof computeRoundTripProtection> }> | null = null;
+function loadPage() {
+    if (!cached) {
+        cached = serialize(PAGE).then((baseline) => ({
+            baseline,
+            protection: computeRoundTripProtection(PAGE, baseline),
+        }));
     }
-    return hit;
+    return cached;
 }
 
 /**
  * Simulate the user editing one block and saving. `find`/`replace` operate on
  * the serializer's own output (`baseline`) — a faithful proxy for
- * `serialize(editedDoc)` because the serializer is deterministic and local, so
- * changing one block's text there matches what an in-editor edit would emit.
- * Use a substring stable across saved and baseline so escaping never breaks the
- * match. Returns exactly what the merge writes to disk.
+ * `serialize(editedDoc)` for a TEXT-level edit, because the serializer is
+ * deterministic and local, so changing one block's text there matches what an
+ * in-editor edit emits. (Structural edits are covered generically by corpus
+ * invariant B, which drives a real ProseMirror transaction.) Anchor on a
+ * substring stable across saved and baseline so escaping never breaks the match.
  */
-async function saveEditing(name: string, find: string, replace: string): Promise<string> {
-    const { saved, baseline, protection } = await load(name);
+async function saveEditing(find: string, replace: string): Promise<string> {
+    const { baseline, protection } = await loadPage();
     const edited = baseline.replace(find, replace);
     expect(edited, `edit anchor "${find}" not found in serialized output`).not.toBe(baseline);
-    return applyMinimalChanges(saved, edited, protection);
+    return applyMinimalChanges(PAGE, edited, protection);
 }
-
-describe("Logseq round-trip — GUARANTEE: untouched file is byte-identical", () => {
-    for (const name of ["page", "journal"]) {
-        it(`${name}.md opened and saved unchanged should equal the source bytes`, async () => {
-            const { saved, baseline, protection } = await load(name);
-            expect(applyMinimalChanges(saved, baseline, protection)).toBe(saved);
-        });
-    }
-});
-
-describe("Logseq round-trip — GUARANTEE: editing a top-level block spares the rest", () => {
-    it("changes only the edited line; tabs, cookies, and heading-as-block survive", async () => {
-        const { saved } = await load("page");
-        const before = "A normal block with a [[Page Reference]]";
-        const after = "An EDITED block with a [[Page Reference]]";
-        const merged = await saveEditing("page", before, after);
-
-        // The whole file is byte-identical except the one edited line.
-        expect(merged).toBe(saved.replace(before, after));
-
-        // Spot-check the fragile constructs elsewhere are untouched.
-        expect(merged).toContain("\t- A nested child block, one tab deeper.");
-        expect(merged).toContain("- DOING Draft synthetic Logseq fixtures [#A]");
-        expect(merged).toContain("  CLOCK: [2026-07-12 Sun 10:00:00]");
-        expect(merged).toContain("- # Project Atlas");
-    });
-});
 
 describe("Logseq round-trip — KNOWN GAPS: editing a fragile block churns its local region", () => {
     it("editing a tab-indented block collapses tabs to spaces across its sibling subtree", async () => {
-        const merged = await saveEditing("page", "A nested child block", "An EDITED nested child block");
-        // want: the edited subtree keeps its tabs ("\t- …").
+        const merged = await saveEditing("A nested child block", "An EDITED nested child block");
+        // want: the edited subtree keeps its tabs ("\t- ...").
         expect(merged).toContain("  - An EDITED nested child block");
         expect(merged).not.toContain("\t- An EDITED nested child block");
         // Blast radius is LOCAL: an unrelated tab-indented subtree still has tabs.
@@ -127,7 +85,6 @@ describe("Logseq round-trip — KNOWN GAPS: editing a fragile block churns its l
 
     it("editing an org-cookie line backslash-escapes the cookie", async () => {
         const merged = await saveEditing(
-            "page",
             "Draft synthetic Logseq fixtures",
             "EDITED synthetic Logseq fixtures",
         );
@@ -140,7 +97,7 @@ describe("Logseq round-trip — serializer preserves Logseq tokens as literal te
     it("properties, refs, macros, tags, and wikilinks are not mangled on re-serialize", async () => {
         // Why this matters: because these survive a full re-serialize, an edit to
         // a block that CONTAINS one of them does not corrupt the token.
-        const { baseline } = await load("page");
+        const { baseline } = await loadPage();
         for (const token of [
             "collapsed:: true",
             "((66a1b2c3-d4e5-6789-abcd-ef0123456789))",

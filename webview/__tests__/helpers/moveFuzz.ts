@@ -6,6 +6,7 @@
  * moveProperty) share. Not a test file — Vitest only collects `*.test.ts`.
  */
 import { readdirSync, readFileSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { gfm } from "@milkdown/preset-gfm";
@@ -28,15 +29,34 @@ export interface CorpusFixture {
 const FIXTURES_DIR = join(__dirname, "..", "fixtures");
 
 /**
- * Every fixture in __tests__/fixtures/ plus the living showcase
- * (samples/content-inventory.md). The extension strips YAML frontmatter
- * before the webview ever sees content (src/utils/contentTransform.ts), so
- * the showcase contributes its body exactly as production delivers it.
+ * Every `.md` under __tests__/fixtures/ is a corpus member, including grouped
+ * fixtures in subdirectories (e.g. fixtures/logseq/). README.md files are
+ * documentation, not fixtures, so they are skipped. Returned names are
+ * fixtures-relative (e.g. "logseq/page.md") so subdirectory fixtures are
+ * distinguishable in the test output.
+ */
+function collectFixtures(dir: string, rel = ""): CorpusFixture[] {
+    const out: CorpusFixture[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true }) as Dirent[]) {
+        const relName = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+            out.push(...collectFixtures(join(dir, entry.name), relName));
+        } else if (entry.name.endsWith(".md") && entry.name !== "README.md") {
+            out.push({ name: relName, content: readFileSync(join(dir, entry.name), "utf8") });
+        }
+    }
+    return out;
+}
+
+/**
+ * Every fixture under __tests__/fixtures/ (recursively) plus the living
+ * showcase (samples/content-inventory.md). The extension strips YAML
+ * frontmatter before the webview ever sees content
+ * (src/utils/contentTransform.ts), so the showcase contributes its body
+ * exactly as production delivers it.
  */
 export function loadCorpusFixtures(): CorpusFixture[] {
-    const fixtures = readdirSync(FIXTURES_DIR)
-        .filter((f) => f.endsWith(".md"))
-        .map((f) => ({ name: f, content: readFileSync(join(FIXTURES_DIR, f), "utf8") }));
+    const fixtures = collectFixtures(FIXTURES_DIR);
     const raw = readFileSync(
         join(__dirname, "..", "..", "..", "samples", "content-inventory.md"),
         "utf8",
