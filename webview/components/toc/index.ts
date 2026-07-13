@@ -13,11 +13,14 @@ import {
     findHeadingPos,
     findActiveHeading,
 } from "@/utils/headingUtils";
+import { initTocDnd } from "./dnd";
 
 interface HeadingEntry {
     level: number;
     text: string;
     pos: number;
+    /** Top-tier outline item (depth 0) — the only rows that drag/drop. */
+    topLevel: boolean;
 }
 
 const TOC_DEFAULT_WIDTH = 220;
@@ -45,6 +48,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
     isOpen: () => boolean;
     isRight: () => boolean;
+    /** Unregister the panel's drop-zone provider (teardown/tests). */
+    dispose: () => void;
 } {
     // Initial side comes from the markdownWysiwyg.tocPosition setting via a
     // server-rendered body class; the header flip button mutates it live.
@@ -212,6 +217,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // has to live in syncTocState rather than around any single caller.
     let initialLoad = true;
 
+    // Drag-and-drop wiring: top-level items drag their whole sections, and
+    // the open panel is a drop zone for document drags (see ./dnd).
+    const dnd = initTocDnd({
+        panel,
+        list,
+        getEditorView,
+        isOpen: () => isOpen,
+        getHeadings,
+    });
+
     function setActiveHeadingPos(pos: number | null): void {
         activeHeadingPos = pos;
         let activeItem: HTMLElement | null = null;
@@ -222,7 +237,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                 activeItem = item;
             }
         });
-        if (activeItem) {
+        // Mid-drag the list must never scroll under the pointer — the drag's
+        // own edge auto-scroll is the only scroller then.
+        if (activeItem && !document.body.classList.contains("block-dragging")) {
             (activeItem as HTMLElement).scrollIntoView({ block: "nearest" });
         }
     }
@@ -298,6 +315,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                             level: node.attrs["level"] as number,
                             text,
                             pos,
+                            topLevel: view.state.doc.resolve(pos).depth === 0,
                         });
                     }
                 }
@@ -323,9 +341,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             empty.className = "toc-empty";
             empty.textContent = t("No headings");
             list.appendChild(empty);
+            dnd.notifyRerender();
             return;
         }
-        headings.forEach(({ level, text, pos }) => {
+        headings.forEach((entry) => {
+            const { level, text, pos } = entry;
             const item = document.createElement("div");
             item.className = `toc-item toc-item--h${level}`;
             item.dataset["headingPos"] = String(pos);
@@ -336,9 +356,27 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                 placement: "above",
                 truncatedOnly: true,
             });
+            dnd.wireItemDrag(item, entry);
+            // A mid-drag rebuild replaces the drag-source item: restore its
+            // ghosted state (and the click-suppression flag) on the new one.
+            if (dnd.dragSourceHeadingPos() === pos) {
+                item.classList.add("toc-item--drag-source");
+                item.dataset["dragged"] = "1";
+            }
             item.addEventListener("mousedown", (e) => {
+                // Keep focus in the editor (and let a wired drag arm itself);
+                // navigation happens on click, so a drag never also jumps.
                 e.preventDefault();
                 e.stopPropagation();
+            });
+            item.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // The trailing click of a drag that started on this item is
+                // suppressed (dnd.ts clears the flag a tick after release).
+                if (item.dataset["dragged"]) {
+                    return;
+                }
                 const view = getEditorView();
                 if (!view) {
                     return;
@@ -369,6 +407,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             list.appendChild(item);
         });
         setActiveHeadingPos(activeHeadingPos);
+        dnd.notifyRerender();
     }
 
     function refresh(): void {
@@ -383,6 +422,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     function outsideClickHandler(e: MouseEvent): void {
+        // A gutter-handle drag must be able to travel into an overlay TOC:
+        // the grab's mousedown lands outside the panel but must not close it.
+        if (e.target instanceof Element && e.target.closest(".heading-fold-marker")) {
+            return;
+        }
         if (!panel.contains(e.target as Node)) {
             close();
         }
@@ -530,5 +574,6 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         setPosition,
         isOpen: () => isOpen,
         isRight: () => tocRight,
+        dispose: dnd.dispose,
     };
 }

@@ -201,6 +201,26 @@ body.toc-resizing {
     font-size: 11px;
 }
 
+/* ─── Drag-and-drop chrome (see ./dnd.ts) ─────────────── */
+/* The rendered row of an in-flight TOC-initiated drag: ghosted in place
+   (the cursor pill names the payload; the row marks the origin). */
+.toc-item--drag-source {
+    opacity: 0.4;
+}
+
+/* Mid-drag, hover is targeting noise — only a drop target may highlight. */
+body.block-dragging .toc-item:hover {
+    background: transparent;
+}
+
+/* An "into" drop target: the drag would append at the end of this item's
+   section. Accent wash + inset ring, the theme's drop-affordance language. */
+.toc-item--drop-into,
+body.block-dragging .toc-item--drop-into:hover {
+    background: color-mix(in srgb, var(--vscode-focusBorder) 12%, transparent);
+    box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
 .toc-empty {
     padding: 16px 12px;
     font-size: 12px;
