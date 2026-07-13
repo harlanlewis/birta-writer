@@ -169,6 +169,10 @@ function buildPanel(): HTMLDivElement {
     const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
     const el = document.createElement("div");
     el.className = "shortcuts-help";
+    // macOS chords are compact symbol runs (⌘⇧↑); Windows/Linux chords are
+    // word chains (Ctrl+Shift+↑). The key column width follows the platform
+    // so neither wastes space nor overflows (see --shortcuts-keycol).
+    el.classList.toggle("shortcuts-help--mac", isMac);
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-label", t("Keyboard Shortcuts Help"));
     el.tabIndex = -1;
@@ -198,6 +202,9 @@ function buildPanel(): HTMLDivElement {
         h.textContent = label;
         el.appendChild(h);
     };
+    // Each row is a two-column grid: a fixed-width key column (chips
+    // right-aligned, wrapping within the column — 4-chip sets become 2×2)
+    // and a description column whose left edge is identical on every row.
     const addRow = (keyLabels: string[], label: string, note?: string): void => {
         const row = document.createElement("div");
         row.className = "shortcuts-help__row";
@@ -208,16 +215,21 @@ function buildPanel(): HTMLDivElement {
             chip.textContent = k;
             keysEl.appendChild(chip);
         }
+        const descEl = document.createElement("div");
+        descEl.className = "shortcuts-help__desc";
         const labelEl = document.createElement("span");
         labelEl.className = "shortcuts-help__label";
         labelEl.textContent = label;
+        descEl.appendChild(labelEl);
         if (note) {
+            // The note is a quieter second line INSIDE the description cell,
+            // so it never sprawls across the key column.
             const noteEl = document.createElement("div");
             noteEl.className = "shortcuts-help__note";
             noteEl.textContent = note;
-            labelEl.appendChild(noteEl);
+            descEl.appendChild(noteEl);
         }
-        row.append(keysEl, labelEl);
+        row.append(keysEl, descEl);
         el.appendChild(row);
     };
 
@@ -267,15 +279,23 @@ function buildPanel(): HTMLDivElement {
     // could show a wrong chord. ──
     addSection(t("Customizable commands"));
     const titleOf = new Map<string, string>(EDITOR_COMMANDS.map((c) => [c.id, c.title]));
+    // Structure over prose: each group is a small subheading followed by a
+    // two-column name list (NO kbd chips — these are rebindable, so a
+    // printed chord could lie). Scans vertically instead of wrapping inline.
     for (const group of REBINDABLE_GROUPS) {
         const div = document.createElement("div");
         div.className = "shortcuts-help__group";
-        const name = document.createElement("span");
+        const name = document.createElement("h4");
         name.className = "shortcuts-help__group-name";
-        name.textContent = `${t(group.label)}: `;
-        const items = document.createElement("span");
+        name.textContent = t(group.label);
+        const items = document.createElement("div");
         items.className = "shortcuts-help__group-items";
-        items.textContent = group.ids.map((id) => t(titleOf.get(id) ?? id)).join(" · ");
+        for (const id of group.ids) {
+            const item = document.createElement("span");
+            item.className = "shortcuts-help__group-item";
+            item.textContent = t(titleOf.get(id) ?? id);
+            items.appendChild(item);
+        }
         div.append(name, items);
         el.appendChild(div);
     }
