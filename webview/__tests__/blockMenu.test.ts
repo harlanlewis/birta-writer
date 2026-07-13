@@ -256,8 +256,6 @@ describe("Turn into — non-prose sources", () => {
         expect(labels).toEqual([
             "Duplicate", "Copy as Markdown", "Move Up", "Move Down",
             "Fold All", "Unfold All", "Delete",
-            // The gutter-markers preference section trails every menu.
-            "None", "Headings", "All",
         ]);
     });
 });
@@ -669,7 +667,7 @@ describe("keyboard highlight with disabled rows", () => {
         pressKey("ArrowDown");
         expect(hlLabel()).toBe("Paragraph"); // first enabled row
         pressKey("ArrowUp");
-        expect(hlLabel()).toBe("All"); // wrapped to the last row (gutter trio), skipping disabled rows
+        expect(hlLabel()).toBe("Delete"); // wrapped to the last row, skipping disabled rows
         // Sanity: the disabled rows really are excluded from the highlight
         // list (a lone unfoldable paragraph also disables the fold verbs).
         const disabled = Array.from(menu.querySelectorAll('[aria-disabled="true"] .block-menu-item-label'))
@@ -929,84 +927,6 @@ describe("copy actions", () => {
             .map((args) => args[0] as { type: string; data?: string })
             .find((msg) => msg.type === "clipboardWrite");
         expect(call?.data).toBe("[Setup](#setup-1)");
-    });
-});
-
-describe("gutter markers section", () => {
-    afterEach(() => {
-        document.body.classList.remove("gutter-rest-none", "gutter-rest-all");
-    });
-
-    it("the menu should trail a Gutter markers radio trio with the current mode checked", async () => {
-        const editor = await makeEditor("Alpha");
-        view(editor);
-        const menu = openMenuOn(markers()[0]!);
-        const headers = Array.from(menu.querySelectorAll(".block-menu-header")).map((el) => el.textContent);
-        expect(headers).toContain("Gutter markers");
-        const radios = Array.from(menu.querySelectorAll('[role="menuitemradio"]'))
-            .filter((el) => ["None", "Headings", "All"].includes(
-                el.querySelector(".block-menu-item-label")?.textContent ?? ""));
-        expect(radios).toHaveLength(3);
-        // Default mode (no body class) → Headings checked.
-        const checked = radios.filter((el) => el.getAttribute("aria-checked") === "true");
-        expect(checked).toHaveLength(1);
-        expect(checked[0]!.querySelector(".block-menu-item-label")?.textContent).toBe("Headings");
-        // Row art: eye-off / H1 badge / eye — no bare slots in this menu.
-        const art = radios.map((el) => ({
-            icon: !!el.querySelector(".block-menu-item-icon svg"),
-            badge: el.querySelector(".block-menu-item-badge")?.textContent ?? null,
-        }));
-        expect(art).toEqual([
-            { icon: true, badge: null },
-            { icon: false, badge: "H1" },
-            { icon: true, badge: null },
-        ]);
-    });
-
-    it("the checked row should follow the body class", async () => {
-        document.body.classList.add("gutter-rest-all");
-        const editor = await makeEditor("Alpha");
-        view(editor);
-        const menu = openMenuOn(markers()[0]!);
-        const checked = Array.from(menu.querySelectorAll('[role="menuitemradio"][aria-checked="true"]'))
-            .map((el) => el.querySelector(".block-menu-item-label")?.textContent);
-        expect(checked).toContain("All");
-    });
-
-    it("picking a mode should apply the body class and post setGutterMarkers", async () => {
-        const editor = await makeEditor("Alpha");
-        view(editor);
-        pickRow(openMenuOn(markers()[0]!), "None");
-        expect(document.body.classList.contains("gutter-rest-none")).toBe(true);
-        const call = mockVscodeApi.postMessage.mock.calls
-            .map((args) => args[0] as { type: string; mode?: string })
-            .find((msg) => msg.type === "setGutterMarkers");
-        expect(call?.mode).toBe("none");
-    });
-
-    it("picking the already-active mode should post nothing", async () => {
-        const editor = await makeEditor("Alpha");
-        view(editor);
-        pickRow(openMenuOn(markers()[0]!), "Headings");
-        const call = mockVscodeApi.postMessage.mock.calls
-            .map((args) => args[0] as { type: string })
-            .find((msg) => msg.type === "setGutterMarkers");
-        expect(call).toBeUndefined();
-    });
-
-    it("filtering by \"gutter\" should surface the trio with full-phrase labels", async () => {
-        const editor = await makeEditor("Alpha");
-        view(editor);
-        const menu = openMenuOn(markers()[0]!);
-        const search = menu.querySelector<HTMLInputElement>(".block-menu-search")!;
-        search.value = "gutter";
-        search.dispatchEvent(new Event("input", { bubbles: true }));
-        const labels = Array.from(menu.querySelectorAll(".block-menu-item-label")).map((el) => el.textContent);
-        expect(labels).toEqual([
-            "Gutter markers: None",
-            "Gutter markers: Headings",
-            "Gutter markers: All",
-        ]);
     });
 });
 

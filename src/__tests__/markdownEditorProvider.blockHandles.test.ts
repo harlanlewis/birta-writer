@@ -1,8 +1,9 @@
 /**
- * Resting gutter-marker mode on the extension side: the `gutterMarkers`
+ * Resting block-handle mode on the extension side: the `blockHandles`
  * setting is baked into the webview HTML as a `<body>` class at resolve time
  * (the live config-change echo is wired in extension.ts and covered by the
- * webview applyGutterMarkers tests).
+ * webview applyBlockHandles tests), including the read-side migration of the
+ * pre-rename `gutterMarkers` key.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
@@ -36,18 +37,26 @@ const makePanel = () => ({
 const makeCancellation = () =>
     ({ isCancellationRequested: false }) as vscode.CancellationToken;
 
-function mockConfiguration(get?: (key: string, defaultValue?: unknown) => unknown) {
+/**
+ * Mock the markdownWysiwyg configuration from a map of user-set values:
+ * `get` returns the value (or the default), and `inspect` reports a
+ * globalValue only for the keys present — the shape the provider's legacy
+ * migration reads.
+ */
+function mockConfiguration(userValues: Record<string, unknown> = {}) {
     const cfg = {
-        get: vi.fn(get ?? ((_key: string, defaultValue?: unknown) => defaultValue)),
-        inspect: vi.fn(() => undefined),
+        get: vi.fn((key: string, defaultValue?: unknown) =>
+            key in userValues ? userValues[key] : defaultValue),
+        inspect: vi.fn((key: string) =>
+            key in userValues ? { key, globalValue: userValues[key] } : { key }),
         update: vi.fn(),
     };
     (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue(cfg);
 }
 
-/** Resolve an editor with `gutterMarkers` mocked to `mode`; return the HTML. */
-async function htmlForMode(mode: unknown): Promise<string> {
-    mockConfiguration((key, defaultValue) => (key === "gutterMarkers" ? mode : defaultValue));
+/** Resolve an editor with the given user-set values mocked; return the HTML. */
+async function htmlForConfig(userValues: Record<string, unknown>): Promise<string> {
+    mockConfiguration(userValues);
     const provider = new MarkdownEditorProvider(makeContext());
     const document = makeFakeTextDocument("content\n", vscode.Uri.file("/project/note.md"));
     const panel = makePanel();
@@ -65,34 +74,67 @@ function bodyClass(html: string): string {
     return match![1]!;
 }
 
-describe("MarkdownEditorProvider gutter markers", () => {
+describe("MarkdownEditorProvider block handles", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         resetTextDocumentMocks();
     });
 
-    it("the default (headings) mode should emit no gutter-rest body class", async () => {
-        const cls = bodyClass(await htmlForMode(undefined));
-        expect(cls).not.toContain("gutter-rest-none");
-        expect(cls).not.toContain("gutter-rest-all");
+    it("the default (headings) mode should emit no handles-rest body class", async () => {
+        const cls = bodyClass(await htmlForConfig({}));
+        expect(cls).not.toContain("handles-rest-hover");
+        expect(cls).not.toContain("handles-rest-always");
     });
 
-    it("the none mode should emit the gutter-rest-none body class", async () => {
-        expect(bodyClass(await htmlForMode("none"))).toContain("gutter-rest-none");
+    it("the hover mode should emit the handles-rest-hover body class", async () => {
+        expect(bodyClass(await htmlForConfig({ blockHandles: "hover" }))).toContain("handles-rest-hover");
     });
 
-    it("the all mode should emit the gutter-rest-all body class", async () => {
-        expect(bodyClass(await htmlForMode("all"))).toContain("gutter-rest-all");
+    it("the always mode should emit the handles-rest-always body class", async () => {
+        expect(bodyClass(await htmlForConfig({ blockHandles: "always" }))).toContain("handles-rest-always");
     });
 
     it("an out-of-enum settings value should fall back to the default mode", async () => {
-        const cls = bodyClass(await htmlForMode("everything"));
-        expect(cls).not.toContain("gutter-rest-none");
-        expect(cls).not.toContain("gutter-rest-all");
+        const cls = bodyClass(await htmlForConfig({ blockHandles: "everything" }));
+        expect(cls).not.toContain("handles-rest-hover");
+        expect(cls).not.toContain("handles-rest-always");
     });
 });
 
-describe("MarkdownEditorProvider setGutterMarkers message", () => {
+describe("MarkdownEditorProvider legacy gutterMarkers migration", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        resetTextDocumentMocks();
+    });
+
+    it("a user-set legacy none with blockHandles unset should bake handles-rest-hover", async () => {
+        expect(bodyClass(await htmlForConfig({ gutterMarkers: "none" }))).toContain("handles-rest-hover");
+    });
+
+    it("a user-set legacy all with blockHandles unset should bake handles-rest-always", async () => {
+        expect(bodyClass(await htmlForConfig({ gutterMarkers: "all" }))).toContain("handles-rest-always");
+    });
+
+    it("an explicitly set blockHandles should win over the legacy value", async () => {
+        const cls = bodyClass(await htmlForConfig({ gutterMarkers: "none", blockHandles: "always" }));
+        expect(cls).toContain("handles-rest-always");
+        expect(cls).not.toContain("handles-rest-hover");
+    });
+
+    it("neither key set should stay on the default (no handles-rest class)", async () => {
+        const cls = bodyClass(await htmlForConfig({}));
+        expect(cls).not.toContain("handles-rest-hover");
+        expect(cls).not.toContain("handles-rest-always");
+    });
+
+    it("a garbage legacy value should be ignored in favor of the default", async () => {
+        const cls = bodyClass(await htmlForConfig({ gutterMarkers: "everything" }));
+        expect(cls).not.toContain("handles-rest-hover");
+        expect(cls).not.toContain("handles-rest-always");
+    });
+});
+
+describe("MarkdownEditorProvider setBlockHandles message", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         resetTextDocumentMocks();
@@ -112,7 +154,7 @@ describe("MarkdownEditorProvider setGutterMarkers message", () => {
             .calls[0]![0] as unknown as (msg: Record<string, unknown>) => Promise<void>;
     }
 
-    it("a setGutterMarkers message should persist the mode to the winning scope", async () => {
+    it("a setBlockHandles message should persist the mode to the winning scope", async () => {
         // Arrange
         const handler = await setupHandler();
         const update = vi.fn();
@@ -120,10 +162,10 @@ describe("MarkdownEditorProvider setGutterMarkers message", () => {
         (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue(cfg);
 
         // Act
-        await handler({ type: "setGutterMarkers", mode: "all" });
+        await handler({ type: "setBlockHandles", mode: "always" });
 
         // Assert
-        expect(update).toHaveBeenCalledWith("gutterMarkers", "all", vscode.ConfigurationTarget.Global);
+        expect(update).toHaveBeenCalledWith("blockHandles", "always", vscode.ConfigurationTarget.Global);
     });
 
     it("an out-of-enum mode from the webview should be normalized before the write", async () => {
@@ -134,9 +176,9 @@ describe("MarkdownEditorProvider setGutterMarkers message", () => {
         (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue(cfg);
 
         // Act
-        await handler({ type: "setGutterMarkers", mode: "garbage" });
+        await handler({ type: "setBlockHandles", mode: "garbage" });
 
         // Assert
-        expect(update).toHaveBeenCalledWith("gutterMarkers", "headings", vscode.ConfigurationTarget.Global);
+        expect(update).toHaveBeenCalledWith("blockHandles", "headings", vscode.ConfigurationTarget.Global);
     });
 });

@@ -1,76 +1,96 @@
 /**
- * Resting gutter-marker mode: normalization, the mode → body-class map, and
- * drift guards against the two places the modes are declared outside this
- * module — the `markdownWysiwyg.gutterMarkers` enum in package.json (what
- * the Settings UI offers) and the `body.gutter-rest-*` rules in style.css
- * (what the classes actually do).
+ * Resting block-handle mode: normalization, the mode → body-class map, the
+ * legacy `gutterMarkers` migration mapping, and drift guards against the two
+ * places the modes are declared outside this module — the
+ * `markdownWysiwyg.blockHandles` enum in package.json (what the Settings UI
+ * offers) and the `body.handles-rest-*` rules in style.css (what the classes
+ * actually do).
  */
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import {
-    GUTTER_MARKERS_MODES,
-    GUTTER_MARKERS_BODY_CLASSES,
-    GUTTER_MARKERS_DISPLAY_ORDER,
-    DEFAULT_GUTTER_MARKERS_MODE,
-    normalizeGutterMarkersMode,
-    gutterMarkersBodyClass,
-} from "../gutterMarkers";
+    BLOCK_HANDLES_MODES,
+    BLOCK_HANDLES_BODY_CLASSES,
+    BLOCK_HANDLES_DISPLAY_ORDER,
+    DEFAULT_BLOCK_HANDLES_MODE,
+    normalizeBlockHandlesMode,
+    blockHandlesBodyClass,
+    blockHandlesModeFromLegacy,
+} from "../blockHandles";
 
 const root = path.resolve(__dirname, "../..");
 
-describe("normalizeGutterMarkersMode", () => {
+describe("normalizeBlockHandlesMode", () => {
     it("a known mode should pass through unchanged", () => {
-        expect(normalizeGutterMarkersMode("headings")).toBe("headings");
-        expect(normalizeGutterMarkersMode("none")).toBe("none");
-        expect(normalizeGutterMarkersMode("all")).toBe("all");
+        expect(normalizeBlockHandlesMode("headings")).toBe("headings");
+        expect(normalizeBlockHandlesMode("hover")).toBe("hover");
+        expect(normalizeBlockHandlesMode("always")).toBe("always");
     });
 
     it("an unknown value should fall back to the default mode", () => {
-        expect(normalizeGutterMarkersMode("hover")).toBe(DEFAULT_GUTTER_MARKERS_MODE);
-        expect(normalizeGutterMarkersMode(undefined)).toBe(DEFAULT_GUTTER_MARKERS_MODE);
-        expect(normalizeGutterMarkersMode(null)).toBe(DEFAULT_GUTTER_MARKERS_MODE);
-        expect(normalizeGutterMarkersMode(3)).toBe(DEFAULT_GUTTER_MARKERS_MODE);
+        expect(normalizeBlockHandlesMode("none")).toBe(DEFAULT_BLOCK_HANDLES_MODE);
+        expect(normalizeBlockHandlesMode(undefined)).toBe(DEFAULT_BLOCK_HANDLES_MODE);
+        expect(normalizeBlockHandlesMode(null)).toBe(DEFAULT_BLOCK_HANDLES_MODE);
+        expect(normalizeBlockHandlesMode(3)).toBe(DEFAULT_BLOCK_HANDLES_MODE);
     });
 });
 
-describe("gutterMarkersBodyClass", () => {
+describe("blockHandlesBodyClass", () => {
     it("the default mode should map to no class (the stylesheet baseline)", () => {
-        expect(gutterMarkersBodyClass("headings")).toBeNull();
+        expect(blockHandlesBodyClass("headings")).toBeNull();
     });
 
-    it("the override modes should map to their gutter-rest-* classes", () => {
-        expect(gutterMarkersBodyClass("none")).toBe("gutter-rest-none");
-        expect(gutterMarkersBodyClass("all")).toBe("gutter-rest-all");
+    it("the override modes should map to their handles-rest-* classes", () => {
+        expect(blockHandlesBodyClass("hover")).toBe("handles-rest-hover");
+        expect(blockHandlesBodyClass("always")).toBe("handles-rest-always");
     });
 
     it("an out-of-enum value should behave as the default mode", () => {
-        expect(gutterMarkersBodyClass("garbage" as never)).toBeNull();
+        expect(blockHandlesBodyClass("garbage" as never)).toBeNull();
     });
 });
 
-describe("GUTTER_MARKERS_DISPLAY_ORDER", () => {
+describe("blockHandlesModeFromLegacy", () => {
+    it("each legacy gutterMarkers value should map to its renamed mode", () => {
+        expect(blockHandlesModeFromLegacy("none")).toBe("hover");
+        expect(blockHandlesModeFromLegacy("all")).toBe("always");
+        expect(blockHandlesModeFromLegacy("headings")).toBe("headings");
+    });
+
+    it("a non-legacy value should map to null", () => {
+        expect(blockHandlesModeFromLegacy("hover")).toBeNull();
+        expect(blockHandlesModeFromLegacy(undefined)).toBeNull();
+        expect(blockHandlesModeFromLegacy(3)).toBeNull();
+    });
+});
+
+describe("BLOCK_HANDLES_DISPLAY_ORDER", () => {
     it("the display order should be a permutation of the modes", () => {
-        expect([...GUTTER_MARKERS_DISPLAY_ORDER].sort()).toEqual([...GUTTER_MARKERS_MODES].sort());
+        expect([...BLOCK_HANDLES_DISPLAY_ORDER].sort()).toEqual([...BLOCK_HANDLES_MODES].sort());
     });
 });
 
 describe("contributed setting drift guards", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-    const prop = pkg.contributes.configuration.properties["markdownWysiwyg.gutterMarkers"];
+    const prop = pkg.contributes.configuration.properties["markdownWysiwyg.blockHandles"];
 
     it("the package.json enum should list exactly the shared modes", () => {
-        expect(prop, "markdownWysiwyg.gutterMarkers is not contributed").toBeDefined();
-        expect(prop.enum).toEqual([...GUTTER_MARKERS_MODES]);
+        expect(prop, "markdownWysiwyg.blockHandles is not contributed").toBeDefined();
+        expect(prop.enum).toEqual([...BLOCK_HANDLES_MODES]);
     });
 
     it("the package.json default should match the shared default", () => {
-        expect(prop.default).toBe(DEFAULT_GUTTER_MARKERS_MODE);
+        expect(prop.default).toBe(DEFAULT_BLOCK_HANDLES_MODE);
+    });
+
+    it("the legacy gutterMarkers setting should no longer be contributed", () => {
+        expect(pkg.contributes.configuration.properties["markdownWysiwyg.gutterMarkers"]).toBeUndefined();
     });
 
     it("every override body class should have rules in style.css", () => {
         const css = fs.readFileSync(path.join(root, "webview", "style.css"), "utf8");
-        for (const cls of Object.values(GUTTER_MARKERS_BODY_CLASSES)) {
+        for (const cls of Object.values(BLOCK_HANDLES_BODY_CLASSES)) {
             if (cls) {
                 expect(css, `style.css has no rule for body.${cls}`).toContain(`body.${cls}`);
             }

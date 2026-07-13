@@ -1,44 +1,65 @@
 /**
- * Resting gutter-marker visibility shared by the extension (which bakes the
+ * Resting block-handle visibility shared by the extension (which bakes the
  * initial body class into the webview HTML and broadcasts live changes) and
  * the webview (which applies the class at runtime). Driven by one setting:
  *
- * - `markdownWysiwyg.gutterMarkers`: which block grabbers stay visible while
+ * - `markdownWysiwyg.blockHandles`: which block handles stay visible while
  *   the pointer is elsewhere — `"headings"` (default; the heading level
- *   badges), `"none"`, or `"all"`. Hovering a block always reveals its
- *   grabber regardless of the mode; this only sets the at-rest display.
+ *   badges), `"always"`, or `"hover"`. Hovering a block always reveals its
+ *   handle regardless of the mode; this only sets the at-rest display.
  */
 
-export const GUTTER_MARKERS_MODES = ["headings", "none", "all"] as const;
-export type GutterMarkersMode = (typeof GUTTER_MARKERS_MODES)[number];
+export const BLOCK_HANDLES_MODES = ["headings", "always", "hover"] as const;
+export type BlockHandlesMode = (typeof BLOCK_HANDLES_MODES)[number];
 
-export const DEFAULT_GUTTER_MARKERS_MODE: GutterMarkersMode = "headings";
+export const DEFAULT_BLOCK_HANDLES_MODE: BlockHandlesMode = "headings";
 
 /**
- * Presentation order for pickers (segments, radio rows, QuickPick): fewest
- * to most markers, so the options read as a progression. GUTTER_MARKERS_MODES
- * stays default-first — it's the settings-enum order.
+ * Presentation order for pickers (radio rows, QuickPick): most to least
+ * visible, so the options read as a progression. BLOCK_HANDLES_MODES stays
+ * default-first — it's the settings-enum order.
  */
-export const GUTTER_MARKERS_DISPLAY_ORDER: readonly GutterMarkersMode[] = ["none", "headings", "all"];
+export const BLOCK_HANDLES_DISPLAY_ORDER: readonly BlockHandlesMode[] = ["always", "headings", "hover"];
 
 /** Coerce an arbitrary settings value to a known mode (default when unknown). */
-export function normalizeGutterMarkersMode(value: unknown): GutterMarkersMode {
-    return (GUTTER_MARKERS_MODES as readonly string[]).includes(value as string)
-        ? (value as GutterMarkersMode)
-        : DEFAULT_GUTTER_MARKERS_MODE;
+export function normalizeBlockHandlesMode(value: unknown): BlockHandlesMode {
+    return (BLOCK_HANDLES_MODES as readonly string[]).includes(value as string)
+        ? (value as BlockHandlesMode)
+        : DEFAULT_BLOCK_HANDLES_MODE;
 }
 
 /**
  * The `<body>` class each mode maps to. The default ("headings") is the
  * unclassed state — the stylesheet's baseline — so only the two overriding
- * modes carry a class (see the "Resting gutter markers" rules in style.css).
+ * modes carry a class (see the "Resting block handles" rules in style.css).
  */
-export const GUTTER_MARKERS_BODY_CLASSES: Readonly<Record<GutterMarkersMode, string | null>> = {
+export const BLOCK_HANDLES_BODY_CLASSES: Readonly<Record<BlockHandlesMode, string | null>> = {
     headings: null,
-    none: "gutter-rest-none",
-    all: "gutter-rest-all",
+    hover: "handles-rest-hover",
+    always: "handles-rest-always",
 };
 
-export function gutterMarkersBodyClass(mode: GutterMarkersMode): string | null {
-    return GUTTER_MARKERS_BODY_CLASSES[normalizeGutterMarkersMode(mode)];
+export function blockHandlesBodyClass(mode: BlockHandlesMode): string | null {
+    return BLOCK_HANDLES_BODY_CLASSES[normalizeBlockHandlesMode(mode)];
+}
+
+/**
+ * The pre-rename settings key ("Gutter Markers"). Read-only migration: the
+ * provider falls back to it when `blockHandles` was never set in any scope,
+ * but nothing ever writes it back.
+ */
+export const LEGACY_GUTTER_MARKERS_KEY = "gutterMarkers";
+
+/**
+ * Map a legacy `gutterMarkers` value to its block-handles equivalent
+ * (`none` → `hover`, `all` → `always`, `headings` → `headings`), or null
+ * when the value is not a legacy mode.
+ */
+export function blockHandlesModeFromLegacy(value: unknown): BlockHandlesMode | null {
+    switch (value) {
+        case "none": return "hover";
+        case "all": return "always";
+        case "headings": return "headings";
+        default: return null;
+    }
 }

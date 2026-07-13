@@ -1729,29 +1729,29 @@ body.fold-controls-never .heading-sticky-toggle {
     display: none;
 }
 
-/* Resting gutter markers (`markdownWysiwyg.gutterMarkers`). The baseline —
-   heading badges visible at rest, block markers on hover — is the default
+/* Resting block handles (`markdownWysiwyg.blockHandles`). The baseline —
+   heading badges visible at rest, block handles on hover — is the default
    ("headings") mode; these body classes override the AT-REST side only.
    Hover, keyboard focus, open-menu, drag, and multi-block-cover states keep
    their own rules in every mode: heavier where they must outrank these
    (5 class-level vs 4), or excluded from the match entirely where element
    count would otherwise flip the tie. */
 
-/* "all": every block marker holds the badges' resting contrast. The marker
+/* "always": every block handle holds the badges' resting contrast. The marker
    state rules above and the block-hover reveals still outrank this; the
-   quiet-while-typing rule below exempts this mode — at-rest markers are
+   quiet-while-typing rule below exempts this mode — at-rest handles are
    ambient chrome like the heading badges, not a hover reveal to suppress. */
-body.gutter-rest-all .milkdown .editor .heading-fold-marker--block {
+body.handles-rest-always .milkdown .editor .heading-fold-marker--block {
     opacity: 0.7;
 }
 
-/* "none": heading badges rest invisible like block markers (pointer-events
+/* "hover": heading badges rest invisible like block handles (pointer-events
    stay on — same invisible-but-hoverable convention as the block markers).
    Interaction and cover states are EXCLUDED from the match (inside a
    zero-specificity :where) rather than out-specified, so their existing
    rules apply untouched. The collapsed-heading badge rule (5 class-level)
    deliberately still wins: a collapsed section must stay discoverable. */
-body.gutter-rest-none .milkdown .editor .heading-fold-marker:where(:not(
+body.handles-rest-hover .milkdown .editor .heading-fold-marker:where(:not(
     .heading-fold-marker--block,
     .heading-fold-marker--covered,
     .heading-fold-marker--menu-open,
@@ -1767,7 +1767,7 @@ body.gutter-rest-none .milkdown .editor .heading-fold-marker:where(:not(
    marker's own :hover/:focus/menu rules are excluded here too so they take
    it to full contrast themselves). Gated on the quiet-while-typing class:
    in this mode the badge is a hover reveal, so typing suppresses it. */
-body.gutter-rest-none:where(:not(.gutter-quiet)) .milkdown .editor :where(.heading-fold-heading:hover) .heading-fold-marker:where(:not(
+body.handles-rest-hover:where(:not(.handles-quiet)) .milkdown .editor :where(.heading-fold-heading:hover) .heading-fold-marker:where(:not(
     .heading-fold-marker--menu-open,
     :hover,
     :focus-visible
@@ -1775,7 +1775,7 @@ body.gutter-rest-none:where(:not(.gutter-quiet)) .milkdown .editor :where(.headi
     opacity: 0.7;
 }
 
-/* Drag-to-reorder chrome (gutter markers, MAR-19). The indicator is the
+/* Drag-to-reorder chrome (block handles, MAR-19). The indicator is the
    standard accent drop line, body-mounted so it rides over every block. */
 .block-drag-indicator {
     display: none;
@@ -1809,16 +1809,17 @@ body.block-dragging .milkdown .editor {
     user-select: none;
 }
 
-/* Quiet gutter while typing: any keydown in the editor suppresses the
-   hover-revealed markers until the mouse moves again (the BlockNote/Tiptap
-   convention) — the gutter never flickers alongside the caret. NOTE the
-   :not() arguments count toward specificity, making this rule outrank every
-   marker-state rule — so each state that must survive typing is excluded
-   explicitly: an open menu's anchor, keyboard focus, a drag in flight, and
-   the covered markers of a keyboard-built (shift+arrow) multi-block
-   selection. The gutter-rest-all mode is exempt: its markers are at-rest
-   chrome (like the heading badges, which never quiet), not hover reveals. */
-body.gutter-quiet:not(.gutter-rest-all) .milkdown .editor .block-gutter-host .heading-fold-marker--block:not(.heading-fold-marker--menu-open):not(:focus-visible):not(.heading-fold-marker--dragging):not(.heading-fold-marker--covered) {
+/* Quiet handles while typing: any keydown in the editor suppresses the
+   hover-revealed block handles until the mouse moves again (the
+   BlockNote/Tiptap convention) — the gutter never flickers alongside the
+   caret. NOTE the :not() arguments count toward specificity, making this
+   rule outrank every marker-state rule — so each state that must survive
+   typing is excluded explicitly: an open menu's anchor, keyboard focus, a
+   drag in flight, and the covered handles of a keyboard-built (shift+arrow)
+   multi-block selection. The handles-rest-always mode is exempt: its handles
+   are at-rest chrome (like the heading badges, which never quiet), not hover
+   reveals. */
+body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-host .heading-fold-marker--block:not(.heading-fold-marker--menu-open):not(:focus-visible):not(.heading-fold-marker--dragging):not(.heading-fold-marker--covered) {
     opacity: 0;
 }
 
@@ -2029,7 +2030,7 @@ body.block-marqueeing .milkdown .editor {
     left: -15px;
 }
 
-/* Gutter markers now carry the same SVG icons as their slash-menu rows
+/* Block handles now carry the same SVG icons as their slash-menu rows
    (headings keep their H1–H6 text badge). Size the icon to the glyph box
    so hit targets and hover chrome are unchanged. */
 .milkdown .editor .heading-fold-marker--block svg {

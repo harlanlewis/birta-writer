@@ -970,7 +970,7 @@ function itemMarkerSpec(listNode: any, item: any): MarkerSpec {
 }
 
 /**
- * Per-item gutter markers (MAR-86): every list item — at any nesting depth —
+ * Per-item block handles (MAR-86): every list item — at any nesting depth —
  * is its own grabbable unit with its own glyph. The list node itself carries
  * no marker (whole-list operations are reachable by selecting all items).
  * `listPos` is the list node's document position; items' positions are
@@ -1475,15 +1475,15 @@ export const headingFoldPlugin = $prose(() =>
             };
 
             // Quiet-while-typing (the BlockNote/Tiptap/Crepe convention): any
-            // keydown in the editor suppresses the hover-revealed markers so
-            // the gutter never flickers alongside the caret; the next mouse
-            // motion brings them back.
+            // keydown in the editor suppresses the hover-revealed block
+            // handles so the gutter never flickers alongside the caret; the
+            // next mouse motion brings them back.
             const handleKeyDown = () => {
-                document.body.classList.add("gutter-quiet");
+                document.body.classList.add("handles-quiet");
             };
 
             const handleMouseMove = (event: MouseEvent) => {
-                document.body.classList.remove("gutter-quiet");
+                document.body.classList.remove("handles-quiet");
                 const target = event.target as Element | null;
                 const directHeading = target?.closest("h1,h2,h3,h4,h5,h6") ?? null;
                 if (directHeading && view.dom.contains(directHeading)) {
@@ -1536,7 +1536,7 @@ export const headingFoldPlugin = $prose(() =>
                     view.dom.removeEventListener("mousemove", handleMouseMove);
                     view.dom.removeEventListener("mouseleave", clearHoveredGutter);
                     view.dom.removeEventListener("keydown", handleKeyDown);
-                    document.body.classList.remove("gutter-quiet");
+                    document.body.classList.remove("handles-quiet");
                     disposeMarquee();
                     // A selection-cover veil must not outlive its editor
                     // (revert/reload recreates the view; the fresh plugin's

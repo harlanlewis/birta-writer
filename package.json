@@ -79,8 +79,8 @@
                 "category": "WYSIWYG Markdown Editor"
             },
             {
-                "command": "markdownWysiwyg.selectGutterMarkers",
-                "title": "%command.selectGutterMarkers.title%",
+                "command": "markdownWysiwyg.selectBlockHandles",
+                "title": "%command.selectBlockHandles.title%",
                 "category": "WYSIWYG Markdown Editor"
             },
             {
@@ -1316,21 +1316,21 @@
                         "%config.tableWrap.aggressive%"
                     ]
                 },
-                "markdownWysiwyg.gutterMarkers": {
+                "markdownWysiwyg.blockHandles": {
                     "order": 11,
                     "type": "string",
                     "enum": [
                         "headings",
-                        "none",
-                        "all"
+                        "always",
+                        "hover"
                     ],
                     "enumDescriptions": [
-                        "%config.gutterMarkers.headings%",
-                        "%config.gutterMarkers.none%",
-                        "%config.gutterMarkers.all%"
+                        "%config.blockHandles.headings%",
+                        "%config.blockHandles.always%",
+                        "%config.blockHandles.hover%"
                     ],
                     "default": "headings",
-                    "description": "%config.gutterMarkers.description%"
+                    "description": "%config.blockHandles.description%"
                 },
                 "markdownWysiwyg.defaultMode": {
                     "order": 1,

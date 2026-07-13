@@ -33,7 +33,7 @@ import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetGutterMarkers, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
@@ -65,8 +65,8 @@ import {
     clampMaxWidthCh,
     type ContentWidthMode,
 } from "../../../shared/contentWidth";
-import { GUTTER_MARKERS_DISPLAY_ORDER, type GutterMarkersMode } from "../../../shared/gutterMarkers";
-import { applyGutterMarkers, currentGutterMarkersMode } from "../../utils/gutterMarkers";
+import { BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../../../shared/blockHandles";
+import { applyBlockHandles, currentBlockHandlesMode } from "../../utils/blockHandles";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
 import { openShortcutsHelp } from "../shortcutsHelp";
 import './toolbar.css';
@@ -717,8 +717,8 @@ export function initToolbar(
     setFontSize: (size: number) => void;
     /** Update the typography menu's content-width segmented control (and cache the fixed width). */
     setContentWidth: (mode: ContentWidthMode, fixedCss?: string) => void;
-    /** Update the typography menu's gutter-markers segmented control. */
-    setGutterMarkers: (mode: GutterMarkersMode) => void;
+    /** Update the typography menu's block-handles radio rows. */
+    setBlockHandles: (mode: BlockHandlesMode) => void;
     /** Apply + persist a font preset (slash-menu action; works with the bar hidden). */
     chooseFontPreset: (preset: FontPreset) => void;
     /** Step the content font size up/down (slash-menu action; works with the bar hidden). */
@@ -861,28 +861,26 @@ export function initToolbar(
         notifySetContentWidth(mode);
     }
 
-    // ── Resting gutter-marker state ──
-    // None / Headings / All (the `gutterMarkers` setting), a second segmented
-    // control under the width one. The body class is the single source of
-    // truth (baked in by the provider, kept current by the setGutterMarkers
-    // echo), so there is no cached mode here — segments re-read it.
-    const gutterSegments = new Map<GutterMarkersMode, HTMLButtonElement>();
-    function setGutterMarkersActive(mode: GutterMarkersMode): void {
-        for (const [m, btnEl] of gutterSegments) {
-            const on = m === mode;
-            btnEl.classList.toggle("tb-seg-btn--on", on);
-            btnEl.setAttribute("aria-checked", on ? "true" : "false");
+    // ── Resting block-handles state ──
+    // Always / Headings / Hover (the `blockHandles` setting), radio rows
+    // under the width control. The body class is the single source of truth
+    // (baked in by the provider, kept current by the setBlockHandles echo),
+    // so there is no cached mode here — the rows re-read it.
+    const handleEntries = new Map<BlockHandlesMode, CheckItem>();
+    function setBlockHandlesActive(mode: BlockHandlesMode): void {
+        for (const [m, item] of handleEntries) {
+            item.setChecked(m === mode);
         }
     }
-    function pickGutterMarkers(mode: GutterMarkersMode): void {
-        if (mode === currentGutterMarkersMode()) {
+    function pickBlockHandles(mode: BlockHandlesMode): void {
+        if (mode === currentBlockHandlesMode()) {
             return;
         }
-        setGutterMarkersActive(mode);
+        setBlockHandlesActive(mode);
         // Apply immediately — the menu stays open, so the gutter updates in
         // view; the settings round-trip re-broadcasts to every open editor.
-        applyGutterMarkers(mode);
-        notifySetGutterMarkers(mode);
+        applyBlockHandles(mode);
+        notifySetBlockHandles(mode);
     }
 
     function createFontPicker(): HTMLElement {
@@ -927,39 +925,33 @@ export function initToolbar(
             widthSegments.set(mode, segBtn);
         }
 
-        // ── Gutter markers: None / Headings / All segmented control ──
-        // Which grabbers stay visible at rest (hover always reveals). A
-        // segmented control like the width row — a 1-of-3 layout mode whose
-        // options should all be visible at a glance — but captioned, because
-        // "None/Headings/All" can't self-describe the way "Full Width/Fixed"
-        // does. Clicks keep the menu open so the gutter visibly updates.
-        const gutterCaption = document.createElement("div");
-        gutterCaption.className = "tb-seg-caption";
-        gutterCaption.textContent = t("Gutter markers");
-        const gutterRow = document.createElement("div");
-        gutterRow.className = "tb-seg-row";
-        gutterRow.setAttribute("role", "radiogroup");
-        gutterRow.setAttribute("aria-label", t("Gutter markers shown at rest"));
-        const gutterLabels: Record<GutterMarkersMode, { label: string; title: string }> = {
-            none: { label: t("None"), title: t("No markers at rest — all appear on hover") },
-            headings: { label: t("Headings"), title: t("Heading badges stay visible; the rest appear on hover") },
-            all: { label: t("All"), title: t("Every block's marker stays visible") },
+        // ── Block handles: Always Show / Headings and hover / Hover only ──
+        // Which block handles stay visible at rest (hover always reveals).
+        // Radio rows like the font-family presets below — the labels are too
+        // long for segments — under a caption that names the subject. Clicks
+        // keep the menu open so the gutter visibly updates.
+        const handlesCaption = document.createElement("div");
+        handlesCaption.className = "tb-seg-caption";
+        handlesCaption.textContent = t("Show Block Handles");
+        const handlesLabels: Record<BlockHandlesMode, { label: string; title: string }> = {
+            always: { label: t("Always Show"), title: t("Every block's handle stays visible") },
+            headings: { label: t("Headings and hover"), title: t("Heading badges stay visible; the rest appear on hover") },
+            hover: { label: t("Hover only"), title: t("Handles appear only on hover") },
         };
-        for (const mode of GUTTER_MARKERS_DISPLAY_ORDER) {
-            const segBtn = document.createElement("button");
-            segBtn.type = "button";
-            segBtn.className = "tb-seg-btn";
-            segBtn.setAttribute("role", "radio");
-            segBtn.textContent = gutterLabels[mode].label;
-            segBtn.title = gutterLabels[mode].title;
-            segBtn.setAttribute("aria-label", gutterLabels[mode].title);
-            segBtn.addEventListener("mousedown", (e) => {
+        const handleItemEls: HTMLElement[] = [];
+        for (const mode of BLOCK_HANDLES_DISPLAY_ORDER) {
+            const item = createCheckItem(handlesLabels[mode].label);
+            // Single-select trio, not independent toggles.
+            item.el.setAttribute("role", "menuitemradio");
+            item.el.title = handlesLabels[mode].title;
+            item.el.setAttribute("aria-label", handlesLabels[mode].title);
+            item.el.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                pickGutterMarkers(mode);
+                pickBlockHandles(mode);
             });
-            gutterRow.appendChild(segBtn);
-            gutterSegments.set(mode, segBtn);
+            handleItemEls.push(item.el);
+            handleEntries.set(mode, item);
         }
 
         // ── Size stepper: A− <percent> A+ ──
@@ -1047,15 +1039,15 @@ export function initToolbar(
             notifyOpenSettings("markdownWysiwyg.font");
         });
 
-        // Assemble top→bottom: font size, content width + gutter markers
+        // Assemble top→bottom: font size, content width + block handles
         // (the two page-layout controls share a group), the family presets,
         // then Font settings — each group separated by a divider.
         fontMenu.append(
             sizeRow,
             makeSep(),
             widthRow,
-            gutterCaption,
-            gutterRow,
+            handlesCaption,
+            ...handleItemEls,
             makeSep(),
             ...fontItemEls,
             makeSep(),
@@ -1065,7 +1057,7 @@ export function initToolbar(
         setFontActive(currentFontPreset);
         setFontSizeActive(currentFontSize);
         setContentWidthActive(currentContentWidth);
-        setGutterMarkersActive(currentGutterMarkersMode());
+        setBlockHandlesActive(currentBlockHandlesMode());
 
         // The item handlers above close over closeFontMenu; they only ever run
         // after this wiring (the menu must be open to click a row).
@@ -2225,8 +2217,8 @@ export function initToolbar(
             if (mode === "fixed" && fixedCss) { fixedWidthCss = fixedCss; }
             setContentWidthActive(mode);
         },
-        setGutterMarkers(mode: GutterMarkersMode): void {
-            setGutterMarkersActive(mode);
+        setBlockHandles(mode: BlockHandlesMode): void {
+            setBlockHandlesActive(mode);
         },
         // Slash-menu action hooks — the same code paths as the menu rows,
         // usable while the bar itself is hidden.
