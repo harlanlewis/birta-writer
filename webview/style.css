@@ -1275,6 +1275,16 @@ body.editor-width-auto {
     user-select: none;
     white-space: nowrap;
     pointer-events: auto;
+    transition: opacity 120ms ease;
+}
+
+/* "Hover only" block handles: the sticky heading follows the in-flow rest
+   rule — its gutter (handle + chevron) appears only while the sticky is
+   hovered or focused, and never fades while its menu is open. handles-quiet
+   (typing) suppresses the hover reveal, matching the in-flow markers. */
+body.handles-rest-hover .heading-sticky-title:not(:hover):not(:focus-within):not(:has(.heading-fold-marker--menu-open)) .heading-sticky-gutter,
+body.handles-rest-hover.handles-quiet .heading-sticky-title:not(:has(.heading-fold-marker--menu-open)) .heading-sticky-gutter {
+    opacity: 0;
 }
 
 .heading-sticky-gutter::before {
@@ -1311,11 +1321,33 @@ body.editor-width-auto {
 }
 
 .heading-sticky-marker {
+    /* A real block-handle button, mirroring the in-flow heading marker's
+       affordances (bare text at rest, hover tint, menu-open state) with the
+       same negative-margin trick: padding grows the hit target while the
+       glyph stays where the bare text sat. */
+    display: inline-flex;
+    align-items: center;
+    margin: -5px -4px;
+    padding: 5px 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
     /* Monospace literal hashes, matching the in-document gutter marker. */
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 0.95rem;
+    font-weight: inherit;
     line-height: 1;
     opacity: 0.75;
+    cursor: pointer;
+    transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.heading-sticky-marker:hover,
+.heading-sticky-marker.heading-fold-marker--menu-open {
+    opacity: 1;
+    color: var(--vscode-foreground);
+    background: var(--vscode-toolbar-hoverBackground);
 }
 
 .heading-sticky-text {
