@@ -248,6 +248,53 @@ describe("guard veto — tagged moves", () => {
         ).toBe(true);
     });
 
+    it("a tagged move that unwraps a titled callout should be vetoed", async () => {
+        // The overbroad-exemption shape: children survive, but the wrapper
+        // and its marker line — carrying the user's title bytes, which live
+        // nowhere else in the doc — vanish. The DISSOLVABLE exemption must
+        // not forgive a NON-default marker.
+        const editor = await makeEditor("> [!NOTE] Keep me\n> body");
+        const v = view(editor);
+        const before = markdown(editor);
+        const pos = blockPos(v, "body", "callout");
+        expect(pos).toBeGreaterThan(-1);
+        const node = v.state.doc.nodeAt(pos)!;
+        const tr = v.state.tr.replaceWith(pos, pos + node.nodeSize, node.content);
+        tagContentGuard(tr, { kind: "move" });
+        v.dispatch(tr);
+        expect(markdown(editor)).toBe(before);
+        expect(guardErrors().some((line) => line.includes("move blocked"))).toBe(true);
+    });
+
+    it("a move that dissolves a bare-marker callout should still apply", async () => {
+        // Genuine dissolution: the marker is the default `[!kind]` shape with
+        // no title — no user bytes beyond the container's existence.
+        const editor = await makeEditor("> [!NOTE]\n> body");
+        const v = view(editor);
+        const pos = blockPos(v, "body", "callout");
+        expect(pos).toBeGreaterThan(-1);
+        const node = v.state.doc.nodeAt(pos)!;
+        const tr = v.state.tr.replaceWith(pos, pos + node.nodeSize, node.content);
+        tagContentGuard(tr, { kind: "move" });
+        v.dispatch(tr);
+        expect(markdown(editor)).toBe("body");
+        expect(guardErrors()).toEqual([]);
+    });
+
+    it("a tagged move gaining more than the single refill paragraph should be vetoed", async () => {
+        // The only legal gain is the ONE empty paragraph deleteRange refills
+        // a fully-emptied doc with — two synthesized paragraphs is a bug.
+        const editor = await makeEditor("Alpha\n\nBravo");
+        const v = view(editor);
+        const docBefore = v.state.doc;
+        const para = v.state.schema.nodes["paragraph"]!.create();
+        const tr = v.state.tr.insert(0, para).insert(0, para);
+        tagContentGuard(tr, { kind: "move" });
+        v.dispatch(tr);
+        expect(v.state.doc).toBe(docBefore);
+        expect(guardErrors().some((line) => line.includes("move blocked"))).toBe(true);
+    });
+
     it("a legal move should flash its landing and report success", async () => {
         const editor = await makeEditor("Alpha\n\nBravo");
         const v = view(editor);
@@ -409,6 +456,42 @@ describe("guard veto — native drops", () => {
         v.dispatch(tr);
         expect(markdown(editor)).toBe(before);
         expect(guardErrors().some((line) => line.includes("gained"))).toBe(true);
+    });
+
+    it("a move drop that discards a hardbreak should be vetoed", async () => {
+        // hardbreak carries no text bytes and no attrs, so without an atom
+        // entry it is count-only — and counts are drop-exempt. A move-drop
+        // into a context that discards the hard line break must veto.
+        const editor = await makeEditor("one\\\ntwo\n\nAfter");
+        const v = view(editor);
+        const before = markdown(editor);
+        const pos = blockPos(v, "one\ntwo"); // hardbreak leaf text is "\n"
+        expect(pos).toBeGreaterThan(-1);
+        const node = v.state.doc.nodeAt(pos)!;
+        const flat = v.state.schema.nodes["paragraph"]!.create(
+            null,
+            v.state.schema.text("onetwo"),
+        );
+        const tr = v.state.tr.delete(pos, pos + node.nodeSize);
+        tr.insert(0, flat).setMeta("uiEvent", "drop");
+        v.dispatch(tr);
+        expect(markdown(editor)).toBe(before);
+        expect(
+            guardErrors().some((line) => line.includes("atom:hardbreak")),
+        ).toBe(true);
+    });
+
+    it("a move drop that preserves a hardbreak should apply", async () => {
+        const editor = await makeEditor("one\\\ntwo\n\nAfter");
+        const v = view(editor);
+        const pos = blockPos(v, "one\ntwo"); // hardbreak leaf text is "\n"
+        expect(pos).toBeGreaterThan(-1);
+        const node = v.state.doc.nodeAt(pos)!;
+        const tr = v.state.tr.delete(pos, pos + node.nodeSize);
+        tr.insert(v.state.doc.content.size - node.nodeSize, node).setMeta("uiEvent", "drop");
+        v.dispatch(tr);
+        expect(markdown(editor)).toContain("one");
+        expect(guardErrors()).toEqual([]);
     });
 
     it("an external insert-only drop (intentional gain) should apply untouched", async () => {

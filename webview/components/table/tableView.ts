@@ -897,6 +897,7 @@ class TableController {
             // Conservation by construction (reorder rebuilds the table from
             // the same node objects) — tagged anyway so the content guard
             // (MAR-108) covers this mover for free.
+            const docBefore = this.view.state.doc;
             this.view.dispatch(
                 tagContentGuard(
                     this.view.state.tr.replaceWith(
@@ -907,6 +908,13 @@ class TableController {
                     { kind: "move" },
                 ),
             );
+            if (this.view.state.doc === docBefore) {
+                // Guard veto — dispatch returns nothing, so this doc-identity
+                // check (the moveBlocks pattern) is how we learn the reorder
+                // never applied; the selection would describe the
+                // never-created table.
+                return;
+            }
             this.selectRowRange(target, target + span);
         } else {
             const newTable = reorderColumnRange(
@@ -915,6 +923,7 @@ class TableController {
                 d.from1,
                 target,
             );
+            const docBefore = this.view.state.doc;
             this.view.dispatch(
                 tagContentGuard(
                     this.view.state.tr.replaceWith(
@@ -925,6 +934,9 @@ class TableController {
                     { kind: "move" },
                 ),
             );
+            if (this.view.state.doc === docBefore) {
+                return; // guard veto — see the row branch above
+            }
             this.selectColRange(target, target + span);
         }
     }

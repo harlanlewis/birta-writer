@@ -150,9 +150,29 @@ describe("editor command keybinding contributions", () => {
         // VS Code parity: Join Lines ships bound on macOS only (palette
         // elsewhere).
         joinLines: [{ mac: "ctrl+j" }],
-        // VS Code's native fold/unfold defaults (MAR-110). Fold All /
-        // Unfold All ship unbound: the Cmd+K chord leader is consumed by
-        // insertLink in this editor, so they live in the palette + block menu.
+        // Keyboard sequence 3: list toggles (the Google-Docs/Notion 7/8/9
+        // row), block-type chords (Cmd/Ctrl+Alt+0..6), and the caret block
+        // menu (Cmd/Ctrl+. — free across package.json, CLAIMED_SHORTCUTS,
+        // and the webview keymaps; VS Code's own Quick Fix default is
+        // editorTextFocus-scoped and inert while the custom editor is
+        // active).
+        toggleOrderedList: [{ key: "ctrl+shift+7", mac: "cmd+shift+7" }],
+        toggleBulletList: [{ key: "ctrl+shift+8", mac: "cmd+shift+8" }],
+        toggleTaskList: [{ key: "ctrl+shift+9", mac: "cmd+shift+9" }],
+        setParagraph: [{ key: "ctrl+alt+0", mac: "cmd+alt+0" }],
+        setHeading1: [{ key: "ctrl+alt+1", mac: "cmd+alt+1" }],
+        setHeading2: [{ key: "ctrl+alt+2", mac: "cmd+alt+2" }],
+        setHeading3: [{ key: "ctrl+alt+3", mac: "cmd+alt+3" }],
+        setHeading4: [{ key: "ctrl+alt+4", mac: "cmd+alt+4" }],
+        setHeading5: [{ key: "ctrl+alt+5", mac: "cmd+alt+5" }],
+        setHeading6: [{ key: "ctrl+alt+6", mac: "cmd+alt+6" }],
+        openBlockMenu: [{ key: "ctrl+.", mac: "cmd+." }],
+        // VS Code's native fold/unfold defaults (MAR-110): mac keeps ⌘⌥[/];
+        // win/linux use ctrl+shift+[/] — VS Code's own fold/unfold defaults
+        // there, and ctrl+alt is AltGr-hazardous on international layouts.
+        // Fold All / Unfold All ship unbound: the Cmd+K chord leader is
+        // consumed by insertLink in this editor, so they live in the palette
+        // + block menu.
         fold: [{ key: "ctrl+shift+[", mac: "cmd+alt+[" }],
         unfold: [{ key: "ctrl+shift+]", mac: "cmd+alt+]" }],
     };
