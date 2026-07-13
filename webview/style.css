@@ -1408,7 +1408,12 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
 }
 
 .heading-sticky-text {
-    min-width: 0;
+    /* Block-level so overflow/text-overflow clip: an inline box ignores both,
+       which let a long heading spill past the (definite-width) sticky and out
+       of a narrow content area. Block + nowrap keeps it to one ellipsised line
+       — the same recipe as .toc-item, which pairs it with a truncatedOnly
+       tooltip (see setStickyContent) to recover the hidden text on hover. */
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

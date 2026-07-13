@@ -154,4 +154,86 @@ export async function run({ page, check, baseUrl }) {
     check("hover-only mode: the expanded sticky's gutter hides at rest again",
         expandedRest === 0, `opacity=${expandedRest}`);
     await page.evaluate(() => document.body.classList.remove("handles-rest-hover"));
+
+    // ── 6. A truncated title reveals its full text on hover (truncatedOnly) ──
+    // The clip hides the tail behind an ellipsis; parity with the TOC, the
+    // sticky recovers it with a hover tooltip that appears ONLY when the text
+    // is actually truncated — never duplicating a title that already fits.
+    // Drive the real applyTooltip binding synchronously (mouseenter dispatch):
+    // updateSticky re-stamps the sticky width on the next rAF, so a
+    // measure-then-hover across an await would race it — one synchronous pass
+    // (squeeze → measure → dispatch → read) is deterministic and still
+    // exercises the actual truncatedOnly gate and the captured heading text.
+    const tt = await page.evaluate(() => {
+        const title = document.querySelector(".heading-sticky-title");
+        const label = document.querySelector(".heading-sticky-text");
+        const reset = () => {
+            const tip = document.querySelector(".custom-tooltip");
+            if (tip) tip.style.display = "none";
+            label.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+        };
+        const read = () => {
+            const tip = document.querySelector(".custom-tooltip");
+            return { display: tip ? tip.style.display : "none", text: tip?.textContent ?? null };
+        };
+        // Untruncated (the real ~full-column width): hover surfaces nothing.
+        reset();
+        label.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        const fit = read();
+        // Squeeze the sticky (text unchanged) until "Section Two" clips: now
+        // the same hover surfaces the tooltip carrying the full heading text.
+        reset();
+        title.style.width = "48px";
+        const offsetWidth = label.offsetWidth, scrollWidth = label.scrollWidth;
+        label.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        const clipped = read();
+        reset();
+        title.style.width = "";
+        return { fit, clipped, offsetWidth, scrollWidth };
+    });
+    check("the title is actually clipped once squeezed (scrollWidth > offsetWidth)",
+        tt.scrollWidth > tt.offsetWidth, JSON.stringify(tt));
+    check("untruncated title shows no tooltip on hover",
+        tt.fit.display === "none", JSON.stringify(tt.fit));
+    check("truncated title reveals its full text on hover",
+        tt.clipped.display === "block" && tt.clipped.text === "Section Two", JSON.stringify(tt.clipped));
+
+    // ── 7. A long title clips to one ellipsised line instead of overflowing ──
+    // In a narrow content area a heading longer than the sticky must stay on a
+    // single line and truncate with an ellipsis, never spill past the width the
+    // plugin sets. The text span is block-level for overflow/text-overflow to
+    // apply; assert both the computed contract and the runtime truth (rendered
+    // width bounded, content overflowing → clipped, height stays one line).
+    const longTitle = await page.evaluate(() => {
+        const sticky = document.querySelector(".heading-sticky-title");
+        const text = sticky.querySelector(".heading-sticky-text");
+        // Pin a narrow sticky and a very long title, mirroring a narrow content
+        // area next to a sidebar. (updateSticky would re-stamp width on scroll;
+        // we measure statically without scrolling.)
+        sticky.style.width = "200px";
+        text.textContent = "A very long heading title that comfortably exceeds the sticky width " +
+            "and would otherwise overflow the narrow content area next to the sidebar";
+        const style = getComputedStyle(text);
+        return {
+            display: style.display,
+            textOverflow: style.textOverflow,
+            whiteSpace: style.whiteSpace,
+            clientWidth: text.clientWidth,
+            scrollWidth: text.scrollWidth,
+            rectWidth: text.getBoundingClientRect().width,
+            offsetHeight: text.offsetHeight,
+            lineHeight: parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.3,
+        };
+    });
+    check("long title: text span is block-level so text-overflow applies",
+        longTitle.display === "block", JSON.stringify(longTitle));
+    check("long title: computed text-overflow is ellipsis with nowrap",
+        longTitle.textOverflow === "ellipsis" && longTitle.whiteSpace === "nowrap",
+        JSON.stringify(longTitle));
+    check("long title: rendered width stays within the narrow sticky (no overflow)",
+        longTitle.rectWidth <= 200, JSON.stringify(longTitle));
+    check("long title: content overflows the box and is clipped",
+        longTitle.scrollWidth > longTitle.clientWidth, JSON.stringify(longTitle));
+    check("long title: text stays on a single line",
+        longTitle.offsetHeight <= longTitle.lineHeight + 4, JSON.stringify(longTitle));
 }
