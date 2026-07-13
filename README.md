@@ -6,6 +6,8 @@
 
 Birta Writer is a VS Code WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdown.dev/) (ProseMirror). Edit `.md` / `.markdown` files as rich text and save as standard Markdown — fully compatible with any text editor.
 
+For what the editor does well and *why it matters* — including its fidelity/safety guarantees and a [compatibility table](#compatibility-with-other-markdown-tools) for other Markdown tools — see [**docs/BENEFITS.md**](docs/BENEFITS.md).
+
 ***
 
 ## Why this fork
@@ -25,7 +27,7 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 
 ### Blocks: grab, move, convert
 
-Every block — paragraphs, headings, list items (at any depth), quotes, callouts, directives, code blocks, tables, images, footnotes, even blocks nested inside callouts and quotes — has a gutter grabber showing its slash-menu icon. **Click it for the block menu** (turn into, duplicate, copy as markdown, move, delete; headings get copy-link and whole-section moves), **drag it to move the block** — with an accent drop line, auto-scroll, and one-step undo. Select many blocks with a **marquee drag in the margins** or from the keyboard (**Escape** selects the current block, **Shift+↑/↓** extend, **Cmd+A** ladders block → document, **Alt+↑/↓** move), then drag any covered grabber to move them all. Headings carry their sections, collapsed content always travels with its heading, and Tab/Shift-Tab indent list items one level without dragging their children along.
+Every block — paragraphs, headings, list items (at any depth), quotes, callouts, directives, code blocks, tables, images, footnotes, even blocks nested inside callouts and quotes — has a gutter handle showing its slash-menu icon. **Click it for the block menu** (turn into, duplicate, copy as markdown, move, delete; headings get copy-link and whole-section moves), **drag it to move the block** — with an accent drop line, auto-scroll, and one-step undo. A handle click only ever selects the block or opens its menu — it never edits the block's content (task-list checkboxes included). Select many blocks with a **marquee drag in the margins** or from the keyboard (**Escape** selects the current block, **Shift+↑/↓** extend, **Cmd+A** ladders block → document, **Alt+↑/↓** move), then drag any covered handle to move them all. Headings carry their sections, collapsed content always travels with its heading, and Tab/Shift-Tab indent list items one level without dragging their children along.
 
 ### Rich Text Editing
 
@@ -96,6 +98,26 @@ Every block — paragraphs, headings, list items (at any depth), quotes, callout
 
 ***
 
+## Compatibility with other Markdown tools
+
+Birta isn't a personal-knowledge-management tool — it reads and writes plain Markdown files. But because it preserves what it doesn't interpret (see [fidelity and safety](docs/BENEFITS.md#fidelity-and-safety-come-first)), it works well *on the files* of many tools people already use. Interop is a consequence of fidelity, not a design goal, so this is about what's safe to open and edit — not about matching each tool's feature set.
+
+| Tool | Birta can open it | Notes |
+| --- | --- | --- |
+| **Obsidian** | 🟢 directly (`.md` vault) | Wikilinks, `==highlights==`, `> [!callouts]`, footnotes, math, and frontmatter render or round-trip; `#tags`, `^block-ids`, `![[embeds]]`, `%%comments%%` are preserved as text |
+| **Foam** | 🟢 directly (`.md`) | Same wikilink family; its link-reference-definition shim is preserved, not inlined away |
+| **"Second Brain" / PARA** | 🟢 directly | A folder convention, not a format — nothing tool-specific to preserve |
+| **Logseq** | 🟡 opens (round-trip unverified) | Text is preserved, but its outliner model renders as one big nested list; whether Birta keeps the exact bullet indentation Logseq's structure needs is untested |
+| **Quarto** (`.qmd`) | 🟡 needs a file association | Safe to round-trip; executable cells, `:::` fenced divs, shortcodes, and citations are preserved as inert text/code, not understood |
+| **MDX** (`.mdx`) | 🔴 not recommended | MDX changes base Markdown rules and adds JSX/imports; re-serializing edited regions risks invalid MDX |
+| **Roam Research** | 🔴 export first | Proprietary database (JSON/EDN), not files |
+| **Bear** | 🔴 export first | Proprietary SQLite database, not files |
+| **Emacs Org mode** | 🔴 out of scope | `.org` is a different markup language, not Markdown |
+
+See [**docs/BENEFITS.md**](docs/BENEFITS.md#compatibility-with-other-markdown-tools) for the full breakdown, including per-tool syntax fidelity and the confidence caveat.
+
+***
+
 ## Getting Started
 
 After installing the extension, open any `.md` / `.markdown` file in VS Code — it opens in WYSIWYG mode automatically.
@@ -129,7 +151,7 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 | `birta.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
 | `birta.smartLinks`         | boolean | `true`      | Resolve local links the way your site generator does: workspace-root paths, ancestor content roots, `.md`/`index.md` suffixes, and `[[wikilink]]` targets |
 | `birta.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
-| `birta.gutterMarkers`      | string  | `"headings"` | Which block grabbers stay visible at rest: `headings` (H1–H6 badges), `none`, or `all`; hovering a block always reveals its grabber |
+| `birta.blockHandles`       | string  | `"headings"` | Which block handles stay visible in the left gutter at rest: `headings` (H1–H6 badges, every other block on hover), `always` (every block's handle), or `hover` (none at rest, all on hover); hovering a block always reveals its handle. Also in the toolbar's typography (A) menu |
 
 ***
 
