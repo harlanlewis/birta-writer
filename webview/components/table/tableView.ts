@@ -49,6 +49,8 @@ import { IconPlus } from "@/ui/icons";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { tagContentGuard } from "@/plugins/contentGuard";
+import { createFoldEllipsis } from "@/ui/foldEllipsis";
+import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 
 type GetPos = () => number | undefined;
 
@@ -490,6 +492,26 @@ class TableController {
             bar.style.height = `${tableRect.height}px`;
             bar.style.width = `${INSERT_ZONE}px`;
         });
+
+        // Folded `…` chip: every other kind seats the chip on the collapsed
+        // block's visible line, so the table's must read as part of the
+        // header row — just past its right edge, vertically centered on it
+        // (table.css absolutely positions it; this is the one layout
+        // reader). Collapsing hides the body rows, which resizes the table
+        // and re-runs this pass, so the measurement is always fresh.
+        if (this.wrapper.classList.contains("collapsed")) {
+            const chip = this.wrapper.querySelector<HTMLElement>(
+                ":scope > .mw-table-fold-ellipsis",
+            );
+            const header = rows[0]!.getBoundingClientRect();
+            if (chip && header.height > 0) {
+                // Clamp to the wrapper: a header wider than the editor would
+                // otherwise push the chip out of view.
+                const right = Math.min(header.right, wrap.right);
+                chip.style.left = `${right - wrap.left + 8}px`;
+                chip.style.top = `${header.top - wrap.top + header.height / 2}px`;
+            }
+        }
     }
 
     // ── Contextual reveal (Task A) ──────────────────────────────────────────
@@ -1131,7 +1153,27 @@ export function createTableView(
     const overlay = document.createElement("div");
     overlay.className = "mw-table-overlay";
 
-    wrapper.append(table, overlay);
+    // Collapsed `…` (MAR-125): the shared fold-ellipsis mounted in the
+    // wrapper, shown only while the fold plugin's decoration marks the
+    // table `collapsed` (the callout-NodeView protocol — fold state arrives
+    // as a class, this view only renders the chip and dispatches the meta).
+    const foldEllipsis = createFoldEllipsis(
+        Math.max(0, node.childCount - 1),
+        () => {
+            const pos = getPos();
+            if (pos === undefined) return;
+            view.dispatch(
+                view.state.tr
+                    .setMeta(foldPluginKey, { type: "set", pos, folded: false } satisfies FoldMeta)
+                    .setMeta("addToHistory", false),
+            );
+            view.focus();
+        },
+        "rows",
+    );
+    foldEllipsis.dom.classList.add("mw-table-fold-ellipsis");
+
+    wrapper.append(table, overlay, foldEllipsis.dom);
 
     const controller = new TableController(
         node,
@@ -1153,6 +1195,7 @@ export function createTableView(
             }
             node = newNode;
             controller.setNode(newNode);
+            foldEllipsis.setCount(Math.max(0, newNode.childCount - 1));
             return true;
         },
 
@@ -1166,9 +1209,13 @@ export function createTableView(
             return !tbody.contains(target);
         },
 
-        // Keep ProseMirror out of interactions that originate in the overlay.
+        // Keep ProseMirror out of interactions that originate in the overlay
+        // (or the fold chip — chrome, never content).
         stopEvent(e: Event): boolean {
-            return overlay.contains(e.target as Node);
+            return (
+                overlay.contains(e.target as Node) ||
+                foldEllipsis.dom.contains(e.target as Node)
+            );
         },
 
         destroy(): void {

@@ -628,6 +628,58 @@ body.editor-width-auto {
     }
 }
 
+/* ─── Fixed-width content beside a docked TOC ───
+   In fixed-width mode the content box is capped at --editor-max-width and
+   centered with `margin: 0 auto` (below), which centers it in the WHOLE
+   viewport and ignores the drawer — a wide docked panel then overlaps the
+   content. When the panel is docked OPEN, keep the box VIEWPORT-centered and
+   nudge it off the drawer only when it would otherwise collide: the docked-side
+   margin is `max(reserve, viewport-centered margin)`. The reserve is
+   --toc-editor-offset — the smallest docked-side margin that still lets the
+   content column clear the panel by --toc-content-gap. While the plain centered
+   margin is larger than the reserve (a wide window), it wins and the content
+   stays optically centered in the window, drawer or not; only once centering
+   would tuck the content under the drawer does the reserve take over, pinning
+   the box's start edge exactly at the clearance and no further. When the room
+   left of the content's max-width is tighter still, the box shrinks to fit
+   rather than overflow — its start edge stays visible either way, never pushed
+   under the drawer or off the viewport's start edge. Overlay mode floats over
+   the content (a dismissable popover shown when the viewport is too narrow to
+   dock), so it keeps the plain full-viewport centering and is intentionally not
+   handled here. The reserve is a physical margin on the physical dock side, so
+   it is correct whichever side (left or right) the drawer is docked on. */
+body:not(.editor-width-auto) {
+    &.toc-open:not(.toc-right) {
+        #editor,
+        .frontmatter-panel {
+            --toc-editor-offset: max(
+                0px,
+                calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+            );
+            margin-left: max(
+                var(--toc-editor-offset),
+                calc((100% - var(--editor-max-width)) / 2)
+            );
+            margin-right: auto;
+        }
+    }
+
+    &.toc-right.toc-open {
+        #editor,
+        .frontmatter-panel {
+            --toc-editor-offset: max(
+                0px,
+                calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-right-padding, 48px))
+            );
+            margin-right: max(
+                var(--toc-editor-offset),
+                calc((100% - var(--editor-max-width)) / 2)
+            );
+            margin-left: auto;
+        }
+    }
+}
+
 @media (max-width: 720px) {
     #editor {
         padding-left: 60px;
@@ -1744,6 +1796,21 @@ body.toolbar-hidden::before {
 .milkdown .editor .callout:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .callout-body > .heading-fold-gutter--foldable .heading-fold-toggle,
 .milkdown .editor .heading-fold-gutter--block.heading-fold-gutter--foldable:hover .heading-fold-toggle,
 .milkdown .editor .callout.collapsed > .callout-body > .heading-fold-gutter--foldable .heading-fold-toggle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* The same grammar for the MAR-125 foldables. List items: hovering the item
+   (its subtree included) with no DEEPER host hovered surfaces the innermost
+   chevron only — the marker-reveal rule's quiet-gutter contract. Tables and
+   code blocks host their gutter inside their own chrome (tbody / pre), so a
+   plain descendant match is safe (neither can nest another of its kind). */
+.milkdown .editor li.block-gutter-host--item:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .mw-table:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .code-block-wrapper:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor li.block-gutter-host--item.collapsed > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .mw-table.collapsed .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .code-block-wrapper.collapsed .heading-fold-gutter--foldable .heading-fold-toggle {
     opacity: 1;
     pointer-events: auto;
 }

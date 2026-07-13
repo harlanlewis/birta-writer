@@ -472,17 +472,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     });
 
     // ── Auto-expand detection ─────────────────────────────
+    // Docked when the viewport can hold the drawer plus a comfortable content
+    // column beside it — a pure viewport measure, identical in fixed and
+    // full-width mode. Fixed mode used to key off the editor's measured left/right
+    // gap, but the content now recenters into the space beside a docked drawer
+    // (see style.css `body:not(.editor-width-auto)`), so its position depends on
+    // the drawer state: measuring it would be circular and could oscillate.
     function hasEnoughSpace(): boolean {
-        if (document.body.classList.contains("editor-width-auto")) {
-            return window.innerWidth >= tocWidth + DOCKED_MIN_CONTENT_WIDTH;
-        }
-        const editorEl = document.getElementById("editor");
-        if (!editorEl) {
-            return false;
-        }
-        const rect = editorEl.getBoundingClientRect();
-        const sideSpace = tocRight ? window.innerWidth - rect.right : rect.left;
-        return sideSpace >= tocWidth && rect.width >= DOCKED_MIN_CONTENT_WIDTH;
+        return window.innerWidth >= tocWidth + DOCKED_MIN_CONTENT_WIDTH;
     }
 
     function resolveMode(): TocMode {

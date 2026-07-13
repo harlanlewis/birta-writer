@@ -184,3 +184,37 @@
     background: var(--vscode-editor-selectionBackground);
     border: 1px solid var(--vscode-focusBorder);
 }
+
+/* ─── Folded table (MAR-125): fold to the header row ────────────────────────
+ * The `collapsed` class arrives as a node decoration from the fold plugin
+ * (the callout protocol) — body rows hide, the header row stays live and
+ * editable. `:first-of-type` (not :first-child): the block-gutter widget
+ * <span> shares the tbody with the rows. The overlay hides wholesale while
+ * folded — its grips/insert bars measure hidden rows as zero-height boxes
+ * and would paint garbage; expanding re-measures (ResizeObserver). */
+.milkdown .editor .mw-table.collapsed tbody > tr:not(:first-of-type) {
+    display: none;
+}
+.milkdown .editor .mw-table.collapsed .mw-table-overlay {
+    display: none;
+}
+
+/* The collapsed `…` chip sits ON the header row's line, just past its right
+ * edge (shared .fold-ellipsis look, style.css) — block flow below the table
+ * read as detached chrome misattributed to the next block. The wrapper is
+ * the positioning context; tableView's reposition() measures the header row
+ * and sets left/top (vertical center of the row; translateY re-centers the
+ * chip on that line). Hidden while the table is expanded. Scope matches the
+ * base .fold-ellipsis rule's `.milkdown .editor` prefix so this
+ * display:none outranks it. */
+.milkdown .editor .mw-table .mw-table-fold-ellipsis {
+    display: none;
+}
+.milkdown .editor .mw-table.collapsed .mw-table-fold-ellipsis {
+    display: inline-flex;
+    position: absolute;
+    margin: 0;
+    transform: translateY(-50%);
+    z-index: 3;
+    white-space: nowrap;
+}
