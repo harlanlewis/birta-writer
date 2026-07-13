@@ -34,6 +34,7 @@ import { mark, measure } from "./perf";
 import type { ToWebviewMessage } from "../shared/messages";
 import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
+import { isTaskCheckboxClick } from "./utils/taskCheckbox";
 
 import { setupLinkPopup } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
@@ -465,8 +466,12 @@ eventManager.onDocument(
         if (!taskItem) {
             return;
         }
-        const rect = taskItem.getBoundingClientRect();
-        if ((e as MouseEvent).clientX - rect.left > 24) {
+        // Only a click on the checkbox itself toggles completion. In
+        // particular, a click on the block handle (gutter chrome, out in the
+        // left margin) must never mutate block content — the handle's own click
+        // handler runs in the bubble phase and can't stop us here (this
+        // listener is capture phase), so the exclusion lives in the hit-test.
+        if (!isTaskCheckboxClick(target, taskItem, (e as MouseEvent).clientX)) {
             return;
         }
         const view = getEditorView();
