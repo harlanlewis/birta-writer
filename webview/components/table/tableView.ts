@@ -492,6 +492,26 @@ class TableController {
             bar.style.height = `${tableRect.height}px`;
             bar.style.width = `${INSERT_ZONE}px`;
         });
+
+        // Folded `…` chip: every other kind seats the chip on the collapsed
+        // block's visible line, so the table's must read as part of the
+        // header row — just past its right edge, vertically centered on it
+        // (table.css absolutely positions it; this is the one layout
+        // reader). Collapsing hides the body rows, which resizes the table
+        // and re-runs this pass, so the measurement is always fresh.
+        if (this.wrapper.classList.contains("collapsed")) {
+            const chip = this.wrapper.querySelector<HTMLElement>(
+                ":scope > .mw-table-fold-ellipsis",
+            );
+            const header = rows[0]!.getBoundingClientRect();
+            if (chip && header.height > 0) {
+                // Clamp to the wrapper: a header wider than the editor would
+                // otherwise push the chip out of view.
+                const right = Math.min(header.right, wrap.right);
+                chip.style.left = `${right - wrap.left + 8}px`;
+                chip.style.top = `${header.top - wrap.top + header.height / 2}px`;
+            }
+        }
     }
 
     // ── Contextual reveal (Task A) ──────────────────────────────────────────

@@ -1464,9 +1464,17 @@ export const headingFoldPlugin = $prose(() =>
                         // there). Backward assoc left the entry at the old
                         // offset — the newly inserted block inherited the
                         // collapse while the real block expanded.
-                        const mapped = tr.mapping.map(pos);
-                        if (isFoldEntryAt(newState.doc, mapped)) {
-                            next.add(mapped);
+                        // DELETED positions never survive the map: plain
+                        // map() lands them at the replacement's end, where a
+                        // DIFFERENT foldable can sit — Tab-sinking a folded
+                        // item rebuilds it via replaceWith and the stale
+                        // entry silently collapsed the NEXT sibling. Edits
+                        // that rebuild a folded block therefore CLEAR its
+                        // fold; a move that should preserve it must say so
+                        // through the move meta above.
+                        const mapped = tr.mapping.mapResult(pos);
+                        if (!mapped.deleted && isFoldEntryAt(newState.doc, mapped.pos)) {
+                            next.add(mapped.pos);
                         }
                     }
                     folded = cleanFoldedPositions(newState.doc, next);
@@ -1567,19 +1575,35 @@ export const headingFoldPlugin = $prose(() =>
                 return null;
             }
             const pos = sel.from;
+            // Kind-aware coverage (hiddenRangeCoversTarget): interior-hiding
+            // kinds are INCLUSIVE at `to` — for a folded code block `to` is
+            // the fence text's last position, a spot ArrowLeft from below
+            // lands on, and half-open `pos < r.to` let the caret rest (and
+            // type) there invisibly.
+            const doc = newState.doc;
             const containing = foldedHiddenRanges(newState).filter(
-                (r) => pos >= r.from && pos < r.to,
+                (r) => hiddenRangeCoversTarget(doc, r, pos),
             );
             if (containing.length === 0) {
                 return null;
             }
-            const from = Math.min(...containing.map((r) => r.from));
-            const to = Math.max(...containing.map((r) => r.to));
+            // Eject targets come from the OWNING node's edges, not the raw
+            // hidden range: an interior kind's `from`/`to` are positions
+            // INSIDE the collapsed node, and inside a code block
+            // Selection.near returns them unchanged — the "escape" would
+            // land back in hidden content. A heading hides FOLLOWING
+            // siblings, so its range ends are already visible boundaries.
+            const edges = containing.map((r) =>
+                isHeadingNode(doc.nodeAt(r.pos))
+                    ? { before: r.from, after: r.to }
+                    : { before: r.pos, after: r.pos + doc.nodeAt(r.pos)!.nodeSize });
+            const before = Math.min(...edges.map((e) => e.before));
+            const after = Math.max(...edges.map((e) => e.after));
             const forward = pos >= oldState.selection.from;
             const target =
-                forward && to < newState.doc.content.size
-                    ? Selection.near(newState.doc.resolve(to), 1)
-                    : Selection.near(newState.doc.resolve(from), -1);
+                forward && after < doc.content.size
+                    ? Selection.near(doc.resolve(after), 1)
+                    : Selection.near(doc.resolve(before), -1);
             if (target.eq(sel)) {
                 return null;
             }
@@ -1874,8 +1898,10 @@ export const unfoldAllCommand: Command = (state, dispatch) => {
 
 // ─── Backspace/Delete at a fold boundary: reveal, never edit hidden content ─
 
-/** Backspace at the start of a top-level textblock whose previous visible
- * neighbor is a collapsed fold: expand it instead of deleting into it. */
+/** Backspace at the start of a textblock (ANY depth — a list item's first
+ * line joins into its previous sibling just like a top-level paragraph)
+ * whose join target sits in collapsed hidden content: expand the fold
+ * instead of deleting into it. */
 export const revealOnBackspace: Command = (state, dispatch) => {
     const pluginState = foldPluginKey.getState(state);
     if (!pluginState?.enabled || pluginState.folded.size === 0) {
@@ -1883,10 +1909,10 @@ export const revealOnBackspace: Command = (state, dispatch) => {
     }
     const sel = state.selection;
     const $from = sel.$from;
-    if (!sel.empty || $from.depth !== 1 || $from.parentOffset !== 0) {
+    if (!sel.empty || $from.depth === 0 || $from.parentOffset !== 0) {
         return false;
     }
-    const blockStart = $from.before(1);
+    const blockStart = $from.before($from.depth);
     // A collapsed heading's hidden section ending exactly here…
     const section = foldedHiddenRanges(state).find((r) => r.to === blockStart);
     if (section) {

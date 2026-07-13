@@ -199,14 +199,22 @@
     display: none;
 }
 
-/* The collapsed `…` chip trails the header row (shared .fold-ellipsis look,
- * style.css); hidden while the table is expanded. Scope matches the base
- * .fold-ellipsis rule's `.milkdown .editor` prefix so this display:none
- * outranks it. */
+/* The collapsed `…` chip sits ON the header row's line, just past its right
+ * edge (shared .fold-ellipsis look, style.css) — block flow below the table
+ * read as detached chrome misattributed to the next block. The wrapper is
+ * the positioning context; tableView's reposition() measures the header row
+ * and sets left/top (vertical center of the row; translateY re-centers the
+ * chip on that line). Hidden while the table is expanded. Scope matches the
+ * base .fold-ellipsis rule's `.milkdown .editor` prefix so this
+ * display:none outranks it. */
 .milkdown .editor .mw-table .mw-table-fold-ellipsis {
     display: none;
 }
 .milkdown .editor .mw-table.collapsed .mw-table-fold-ellipsis {
     display: inline-flex;
-    margin: 4px 0 0;
+    position: absolute;
+    margin: 0;
+    transform: translateY(-50%);
+    z-index: 3;
+    white-space: nowrap;
 }

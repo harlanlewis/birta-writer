@@ -29,6 +29,7 @@ import {
 } from "../plugins/headingFold";
 import { foldSelectedBlocks } from "../plugins/blockKeys";
 import { BlockRangeSelection } from "../plugins/blockRange";
+import { sinkItemKeepingChildren } from "../plugins/tabKeymap";
 
 let editors: Editor[] = [];
 
@@ -342,6 +343,47 @@ describe("nested list item folding (fold to the first line)", () => {
         expect(folded(v).size).toBe(0);
     });
 
+    it("Backspace at a sibling item's start should reveal the previous item's folded tail", async () => {
+        // Arrange: bar folded (hides baz); caret at the very start of zap's
+        // first line. The join target — where Backspace would put the caret
+        // — is baz's line end, INSIDE bar's hidden sublist: joining there
+        // buried zap invisibly. (The old guard only ran at depth 1, so list
+        // carets never hit it.)
+        const editor = await makeEditor("- foo\n- bar\n  - baz\n- zap");
+        const v = view(editor);
+        const bar = itemPosByLine(v, "bar");
+        toggle(v, bar);
+        const zap = itemPosByLine(v, "zap");
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, zap + 2)));
+        const docBefore = v.state.doc;
+
+        // Act + Assert: reveal instead of joining — zero document steps.
+        expect(revealOnBackspace(v.state, v.dispatch)).toBe(true);
+        expect(folded(v).size).toBe(0);
+        expect(v.state.doc).toBe(docBefore);
+        expect(textIsHidden(v, "zap")).toBe(false);
+    });
+
+    it("Tab-sinking a folded item should clear its fold, never collapse the next sibling", async () => {
+        // Arrange: fold b (hides b1); its next sibling c is itself foldable
+        // — exactly where the stale plain-map() entry used to land.
+        const editor = await makeEditor("- a\n- b\n  - b1\n- c\n  - c1");
+        const v = view(editor);
+        const b = itemPosByLine(v, "b");
+        toggle(v, b);
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, b + 2)));
+
+        // Act: Tab's sink-keeping-children rebuild.
+        const sink = sinkItemKeepingChildren(v.state.schema.nodes["list_item"]!);
+        expect(sink(v.state, v.dispatch)).toBe(true);
+
+        // Assert: the rebuild deterministically clears the fold — no entry
+        // anywhere, and c's subtree stays visible.
+        expect(folded(v).size).toBe(0);
+        expect(foldedHiddenRanges(v.state)).toHaveLength(0);
+        expect(textIsHidden(v, "c1")).toBe(false);
+    });
+
     it("foldAtCaret on the item's first line should fold the innermost item", async () => {
         // Arrange: caret inside bar's line.
         const editor = await makeEditor(NESTED_LIST);
@@ -495,6 +537,65 @@ describe("code block folding (fold to the chrome row)", () => {
         // Assert
         expect(folded(v).size).toBe(2);
         expect(document.querySelectorAll(".collapsed")).toHaveLength(2);
+    });
+
+    it("a caret landing at a folded fence's final text position should be ejected forward", async () => {
+        // Arrange: `range.to` IS a valid text position inside a code block
+        // (the fence text's end) — the old half-open guard let the caret
+        // rest, and type, there invisibly.
+        const editor = await makeEditor("intro\n\n```js\nconst x = 1;\n```\n\ntail");
+        const v = view(editor);
+        const codePos = deepPosOf(v, "code_block");
+        toggle(v, codePos);
+        const range = foldHiddenRange(v.state.doc, codePos)!;
+
+        // Act: land exactly at range.to, travelling forward from "intro".
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, range.to)));
+
+        // Assert: ejected clear of the whole hidden span (inclusive at to);
+        // typing lands in visible content, never in the fence.
+        const sel = v.state.selection;
+        expect(sel.from < range.from || sel.from > range.to).toBe(true);
+        v.dispatch(v.state.tr.insertText("X"));
+        expect(textIsHidden(v, "X")).toBe(false);
+        expect(v.state.doc.nodeAt(deepPosOf(v, "code_block"))!.textContent).toBe("const x = 1;");
+    });
+
+    it("ArrowLeft-style entry from below a folded fence should eject backward past the block", async () => {
+        // Arrange
+        const editor = await makeEditor("intro\n\n```js\nconst x = 1;\n```\n\ntail");
+        const v = view(editor);
+        const codePos = deepPosOf(v, "code_block");
+        toggle(v, codePos);
+        const range = foldHiddenRange(v.state.doc, codePos)!;
+        const tailStart = codePos + v.state.doc.nodeAt(codePos)!.nodeSize + 1;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, tailStart)));
+
+        // Act: move backward onto range.to (what ArrowLeft from tail does).
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, range.to)));
+
+        // Assert: ejected BEFORE the block, not parked on hidden fence text.
+        expect(v.state.selection.from).toBeLessThan(codePos);
+    });
+
+    it("folding a code block with the caret at its text end should leave the caret outside", async () => {
+        // Arrange: caret at the fence text's last position — exactly the
+        // spot the fold-time escape used to skip (selection.from < range.to
+        // was false) while the caret guard's half-open filter also missed.
+        const editor = await makeEditor("intro\n\n```js\nconst x = 1;\n```\n\ntail");
+        const v = view(editor);
+        const codePos = deepPosOf(v, "code_block");
+        const range = foldHiddenRange(v.state.doc, codePos)!;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, range.to)));
+
+        // Act
+        toggle(v, codePos);
+
+        // Assert: caret outside the hidden span; typing never edits the fence.
+        const sel = v.state.selection;
+        expect(sel.from < range.from || sel.from > range.to).toBe(true);
+        v.dispatch(v.state.tr.insertText("Y"));
+        expect(v.state.doc.nodeAt(deepPosOf(v, "code_block"))!.textContent).toBe("const x = 1;");
     });
 
     it("a code block inside a list item should not be foldable (chrome parity)", async () => {

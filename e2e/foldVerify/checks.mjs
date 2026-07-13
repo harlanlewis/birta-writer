@@ -465,6 +465,22 @@ export async function run({ page, check, baseUrl }) {
         tableState.collapsed && tableState.headerVisible && tableState.bodyHidden &&
         tableState.overlayHidden && tableState.chipVisible,
         JSON.stringify(tableState));
+    // Visual grammar: the chip sits ON the header row's line, just past its
+    // right edge — never in block flow below the table (where it read as
+    // chrome of the NEXT block).
+    const tableChipGeom = await page.evaluate(() => {
+        const wrap = document.querySelector(".ProseMirror .mw-table");
+        const header = wrap.querySelector("tbody > tr").getBoundingClientRect();
+        const chip = wrap.querySelector(".mw-table-fold-ellipsis").getBoundingClientRect();
+        const chipMid = chip.top + chip.height / 2;
+        return {
+            onHeaderLine: chipMid > header.top && chipMid < header.bottom,
+            pastRightEdge: chip.left >= header.right,
+        };
+    });
+    check("the table's … chip sits on the header line, past its right edge",
+        tableChipGeom.onHeaderLine && tableChipGeom.pastRightEdge,
+        JSON.stringify(tableChipGeom));
     await shot(page, "06c-table-folded");
     await page.evaluate(() =>
         document.querySelector(".ProseMirror .mw-table .mw-table-fold-ellipsis")?.click());
