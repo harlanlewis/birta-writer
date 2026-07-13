@@ -282,18 +282,6 @@ this line and the fence above render as plain paragraphs.
 
 ---
 
-## Code blocks
-
-### Code
-
-Fenced code block with syntax highlighting:
-
-```js
-function greet(name) {
-    return `Hello, ${name}!`;
-}
-```
-
 ## Images
 
 Inline image with a relative path and a title. The alt text is the editable
@@ -306,6 +294,18 @@ click-away, Escape cancels.
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
 
 ---
+
+## Code blocks
+
+### Code
+
+Fenced code block with syntax highlighting:
+
+```js
+function greet(name) {
+    return `Hello, ${name}!`;
+}
+```
 
 ```python
 def greet(name: str) -> str:
