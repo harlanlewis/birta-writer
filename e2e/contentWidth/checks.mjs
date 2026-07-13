@@ -167,6 +167,46 @@ export async function run({ page, check, baseUrl }) {
     // Restore the default drawer width for any later assertions.
     await page.evaluate(() => document.documentElement.style.removeProperty("--toc-width"));
 
+    // ── When the content already clears the drawer, it stays VIEWPORT-centered
+    //    and does NOT drift with the drawer's width. This guards the refinement
+    //    (`max(reserve, centered)`) against the earlier over-shift formula
+    //    (`reserve + half the leftover`), which would slide the content further
+    //    right as the drawer widens even when there was room to stay centered.
+    //    We shrink the content so plain centering clears even a wide drawer, then
+    //    check the content's left edge is unchanged across two drawer widths. ──
+    const centered = await page.evaluate(() => {
+        const html = document.documentElement;
+        const editor = document.querySelector("#editor");
+        const panel = document.querySelector(".toc-panel");
+        const measure = (tocWidth) => {
+            html.style.setProperty("--editor-max-width", "360px");
+            html.style.setProperty("--toc-width", `${tocWidth}px`);
+            const e = editor.getBoundingClientRect();
+            const p = panel.getBoundingClientRect();
+            return { left: Math.round(e.left), panelRight: Math.round(p.right) };
+        };
+        const narrow = measure(150);
+        const wide = measure(250);
+        html.style.removeProperty("--editor-max-width");
+        html.style.removeProperty("--toc-width");
+        return {
+            narrow,
+            wide,
+            clearsBoth: narrow.left >= narrow.panelRight && wide.left >= wide.panelRight,
+            sameLeft: Math.abs(narrow.left - wide.left) <= 1,
+        };
+    });
+    check(
+        "content clears the drawer in both narrow/wide-drawer cases (centered regime)",
+        centered.clearsBoth,
+        JSON.stringify(centered),
+    );
+    check(
+        "content stays viewport-centered — its start does not drift with drawer width",
+        centered.sameLeft,
+        `narrowLeft=${centered.narrow.left} wideLeft=${centered.wide.left} (over-shift formula would differ)`,
+    );
+
     // ── Click Full Width ──
     await fullBtn.dispatchEvent("mousedown");
     await page.waitForTimeout(100);
