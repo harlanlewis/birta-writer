@@ -128,6 +128,15 @@ export async function run({ page, check, baseUrl }) {
         window.__posted.filter((m) => m.type === "setBlockHandles").map((m) => m.mode));
     check("the pick posts setBlockHandles for the settings round-trip",
         JSON.stringify(postedHandles) === JSON.stringify(["hover"]), JSON.stringify(postedHandles));
+    // Always Show is the third state: its own body class, replacing hover's.
+    const alwaysBox = await rowBox("Always Show");
+    await page.mouse.move(alwaysBox.x, alwaysBox.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(30);
+    check("picking Always Show swaps in the handles-rest-always body class",
+        await page.evaluate(() => document.body.classList.contains("handles-rest-always")
+            && !document.body.classList.contains("handles-rest-hover")));
     // Restore the default for any checks that follow.
     const headingsBox = await rowBox("Headings and hover");
     await page.mouse.move(headingsBox.x, headingsBox.y);
@@ -137,4 +146,42 @@ export async function run({ page, check, baseUrl }) {
     check("picking Headings and hover clears the override body class",
         await page.evaluate(() => !document.body.classList.contains("handles-rest-hover")
             && !document.body.classList.contains("handles-rest-always")));
+    // Leave the menu before the gear checks below.
+    await page.mouse.move(500, 800, { steps: 5 });
+    await page.waitForTimeout(30);
+
+    // ── 6. Settings gear menu: five rows, two group separators, no header ──
+    // The menu mirrors TOOLBAR_MENU_COMMANDS (layout | shortcuts | settings
+    // groups); the old .tb-fmt-header title row is gone.
+    const gearBtn = '[data-item-id="settings"] .tb-fmt-btn';
+    const gearMenu = '[data-item-id="settings"] .tb-settings-menu';
+    await page.hover(gearBtn);
+    await page.waitForTimeout(30);
+    check("hovering the gear opens the settings menu", (await disp(gearMenu)) === "flex");
+    const gearShape = await page.$eval(gearMenu, (menu) => ({
+        header: !!menu.querySelector(".tb-fmt-header"),
+        // Child sequence: row/sep kinds in DOM order.
+        kinds: [...menu.children].map((el) =>
+            el.classList.contains("tb-menu-sep") ? "sep"
+                : el.classList.contains("tb-fmt-item") ? "item" : el.className),
+        labels: [...menu.querySelectorAll(".tb-fmt-item")].map((el) => el.textContent),
+        sepRoles: [...menu.querySelectorAll(".tb-menu-sep")]
+            .map((el) => el.getAttribute("role")),
+    }));
+    check("gear menu has no .tb-fmt-header title row", !gearShape.header);
+    check("gear menu rows: Customize / Hide / Show Shortcuts / Edit Shortcuts / Settings",
+        JSON.stringify(gearShape.labels) === JSON.stringify([
+            "Customize Toolbar",
+            "Hide Toolbar",
+            "Show Keyboard Shortcuts",
+            "Edit Keyboard Shortcuts",
+            "WYSIWYG Markdown Editor Settings",
+        ]), JSON.stringify(gearShape.labels));
+    check("gear menu groups split by two separators (item,item,sep,item,item,sep,item)",
+        JSON.stringify(gearShape.kinds) ===
+            JSON.stringify(["item", "item", "sep", "item", "item", "sep", "item"]),
+        JSON.stringify(gearShape.kinds));
+    check("gear menu separators carry role=separator",
+        JSON.stringify(gearShape.sepRoles) === JSON.stringify(["separator", "separator"]),
+        JSON.stringify(gearShape.sepRoles));
 }

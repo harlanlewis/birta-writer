@@ -1,0 +1,68 @@
+<!doctype html>
+<!-- e2e harness: TOC drag-and-drop (section reorder + refile-into). Mirrors
+     the provider template with acquireVsCodeApi stubbed; same skeleton as the
+     toc suite. Four headings (> tocAutoHideThreshold 3) so the panel
+     auto-opens, `editor-width-auto` for deterministic docked mode at the
+     runner's 1000px viewport, and a run of filler paragraphs under Gamma so
+     the page scrolls (TOC click-navigation is observable via scrollY). -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-list-activeSelectionBackground: rgba(0, 127, 212, 0.26);
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-icon-foreground: #cccccc; --vscode-input-placeholderForeground: #888888;
+    --vscode-symbolIcon-keywordForeground: #c586c0;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+</style>
+<script>
+  // Docked mode becomes a pure width test (1000 >= 220 + 720) — and the
+  // overlay checks later shrink the viewport below that.
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3 };
+  window.__posted = [];
+  // Enough body under Gamma that navigating to it can scroll it to the top
+  // (the click-navigation check reads the settled active item).
+  const FILLERS = Array.from({ length: 40 }, (_, i) => `gamma filler ${i + 1}.\n`).join("\n");
+  const DOC = [
+    "# Alpha",
+    "",
+    "alpha intro.",
+    "",
+    "## Alpha sub",
+    "",
+    "alpha sub text.",
+    "",
+    "# Beta",
+    "",
+    "beta text.",
+    "",
+    "# Gamma",
+    "",
+    "gamma text.",
+    "",
+    FILLERS,
+    "loose paragraph.",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", frontmatter: "", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
