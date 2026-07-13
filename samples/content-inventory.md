@@ -461,4 +461,4 @@ Obsidian's transclusion form `![[page]]` is not treated as an embed — it rende
 
 ### Definition lists
 
-`term` / `: definition` syntax is not parsed. parked with sub/superscript, `%%comments%%`, `[TOC]`, and `#tags`. Under consideration (MAR-47)
+`term` / `: definition` syntax is not parsed. Parked with sub/superscript, `%%comments%%`, `[TOC]`, and `#tags`. Under consideration (MAR-47)
