@@ -1408,6 +1408,10 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
 }
 
 .heading-sticky-text {
+    /* Block-level so overflow/text-overflow clip: an inline box ignores both,
+       which let a long heading spill past the (definite-width) sticky and out
+       of a narrow content area. Block + nowrap keeps it to one ellipsised line. */
+    display: block;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
