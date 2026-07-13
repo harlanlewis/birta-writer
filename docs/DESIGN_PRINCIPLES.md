@@ -92,16 +92,16 @@ gets exactly one control: its gutter marker. **One affordance, two verbs:
 click opens the block menu, drag moves the block.** No anonymous `⠿` badge,
 no `+` insert button — insertion belongs to the slash menu and typing.
 
-- **Markers are revealed, not resident — residency is the user's choice.**
+- **Handles are revealed, not resident — residency is the user's choice.**
   By default only heading badges rest visible (they double as the document's
-  outline); every other marker appears on hovering the block or its gutter at
-  low contrast and brightens on direct hover/focus. The
-  `birta.gutterMarkers` setting moves that line (`none` / `headings`
-  / `all` at rest — hover always reveals; `body.gutter-rest-*`,
-  `shared/gutterMarkers.ts`). **Any keystroke hides the hover-revealed
-  markers until the mouse moves** — the gutter never flickers alongside the
-  caret (`body.gutter-quiet`, `webview/plugins/headingFold.ts`); at-rest
-  markers are ambient chrome and exempt, whichever mode made them resident.
+  outline); every other block's handle appears on hovering the block or its
+  gutter at low contrast and brightens on direct hover/focus. The
+  `birta.blockHandles` setting moves that line (`hover` / `headings`
+  / `always` at rest — hover always reveals; `body.handles-rest-*`,
+  `shared/blockHandles.ts`). **Any keystroke hides the hover-revealed
+  handles until the mouse moves** — the gutter never flickers alongside the
+  caret (`body.handles-quiet`, `webview/plugins/headingFold.ts`); at-rest
+  handles are ambient chrome and exempt, whichever mode made them resident.
 - **"Selected" and "moving" are different states with different treatments.**
   A block-range selection paints the **tint** — the editor's own selection
   color, whole-block, with the native text highlight suppressed so nothing

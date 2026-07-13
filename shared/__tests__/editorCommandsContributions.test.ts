@@ -17,7 +17,7 @@ import {
     EDITOR_COMMAND_PREFIX,
     editorCommandName,
     TOOLBAR_MENU_COMMANDS,
-    SETTINGS_TITLE_TEMPLATE,
+    settingsMenuTitle,
 } from "../editorCommands";
 
 const root = path.resolve(__dirname, "../..");
@@ -80,11 +80,13 @@ describe("editor command contributions", () => {
         }
     });
 
-    it("the settings entry title should match the shared template (gear menu renders the same rows)", () => {
-        // The product name lives in the gear menu's group header, so the row
-        // title is the bare template. Table, nls, and template must agree or
-        // the two menus diverge on a rename.
-        const expected = SETTINGS_TITLE_TEMPLATE.replace("{product}", pkg.displayName);
+    it("the settings entry title should be the template expansion of the display name", () => {
+        // The gear menu has no group header: the settings row itself names
+        // the product. The webview interpolates the RUNTIME product name via
+        // settingsMenuTitle(); table and nls carry the package.json
+        // displayName expansion, so all three must agree or the surfaces
+        // diverge on a rename.
+        const expected = settingsMenuTitle(pkg.displayName);
         const meta = EDITOR_COMMANDS.find((m) => m.id === "openExtensionSettings");
         expect(meta?.title).toBe(expected);
         expect(nls["command.editor.openExtensionSettings.title"]).toBe(expected);
@@ -92,16 +94,35 @@ describe("editor command contributions", () => {
 
     it("the native toolbar context menu order should match the shared table order", () => {
         // The gear dropdown is built straight from TOOLBAR_MENU_COMMANDS; the
-        // native right-click menu orders by the `1_toolbar@N` group suffix.
-        // Sorting the contributed items by that suffix must reproduce the
-        // table order, so the two menus list the same items in the same order.
+        // native right-click menu orders by group name, then by the `@N`
+        // suffix within a group (numbering restarts per group). Sorting the
+        // contributed items the same way must reproduce the table order, so
+        // the two menus list the same items in the same order.
         const contributed = webviewContext
             .filter((c) => c.when?.includes("webviewSection == 'toolbar'"))
-            .sort((a, b) =>
-                Number(a.group?.split("@")[1] ?? 0) - Number(b.group?.split("@")[1] ?? 0));
+            .sort((a, b) => (a.group ?? "").localeCompare(b.group ?? ""));
         expect(contributed.map((c) => c.command)).toEqual(
             TOOLBAR_MENU_COMMANDS.map((m) => editorCommandName(m.id)),
         );
+    });
+
+    it("toolbar entries should declare a menuGroup mirrored by the contributed group prefix", () => {
+        // Separator parity: the gear menu draws a separator on every
+        // menuGroup change; the native menu draws one between distinct
+        // package.json groups. Each toolbar entry must declare a menuGroup,
+        // and the contributed item's group must be `<n>_<menuGroup>@<m>`, or
+        // the two surfaces disagree about where the dividers fall.
+        for (const meta of TOOLBAR_MENU_COMMANDS) {
+            expect(meta.menuGroup, `missing menuGroup on ${meta.id}`).toBeDefined();
+            const entry = webviewContext.find(
+                (c) =>
+                    c.command === editorCommandName(meta.id) &&
+                    c.when?.includes("webviewSection == 'toolbar'"),
+            );
+            expect(entry?.group, `group for ${meta.id}`).toMatch(
+                new RegExp(`^\\d+_${meta.menuGroup}@\\d+$`),
+            );
+        }
     });
 
     it("every webview/context item should belong to a table entry that declares that section", () => {

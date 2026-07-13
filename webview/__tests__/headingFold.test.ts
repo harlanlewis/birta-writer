@@ -201,11 +201,10 @@ describe("heading gutter level menu", () => {
             "Duplicate", "Copy as Markdown", "Copy Link",
             "Move Section Up", "Move Section Down",
             "Fold All", "Unfold All", "Delete",
-            "None", "Headings", "All", // the trailing gutter-markers preference trio
         ]);
-        // Three labeled sections frame the rows (slash-menu group idiom).
+        // Two labeled sections frame the rows (slash-menu group idiom).
         expect(Array.from(menu!.querySelectorAll(".block-menu-header")).map((h) => h.textContent))
-            .toEqual(["Turn into", "Actions", "Gutter markers"]);
+            .toEqual(["Turn into", "Actions"]);
         const active = menu!.querySelector(".block-menu-item--active");
         expect(active!.querySelector(".block-menu-item-label")!.textContent).toBe("Heading 2");
         expect(active!.getAttribute("aria-checked")).toBe("true");

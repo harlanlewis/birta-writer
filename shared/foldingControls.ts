@@ -30,7 +30,7 @@ export function normalizeFoldingControlsMode(value: unknown): FoldingControlsMod
 /**
  * The `<body>` class each mode maps to. The default ("mouseover") is the
  * unclassed state — the stylesheet's baseline hover-reveal — so only the two
- * overriding modes carry a class (the gutterMarkers body-class shape).
+ * overriding modes carry a class (the blockHandles body-class shape).
  */
 export const FOLDING_CONTROLS_BODY_CLASSES: Readonly<Record<FoldingControlsMode, string | null>> = {
     mouseover: null,

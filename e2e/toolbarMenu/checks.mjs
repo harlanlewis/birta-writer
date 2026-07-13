@@ -79,55 +79,109 @@ export async function run({ page, check, baseUrl }) {
     );
     check("--tb-menu-gap published to CSS from MENU_GAP", cssVar === "6px", `value="${cssVar}"`);
 
-    // ── 5. Typography menu: the gutter-markers segmented control ──
-    // A captioned None/Headings/All radio row under the width segments; picks
-    // apply the gutter-rest-* body class immediately (menu stays open) and
-    // post setGutterMarkers for the settings round-trip.
+    // ── 5. Typography menu: the block-handles radio rows ──
+    // A captioned Always show/Headings and hover/Hover only radio trio under
+    // the width segments; picks apply the handles-rest-* body class
+    // immediately (menu stays open) and post setBlockHandles for the
+    // settings round-trip.
     const fontBtn = '[data-item-id="fontPreset"] .tb-fmt-btn';
     const fontMenu = '[data-item-id="fontPreset"] .tb-font-menu';
-    const gutterSeg = '.tb-seg-row[aria-label="Gutter markers shown at rest"] .tb-seg-btn';
+    const handleRowLabels = ["Always show", "Headings and hover", "Hover only"];
     const fontOverflowed = await page.$eval(fontBtn, (el) => !!el.closest(".tb-more-menu"));
     check("font menu renders on the bar (not overflowed)", !fontOverflowed);
     await page.hover(fontBtn);
     await page.waitForTimeout(30);
     check("hovering the A button opens the typography menu", (await disp(fontMenu)) === "flex");
     const caption = await page.$eval(`${fontMenu} .tb-seg-caption`, (el) => el.textContent).catch(() => null);
-    check("the gutter segments carry their caption", caption === "Gutter markers", `caption=${caption}`);
-    const segState = () =>
-        page.$$eval(gutterSeg, (els) =>
-            els.map((el) => ({ label: el.textContent, on: el.getAttribute("aria-checked") === "true" })));
-    const atRest = await segState();
-    check("three segments in display order with Headings (default) active",
+    check("the handle rows carry their caption", caption === "Show Block Handles", `caption=${caption}`);
+    const rowState = () =>
+        page.$$eval(`${fontMenu} [role="menuitemradio"]`, (els, labels) =>
+            els.filter((el) => labels.includes(el.querySelector(".tb-check-label")?.textContent))
+                .map((el) => ({
+                    label: el.querySelector(".tb-check-label")?.textContent,
+                    on: el.getAttribute("aria-checked") === "true",
+                })), handleRowLabels);
+    const atRest = await rowState();
+    check("three radio rows in display order with Headings and hover (default) active",
         JSON.stringify(atRest) === JSON.stringify([
-            { label: "None", on: false }, { label: "Headings", on: true }, { label: "All", on: false },
+            { label: "Always show", on: false },
+            { label: "Headings and hover", on: true },
+            { label: "Hover only", on: false },
         ]), JSON.stringify(atRest));
-    // Pick None: body class flips, the segment lights, the menu stays open.
-    const noneBox = await page.$eval(gutterSeg, (el) => {
-        const r = el.getBoundingClientRect();
-        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    });
-    await page.mouse.move(noneBox.x, noneBox.y);
+    // Pick Hover only: body class flips, the row checks, the menu stays open.
+    const rowBox = (label) =>
+        page.$$eval(`${fontMenu} [role="menuitemradio"]`, (els, wanted) => {
+            const el = els.find((e) => e.querySelector(".tb-check-label")?.textContent === wanted);
+            const r = el.getBoundingClientRect();
+            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        }, label);
+    const hoverBox = await rowBox("Hover only");
+    await page.mouse.move(hoverBox.x, hoverBox.y);
     await page.mouse.down();
     await page.mouse.up();
     await page.waitForTimeout(30);
-    check("picking None applies the gutter-rest-none body class",
-        await page.evaluate(() => document.body.classList.contains("gutter-rest-none")));
-    check("picking None marks its segment active", (await segState())[0].on === true);
-    check("the menu stays open after a segment pick", (await disp(fontMenu)) === "flex");
-    const postedGutter = await page.evaluate(() =>
-        window.__posted.filter((m) => m.type === "setGutterMarkers").map((m) => m.mode));
-    check("the pick posts setGutterMarkers for the settings round-trip",
-        JSON.stringify(postedGutter) === JSON.stringify(["none"]), JSON.stringify(postedGutter));
+    check("picking Hover only applies the handles-rest-hover body class",
+        await page.evaluate(() => document.body.classList.contains("handles-rest-hover")));
+    check("picking Hover only checks its row", (await rowState())[2].on === true);
+    check("the menu stays open after a handle-row pick", (await disp(fontMenu)) === "flex");
+    const postedHandles = await page.evaluate(() =>
+        window.__posted.filter((m) => m.type === "setBlockHandles").map((m) => m.mode));
+    check("the pick posts setBlockHandles for the settings round-trip",
+        JSON.stringify(postedHandles) === JSON.stringify(["hover"]), JSON.stringify(postedHandles));
+    // Always show is the third state: its own body class, replacing hover's.
+    const alwaysBox = await rowBox("Always show");
+    await page.mouse.move(alwaysBox.x, alwaysBox.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(30);
+    check("picking Always show swaps in the handles-rest-always body class",
+        await page.evaluate(() => document.body.classList.contains("handles-rest-always")
+            && !document.body.classList.contains("handles-rest-hover")));
     // Restore the default for any checks that follow.
-    const headingsBox = await page.$$eval(gutterSeg, (els) => {
-        const r = els[1].getBoundingClientRect();
-        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    });
+    const headingsBox = await rowBox("Headings and hover");
     await page.mouse.move(headingsBox.x, headingsBox.y);
     await page.mouse.down();
     await page.mouse.up();
     await page.waitForTimeout(30);
-    check("picking Headings clears the override body class",
-        await page.evaluate(() => !document.body.classList.contains("gutter-rest-none")
-            && !document.body.classList.contains("gutter-rest-all")));
+    check("picking Headings and hover clears the override body class",
+        await page.evaluate(() => !document.body.classList.contains("handles-rest-hover")
+            && !document.body.classList.contains("handles-rest-always")));
+    // Leave the menu before the gear checks below.
+    await page.mouse.move(500, 800, { steps: 5 });
+    await page.waitForTimeout(30);
+
+    // ── 6. Settings gear menu: five rows, two group separators, no header ──
+    // The menu mirrors TOOLBAR_MENU_COMMANDS (layout | shortcuts | settings
+    // groups); the old .tb-fmt-header title row is gone.
+    const gearBtn = '[data-item-id="settings"] .tb-fmt-btn';
+    const gearMenu = '[data-item-id="settings"] .tb-settings-menu';
+    await page.hover(gearBtn);
+    await page.waitForTimeout(30);
+    check("hovering the gear opens the settings menu", (await disp(gearMenu)) === "flex");
+    const gearShape = await page.$eval(gearMenu, (menu) => ({
+        header: !!menu.querySelector(".tb-fmt-header"),
+        // Child sequence: row/sep kinds in DOM order.
+        kinds: [...menu.children].map((el) =>
+            el.classList.contains("tb-menu-sep") ? "sep"
+                : el.classList.contains("tb-fmt-item") ? "item" : el.className),
+        labels: [...menu.querySelectorAll(".tb-fmt-item")].map((el) => el.textContent),
+        sepRoles: [...menu.querySelectorAll(".tb-menu-sep")]
+            .map((el) => el.getAttribute("role")),
+    }));
+    check("gear menu has no .tb-fmt-header title row", !gearShape.header);
+    check("gear menu rows: Customize / Hide / Show Shortcuts / Edit Shortcuts / Settings",
+        JSON.stringify(gearShape.labels) === JSON.stringify([
+            "Customize Toolbar",
+            "Hide Toolbar",
+            "Show Keyboard Shortcuts",
+            "Edit Keyboard Shortcuts",
+            "Birta Writer Settings",
+        ]), JSON.stringify(gearShape.labels));
+    check("gear menu groups split by two separators (item,item,sep,item,item,sep,item)",
+        JSON.stringify(gearShape.kinds) ===
+            JSON.stringify(["item", "item", "sep", "item", "item", "sep", "item"]),
+        JSON.stringify(gearShape.kinds));
+    check("gear menu separators carry role=separator",
+        JSON.stringify(gearShape.sepRoles) === JSON.stringify(["separator", "separator"]),
+        JSON.stringify(gearShape.sepRoles));
 }

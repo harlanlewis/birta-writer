@@ -19,8 +19,11 @@ import { mockVscodeApi } from "./setup";
 import {
     blockBoundaryPositions,
     dropTargetFor,
+    registerDropZoneProvider,
     visibleBoundaryPositions,
+    type DropZoneProvider,
 } from "../components/blockMenu/drag";
+import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey } from "../plugins/headingFold";
 
 let editors: Editor[] = [];
@@ -288,6 +291,140 @@ describe("drag session robustness", () => {
         mouse(document, "mousemove", { clientX: 300, clientY: 300, buttons: 0 });
         expect(document.body.classList.contains("block-dragging")).toBe(false);
         expect(m.dataset["dragged"]).toBeUndefined();
+    });
+});
+
+describe("drop-zone providers", () => {
+    function marker(): HTMLButtonElement {
+        return document.querySelector<HTMLButtonElement>(".heading-fold-marker")!;
+    }
+    const mouse = (
+        target: EventTarget,
+        type: string,
+        opts: MouseEventInit,
+    ) => target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...opts }));
+
+    /** A stub zone: pure coordinate math, so jsdom's zero-rect layout is
+     * irrelevant — everything right of x=100 is "inside". */
+    function stubProvider(targetPos: () => number) {
+        return {
+            contains: vi.fn((x: number) => x >= 100),
+            sessionStart: vi.fn(),
+            target: vi.fn(() => ({ pos: targetPos() })),
+            clear: vi.fn(),
+            autoScroll: vi.fn(() => false),
+            sessionEnd: vi.fn(),
+        } satisfies DropZoneProvider;
+    }
+
+    it("a provider containing the pointer should win over document boundaries and commit its pos", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        const v = view(editor);
+        const provider = stubProvider(() => v.state.doc.content.size);
+        const unregister = registerDropZoneProvider(provider);
+        try {
+            const m = marker(); // Alpha's marker
+            mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 200, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 150, clientY: 210, buttons: 1 }); // threshold + inside zone
+            expect(provider.sessionStart).toHaveBeenCalledTimes(1);
+            expect(provider.sessionStart).toHaveBeenCalledWith(v, { from: 0, to: 7 }, "block");
+            expect(provider.target).toHaveBeenCalledWith(150, 210, { from: 0, to: 7 });
+            mouse(document, "mouseup", { button: 0, buttons: 0 });
+            expect(markdown(editor)).toBe("Beta\n\nGamma\n\nAlpha");
+            expect(provider.sessionEnd).toHaveBeenCalledTimes(1);
+            expect(provider.clear).toHaveBeenCalled();
+        } finally {
+            unregister();
+        }
+    });
+
+    it("a provider commit on a multi-block drag should keep the run selected (selectRun)", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        const v = view(editor);
+        const { TextSelection } = await import("@milkdown/prose/state");
+        let betaPos = -1;
+        v.state.doc.forEach((n, o) => { if (n.textContent === "Beta") betaPos = o; });
+        // A selection spanning Alpha and Beta: the marker adopts the cover.
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 2, betaPos + 3)));
+        const provider = stubProvider(() => v.state.doc.content.size);
+        const unregister = registerDropZoneProvider(provider);
+        try {
+            const m = marker(); // Alpha's marker, inside the covered run
+            mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 200, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 150, clientY: 210, buttons: 1 });
+            mouse(document, "mouseup", { button: 0, buttons: 0 });
+            expect(markdown(editor)).toBe("Gamma\n\nAlpha\n\nBeta");
+            // selectRun: the moved run stays selected as a block range, so
+            // it stays grabbable for another drag.
+            const sel = v.state.selection;
+            expect(sel).toBeInstanceOf(BlockRangeSelection);
+            expect(v.state.doc.resolve(sel.from).nodeAfter?.textContent).toBe("Alpha");
+            expect(sel.to).toBe(v.state.doc.content.size);
+        } finally {
+            unregister();
+        }
+    });
+
+    it("a provider commit should scroll the landed block into view", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        const v = view(editor);
+        window.scrollTo = vi.fn();
+        const provider = stubProvider(() => v.state.doc.content.size);
+        const unregister = registerDropZoneProvider(provider);
+        try {
+            const m = marker(); // Alpha's marker
+            mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 200, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 150, clientY: 210, buttons: 1 });
+            mouse(document, "mouseup", { button: 0, buttons: 0 });
+            expect(markdown(editor)).toBe("Beta\n\nGamma\n\nAlpha");
+            // A drop-zone landing (e.g. a TOC "into" at a section's end) can
+            // be off-screen — the commit must bring it into view.
+            expect(window.scrollTo).toHaveBeenCalled();
+        } finally {
+            unregister();
+        }
+    });
+
+    it("a document-path commit should not scroll the landing", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        window.scrollTo = vi.fn();
+        // jsdom has no layout: stub block rects so the document path measures
+        // real boundaries (Alpha y 0–20, Beta y 100–120, doc end y 120).
+        const [alphaDom, betaDom] = [v.nodeDOM(0), v.nodeDOM(7)] as HTMLElement[];
+        alphaDom!.getBoundingClientRect = () =>
+            ({ left: 0, top: 0, right: 200, bottom: 20, width: 200, height: 20, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+        betaDom!.getBoundingClientRect = () =>
+            ({ left: 0, top: 100, right: 200, bottom: 120, width: 200, height: 20, x: 0, y: 100, toJSON: () => ({}) }) as DOMRect;
+
+        const m = marker(); // Alpha's marker
+        mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 5, buttons: 1 });
+        // Pointer near the doc-end boundary (y 120) — a plain document drop.
+        mouse(document, "mousemove", { clientX: 12, clientY: 119, buttons: 1 });
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+
+        expect(markdown(editor)).toBe("Beta\n\nAlpha");
+        // The document drop lands where the pointer already is — no scroll.
+        expect(window.scrollTo).not.toHaveBeenCalled();
+    });
+
+    it("the unregister function should remove the provider from future sessions", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        view(editor);
+        const before = markdown(editor);
+        const provider = stubProvider(() => 0);
+        registerDropZoneProvider(provider)(); // register, then immediately unregister
+        const m = marker();
+        mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 200, buttons: 1 });
+        mouse(document, "mousemove", { clientX: 150, clientY: 210, buttons: 1 });
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+        expect(provider.contains).not.toHaveBeenCalled();
+        expect(provider.sessionStart).not.toHaveBeenCalled();
+        expect(provider.target).not.toHaveBeenCalled();
+        expect(provider.sessionEnd).not.toHaveBeenCalled();
+        // jsdom has no layout, so the document path measures no boundaries —
+        // the drop is a no-op rather than a provider commit.
+        expect(markdown(editor)).toBe(before);
     });
 });
 

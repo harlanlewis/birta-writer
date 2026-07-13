@@ -17,7 +17,7 @@ import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConf
 import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
-import { normalizeGutterMarkersMode, gutterMarkersBodyClass, DEFAULT_GUTTER_MARKERS_MODE } from "../shared/gutterMarkers";
+import { normalizeBlockHandlesMode, blockHandlesBodyClass, blockHandlesModeFromLegacy, LEGACY_GUTTER_MARKERS_KEY, DEFAULT_BLOCK_HANDLES_MODE, type BlockHandlesMode } from "../shared/blockHandles";
 import { normalizeFoldingControlsMode, foldingBodyClasses, DEFAULT_FOLDING_CONTROLS_MODE, type FoldingControlsMode } from "../shared/foldingControls";
 
 /**
@@ -568,10 +568,10 @@ export class MarkdownEditorProvider
                     case "setContentWidth":
                         MarkdownEditorProvider.setContentWidth(message.mode);
                         break;
-                    case "setGutterMarkers":
+                    case "setBlockHandles":
                         MarkdownEditorProvider.updateSettingRespectingScope(
-                            "gutterMarkers",
-                            normalizeGutterMarkersMode(message.mode),
+                            "blockHandles",
+                            normalizeBlockHandlesMode(message.mode),
                         );
                         break;
                     case "setToolbarLayout":
@@ -1001,7 +1001,7 @@ export class MarkdownEditorProvider
         const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
         const frontmatterExpanded = cfg.get<boolean>("frontmatterExpanded", true);
-        const gutterMarkers = normalizeGutterMarkersMode(cfg.get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE));
+        const blockHandles = MarkdownEditorProvider._resolveBlockHandlesMode(cfg);
         const folding = this._getFoldingConfig(document.uri);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
         const toolbar = MarkdownEditorProvider.getToolbarConfig();
@@ -1016,7 +1016,7 @@ export class MarkdownEditorProvider
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
             tocRight ? "toc-right" : "",
-            gutterMarkersBodyClass(gutterMarkers) ?? "",
+            blockHandlesBodyClass(blockHandles) ?? "",
             ...foldingBodyClasses(folding.controls, folding.enabled),
         ].filter(Boolean).join(" ");
 
@@ -1044,6 +1044,27 @@ export class MarkdownEditorProvider
 	  ${customJsUris.map(uri => `<script type="module" nonce="${nonce}" src="${uri}"></script>`).join("\n  ")}
 	</body>
 	</html>`;
+    }
+
+    /**
+     * The effective `blockHandles` mode, honoring the pre-rename
+     * `gutterMarkers` key: when `blockHandles` was never set in any scope but
+     * the legacy key was, its value is mapped (`none` → `hover`,
+     * `all` → `always`) so existing users keep their choice. Read-side only —
+     * the legacy value is never written back.
+     */
+    private static _resolveBlockHandlesMode(cfg: vscode.WorkspaceConfiguration): BlockHandlesMode {
+        const isSet = (info?: { globalValue?: unknown; workspaceValue?: unknown; workspaceFolderValue?: unknown }): boolean =>
+            info?.globalValue !== undefined
+            || info?.workspaceValue !== undefined
+            || info?.workspaceFolderValue !== undefined;
+        if (!isSet(cfg.inspect("blockHandles")) && isSet(cfg.inspect(LEGACY_GUTTER_MARKERS_KEY))) {
+            const migrated = blockHandlesModeFromLegacy(cfg.get<string>(LEGACY_GUTTER_MARKERS_KEY));
+            if (migrated) {
+                return migrated;
+            }
+        }
+        return normalizeBlockHandlesMode(cfg.get<string>("blockHandles", DEFAULT_BLOCK_HANDLES_MODE));
     }
 
     /**

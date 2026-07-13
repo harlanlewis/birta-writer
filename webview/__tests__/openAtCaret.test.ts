@@ -86,7 +86,7 @@ describe("openBlockMenuAtCaret", () => {
         const editor = await makeEditor("Alpha paragraph");
         const v = view(editor);
         setCaret(v, 2);
-        document.body.classList.add("gutter-quiet"); // mid-typing state
+        document.body.classList.add("handles-quiet"); // mid-typing state
 
         // Act
         const opened = openBlockMenuAtCaret(v);
@@ -98,7 +98,7 @@ describe("openBlockMenuAtCaret", () => {
         expect(menu()).not.toBeNull();
         expect(document.activeElement).toBe(menu()!.querySelector(".block-menu-search"));
         expect(openMarker()!.dataset["pill"]).toBe("Paragraph");
-        expect(document.body.classList.contains("gutter-quiet")).toBe(true);
+        expect(document.body.classList.contains("handles-quiet")).toBe(true);
     });
 
     it("a caret on a heading line should anchor the menu to the heading's own badge", async () => {

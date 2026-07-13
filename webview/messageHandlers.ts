@@ -12,7 +12,7 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
-import { applyGutterMarkers } from "./utils/gutterMarkers";
+import { applyBlockHandles } from "./utils/blockHandles";
 import { applyFoldingControls } from "./utils/foldingControls";
 import { foldPluginKey, type FoldMeta } from "./plugins/foldState";
 import { setImageUriMap } from "./components/imageView";
@@ -77,8 +77,8 @@ export interface ToolbarController {
     setFontSize(size: number): void;
     /** Update the typography menu's content-width segmented control (and cache the fixed width). */
     setContentWidth(mode: import("../shared/contentWidth").ContentWidthMode, fixedCss?: string): void;
-    /** Update the typography menu's gutter-markers segmented control. */
-    setGutterMarkers(mode: import("../shared/gutterMarkers").GutterMarkersMode): void;
+    /** Update the typography menu's block-handles radio rows. */
+    setBlockHandles(mode: import("../shared/blockHandles").BlockHandlesMode): void;
 }
 
 /** Editor state-management interface. */
@@ -241,9 +241,9 @@ export function createMessageHandlers(
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
         },
-        setGutterMarkers(msg) {
-            applyGutterMarkers(msg.mode);
-            topbarTb?.setGutterMarkers(msg.mode);
+        setBlockHandles(msg) {
+            applyBlockHandles(msg.mode);
+            topbarTb?.setBlockHandles(msg.mode);
         },
         setFoldingControls(msg) {
             // Chevron residency is pure CSS (body classes); the enabled flag

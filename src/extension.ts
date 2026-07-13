@@ -2,34 +2,35 @@ import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import type { TableWrapMode, FontPreset } from "../shared/messages";
 import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
-import { normalizeGutterMarkersMode, DEFAULT_GUTTER_MARKERS_MODE, type GutterMarkersMode } from "../shared/gutterMarkers";
+import { normalizeBlockHandlesMode, DEFAULT_BLOCK_HANDLES_MODE, BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../shared/blockHandles";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
 /**
- * "Gutter Markers" in the command palette: a QuickPick of the three resting
+ * "Block Handles" in the command palette: a QuickPick of the three resting
  * modes with the current one annotated AND preselected — createQuickPick, not
  * showQuickPick, because only it can set activeItems, and without that Enter
  * straight after opening would silently switch a `headings` user to the first
- * row (the gotoSymbol picker's idiom). Picking persists the `gutterMarkers`
+ * row (the gotoSymbol picker's idiom). Picking persists the `blockHandles`
  * setting (respecting the winning scope); the config-change listener in
  * activate() then broadcasts it to every open editor. Exported for unit
  * testing.
  */
-export async function promptGutterMarkersMode(): Promise<void> {
-    const current = normalizeGutterMarkersMode(
+export async function promptBlockHandlesMode(): Promise<void> {
+    const current = normalizeBlockHandlesMode(
         vscode.workspace
             .getConfiguration("birta")
-            .get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE),
+            .get<string>("blockHandles", DEFAULT_BLOCK_HANDLES_MODE),
     );
-    type ModeItem = vscode.QuickPickItem & { mode: GutterMarkersMode };
-    // Fewest → most markers, the shared display order of the typography-menu
-    // segments and the block menu's radio trio.
-    const base: ModeItem[] = [
-        { mode: "none", label: "None", description: vscode.l10n.t("No grabbers at rest — everything appears on hover") },
-        { mode: "headings", label: "Headings", description: vscode.l10n.t("Heading badges stay visible; other grabbers appear on hover (default)") },
-        { mode: "all", label: "All", description: vscode.l10n.t("Every block's grabber stays visible") },
-    ];
+    type ModeItem = vscode.QuickPickItem & { mode: BlockHandlesMode };
+    // Most → least visible, the shared display order of the typography menu's
+    // radio rows.
+    const rows: Record<BlockHandlesMode, { label: string; description: string }> = {
+        always: { label: "Always show", description: vscode.l10n.t("Every block's handle stays visible") },
+        headings: { label: "Headings and hover", description: vscode.l10n.t("Heading badges stay visible; other handles appear on hover (default)") },
+        hover: { label: "Hover only", description: vscode.l10n.t("Handles appear only on hover") },
+    };
+    const base: ModeItem[] = BLOCK_HANDLES_DISPLAY_ORDER.map((mode) => ({ mode, ...rows[mode] }));
     const items = base.map((item) => ({
         ...item,
         // The palette idiom for "where you are now" (VS Code's own theme /
@@ -37,8 +38,8 @@ export async function promptGutterMarkersMode(): Promise<void> {
         ...(item.mode === current && { description: `${item.description} — ${vscode.l10n.t("current")}` }),
     }));
     const quickPick = vscode.window.createQuickPick<ModeItem>();
-    quickPick.title = vscode.l10n.t("Gutter Markers");
-    quickPick.placeholder = vscode.l10n.t("Grabbers shown at rest (hovering a block always reveals its grabber)");
+    quickPick.title = vscode.l10n.t("Block Handles");
+    quickPick.placeholder = vscode.l10n.t("Handles shown at rest (hovering a block always reveals its handle)");
     quickPick.items = items;
     quickPick.activeItems = items.filter((item) => item.mode === current);
     const picked = await new Promise<ModeItem | undefined>((resolve) => {
@@ -55,7 +56,7 @@ export async function promptGutterMarkersMode(): Promise<void> {
         quickPick.show();
     });
     if (picked && picked.mode !== current) {
-        MarkdownEditorProvider.updateSettingRespectingScope("gutterMarkers", picked.mode);
+        MarkdownEditorProvider.updateSettingRespectingScope("blockHandles", picked.mode);
     }
 }
 
@@ -244,12 +245,12 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
-    // Command-palette picker for the resting gutter-marker mode; the
+    // Command-palette picker for the resting block-handles mode; the
     // config-change listener below broadcasts the result to every open editor.
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "birta.selectGutterMarkers",
-            promptGutterMarkersMode,
+            "birta.selectBlockHandles",
+            promptBlockHandlesMode,
         ),
     );
 
@@ -336,13 +337,13 @@ export function activate(context: vscode.ExtensionContext) {
                     .get<string>("tocPosition", "right") === "left" ? "left" : "right";
                 MarkdownEditorProvider.current?.postToAll({ type: "setTocPosition", position });
             }
-            if (e.affectsConfiguration("birta.gutterMarkers")) {
-                const mode = normalizeGutterMarkersMode(
+            if (e.affectsConfiguration("birta.blockHandles")) {
+                const mode = normalizeBlockHandlesMode(
                     vscode.workspace
                         .getConfiguration("birta")
-                        .get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE),
+                        .get<string>("blockHandles", DEFAULT_BLOCK_HANDLES_MODE),
                 );
-                MarkdownEditorProvider.current?.postToAll({ type: "setGutterMarkers", mode });
+                MarkdownEditorProvider.current?.postToAll({ type: "setBlockHandles", mode });
             }
             if (e.affectsConfiguration("editor.showFoldingControls")
                 || e.affectsConfiguration("editor.folding")) {

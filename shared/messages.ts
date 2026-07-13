@@ -6,7 +6,7 @@
 
 import type { EditorCommandId } from "./editorCommands";
 import type { ContentWidthMode } from "./contentWidth";
-import type { GutterMarkersMode } from "./gutterMarkers";
+import type { BlockHandlesMode } from "./blockHandles";
 import type { FoldingControlsMode } from "./foldingControls";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
@@ -201,11 +201,10 @@ export type ToExtensionMessage =
     // menu; the extension persists it to the `contentWidth` setting, which
     // round-trips back as a `setContentWidth` message.
     | { type: "setContentWidth"; mode: ContentWidthMode }
-    // Resting gutter-marker pick from the typography menu's segments or the
-    // block menu's radio section; the extension persists it to the
-    // `gutterMarkers` setting, which round-trips back as a `setGutterMarkers`
-    // message to every open editor.
-    | { type: "setGutterMarkers"; mode: GutterMarkersMode }
+    // Resting block-handle pick from the typography menu's radio rows; the
+    // extension persists it to the `blockHandles` setting, which round-trips
+    // back as a `setBlockHandles` message to every open editor.
+    | { type: "setBlockHandles"; mode: BlockHandlesMode }
     // Drag-and-drop layout change from customize mode. `item` is set only when
     // the dragged item changed placement (zone, or shown/hidden via the tray);
     // `order` is the left-to-right order of the visible items.
@@ -274,8 +273,8 @@ export type ToWebviewMessage =
     | { type: "setContentWidth"; cssValue: string; isAuto: boolean; mode: ContentWidthMode }
     // Live TOC dock-side update (left/right), echoed after `tocPosition` changes.
     | { type: "setTocPosition"; position: TocPosition }
-    // Live resting gutter-marker visibility update, after `gutterMarkers` changes.
-    | { type: "setGutterMarkers"; mode: GutterMarkersMode }
+    // Live resting block-handle visibility update, after `blockHandles` changes.
+    | { type: "setBlockHandles"; mode: BlockHandlesMode }
     // Live fold-affordance update after `editor.showFoldingControls` /
     // `editor.folding` changes. Resource-scoped: the extension re-resolves
     // per open document and posts per-webview (never one global broadcast).

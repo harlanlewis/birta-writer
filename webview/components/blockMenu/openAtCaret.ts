@@ -10,7 +10,7 @@
  * marker, otherwise the top-level block — then opens the menu anchored to
  * that marker, in keyboard mode (Escape returns focus to the marker).
  *
- * This never touches the gutter-quiet reveal state: markers are hidden via
+ * This never touches the handles-quiet reveal state: markers are hidden via
  * opacity only (geometry intact, so the menu positions off the anchor rect
  * regardless), and openBlockMenu's --menu-open class is excluded from every
  * hide rule — the anchor surfaces on its own without flashing the rest of

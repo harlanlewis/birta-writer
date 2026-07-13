@@ -2,7 +2,7 @@
     "name": "birta-writer",
     "displayName": "Birta Writer",
     "description": "Birta Writer: a WYSIWYG Markdown editor for VS Code with live table editing",
-    "version": "0.2.161",
+    "version": "0.2.164",
     "publisher": "harlanlewis",
     "author": {
         "name": "Harlan Lewis",
@@ -84,8 +84,8 @@
                 "category": "Birta Writer"
             },
             {
-                "command": "birta.selectGutterMarkers",
-                "title": "%command.selectGutterMarkers.title%",
+                "command": "birta.selectBlockHandles",
+                "title": "%command.selectBlockHandles.title%",
                 "category": "Birta Writer"
             },
             {
@@ -1122,27 +1122,27 @@
                 {
                     "command": "birta.editor.customizeToolbar",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@1"
+                    "group": "1_layout@1"
                 },
                 {
                     "command": "birta.editor.hideToolbar",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@2"
+                    "group": "1_layout@2"
                 },
                 {
                     "command": "birta.editor.openShortcutsHelp",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@3"
+                    "group": "2_shortcuts@1"
                 },
                 {
                     "command": "birta.editor.openKeyboardShortcuts",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@4"
+                    "group": "2_shortcuts@2"
                 },
                 {
                     "command": "birta.editor.openExtensionSettings",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@5"
+                    "group": "3_settings@1"
                 },
                 {
                     "command": "birta.editor.showToolbar",
@@ -1321,21 +1321,21 @@
                         "%config.tableWrap.aggressive%"
                     ]
                 },
-                "birta.gutterMarkers": {
+                "birta.blockHandles": {
                     "order": 11,
                     "type": "string",
                     "enum": [
                         "headings",
-                        "none",
-                        "all"
+                        "always",
+                        "hover"
                     ],
                     "enumDescriptions": [
-                        "%config.gutterMarkers.headings%",
-                        "%config.gutterMarkers.none%",
-                        "%config.gutterMarkers.all%"
+                        "%config.blockHandles.headings%",
+                        "%config.blockHandles.always%",
+                        "%config.blockHandles.hover%"
                     ],
                     "default": "headings",
-                    "description": "%config.gutterMarkers.description%"
+                    "description": "%config.blockHandles.description%"
                 },
                 "birta.defaultMode": {
                     "order": 1,

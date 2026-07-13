@@ -3,7 +3,12 @@ import { Plugin, TextSelection } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
-import { findHeadingFoldRange, headingFoldPluginKey, type HeadingFoldMeta } from "./headingFold";
+import {
+    findHeadingFoldRange,
+    headingFoldPluginKey,
+    wireMarkerButtonProtocol,
+    type HeadingFoldMeta,
+} from "./headingFold";
 import { t } from "../i18n";
 import {
     getTopbarBottom,
@@ -34,7 +39,8 @@ function dispatchStickyActiveChange(headingPos: number | null): void {
     );
 }
 
-function setStickyContent(
+/** Exported for tests: the sticky's DOM contract (gutter, handle, label). */
+export function setStickyContent(
     sticky: HTMLElement,
     view: EditorView,
     heading: HTMLElement,
@@ -98,10 +104,27 @@ function setStickyContent(
         gutter.appendChild(button);
     }
 
-    const marker = document.createElement("span");
+    // A real block handle, not a display-only badge: the shared marker-button
+    // protocol (wireMarkerButtonProtocol — the same wiring as the in-flow
+    // gutter handles) opens the same block menu for the real heading.
+    // `draggable: false` encodes the sticky's fixed-mirror property: it is
+    // deliberately not a grabbable block. The position callback applies the
+    // same live-pos rule as the fold toggle above: the captured pos goes
+    // stale when content above shifts; data-heading-pos is refreshed on
+    // every state update.
+    const marker = document.createElement("button");
+    marker.type = "button";
     marker.className = "heading-sticky-marker";
-    // Literal Markdown hashes, matching the in-document gutter (headingFold).
-    marker.textContent = `H${Math.min(Math.max(level, 1), 6)}`;
+    const clampedLevel = Math.min(Math.max(level, 1), 6);
+    // The heading's level badge, matching the in-document gutter (headingFold).
+    marker.textContent = `H${clampedLevel}`;
+    wireMarkerButtonProtocol(
+        marker,
+        view,
+        `H${clampedLevel}`,
+        () => Number(sticky.dataset["headingPos"] ?? headingPos),
+        { draggable: false },
+    );
     gutter.appendChild(marker);
 
     const label = document.createElement("span");

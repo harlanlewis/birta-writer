@@ -1,7 +1,7 @@
 /**
  * shortcutsHelp component tests: lazy one-time DOM build, section content,
  * platform-correct kbd rendering, escape-layer hygiene on every close path,
- * the Customize Shortcuts messaging call, and focus handoff.
+ * the Edit Keyboard Shortcuts messaging call, and focus handoff.
  *
  * The module keeps singleton state (panel element, visibility, layer
  * handle) and i18n caches `isMac` at module load, so every test imports a
@@ -289,7 +289,7 @@ describe("shortcutsHelp — focus and the customize action", () => {
         expect(document.activeElement).toBe(h.editorDom);
     });
 
-    it("the Customize Shortcuts button should post openKeybindings and close", async () => {
+    it("the Edit Keyboard Shortcuts button should post openKeybindings and close", async () => {
         const h = await loadHarness(true);
         h.openShortcutsHelp();
         clickButton(panel()!.querySelector<HTMLElement>(".shortcuts-help__customize")!);

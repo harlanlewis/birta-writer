@@ -14,9 +14,9 @@
  *     smartSelect, insertParagraph, tab/table keymaps) plus Escape/Tab.
  *     These are hardcoded and un-rebindable (see CLAIMED_SHORTCUTS in
  *     webview/keyboardShortcuts.ts), so a printed key can never lie.
- *   - Everything rebindable is listed by NAME only, with one note and a
- *     "Customize Shortcuts" button that opens the native Keyboard Shortcuts
- *     UI (the one place effective bindings are always accurate).
+ *   - Everything rebindable is listed by NAME only, with one note and an
+ *     "Edit Keyboard Shortcuts" button that opens the native Keyboard
+ *     Shortcuts UI (the one place effective bindings are always accurate).
  *
  * Launch cost is zero: this module is in the eager import graph
  * (webview/index.ts wires it into the command host), so the overlay DOM is
@@ -174,7 +174,9 @@ function buildPanel(): HTMLDivElement {
     // so neither wastes space nor overflows (see --shortcuts-keycol).
     el.classList.toggle("shortcuts-help--mac", isMac);
     el.setAttribute("role", "dialog");
-    el.setAttribute("aria-label", t("Keyboard Shortcuts Help"));
+    // Matches the visible header title below (the retired "… Help" phrasing
+    // came from the command's old name).
+    el.setAttribute("aria-label", t("Keyboard Shortcuts"));
     el.tabIndex = -1;
 
     // Header
@@ -331,7 +333,7 @@ function buildPanel(): HTMLDivElement {
     note.textContent = t("These commands' keys are shown — and customizable — in VS Code's Keyboard Shortcuts.");
     const btnCustomize = createButton({
         className: "shortcuts-help__customize",
-        label: t("Customize Shortcuts"),
+        label: t("Edit Keyboard Shortcuts"),
         onClick: () => {
             close();
             notifyOpenKeybindings();

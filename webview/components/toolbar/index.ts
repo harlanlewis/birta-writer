@@ -33,7 +33,7 @@ import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetGutterMarkers, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
@@ -65,9 +65,9 @@ import {
     clampMaxWidthCh,
     type ContentWidthMode,
 } from "../../../shared/contentWidth";
-import { GUTTER_MARKERS_DISPLAY_ORDER, type GutterMarkersMode } from "../../../shared/gutterMarkers";
-import { applyGutterMarkers, currentGutterMarkersMode } from "../../utils/gutterMarkers";
-import { TOOLBAR_MENU_COMMANDS } from "../../../shared/editorCommands";
+import { BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../../../shared/blockHandles";
+import { applyBlockHandles, currentBlockHandlesMode } from "../../utils/blockHandles";
+import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
 import { openShortcutsHelp } from "../shortcutsHelp";
 import './toolbar.css';
 
@@ -110,6 +110,14 @@ function createMenuTrigger(opts: {
         e.stopPropagation();
     });
     return el;
+}
+
+/** A horizontal menu divider — the shared separator idiom for every dropdown. */
+function makeSep(): HTMLElement {
+    const sep = document.createElement("div");
+    sep.className = "tb-menu-sep";
+    sep.setAttribute("role", "separator");
+    return sep;
 }
 
 /** A selectable/checkable menu row. */
@@ -709,8 +717,8 @@ export function initToolbar(
     setFontSize: (size: number) => void;
     /** Update the typography menu's content-width segmented control (and cache the fixed width). */
     setContentWidth: (mode: ContentWidthMode, fixedCss?: string) => void;
-    /** Update the typography menu's gutter-markers segmented control. */
-    setGutterMarkers: (mode: GutterMarkersMode) => void;
+    /** Update the typography menu's block-handles radio rows. */
+    setBlockHandles: (mode: BlockHandlesMode) => void;
     /** Apply + persist a font preset (slash-menu action; works with the bar hidden). */
     chooseFontPreset: (preset: FontPreset) => void;
     /** Step the content font size up/down (slash-menu action; works with the bar hidden). */
@@ -853,28 +861,26 @@ export function initToolbar(
         notifySetContentWidth(mode);
     }
 
-    // ── Resting gutter-marker state ──
-    // None / Headings / All (the `gutterMarkers` setting), a second segmented
-    // control under the width one. The body class is the single source of
-    // truth (baked in by the provider, kept current by the setGutterMarkers
-    // echo), so there is no cached mode here — segments re-read it.
-    const gutterSegments = new Map<GutterMarkersMode, HTMLButtonElement>();
-    function setGutterMarkersActive(mode: GutterMarkersMode): void {
-        for (const [m, btnEl] of gutterSegments) {
-            const on = m === mode;
-            btnEl.classList.toggle("tb-seg-btn--on", on);
-            btnEl.setAttribute("aria-checked", on ? "true" : "false");
+    // ── Resting block-handles state ──
+    // Always / Headings / Hover (the `blockHandles` setting), radio rows
+    // under the width control. The body class is the single source of truth
+    // (baked in by the provider, kept current by the setBlockHandles echo),
+    // so there is no cached mode here — the rows re-read it.
+    const handleEntries = new Map<BlockHandlesMode, CheckItem>();
+    function setBlockHandlesActive(mode: BlockHandlesMode): void {
+        for (const [m, item] of handleEntries) {
+            item.setChecked(m === mode);
         }
     }
-    function pickGutterMarkers(mode: GutterMarkersMode): void {
-        if (mode === currentGutterMarkersMode()) {
+    function pickBlockHandles(mode: BlockHandlesMode): void {
+        if (mode === currentBlockHandlesMode()) {
             return;
         }
-        setGutterMarkersActive(mode);
+        setBlockHandlesActive(mode);
         // Apply immediately — the menu stays open, so the gutter updates in
         // view; the settings round-trip re-broadcasts to every open editor.
-        applyGutterMarkers(mode);
-        notifySetGutterMarkers(mode);
+        applyBlockHandles(mode);
+        notifySetBlockHandles(mode);
     }
 
     function createFontPicker(): HTMLElement {
@@ -890,13 +896,6 @@ export function initToolbar(
         const fontMenu = document.createElement("div");
         fontMenu.className = "tb-fmt-menu tb-font-menu";
         fontMenu.style.display = "none";
-
-        const makeSep = (): HTMLElement => {
-            const sep = document.createElement("div");
-            sep.className = "tb-menu-sep";
-            sep.setAttribute("role", "separator");
-            return sep;
-        };
 
         // ── Content width: Full Width / Fixed segmented control ──
         // Full Width (default) fills the pane; Fixed caps the content at the
@@ -926,39 +925,41 @@ export function initToolbar(
             widthSegments.set(mode, segBtn);
         }
 
-        // ── Gutter markers: None / Headings / All segmented control ──
-        // Which grabbers stay visible at rest (hover always reveals). A
-        // segmented control like the width row — a 1-of-3 layout mode whose
-        // options should all be visible at a glance — but captioned, because
-        // "None/Headings/All" can't self-describe the way "Full Width/Fixed"
-        // does. Clicks keep the menu open so the gutter visibly updates.
-        const gutterCaption = document.createElement("div");
-        gutterCaption.className = "tb-seg-caption";
-        gutterCaption.textContent = t("Gutter markers");
-        const gutterRow = document.createElement("div");
-        gutterRow.className = "tb-seg-row";
-        gutterRow.setAttribute("role", "radiogroup");
-        gutterRow.setAttribute("aria-label", t("Gutter markers shown at rest"));
-        const gutterLabels: Record<GutterMarkersMode, { label: string; title: string }> = {
-            none: { label: t("None"), title: t("No markers at rest — all appear on hover") },
-            headings: { label: t("Headings"), title: t("Heading badges stay visible; the rest appear on hover") },
-            all: { label: t("All"), title: t("Every block's marker stays visible") },
+        // ── Block handles: Always show / Headings and hover / Hover only ──
+        // Which block handles stay visible at rest (hover always reveals).
+        // Radio rows like the font-family presets below — the labels are too
+        // long for segments — under a caption that names the subject. Clicks
+        // keep the menu open so the gutter visibly updates.
+        const handlesCaption = document.createElement("div");
+        handlesCaption.className = "tb-seg-caption";
+        handlesCaption.id = "tb-block-handles-caption";
+        handlesCaption.textContent = t("Show Block Handles");
+        const handlesLabels: Record<BlockHandlesMode, { label: string; title: string }> = {
+            always: { label: t("Always show"), title: t("Every block's handle stays visible") },
+            headings: { label: t("Headings and hover"), title: t("Heading badges stay visible; the rest appear on hover") },
+            hover: { label: t("Hover only"), title: t("Handles appear only on hover") },
         };
-        for (const mode of GUTTER_MARKERS_DISPLAY_ORDER) {
-            const segBtn = document.createElement("button");
-            segBtn.type = "button";
-            segBtn.className = "tb-seg-btn";
-            segBtn.setAttribute("role", "radio");
-            segBtn.textContent = gutterLabels[mode].label;
-            segBtn.title = gutterLabels[mode].title;
-            segBtn.setAttribute("aria-label", gutterLabels[mode].title);
-            segBtn.addEventListener("mousedown", (e) => {
+        // The trio is one labelled group for assistive tech (the caption is
+        // visual-only otherwise). role="group", not "radiogroup": the rows
+        // are menuitemradio, whose ARIA container inside a menu is a group.
+        // wireHoverMenu's roving rows() matches .tb-fmt-item DESCENDANTS of
+        // the menu, so the extra wrapper is transparent to keyboard nav.
+        const handlesGroup = document.createElement("div");
+        handlesGroup.setAttribute("role", "group");
+        handlesGroup.setAttribute("aria-labelledby", handlesCaption.id);
+        for (const mode of BLOCK_HANDLES_DISPLAY_ORDER) {
+            const item = createCheckItem(handlesLabels[mode].label);
+            // Single-select trio, not independent toggles.
+            item.el.setAttribute("role", "menuitemradio");
+            item.el.title = handlesLabels[mode].title;
+            item.el.setAttribute("aria-label", handlesLabels[mode].title);
+            item.el.addEventListener("mousedown", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                pickGutterMarkers(mode);
+                pickBlockHandles(mode);
             });
-            gutterRow.appendChild(segBtn);
-            gutterSegments.set(mode, segBtn);
+            handlesGroup.appendChild(item.el);
+            handleEntries.set(mode, item);
         }
 
         // ── Size stepper: A− <percent> A+ ──
@@ -1046,15 +1047,15 @@ export function initToolbar(
             notifyOpenSettings("birta.font");
         });
 
-        // Assemble top→bottom: font size, content width + gutter markers
+        // Assemble top→bottom: font size, content width + block handles
         // (the two page-layout controls share a group), the family presets,
         // then Font settings — each group separated by a divider.
         fontMenu.append(
             sizeRow,
             makeSep(),
             widthRow,
-            gutterCaption,
-            gutterRow,
+            handlesCaption,
+            handlesGroup,
             makeSep(),
             ...fontItemEls,
             makeSep(),
@@ -1064,7 +1065,7 @@ export function initToolbar(
         setFontActive(currentFontPreset);
         setFontSizeActive(currentFontSize);
         setContentWidthActive(currentContentWidth);
-        setGutterMarkersActive(currentGutterMarkersMode());
+        setBlockHandlesActive(currentBlockHandlesMode());
 
         // The item handlers above close over closeFontMenu; they only ever run
         // after this wiring (the menu must be open to click a row).
@@ -1404,10 +1405,7 @@ export function initToolbar(
         // Plain code block first — the common case and the dropdown's identity.
         addRow("code", IconTerminal, t("Code Block"), () => runEditorCommand("insertCodeBlock", getEditor));
 
-        const sep = document.createElement("div");
-        sep.className = "tb-menu-sep";
-        sep.setAttribute("role", "separator");
-        codeMenu.appendChild(sep);
+        codeMenu.appendChild(makeSep());
 
         // Language-typed blocks (same insertCodeBlock command, fence language baked in).
         addRow("mermaid", IconNetwork, t("Mermaid Diagram"), () => runEditorCommand("insertCodeBlock", getEditor, "mermaid"));
@@ -1482,10 +1480,7 @@ export function initToolbar(
         // Plain blockquote first — the common case, and the dropdown's identity.
         addRow("blockquote", IconQuote, t("Blockquote"), () => runEditorCommand("toggleBlockquote", getEditor));
 
-        const sep = document.createElement("div");
-        sep.className = "tb-menu-sep";
-        sep.setAttribute("role", "separator");
-        quoteMenu.appendChild(sep);
+        quoteMenu.appendChild(makeSep());
 
         const calloutKinds: [CalloutKind, string][] = [
             ["note", t("Note")],
@@ -1737,9 +1732,7 @@ export function initToolbar(
         const body = document.createElement("div");
         body.className = "tb-checks-body";
         bodyEl = body;
-        const bodySep = document.createElement("div");
-        bodySep.className = "tb-menu-sep";
-        body.appendChild(bodySep);
+        body.appendChild(makeSep());
 
         // Domain masters
         addRow(body, "spellCheck", t("Check spelling"));
@@ -1831,13 +1824,6 @@ export function initToolbar(
         menu.className = "tb-fmt-menu tb-settings-menu";
         menu.style.display = "none";
 
-        // Group header naming the product (the rows themselves stay short —
-        // "Settings", not "<product> Settings").
-        const header = document.createElement("div");
-        header.className = "tb-fmt-header";
-        header.textContent = productName;
-        menu.appendChild(header);
-
         const addEntry = (label: string, onSelect: () => void): void => {
             const entry = document.createElement("div");
             entry.className = "tb-fmt-item";
@@ -1852,24 +1838,35 @@ export function initToolbar(
         };
         // The entries mirror the toolbar right-click menu exactly: both are
         // built from TOOLBAR_MENU_COMMANDS (shared/editorCommands.ts), so ids,
-        // order, and labels can't drift (the contributions test guards the
-        // package.json side). Keyboard Shortcuts opens the native UI filtered
-        // to this extension, where the user's effective (possibly rebound)
-        // bindings are accurate.
+        // order, and labels can't drift, and both draw a separator on every
+        // `menuGroup` change — here via makeSep(), natively via the
+        // 1_layout/2_shortcuts/3_settings group prefixes (the contributions
+        // test guards the package.json side). Edit Keyboard Shortcuts opens
+        // the native UI filtered to this extension, where the user's
+        // effective (possibly rebound) bindings are accurate.
         const menuActions: Record<string, () => void> = {
             customizeToolbar: () => startCustomize(),
             hideToolbar: () => setToolbarVisible(false),
-            // Help (the in-editor cheatsheet overlay) above Customize (the
-            // native UI) — table order in TOOLBAR_MENU_COMMANDS.
+            // Show (the in-editor cheatsheet overlay) above Edit (the native
+            // UI) — table order in TOOLBAR_MENU_COMMANDS.
             openShortcutsHelp: () => openShortcutsHelp(),
             openKeyboardShortcuts: () => notifyOpenKeybindings(),
             openExtensionSettings: () => notifyOpenSettings(),
         };
+        let prevGroup: string | undefined;
         for (const meta of TOOLBAR_MENU_COMMANDS) {
             const action = menuActions[meta.id];
-            if (action) {
-                addEntry(t(meta.title), action);
+            if (!action) { continue; }
+            if (prevGroup !== undefined && meta.menuGroup !== prevGroup) {
+                menu.appendChild(makeSep());
             }
+            prevGroup = meta.menuGroup;
+            // The settings row names the product with the RUNTIME display
+            // name, so a rename never leaves the menu stale.
+            const label = meta.id === "openExtensionSettings"
+                ? settingsMenuTitle(productName)
+                : t(meta.title);
+            addEntry(label, action);
         }
 
         const { close: closeSettingsMenu } = wireHoverMenu(wrapEl, gearBtn, menu);
@@ -2228,8 +2225,8 @@ export function initToolbar(
             if (mode === "fixed" && fixedCss) { fixedWidthCss = fixedCss; }
             setContentWidthActive(mode);
         },
-        setGutterMarkers(mode: GutterMarkersMode): void {
-            setGutterMarkersActive(mode);
+        setBlockHandles(mode: BlockHandlesMode): void {
+            setBlockHandlesActive(mode);
         },
         // Slash-menu action hooks — the same code paths as the menu rows,
         // usable while the bar itself is hidden.

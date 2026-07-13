@@ -150,6 +150,58 @@ describe("TOC header controls (side-switch, hide, reveal)", () => {
     });
 });
 
+describe("TOC docked vs overlay responsive mode", () => {
+    // The default width is 220 (jsdom can't resolve the injected --toc-width
+    // custom property, so readInitialWidth falls back to the 220 default), and
+    // DOCKED_MIN_CONTENT_WIDTH is 720 — so the docked threshold is 940px.
+    const originalInnerWidth = window.innerWidth;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+            cb(0);
+            return 0;
+        });
+        document.body.className = "";
+        document.body.innerHTML = "";
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        (window as unknown as { innerWidth: number }).innerWidth = originalInnerWidth;
+    });
+
+    it("a viewport wide enough for the drawer plus content should dock (fixed-width mode)", () => {
+        // Fixed-width mode = no editor-width-auto body class. This is a pure
+        // viewport measure now, so it holds even with no #editor to measure —
+        // the previous rect-based check returned overlay whenever the editor
+        // wasn't laid out (or wasn't yet clear of the drawer).
+        (window as unknown as { innerWidth: number }).innerWidth = 1200;
+        initToc(fakeEventManager, () => null);
+        expect(document.body.classList.contains("toc-docked")).toBe(true);
+        expect(document.body.classList.contains("toc-overlay")).toBe(false);
+    });
+
+    it("a viewport too narrow for the drawer plus content should fall back to overlay", () => {
+        (window as unknown as { innerWidth: number }).innerWidth = 800;
+        initToc(fakeEventManager, () => null);
+        expect(document.body.classList.contains("toc-overlay")).toBe(true);
+        expect(document.body.classList.contains("toc-docked")).toBe(false);
+    });
+
+    it("the docked/overlay decision is independent of the editor's measured position", () => {
+        // A zero-size stub editor (jsdom reports all-zero rects) must not force
+        // overlay when the viewport clearly has room — the regression the rect
+        // based check caused once fixed-width content recenters beside the drawer.
+        const editor = document.createElement("div");
+        editor.id = "editor";
+        document.body.appendChild(editor);
+        (window as unknown as { innerWidth: number }).innerWidth = 1200;
+        initToc(fakeEventManager, () => null);
+        expect(document.body.classList.contains("toc-docked")).toBe(true);
+    });
+});
+
 describe("TOC panel position vs toolbar visibility", () => {
     function addTopbar(rect: { height: number; bottom: number }): void {
         const topbar = document.createElement("div");

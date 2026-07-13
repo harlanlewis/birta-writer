@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
-import { applyGutterMarkers, currentGutterMarkersMode } from "../utils/gutterMarkers";
+import { applyBlockHandles, currentBlockHandlesMode } from "../utils/blockHandles";
 import { setEditorCommandHost } from "../editorCommands";
 import type { ToWebviewMessage, ToolbarConfig } from "../../shared/messages";
 import { FONT_PRESET_STACKS } from "../../shared/fontPresets";
@@ -145,100 +145,100 @@ describe("requestSwitchToTextEditor handler", () => {
     });
 });
 
-describe("applyGutterMarkers", () => {
+describe("applyBlockHandles", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        document.body.classList.remove("gutter-rest-none", "gutter-rest-all");
+        document.body.classList.remove("handles-rest-hover", "handles-rest-always");
     });
 
-    it("the none mode should add gutter-rest-none only", () => {
-        applyGutterMarkers("none");
-        expect(document.body.classList.contains("gutter-rest-none")).toBe(true);
-        expect(document.body.classList.contains("gutter-rest-all")).toBe(false);
+    it("the hover mode should add handles-rest-hover only", () => {
+        applyBlockHandles("hover");
+        expect(document.body.classList.contains("handles-rest-hover")).toBe(true);
+        expect(document.body.classList.contains("handles-rest-always")).toBe(false);
     });
 
-    it("the all mode should add gutter-rest-all only", () => {
-        applyGutterMarkers("all");
-        expect(document.body.classList.contains("gutter-rest-all")).toBe(true);
-        expect(document.body.classList.contains("gutter-rest-none")).toBe(false);
+    it("the always mode should add handles-rest-always only", () => {
+        applyBlockHandles("always");
+        expect(document.body.classList.contains("handles-rest-always")).toBe(true);
+        expect(document.body.classList.contains("handles-rest-hover")).toBe(false);
     });
 
     it("switching modes should replace the previous class", () => {
-        applyGutterMarkers("none");
-        applyGutterMarkers("all");
-        expect(document.body.classList.contains("gutter-rest-none")).toBe(false);
-        expect(document.body.classList.contains("gutter-rest-all")).toBe(true);
+        applyBlockHandles("hover");
+        applyBlockHandles("always");
+        expect(document.body.classList.contains("handles-rest-hover")).toBe(false);
+        expect(document.body.classList.contains("handles-rest-always")).toBe(true);
     });
 
     it("the headings mode should clear both override classes", () => {
-        applyGutterMarkers("all");
-        applyGutterMarkers("headings");
-        expect(document.body.classList.contains("gutter-rest-none")).toBe(false);
-        expect(document.body.classList.contains("gutter-rest-all")).toBe(false);
+        applyBlockHandles("always");
+        applyBlockHandles("headings");
+        expect(document.body.classList.contains("handles-rest-hover")).toBe(false);
+        expect(document.body.classList.contains("handles-rest-always")).toBe(false);
     });
 
     it("an unknown mode should behave as the default (headings)", () => {
-        applyGutterMarkers("all");
-        applyGutterMarkers("hover" as never);
-        expect(document.body.classList.contains("gutter-rest-none")).toBe(false);
-        expect(document.body.classList.contains("gutter-rest-all")).toBe(false);
+        applyBlockHandles("always");
+        applyBlockHandles("none" as never);
+        expect(document.body.classList.contains("handles-rest-hover")).toBe(false);
+        expect(document.body.classList.contains("handles-rest-always")).toBe(false);
     });
 });
 
-describe("currentGutterMarkersMode", () => {
+describe("currentBlockHandlesMode", () => {
     beforeEach(() => {
-        document.body.classList.remove("gutter-rest-none", "gutter-rest-all");
+        document.body.classList.remove("handles-rest-hover", "handles-rest-always");
     });
 
     it("no body class should read as the default mode", () => {
-        expect(currentGutterMarkersMode()).toBe("headings");
+        expect(currentBlockHandlesMode()).toBe("headings");
     });
 
     it("each applied mode should read back", () => {
-        for (const mode of ["none", "all", "headings"] as const) {
-            applyGutterMarkers(mode);
-            expect(currentGutterMarkersMode()).toBe(mode);
+        for (const mode of ["hover", "always", "headings"] as const) {
+            applyBlockHandles(mode);
+            expect(currentBlockHandlesMode()).toBe(mode);
         }
     });
 });
 
-describe("setGutterMarkers handler", () => {
+describe("setBlockHandles handler", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        document.body.classList.remove("gutter-rest-none", "gutter-rest-all");
+        document.body.classList.remove("handles-rest-hover", "handles-rest-always");
     });
 
-    it("a setGutterMarkers message should apply the mode's body class", () => {
+    it("a setBlockHandles message should apply the mode's body class", () => {
         // Arrange
         const handlers = createMessageHandlers(stubDeps());
 
         // Act
-        handlers.setGutterMarkers?.(
-            { type: "setGutterMarkers", mode: "all" },
+        handlers.setBlockHandles?.(
+            { type: "setBlockHandles", mode: "always" },
             document.createElement("div"),
         );
 
         // Assert
-        expect(document.body.classList.contains("gutter-rest-all")).toBe(true);
+        expect(document.body.classList.contains("handles-rest-always")).toBe(true);
     });
 
-    it("a setGutterMarkers message should sync the toolbar's segmented control", () => {
+    it("a setBlockHandles message should sync the toolbar's radio rows", () => {
         // Arrange
-        const setGutterMarkers = vi.fn();
+        const setBlockHandles = vi.fn();
         const deps = {
             ...stubDeps(),
-            topbarTb: { setGutterMarkers } as unknown as MessageHandlerDeps["topbarTb"],
+            topbarTb: { setBlockHandles } as unknown as MessageHandlerDeps["topbarTb"],
         };
         const handlers = createMessageHandlers(deps);
 
         // Act
-        handlers.setGutterMarkers?.(
-            { type: "setGutterMarkers", mode: "none" },
+        handlers.setBlockHandles?.(
+            { type: "setBlockHandles", mode: "hover" },
             document.createElement("div"),
         );
 
         // Assert
-        expect(setGutterMarkers).toHaveBeenCalledWith("none");
+        expect(setBlockHandles).toHaveBeenCalledWith("hover");
     });
 });
 
