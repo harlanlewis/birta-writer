@@ -155,7 +155,50 @@ export async function run({ page, check, baseUrl }) {
         expandedRest === 0, `opacity=${expandedRest}`);
     await page.evaluate(() => document.body.classList.remove("handles-rest-hover"));
 
-    // ── 6. A long title clips to one ellipsised line instead of overflowing ──
+    // ── 6. A truncated title reveals its full text on hover (truncatedOnly) ──
+    // The clip hides the tail behind an ellipsis; parity with the TOC, the
+    // sticky recovers it with a hover tooltip that appears ONLY when the text
+    // is actually truncated — never duplicating a title that already fits.
+    // Drive the real applyTooltip binding synchronously (mouseenter dispatch):
+    // updateSticky re-stamps the sticky width on the next rAF, so a
+    // measure-then-hover across an await would race it — one synchronous pass
+    // (squeeze → measure → dispatch → read) is deterministic and still
+    // exercises the actual truncatedOnly gate and the captured heading text.
+    const tt = await page.evaluate(() => {
+        const title = document.querySelector(".heading-sticky-title");
+        const label = document.querySelector(".heading-sticky-text");
+        const reset = () => {
+            const tip = document.querySelector(".custom-tooltip");
+            if (tip) tip.style.display = "none";
+            label.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+        };
+        const read = () => {
+            const tip = document.querySelector(".custom-tooltip");
+            return { display: tip ? tip.style.display : "none", text: tip?.textContent ?? null };
+        };
+        // Untruncated (the real ~full-column width): hover surfaces nothing.
+        reset();
+        label.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        const fit = read();
+        // Squeeze the sticky (text unchanged) until "Section Two" clips: now
+        // the same hover surfaces the tooltip carrying the full heading text.
+        reset();
+        title.style.width = "48px";
+        const offsetWidth = label.offsetWidth, scrollWidth = label.scrollWidth;
+        label.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        const clipped = read();
+        reset();
+        title.style.width = "";
+        return { fit, clipped, offsetWidth, scrollWidth };
+    });
+    check("the title is actually clipped once squeezed (scrollWidth > offsetWidth)",
+        tt.scrollWidth > tt.offsetWidth, JSON.stringify(tt));
+    check("untruncated title shows no tooltip on hover",
+        tt.fit.display === "none", JSON.stringify(tt.fit));
+    check("truncated title reveals its full text on hover",
+        tt.clipped.display === "block" && tt.clipped.text === "Section Two", JSON.stringify(tt.clipped));
+
+    // ── 7. A long title clips to one ellipsised line instead of overflowing ──
     // In a narrow content area a heading longer than the sticky must stay on a
     // single line and truncate with an ellipsis, never spill past the width the
     // plugin sets. The text span is block-level for overflow/text-overflow to

@@ -130,6 +130,11 @@ export function setStickyContent(
     const label = document.createElement("span");
     label.className = "heading-sticky-text";
     label.textContent = text;
+    // The title is clipped to a single line (see .heading-sticky-text), so a
+    // heading wider than the sticky loses its tail to an ellipsis. Recover it
+    // on hover exactly as the TOC does — the tooltip appears only when the text
+    // is actually truncated, and measures on mouseenter, off the scroll path.
+    applyTooltip(label, text, { placement: "above", truncatedOnly: true });
 
     sticky.append(gutter, label);
 }
