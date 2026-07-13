@@ -325,7 +325,7 @@ export function foldedHiddenRanges(
  * the span through pending steps (contentGuard's drop gate) share the rule.
  */
 export function hiddenRangeCoversTarget(
-    doc: any,
+    doc: ProseMirrorNode,
     range: { pos: number; from: number; to: number },
     target: number,
 ): boolean {
