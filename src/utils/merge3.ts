@@ -98,12 +98,16 @@ export function diffLines(a: readonly string[], b: readonly string[]): DiffHunk[
     const maxD = Math.min(n + m, MAX_EDIT_DISTANCE);
     const offset = maxD + 1;
     const v = new Int32Array(2 * maxD + 3);
-    // trace[d] = the V array as it stood BEFORE round d, for backtracking.
+    // trace[d] = V as it stood BEFORE round d, for backtracking — but only the
+    // k-window [-(d-1), d-1] that round d-1 could have written (and that the
+    // backtrack at depth d can read). Snapshotting the full V every round
+    // would cost O(D·maxD) ints; the window keeps it at O(D²) with small
+    // constants, which matters near the MAX_EDIT_DISTANCE bail-out boundary.
     const trace: Int32Array[] = [];
     let found = -1;
 
     outer: for (let d = 0; d <= maxD; d++) {
-        trace.push(v.slice());
+        trace.push(v.slice(offset - Math.max(0, d - 1), offset + d));
         for (let k = -d; k <= d; k += 2) {
             let x: number;
             if (k === -d || (k !== d && v[offset + k - 1] < v[offset + k + 1])) {
@@ -131,15 +135,17 @@ export function diffLines(a: readonly string[], b: readonly string[]): DiffHunk[
     let x = n;
     let y = m;
     for (let d = found; d > 0; d--) {
+        // trace[d] holds ks [-(d-1), d-1]; index i in it maps to k = i - (d-1).
         const prevV = trace[d];
+        const prevOffset = d - 1;
         const k = x - y;
         let prevK: number;
-        if (k === -d || (k !== d && prevV[offset + k - 1] < prevV[offset + k + 1])) {
+        if (k === -d || (k !== d && prevV[prevOffset + k - 1] < prevV[prevOffset + k + 1])) {
             prevK = k + 1; // vertical move: insertion of b[prevY]
         } else {
             prevK = k - 1; // horizontal move: deletion of a[prevX]
         }
-        const prevX = prevV[offset + prevK];
+        const prevX = prevV[prevOffset + prevK];
         const prevY = prevX - prevK;
         // Position right after the non-diagonal move (before the snake to x,y):
         const moveEndX = prevK === k + 1 ? prevX : prevX + 1;

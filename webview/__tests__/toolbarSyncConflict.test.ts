@@ -53,6 +53,18 @@ describe("toolbar sync-conflict badge", () => {
         expect(item.style.display).toBe("none");
     });
 
+    it("the conflict state should also toggle the body class that tints the hidden-toolbar tab", () => {
+        // Arrange — with the toolbar hidden the badge can't render; the body
+        // class lets the collapsed bar's expand tab carry the warning color.
+        const { controller } = buildToolbar();
+
+        // Act / Assert
+        controller.setSyncConflict(true);
+        expect(document.body.classList.contains("has-sync-conflict")).toBe(true);
+        controller.setSyncConflict(false);
+        expect(document.body.classList.contains("has-sync-conflict")).toBe(false);
+    });
+
     it("clicking the visible badge should post resolveSyncConflict to the extension", () => {
         // Arrange
         const { topbar, controller } = buildToolbar();

@@ -212,7 +212,11 @@ describe("MarkdownEditorProvider disk-change reconciliation", () => {
             expect(document.getText()).toBe("line1 SAME\nline2\n");
         });
 
-        it("a touch event (disk content unchanged) should do nothing to a dirty document", async () => {
+        it("a touch event (disk content unchanged) should refresh the stat but keep the edits dirty", async () => {
+            // An mtime-only touch leaves the model's disk stat stale, which
+            // alone is enough to trigger the native conflict dialog on the
+            // next save — so it must reconcile like any other event: revert
+            // (fresh stat) and reapply the user's edits.
             const { document, handler, fireDiskChange, panel } = await setup("line1\nline2\n");
             await handler({ type: "update", content: "line1 EDITED\nline2\n", baseSyncVersion: 0 });
             panel.webview.postMessage.mockClear();
@@ -220,9 +224,50 @@ describe("MarkdownEditorProvider disk-change reconciliation", () => {
             // Watcher fires but the bytes are still the original base.
             await reconcile(fireDiskChange);
 
-            expect(revertCalls).toBe(0);
+            expect(revertCalls).toBe(1);
             expect(document.getText()).toBe("line1 EDITED\nline2\n");
+            expect(document.isDirty).toBe(true);
             expect(messagesOfType(panel, "syncConflict")).toHaveLength(0);
+        });
+
+        it("a hot-exit-restored dirty document should merge against the DISK as base, not its own text", async () => {
+            // Regression guard for the seeding race: the base for a document
+            // restored dirty (hot exit) is the disk content, seeded through
+            // the edit queue BEFORE any reconcile can run. Were the base to
+            // fall back to the document's own text, the merge would resolve
+            // to "take disk" and silently discard the restored edits.
+            diskContent = "line1\nline2\nline3\n";
+            const provider = new MarkdownEditorProvider(makeContext());
+            const document = makeFakeTextDocument("line1 RESTORED\nline2\nline3\n", vscode.Uri.file("/project/hot.md"));
+            document.markDirty();
+            (vscode.commands.executeCommand as Mock).mockImplementation(
+                async (command: string) => {
+                    if (command === REVERT_COMMAND) {
+                        revertCalls++;
+                        document.markSaved();
+                        if (document.getText() !== diskContent) {
+                            document.setTextExternally(diskContent);
+                        }
+                    }
+                },
+            );
+            const panel = makePanel();
+            await provider.resolveCustomTextEditor(
+                document as unknown as vscode.TextDocument,
+                panel as unknown as vscode.WebviewPanel,
+                makeCancellation(),
+            );
+            const watcher = (vscode.workspace.createFileSystemWatcher as Mock).mock.results[0]
+                .value as { onDidChange: Mock };
+            const fireDiskChange = watcher.onDidChange.mock.calls[0][0] as () => void;
+
+            // An external tool edits line3 on disk while the restored edit
+            // to line1 is still unsaved.
+            diskContent = "line1\nline2\nline3 DISK\n";
+            await reconcile(fireDiskChange);
+
+            expect(document.getText()).toBe("line1 RESTORED\nline2\nline3 DISK\n");
+            expect(document.isDirty).toBe(true);
         });
     });
 
@@ -293,6 +338,92 @@ describe("MarkdownEditorProvider disk-change reconciliation", () => {
 
             await handler({ type: "ready" });
 
+            const flags = messagesOfType(panel, "syncConflict");
+            expect(flags).toHaveLength(1);
+            expect(flags[0]["state"]).toBe("conflict");
+        });
+    });
+
+    describe("edge cases", () => {
+        it("a deleted file (read fails) should be left to VS Code's orphaned-file handling", async () => {
+            const { document, panel, handler, fireDiskChange } = await setup("line1\nline2\n");
+            await handler({ type: "update", content: "line1 EDITED\nline2\n", baseSyncVersion: 0 });
+            panel.webview.postMessage.mockClear();
+
+            // The file is deleted out from under the editor.
+            (vscode.workspace.fs.readFile as Mock).mockRejectedValueOnce(
+                new Error("ENOENT"),
+            );
+            await reconcile(fireDiskChange);
+
+            expect(revertCalls).toBe(0);
+            expect(document.getText()).toBe("line1 EDITED\nline2\n");
+            expect(document.isDirty).toBe(true);
+            expect(messagesOfType(panel, "syncConflict")).toHaveLength(0);
+        });
+
+        it("the disk moving AGAIN between read and revert should re-merge against what actually loaded", async () => {
+            const { document, panel, handler, fireDiskChange } = await setup(
+                "line1\nline2\nline3\n",
+            );
+            await handler({ type: "update", content: "line1 MINE\nline2\nline3\n", baseSyncVersion: 0 });
+            panel.webview.postMessage.mockClear();
+
+            // First read sees a line3 edit; but by the time the revert lands,
+            // the disk has moved on to also carry a line2 edit. The re-merge
+            // must fold in the newer disk state, not the stale first read.
+            diskContent = "line1\nline2\nline3 DISK1\n";
+            let revertsSeen = 0;
+            (vscode.commands.executeCommand as Mock).mockImplementation(
+                async (command: string) => {
+                    if (command !== REVERT_COMMAND) { return; } // e.g. keepEditor
+                    revertCalls++;
+                    if (revertsSeen++ === 0) {
+                        diskContent = "line1\nline2 DISK2\nline3 DISK1\n"; // moved again
+                    }
+                    document.markSaved();
+                    if (document.getText() !== diskContent) {
+                        document.setTextExternally(diskContent);
+                    }
+                },
+            );
+            await reconcile(fireDiskChange);
+
+            expect(document.getText()).toBe("line1 MINE\nline2 DISK2\nline3 DISK1\n");
+            expect(document.isDirty).toBe(true);
+            expect(messagesOfType(panel, "syncConflict")).toHaveLength(0);
+        });
+
+        it("the disk moving into a CONFLICT between read and revert should restore the edits and flag it", async () => {
+            const { document, panel, handler, fireDiskChange } = await setup(
+                "line1\nline2\nline3\n",
+            );
+            await handler({ type: "update", content: "line1\nline2 MINE\nline3\n", baseSyncVersion: 0 });
+            panel.webview.postMessage.mockClear();
+
+            // First read is cleanly mergeable (line3 edit); but the revert
+            // loads a disk that now also rewrites line2 — colliding with the
+            // user's unsaved line2 edit. The retry merge conflicts, so the
+            // user's content is restored and the conflict flagged.
+            diskContent = "line1\nline2\nline3 DISK1\n";
+            let revertsSeen = 0;
+            (vscode.commands.executeCommand as Mock).mockImplementation(
+                async (command: string) => {
+                    if (command !== REVERT_COMMAND) { return; } // e.g. keepEditor
+                    revertCalls++;
+                    if (revertsSeen++ === 0) {
+                        diskContent = "line1\nline2 DISK2\nline3 DISK1\n"; // collides with MINE
+                    }
+                    document.markSaved();
+                    if (document.getText() !== diskContent) {
+                        document.setTextExternally(diskContent);
+                    }
+                },
+            );
+            await reconcile(fireDiskChange);
+
+            expect(document.getText()).toBe("line1\nline2 MINE\nline3\n");
+            expect(document.isDirty).toBe(true);
             const flags = messagesOfType(panel, "syncConflict");
             expect(flags).toHaveLength(1);
             expect(flags[0]["state"]).toBe("conflict");

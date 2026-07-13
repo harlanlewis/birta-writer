@@ -2228,6 +2228,10 @@ export function initToolbar(
         setSyncConflict(active: boolean): void {
             syncConflictVisible = active;
             syncConflictItem.style.display = active ? "" : "none";
+            // Body-level flag: with the toolbar hidden, the badge would be
+            // invisible — the collapsed bar's expand tab tints instead, so a
+            // conflict is never a state the UI silently sits in.
+            document.body.classList.toggle("has-sync-conflict", active);
             // Same as debug: the right zone's width changed.
             overflow?.update(availableWidth());
         },

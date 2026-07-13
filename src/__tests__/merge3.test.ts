@@ -45,6 +45,38 @@ describe("diffLines", () => {
         ]);
     });
 
+    it("randomized edit scripts should always rebuild the side text from the hunks", () => {
+        // Deterministic LCG so failures reproduce; exercises the Myers
+        // backtrack (and its windowed trace) across many edit shapes.
+        let seed = 0x2f6e2b1;
+        const rand = (max: number): number => {
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+            return seed % max;
+        };
+        for (let round = 0; round < 200; round++) {
+            const base = Array.from({ length: rand(40) }, (_, i) => `l${i % (1 + rand(8))}`);
+            const side = [...base];
+            const edits = 1 + rand(6);
+            for (let e = 0; e < edits; e++) {
+                const pos = rand(side.length + 1);
+                const op = rand(3);
+                if (op === 0) { side.splice(pos, 0, `ins${rand(5)}`); }
+                else if (op === 1 && pos < side.length) { side.splice(pos, 1); }
+                else if (pos < side.length) { side[pos] = `rep${rand(5)}`; }
+            }
+            const hunks = diffLines(base, side)!;
+            const rebuilt: string[] = [];
+            let bpos = 0;
+            for (const h of hunks) {
+                rebuilt.push(...base.slice(bpos, h.baseStart));
+                rebuilt.push(...side.slice(h.sideStart, h.sideEnd));
+                bpos = h.baseEnd;
+            }
+            rebuilt.push(...base.slice(bpos));
+            expect(rebuilt, `round ${round}`).toEqual(side);
+        }
+    });
+
     it("hunks should reproduce the side text when applied to the base", () => {
         // Randomized-ish structural check over a mix of edits.
         const base = ["h1", "p1", "p2", "", "h2", "item1", "item2", "tail"];

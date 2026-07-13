@@ -60,6 +60,8 @@ For iterative debugging, F5 (Extension Development Host) is still faster — no 
 ```
 src/extension.ts                              — Extension entry; registers CustomEditorProvider
 src/MarkdownEditorProvider.ts                 — Provider core (message routing, autosave, revert)
+src/diskSync.ts                               — External disk-edit reconciliation (watcher, 3-way merge, conflict state)
+src/utils/merge3.ts                           — Line-based three-way merge (Myers diff + diff3 grouping)
 src/utils/getNonce.ts                         — CSP nonce generation
 src/utils/imageService.ts                     — Local image save (MD5 dedup) + server upload
 webview/index.ts                              — WebView entry
@@ -171,6 +173,7 @@ __mocks__/vscode.ts         — Central vscode API mock
 | `src/utils/imageService.ts` | ≥ 85% |
 | `src/utils/getNonce.ts` | 100% |
 | `src/utils/textEdit.ts` | ≥ 90% |
+| `src/utils/merge3.ts` | ≥ 95% (a wrong merge corrupts documents) |
 | `src/utils/contentTransform.ts` | ≥ 90% |
 | `src/utils/lineMap.ts` | ≥ 90% |
 | `webview/utils/slug.ts` | ≥ 90% |

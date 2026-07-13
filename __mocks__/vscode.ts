@@ -190,6 +190,8 @@ export interface FakeTextDocument {
     setTextExternally(newText: string): void;
     /** Test helper: mark the document saved (clears isDirty) */
     markSaved(): void;
+    /** Test helper: mark the document dirty without changing its text (hot-exit restore) */
+    markDirty(): void;
 }
 
 /**
@@ -283,6 +285,9 @@ export function makeFakeTextDocument(
         },
         markSaved(): void {
             dirty = false;
+        },
+        markDirty(): void {
+            dirty = true;
         },
     };
 
