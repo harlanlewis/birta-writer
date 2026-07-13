@@ -114,6 +114,59 @@ export async function run({ page, check, baseUrl }) {
         String(valueFont),
     );
 
+    // ── Fixed-width content must clear a docked TOC sidebar, not hide under it ──
+    // Regression guard for the centering fix: in Fixed mode the content box is
+    // capped and would otherwise center in the whole viewport, so a wide docked
+    // sidebar overlaps its start. We widen the drawer to a value at which plain
+    // viewport-centering WOULD tuck the content under it, then assert the fix
+    // pushes the content clear (its box never starts left of the drawer's edge).
+    // Open the drawer (the harness doesn't auto-open it) — docked at 1000px wide.
+    await page.evaluate(() => {
+        document.querySelector(".toc-toggle-tab")
+            ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+    await page.waitForTimeout(300);
+    const clearance = await page.evaluate(() => {
+        // Force a wide drawer (the panel and the reserve both read --toc-width).
+        document.documentElement.style.setProperty("--toc-width", "460px");
+        const editor = document.querySelector("#editor");
+        const panel = document.querySelector(".toc-panel");
+        if (!editor || !panel) return { ok: false, reason: "missing element" };
+        const e = editor.getBoundingClientRect();
+        const p = panel.getBoundingClientRect();
+        // Where plain `margin: 0 auto` would place this same box.
+        const naiveCenterLeft = (window.innerWidth - e.width) / 2;
+        return {
+            dockedOpen:
+                document.body.classList.contains("toc-open") &&
+                panel.classList.contains("toc-panel--open"),
+            editorLeft: Math.round(e.left),
+            panelRight: Math.round(p.right),
+            wouldOverlapNaively: naiveCenterLeft < p.right,
+            clears: e.left >= p.right,
+        };
+    });
+    // Guard against a vacuous pass: the drawer must actually be docked+open.
+    check(
+        "the TOC is docked+open in the fixed-width harness",
+        clearance.dockedOpen,
+        JSON.stringify(clearance),
+    );
+    // Prove the scenario is real: a plain-centered box of this width would overlap.
+    check(
+        "a naively centered box would tuck under the widened drawer",
+        clearance.wouldOverlapNaively,
+        `naiveCenter<panelRight? editorLeft=${clearance.editorLeft} panelRight=${clearance.panelRight}`,
+    );
+    // The fix: fixed-width content clears the docked drawer, never hides behind it.
+    check(
+        "fixed-width content clears the docked sidebar (never tucked under it)",
+        clearance.clears,
+        `editorLeft=${clearance.editorLeft} panelRight=${clearance.panelRight}`,
+    );
+    // Restore the default drawer width for any later assertions.
+    await page.evaluate(() => document.documentElement.style.removeProperty("--toc-width"));
+
     // ── Click Full Width ──
     await fullBtn.dispatchEvent("mousedown");
     await page.waitForTimeout(100);
