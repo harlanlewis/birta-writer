@@ -1,13 +1,29 @@
-/* ── Shortcuts Help — right-docked cheatsheet panel (find-bar idiom) ── */
+/* ── Shortcuts Help — right-docked reference card (find-bar idiom) ──
+ *
+ * Layout system: every shortcut row is a two-column grid
+ * (key column | description column). The key column has a fixed,
+ * platform-tuned width (--shortcuts-keycol) so the description column's
+ * left edge is identical on EVERY row — chips right-align toward the
+ * description they belong to, and multi-chip sets wrap inside the key
+ * column without ever pushing the description sideways. Chips are grouped
+ * into alternative PAIRS (.shortcuts-help__pair, one per gesture
+ * alternative), so a wrap can only fall between alternatives — the 4-chip
+ * move set stacks as a clean 2×2, never a 3+1 split. */
 
 .shortcuts-help {
+    /* Windows/Linux chords are word chains ("Ctrl+Shift+↑"); the column is
+       sized to the widest alternative PAIR (not the widest single chord):
+       at 146px the move row's pairs (79px and 145px) stack as a clean 2×2
+       and the 137px duplicate pair holds one line. */
+    --shortcuts-keycol: 146px;
+
     position: fixed;
     top: calc(var(--editor-topbar-height, 40px) + 6px);
     right: 16px;
     /* Same band as the find bar (see findBar.css): above the sticky heading
        title (1100), below the topbar and its dropdown menus (1200). */
     z-index: 1180;
-    width: min(420px, calc(100vw - 32px));
+    width: min(480px, calc(100vw - 32px));
     max-height: calc(100vh - var(--editor-topbar-height, 40px) - 22px);
     overflow-y: auto;
     overflow-x: hidden;
@@ -36,6 +52,14 @@
     &:focus {
         outline: 1px solid var(--vscode-focusBorder);
         outline-offset: -1px;
+    }
+
+    /* macOS chords are compact symbol runs (⌘⇧↑) — tighten the column.
+       112px is deliberate: wide enough for the widest alternative pair
+       (⌃⇧⌘→ ⌃⇧⌘← needs ≥111px to hold one line); pair-grouping keeps the
+       4-chip move set wrapping as a 2×2 stack. */
+    &.shortcuts-help--mac {
+        --shortcuts-keycol: 112px;
     }
 }
 
@@ -71,46 +95,76 @@
 }
 
 .shortcuts-help__section-title {
-    margin: 12px 0 2px;
+    margin: 16px 0 4px;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--vscode-descriptionForeground);
+
+    /* A single hairline marks the regime change from the fixed grammar to
+       the rebindable, name-only section — the one separator that earns
+       its place. */
+    &:has(+ .shortcuts-help__group) {
+        margin-top: 18px;
+        padding-top: 12px;
+        border-top: 1px solid var(--vscode-editorWidget-border);
+    }
 }
 
+/* ── Shortcut rows: the two-column reference grid ── */
 .shortcuts-help__row {
-    display: flex;
+    display: grid;
+    grid-template-columns: var(--shortcuts-keycol) 1fr;
+    column-gap: 12px;
     align-items: baseline;
-    gap: 10px;
     padding: 3px 0;
 }
 
 .shortcuts-help__keys {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: baseline;
     gap: 3px;
-    flex: 0 0 auto;
-    max-width: 45%;
+    min-width: 0;
 }
 
-.shortcuts-help__label {
-    flex: 1;
+/* One gesture alternative's chips (e.g. the ↑/↓ chips of one move chord
+   family). inline-flex + nowrap keeps an alternative atomic: the key
+   column's flex wrap can only break BETWEEN pairs, never inside one. */
+.shortcuts-help__pair {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: 3px;
+}
+
+.shortcuts-help__desc {
     min-width: 0;
 }
 
 .shortcuts-help__note {
+    margin-top: 1px;
     font-size: 11px;
+    line-height: 1.45;
     color: var(--vscode-descriptionForeground);
 }
 
 /* Key chips use VS Code's own keybinding-label tokens so they read exactly
-   like chords in the native Keyboard Shortcuts UI. */
+   like chords in the native Keyboard Shortcuts UI. Uniform height and a
+   min-width keep single glyphs (⌘B, ←) on the same rhythm as wide chords. */
 .shortcuts-help kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 18px;
+    min-width: 21px;
+    padding: 0 5px;
     font-family: var(--vscode-font-family);
     font-size: 11px;
-    line-height: 1.4;
-    padding: 0 5px;
+    line-height: 1;
     border-radius: 3px;
     background: var(--vscode-keybindingLabel-background);
     color: var(--vscode-keybindingLabel-foreground);
@@ -120,17 +174,36 @@
     white-space: nowrap;
 }
 
-/* Rebindable commands: name-only groups */
+/* ── Rebindable commands: name-only groups (never kbd chips) ── */
 .shortcuts-help__group {
-    padding: 2px 0;
+    margin: 0 0 8px;
 }
 
 .shortcuts-help__group-name {
+    margin: 6px 0 2px;
+    font-size: 11px;
     font-weight: 600;
 }
 
+/* Two-column name list — scans vertically instead of wrapping as prose.
+   A real ul/li for accessible delimitation; the grid supplies the visual
+   layout, so the native list box model is fully reset. */
 .shortcuts-help__group-items {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 12px;
+    row-gap: 1px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
     color: var(--vscode-descriptionForeground);
+}
+
+.shortcuts-help__group-item {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .shortcuts-help__footer {
@@ -140,6 +213,11 @@
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--vscode-editorWidget-border);
+
+    & .shortcuts-help__note {
+        flex: 1;
+        margin-top: 0;
+    }
 }
 
 /* Icon-only close button (find-bar button anatomy) */
@@ -172,6 +250,7 @@
 }
 
 .shortcuts-help__customize {
+    flex: 0 0 auto;
     padding: 3px 12px;
     border: none;
     border-radius: 2px;

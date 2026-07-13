@@ -112,11 +112,83 @@ describe("shortcutsHelp — content", () => {
         expect(text).toContain("Collapse / expand the selected foldable block");
         // Rebindable commands appear by NAME, sourced from the registry
         expect(text).toContain("Open Block Menu");
-        expect(text).toContain("Folding: Fold · Unfold · Fold All · Unfold All");
         expect(text).toContain("Select All Occurrences");
+        const folding = [...panel()!.querySelectorAll(".shortcuts-help__group")].find(
+            (g) => g.querySelector(".shortcuts-help__group-name")?.textContent === "Folding",
+        );
+        expect(folding).toBeDefined();
+        expect(
+            [...folding!.querySelectorAll(".shortcuts-help__group-item")].map((i) => i.textContent),
+        ).toEqual(["Fold", "Unfold", "Fold All", "Unfold All"]);
         // Group items carry no kbd chips (names only)
         const groupKbds = panel()!.querySelectorAll(".shortcuts-help__group kbd");
         expect(groupKbds.length).toBe(0);
+    });
+
+    it("group items should be real list items with hover-recoverable titles", async () => {
+        const h = await loadHarness(true);
+        h.openShortcutsHelp();
+        const lists = panel()!.querySelectorAll(".shortcuts-help__group-items");
+        expect(lists.length).toBeGreaterThanOrEqual(1);
+        for (const list of lists) {
+            // ul/li semantics: assistive tech announces item count and
+            // boundaries that the visual grid alone does not provide.
+            expect(list.tagName).toBe("UL");
+            const items = [...list.children];
+            expect(items.length).toBeGreaterThanOrEqual(1);
+            for (const item of items) {
+                expect(item.tagName).toBe("LI");
+                expect(item.className).toBe("shortcuts-help__group-item");
+                // Ellipsized names stay recoverable on hover.
+                expect((item as HTMLElement).title).toBe(item.textContent);
+            }
+        }
+    });
+
+    it("every row should use the two-column key/description grid structure", async () => {
+        const h = await loadHarness(true);
+        h.openShortcutsHelp();
+        const rows = [...panel()!.querySelectorAll(".shortcuts-help__row")];
+        expect(rows.length).toBeGreaterThanOrEqual(12);
+        for (const row of rows) {
+            // Exactly one key cell then one description cell — the shared
+            // grid template (--shortcuts-keycol | 1fr) is what keeps every
+            // description's left edge at the same x.
+            expect(row.children.length).toBe(2);
+            const [keysCell, descCell] = row.children;
+            expect(keysCell.className).toBe("shortcuts-help__keys");
+            expect(descCell.className).toBe("shortcuts-help__desc");
+            // The key cell holds only pair sub-spans (one per gesture
+            // alternative), and every chip lives inside a pair — that
+            // atomicity is what keeps wraps between alternatives only.
+            expect(keysCell.children.length).toBeGreaterThanOrEqual(1);
+            for (const pair of keysCell.children) {
+                expect(pair.className).toBe("shortcuts-help__pair");
+                expect(pair.querySelectorAll("kbd").length).toBeGreaterThanOrEqual(1);
+                for (const chip of pair.children) {
+                    expect(chip.tagName).toBe("KBD");
+                }
+            }
+            // Chips live only in the key cell; the description cell holds
+            // the label and (optionally) the quieter note line beneath it.
+            expect(keysCell.querySelectorAll("kbd").length).toBeGreaterThanOrEqual(1);
+            expect(descCell.querySelector("kbd")).toBeNull();
+            expect(descCell.querySelector(".shortcuts-help__label")).not.toBeNull();
+        }
+        // The move row groups its four chips as two alternatives of two
+        // chips each (never a flat run that could wrap 3+1).
+        const moveRow = rows.find((r) => r.textContent!.includes("Move block up / down"))!;
+        const movePairs = [...moveRow.querySelectorAll(".shortcuts-help__pair")];
+        expect(movePairs.map((p) => p.querySelectorAll("kbd").length)).toEqual([2, 2]);
+        // Notes render inside the description cell, never as loose
+        // full-width lines under the key column.
+        const rowNotes = panel()!.querySelectorAll(".shortcuts-help__row .shortcuts-help__note");
+        expect(rowNotes.length).toBeGreaterThanOrEqual(4);
+        for (const note of rowNotes) {
+            expect(note.parentElement!.className).toBe("shortcuts-help__desc");
+        }
+        // The platform column-width modifier is applied (mac harness).
+        expect(panel()!.classList.contains("shortcuts-help--mac")).toBe(true);
     });
 
     it("macOS should render symbol chords (⌘B, ⌃⇧⌘→, ⇧⌥↓)", async () => {
@@ -142,6 +214,9 @@ describe("shortcutsHelp — content", () => {
         expect(chips).toContain("Shift+Tab");
         // No mac-only chord leaks onto the other platform
         expect(chips.some((c) => c!.includes("⌘"))).toBe(false);
+        // And the mac column-width modifier must be absent — win/linux use
+        // the wider word-chain key column.
+        expect(panel()!.classList.contains("shortcuts-help--mac")).toBe(false);
     });
 });
 

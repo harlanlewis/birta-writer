@@ -152,7 +152,9 @@ cell:
 
 ---
 
-## Blockquotes
+## Quotes
+
+### Blockquotes
 
 > A single-line blockquote.
 
@@ -164,7 +166,7 @@ cell:
 
 ---
 
-## Callouts
+### Callouts
 
 GitHub alerts and Obsidian callouts render with a per-kind icon and accent
 color. The icon is a button — click it (or Enter/Space when focused) to
@@ -212,7 +214,7 @@ a marker line with inline **formatting**, or an escaped marker:
 
 > \[!NOTE] an escaped marker stays a plain blockquote
 
-### Notion export asides
+#### Notion export asides
 
 Notion's markdown export writes callouts as `<aside>` HTML ("there is no
 Markdown equivalent" — Notion's own docs). The emoji maps to an accent
@@ -234,7 +236,7 @@ sanitized HTML preview, byte-preserved.
 
 ---
 
-### Container directives
+#### Container directives
 
 `:::name` fenced blocks (the Docusaurus admonition syntax) render as labeled
 containers with an editable body and title. Known names pick up callout-style
@@ -270,7 +272,32 @@ this line and the fence above render as plain paragraphs.
 
 ---
 
+## Tables
+
+| Feature | Supported | Notes |
+|---|:---:|---|
+| Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
+| Line breaks | yes | first line<br>second line |
+| Alignment | yes | right-click a cell → **Align Column Left / Center / Right** (this Supported column is `:---:` centered); re-pick the current alignment to clear back to `---` |
+
+---
+
+## Images
+
+Inline image with a relative path and a title. The alt text is the editable
+caption under the image (revealed on selection when empty); the title is the
+hover tooltip, as in published HTML. Click the image for the toolbar — a
+file-name chip that edits the path (autocompletes workspace images), zoom,
+delete, and the editable title on its own row. Edits apply on Enter or
+click-away, Escape cancels.
+
+![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
+
+---
+
 ## Code blocks
+
+### Code
 
 Fenced code block with syntax highlighting:
 
@@ -291,19 +318,7 @@ Plain fenced block (no language):
 no highlighting here
 ```
 
----
-
-## Tables
-
-| Feature | Supported | Notes |
-|---|:---:|---|
-| Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
-| Line breaks | yes | first line<br>second line |
-| Alignment | yes | right-click a cell → **Align Column Left / Center / Right** (this Supported column is `:---:` centered); re-pick the current alignment to clear back to `---` |
-
----
-
-## Math
+### Math
 
 Inline math renders in place and is **edited in place**: arrow into
 $E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character
@@ -316,30 +331,7 @@ $$
 \int_0^1 x^2 \, dx = \frac{1}{3}
 $$
 
----
-
-## Footnotes
-
-A sentence with a footnote reference.[^note] Footnotes are auto-numbered and their definitions round-trip.
-
-[^note]: The footnote definition, with a second sentence for good measure.
-
----
-
-## Images
-
-Inline image with a relative path and a title. The alt text is the editable
-caption under the image (revealed on selection when empty); the title is the
-hover tooltip, as in published HTML. Click the image for the toolbar — a
-file-name chip that edits the path (autocompletes workspace images), zoom,
-delete, and the editable title on its own row. Edits apply on Enter or
-click-away, Escape cancels.
-
-![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
-
----
-
-## Diagrams (Mermaid)
+### Diagrams (Mermaid)
 
 Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid` block.
 
@@ -349,6 +341,21 @@ graph TD
     B -->|Yes| C[Do thing]
     B -->|No| D[Skip]
 ```
+
+---
+
+## Frontmatter
+
+See the top of this file — YAML frontmatter is lossless. Flat key/value pairs
+get a table UI; complex/nested YAML preserved verbatim.
+
+---
+
+## Footnotes
+
+A sentence with a footnote reference.[^note] Footnotes are auto-numbered and their definitions round-trip.
+
+[^note]: The footnote definition, with a second sentence for good measure.
 
 ---
 
@@ -374,13 +381,6 @@ Inline and block HTML render as a sanitized, read-only preview (editing raw HTML
 An HTML comment preserved and shown dimmed:
 
 <!-- This is a comment. It survives round-trips. -->
-
----
-
-## Frontmatter
-
-See the top of this file — YAML frontmatter is lossless. Flat key/value pairs
-get a table UI; complex/nested YAML preserved verbatim.
 
 ---
 

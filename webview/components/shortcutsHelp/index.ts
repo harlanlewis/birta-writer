@@ -169,6 +169,10 @@ function buildPanel(): HTMLDivElement {
     const isMac = window.__i18n?.isMac ?? /Mac/.test(navigator.platform);
     const el = document.createElement("div");
     el.className = "shortcuts-help";
+    // macOS chords are compact symbol runs (⌘⇧↑); Windows/Linux chords are
+    // word chains (Ctrl+Shift+↑). The key column width follows the platform
+    // so neither wastes space nor overflows (see --shortcuts-keycol).
+    el.classList.toggle("shortcuts-help--mac", isMac);
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-label", t("Keyboard Shortcuts Help"));
     el.tabIndex = -1;
@@ -198,26 +202,44 @@ function buildPanel(): HTMLDivElement {
         h.textContent = label;
         el.appendChild(h);
     };
-    const addRow = (keyLabels: string[], label: string, note?: string): void => {
+    // Each row is a two-column grid: a fixed-width key column (chips
+    // right-aligned, wrapping within the column) and a description column
+    // whose left edge is identical on every row. Chips are grouped into
+    // PAIRS — one inner array per gesture alternative (e.g. the up/down
+    // chips of one move chord family) — and each pair renders as an
+    // inline-flex sub-span, so line wraps only ever fall BETWEEN
+    // alternatives, never inside one (the 4-chip move set becomes a clean
+    // 2×2 stack instead of an arbitrary 3+1 split).
+    const addRow = (keyPairs: string[][], label: string, note?: string): void => {
         const row = document.createElement("div");
         row.className = "shortcuts-help__row";
         const keysEl = document.createElement("span");
         keysEl.className = "shortcuts-help__keys";
-        for (const k of keyLabels) {
-            const chip = document.createElement("kbd");
-            chip.textContent = k;
-            keysEl.appendChild(chip);
+        for (const pair of keyPairs) {
+            const pairEl = document.createElement("span");
+            pairEl.className = "shortcuts-help__pair";
+            for (const k of pair) {
+                const chip = document.createElement("kbd");
+                chip.textContent = k;
+                pairEl.appendChild(chip);
+            }
+            keysEl.appendChild(pairEl);
         }
+        const descEl = document.createElement("div");
+        descEl.className = "shortcuts-help__desc";
         const labelEl = document.createElement("span");
         labelEl.className = "shortcuts-help__label";
         labelEl.textContent = label;
+        descEl.appendChild(labelEl);
         if (note) {
+            // The note is a quieter second line INSIDE the description cell,
+            // so it never sprawls across the key column.
             const noteEl = document.createElement("div");
             noteEl.className = "shortcuts-help__note";
             noteEl.textContent = note;
-            labelEl.appendChild(noteEl);
+            descEl.appendChild(noteEl);
         }
-        row.append(keysEl, labelEl);
+        row.append(keysEl, descEl);
         el.appendChild(row);
     };
 
@@ -226,56 +248,78 @@ function buildPanel(): HTMLDivElement {
     // insertParagraph/tabKeymap/formatKeymap/history + CLAIMED_SHORTCUTS),
     // so printing it can never contradict the user's keybindings. ──
     addSection(t("Selection"));
-    addRow(["Esc"], t("Select the block; again to collapse back to the caret"),
+    addRow([["Esc"]], t("Select the block; again to collapse back to the caret"),
         t("Esc first closes the open menu, popup, or find bar."));
-    addRow([keys("Shift-ArrowUp"), keys("Shift-ArrowDown")], t("Grow / shrink a block selection"));
-    addRow([keys("Mod-a")], t("Select more: block text → block → document"));
+    addRow([[keys("Shift-ArrowUp"), keys("Shift-ArrowDown")]], t("Grow / shrink a block selection"));
+    addRow([[keys("Mod-a")]], t("Select more: block text → block → document"));
     addRow(
         isMac
-            ? [keys("Ctrl-Shift-Cmd-ArrowRight"), keys("Ctrl-Shift-Cmd-ArrowLeft")]
-            : [keys("Shift-Alt-ArrowRight"), keys("Shift-Alt-ArrowLeft")],
+            ? [[keys("Ctrl-Shift-Cmd-ArrowRight"), keys("Ctrl-Shift-Cmd-ArrowLeft")]]
+            : [[keys("Shift-Alt-ArrowRight"), keys("Shift-Alt-ArrowLeft")]],
         t("Expand / shrink the selection by structure"),
     );
 
     addSection(t("Blocks"));
     addRow(
-        [keys("Alt-ArrowUp"), keys("Alt-ArrowDown"), keys("Mod-Shift-ArrowUp"), keys("Mod-Shift-ArrowDown")],
+        // Two alternatives for the same gesture — each pair stays intact,
+        // so the four chips always read as a 2×2 stack.
+        [
+            [keys("Alt-ArrowUp"), keys("Alt-ArrowDown")],
+            [keys("Mod-Shift-ArrowUp"), keys("Mod-Shift-ArrowDown")],
+        ],
         t("Move block up / down"),
         t("Move carries a heading's whole section."),
     );
     addRow(
-        [keys("Shift-Alt-ArrowUp"), keys("Shift-Alt-ArrowDown")],
+        [[keys("Shift-Alt-ArrowUp"), keys("Shift-Alt-ArrowDown")]],
         t("Duplicate block above / below"),
         t("Duplicate copies the block alone — it never drags a section along."),
     );
-    addRow([keys("Mod-Enter")], t("Insert paragraph below"),
+    addRow([[keys("Mod-Enter")]], t("Insert paragraph below"),
         t("Inside a code block or table: exits it instead."));
-    addRow([keys("Mod-Shift-Enter")], t("Insert paragraph above"));
-    addRow(["←", "→"], t("Collapse / expand the selected foldable block"));
-    addRow(["Tab", keys("Shift-Tab")], t("Indent / outdent a list item; next / previous table cell"));
+    addRow([[keys("Mod-Shift-Enter")]], t("Insert paragraph above"));
+    addRow([["←", "→"]], t("Collapse / expand the selected foldable block"));
+    addRow([["Tab", keys("Shift-Tab")]], t("Indent / outdent a list item; next / previous table cell"));
 
     addSection(t("Formatting & history"));
-    addRow([keys("Mod-b")], t("Bold"));
-    addRow([keys("Mod-i")], t("Italic"));
-    addRow([keys("Mod-e")], t("Inline Code"));
-    addRow([keys("Mod-Shift-x")], t("Strikethrough"));
-    addRow([keys("Mod-z")], t("Undo"));
-    addRow([keys("Mod-Shift-z"), keys("Mod-y")], t("Redo"));
+    addRow([[keys("Mod-b")]], t("Bold"));
+    addRow([[keys("Mod-i")]], t("Italic"));
+    addRow([[keys("Mod-e")]], t("Inline Code"));
+    addRow([[keys("Mod-Shift-x")]], t("Strikethrough"));
+    addRow([[keys("Mod-z")]], t("Undo"));
+    // Redo's two chords are independent alternatives, so they are separate
+    // (single-chip) pairs and may wrap apart.
+    addRow([[keys("Mod-Shift-z")], [keys("Mod-y")]], t("Redo"));
 
     // ── Rebindable commands: names only — their keys live in (and may be
     // changed via) VS Code's Keyboard Shortcuts, so printing a default here
     // could show a wrong chord. ──
     addSection(t("Customizable commands"));
     const titleOf = new Map<string, string>(EDITOR_COMMANDS.map((c) => [c.id, c.title]));
+    // Structure over prose: each group is a small subheading followed by a
+    // two-column name list (NO kbd chips — these are rebindable, so a
+    // printed chord could lie). Scans vertically instead of wrapping inline.
     for (const group of REBINDABLE_GROUPS) {
         const div = document.createElement("div");
         div.className = "shortcuts-help__group";
-        const name = document.createElement("span");
+        const name = document.createElement("h4");
         name.className = "shortcuts-help__group-name";
-        name.textContent = `${t(group.label)}: `;
-        const items = document.createElement("span");
+        name.textContent = t(group.label);
+        // A real list (ul/li) so assistive tech announces item count and
+        // boundaries — the visual grid alone gives adjacent names no
+        // accessible delimitation.
+        const items = document.createElement("ul");
         items.className = "shortcuts-help__group-items";
-        items.textContent = group.ids.map((id) => t(titleOf.get(id) ?? id)).join(" · ");
+        for (const id of group.ids) {
+            const item = document.createElement("li");
+            item.className = "shortcuts-help__group-item";
+            const itemName = t(titleOf.get(id) ?? id);
+            item.textContent = itemName;
+            // Names ellipsize in the two-column grid; the title makes a
+            // clipped name recoverable on hover.
+            item.title = itemName;
+            items.appendChild(item);
+        }
         div.append(name, items);
         el.appendChild(div);
     }
