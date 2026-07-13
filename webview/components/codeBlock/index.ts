@@ -24,6 +24,8 @@ import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDis
 import { attachInputUndo } from "@/utils/inputUndo";
 import { createButton } from "@/ui/dom";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { createFoldEllipsis } from "@/ui/foldEllipsis";
+import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import './codeBlock.css';
 
 const shouldAutoConvertCodeBlock = (): boolean =>
@@ -575,8 +577,31 @@ export function createCodeBlockView(
 
     applyWordWrapState();
 
-    // header: [picker][spacer][toggleBtn][wordWrapBtn][fullscreenBtn][copyBtn]
+    // Collapsed `…` (MAR-125): the shared fold-ellipsis mounted beside the
+    // lang picker, shown only while the fold plugin's decoration marks the
+    // wrapper `collapsed` (the callout-NodeView protocol). The content area
+    // and any preview hide; this chrome row stays.
+    const codeLineCount = (text: string): number =>
+        text === "" ? 0 : text.split("\n").length;
+    const foldEllipsis = createFoldEllipsis(
+        codeLineCount(node.textContent),
+        () => {
+            const pos = getPos();
+            if (pos === undefined) return;
+            view.dispatch(
+                view.state.tr
+                    .setMeta(foldPluginKey, { type: "set", pos, folded: false } satisfies FoldMeta)
+                    .setMeta("addToHistory", false),
+            );
+            view.focus();
+        },
+        "lines",
+    );
+    foldEllipsis.dom.classList.add("code-fold-ellipsis");
+
+    // header: [picker][…][spacer][toggleBtn][wordWrapBtn][fullscreenBtn][copyBtn]
     header.appendChild(picker.el);
+    header.appendChild(foldEllipsis.dom);
     header.appendChild(spacer);
     header.appendChild(toggleBtn);
     header.appendChild(wordWrapBtn);
@@ -1472,6 +1497,7 @@ export function createCodeBlockView(
             codeEl.className = classLang ? `language-${classLang}` : "";
             node = updatedNode;
             scheduleLineNumberRefresh();
+            foldEllipsis.setCount(codeLineCount(updatedNode.textContent));
 
             if (!wasPreviewable && nowPreviewable) {
                 toggleBtn.style.display = "inline-flex";

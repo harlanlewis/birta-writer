@@ -15,11 +15,26 @@ export interface FoldEllipsis {
     setCount(count: number): void;
 }
 
-function hiddenLabel(count: number): string {
-    return count === 1 ? t("1 block hidden") : `${count} ${t("blocks hidden")}`;
+/** What the hidden count counts: blocks (headings, callouts, list items),
+ * table rows, or code lines — so the tooltip names the right thing. */
+export type FoldUnit = "blocks" | "rows" | "lines";
+
+function hiddenLabel(count: number, unit: FoldUnit): string {
+    switch (unit) {
+        case "rows":
+            return count === 1 ? t("1 row hidden") : `${count} ${t("rows hidden")}`;
+        case "lines":
+            return count === 1 ? t("1 line hidden") : `${count} ${t("lines hidden")}`;
+        default:
+            return count === 1 ? t("1 block hidden") : `${count} ${t("blocks hidden")}`;
+    }
 }
 
-export function createFoldEllipsis(count: number, onExpand: () => void): FoldEllipsis {
+export function createFoldEllipsis(
+    count: number,
+    onExpand: () => void,
+    unit: FoldUnit = "blocks",
+): FoldEllipsis {
     const dom = document.createElement("button");
     dom.type = "button";
     dom.className = "fold-ellipsis";
@@ -28,8 +43,8 @@ export function createFoldEllipsis(count: number, onExpand: () => void): FoldEll
     const tooltip = applyTooltip(dom, "", { placement: "above" });
 
     const setCount = (next: number): void => {
-        dom.setAttribute("aria-label", `${t("Expand")} — ${hiddenLabel(next)}`);
-        tooltip.setText(`${hiddenLabel(next)} — ${t("Click to expand")}`);
+        dom.setAttribute("aria-label", `${t("Expand")} — ${hiddenLabel(next, unit)}`);
+        tooltip.setText(`${hiddenLabel(next, unit)} — ${t("Click to expand")}`);
     };
     setCount(count);
 

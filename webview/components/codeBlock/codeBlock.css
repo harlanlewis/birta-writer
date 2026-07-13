@@ -789,3 +789,39 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     font-style: italic;
     font-size: 13px;
 }
+
+/* ─── Folded code block (MAR-125): fold to the chrome/header row ────────────
+ * The `collapsed` class arrives as a node decoration from the fold plugin.
+ * The source `pre` collapses via the preview-mode idiom (visibility, not
+ * display — the block's gutter marker lives inside and opts back in); the
+ * mermaid/math previews and the resize handle hide outright (`!important`
+ * beats their inline display toggles). The header row stays live. */
+.code-block-wrapper.collapsed > pre {
+    visibility: hidden;
+    height: 0 !important;
+    max-height: 0 !important;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    overflow: hidden;
+}
+.code-block-wrapper.collapsed .heading-fold-gutter--block {
+    visibility: visible;
+}
+.code-block-wrapper.collapsed > .mermaid-preview,
+.code-block-wrapper.collapsed > .latex-preview,
+.code-block-wrapper.collapsed > .code-block-resize-handle {
+    display: none !important;
+}
+
+/* The collapsed `…` chip sits in the header beside the lang picker (shared
+ * .fold-ellipsis look, style.css); hidden while the block is expanded.
+ * Scope matches the base .fold-ellipsis rule's `.milkdown .editor` prefix
+ * so this display:none outranks it. */
+.milkdown .editor .code-block-header .code-fold-ellipsis {
+    display: none;
+}
+.milkdown .editor .code-block-wrapper.collapsed .code-block-header .code-fold-ellipsis {
+    display: inline-flex;
+}
