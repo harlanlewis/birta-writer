@@ -16,6 +16,12 @@
  *     section inside another section is a legitimate outline edit);
  *   - the window auto-scrolls when the pointer nears the viewport edges;
  *   - Escape cancels, mouseup commits (one transaction, one undo step).
+ *
+ * The session machinery is source-agnostic (startPointerDragSession) — the
+ * gutter marker is one DragSessionSource; other handles (e.g. TOC items)
+ * supply their own. Registered DropZoneProviders (the TOC panel) take over
+ * targeting while the pointer is inside them; the commit path stays the one
+ * moveBlocks call regardless of zone.
  */
 import type { EditorView } from "@milkdown/prose/view";
 import type { EditorState } from "@milkdown/prose/state";
@@ -203,28 +209,36 @@ const SCROLL_MAX = 40;
 const SCROLL_OVERSHOOT = 1.5;
 
 /**
+ * The quadratic edge-scroll ramp, shared by every scrollable drop zone (the
+ * document viewport here; a DropZoneProvider's own scroller reuses the same
+ * curve so all zones feel identical): zero outside the zone, SCROLL_MIN just
+ * inside it, brisk at the edge, and still accelerating up to SCROLL_MAX as
+ * `depthIntoZone` overshoots past the edge (the dnd-kit/Figma convention:
+ * distance is the throttle, so 1px into the zone never sprints).
+ */
+export function edgeScrollVelocity(depthIntoZone: number, zone: number): number {
+    if (zone <= 0 || depthIntoZone <= 0) {
+        return 0;
+    }
+    const t = Math.min(depthIntoZone / zone, SCROLL_OVERSHOOT) / SCROLL_OVERSHOOT;
+    return SCROLL_MIN + (SCROLL_MAX - SCROLL_MIN) * t * t;
+}
+
+/**
  * Signed auto-scroll velocity (px per frame) for a pointer at `clientY`:
- * zero outside the edge zones, then a quadratic ramp with depth — barely
- * inside the zone creeps at SCROLL_MIN, the viewport edge is already brisk,
- * and dragging PAST the edge keeps accelerating up to SCROLL_MAX (the
- * dnd-kit/Figma convention: distance is the throttle, so 1px into the zone
- * never sprints). Shared by the drag and marquee sessions.
+ * the edgeScrollVelocity ramp applied to the viewport's top/bottom edge
+ * zones. Shared by the drag and marquee sessions.
  */
 export function scrollVelocityFor(clientY: number): number {
     // Clamp the zones on short viewports so a dead band always exists in
     // the middle — otherwise every pointer position would auto-scroll.
     const zone = Math.min(SCROLL_ZONE, Math.floor(window.innerHeight / 3));
-    if (zone <= 0) {
-        return 0;
-    }
     const topDepth = zone - clientY;
     const bottomDepth = clientY - (window.innerHeight - zone);
-    const depth = Math.max(topDepth, bottomDepth);
-    if (depth <= 0) {
+    const speed = edgeScrollVelocity(Math.max(topDepth, bottomDepth), zone);
+    if (speed === 0) {
         return 0;
     }
-    const t = Math.min(depth / zone, SCROLL_OVERSHOOT) / SCROLL_OVERSHOOT;
-    const speed = SCROLL_MIN + (SCROLL_MAX - SCROLL_MIN) * t * t;
     return topDepth > bottomDepth ? -speed : speed;
 }
 
@@ -388,27 +402,303 @@ function pillLabel(view: EditorView, name: string, range: { from: number; to: nu
     return blocks > 1 ? `${blocks} ${t("blocks")}` : name;
 }
 
-function showIndicator(view: EditorView, target: DropBoundary): void {
+/**
+ * The singleton drop-indicator line, exported so ANY drop zone (the document
+ * path here, a DropZoneProvider like the TOC panel) draws the same one line.
+ * `y` is the boundary line the indicator marks; the element sits at y − 1 so
+ * the 2px line centers on it.
+ */
+export function showDropIndicatorAt(rect: { left: number; width: number; y: number }): void {
     const el = indicator();
-    // Item slots indent the line to the target column (nesting depth is
-    // visible at a glance); block slots span the editor.
-    const editorRect = view.dom.getBoundingClientRect();
-    el.style.left = `${target.left ?? editorRect.left}px`;
-    el.style.width = `${target.width ?? editorRect.width}px`;
-    el.style.top = `${target.y - 1}px`;
+    el.style.left = `${rect.left}px`;
+    el.style.width = `${rect.width}px`;
+    el.style.top = `${rect.y - 1}px`;
     el.style.display = "block";
 }
 
-function hideIndicator(): void {
+export function hideDropIndicator(): void {
     if (indicatorEl) {
         indicatorEl.style.display = "none";
     }
+}
+
+function showIndicator(view: EditorView, target: DropBoundary): void {
+    // Item slots indent the line to the target column (nesting depth is
+    // visible at a glance); block slots span the editor.
+    const editorRect = view.dom.getBoundingClientRect();
+    showDropIndicatorAt({
+        left: target.left ?? editorRect.left,
+        width: target.width ?? editorRect.width,
+        y: target.y,
+    });
+}
+
+// ── Drop-zone providers ─────────────────────────────────────────────────────
+// Auxiliary drop zones (e.g. the TOC panel) that a drag session hands
+// targeting to while the pointer is inside them. A provider renders its own
+// chrome and owns its own scrolling, but the session keeps the commit path —
+// the same moveBlocks call as the document path — so a zone can never invent
+// drop semantics the primitive doesn't enforce.
+
+export interface DropZoneProvider {
+    /** Whether the viewport point sits inside this zone. */
+    contains(x: number, y: number): boolean;
+    /** A drag session started: the dragged unit, for slot precomputation. */
+    sessionStart(view: EditorView, range: { from: number; to: number }, kind: "block" | "item"): void;
+    /** Renders its own chrome; returns the commit pos or null (no legal target). */
+    target(x: number, y: number, range: { from: number; to: number }): { pos: number } | null;
+    /** The pointer left the zone (or the session ended): clear the chrome. */
+    clear(): void;
+    /** Per-frame auto-scroll while pointer is inside; returns true if it scrolled (geometry moved). */
+    autoScroll(y: number): boolean;
+    sessionEnd(): void;
+}
+
+const dropZoneProviders = new Set<DropZoneProvider>();
+
+/** Register a drop zone for future drag sessions; returns the unregister. */
+export function registerDropZoneProvider(provider: DropZoneProvider): () => void {
+    dropZoneProviders.add(provider);
+    return () => {
+        dropZoneProviders.delete(provider);
+    };
+}
+
+// ── The pointer drag session ────────────────────────────────────────────────
+
+/** What a drag source (gutter marker, TOC item, …) supplies to a session. */
+export interface DragSessionSource {
+    startX: number;
+    startY: number;
+    /** Called at threshold-crossing: the dragged unit, or null to abort the session. */
+    resolveRange(): {
+        range: { from: number; to: number };
+        kind: "block" | "item";
+        multi: boolean;
+        label: string;
+    } | null;
+    /** Source-side chrome at threshold-crossing (dragged flag + class). */
+    onStart?(): void;
+    /** Source-side teardown when the session ends (commit, cancel, or abort). */
+    onStop?(): void;
+}
+
+/**
+ * Run one pointer drag session, from an armed mousedown to commit or cancel.
+ * The session owns everything source-agnostic: the movement threshold, the
+ * capture-phase listeners, document boundary targeting (indicator line +
+ * edge auto-scroll), drop-zone provider handoff, the cursor pill, the range
+ * veil, and the moveBlocks commit. The source supplies only what varies per
+ * handle kind, via DragSessionSource.
+ */
+export function startPointerDragSession(view: EditorView, source: DragSessionSource): void {
+    const { startX, startY } = source;
+    let dragging = false;
+    let sessionStarted = false; // providers were told sessionStart
+    let target: { pos: number } | null = null;
+    let range: { from: number; to: number } | null = null;
+    let boundaries: DropBoundary[] = [];
+    let draggedKind: "block" | "item" = "block";
+    let multi = false;
+    let scrollDir = 0;
+    let scrollRaf = 0;
+    let lastPointerX = startX;
+    let lastPointerY = startY;
+    let label = "";
+    let activeProvider: DropZoneProvider | null = null;
+    // The doc the session's range/boundaries were measured against — an
+    // inbound edit mid-drag (external file sync) invalidates them, and a
+    // drop must then cancel rather than slice stale positions.
+    let startDoc: ProseNode | null = null;
+
+    const scrollLoop = (): void => {
+        if (activeProvider) {
+            // The provider owns scrolling while the pointer is inside it; a
+            // scroll moves its geometry, so re-aim its target.
+            if (activeProvider.autoScroll(lastPointerY) && range) {
+                target = activeProvider.target(lastPointerX, lastPointerY, range);
+            }
+            scrollRaf = requestAnimationFrame(scrollLoop);
+            return;
+        }
+        const velocity = scrollDir === 0 ? 0 : scrollVelocityFor(lastPointerY);
+        if (velocity !== 0) {
+            window.scrollBy(0, velocity);
+            // Geometry shifted under the pointer — remeasure and re-aim.
+            boundaries = measureBoundaries(view).filter((b) => b.kind === draggedKind);
+            if (range) {
+                const boundary = dropTargetFor(boundaries, lastPointerY, range);
+                target = boundary;
+                if (boundary) {
+                    showIndicator(view, boundary);
+                } else {
+                    hideDropIndicator();
+                }
+            }
+            scrollRaf = requestAnimationFrame(scrollLoop);
+        } else {
+            scrollRaf = 0;
+        }
+    };
+
+    const stop = (): void => {
+        dragging = false;
+        scrollDir = 0;
+        if (scrollRaf) {
+            cancelAnimationFrame(scrollRaf);
+            scrollRaf = 0;
+        }
+        hideDropIndicator();
+        hidePill();
+        if (sessionStarted) {
+            // Full provider teardown, pointer inside one or not — clear()
+            // is idempotent chrome removal, so all zones get both calls.
+            for (const provider of dropZoneProviders) {
+                provider.clear();
+                provider.sessionEnd();
+            }
+        }
+        activeProvider = null;
+        // A multi-block selection that outlives the session (e.g. an
+        // Escape-canceled multi-drag) keeps its veil — one visual
+        // language for the covered range, dragging or not.
+        const survivingCover = selectionCoverRange(view);
+        if (survivingCover) {
+            showRangeVeil(view, survivingCover, "select");
+        } else {
+            hideRangeVeil();
+        }
+        document.body.classList.remove("block-dragging");
+        document.removeEventListener("mousemove", onMove, true);
+        document.removeEventListener("mouseup", onUp, true);
+        document.removeEventListener("keydown", onKey, true);
+        window.removeEventListener("blur", onBlur);
+        source.onStop?.();
+    };
+
+    const onMove = (move: MouseEvent): void => {
+        lastPointerX = move.clientX;
+        lastPointerY = move.clientY;
+        // The button was released outside the window (no mouseup reaches
+        // us): end the session — armed or dragging — instead of leaking
+        // listeners / dragging with no button down.
+        if ((move.buttons & 1) === 0) {
+            stop();
+            return;
+        }
+        if (!dragging) {
+            if (
+                Math.abs(move.clientX - startX) < DRAG_THRESHOLD &&
+                Math.abs(move.clientY - startY) < DRAG_THRESHOLD
+            ) {
+                return;
+            }
+            // Threshold crossed — the session starts now. onStart runs
+            // BEFORE resolveRange so the source's click-suppression flag is
+            // set even when resolution aborts (the release's click on the
+            // handle must stay suppressed either way).
+            dragging = true;
+            source.onStart?.();
+            const resolved = source.resolveRange();
+            if (!resolved) {
+                stop();
+                return;
+            }
+            range = resolved.range;
+            draggedKind = resolved.kind;
+            multi = resolved.multi;
+            label = resolved.label;
+            boundaries = measureBoundaries(view).filter((b) => b.kind === draggedKind);
+            startDoc = view.state.doc;
+            closeBlockMenu();
+            hideTooltip();
+            document.body.classList.add("block-dragging");
+            showRangeVeil(view, range);
+            sessionStarted = true;
+            for (const provider of dropZoneProviders) {
+                provider.sessionStart(view, range, draggedKind);
+            }
+        }
+        move.preventDefault();
+        showPill(move.clientX, move.clientY, label);
+        // A drop zone containing the pointer takes over targeting: it draws
+        // its own chrome, so the document indicator hides and document
+        // edge-scroll goes quiet until the pointer leaves it again.
+        let provider: DropZoneProvider | null = null;
+        for (const p of dropZoneProviders) {
+            if (p.contains(move.clientX, move.clientY)) {
+                provider = p;
+                break;
+            }
+        }
+        if (provider !== activeProvider) {
+            activeProvider?.clear();
+            activeProvider = provider;
+        }
+        if (provider) {
+            hideDropIndicator();
+            scrollDir = 0;
+            target = provider.target(move.clientX, move.clientY, range!);
+            if (!scrollRaf) {
+                // Keep the frame loop alive so the provider gets its per-
+                // frame autoScroll chances while the pointer rests inside.
+                scrollRaf = requestAnimationFrame(scrollLoop);
+            }
+            return;
+        }
+        const boundary = dropTargetFor(boundaries, move.clientY, range!);
+        target = boundary;
+        if (boundary) {
+            showIndicator(view, boundary);
+        } else {
+            hideDropIndicator();
+        }
+        const nextDir = Math.sign(scrollVelocityFor(move.clientY));
+        if (nextDir !== scrollDir) {
+            scrollDir = nextDir;
+            if (scrollDir !== 0 && !scrollRaf) {
+                scrollRaf = requestAnimationFrame(scrollLoop);
+            }
+        }
+    };
+
+    const onUp = (): void => {
+        // Doc changed mid-drag (external sync): the measured range and
+        // boundaries describe a document that no longer exists — cancel.
+        const commit = dragging && range && target && view.state.doc === startDoc;
+        const commitRange = range;
+        const commitTarget = target;
+        const commitMulti = multi;
+        stop();
+        if (commit) {
+            moveBlocks(view, commitRange!, commitTarget!.pos, { selectRun: commitMulti });
+        }
+    };
+
+    const onKey = (key: KeyboardEvent): void => {
+        if (key.key === "Escape" && dragging) {
+            key.preventDefault();
+            key.stopPropagation();
+            stop();
+        }
+    };
+    // Window blur (webview lost focus mid-drag): cancel, don't linger.
+    const onBlur = (): void => {
+        stop();
+    };
+
+    document.addEventListener("mousemove", onMove, true);
+    document.addEventListener("mouseup", onUp, true);
+    document.addEventListener("keydown", onKey, true);
+    window.addEventListener("blur", onBlur);
 }
 
 /**
  * Arm a gutter marker for drag-to-reorder. Call once per marker; the handler
  * coexists with the marker's click-for-menu (a drag past the threshold sets
  * `data-dragged`, which the click handler consumes to skip opening the menu).
+ * A thin wrapper over startPointerDragSession — only the marker-specific
+ * bits live here (unit resolution, cover adoption, the marker's own chrome).
  */
 export function wireMarkerDrag(
     view: EditorView,
@@ -419,106 +709,12 @@ export function wireMarkerDrag(
         if (event.button !== 0) {
             return;
         }
-        const startX = event.clientX;
-        const startY = event.clientY;
-        let dragging = false;
-        let target: DropBoundary | null = null;
-        let range: { from: number; to: number } | null = null;
-        let boundaries: DropBoundary[] = [];
-        let draggedKind: "block" | "item" = "block";
-        let scrollDir = 0;
-        let scrollRaf = 0;
-        let lastPointerY = startY;
-        let label = "";
-        let wasMulti = false;
-        // The doc the session's range/boundaries were measured against — an
-        // inbound edit mid-drag (external file sync) invalidates them, and a
-        // drop must then cancel rather than slice stale positions.
-        let startDoc: ProseNode | null = null;
-
-        const scrollLoop = (): void => {
-            const velocity = scrollDir === 0 ? 0 : scrollVelocityFor(lastPointerY);
-            if (velocity !== 0) {
-                window.scrollBy(0, velocity);
-                // Geometry shifted under the pointer — remeasure and re-aim.
-                boundaries = measureBoundaries(view).filter((b) => b.kind === draggedKind);
-                if (range) {
-                    target = dropTargetFor(boundaries, lastPointerY, range);
-                    if (target) {
-                        showIndicator(view, target);
-                    } else {
-                        hideIndicator();
-                    }
-                }
-                scrollRaf = requestAnimationFrame(scrollLoop);
-            } else {
-                scrollRaf = 0;
-            }
-        };
-
-        const stop = (): void => {
-            dragging = false;
-            scrollDir = 0;
-            if (scrollRaf) {
-                cancelAnimationFrame(scrollRaf);
-                scrollRaf = 0;
-            }
-            hideIndicator();
-            hidePill();
-            // A multi-block selection that outlives the session (e.g. an
-            // Escape-canceled multi-drag) keeps its veil — one visual
-            // language for the covered range, dragging or not.
-            const survivingCover = selectionCoverRange(view);
-            if (survivingCover) {
-                showRangeVeil(view, survivingCover, "select");
-            } else {
-                hideRangeVeil();
-            }
-            marker.classList.remove("heading-fold-marker--dragging");
-            document.body.classList.remove("block-dragging");
-            document.removeEventListener("mousemove", onMove, true);
-            document.removeEventListener("mouseup", onUp, true);
-            document.removeEventListener("keydown", onKey, true);
-            window.removeEventListener("blur", onBlur);
-            // The click-suppression flag must not outlive the interaction —
-            // but it must survive until the mouse BUTTON is actually released
-            // (an Escape-cancel leaves it held; the eventual release still
-            // produces a click on the marker, which must stay suppressed).
-            // A one-shot bubble-phase mouseup fires for the release — on the
-            // commit path that's the very mouseup ending the drag — and its
-            // zero-delay hop runs after the click that release produces.
-            if (marker.dataset["dragged"]) {
-                document.addEventListener(
-                    "mouseup",
-                    () => setTimeout(() => {
-                        delete marker.dataset["dragged"];
-                    }, 0),
-                    { once: true },
-                );
-            }
-        };
-
-        const onMove = (move: MouseEvent): void => {
-            lastPointerY = move.clientY;
-            // The button was released outside the window (no mouseup reaches
-            // us): end the session — armed or dragging — instead of leaking
-            // listeners / dragging with no button down.
-            if ((move.buttons & 1) === 0) {
-                stop();
-                return;
-            }
-            if (!dragging) {
-                if (
-                    Math.abs(move.clientX - startX) < DRAG_THRESHOLD &&
-                    Math.abs(move.clientY - startY) < DRAG_THRESHOLD
-                ) {
-                    return;
-                }
-                // Threshold crossed — the session starts now.
-                dragging = true;
-                marker.dataset["dragged"] = "1";
+        startPointerDragSession(view, {
+            startX: event.clientX,
+            startY: event.clientY,
+            resolveRange: () => {
                 const pos = blockPos();
-                range = pos === null ? null : moveRangeAt(view, pos);
+                let range = pos === null ? null : moveRangeAt(view, pos);
                 // Multi-block drag: a selection spanning several top-level
                 // blocks, with this marker's block inside it, drags the whole
                 // covered run (the selection is KEPT — history then restores
@@ -532,79 +728,55 @@ export function wireMarkerDrag(
                     range && cover && range.from >= cover.from && range.from < cover.to &&
                     view.state.doc.resolve(range.from).depth === 0,
                 );
-                wasMulti = multi;
                 if (multi) {
                     range = cover;
                 }
                 if (!range) {
-                    stop();
-                    return;
+                    return null;
                 }
-                // A dragged unit only sees slots of its own kind: items drop
-                // at item boundaries (any list), blocks at block boundaries.
-                draggedKind = !multi && view.state.doc.nodeAt(range.from)?.type.name === "list_item"
-                    ? "item"
-                    : "block";
-                boundaries = measureBoundaries(view).filter((b) => b.kind === draggedKind);
-                startDoc = view.state.doc;
                 if (!multi) {
                     // Caret into the dragged block: history snapshots the
                     // selection before the drop's transaction, so undoing a
-                    // drag scrolls back to where the block came FROM.
+                    // drag scrolls back to where the block came FROM. (A
+                    // selection-only transaction: the session's startDoc
+                    // identity guard and boundary geometry are unaffected.)
                     selectInto(view, range.from);
                 }
-                closeBlockMenu();
-                hideTooltip();
+                return {
+                    range,
+                    // A dragged unit only sees slots of its own kind: items
+                    // drop at item boundaries (any list), blocks at block
+                    // boundaries.
+                    kind: !multi && view.state.doc.nodeAt(range.from)?.type.name === "list_item"
+                        ? ("item" as const)
+                        : ("block" as const),
+                    multi,
+                    label: pillLabel(view, marker.dataset["pill"] ?? marker.textContent ?? "", range),
+                };
+            },
+            onStart: () => {
+                marker.dataset["dragged"] = "1";
                 marker.classList.add("heading-fold-marker--dragging");
-                document.body.classList.add("block-dragging");
-                label = pillLabel(view, marker.dataset["pill"] ?? marker.textContent ?? "", range);
-                showRangeVeil(view, range);
-            }
-            move.preventDefault();
-            showPill(move.clientX, move.clientY, label);
-            target = dropTargetFor(boundaries, move.clientY, range!);
-            if (target) {
-                showIndicator(view, target);
-            } else {
-                hideIndicator();
-            }
-            const nextDir = Math.sign(scrollVelocityFor(move.clientY));
-            if (nextDir !== scrollDir) {
-                scrollDir = nextDir;
-                if (scrollDir !== 0 && !scrollRaf) {
-                    scrollRaf = requestAnimationFrame(scrollLoop);
+            },
+            onStop: () => {
+                marker.classList.remove("heading-fold-marker--dragging");
+                // The click-suppression flag must not outlive the interaction —
+                // but it must survive until the mouse BUTTON is actually released
+                // (an Escape-cancel leaves it held; the eventual release still
+                // produces a click on the marker, which must stay suppressed).
+                // A one-shot bubble-phase mouseup fires for the release — on the
+                // commit path that's the very mouseup ending the drag — and its
+                // zero-delay hop runs after the click that release produces.
+                if (marker.dataset["dragged"]) {
+                    document.addEventListener(
+                        "mouseup",
+                        () => setTimeout(() => {
+                            delete marker.dataset["dragged"];
+                        }, 0),
+                        { once: true },
+                    );
                 }
-            }
-        };
-
-        const onUp = (): void => {
-            // Doc changed mid-drag (external sync): the measured range and
-            // boundaries describe a document that no longer exists — cancel.
-            const commit = dragging && range && target && view.state.doc === startDoc;
-            const commitRange = range;
-            const commitTarget = target;
-            const commitMulti = wasMulti;
-            stop();
-            if (commit) {
-                moveBlocks(view, commitRange!, commitTarget!.pos, { selectRun: commitMulti });
-            }
-        };
-
-        const onKey = (key: KeyboardEvent): void => {
-            if (key.key === "Escape" && dragging) {
-                key.preventDefault();
-                key.stopPropagation();
-                stop();
-            }
-        };
-        // Window blur (webview lost focus mid-drag): cancel, don't linger.
-        const onBlur = (): void => {
-            stop();
-        };
-
-        document.addEventListener("mousemove", onMove, true);
-        document.addEventListener("mouseup", onUp, true);
-        document.addEventListener("keydown", onKey, true);
-        window.addEventListener("blur", onBlur);
+            },
+        });
     });
 }
