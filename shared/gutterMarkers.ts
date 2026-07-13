@@ -3,7 +3,7 @@
  * initial body class into the webview HTML and broadcasts live changes) and
  * the webview (which applies the class at runtime). Driven by one setting:
  *
- * - `markdownWysiwyg.gutterMarkers`: which block grabbers stay visible while
+ * - `birta.gutterMarkers`: which block grabbers stay visible while
  *   the pointer is elsewhere — `"headings"` (default; the heading level
  *   badges), `"none"`, or `"all"`. Hovering a block always reveals its
  *   grabber regardless of the mode; this only sets the at-rest display.

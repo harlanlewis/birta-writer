@@ -2,11 +2,11 @@
  * Command-category guardrail (MAR-70).
  *
  * Every command this extension contributes must carry a `category` so it renders
- * in the command palette as "WYSIWYG Markdown Editor: <title>" — consistent with
+ * in the command palette as "Birta Writer: <title>" — consistent with
  * the editor-action commands, and distinct from VS Code's own same-named entries
  * (e.g. "Preferences: Color Theme"). A category-less command shows bare and reads
  * as if it belongs to the workbench, not this editor. This test fails the build if
- * a new `markdownWysiwyg.*` command is added without one.
+ * a new `birta.*` command is added without one.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -35,9 +35,9 @@ describe("contributed command categories", () => {
         expect(commands.length).toBeGreaterThan(0);
     });
 
-    it("every markdownWysiwyg.* command should carry a non-empty category", () => {
+    it("every birta.* command should carry a non-empty category", () => {
         const uncategorized = commands
-            .filter((c) => c.command?.startsWith("markdownWysiwyg."))
+            .filter((c) => c.command?.startsWith("birta."))
             .filter((c) => !c.category || c.category.trim() === "")
             .map((c) => c.command)
             .sort();
@@ -47,9 +47,9 @@ describe("contributed command categories", () => {
     it("every category should be the single canonical editor label", () => {
         const labels = new Set(
             commands
-                .filter((c) => c.command?.startsWith("markdownWysiwyg."))
+                .filter((c) => c.command?.startsWith("birta."))
                 .map((c) => c.category),
         );
-        expect([...labels]).toEqual(["WYSIWYG Markdown Editor"]);
+        expect([...labels]).toEqual(["Birta Writer"]);
     });
 });

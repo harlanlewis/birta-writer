@@ -1764,7 +1764,7 @@ export const headingFoldPlugin = $prose(() =>
     }),
 );
 
-// ─── Fold commands (MAR-110: markdownWysiwyg.editor.fold/unfold/…) ──────────
+// ─── Fold commands (MAR-110: birta.editor.fold/unfold/…) ──────────
 
 /** Every foldable containing `pos` (heading line or section; callout, list
  * item, table, or code block node), innermost first. */

@@ -6,7 +6,7 @@
  * synchronously in a ProseMirror keymap (an extension-host round-trip would
  * let contenteditable's default Enter handling race the command). Claimed by
  * the key-leak guard (webview/keyboardShortcuts.ts); the palette entries
- * (`markdownWysiwyg.editor.insertParagraphAfter` / `insertParagraphBefore`)
+ * (`birta.editor.insertParagraphAfter` / `insertParagraphBefore`)
  * stay rebindable to ADDITIONAL chords.
  *
  * Semantics:

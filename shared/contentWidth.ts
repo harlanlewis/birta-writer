@@ -3,9 +3,9 @@
  * CSS + broadcasts live changes) and the webview toolbar (the Full Width /
  * Fixed segmented control). Driven by two settings:
  *
- * - `markdownWysiwyg.contentWidth`: `"full"` (default; content fills the pane)
+ * - `birta.contentWidth`: `"full"` (default; content fills the pane)
  *   or `"fixed"` (capped and centered).
- * - `markdownWysiwyg.maxContentWidth`: the fixed measure in `ch` (character
+ * - `birta.maxContentWidth`: the fixed measure in `ch` (character
  *   widths), so it tracks a target line length and scales with the content
  *   font size.
  */

@@ -10,7 +10,7 @@
  *   - the webview (`webview/editorCommands.ts`) implements the behavior;
  *   - a drift-guard test asserts package.json's contributions match this list.
  *
- * Each contributed VS Code command is `markdownWysiwyg.editor.<id>`; the
+ * Each contributed VS Code command is `birta.editor.<id>`; the
  * message protocol carries the bare `<id>` as `EditorCommandId`.
  */
 
@@ -185,7 +185,7 @@ export const TOOLBAR_MENU_COMMANDS = EDITOR_COMMANDS.filter((m) =>
 export type EditorCommandId = typeof EDITOR_COMMANDS[number]["id"];
 
 /** Prefix all contributed VS Code command names share. */
-export const EDITOR_COMMAND_PREFIX = "markdownWysiwyg.editor.";
+export const EDITOR_COMMAND_PREFIX = "birta.editor.";
 
 /** The full VS Code command name for a bare editor-command id. */
 export function editorCommandName(id: EditorCommandId): string {

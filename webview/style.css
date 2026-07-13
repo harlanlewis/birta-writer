@@ -1744,7 +1744,7 @@ body.fold-controls-never .heading-sticky-toggle {
     display: none;
 }
 
-/* Resting gutter markers (`markdownWysiwyg.gutterMarkers`). The baseline —
+/* Resting gutter markers (`birta.gutterMarkers`). The baseline —
    heading badges visible at rest, block markers on hover — is the default
    ("headings") mode; these body classes override the AT-REST side only.
    Hover, keyboard focus, open-menu, drag, and multi-block-cover states keep

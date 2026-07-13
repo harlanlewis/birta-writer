@@ -1,10 +1,10 @@
-# WYSIWYG Markdown Editor
+# Birta Writer
 
-[GitHub](https://github.com/harlanlewis/md-wysiwyg-editor)
+[GitHub](https://github.com/harlanlewis/birta-writer)
 
-> A personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) (MIT). Not affiliated with or endorsed by the upstream project.
+> **Birta Writer** is maintained by [Harlan Lewis](https://www.harlanlewis.com). It began as a personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) (MIT) and is not affiliated with or endorsed by the upstream project. Birta Writer is licensed under [Apache-2.0](LICENSE); the upstream-derived portions remain under the MIT License they were published under (see [NOTICE](NOTICE) and [LICENSE-MIT](LICENSE-MIT)).
 
-WYSIWYG Markdown Editor is a VS Code WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdown.dev/) (ProseMirror). Edit `.md` / `.markdown` files as rich text and save as standard Markdown — fully compatible with any text editor.
+Birta Writer is a VS Code WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdown.dev/) (ProseMirror). Edit `.md` / `.markdown` files as rich text and save as standard Markdown — fully compatible with any text editor.
 
 ***
 
@@ -32,7 +32,7 @@ Every block — paragraphs, headings, list items (at any depth), quotes, callout
 - **Headings** (H1–H6), **bold**, *italic*, ~~strikethrough~~, `inline code`, blockquote, horizontal rule
 - **Ordered / Unordered / Task lists** (click checkbox to toggle completion)
 - **Links**: hover to show a popup for editing link text and URL inline, with a **format switch** (standard markdown ⇄ `[[wikilink]]`) that converts a link in place; supports `@/` workspace paths, `#anchor` in-page jumps, `file.md#27` line-number links, and `file.md#some-heading` cross-file heading jumps
-- **Smart link resolution** (`markdownWysiwyg.smartLinks`, on by default): local links resolve the way your site generator publishes them — workspace-root paths (`/docs/guide`), ancestor content roots (a Hugo file's `/write/uber` finds `content/write/uber/index.md`), `.md`/`index.md`/`_index.md` suffix inference, and a workspace-wide fallback. External links open through VS Code's own trusted-domains prompt — no extra dialog
+- **Smart link resolution** (`birta.smartLinks`, on by default): local links resolve the way your site generator publishes them — workspace-root paths (`/docs/guide`), ancestor content roots (a Hugo file's `/write/uber` finds `content/write/uber/index.md`), `.md`/`index.md`/`_index.md` suffix inference, and a workspace-wide fallback. External links open through VS Code's own trusted-domains prompt — no extra dialog
 - **Wikilinks**: `[[target]]`, `[[target|alias]]`, `[[target#heading]]` (Obsidian conventions) parse, render, navigate (bare names match by filename across the workspace), and round-trip byte-identically; typing `[[` opens name autocompletion. Anything the grammar doesn't match stays visible plain text
 - **Path autocomplete**: type `@/`, `./`, or `../` inside inline code to get smart path suggestions — browse directories level by level with color-coded file-type icons
 
@@ -117,19 +117,19 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 
 | Setting                              | Type    | Default     | Description                                                                               |
 | ------------------------------------ | ------- | ----------- | ----------------------------------------------------------------------------------------- |
-| `markdownWysiwyg.defaultMode`        | string  | `"preview"` | Default mode when opening `.md`: `preview` (WYSIWYG) or `markdown` (text editor)          |
-| `markdownWysiwyg.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
-| `markdownWysiwyg.contentWidth`       | string  | `"full"`    | Content width: `full` (fill the pane) or `fixed` (cap at Max Content Width); also in the toolbar A menu |
-| `markdownWysiwyg.maxContentWidth`    | number  | `100`       | Max content width in ch when Content Width is `fixed` (scales with the content font size)              |
-| `markdownWysiwyg.fontPreset`         | string  | `"editor"`  | Content font: `editor` (follow the VS Code editor font), `sans`, `serif`, or `mono`; also switchable from the toolbar font picker |
-| `markdownWysiwyg.fontFamilySans`     | string  | system sans stack | Font-family stack used by the Sans serif preset                                     |
-| `markdownWysiwyg.fontFamilySerif`    | string  | serif stack | Font-family stack used by the Serif preset                                                |
-| `markdownWysiwyg.fontFamilyMono`     | string  | mono stack  | Font-family stack used by the Monospace preset                                            |
-| `markdownWysiwyg.fontSize`           | number  | `100`       | Content font size as a percentage of the VS Code editor font size (50–200)                |
-| `markdownWysiwyg.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
-| `markdownWysiwyg.smartLinks`         | boolean | `true`      | Resolve local links the way your site generator does: workspace-root paths, ancestor content roots, `.md`/`index.md` suffixes, and `[[wikilink]]` targets |
-| `markdownWysiwyg.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
-| `markdownWysiwyg.gutterMarkers`      | string  | `"headings"` | Which block grabbers stay visible at rest: `headings` (H1–H6 badges), `none`, or `all`; hovering a block always reveals its grabber |
+| `birta.defaultMode`        | string  | `"preview"` | Default mode when opening `.md`: `preview` (WYSIWYG) or `markdown` (text editor)          |
+| `birta.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
+| `birta.contentWidth`       | string  | `"full"`    | Content width: `full` (fill the pane) or `fixed` (cap at Max Content Width); also in the toolbar A menu |
+| `birta.maxContentWidth`    | number  | `100`       | Max content width in ch when Content Width is `fixed` (scales with the content font size)              |
+| `birta.fontPreset`         | string  | `"editor"`  | Content font: `editor` (follow the VS Code editor font), `sans`, `serif`, or `mono`; also switchable from the toolbar font picker |
+| `birta.fontFamilySans`     | string  | system sans stack | Font-family stack used by the Sans serif preset                                     |
+| `birta.fontFamilySerif`    | string  | serif stack | Font-family stack used by the Serif preset                                                |
+| `birta.fontFamilyMono`     | string  | mono stack  | Font-family stack used by the Monospace preset                                            |
+| `birta.fontSize`           | number  | `100`       | Content font size as a percentage of the VS Code editor font size (50–200)                |
+| `birta.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
+| `birta.smartLinks`         | boolean | `true`      | Resolve local links the way your site generator does: workspace-root paths, ancestor content roots, `.md`/`index.md` suffixes, and `[[wikilink]]` targets |
+| `birta.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
+| `birta.gutterMarkers`      | string  | `"headings"` | Which block grabbers stay visible at rest: `headings` (H1–H6 badges), `none`, or `all`; hovering a block always reveals its grabber |
 
 ***
 

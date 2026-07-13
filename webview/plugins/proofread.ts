@@ -339,7 +339,7 @@ function emDashReplacement(text: string, start: number, end: number): string {
  * positions (blockPos + 1 + offset): inline-code text and non-text inline nodes
  * are both masked with placeholder characters of equal size. Masking code with
  * the placeholder (not spaces) is load-bearing — a run of spaces looks to Harper
- * like real prose, so masking `markdownWysiwyg.smartLinks` as 28 spaces made it
+ * like real prose, so masking `birta.smartLinks` as 28 spaces made it
  * emit "There are 28 spaces where there should be only one" and underline the
  * code span. The placeholder carries no such meaning and is recognized as masked
  * content by isTechSpan / the whitespace guard in harperService. Exported for

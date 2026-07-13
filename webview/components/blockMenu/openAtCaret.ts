@@ -1,7 +1,7 @@
 /**
  * webview/components/blockMenu/openAtCaret.ts
  *
- * Keyboard path into the gutter block menu (markdownWysiwyg.editor.
+ * Keyboard path into the gutter block menu (birta.editor.
  * openBlockMenu — the mouse path is clicking a gutter marker).
  *
  * Resolves the caret (or a block-range selection's head) to the block that

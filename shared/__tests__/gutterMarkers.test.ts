@@ -1,7 +1,7 @@
 /**
  * Resting gutter-marker mode: normalization, the mode → body-class map, and
  * drift guards against the two places the modes are declared outside this
- * module — the `markdownWysiwyg.gutterMarkers` enum in package.json (what
+ * module — the `birta.gutterMarkers` enum in package.json (what
  * the Settings UI offers) and the `body.gutter-rest-*` rules in style.css
  * (what the classes actually do).
  */
@@ -57,10 +57,10 @@ describe("GUTTER_MARKERS_DISPLAY_ORDER", () => {
 
 describe("contributed setting drift guards", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-    const prop = pkg.contributes.configuration.properties["markdownWysiwyg.gutterMarkers"];
+    const prop = pkg.contributes.configuration.properties["birta.gutterMarkers"];
 
     it("the package.json enum should list exactly the shared modes", () => {
-        expect(prop, "markdownWysiwyg.gutterMarkers is not contributed").toBeDefined();
+        expect(prop, "birta.gutterMarkers is not contributed").toBeDefined();
         expect(prop.enum).toEqual([...GUTTER_MARKERS_MODES]);
     });
 

@@ -96,7 +96,7 @@ no `+` insert button — insertion belongs to the slash menu and typing.
   By default only heading badges rest visible (they double as the document's
   outline); every other marker appears on hovering the block or its gutter at
   low contrast and brightens on direct hover/focus. The
-  `markdownWysiwyg.gutterMarkers` setting moves that line (`none` / `headings`
+  `birta.gutterMarkers` setting moves that line (`none` / `headings`
   / `all` at rest — hover always reveals; `body.gutter-rest-*`,
   `shared/gutterMarkers.ts`). **Any keystroke hides the hover-revealed
   markers until the mouse moves** — the gutter never flickers alongside the

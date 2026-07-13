@@ -1,4 +1,4 @@
-# Claude project instructions — md-wysiwyg-editor
+# Claude project instructions — Birta Writer
 
 ## Language policy
 
@@ -30,24 +30,22 @@ Whenever a work session changes extension or webview source (`src/`, `webview/`,
 1. `pnpm test` — all green.
 2. **Update `CHANGELOG.md`** if the change added, altered, or removed any user-visible behavior or setting: add or amend an entry under `## [Unreleased]`, in the correct Keep a Changelog section (`Added` / `Changed` / `Deprecated` / `Removed` / `Fixed`). Write it for a user of the editor — describe the observable behavior and any setting keys, not the internal plugins or APIs involved. Skip only for changes with no user-facing effect (refactors, tests, tooling, comments). This is the one step you can't reconstruct later, so do it while the change is fresh.
 3. `pnpm run package`
-4. Install into **both** editors the user runs, so whichever they open is on the new build:
-   - `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force`
-   - `code --install-extension releases/md-wysiwyg-editor-<version>.vsix --force`
+4. Install into VS Code so it's on the new build:
+   - `code --install-extension releases/birta-writer-<version>.vsix --force`
 
    `--force` allows reinstalling the same version. The VS Code `code` CLI is often not on `PATH` on this machine even though VS Code is installed — fall back to the app-bundle binary `"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension … --force`. Only if VS Code truly isn't installed, skip it and say so rather than failing the handoff.
 5. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
 Do this by default, without being asked, before handing control back. Bump the patch version when it helps the user confirm they're on the new build.
 
-### Trying changes in the user's editor (Cursor)
+### Trying changes in the user's editor (VS Code)
 
-`pnpm build` only rebuilds `dist/`; the user's editor runs an **installed copy** of the extension, so a window reload alone never picks up source changes. When the user wants to try changes in their own Cursor window (rather than F5 debugging):
+`pnpm build` only rebuilds `dist/`; the user's editor runs an **installed copy** of the extension, so a window reload alone never picks up source changes. When the user wants to try changes in their own VS Code window (rather than F5 debugging):
 
 1. `pnpm test` — must pass first.
-2. `pnpm run package` — writes `releases/md-wysiwyg-editor-<version>.vsix`.
-3. Install into both editors (`--force` allows reinstalling the same version):
-   - `cursor --install-extension releases/md-wysiwyg-editor-<version>.vsix --force`
-   - `code --install-extension releases/md-wysiwyg-editor-<version>.vsix --force`
+2. `pnpm run package` — writes `releases/birta-writer-<version>.vsix`.
+3. Install into VS Code (`--force` allows reinstalling the same version):
+   - `code --install-extension releases/birta-writer-<version>.vsix --force`
 4. Tell the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
 For iterative debugging, F5 (Extension Development Host) is still faster — no packaging step.
@@ -221,7 +219,7 @@ Test fails
 The editor is `CustomTextEditorProvider`-backed, so the backing `TextDocument`
 carries native dirty state. **Saving is governed entirely by VS Code's built-in
 `files.autoSave` / `files.autoSaveDelay`** — there is no extension-specific
-autosave. (The former `markdownWysiwyg.autoSave` / `autoSaveDelay` settings were
+autosave. (The former `birta.autoSave` / `autoSaveDelay` settings were
 removed; the custom timer only ever fired in configurations where it was
 redundant or actively fought the user's `files.autoSave` choice.) With the VS
 Code default (`files.autoSave: "off"`), edits stay dirty until Cmd+S / hot exit,

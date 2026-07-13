@@ -7,11 +7,11 @@ declare global {
             isMac: boolean;
             debugMode?: boolean;
             codeBlockAutoConvert?: boolean;
-            /** Smart link resolution + wikilink autocomplete (markdownWysiwyg.smartLinks). */
+            /** Smart link resolution + wikilink autocomplete (birta.smartLinks). */
             smartLinks?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
-            /** Frontmatter panel expanded on open (markdownWysiwyg.frontmatterExpanded). */
+            /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */
             frontmatterExpanded?: boolean;
             proofread?: ProofreadConfig;
             /** Per-item toolbar placement config (see the toolbar registry). */
@@ -22,9 +22,9 @@ declare global {
             fontStacks?: FontStacks;
             /** Content font size as a percentage of the editor font size. */
             fontSize?: number;
-            /** Content-width mode: full / fixed (markdownWysiwyg.contentWidth). */
+            /** Content-width mode: full / fixed (birta.contentWidth). */
             contentWidth?: import("../../shared/contentWidth").ContentWidthMode;
-            /** Fixed measure in ch, used when the mode is "fixed" (markdownWysiwyg.maxContentWidth). */
+            /** Fixed measure in ch, used when the mode is "fixed" (birta.maxContentWidth). */
             maxContentWidth?: number;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */
             documentUri?: string;
@@ -43,7 +43,7 @@ export function t(key: string): string {
 }
 
 /** The extension's display name (from package.json), or a safe fallback. */
-export const productName: string = window.__i18n?.productName ?? "WYSIWYG Markdown Editor";
+export const productName: string = window.__i18n?.productName ?? "Birta Writer";
 
 /**
  * Convert a shortcut string into the display format for the current platform.

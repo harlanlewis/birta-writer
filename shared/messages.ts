@@ -34,7 +34,7 @@ export type LinkTargetSuggestionItem = {
 /** Table line-wrapping mode */
 export type TableWrapMode = "none" | "normal" | "aggressive";
 
-/** TOC dock side, matching the `markdownWysiwyg.tocPosition` enum. */
+/** TOC dock side, matching the `birta.tocPosition` enum. */
 export type TocPosition = "left" | "right";
 
 /** One text block sent for grammar/spell linting (key = block position). */
@@ -69,7 +69,7 @@ export type ToolbarPlacements = Record<string, ToolbarPlacement>;
 export type ToolbarConfig = {
     placements: ToolbarPlacements;
     order: string[];
-    /** Whole-bar visibility (`markdownWysiwyg.toolbar.visible`); defaults to shown. */
+    /** Whole-bar visibility (`birta.toolbar.visible`); defaults to shown. */
     visible?: boolean;
 };
 
@@ -83,7 +83,7 @@ export type FontStacks = { sans: string; serif: string; mono: string };
 
 /**
  * Per-check style-check options (all nested under the `styleCheck` master).
- * Each maps to a `markdownWysiwyg.styleCheck.<key>` boolean setting and to one
+ * Each maps to a `birta.styleCheck.<key>` boolean setting and to one
  * row in the toolbar's style-check dropdown.
  */
 export type ProofreadOptionKey =

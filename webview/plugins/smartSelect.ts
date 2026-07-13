@@ -13,7 +13,7 @@
  *   - Windows/Linux:  Shift+Alt+ArrowRight / ArrowLeft
  * Both are claimed by the key-leak guard (webview/keyboardShortcuts.ts) so
  * they never double-fire a workbench action; the palette entries
- * (`markdownWysiwyg.editor.expandSelection` / `shrinkSelection`) stay
+ * (`birta.editor.expandSelection` / `shrinkSelection`) stay
  * rebindable to ADDITIONAL chords.
  *
  * THE LADDER (each expand grows to the next strictly-containing range, then

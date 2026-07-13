@@ -22,7 +22,7 @@
     overflow: hidden;
 }
 
-/* Right-docked variant (markdownWysiwyg.tocPosition = right) */
+/* Right-docked variant (birta.tocPosition = right) */
 .toc-panel--right {
     left: auto;
     right: 0;

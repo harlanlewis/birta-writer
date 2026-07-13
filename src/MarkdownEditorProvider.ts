@@ -53,7 +53,7 @@ export function escapeHtmlAttr(value: string): string {
 
 export class MarkdownEditorProvider
     implements vscode.CustomTextEditorProvider {
-    public static readonly viewType = "markdownWysiwyg.editor";
+    public static readonly viewType = "birta.editor";
 
     // Tracks the webviewPanel for each document (used to push new content on external changes)
     private readonly _webviewPanels = new Map<string, vscode.WebviewPanel>();
@@ -347,7 +347,7 @@ export class MarkdownEditorProvider
                         const scrollToLine = this._consumePendingNavigation(document.uri.fsPath)
                             ?? this._consumeGlobalRevealLine();
                         console.log('[ready] scrollToLine:', scrollToLine);
-                        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+                        const cfg = vscode.workspace.getConfiguration("birta");
                         const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
                         // Reset the echo baseline: init hands this exact text to the webview
                         this._lastSyncedText.set(uriKey, initContent);
@@ -504,13 +504,13 @@ export class MarkdownEditorProvider
                         // settings); anything outside our namespace is ignored.
                         vscode.commands.executeCommand(
                             'workbench.action.openSettings',
-                            message.query?.startsWith('markdownWysiwyg') ? message.query : 'markdownWysiwyg',
+                            message.query?.startsWith('birta') ? message.query : 'birta',
                         );
                         break;
                     case "openKeybindings":
                         // Filtered to this extension's commands; shows the
                         // user's effective (possibly rebound) shortcuts
-                        vscode.commands.executeCommand('workbench.action.openGlobalKeybindings', 'markdownWysiwyg');
+                        vscode.commands.executeCommand('workbench.action.openGlobalKeybindings', 'birta');
                         break;
                     case "uploadImage":
                         if (message.id && message.data) {
@@ -602,7 +602,7 @@ export class MarkdownEditorProvider
                                 } satisfies ToWebviewMessage);
                             })
                             .catch((err) => {
-                                console.error("[markdownWysiwyg] harper lint failed", err);
+                                console.error("[birta] harper lint failed", err);
                             });
                         break;
                     case "clipboardWrite":
@@ -681,7 +681,7 @@ export class MarkdownEditorProvider
         // re-bump, or the count would drift ahead of the webview's baseline.
         const version = this._syncVersion.get(uriKey) ?? 0;
         const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
-        const tableWrap = vscode.workspace.getConfiguration("markdownWysiwyg").get<TableWrapMode>("tableWrap", "normal");
+        const tableWrap = vscode.workspace.getConfiguration("birta").get<TableWrapMode>("tableWrap", "normal");
         panel.webview.postMessage({
             type: "externalUpdate",
             content: displayContent,
@@ -736,7 +736,7 @@ export class MarkdownEditorProvider
 
     /**
      * openFile: resolve a document's local link to a real file and open it.
-     * Smart mode (`markdownWysiwyg.smartLinks`, default on) runs the resolver
+     * Smart mode (`birta.smartLinks`, default on) runs the resolver
      * chain in linkResolver.ts — workspace-root paths, ancestor content roots,
      * markdown suffix inference, wikilink filename matching — and warns
      * non-modally when nothing matches. Non-smart mode is pure path math with
@@ -836,7 +836,7 @@ export class MarkdownEditorProvider
             vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
 
         const smartLinks = vscode.workspace
-            .getConfiguration("markdownWysiwyg", document.uri)
+            .getConfiguration("birta", document.uri)
             .get<boolean>("smartLinks", true);
 
         const ctx = { docFsPath, workspaceRootFsPath: workspaceRoot, smartLinks };
@@ -948,7 +948,7 @@ export class MarkdownEditorProvider
     }
 
     private _getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         const maxHeight = cfg.get<number>("codeBlockMaxHeight", 500);
         const contentWidth = MarkdownEditorProvider.resolveContentWidthConfig();
         const maxWidthCssValue = contentWidth.cssValue;
@@ -1010,7 +1010,7 @@ export class MarkdownEditorProvider
         // name the product (e.g. "Open <name> settings"). From package.json;
         // optional-chained so a stripped-down test context still resolves.
         const productName =
-            (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "WYSIWYG Markdown Editor";
+            (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
         const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
@@ -1052,7 +1052,7 @@ export class MarkdownEditorProvider
      * injection and the live `onDidChangeConfiguration` broadcast.
      */
     public static resolveContentWidthConfig(): ContentWidthResolution {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         return resolveContentWidth(
             normalizeContentWidthMode(cfg.get<string>("contentWidth", DEFAULT_CONTENT_WIDTH_MODE)),
             cfg.get<number>("maxContentWidth", DEFAULT_MAX_WIDTH_CH),
@@ -1085,7 +1085,7 @@ export class MarkdownEditorProvider
 
     /**
      * The fold-affordance config for one document, derived from the user's
-     * own editor settings (no `markdownWysiwyg.*` knob — MAR-110). Read
+     * own editor settings (no `birta.*` knob — MAR-110). Read
      * scoped to the document URI: `editor.*` is resource- and
      * language-scoped (`[markdown]` overrides, multi-root workspaces), the
      * codeBlockWordWrap pattern.
@@ -1136,7 +1136,7 @@ export class MarkdownEditorProvider
 
     /** Snapshot of the proofread (style check + spell check) settings. */
     public static getProofreadConfig(): ProofreadConfig {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         return {
             proofreadingEnabled: cfg.get<boolean>("proofreading.enabled", true),
             styleCheck: cfg.get<boolean>("styleCheck.enabled", true),
@@ -1164,7 +1164,7 @@ export class MarkdownEditorProvider
 
     /** Snapshot of the per-item toolbar placement settings. */
     public static getToolbarConfig(): ToolbarConfig {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         // VS Code merges contributed defaults into this nested read, so every
         // registered item id is present with its effective value.
         return {
@@ -1181,7 +1181,7 @@ export class MarkdownEditorProvider
 
     /** The effective per-preset font stacks (user overrides over the built-ins). */
     public static getFontStacks(cfg?: vscode.WorkspaceConfiguration): import("../shared/messages").FontStacks {
-        const c = cfg ?? vscode.workspace.getConfiguration("markdownWysiwyg");
+        const c = cfg ?? vscode.workspace.getConfiguration("birta");
         return resolveFontStacks({
             sans: c.get<string>("fontFamilySans", ""),
             serif: c.get<string>("fontFamilySerif", ""),
@@ -1204,7 +1204,7 @@ export class MarkdownEditorProvider
      * write would be silently overridden by an existing workspace value.
      */
     public static updateSettingRespectingScope(key: string, value: unknown): void {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         const target = cfg.inspect(key)?.workspaceValue !== undefined
             ? vscode.ConfigurationTarget.Workspace
             : vscode.ConfigurationTarget.Global;
@@ -1249,7 +1249,7 @@ export class MarkdownEditorProvider
      * switches, so turning it back on restores exactly what was enabled before.
      */
     public static toggleProofreading(): void {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         MarkdownEditorProvider.updateSettingRespectingScope(
             "proofreading.enabled",
             !cfg.get<boolean>("proofreading.enabled", true),
@@ -1259,7 +1259,7 @@ export class MarkdownEditorProvider
     private _handleSpellAddWord(word: string): void {
         const trimmed = word?.trim();
         if (!trimmed) { return; }
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         const words = cfg.get<string[]>("spellCheck.userWords", []);
         if (words.includes(trimmed)) { return; }
         // Prefer the workspace list (project jargon); fall back to user settings
@@ -1270,7 +1270,7 @@ export class MarkdownEditorProvider
     }
 
     private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         const paths = [
             ...cfg.get<string[]>("customCss", []),
             ...cfg.get<string[]>("customJs", []),
@@ -1377,7 +1377,7 @@ export class MarkdownEditorProvider
         altText: string,
     ): Promise<void> {
         const uriKey = document.uri.toString();
-        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
+        const cfg = vscode.workspace.getConfiguration('birta', document.uri);
         try {
             // Images are always saved to the local workspace; nothing is uploaded off the machine.
             const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
@@ -1401,7 +1401,7 @@ export class MarkdownEditorProvider
         uriKey: string,
         id: string,
     ): Promise<void> {
-        const cfg = vscode.workspace.getConfiguration('markdownWysiwyg', document.uri);
+        const cfg = vscode.workspace.getConfiguration('birta', document.uri);
         const customPath = cfg.get<string>('imageLocalPath', '').trim();
         const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.tiff', '.ico']);
         const CANDIDATE_DIRS = ['images', 'imgs', 'assets/images', 'assets'];

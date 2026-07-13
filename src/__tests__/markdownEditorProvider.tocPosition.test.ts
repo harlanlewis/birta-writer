@@ -1,6 +1,6 @@
 /**
  * TOC dock side on the extension side: the setTocPosition message persists
- * markdownWysiwyg.tocPosition (respecting the winning scope). The config-change
+ * birta.tocPosition (respecting the winning scope). The config-change
  * echo back to the webview is wired in extension.ts and covered by the webview
  * setPosition tests.
  */

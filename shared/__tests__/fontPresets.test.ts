@@ -53,15 +53,15 @@ describe("resolveFontStacks", () => {
 
 describe("font contributed defaults", () => {
     it("the fontPreset default should match DEFAULT_FONT_PRESET", () => {
-        expect(props["markdownWysiwyg.fontPreset"]?.default).toBe(DEFAULT_FONT_PRESET);
+        expect(props["birta.fontPreset"]?.default).toBe(DEFAULT_FONT_PRESET);
     });
 
     it("the per-preset stack defaults should match the built-in stacks", () => {
         // The settings ship pre-populated with the real stacks (not blank), so
         // users can see and edit them; they must not drift from the code.
-        expect(props["markdownWysiwyg.fontFamilySans"]?.default).toBe(FONT_PRESET_STACKS.sans);
-        expect(props["markdownWysiwyg.fontFamilySerif"]?.default).toBe(FONT_PRESET_STACKS.serif);
-        expect(props["markdownWysiwyg.fontFamilyMono"]?.default).toBe(FONT_PRESET_STACKS.mono);
+        expect(props["birta.fontFamilySans"]?.default).toBe(FONT_PRESET_STACKS.sans);
+        expect(props["birta.fontFamilySerif"]?.default).toBe(FONT_PRESET_STACKS.serif);
+        expect(props["birta.fontFamilyMono"]?.default).toBe(FONT_PRESET_STACKS.mono);
     });
 });
 
@@ -101,13 +101,13 @@ describe("stepFontSizePercent", () => {
 });
 
 describe("fontSize contributed defaults", () => {
-    it("code constants should match the markdownWysiwyg.fontSize contribution", () => {
+    it("code constants should match the birta.fontSize contribution", () => {
         // Drift guard: the Settings UI shows package.json's default/min/max;
         // the code constants must agree or the toolbar stepper and the
         // Settings UI would disagree about the valid range.
         const root = path.resolve(__dirname, "../..");
         const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-        const prop = pkg.contributes.configuration.properties["markdownWysiwyg.fontSize"];
+        const prop = pkg.contributes.configuration.properties["birta.fontSize"];
         expect(prop).toBeDefined();
         expect(prop.default).toBe(DEFAULT_FONT_SIZE_PERCENT);
         expect(prop.minimum).toBe(MIN_FONT_SIZE_PERCENT);

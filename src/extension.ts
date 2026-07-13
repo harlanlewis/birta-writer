@@ -19,7 +19,7 @@ import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 export async function promptGutterMarkersMode(): Promise<void> {
     const current = normalizeGutterMarkersMode(
         vscode.workspace
-            .getConfiguration("markdownWysiwyg")
+            .getConfiguration("birta")
             .get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE),
     );
     type ModeItem = vscode.QuickPickItem & { mode: GutterMarkersMode };
@@ -87,7 +87,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Sync editorAssociations once on activation
     const initialMode = vscode.workspace
-        .getConfiguration("markdownWysiwyg")
+        .getConfiguration("birta")
         .get<string>("defaultMode", "preview");
     syncEditorAssociation(initialMode);
 
@@ -96,7 +96,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.tabGroups.onDidChangeTabs(async (event) => {
             const mode = vscode.workspace
-                .getConfiguration("markdownWysiwyg")
+                .getConfiguration("birta")
                 .get<string>("defaultMode", "preview");
             if (mode !== "preview") { return; }
 
@@ -199,22 +199,22 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Debug mode: initialize the context variable
     const initialDebug = vscode.workspace
-        .getConfiguration("markdownWysiwyg")
+        .getConfiguration("birta")
         .get<boolean>("debugMode", false);
     vscode.commands.executeCommand(
         "setContext",
-        "markdownWysiwyg.debugModeActive",
+        "birta.debugModeActive",
         initialDebug,
     );
 
     // Debug mode toggle command (two mutually exclusive commands, whose display is switched via when conditions to achieve the ✓ prefix effect)
     const toggleDebugMode = () => {
-        const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+        const cfg = vscode.workspace.getConfiguration("birta");
         const next = !cfg.get<boolean>("debugMode", false);
         cfg.update("debugMode", next, vscode.ConfigurationTarget.Global);
         vscode.commands.executeCommand(
             "setContext",
-            "markdownWysiwyg.debugModeActive",
+            "birta.debugModeActive",
             next,
         );
         MarkdownEditorProvider.current?.postToAll({
@@ -224,11 +224,11 @@ export function activate(context: vscode.ExtensionContext) {
     };
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.debugModeEnable",
+            "birta.debugModeEnable",
             toggleDebugMode,
         ),
         vscode.commands.registerCommand(
-            "markdownWysiwyg.debugModeDisable",
+            "birta.debugModeDisable",
             toggleDebugMode,
         ),
     );
@@ -239,7 +239,7 @@ export function activate(context: vscode.ExtensionContext) {
     // their individual switches, so it restores exactly what was on before.
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.toggleProofreading",
+            "birta.toggleProofreading",
             () => MarkdownEditorProvider.toggleProofreading(),
         ),
     );
@@ -248,7 +248,7 @@ export function activate(context: vscode.ExtensionContext) {
     // config-change listener below broadcasts the result to every open editor.
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.selectGutterMarkers",
+            "birta.selectGutterMarkers",
             promptGutterMarkersMode,
         ),
     );
@@ -272,19 +272,19 @@ export function activate(context: vscode.ExtensionContext) {
     // Listen for manual setting changes (sync when modified from the VSCode settings UI)
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration("markdownWysiwyg.defaultMode")) {
+            if (e.affectsConfiguration("birta.defaultMode")) {
                 const mode = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
+                    .getConfiguration("birta")
                     .get<string>("defaultMode", "preview");
                 syncEditorAssociation(mode);
             }
-            if (e.affectsConfiguration("markdownWysiwyg.debugMode")) {
+            if (e.affectsConfiguration("birta.debugMode")) {
                 const v = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
+                    .getConfiguration("birta")
                     .get<boolean>("debugMode", false);
                 vscode.commands.executeCommand(
                     "setContext",
-                    "markdownWysiwyg.debugModeActive",
+                    "birta.debugModeActive",
                     v,
                 );
                 MarkdownEditorProvider.current?.postToAll({
@@ -292,28 +292,28 @@ export function activate(context: vscode.ExtensionContext) {
                     enabled: v,
                 });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.tableWrap")) {
-                const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+            if (e.affectsConfiguration("birta.tableWrap")) {
+                const cfg = vscode.workspace.getConfiguration("birta");
                 const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
                 MarkdownEditorProvider.current?.postToAll({ type: "setTableWrap", wrap: tableWrap });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.proofreading")
-                || e.affectsConfiguration("markdownWysiwyg.styleCheck")
-                || e.affectsConfiguration("markdownWysiwyg.spellCheck")
-                || e.affectsConfiguration("markdownWysiwyg.grammarCheck")) {
+            if (e.affectsConfiguration("birta.proofreading")
+                || e.affectsConfiguration("birta.styleCheck")
+                || e.affectsConfiguration("birta.spellCheck")
+                || e.affectsConfiguration("birta.grammarCheck")) {
                 broadcastProofreadConfig();
             }
-            if (e.affectsConfiguration("markdownWysiwyg.toolbar")) {
+            if (e.affectsConfiguration("birta.toolbar")) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "toolbarConfig",
                     config: MarkdownEditorProvider.getToolbarConfig(),
                 });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.fontPreset")
-                || e.affectsConfiguration("markdownWysiwyg.fontFamilySans")
-                || e.affectsConfiguration("markdownWysiwyg.fontFamilySerif")
-                || e.affectsConfiguration("markdownWysiwyg.fontFamilyMono")) {
-                const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+            if (e.affectsConfiguration("birta.fontPreset")
+                || e.affectsConfiguration("birta.fontFamilySans")
+                || e.affectsConfiguration("birta.fontFamilySerif")
+                || e.affectsConfiguration("birta.fontFamilyMono")) {
+                const cfg = vscode.workspace.getConfiguration("birta");
                 const preset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
                 const stacks = MarkdownEditorProvider.getFontStacks(cfg);
                 MarkdownEditorProvider.current?.postToAll({
@@ -323,23 +323,23 @@ export function activate(context: vscode.ExtensionContext) {
                     stacks,
                 });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.fontSize")) {
-                const cfg = vscode.workspace.getConfiguration("markdownWysiwyg");
+            if (e.affectsConfiguration("birta.fontSize")) {
+                const cfg = vscode.workspace.getConfiguration("birta");
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setFontSize",
                     size: clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT)),
                 });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.tocPosition")) {
+            if (e.affectsConfiguration("birta.tocPosition")) {
                 const position = vscode.workspace
-                    .getConfiguration("markdownWysiwyg")
+                    .getConfiguration("birta")
                     .get<string>("tocPosition", "right") === "left" ? "left" : "right";
                 MarkdownEditorProvider.current?.postToAll({ type: "setTocPosition", position });
             }
-            if (e.affectsConfiguration("markdownWysiwyg.gutterMarkers")) {
+            if (e.affectsConfiguration("birta.gutterMarkers")) {
                 const mode = normalizeGutterMarkersMode(
                     vscode.workspace
-                        .getConfiguration("markdownWysiwyg")
+                        .getConfiguration("birta")
                         .get<string>("gutterMarkers", DEFAULT_GUTTER_MARKERS_MODE),
                 );
                 MarkdownEditorProvider.current?.postToAll({ type: "setGutterMarkers", mode });
@@ -350,8 +350,8 @@ export function activate(context: vscode.ExtensionContext) {
                 // per open document and posts per-webview (MAR-110).
                 MarkdownEditorProvider.current?.broadcastFoldingConfig();
             }
-            if (e.affectsConfiguration("markdownWysiwyg.contentWidth")
-                || e.affectsConfiguration("markdownWysiwyg.maxContentWidth")) {
+            if (e.affectsConfiguration("birta.contentWidth")
+                || e.affectsConfiguration("birta.maxContentWidth")) {
                 const cw = MarkdownEditorProvider.resolveContentWidthConfig();
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setContentWidth",
@@ -373,7 +373,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Close preview: WYSIWYG → text editor
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.switchToTextEditor",
+            "birta.switchToTextEditor",
             async (uri?: vscode.Uri) => {
                 let target =
                     uri ?? vscode.window.activeTextEditor?.document.uri;
@@ -435,7 +435,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Open preview: text editor → WYSIWYG
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.switchToPreview",
+            "birta.switchToPreview",
             async (uri?: vscode.Uri) => {
                 const activeEditor = vscode.window.activeTextEditor;
                 const target = uri ?? activeEditor?.document.uri;
@@ -493,7 +493,7 @@ export function activate(context: vscode.ExtensionContext) {
     // chosen one by posting the existing scrollToLine message to the panel.
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            "markdownWysiwyg.gotoSymbol",
+            "birta.gotoSymbol",
             async () => {
                 // Resolve the active custom editor's document URI from the tab
                 // groups (activeTextEditor is undefined here).

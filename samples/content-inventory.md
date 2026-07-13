@@ -7,7 +7,7 @@ tags: [reference, showcase, regression]
 
 # Content inventory
 
-This document is a **living reference** of every content type WYSIWYG Markdown Editor supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
+This document is a **living reference** of every content type Birta Writer supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
 
 ---
 
@@ -64,7 +64,7 @@ A hard line break ends this line here →<br>and continues on the next.
 
 ## Links
 
-- Inline link: [WYSIWYG Markdown Editor](https://example.com)
+- Inline link: [Birta Writer](https://example.com)
 - Link with a title: [hover me](https://example.com "A title")
 - Formatted link text stays one link: [**bold** and `code` tail](https://example.com)
 - Autolink: <https://example.com>
@@ -84,7 +84,7 @@ Cmd/Ctrl+click the link itself.
 
 ### Smart local links
 
-With `markdownWysiwyg.smartLinks` (default on) local links resolve the way a
+With `birta.smartLinks` (default on) local links resolve the way a
 site generator publishes them — every link below opens a real file in this
 repo when clicked:
 
@@ -402,21 +402,21 @@ incidental hits, so the checker lights up outside this section too.) Every check
 ships on by default, gated by the master **Proofreading** switch at the top of
 the Checks menu — flip that off to silence all of them at once.
 
-### Spelling — `markdownWysiwyg.spellCheck.enabled`
+### Spelling — `birta.spellCheck.enabled`
 
 - teh quick brown fox
 - please recieve this note
 - the error occured twice
 - a small mispeling slips through
 
-### Grammar — `markdownWysiwyg.grammarCheck.enabled`
+### Grammar — `birta.grammarCheck.enabled`
 
 Harper owns these; a couple of classic rules:
 
 - I ate a apple. (article agreement: "a" should be "an")
 - i walked home alone. (the pronoun and the sentence start need capitals)
 
-### Style check — `markdownWysiwyg.styleCheck.enabled`
+### Style check — `birta.styleCheck.enabled`
 
 The master switch above governs every category below; each also has its own
 `styleCheck.<name>` toggle.

@@ -1,7 +1,7 @@
 /**
  * Drift guard: the toolbar's shipped default layout is declared in TWO
  * places — `DEFAULT_PLACEMENTS` in the webview registry (what the editor
- * renders when a setting is absent) and the `markdownWysiwyg.toolbar.items.*`
+ * renders when a setting is absent) and the `birta.toolbar.items.*`
  * setting defaults in package.json (what the Settings UI shows). They must
  * agree, or the Settings UI lies about what the user gets.
  *
@@ -22,7 +22,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))
 const props: Record<string, { default?: unknown; enum?: unknown[] }> =
     pkg.contributes.configuration.properties;
 
-const SETTING_PREFIX = "markdownWysiwyg.toolbar.items.";
+const SETTING_PREFIX = "birta.toolbar.items.";
 
 describe("toolbar default placements", () => {
     it("every registry item should have a matching setting whose default agrees", () => {

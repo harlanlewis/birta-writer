@@ -5,7 +5,7 @@
  * Every UI-level action (find, find & replace, find next/previous, find &
  * replace selection, insert/edit link, switch to text editor) is a
  * contributed keybinding in package.json routed through a VS Code command
- * (`markdownWysiwyg.editor.*` / `markdownWysiwyg.switchToTextEditor`) back
+ * (`birta.editor.*` / `birta.switchToTextEditor`) back
  * into the webview, so users can rebind or unbind them like any other
  * keybinding. Those chords must stay visible to the workbench — never claim
  * them below, or the user's binding stops resolving.
@@ -19,7 +19,7 @@
  * contenteditable formatting/selection, focus traversal, workbench side
  * effects like Cmd+B toggling the sidebar) has to be suppressed at the event
  * itself. Users can still bind ADDITIONAL chords to the corresponding
- * `markdownWysiwyg.editor.*` commands; only these defaults are fixed.
+ * `birta.editor.*` commands; only these defaults are fixed.
  */
 
 import { fallbackKeyFromKeyCode, type EventManager } from "./eventManager";

@@ -1,7 +1,7 @@
 /**
  * webview/components/shortcutsHelp/index.ts
  *
- * The keyboard-shortcuts HELP overlay (markdownWysiwyg.editor.
+ * The keyboard-shortcuts HELP overlay (birta.editor.
  * openShortcutsHelp) — a read-only cheatsheet, right-docked below the topbar
  * like the find bar. Deliberately distinct from `openKeyboardShortcuts`,
  * which opens VS Code's native Keyboard Shortcuts UI and remains the

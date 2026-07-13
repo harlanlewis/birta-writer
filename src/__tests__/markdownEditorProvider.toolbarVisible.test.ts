@@ -1,6 +1,6 @@
 /**
  * Whole-toolbar visibility on the extension side: the setToolbarVisible
- * message persists markdownWysiwyg.toolbar.visible (respecting the winning
+ * message persists birta.toolbar.visible (respecting the winning
  * scope), and getToolbarConfig carries the value to the webview bootstrap /
  * toolbarConfig echoes.
  */

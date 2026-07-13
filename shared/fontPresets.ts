@@ -7,7 +7,7 @@ import type { FontPreset, FontStacks } from "./messages";
 
 /**
  * The default content-font preset: follow the VS Code editor font. Must stay
- * in sync with the `markdownWysiwyg.fontPreset` default declared in
+ * in sync with the `birta.fontPreset` default declared in
  * package.json. Import this in every `getConfiguration().get("fontPreset", …)`
  * call so the code fallback can never diverge from the contributed default.
  */
@@ -17,7 +17,7 @@ export const DEFAULT_FONT_PRESET: FontPreset = "editor";
  * Content font size, as a percentage of the VS Code editor font size.
  * A relative scale (rather than a fixed px value) keeps the content tracking
  * the user's `editor.fontSize` and window zoom; 100 means "same as the editor".
- * The default must stay in sync with the `markdownWysiwyg.fontSize` default
+ * The default must stay in sync with the `birta.fontSize` default
  * declared in package.json.
  */
 export const DEFAULT_FONT_SIZE_PERCENT = 100;
@@ -41,7 +41,7 @@ export function stepFontSizePercent(current: number, direction: 1 | -1): number 
 
 /**
  * Built-in font-family stacks for the non-default presets. These are also the
- * contributed defaults of the `markdownWysiwyg.fontFamilySans/Serif/Mono`
+ * contributed defaults of the `birta.fontFamilySans/Serif/Mono`
  * settings (drift-guarded by a test), so users see — and can edit — the real
  * stack in the Settings UI rather than an empty field.
  */

@@ -1,6 +1,6 @@
 /**
  * Drift guard: the proofread (style/spell check) defaults are declared in
- * TWO places — the `markdownWysiwyg.styleCheck.*` / `spellCheck.*` setting
+ * TWO places — the `birta.styleCheck.*` / `spellCheck.*` setting
  * defaults in package.json (what the Settings UI shows) and the inline
  * fallbacks in `MarkdownEditorProvider.getProofreadConfig` (what the editor
  * uses when a read fails). They must agree, or the Settings UI lies.
@@ -46,11 +46,11 @@ describe("proofread defaults", () => {
     it("code fallbacks should match the contributed setting defaults", () => {
         const fallbacks = MarkdownEditorProvider.getProofreadConfig();
         for (const [field, setting] of Object.entries(FIELD_TO_SETTING)) {
-            const prop = props[`markdownWysiwyg.${setting}`];
-            expect(prop, `missing setting markdownWysiwyg.${setting}`).toBeDefined();
+            const prop = props[`birta.${setting}`];
+            expect(prop, `missing setting birta.${setting}`).toBeDefined();
             expect(
                 fallbacks[field as keyof ProofreadConfig],
-                `fallback for ${field} drifted from markdownWysiwyg.${setting}`,
+                `fallback for ${field} drifted from birta.${setting}`,
             ).toEqual(prop!.default);
         }
     });
@@ -63,7 +63,7 @@ describe("proofread defaults", () => {
 
     it("every boolean style check should default ON", () => {
         for (const [key, prop] of Object.entries(props)) {
-            if (key.startsWith("markdownWysiwyg.styleCheck.") && typeof prop.default === "boolean") {
+            if (key.startsWith("birta.styleCheck.") && typeof prop.default === "boolean") {
                 const expected = !OFF_BY_DEFAULT.has(key);
                 expect(prop.default, `${key} should default ${expected}`).toBe(expected);
             }

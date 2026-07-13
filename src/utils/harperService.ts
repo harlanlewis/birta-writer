@@ -52,7 +52,7 @@ function getLinter(): Promise<HarperLinter> {
 
 function userWords(): Set<string> {
     const words = vscode.workspace
-        .getConfiguration("markdownWysiwyg")
+        .getConfiguration("birta")
         .get<string[]>("spellCheck.userWords", []);
     return new Set(words.map((w) => w.toLowerCase()));
 }

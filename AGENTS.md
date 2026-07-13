@@ -40,4 +40,4 @@ Git history uses English type prefixes; older commits have Chinese descriptions,
 
 ## Security & Configuration Tips
 
-Do not commit generated VSIX files unless intentionally releasing. Avoid hard-coding image server credentials or local filesystem paths; use `markdownWysiwyg.*` settings declared in `package.json` for configurable behavior.
+Do not commit generated VSIX files unless intentionally releasing. Avoid hard-coding image server credentials or local filesystem paths; use `birta.*` settings declared in `package.json` for configurable behavior.

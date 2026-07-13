@@ -46,7 +46,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     isOpen: () => boolean;
     isRight: () => boolean;
 } {
-    // Initial side comes from the markdownWysiwyg.tocPosition setting via a
+    // Initial side comes from the birta.tocPosition setting via a
     // server-rendered body class; the header flip button mutates it live.
     let tocRight = document.body.classList.contains("toc-right");
 

@@ -457,7 +457,7 @@ export async function run({ page, check, baseUrl }) {
     check("hovering a list reveals its - marker", listMarkerOpacity > 0.4,
         `opacity=${listMarkerOpacity}`);
 
-    // ── Resting modes (`markdownWysiwyg.gutterMarkers`): the extension maps
+    // ── Resting modes (`birta.gutterMarkers`): the extension maps
     // the setting to a body class (none → gutter-rest-none, all →
     // gutter-rest-all; default headings → neither), so toggling the classes
     // here exercises exactly what a settings change does. ──

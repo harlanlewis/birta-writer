@@ -1,5 +1,5 @@
 /**
- * Whole-toolbar visibility (markdownWysiwyg.toolbar.visible): the gear-menu
+ * Whole-toolbar visibility (birta.toolbar.visible): the gear-menu
  * "Toggle Toolbar" entry, the expand tab shown while hidden, the optimistic
  * setToolbarVisible write, and the toolbarConfig echo path (applyConfig).
  * acquireVsCodeApi is injected globally by setup.ts.
@@ -83,7 +83,7 @@ describe("toolbar visibility", () => {
 
         // Assert — header names the product; rows stay short
         const header = topbar.querySelector(".tb-settings-menu .tb-fmt-header");
-        expect(header?.textContent).toBe("WYSIWYG Markdown Editor");
+        expect(header?.textContent).toBe("Birta Writer");
         const rows = Array.from(
             topbar.querySelectorAll(".tb-settings-menu .tb-fmt-item"),
         ).map((el) => el.textContent);

@@ -1043,7 +1043,7 @@ export function initToolbar(
             e.preventDefault();
             e.stopPropagation();
             closeFontMenu();
-            notifyOpenSettings("markdownWysiwyg.font");
+            notifyOpenSettings("birta.font");
         });
 
         // Assemble top→bottom: font size, content width + gutter markers
@@ -1916,7 +1916,7 @@ export function initToolbar(
     let latestConfig: ToolbarConfig | undefined = window.__i18n?.toolbar;
     let editing = false;
 
-    // ── Whole-bar visibility (markdownWysiwyg.toolbar.visible) ──
+    // ── Whole-bar visibility (birta.toolbar.visible) ──
     // Hiding slides the fixed topbar up (a body class the CSS keys off) and
     // shows a slim expand tab at the top edge (the TOC toggle tab, rotated to
     // the horizontal axis). The bar is hidden, not destroyed, so its host

@@ -913,7 +913,7 @@ export function openBlockMenu(
         action: () => deleteBlock(view, blockPos),
     });
 
-    // ── Gutter markers (the `markdownWysiwyg.gutterMarkers` setting) ──
+    // ── Gutter markers (the `birta.gutterMarkers` setting) ──
     // A radio trio for which markers stay visible at rest — a display
     // preference surfaced where the markers live, not a block action. Rows
     // render their short name under the section header, but the FULL phrase
