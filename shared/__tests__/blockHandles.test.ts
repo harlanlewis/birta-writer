@@ -1,10 +1,9 @@
 /**
- * Resting block-handle mode: normalization, the mode → body-class map, the
- * legacy `gutterMarkers` migration mapping, and drift guards against the two
- * places the modes are declared outside this module — the
- * `birta.blockHandles` enum in package.json (what the Settings UI
- * offers) and the `body.handles-rest-*` rules in style.css (what the classes
- * actually do).
+ * Resting block-handle mode: normalization, the mode → body-class map, and
+ * drift guards against the two places the modes are declared outside this
+ * module — the `birta.blockHandles` enum in package.json (what the Settings
+ * UI offers) and the `body.handles-rest-*` rules in style.css (what the
+ * classes actually do).
  */
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
@@ -16,7 +15,6 @@ import {
     DEFAULT_BLOCK_HANDLES_MODE,
     normalizeBlockHandlesMode,
     blockHandlesBodyClass,
-    blockHandlesModeFromLegacy,
 } from "../blockHandles";
 
 const root = path.resolve(__dirname, "../..");
@@ -48,20 +46,6 @@ describe("blockHandlesBodyClass", () => {
 
     it("an out-of-enum value should behave as the default mode", () => {
         expect(blockHandlesBodyClass("garbage" as never)).toBeNull();
-    });
-});
-
-describe("blockHandlesModeFromLegacy", () => {
-    it("each legacy gutterMarkers value should map to its renamed mode", () => {
-        expect(blockHandlesModeFromLegacy("none")).toBe("hover");
-        expect(blockHandlesModeFromLegacy("all")).toBe("always");
-        expect(blockHandlesModeFromLegacy("headings")).toBe("headings");
-    });
-
-    it("a non-legacy value should map to null", () => {
-        expect(blockHandlesModeFromLegacy("hover")).toBeNull();
-        expect(blockHandlesModeFromLegacy(undefined)).toBeNull();
-        expect(blockHandlesModeFromLegacy(3)).toBeNull();
     });
 });
 

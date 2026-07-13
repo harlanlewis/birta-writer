@@ -2,8 +2,7 @@
  * Resting block-handle mode on the extension side: the `blockHandles`
  * setting is baked into the webview HTML as a `<body>` class at resolve time
  * (the live config-change echo is wired in extension.ts and covered by the
- * webview applyBlockHandles tests), including the read-side migration of the
- * pre-rename `gutterMarkers` key.
+ * webview applyBlockHandles tests).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
@@ -38,10 +37,9 @@ const makeCancellation = () =>
     ({ isCancellationRequested: false }) as vscode.CancellationToken;
 
 /**
- * Mock the birta configuration from a map of user-set values:
- * `get` returns the value (or the default), and `inspect` reports a
- * globalValue only for the keys present — the shape the provider's legacy
- * migration reads.
+ * Mock the birta configuration from a map of user-set values: `get` returns
+ * the value (or the default), and `inspect` reports a globalValue only for
+ * the keys present.
  */
 function mockConfiguration(userValues: Record<string, unknown> = {}) {
     const cfg = {
@@ -96,39 +94,6 @@ describe("MarkdownEditorProvider block handles", () => {
 
     it("an out-of-enum settings value should fall back to the default mode", async () => {
         const cls = bodyClass(await htmlForConfig({ blockHandles: "everything" }));
-        expect(cls).not.toContain("handles-rest-hover");
-        expect(cls).not.toContain("handles-rest-always");
-    });
-});
-
-describe("MarkdownEditorProvider legacy gutterMarkers migration", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        resetTextDocumentMocks();
-    });
-
-    it("a user-set legacy none with blockHandles unset should bake handles-rest-hover", async () => {
-        expect(bodyClass(await htmlForConfig({ gutterMarkers: "none" }))).toContain("handles-rest-hover");
-    });
-
-    it("a user-set legacy all with blockHandles unset should bake handles-rest-always", async () => {
-        expect(bodyClass(await htmlForConfig({ gutterMarkers: "all" }))).toContain("handles-rest-always");
-    });
-
-    it("an explicitly set blockHandles should win over the legacy value", async () => {
-        const cls = bodyClass(await htmlForConfig({ gutterMarkers: "none", blockHandles: "always" }));
-        expect(cls).toContain("handles-rest-always");
-        expect(cls).not.toContain("handles-rest-hover");
-    });
-
-    it("neither key set should stay on the default (no handles-rest class)", async () => {
-        const cls = bodyClass(await htmlForConfig({}));
-        expect(cls).not.toContain("handles-rest-hover");
-        expect(cls).not.toContain("handles-rest-always");
-    });
-
-    it("a garbage legacy value should be ignored in favor of the default", async () => {
-        const cls = bodyClass(await htmlForConfig({ gutterMarkers: "everything" }));
         expect(cls).not.toContain("handles-rest-hover");
         expect(cls).not.toContain("handles-rest-always");
     });

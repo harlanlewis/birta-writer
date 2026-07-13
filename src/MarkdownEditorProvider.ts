@@ -17,7 +17,7 @@ import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConf
 import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
-import { normalizeBlockHandlesMode, blockHandlesBodyClass, blockHandlesModeFromLegacy, LEGACY_GUTTER_MARKERS_KEY, DEFAULT_BLOCK_HANDLES_MODE, type BlockHandlesMode } from "../shared/blockHandles";
+import { normalizeBlockHandlesMode, blockHandlesBodyClass, DEFAULT_BLOCK_HANDLES_MODE, type BlockHandlesMode } from "../shared/blockHandles";
 import { normalizeFoldingControlsMode, foldingBodyClasses, DEFAULT_FOLDING_CONTROLS_MODE, type FoldingControlsMode } from "../shared/foldingControls";
 
 /**
@@ -1046,24 +1046,8 @@ export class MarkdownEditorProvider
 	</html>`;
     }
 
-    /**
-     * The effective `blockHandles` mode, honoring the pre-rename
-     * `gutterMarkers` key: when `blockHandles` was never set in any scope but
-     * the legacy key was, its value is mapped (`none` → `hover`,
-     * `all` → `always`) so existing users keep their choice. Read-side only —
-     * the legacy value is never written back.
-     */
+    /** The effective `blockHandles` mode, normalized to a known value. */
     private static _resolveBlockHandlesMode(cfg: vscode.WorkspaceConfiguration): BlockHandlesMode {
-        const isSet = (info?: { globalValue?: unknown; workspaceValue?: unknown; workspaceFolderValue?: unknown }): boolean =>
-            info?.globalValue !== undefined
-            || info?.workspaceValue !== undefined
-            || info?.workspaceFolderValue !== undefined;
-        if (!isSet(cfg.inspect("blockHandles")) && isSet(cfg.inspect(LEGACY_GUTTER_MARKERS_KEY))) {
-            const migrated = blockHandlesModeFromLegacy(cfg.get<string>(LEGACY_GUTTER_MARKERS_KEY));
-            if (migrated) {
-                return migrated;
-            }
-        }
         return normalizeBlockHandlesMode(cfg.get<string>("blockHandles", DEFAULT_BLOCK_HANDLES_MODE));
     }
 
@@ -1175,10 +1159,7 @@ export class MarkdownEditorProvider
             nonAsciiPunct: cfg.get<boolean>("styleCheck.nonAsciiPunct", true),
             styleExceptions: cfg.get<string[]>("styleCheck.exceptions", []),
             spellCheck: cfg.get<boolean>("spellCheck.enabled", true),
-            // grammarCheck.enabled is the current key; spellCheck.grammar is the
-            // deprecated one (grammar was misnested under spelling). Read the new
-            // key, falling back to the old value so an existing config migrates.
-            grammarCheck: cfg.get<boolean>("grammarCheck.enabled", cfg.get<boolean>("spellCheck.grammar", true)),
+            grammarCheck: cfg.get<boolean>("grammarCheck.enabled", true),
             userWords: cfg.get<string[]>("spellCheck.userWords", []),
         };
     }

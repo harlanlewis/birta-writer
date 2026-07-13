@@ -1250,14 +1250,6 @@
                     "default": true,
                     "description": "%config.grammarCheck.enabled.description%"
                 },
-                "birta.spellCheck.grammar": {
-                    "order": 114,
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.spellCheck.grammar.description%",
-                    "deprecationMessage": "%config.spellCheck.grammar.deprecation%",
-                    "markdownDeprecationMessage": "%config.spellCheck.grammar.deprecation%"
-                },
                 "birta.spellCheck.userWords": {
                     "order": 115,
                     "type": "array",

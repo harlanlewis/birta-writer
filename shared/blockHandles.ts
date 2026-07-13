@@ -42,24 +42,3 @@ export const BLOCK_HANDLES_BODY_CLASSES: Readonly<Record<BlockHandlesMode, strin
 export function blockHandlesBodyClass(mode: BlockHandlesMode): string | null {
     return BLOCK_HANDLES_BODY_CLASSES[normalizeBlockHandlesMode(mode)];
 }
-
-/**
- * The pre-rename settings key ("Gutter Markers"). Read-only migration: the
- * provider falls back to it when `blockHandles` was never set in any scope,
- * but nothing ever writes it back.
- */
-export const LEGACY_GUTTER_MARKERS_KEY = "gutterMarkers";
-
-/**
- * Map a legacy `gutterMarkers` value to its block-handles equivalent
- * (`none` → `hover`, `all` → `always`, `headings` → `headings`), or null
- * when the value is not a legacy mode.
- */
-export function blockHandlesModeFromLegacy(value: unknown): BlockHandlesMode | null {
-    switch (value) {
-        case "none": return "hover";
-        case "all": return "always";
-        case "headings": return "headings";
-        default: return null;
-    }
-}

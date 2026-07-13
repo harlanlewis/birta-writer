@@ -19,7 +19,15 @@
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
 </style>
 <script>
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  // tocAutoHideThreshold 20 (the setting's max) keeps the contents drawer
+  // closed: this fixture has 4 headings, which exceeds the default threshold
+  // of 3, and since hasEnoughSpace() became a pure viewport measure the panel
+  // would dock OPEN at the runner's 1000px viewport. The harness omits the
+  // provider's :root {--editor-max-width; --toc-*} inline style, so the
+  // fixed-width recenter rule can't shift content clear of the drawer and the
+  // panel would cover the fold gutter (chevrons unhoverable/unclickable).
+  // Same pattern as stickyHandle (kept closed) vs toc/tocDrag (opted in).
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 20 };
   window.__posted = [];
   const DOC = [
     "# Section A",
