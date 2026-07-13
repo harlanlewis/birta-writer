@@ -45,6 +45,12 @@ function rectOf(page, sel, text) {
 
 /** Real hover + real click on a heading's fold chevron (identified by text). */
 async function clickHeadingChevron(page, headingText) {
+    // The fixture outgrew one viewport (MAR-125 coverage content): bring the
+    // heading on-screen first or the hover reveal never fires.
+    await page.$$eval(".ProseMirror h1, .ProseMirror h2", (els, t) => {
+        els.find((e) => e.textContent.includes(t))?.scrollIntoView({ block: "center" });
+    }, headingText);
+    await page.waitForTimeout(100);
     const h = await rectOf(page, ".ProseMirror h1, .ProseMirror h2", headingText);
     await page.mouse.move(h.x + 40, h.cy);
     await page.waitForTimeout(150);
@@ -365,6 +371,173 @@ export async function run({ page, check, baseUrl }) {
         reenabled.stillExpanded,
         JSON.stringify(reenabled));
 
+    // ── 4b. MAR-125 coverage: nested list items, tables, code blocks ──
+
+    // List items: only items with descendants carry a chevron (foo/bar/bing).
+    const itemChevrons = await page.evaluate(() =>
+        document.querySelectorAll(".ProseMirror li > .heading-fold-gutter--foldable").length);
+    check("exactly the three items with descendants carry a fold chevron",
+        itemChevrons === 3, `foldable item gutters: ${itemChevrons}`);
+
+    // Real hover on foo's first line reveals its chevron; click folds.
+    const fooRect = await rectOf(page, ".ProseMirror li > p", "foo");
+    await page.mouse.move(fooRect.x + 10, fooRect.cy);
+    await page.waitForTimeout(200);
+    const fooChevron = await page.evaluate(() => {
+        const li = [...document.querySelectorAll(".ProseMirror li")]
+            .find((el) => el.querySelector(":scope > p")?.textContent === "foo");
+        const toggle = li?.querySelector(":scope > .heading-fold-gutter--foldable .heading-fold-toggle");
+        if (!toggle) return null;
+        const r = toggle.getBoundingClientRect();
+        return { cx: r.x + r.width / 2, cy: r.y + r.height / 2,
+            opacity: parseFloat(getComputedStyle(toggle).opacity) };
+    });
+    check("hovering a nested-list item reveals its fold chevron",
+        fooChevron !== null && fooChevron.opacity > 0.5, JSON.stringify(fooChevron));
+    if (fooChevron) {
+        await page.mouse.click(fooChevron.cx, fooChevron.cy);
+        await page.waitForTimeout(150);
+    }
+    const listFold = await page.evaluate(() => {
+        const items = [...document.querySelectorAll(".ProseMirror li")];
+        // startsWith, not ===: a collapsed item's first line carries the
+        // `…` chip widget inside the <p>, so its textContent is "foo…".
+        const byLine = (t) => items.find((el) =>
+            el.querySelector(":scope > p")?.textContent.startsWith(t));
+        const foo = byLine("foo");
+        const hidden = (t) => {
+            const el = byLine(t);
+            return el ? el.getBoundingClientRect().height === 0 : false;
+        };
+        const chip = foo?.querySelector(":scope > p .fold-ellipsis");
+        return {
+            collapsed: foo?.classList.contains("collapsed") ?? false,
+            barHidden: hidden("bar"), bazHidden: hidden("baz"), zapHidden: hidden("zap"),
+            bingVisible: !hidden("bing"), dingVisible: !hidden("ding"),
+            fooLineVisible: (foo?.querySelector(":scope > p")?.getBoundingClientRect().height ?? 0) > 0,
+            chipVisible: chip ? getComputedStyle(chip).display !== "none" : false,
+        };
+    });
+    check("folding foo hides bar/baz/zap; bing/ding and foo's own line stay visible",
+        listFold.collapsed && listFold.barHidden && listFold.bazHidden && listFold.zapHidden &&
+        listFold.bingVisible && listFold.dingVisible && listFold.fooLineVisible && listFold.chipVisible,
+        JSON.stringify(listFold));
+    await shot(page, "06b-list-item-folded");
+    // Chip click expands again.
+    await page.evaluate(() => {
+        [...document.querySelectorAll(".ProseMirror li.collapsed .fold-ellipsis")][0]?.click();
+    });
+    await page.waitForTimeout(150);
+    const listExpanded = await page.evaluate(() => ({
+        collapsed: document.querySelectorAll(".ProseMirror li.collapsed").length,
+        barVisible: [...document.querySelectorAll(".ProseMirror li")]
+            .find((el) => el.querySelector(":scope > p")?.textContent === "bar")
+            ?.getBoundingClientRect().height > 0,
+    }));
+    check("clicking the item's … chip expands the subtree",
+        listExpanded.collapsed === 0 && listExpanded.barVisible, JSON.stringify(listExpanded));
+
+    // Table: chevron folds to the header row; overlay chrome hides; chip
+    // expands. (Programmatic toggle click — the quoted-callout precedent.)
+    const tableFold = await page.evaluate(() => {
+        const wrap = document.querySelector(".ProseMirror .mw-table");
+        const toggle = wrap?.querySelector(".heading-fold-toggle");
+        if (!toggle) return null;
+        toggle.click();
+        return true;
+    });
+    check("the table gutter carries a fold chevron", tableFold === true);
+    await page.waitForTimeout(150);
+    const tableState = await page.evaluate(() => {
+        const wrap = document.querySelector(".ProseMirror .mw-table");
+        const rows = [...wrap.querySelectorAll("tbody > tr")];
+        const overlay = wrap.querySelector(".mw-table-overlay");
+        const chip = wrap.querySelector(".mw-table-fold-ellipsis");
+        return {
+            collapsed: wrap.classList.contains("collapsed"),
+            headerVisible: rows[0].getBoundingClientRect().height > 0,
+            bodyHidden: rows.slice(1).every((r) => getComputedStyle(r).display === "none"),
+            overlayHidden: getComputedStyle(overlay).display === "none",
+            chipVisible: chip ? getComputedStyle(chip).display !== "none" : false,
+        };
+    });
+    check("folding a table keeps the header row and hides body rows + overlay chrome",
+        tableState.collapsed && tableState.headerVisible && tableState.bodyHidden &&
+        tableState.overlayHidden && tableState.chipVisible,
+        JSON.stringify(tableState));
+    await shot(page, "06c-table-folded");
+    await page.evaluate(() =>
+        document.querySelector(".ProseMirror .mw-table .mw-table-fold-ellipsis")?.click());
+    await page.waitForTimeout(150);
+    const tableExpanded = await page.evaluate(() => {
+        const wrap = document.querySelector(".ProseMirror .mw-table");
+        const rows = [...wrap.querySelectorAll("tbody > tr")];
+        return {
+            collapsed: wrap.classList.contains("collapsed"),
+            allRowsVisible: rows.every((r) => r.getBoundingClientRect().height > 0),
+            overlayBack: getComputedStyle(wrap.querySelector(".mw-table-overlay")).display !== "none",
+            chipHidden: getComputedStyle(wrap.querySelector(".mw-table-fold-ellipsis")).display === "none",
+        };
+    });
+    check("the table's … chip expands body rows and restores the overlay",
+        !tableExpanded.collapsed && tableExpanded.allRowsVisible && tableExpanded.overlayBack &&
+        tableExpanded.chipHidden,
+        JSON.stringify(tableExpanded));
+
+    // Code block: chevron folds to the chrome row (lang picker stays); chip
+    // sits in the header; content area hides.
+    const codeFold = await page.evaluate(() => {
+        const wrap = [...document.querySelectorAll(".ProseMirror .code-block-wrapper")]
+            .find((el) => el.textContent.includes("const one"));
+        const toggle = wrap?.querySelector(".heading-fold-toggle");
+        if (!toggle) return null;
+        toggle.click();
+        return true;
+    });
+    check("the code-block gutter carries a fold chevron", codeFold === true);
+    await page.waitForTimeout(150);
+    const codeState = await page.evaluate(() => {
+        const wrap = [...document.querySelectorAll(".ProseMirror .code-block-wrapper")]
+            .find((el) => el.classList.contains("collapsed"));
+        if (!wrap) return null;
+        const pre = wrap.querySelector(":scope > pre");
+        const header = wrap.querySelector(".code-block-header");
+        const chip = header?.querySelector(".code-fold-ellipsis");
+        const preStyle = getComputedStyle(pre);
+        return {
+            headerVisible: header.getBoundingClientRect().height > 0,
+            langPickerVisible: header.querySelector(".lang-picker-btn").getBoundingClientRect().height > 0,
+            preHidden: preStyle.visibility === "hidden" && pre.clientHeight === 0,
+            chipVisible: chip ? getComputedStyle(chip).display !== "none" : false,
+        };
+    });
+    check("folding a code block keeps the chrome row and hides the content area",
+        codeState !== null && codeState.headerVisible && codeState.langPickerVisible &&
+        codeState.preHidden && codeState.chipVisible,
+        JSON.stringify(codeState));
+    await shot(page, "06d-code-folded");
+    await page.evaluate(() =>
+        document.querySelector(".ProseMirror .code-block-wrapper.collapsed .code-fold-ellipsis")?.click());
+    await page.waitForTimeout(150);
+    const codeExpanded = await page.evaluate(() => {
+        const wrap = [...document.querySelectorAll(".ProseMirror .code-block-wrapper")]
+            .find((el) => el.textContent.includes("const one"));
+        return {
+            collapsed: wrap.classList.contains("collapsed"),
+            preVisible: wrap.querySelector(":scope > pre").clientHeight > 0,
+            chipHidden: getComputedStyle(wrap.querySelector(".code-fold-ellipsis")).display === "none",
+        };
+    });
+    check("the code block's … chip restores the content area",
+        !codeExpanded.collapsed && codeExpanded.preVisible && codeExpanded.chipHidden,
+        JSON.stringify(codeExpanded));
+
+    // None of the MAR-125 folds may have dirtied the document.
+    await page.waitForTimeout(700);
+    const afterCoverage = await updateSnapshot(page);
+    check("list/table/code folds post no document updates",
+        afterCoverage.count === baseline.count, `updates ${baseline.count} -> ${afterCoverage.count}`);
+
     // ── 5. Drag a COLLAPSED heading: hidden section travels, text conserved ──
     const preDrag = await updateSnapshot(page);
     const preDoc = preDrag.last; // may be null if nothing ever serialized
@@ -417,6 +590,8 @@ export async function run({ page, check, baseUrl }) {
         "second hidden line", "Open tip", "tip first block", "tip second block",
         "quote intro", "Quoted callout", "quoted callout body",
         "list item one", "list item two",
+        "foo", "bar", "baz", "zap", "bing", "ding",
+        "a1", "d1", "const one = 1;", "const two = 2;",
         "# Last Section", "last content one", "last content two",
     ].every((s) => doc.includes(s));
     check("document text is conserved across the fold+drag",
