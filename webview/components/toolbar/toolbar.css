@@ -400,6 +400,14 @@
     opacity: 0.5;
 }
 
+/* Disk-conflict badge: the file on disk and the editor's unsaved edits changed
+   the same lines differently. Rendered in the editor's warning color — the one
+   state on this bar that genuinely warns (a manual save would hit VS Code's
+   conflict dialog); clicking opens the native resolution picker. */
+.tb-sync-conflict-btn {
+    color: var(--vscode-editorWarning-foreground);
+}
+
 /* Track + sliding knob. Off: a dim neutral track. On: the toolbar's "on" accent
    (--vscode-button-background), matching the active fills for lists, the Full/
    Fixed width segments, and the style/spell-check toolbar buttons — focusBorder

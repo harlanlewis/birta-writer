@@ -3,6 +3,7 @@ import * as os from "os";
 import * as vscode from "vscode";
 import { getNonce } from "./utils/getNonce";
 import { computeReplaceRange } from "./utils/textEdit";
+import { merge3 } from "./utils/merge3";
 import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
@@ -101,6 +102,16 @@ export class MarkdownEditorProvider
     // the save), this total order is what stops a stale update from reverting a
     // fresher flush.
     private readonly _appliedSeq = new Map<string, number>();
+
+    // Disk content at the last point the TextDocument and the file agreed
+    // (resolve, save, reload/revert). This is the BASE of the three-way merge
+    // that reconciles an external disk edit into a dirty document.
+    private readonly _diskBaseText = new Map<string, string>();
+
+    // Documents whose unsaved edits conflict with a newer file on disk (the
+    // three-way merge failed). Drives the webview's toolbar badge; cleared on
+    // save, reload, explicit resolution, or a later merge that succeeds.
+    private readonly _conflicted = new Set<string>();
 
     // Image webviewUri → relPath mapping (key: docUri.toString())
     private readonly _imageUriMaps = new Map<string, Map<string, string>>();
@@ -304,7 +315,27 @@ export class MarkdownEditorProvider
             this._syncVersion.delete(uriKey);
             this._editQueues.delete(uriKey);
             this._appliedSeq.delete(uriKey);
+            this._diskBaseText.delete(uriKey);
+            this._conflicted.delete(uriKey);
         });
+
+        // Seed the merge base: a clean document mirrors the disk; a dirty one
+        // (hot-exit restore) diverged from it, so the disk itself is the base.
+        if (!document.isDirty) {
+            this._diskBaseText.set(uriKey, document.getText());
+        } else {
+            void this._readDiskText(document.uri).then(
+                (text) => { this._diskBaseText.set(uriKey, text); },
+                () => { this._diskBaseText.set(uriKey, document.getText()); },
+            );
+        }
+
+        // Watch the file itself for external writes (terminal tools, git,
+        // background sync). VS Code auto-reloads a CLEAN document on its own;
+        // this watcher covers the dirty case (three-way merge) and acts as a
+        // backstop when the auto-reload lags. Disposed with the panel.
+        const diskWatcher = this._watchDiskForExternalChanges(document, uriKey);
+        webviewPanel.onDidDispose(() => diskWatcher.dispose());
 
         webviewPanel.webview.options = {
             enableScripts: true,
@@ -383,6 +414,14 @@ export class MarkdownEditorProvider
                             syncVersion: 0,
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
+                        // A rebuilt webview (tab switch-back) must re-learn a
+                        // still-unresolved disk conflict.
+                        if (this._conflicted.has(uriKey)) {
+                            webviewPanel.webview.postMessage({
+                                type: "syncConflict",
+                                state: "conflict",
+                            } satisfies ToWebviewMessage);
+                        }
                         break;
                     }
                     case "update":
@@ -650,6 +689,9 @@ export class MarkdownEditorProvider
                         if (resolve) { resolve(message.content, message.baseSyncVersion, message.seq); }
                         break;
                     }
+                    case "resolveSyncConflict":
+                        void this._handleResolveSyncConflict(document, uriKey);
+                        break;
                 }
             },
         );
@@ -665,6 +707,14 @@ export class MarkdownEditorProvider
         const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
             if (e.document.uri.toString() !== uriKey) { return; }
             if (e.contentChanges.length === 0) { return; }
+            // A CLEAN document after a content change means the model was
+            // synced with the disk (auto-reload, revert, undo back to the save
+            // point): re-anchor the merge base there and clear any conflict —
+            // a model that matches the disk cannot be in conflict with it.
+            if (!e.document.isDirty) {
+                this._diskBaseText.set(uriKey, e.document.getText());
+                this._setConflict(uriKey, false);
+            }
             // Echo of a webview-originated applyEdit: the webview already has this text
             if (e.document.getText() === this._lastSyncedText.get(uriKey)) { return; }
             // A genuine external change is now pending. Bump the sync version
@@ -743,6 +793,267 @@ export class MarkdownEditorProvider
             tableWrap,
             syncVersion: version,
         });
+    }
+
+    /**
+     * Watches the document's file on disk and reconciles external writes into
+     * the (possibly dirty) TextDocument. This is what keeps the editor from
+     * walking the user into save-conflict dialogs when a terminal tool or
+     * background sync edits an open file:
+     *
+     * - clean document → force-revert to the disk content (VS Code usually
+     *   auto-reloads on its own; this is the backstop) — the existing
+     *   onDidChangeTextDocument path then pushes the new content to the webview;
+     * - dirty document → three-way merge (base = last disk sync point, ours =
+     *   editor, theirs = disk). A clean merge is reloaded + reapplied so the
+     *   document keeps the user's edits AND a fresh disk stat (no conflict
+     *   dialog on the next save). A true conflict leaves the document alone
+     *   and lights the webview's toolbar badge.
+     *
+     * Also tracks saves (they re-anchor the merge base and clear conflicts).
+     * Reconciliation runs on the per-document edit queue so it can never
+     * interleave with a webview-originated WorkspaceEdit.
+     */
+    private _watchDiskForExternalChanges(
+        document: vscode.TextDocument,
+        uriKey: string,
+    ): { dispose(): void } {
+        const watcher = vscode.workspace.createFileSystemWatcher(
+            new vscode.RelativePattern(
+                vscode.Uri.joinPath(document.uri, ".."),
+                path.basename(document.uri.fsPath),
+            ),
+        );
+        // Coalesce write bursts (external tools often write a file several
+        // times in quick succession) into one reconciliation.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const schedule = (): void => {
+            if (timer !== undefined) { clearTimeout(timer); }
+            timer = setTimeout(() => {
+                timer = undefined;
+                void this._enqueueEdit(uriKey, () => this._reconcileDiskChange(document, uriKey));
+            }, 150);
+        };
+        const subscriptions = [
+            watcher.onDidChange(schedule),
+            // Some tools replace files by unlink + create; onDidChange alone
+            // would miss the new content.
+            watcher.onDidCreate(schedule),
+            vscode.workspace.onDidSaveTextDocument((saved) => {
+                if (saved.uri.toString() !== uriKey) { return; }
+                // The model was just written to disk: it IS the new base, and
+                // by definition no longer conflicts with the file.
+                this._diskBaseText.set(uriKey, saved.getText());
+                this._setConflict(uriKey, false);
+            }),
+        ];
+        return {
+            dispose: () => {
+                if (timer !== undefined) { clearTimeout(timer); }
+                for (const sub of subscriptions) { sub.dispose(); }
+                watcher.dispose();
+            },
+        };
+    }
+
+    /**
+     * Reconciles the document with the file on disk after a watcher event.
+     * Runs on the per-document edit queue; see _watchDiskForExternalChanges
+     * for the decision table.
+     */
+    private async _reconcileDiskChange(
+        document: vscode.TextDocument,
+        uriKey: string,
+    ): Promise<void> {
+        if (!this._webviewPanels.has(uriKey)) { return; } // panel closed while queued
+        let theirs: string;
+        try {
+            theirs = await this._readDiskText(document.uri);
+        } catch {
+            // Deleted or unreadable: VS Code's own orphaned-file handling owns this.
+            return;
+        }
+        const ours = document.getText();
+        const base = this._diskBaseText.get(uriKey) ?? ours;
+
+        if (theirs === ours) {
+            // Model already matches the disk (our own save's watcher echo,
+            // VS Code's auto-reload, or an external write that converged with
+            // the user's edits). A dirty model still needs a revert: same
+            // content, but it refreshes the disk stat and clears the dirty
+            // flag, so the next save can't hit the conflict dialog.
+            if (document.isDirty) { await this._revertToDisk(document.uri); }
+            this._diskBaseText.set(uriKey, theirs);
+            this._setConflict(uriKey, false);
+            return;
+        }
+
+        if (!document.isDirty) {
+            // Clean but stale — VS Code's auto-reload usually beats us here;
+            // revert explicitly so the editor never sits on stale content.
+            // The revert's change event pushes the new text to the webview
+            // and re-anchors the merge base.
+            await this._revertToDisk(document.uri);
+            this._setConflict(uriKey, false);
+            return;
+        }
+
+        if (theirs === base) { return; } // touch/mtime-only event: content unchanged
+
+        const merge = merge3(base, ours, theirs);
+        if (!merge.ok) {
+            // The user's unsaved edits and the disk changed the same lines
+            // differently. Leave the document untouched (nothing is lost, and
+            // a manual save still lands in VS Code's native conflict dialog)
+            // and light the toolbar badge so the state is visible before that.
+            this._setConflict(uriKey, true);
+            return;
+        }
+
+        // Clean merge: reload the disk content (fresh stat, clears dirty),
+        // then reapply the merged text as an edit — the document ends up
+        // dirty with the user's edits preserved ON TOP of the disk state, so
+        // a subsequent save writes cleanly instead of raising the dialog.
+        await this._revertToDisk(document.uri);
+        const fresh = document.getText();
+        let merged = merge.merged;
+        if (fresh !== theirs) {
+            // The disk moved again between the read and the revert. Re-merge
+            // against what the revert actually loaded.
+            const retry = merge3(base, ours, fresh);
+            if (!retry.ok) {
+                // Now conflicting — restore the user's content (the revert
+                // replaced it) and flag the conflict.
+                await this._applyContentEdit(document, ours);
+                this._diskBaseText.set(uriKey, fresh);
+                this._setConflict(uriKey, true);
+                return;
+            }
+            merged = retry.merged;
+        }
+        if (merged !== fresh) {
+            await this._applyContentEdit(document, merged);
+        }
+        this._diskBaseText.set(uriKey, fresh);
+        this._setConflict(uriKey, false);
+    }
+
+    /** The file's current content, decoded as UTF-8 with any BOM stripped (matching TextDocument.getText). */
+    private async _readDiskText(uri: vscode.Uri): Promise<string> {
+        const bytes = await vscode.workspace.fs.readFile(uri);
+        const text = Buffer.from(bytes).toString("utf8");
+        return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+    }
+
+    /**
+     * Force-reverts the document to the disk content (also refreshing the
+     * model's disk stat, which is what arms/disarms the native save-conflict
+     * dialog). Failures are non-fatal: the next watcher event retries.
+     */
+    private async _revertToDisk(uri: vscode.Uri): Promise<void> {
+        try {
+            await vscode.commands.executeCommand("workbench.action.files.revert", uri);
+        } catch {
+            // Revert can fail transiently (e.g. the file vanished mid-flight).
+        }
+    }
+
+    /**
+     * Applies extension-originated content (a disk merge result) to the
+     * document as a minimal range replacement. Unlike _applyWebviewEdit this
+     * deliberately does NOT move the _lastSyncedText baseline: the webview
+     * does not have this text yet, so the change event must flow to it as an
+     * externalUpdate.
+     */
+    private async _applyContentEdit(
+        document: vscode.TextDocument,
+        newContent: string,
+    ): Promise<void> {
+        const replace = computeReplaceRange(document.getText(), newContent);
+        if (!replace) { return; }
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(
+            document.uri,
+            new vscode.Range(
+                document.positionAt(replace.startOffset),
+                document.positionAt(replace.endOffset),
+            ),
+            replace.replacement,
+        );
+        await vscode.workspace.applyEdit(edit);
+    }
+
+    /** Records the conflict state and tells the webview's toolbar badge when it changes. */
+    private _setConflict(uriKey: string, conflicted: boolean): void {
+        if (this._conflicted.has(uriKey) === conflicted) { return; }
+        if (conflicted) {
+            this._conflicted.add(uriKey);
+        } else {
+            this._conflicted.delete(uriKey);
+        }
+        this._webviewPanels.get(uriKey)?.webview.postMessage({
+            type: "syncConflict",
+            state: conflicted ? "conflict" : "none",
+        } satisfies ToWebviewMessage);
+    }
+
+    /**
+     * The toolbar badge's click action: a native QuickPick offering the three
+     * ways out of a disk conflict. Escape keeps the conflict state (and the
+     * badge) as-is.
+     */
+    private async _handleResolveSyncConflict(
+        document: vscode.TextDocument,
+        uriKey: string,
+    ): Promise<void> {
+        type ResolveItem = vscode.QuickPickItem & { action: "compare" | "keepMine" | "takeDisk" };
+        const items: ResolveItem[] = [
+            {
+                label: vscode.l10n.t("Compare with the file on disk"),
+                description: vscode.l10n.t("See both versions side by side"),
+                action: "compare",
+            },
+            {
+                label: vscode.l10n.t("Keep your version"),
+                description: vscode.l10n.t("Overwrite the file on disk with this editor's content"),
+                action: "keepMine",
+            },
+            {
+                label: vscode.l10n.t("Reload from disk"),
+                description: vscode.l10n.t("Discard your unsaved changes and load the file as it is on disk"),
+                action: "takeDisk",
+            },
+        ];
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: vscode.l10n.t(
+                "The file changed on disk in a way that overlaps your unsaved edits",
+            ),
+        });
+        if (!picked) { return; }
+        switch (picked.action) {
+            case "compare":
+                // The built-in dirty-model-vs-disk diff; the conflict stays
+                // flagged until the user picks a side or saves.
+                await vscode.commands.executeCommand(
+                    "workbench.files.action.compareWithSaved",
+                    document.uri,
+                );
+                break;
+            case "keepMine": {
+                const ours = document.getText();
+                await vscode.workspace.fs.writeFile(document.uri, Buffer.from(ours, "utf8"));
+                // Reload so the model is clean on the freshly written content.
+                await this._revertToDisk(document.uri);
+                this._diskBaseText.set(uriKey, ours);
+                this._setConflict(uriKey, false);
+                break;
+            }
+            case "takeDisk":
+                await this._revertToDisk(document.uri);
+                this._diskBaseText.set(uriKey, document.getText());
+                this._setConflict(uriKey, false);
+                break;
+        }
     }
 
     /** Serializes webview-originated edits per document so they never interleave. */

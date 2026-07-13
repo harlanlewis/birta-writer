@@ -80,6 +80,8 @@ export interface ToolbarController {
     setContentWidth(mode: import("../shared/contentWidth").ContentWidthMode, fixedCss?: string): void;
     /** Update the typography menu's block-handles radio rows. */
     setBlockHandles(mode: import("../shared/blockHandles").BlockHandlesMode): void;
+    /** Show/hide the disk-conflict badge (file on disk vs unsaved edits). */
+    setSyncConflict(active: boolean): void;
 }
 
 /** Editor state-management interface. */
@@ -327,6 +329,9 @@ export function createMessageHandlers(
             // `args` carries a right-clicked cell target for table commands.
             // An unknown id is a safe no-op inside runEditorCommand.
             runEditorCommand(msg.command, getEditor, msg.args);
+        },
+        syncConflict(msg) {
+            topbarTb?.setSyncConflict(msg.state === "conflict");
         },
     };
 }

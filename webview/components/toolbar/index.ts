@@ -28,12 +28,13 @@ import {
     IconSearch,
     IconSettings,
     IconFileCode,
+    IconAlertTriangle,
 } from "@/ui/icons";
 import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
@@ -709,6 +710,8 @@ export function initToolbar(
     /** Blank the bar while focus is in a nested editable island (a callout title). */
     setDetached: () => void;
     setDebugMode: (enabled: boolean) => void;
+    /** Show/hide the disk-conflict badge (file on disk vs unsaved edits). */
+    setSyncConflict: (active: boolean) => void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig: (config: ToolbarConfig) => void;
     /** Update the font picker's active-preset indicator (and optional stack previews). */
@@ -1596,6 +1599,21 @@ export function initToolbar(
         dbgItem = wrap("debug", dbgWrap);
     }
 
+    // ── Disk-conflict badge (pinned at the front of the right zone, not
+    //    user-placeable; hidden unless the extension flags a sync conflict:
+    //    the file changed on disk in a way that overlaps unsaved edits) ──
+    let syncConflictVisible = false;
+    const syncConflictItem = wrap(
+        "syncConflict",
+        btn(
+            IconAlertTriangle,
+            t("File changed on disk and overlaps your unsaved edits — click to resolve"),
+            () => notifyResolveSyncConflict(),
+            "tb-sync-conflict-btn",
+        ),
+    );
+    syncConflictItem.style.display = "none";
+
     // ── Checks menu (spelling, grammar, style + per-check toggles) ───────────
     // One toolbar button opens a menu of checkmarkable items: the three masters
     // up top, then the style sub-checks grouped under headers. Every row toggles
@@ -2104,6 +2122,10 @@ export function initToolbar(
             dbgItem.style.display = debugVisible ? "" : "none";
         }
 
+        // Disk-conflict badge: pinned at the front of the right zone.
+        rightZone.insertBefore(syncConflictItem, rightZone.firstChild);
+        syncConflictItem.style.display = syncConflictVisible ? "" : "none";
+
         setupOverflow();
     }
 
@@ -2201,6 +2223,12 @@ export function initToolbar(
             }
             // Toggling debug changes the right zone's width, which changes
             // the space available to the collapsible left zone.
+            overflow?.update(availableWidth());
+        },
+        setSyncConflict(active: boolean): void {
+            syncConflictVisible = active;
+            syncConflictItem.style.display = active ? "" : "none";
+            // Same as debug: the right zone's width changed.
             overflow?.update(availableWidth());
         },
         applyConfig(config: ToolbarConfig): void {

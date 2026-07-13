@@ -175,6 +175,11 @@ export function notifyClipboardWrite(format: "html" | "markdown", data: string):
     vscode.postMessage({ type: "clipboardWrite", format, data });
 }
 
+/** Toolbar sync-conflict badge click: asks the extension for the resolution picker. */
+export function notifyResolveSyncConflict(): void {
+    vscode.postMessage({ type: "resolveSyncConflict" });
+}
+
 export function onMessage(handler: (msg: IncomingMessage) => void): void {
     window.addEventListener("message", (event: MessageEvent) => {
         handler(event.data as IncomingMessage);

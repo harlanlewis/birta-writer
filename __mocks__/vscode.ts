@@ -128,6 +128,16 @@ export function fireDidChangeTextDocument(e: FakeTextDocumentChangeEvent): void 
     }
 }
 
+/** Listener list backing workspace.onDidSaveTextDocument */
+const textDocumentSaveListeners: Array<(doc: FakeTextDocument) => void> = [];
+
+/** Fires all registered onDidSaveTextDocument listeners (call after doc.markSaved()) */
+export function fireDidSaveTextDocument(doc: FakeTextDocument): void {
+    for (const listener of [...textDocumentSaveListeners]) {
+        listener(doc);
+    }
+}
+
 /** Registry of fake documents so workspace.applyEdit can route edits by uri */
 const fakeTextDocuments = new Map<string, FakeTextDocument>();
 
@@ -158,11 +168,12 @@ export async function fireWillSaveTextDocument(
     return Promise.all(waited);
 }
 
-/** Drops all fake documents and change/will-save listeners; call in beforeEach */
+/** Drops all fake documents and change/save/will-save listeners; call in beforeEach */
 export function resetTextDocumentMocks(): void {
     fakeTextDocuments.clear();
     textDocumentChangeListeners.length = 0;
     willSaveTextDocumentListeners.length = 0;
+    textDocumentSaveListeners.length = 0;
 }
 
 export interface FakeTextDocument {
@@ -323,6 +334,19 @@ export const workspace = {
                     const idx = willSaveTextDocumentListeners.indexOf(listener);
                     if (idx >= 0) {
                         willSaveTextDocumentListeners.splice(idx, 1);
+                    }
+                }),
+            };
+        },
+    ),
+    onDidSaveTextDocument: vi.fn(
+        (listener: (doc: FakeTextDocument) => void) => {
+            textDocumentSaveListeners.push(listener);
+            return {
+                dispose: vi.fn(() => {
+                    const idx = textDocumentSaveListeners.indexOf(listener);
+                    if (idx >= 0) {
+                        textDocumentSaveListeners.splice(idx, 1);
                     }
                 }),
             };

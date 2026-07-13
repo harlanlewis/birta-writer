@@ -230,7 +230,10 @@ export type ToExtensionMessage =
     | { type: "flushResult"; id: string; content: string; baseSyncVersion: number; seq: number }
     // Selection serialized in the webview (copy-as-HTML / copy-as-Markdown from
     // the right-click menu); the extension writes `data` to the system clipboard.
-    | { type: "clipboardWrite"; format: "html" | "markdown"; data: string };
+    | { type: "clipboardWrite"; format: "html" | "markdown"; data: string }
+    // The toolbar's sync-conflict badge was clicked; the extension shows the
+    // native resolution picker (compare / keep editor version / reload disk).
+    | { type: "resolveSyncConflict" };
 
 /**
  * Extension → WebView messages.
@@ -305,4 +308,9 @@ export type ToWebviewMessage =
     | { type: "flushSave"; id: string }
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).
-    | { type: "editorCommand"; command: EditorCommandId; args?: unknown };
+    | { type: "editorCommand"; command: EditorCommandId; args?: unknown }
+    // Disk-sync conflict state for this document: "conflict" while the file on
+    // disk and the editor's unsaved edits changed the same lines differently
+    // (the toolbar shows a quiet badge; a manual save would hit VS Code's
+    // native conflict dialog); "none" once resolved or converged.
+    | { type: "syncConflict"; state: "conflict" | "none" };
