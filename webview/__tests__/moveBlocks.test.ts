@@ -276,6 +276,22 @@ describe("moveBlocks — allowed normalization and side-state", () => {
         expect(guardErrors()).toEqual([]); // the dissolution is a DECLARED allowance
     });
 
+    it("moving the only child out of a TITLED callout should dissolve it via the declared exemption", async () => {
+        // The marker carries user title bytes, so the bare-marker fallback
+        // cannot exempt this — only moveBlocks' dissolvedMarkers declaration
+        // lets the legitimate dissolution through, while a buggy unwrap of
+        // the same callout (undeclared) still vetoes (contentGuard.test.ts).
+        const editor = await makeEditor("> [!note] My Title\n> only body\n\ntail");
+        const v = view(editor);
+        const bodyPos = nodePos(v, "only body", "paragraph");
+        const body = v.state.doc.nodeAt(bodyPos)!;
+        expect(
+            moveBlocks(v, { from: bodyPos, to: bodyPos + body.nodeSize }, v.state.doc.content.size),
+        ).toBe(true);
+        expect(markdown(editor)).toBe("tail\n\nonly body");
+        expect(guardErrors()).toEqual([]); // declared dissolution, not a warning
+    });
+
     it("a collapsed heading's fold entry should travel with its moved section", async () => {
         const editor = await makeEditor("## A\n\nbody A\n\n## B\n\nbody B");
         const v = view(editor);

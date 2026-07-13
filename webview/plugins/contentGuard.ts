@@ -119,6 +119,16 @@ const MARKER_IDENTITY: Record<string, (node: ProseNode) => string> = {
 };
 
 /**
+ * The fingerprint `marker:` key for a container node, or null for types that
+ * carry no marker identity. Exported so movers can DECLARE the markers of
+ * containers a move legitimately empties (see `ContentGuardTag.dissolvedMarkers`).
+ */
+export function markerKeyOf(node: ProseNode): string | null {
+    const marker = MARKER_IDENTITY[node.type.name];
+    return marker ? `marker:${node.type.name}:${marker(node)}` : null;
+}
+
+/**
  * Fingerprint a document (or any node/fragment) in one descendants pass.
  * O(doc); runs only for tagged/drop transactions, never on typing.
  */
@@ -139,9 +149,9 @@ export function fingerprintDoc(content: ProseNode | Fragment): Fingerprint {
         if (atom) {
             add(`atom:${name}:${atom(node)}`);
         }
-        const marker = MARKER_IDENTITY[name];
-        if (marker) {
-            add(`marker:${name}:${marker(node)}`);
+        const markerKey = markerKeyOf(node);
+        if (markerKey) {
+            add(markerKey);
         }
         add(`count:${name}`);
         return true;
@@ -193,6 +203,14 @@ export interface ContentGuardTag {
     effect?: ContentEffect;
     /** duplicate: the inserted copy — expected gain is exactly its fingerprint. */
     gained?: Fragment | ProseNode;
+    /**
+     * move: `marker:` keys (via `markerKeyOf`) of containers this move
+     * legitimately EMPTIES — deleteRange dissolves them, marker line and all,
+     * titled or not. Only declared markers are exempt from marker-loss
+     * vetoes; an undeclared marker loss is the buggy-unwrap shape (children
+     * survive, wrapper vanishes) and vetoes.
+     */
+    dissolvedMarkers?: string[];
 }
 
 export const contentGuardKey = new PluginKey("content-guard");
@@ -235,10 +253,12 @@ const DISSOLVABLE = new Set([
  * here is never exempt (footnote_definition: its label IS its identity;
  * notion_callout: the icon emoji is user bytes).
  *
- * Future hardening: this byte-shape heuristic can't tell "the move emptied
- * this container" from "the move unwrapped this container" — threading the
- * source range's ANCESTRY through the tag would let the guard exempt only
- * containers the move could legally have emptied, titled or not.
+ * This byte-shape heuristic is the FALLBACK for undeclared marker losses.
+ * The precise path is `ContentGuardTag.dissolvedMarkers`: `moveBlocks`
+ * declares the markers of containers the move actually empties (source-range
+ * ancestry), and those are exempt titled or not — so a legitimate "move the
+ * only child out of a titled callout" applies while a buggy unwrap (children
+ * survive, wrapper vanishes) still vetoes.
  */
 const MARKER_IS_DEFAULT: Record<string, (bytes: string) => boolean> = {
     // `[!kind]` (fold marker allowed — it is view state), empty title.
@@ -252,7 +272,10 @@ const MARKER_IS_DEFAULT: Record<string, (bytes: string) => boolean> = {
 
 /** A move conserves everything, modulo dissolving containers it emptied and
  * the empty paragraph deleteRange refills a fully-emptied doc with. */
-export function checkMove(delta: FingerprintDelta): string | null {
+export function checkMove(
+    delta: FingerprintDelta,
+    dissolvedMarkers?: ReadonlySet<string>,
+): string | null {
     // The only legal gain: exactly ONE `count:paragraph`, and nothing else
     // (deleteRange refills a fully-emptied doc with a single empty
     // paragraph; any other gain is synthesized content).
@@ -269,9 +292,15 @@ export function checkMove(delta: FingerprintDelta): string | null {
         }
         if (m[1] === "marker") {
             // Count loss is exempt for dissolvable kinds, but marker BYTES
-            // are only exempt when they are the kind's bare/default marker —
-            // a lost non-default marker means user bytes vanished (titled
-            // callout unwrap) and vetoes even though the count loss doesn't.
+            // are only exempt when the mover DECLARED this container as
+            // emptied-by-the-move (dissolvedMarkers), or — fallback for
+            // undeclared paths — when they are the kind's bare/default
+            // marker. A lost undeclared non-default marker means user bytes
+            // vanished (titled-callout unwrap) and vetoes even though the
+            // count loss doesn't.
+            if (dissolvedMarkers?.has(key)) {
+                continue;
+            }
             const type = m[2]!;
             const bytes = key.slice(`marker:${type}:`.length);
             if (!MARKER_IS_DEFAULT[type]?.(bytes)) {
@@ -624,7 +653,12 @@ export const contentGuardPlugin = $prose(
                     } else {
                         violation =
                             tag.kind === "move"
-                                ? checkMove(delta)
+                                ? checkMove(
+                                    delta,
+                                    tag.dissolvedMarkers
+                                        ? new Set(tag.dissolvedMarkers)
+                                        : undefined,
+                                )
                                 : checkDuplicate(
                                     delta,
                                     // Fragment.from: a doc's descendants pass

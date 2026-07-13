@@ -53,7 +53,7 @@ import {
     fingerprintDoc,
     formatFingerprintDiff,
 } from "../plugins/contentGuard";
-import { moveBlocks } from "../editing/moveBlocks";
+import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 import {
     checkDocModuloSpreadQuirk,
@@ -170,8 +170,13 @@ function sampleMoves(
             () => checkDocModuloSpreadQuirk(v.state.doc),
             `doc.check() failed — ${context}`,
         ).not.toThrow();
-        // (b) Conservation per the guard's own oracle.
-        const violation = checkMove(diffFingerprints(fpBefore, fingerprintDoc(v.state.doc)));
+        // (b) Conservation per the guard's own oracle — including the same
+        // emptied-container declaration the primitive tags (a move that
+        // dissolves a titled callout/directive is declared, not lossy).
+        const violation = checkMove(
+            diffFingerprints(fpBefore, fingerprintDoc(v.state.doc)),
+            new Set(dissolvedMarkersFor(docBefore, { from: source.from, to: source.to })),
+        );
         expect(violation, `move violated conservation — ${context}`).toBeNull();
         // (c) The production save pipeline conserves content: what would be
         // written to disk, reopened, holds exactly what the editor holds.

@@ -51,7 +51,7 @@ import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState
 // isHiddenTargetPos is only called inside the function body, matching the
 // established contentGuard ↔ headingFold precedent.
 import { isHiddenTargetPos } from "../plugins/headingFold";
-import { tagContentGuard } from "../plugins/contentGuard";
+import { markerKeyOf, tagContentGuard } from "../plugins/contentGuard";
 import { flashRange } from "../components/blockMenu/rangeIndicator";
 
 export interface MoveBlocksOptions {
@@ -154,6 +154,13 @@ export function moveBlocks(
         );
     }
 
+    // ── Declared dissolution: which marker-bearing containers this move
+    // empties ── deleteRange dissolves an emptied parent (and any ancestor
+    // it in turn empties), marker line included — legitimate even when the
+    // marker carries a title. Declare those markers so the content guard
+    // can exempt exactly them and still veto the buggy-unwrap shape.
+    const dissolvedMarkers = dissolvedMarkersFor(doc, { from: coveredFrom, to: coveredTo });
+
     // ── The move: delete + insert in one transaction ──
     // deleteRange (not delete): removing a list's last item must dissolve
     // the emptied list instead of leaving a schema-invalid empty node — the
@@ -209,7 +216,12 @@ export function moveBlocks(
     // ── 1. Atomic + veto-aware dispatch ──
     // Content-guard contract (MAR-108): a move conserves content exactly
     // (modulo dissolving a parent it emptied).
-    tagContentGuard(tr, { kind: "move" });
+    tagContentGuard(
+        tr,
+        dissolvedMarkers.length > 0
+            ? { kind: "move", dissolvedMarkers }
+            : { kind: "move" },
+    );
     const docBefore = view.state.doc;
     view.dispatch(tr);
     if (view.state.doc === docBefore) {
@@ -223,4 +235,40 @@ export function moveBlocks(
     // Landing flash at the destination — positions are valid in the new doc.
     flashRange(view, insertAt, insertAt + content.size);
     return true;
+}
+
+/**
+ * The `marker:` fingerprint keys (via `markerKeyOf`) of every container a
+ * move of `[source.from, source.to)` legitimately EMPTIES: the range's
+ * resolved parent when the range covers its entire content, plus each
+ * ancestor that in turn empties because its dissolving child was its only
+ * one. `deleteRange` dissolves this chain, marker lines included — even a
+ * titled callout's — so the primitive declares these keys on the guard tag,
+ * and the generative suites use the same function as their oracle so the
+ * declaration and the check can never drift.
+ */
+export function dissolvedMarkersFor(
+    doc: ProseNode,
+    source: { from: number; to: number },
+): string[] {
+    const $from = doc.resolve(source.from);
+    if ($from.depth === 0) {
+        return [];
+    }
+    if (source.from !== $from.start() || source.to !== $from.end()) {
+        return []; // the move does not empty its parent — nothing dissolves
+    }
+    const keys: string[] = [];
+    for (let depth = $from.depth; depth >= 1; depth--) {
+        const key = markerKeyOf($from.node(depth));
+        if (key) {
+            keys.push(key);
+        }
+        // The chain continues only while the dissolving node is its own
+        // parent's sole child (so that parent empties too).
+        if (depth === 1 || $from.node(depth - 1).childCount !== 1) {
+            break;
+        }
+    }
+    return keys;
 }

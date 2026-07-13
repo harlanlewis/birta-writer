@@ -40,7 +40,7 @@ import {
     fingerprintDoc,
     formatFingerprintDiff,
 } from "../plugins/contentGuard";
-import { moveBlocks } from "../editing/moveBlocks";
+import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
 import { duplicateBlockRange } from "../components/blockMenu";
 import {
     checkDocModuloSpreadQuirk,
@@ -187,8 +187,11 @@ describe("seeded move/duplicate property suite", () => {
                     record = { op: "move", source: { from: source.from, to: source.to }, target, ok };
                     ops.push(record);
                     if (ok) {
+                        // Same emptied-container declaration the primitive
+                        // tags — declared dissolution is not loss.
                         const violation = checkMove(
                             diffFingerprints(fpBefore, fingerprintDoc(v.state.doc)),
+                            new Set(dissolvedMarkersFor(docBefore, { from: source.from, to: source.to })),
                         );
                         expect(violation, `move violated conservation — ${context()}`).toBeNull();
                     }
