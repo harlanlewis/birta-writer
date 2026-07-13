@@ -294,6 +294,19 @@ function greet(name) {
 }
 ```
 
+## Images
+
+Inline image with a relative path and a title. The alt text is the editable
+caption under the image (revealed on selection when empty); the title is the
+hover tooltip, as in published HTML. Click the image for the toolbar — a
+file-name chip that edits the path (autocompletes workspace images), zoom,
+delete, and the editable title on its own row. Edits apply on Enter or
+click-away, Escape cancels.
+
+![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
+
+---
+
 ```python
 def greet(name: str) -> str:
     return f"Hello, {name}!"
@@ -346,21 +359,6 @@ A sentence with a footnote reference.[^note] Footnotes are auto-numbered and the
 
 ---
 
-## Images
-
-Inline image with a relative path and a title. The alt text is the editable
-caption under the image (revealed on selection when empty); the title is the
-hover tooltip, as in published HTML. Click the image for the toolbar — a
-file-name chip that edits the path (autocompletes workspace images), zoom,
-delete, and the editable title on its own row. Edits apply on Enter or
-click-away, Escape cancels.
-
-![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
-
----
-
----
-
 ## Horizontal rules
 
 Three marker styles, all preserved in their original form on save (open the
@@ -383,8 +381,6 @@ Inline and block HTML render as a sanitized, read-only preview (editing raw HTML
 An HTML comment preserved and shown dimmed:
 
 <!-- This is a comment. It survives round-trips. -->
-
----
 
 ---
 
