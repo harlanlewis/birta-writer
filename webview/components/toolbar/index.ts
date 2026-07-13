@@ -67,7 +67,7 @@ import {
 } from "../../../shared/contentWidth";
 import { GUTTER_MARKERS_DISPLAY_ORDER, type GutterMarkersMode } from "../../../shared/gutterMarkers";
 import { applyGutterMarkers, currentGutterMarkersMode } from "../../utils/gutterMarkers";
-import { TOOLBAR_MENU_COMMANDS } from "../../../shared/editorCommands";
+import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
 import { openShortcutsHelp } from "../shortcutsHelp";
 import './toolbar.css';
 
@@ -110,6 +110,14 @@ function createMenuTrigger(opts: {
         e.stopPropagation();
     });
     return el;
+}
+
+/** A horizontal menu divider — the shared separator idiom for every dropdown. */
+function makeSep(): HTMLElement {
+    const sep = document.createElement("div");
+    sep.className = "tb-menu-sep";
+    sep.setAttribute("role", "separator");
+    return sep;
 }
 
 /** A selectable/checkable menu row. */
@@ -891,13 +899,6 @@ export function initToolbar(
         fontMenu.className = "tb-fmt-menu tb-font-menu";
         fontMenu.style.display = "none";
 
-        const makeSep = (): HTMLElement => {
-            const sep = document.createElement("div");
-            sep.className = "tb-menu-sep";
-            sep.setAttribute("role", "separator");
-            return sep;
-        };
-
         // ── Content width: Full Width / Fixed segmented control ──
         // Full Width (default) fills the pane; Fixed caps the content at the
         // maxContentWidth ch setting and centers it. Clicks keep the menu open.
@@ -1404,10 +1405,7 @@ export function initToolbar(
         // Plain code block first — the common case and the dropdown's identity.
         addRow("code", IconTerminal, t("Code Block"), () => runEditorCommand("insertCodeBlock", getEditor));
 
-        const sep = document.createElement("div");
-        sep.className = "tb-menu-sep";
-        sep.setAttribute("role", "separator");
-        codeMenu.appendChild(sep);
+        codeMenu.appendChild(makeSep());
 
         // Language-typed blocks (same insertCodeBlock command, fence language baked in).
         addRow("mermaid", IconNetwork, t("Mermaid Diagram"), () => runEditorCommand("insertCodeBlock", getEditor, "mermaid"));
@@ -1482,10 +1480,7 @@ export function initToolbar(
         // Plain blockquote first — the common case, and the dropdown's identity.
         addRow("blockquote", IconQuote, t("Blockquote"), () => runEditorCommand("toggleBlockquote", getEditor));
 
-        const sep = document.createElement("div");
-        sep.className = "tb-menu-sep";
-        sep.setAttribute("role", "separator");
-        quoteMenu.appendChild(sep);
+        quoteMenu.appendChild(makeSep());
 
         const calloutKinds: [CalloutKind, string][] = [
             ["note", t("Note")],
@@ -1737,9 +1732,7 @@ export function initToolbar(
         const body = document.createElement("div");
         body.className = "tb-checks-body";
         bodyEl = body;
-        const bodySep = document.createElement("div");
-        bodySep.className = "tb-menu-sep";
-        body.appendChild(bodySep);
+        body.appendChild(makeSep());
 
         // Domain masters
         addRow(body, "spellCheck", t("Check spelling"));
@@ -1831,13 +1824,6 @@ export function initToolbar(
         menu.className = "tb-fmt-menu tb-settings-menu";
         menu.style.display = "none";
 
-        // Group header naming the product (the rows themselves stay short —
-        // "Settings", not "<product> Settings").
-        const header = document.createElement("div");
-        header.className = "tb-fmt-header";
-        header.textContent = productName;
-        menu.appendChild(header);
-
         const addEntry = (label: string, onSelect: () => void): void => {
             const entry = document.createElement("div");
             entry.className = "tb-fmt-item";
@@ -1852,24 +1838,35 @@ export function initToolbar(
         };
         // The entries mirror the toolbar right-click menu exactly: both are
         // built from TOOLBAR_MENU_COMMANDS (shared/editorCommands.ts), so ids,
-        // order, and labels can't drift (the contributions test guards the
-        // package.json side). Keyboard Shortcuts opens the native UI filtered
-        // to this extension, where the user's effective (possibly rebound)
-        // bindings are accurate.
+        // order, and labels can't drift, and both draw a separator on every
+        // `menuGroup` change — here via makeSep(), natively via the
+        // 1_layout/2_shortcuts/3_settings group prefixes (the contributions
+        // test guards the package.json side). Edit Keyboard Shortcuts opens
+        // the native UI filtered to this extension, where the user's
+        // effective (possibly rebound) bindings are accurate.
         const menuActions: Record<string, () => void> = {
             customizeToolbar: () => startCustomize(),
             hideToolbar: () => setToolbarVisible(false),
-            // Help (the in-editor cheatsheet overlay) above Customize (the
-            // native UI) — table order in TOOLBAR_MENU_COMMANDS.
+            // Show (the in-editor cheatsheet overlay) above Edit (the native
+            // UI) — table order in TOOLBAR_MENU_COMMANDS.
             openShortcutsHelp: () => openShortcutsHelp(),
             openKeyboardShortcuts: () => notifyOpenKeybindings(),
             openExtensionSettings: () => notifyOpenSettings(),
         };
+        let prevGroup: string | undefined;
         for (const meta of TOOLBAR_MENU_COMMANDS) {
             const action = menuActions[meta.id];
-            if (action) {
-                addEntry(t(meta.title), action);
+            if (!action) { continue; }
+            if (prevGroup !== undefined && meta.menuGroup !== prevGroup) {
+                menu.appendChild(makeSep());
             }
+            prevGroup = meta.menuGroup;
+            // The settings row names the product with the RUNTIME display
+            // name, so a rename never leaves the menu stale.
+            const label = meta.id === "openExtensionSettings"
+                ? settingsMenuTitle(productName)
+                : t(meta.title);
+            addEntry(label, action);
         }
 
         const { close: closeSettingsMenu } = wireHoverMenu(wrapEl, gearBtn, menu);

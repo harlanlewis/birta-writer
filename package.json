@@ -1117,27 +1117,27 @@
                 {
                     "command": "markdownWysiwyg.editor.customizeToolbar",
                     "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@1"
+                    "group": "1_layout@1"
                 },
                 {
                     "command": "markdownWysiwyg.editor.hideToolbar",
                     "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@2"
+                    "group": "1_layout@2"
                 },
                 {
                     "command": "markdownWysiwyg.editor.openShortcutsHelp",
                     "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@3"
+                    "group": "2_shortcuts@1"
                 },
                 {
                     "command": "markdownWysiwyg.editor.openKeyboardShortcuts",
                     "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@4"
+                    "group": "2_shortcuts@2"
                 },
                 {
                     "command": "markdownWysiwyg.editor.openExtensionSettings",
                     "when": "webviewId == 'markdownWysiwyg.editor' && webviewSection == 'toolbar'",
-                    "group": "1_toolbar@5"
+                    "group": "3_settings@1"
                 },
                 {
                     "command": "markdownWysiwyg.editor.showToolbar",

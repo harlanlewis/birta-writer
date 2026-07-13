@@ -143,7 +143,7 @@ describe("slash command menu plugin", () => {
             "Heading 4", "Heading 5", "Heading 6",
             // Tier-3 substring match ("hea" inside the "cheatsheet" keyword)
             // — ranked after every label-prefix heading match.
-            "Keyboard Shortcuts Help",
+            "Show Keyboard Shortcuts",
         ]);
     });
 

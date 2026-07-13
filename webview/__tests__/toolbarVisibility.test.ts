@@ -77,23 +77,31 @@ describe("toolbar visibility", () => {
         expect(visibleMessages()).toHaveLength(0);
     });
 
-    it("the gear menu should render a product header and the rows in shared-table order", () => {
+    it("the gear menu should render the rows in shared-table order with group separators and no header", () => {
         // Arrange / Act
         const { topbar } = buildToolbar();
 
-        // Assert — header names the product; rows stay short
-        const header = topbar.querySelector(".tb-settings-menu .tb-fmt-header");
-        expect(header?.textContent).toBe("WYSIWYG Markdown Editor");
+        // Assert — no product header; the settings row names the product
+        expect(topbar.querySelector(".tb-settings-menu .tb-fmt-header")).toBeNull();
         const rows = Array.from(
             topbar.querySelectorAll(".tb-settings-menu .tb-fmt-item"),
         ).map((el) => el.textContent);
         expect(rows).toEqual([
             "Customize Toolbar",
             "Hide Toolbar",
-            "Keyboard Shortcuts Help",
-            "Customize Shortcuts",
-            "Settings",
+            "Show Keyboard Shortcuts",
+            "Edit Keyboard Shortcuts",
+            "WYSIWYG Markdown Editor Settings",
         ]);
+        // A separator on every menuGroup change: layout | shortcuts | settings
+        const menu = topbar.querySelector(".tb-settings-menu")!;
+        const kinds = Array.from(menu.children).map((el) =>
+            el.classList.contains("tb-menu-sep") ? "sep" : "item",
+        );
+        expect(kinds).toEqual(["item", "item", "sep", "item", "item", "sep", "item"]);
+        for (const sep of menu.querySelectorAll(".tb-menu-sep")) {
+            expect(sep.getAttribute("role")).toBe("separator");
+        }
     });
 
     it("the gear menu Hide Toolbar entry should hide the bar and persist the setting", () => {

@@ -25,6 +25,15 @@ export interface EditorCommandMeta {
     readonly palette: boolean;
     /** Right-click `webview/context` sections the command appears in. */
     readonly sections: readonly WebviewSection[];
+    /**
+     * Toolbar-chrome menu grouping. Menu renderers insert a separator whenever
+     * the group changes between consecutive TOOLBAR_MENU_COMMANDS entries; the
+     * native right-click menu mirrors it via the `webview/context` group
+     * prefixes in package.json (`1_layout` / `2_shortcuts` / `3_settings` —
+     * VS Code draws separators between groups). Required on every
+     * `sections: ["toolbar"]` entry (drift-guarded), optional elsewhere.
+     */
+    readonly menuGroup?: "layout" | "shortcuts" | "settings";
 }
 
 export const EDITOR_COMMANDS = [
@@ -92,27 +101,28 @@ export const EDITOR_COMMANDS = [
     { id: "editRawMarkdown", title: "Edit Raw Markdown", palette: false, sections: ["editor", "table", "link"] },
     // Toolbar (chrome) right-click menu. The settings-gear dropdown is built
     // from these same entries (filtered by the "toolbar" section, in this
-    // order) under a product-name group header, so the two menus can never
-    // diverge. Hide/Show are separate idempotent commands rather than one
-    // toggle so every surface shows the label that matches its state: the
-    // visible bar (and gear menu) offers "Hide Toolbar", while the collapsed
-    // expand tab — stamped with its own "toolbarTab" section — offers only
-    // "Show Toolbar".
-    { id: "customizeToolbar", title: "Customize Toolbar", palette: true, sections: ["toolbar"] },
+    // order), with a separator on every `menuGroup` change, so the two menus
+    // can never diverge. Hide/Show are separate idempotent commands rather
+    // than one toggle so every surface shows the label that matches its state:
+    // the visible bar (and gear menu) offers "Hide Toolbar", while the
+    // collapsed expand tab — stamped with its own "toolbarTab" section —
+    // offers only "Show Toolbar".
+    { id: "customizeToolbar", title: "Customize Toolbar", palette: true, sections: ["toolbar"], menuGroup: "layout" },
     // Hide/Show are per-surface labels for the right-click and gear menus (each
     // shows the one that matches its state); the palette and slash menu use the
     // single `toggleToolbar` below instead, so they are palette:false here.
-    { id: "hideToolbar", title: "Hide Toolbar", palette: false, sections: ["toolbar"] },
-    // Help (the read-only cheatsheet overlay) sits directly above Customize
-    // (openKeyboardShortcuts — VS Code's native rebind UI): learn first,
-    // rebind second. See the sequence-3 comment below for why the two stay
-    // distinct commands.
-    { id: "openShortcutsHelp", title: "Keyboard Shortcuts Help", palette: true, sections: ["toolbar"] },
-    // "Customize Shortcuts" (not "Keyboard Shortcuts"): the bare name was a
-    // near-collision with "Keyboard Shortcuts Help" above, and the overlay's
-    // own button already uses this verb-first label. Command ID unchanged.
-    { id: "openKeyboardShortcuts", title: "Customize Shortcuts", palette: false, sections: ["toolbar"] },
-    { id: "openExtensionSettings", title: "Settings", palette: false, sections: ["toolbar"] },
+    { id: "hideToolbar", title: "Hide Toolbar", palette: false, sections: ["toolbar"], menuGroup: "layout" },
+    // Show/Edit are parallel verb-first labels for the shortcuts pair: "Show"
+    // opens the read-only cheatsheet overlay (learn first), "Edit" opens
+    // VS Code's native Keyboard Shortcuts UI (rebind second) — see the
+    // sequence-3 comment below for why the two stay distinct commands.
+    // Command ids are unchanged so existing user keybindings keep working.
+    { id: "openShortcutsHelp", title: "Show Keyboard Shortcuts", palette: true, sections: ["toolbar"], menuGroup: "shortcuts" },
+    { id: "openKeyboardShortcuts", title: "Edit Keyboard Shortcuts", palette: false, sections: ["toolbar"], menuGroup: "shortcuts" },
+    // The full title is the SETTINGS_TITLE_TEMPLATE expansion of package.json's
+    // displayName (drift-guarded); the gear menu interpolates the runtime
+    // product name via settingsMenuTitle() instead of using this literal.
+    { id: "openExtensionSettings", title: "WYSIWYG Markdown Editor Settings", palette: false, sections: ["toolbar"], menuGroup: "settings" },
     { id: "showToolbar", title: "Show Toolbar", palette: false, sections: ["toolbarTab"] },
     // View controls — the font picker, size stepper, proofread toggles, and TOC
     // side/visibility. Previously reachable only from the toolbar (and, for a
@@ -171,16 +181,26 @@ export const EDITOR_COMMANDS = [
 ] as const satisfies readonly EditorCommandMeta[];
 
 /**
- * Title template for the open-settings entry. The gear menu names the product
- * in its group header instead of the row label, so the template is the bare
- * word; a drift test keeps it in lockstep with package.json/nls.
+ * Title template for the open-settings entry. The row label names the product
+ * (there is no group header in the gear menu): the webview expands {product}
+ * with the runtime product name via settingsMenuTitle(), while the command
+ * table and package.nls.json carry the package.json displayName expansion —
+ * a drift test keeps all three in lockstep.
  */
-export const SETTINGS_TITLE_TEMPLATE = "Settings";
+export const SETTINGS_TITLE_TEMPLATE = "{product} Settings";
 
-/** The toolbar-chrome menu entries, in display order (right-click and gear menu). */
-export const TOOLBAR_MENU_COMMANDS = EDITOR_COMMANDS.filter((m) =>
-    (m.sections as readonly WebviewSection[]).includes("toolbar"),
-);
+/** The settings row label for a given product name. */
+export function settingsMenuTitle(product: string): string {
+    return SETTINGS_TITLE_TEMPLATE.replace("{product}", product);
+}
+
+/**
+ * The toolbar-chrome menu entries, in display order (right-click and gear
+ * menu). Widened to the interface type (keeping the id union) so `menuGroup`
+ * — absent from most entries' literal types — is uniformly readable.
+ */
+export const TOOLBAR_MENU_COMMANDS: readonly (EditorCommandMeta & { id: EditorCommandId })[] =
+    EDITOR_COMMANDS.filter((m) => (m.sections as readonly WebviewSection[]).includes("toolbar"));
 
 export type EditorCommandId = typeof EDITOR_COMMANDS[number]["id"];
 
