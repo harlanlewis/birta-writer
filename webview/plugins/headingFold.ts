@@ -77,6 +77,76 @@ function isCalloutNode(node: { type: { name: string } } | null | undefined): boo
     return node?.type.name === "callout";
 }
 
+function isTableNode(node: { type: { name: string } } | null | undefined): boolean {
+    return node?.type.name === "table";
+}
+
+function isCodeBlockNode(node: { type: { name: string } } | null | undefined): boolean {
+    return node?.type.name === "code_block";
+}
+
+function isListItemNode(node: { type: { name: string } } | null | undefined): boolean {
+    return node?.type.name === "list_item";
+}
+
+/** Whether any ancestor of `pos` is a list item — the chrome-parity gate
+ * shared by callouts, tables, and code blocks (see isFoldableCallout). */
+function hasListItemAncestor(doc: any, pos: number): boolean {
+    const $pos = doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth--) {
+        if ($pos.node(depth).type.name === "list_item") {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * A list item folds to its FIRST LINE (heading-section semantics applied to
+ * list nesting, MAR-125): foldable only when it owns anything beyond its
+ * first child block — nested sub-lists, continuation blocks. Siblings are
+ * never affected; a leaf item shows no chevron (mirroring how a heading
+ * without a body isn't foldable).
+ */
+export function listItemHasDescendants(node: { childCount: number }): boolean {
+    return node.childCount > 1;
+}
+
+/** Whether a table has any REAL body row. The gfm schema pads a header-only
+ * markdown table with one empty, cell-less `table_row` (nodeSize 2), so
+ * childCount alone over-reports — require a body row that carries cells. */
+export function tableHasBody(node: { childCount: number; child(i: number): { childCount: number } }): boolean {
+    for (let i = 1; i < node.childCount; i++) {
+        if (node.child(i).childCount > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** A table folds to its HEADER ROW: foldable when body rows exist. Same
+ * list-item chrome-parity gate as callouts (no gutter → no invisible fold). */
+function isFoldableTable(doc: any, pos: number, node: any): boolean {
+    return isTableNode(node) && tableHasBody(node) && !hasListItemAncestor(doc, pos);
+}
+
+/** A code block (plain fence, math, mermaid) folds to its chrome/header row:
+ * foldable when it has any content. Same chrome-parity gate as callouts. */
+function isFoldableCodeBlock(doc: any, pos: number, node: any): boolean {
+    return isCodeBlockNode(node) && node.content.size > 0 && !hasListItemAncestor(doc, pos);
+}
+
+/** Every node kind the fold plugin may own an entry for (MAR-110 + MAR-125). */
+function isFoldableKindNode(node: any): boolean {
+    return (
+        isHeadingNode(node) ||
+        isCalloutNode(node) ||
+        isListItemNode(node) ||
+        isTableNode(node) ||
+        isCodeBlockNode(node)
+    );
+}
+
 /**
  * A callout is foldable whenever it has a body (MAR-110 — no longer only
  * when the source carries a `+`/`-` marker): anything beyond one empty
@@ -101,16 +171,7 @@ export function calloutHasBody(node: { childCount: number; firstChild: { childCo
  * is the future alternative to the restriction.
  */
 function isFoldableCallout(doc: any, pos: number, node: any): boolean {
-    if (!isCalloutNode(node) || !calloutHasBody(node)) {
-        return false;
-    }
-    const $pos = doc.resolve(pos);
-    for (let depth = $pos.depth; depth > 0; depth--) {
-        if ($pos.node(depth).type.name === "list_item") {
-            return false;
-        }
-    }
-    return true;
+    return isCalloutNode(node) && calloutHasBody(node) && !hasListItemAncestor(doc, pos);
 }
 
 /** A heading NODE's level attr (the DOM-element twin lives in utils/headingUtils). */
@@ -272,11 +333,13 @@ export function foldedSectionEnd(state: EditorState, blockPos: number): number |
 
 /**
  * The content range a fold at `pos` HIDES when collapsed, or null when the
- * block isn't foldable. The two kinds differ in where the hidden content
- * lives: a heading hides its following section (blocks OUTSIDE the node),
- * a callout hides its own body (blocks INSIDE the node). Everything that
- * needs to reason about invisible content — drop guards, reveal-on-navigate,
- * the caret skip-over — derives from this one map.
+ * block isn't foldable. The kinds differ in where the hidden content lives:
+ * a heading hides its following section (blocks OUTSIDE the node); a callout
+ * or code block hides its own body (everything INSIDE the node); a list item
+ * or table hides everything inside AFTER its first child (the item's first
+ * line / the header row stays visible and editable). Everything that needs
+ * to reason about invisible content — drop guards, reveal-on-navigate, the
+ * caret skip-over — derives from this one map.
  */
 export function foldHiddenRange(doc: any, pos: number): HeadingFoldRange | null {
     const node = doc.nodeAt(pos);
@@ -285,10 +348,20 @@ export function foldHiddenRange(doc: any, pos: number): HeadingFoldRange | null 
         // top-level offsets, so a nested heading simply misses.
         return cachedFoldRanges(doc).get(pos) ?? null;
     }
-    // isFoldableCallout also excludes list-item-nested callouts, so the meta
-    // guards, the caret guard, and the drop guards all inherit the
-    // state/decoration-parity invariant from this one map.
+    // The isFoldable* predicates exclude list-item-nested callouts/tables/
+    // code blocks (no gutter chrome there), so the meta guards, the caret
+    // guard, and the drop guards all inherit the state/decoration-parity
+    // invariant from this one map.
     if (isFoldableCallout(doc, pos, node)) {
+        return { from: pos + 1, to: pos + node.nodeSize - 1 };
+    }
+    if (isListItemNode(node) && listItemHasDescendants(node)) {
+        return { from: pos + 1 + node.firstChild!.nodeSize, to: pos + node.nodeSize - 1 };
+    }
+    if (isFoldableTable(doc, pos, node)) {
+        return { from: pos + 1 + node.firstChild!.nodeSize, to: pos + node.nodeSize - 1 };
+    }
+    if (isFoldableCodeBlock(doc, pos, node)) {
         return { from: pos + 1, to: pos + node.nodeSize - 1 };
     }
     return null;
@@ -371,8 +444,7 @@ export function revealPosition(view: EditorView, pos: number): void {
 
 /** Whether `pos` holds a block the fold plugin may keep an entry for. */
 function isFoldEntryAt(doc: any, pos: number): boolean {
-    const node = doc.nodeAt(pos);
-    return isHeadingNode(node) || isCalloutNode(node);
+    return isFoldableKindNode(doc.nodeAt(pos));
 }
 
 function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<number> {
@@ -389,9 +461,10 @@ function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<number> {
     return next;
 }
 
-/** Every foldable position in the doc: top-level heading sections plus
- * foldable callouts (any depth outside list items — see isFoldableCallout).
- * Drives Fold All. */
+/** Every foldable position in the doc: top-level heading sections plus every
+ * other foldable kind at any chrome-bearing depth (callouts, list items with
+ * descendants, tables with body rows, non-empty code blocks — one fold
+ * grammar, so Fold All folds them all). */
 export function allFoldablePositions(doc: any): number[] {
     const positions: number[] = [];
     for (const [pos, range] of cachedFoldRanges(doc)) {
@@ -400,7 +473,7 @@ export function allFoldablePositions(doc: any): number[] {
         }
     }
     doc.descendants((node: any, pos: number) => {
-        if (isFoldableCallout(doc, pos, node)) {
+        if (!isHeadingNode(node) && foldHiddenRange(doc, pos) !== null) {
             positions.push(pos);
         }
         return true;
@@ -419,7 +492,12 @@ export function allFoldablePositions(doc: any): number[] {
  */
 export interface FoldAnchors {
     headings: string[];
+    /** Root-relative child-index paths (`"2"`, `"1/0"`) for callouts. */
     callouts: string[];
+    /** Same path encoding for the other node-anchored foldables (list
+     * items, tables, code blocks — MAR-125). A separate array (not merged
+     * into `callouts`) so older persisted bags round-trip untouched. */
+    blocks: string[];
 }
 
 const FOLD_ANCHORS_STATE_KEY = "foldAnchors";
@@ -427,8 +505,9 @@ const FOLD_ANCHORS_STATE_KEY = "foldAnchors";
 export function computeFoldAnchors(doc: any, folded: ReadonlySet<number>): FoldAnchors {
     const headings: string[] = [];
     const callouts: string[] = [];
+    const blocks: string[] = [];
     if (folded.size === 0) {
-        return { headings, callouts };
+        return { headings, callouts, blocks };
     }
     const counts = new Map<string, number>();
     doc.forEach((node: any, offset: number) => {
@@ -443,7 +522,9 @@ export function computeFoldAnchors(doc: any, folded: ReadonlySet<number>): FoldA
         }
     });
     for (const pos of folded) {
-        if (!isCalloutNode(doc.nodeAt(pos))) {
+        const node = doc.nodeAt(pos);
+        const isCallout = isCalloutNode(node);
+        if (!isCallout && !isListItemNode(node) && !isTableNode(node) && !isCodeBlockNode(node)) {
             continue;
         }
         const $pos = doc.resolve(pos);
@@ -451,9 +532,33 @@ export function computeFoldAnchors(doc: any, folded: ReadonlySet<number>): FoldA
         for (let depth = 0; depth <= $pos.depth; depth++) {
             path.push($pos.index(depth));
         }
-        callouts.push(path.join("/"));
+        (isCallout ? callouts : blocks).push(path.join("/"));
     }
-    return { headings, callouts };
+    return { headings, callouts, blocks };
+}
+
+/** Resolve a root-relative child-index path (`"1/0"`) back to a position
+ * and node, or null when it no longer points anywhere. */
+function resolveChildPath(doc: any, encoded: string): { pos: number; node: any } | null {
+    const path = encoded.split("/").map(Number);
+    if (path.length === 0 || path.some((i) => !Number.isInteger(i) || i < 0)) {
+        return null;
+    }
+    let node: any = doc;
+    let pos = 0;
+    for (let depth = 0; depth < path.length; depth++) {
+        const index = path[depth]!;
+        if (index >= node.childCount) {
+            return null;
+        }
+        let childPos = depth === 0 ? 0 : pos + 1;
+        for (let sibling = 0; sibling < index; sibling++) {
+            childPos += node.child(sibling).nodeSize;
+        }
+        pos = childPos;
+        node = node.child(index);
+    }
+    return { pos, node };
 }
 
 export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> {
@@ -474,33 +579,25 @@ export function resolveFoldAnchors(doc: any, anchors: FoldAnchors): Set<number> 
             }
         });
     }
-    for (const encoded of anchors.callouts) {
-        const path = encoded.split("/").map(Number);
-        if (path.length === 0 || path.some((i) => !Number.isInteger(i) || i < 0)) {
-            continue;
+    // Same predicates as the live layers: an anchor persisted for a block
+    // that is no longer foldable (or never was — e.g. a list-item-nested
+    // one from an older build) is dropped, never restored into an
+    // invisible fold. `?? []` tolerates pre-MAR-125 anchor bags with no
+    // `blocks` array.
+    for (const encoded of anchors.callouts ?? []) {
+        const hit = resolveChildPath(doc, encoded);
+        if (hit && isFoldableCallout(doc, hit.pos, hit.node)) {
+            folded.add(hit.pos);
         }
-        let node: any = doc;
-        let pos = 0;
-        let resolved = true;
-        for (let depth = 0; depth < path.length; depth++) {
-            const index = path[depth]!;
-            if (index >= node.childCount) {
-                resolved = false;
-                break;
-            }
-            let childPos = depth === 0 ? 0 : pos + 1;
-            for (let sibling = 0; sibling < index; sibling++) {
-                childPos += node.child(sibling).nodeSize;
-            }
-            pos = childPos;
-            node = node.child(index);
-        }
-        // Same predicate as the live layers: an anchor persisted for a
-        // callout that is no longer foldable (or never was — e.g. a
-        // list-item-nested one from an older build) is dropped, never
-        // restored into an invisible fold.
-        if (resolved && isFoldableCallout(doc, pos, node)) {
-            folded.add(pos);
+    }
+    for (const encoded of anchors.blocks ?? []) {
+        const hit = resolveChildPath(doc, encoded);
+        if (
+            hit &&
+            (isListItemNode(hit.node) || isTableNode(hit.node) || isCodeBlockNode(hit.node)) &&
+            foldHiddenRange(doc, hit.pos) !== null
+        ) {
+            folded.add(hit.pos);
         }
     }
     return folded;
@@ -514,7 +611,11 @@ function readPersistedFoldAnchors(): FoldAnchors | null {
     const partial = raw as Partial<FoldAnchors>;
     const strings = (value: unknown): string[] =>
         Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-    return { headings: strings(partial.headings), callouts: strings(partial.callouts) };
+    return {
+        headings: strings(partial.headings),
+        callouts: strings(partial.callouts),
+        blocks: strings(partial.blocks),
+    };
 }
 
 function persistFoldAnchors(state: EditorState): void {
@@ -620,8 +721,21 @@ function createMarkerButton(
 }
 
 /**
- * The one fold-chevron protocol, shared by heading gutters and callout
- * gutters (MAR-110): derive the block position at interaction time, dispatch
+ * Where a selection that would land inside newly hidden content escapes to.
+ * Kinds with a visible caret home keep the caret local: a heading's own
+ * line, a list item's first line, a table's header row. A collapsed callout
+ * or code block has no editable line left, so the caret lands just before
+ * the block.
+ */
+function foldEscapeSelection(tr: Transaction, node: any, pos: number): Selection {
+    return isHeadingNode(node) || isListItemNode(node) || isTableNode(node)
+        ? TextSelection.near(tr.doc.resolve(Math.min(pos + 1, tr.doc.content.size)))
+        : Selection.near(tr.doc.resolve(pos), -1);
+}
+
+/**
+ * The one fold-chevron protocol, shared by every foldable kind's gutter
+ * (MAR-110/125): derive the block position at interaction time, dispatch
  * the shared toggle meta with zero steps and no history entry, and eject a
  * selection that would otherwise end up inside the newly hidden range.
  */
@@ -654,7 +768,7 @@ function createFoldToggle(view: EditorView, gutter: HTMLElement, collapsed: bool
 
         const blockPos = gutterBlockPos(view, gutter);
         const node = blockPos === null ? null : view.state.doc.nodeAt(blockPos);
-        if (blockPos === null || !(isHeadingNode(node) || isCalloutNode(node))) {
+        if (blockPos === null || !isFoldableKindNode(node)) {
             return;
         }
 
@@ -669,13 +783,7 @@ function createFoldToggle(view: EditorView, gutter: HTMLElement, collapsed: bool
                 view.state.selection.from < range.to &&
                 view.state.selection.to > range.from
             ) {
-                // A heading keeps a visible caret home on its own line; a
-                // collapsed callout has none, so the caret lands just before.
-                tr.setSelection(
-                    isHeadingNode(node)
-                        ? TextSelection.near(tr.doc.resolve(Math.min(blockPos + 1, tr.doc.content.size)))
-                        : Selection.near(tr.doc.resolve(blockPos), -1),
-                );
+                tr.setSelection(foldEscapeSelection(tr, node, blockPos));
             }
         }
 
@@ -904,12 +1012,12 @@ function emitContainerChildGutters(
         const childPos = containerPos + 1 + offset;
         if (isListNode(child)) {
             parts?.push("L");
-            emitItemGutters(child, childPos, decorations, parts);
+            emitItemGutters(child, childPos, decorations, parts, foldCtx);
             return;
         }
         const spec = nestedChildSpec(child);
         if (spec !== null) {
-            const fold = calloutFoldInfo(child, childPos, foldCtx);
+            const fold = blockFoldInfo(child, childPos, foldCtx);
             const foldKey = foldKeyPart(fold);
             // Depth is part of the identity: it drives the marker's gutter
             // column (--nested-gutter-depth), so a block that re-nests must
@@ -936,17 +1044,29 @@ function emitContainerChildGutters(
     });
 }
 
-/** Fold info for a callout block's gutter, or null for everything else
- * (and for everything while `editor.folding` is off — zero fold chrome). */
-function calloutFoldInfo(
+/** Fold info for a foldable non-heading block's gutter (callout, table,
+ * code block — MAR-110/125), or null for everything else (and for
+ * everything while `editor.folding` is off — zero fold chrome). Only
+ * invoked from the top-level and container-children passes, which never
+ * run inside list items, so the chrome-parity gate holds by construction. */
+function blockFoldInfo(
     node: any,
     pos: number,
     foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
 ): GutterFoldInfo | null {
-    if (!foldCtx.enabled || !isCalloutNode(node)) {
+    if (!foldCtx.enabled) {
         return null;
     }
-    return { foldable: calloutHasBody(node), collapsed: foldCtx.folded.has(pos) };
+    if (isCalloutNode(node)) {
+        return { foldable: calloutHasBody(node), collapsed: foldCtx.folded.has(pos) };
+    }
+    if (isTableNode(node)) {
+        return { foldable: tableHasBody(node), collapsed: foldCtx.folded.has(pos) };
+    }
+    if (isCodeBlockNode(node)) {
+        return { foldable: node.content.size > 0, collapsed: foldCtx.folded.has(pos) };
+    }
+    return null;
 }
 
 /** The widget-key / fingerprint suffix a fold state contributes. */
@@ -975,36 +1095,106 @@ function itemMarkerSpec(listNode: any, item: any): MarkerSpec {
  * no marker (whole-list operations are reachable by selecting all items).
  * `listPos` is the list node's document position; items' positions are
  * derived from it. Appends into `decorations` and `parts` (fingerprint).
+ *
+ * MAR-125: items with descendants (anything beyond their first child block)
+ * carry the fold chevron; a collapsed item hides those descendant blocks
+ * and trails its first line with the shared `…` chip — heading-section
+ * semantics applied to list nesting, siblings never affected.
  */
 function emitItemGutters(
     listNode: any,
     listPos: number,
     decorations: Decoration[] | null,
     parts: string[] | null,
+    foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
 ): void {
     listNode.forEach((item: any, offset: number) => {
         const itemPos = listPos + 1 + offset;
         const spec = itemMarkerSpec(listNode, item);
-        parts?.push(`i${spec.key}`);
+        const fold: GutterFoldInfo | null = foldCtx.enabled
+            ? { foldable: listItemHasDescendants(item), collapsed: foldCtx.folded.has(itemPos) }
+            : null;
+        const foldKey = foldKeyPart(fold);
+        parts?.push(`i${spec.key}${foldKey}`);
+        const collapsed = Boolean(fold?.collapsed && fold.foldable);
         decorations?.push(
             Decoration.node(itemPos, itemPos + item.nodeSize, {
-                class: "block-gutter-host block-gutter-host--item",
+                class: `block-gutter-host block-gutter-host--item${collapsed ? " collapsed" : ""}`,
             }),
         );
         decorations?.push(
             Decoration.widget(
                 itemPos + 1,
-                (view: EditorView) => createBlockGutter(view, spec),
-                { key: `g:${spec.key}`, side: -1 },
+                (view: EditorView) => createBlockGutter(view, spec, undefined, fold ?? undefined),
+                { key: `g:${spec.key}${foldKey}`, side: -1 },
             ),
         );
+        if (collapsed && decorations) {
+            // Hide every child block after the item's first line, and trail
+            // that line with the `…` chip (the heading idiom — clicking
+            // expands). The hidden children keep their own decorations;
+            // display:none on the blocks suppresses them wholesale.
+            const hiddenCount = item.childCount - 1;
+            item.forEach((child: any, childOffset: number) => {
+                if (childOffset === 0) {
+                    return;
+                }
+                const childPos = itemPos + 1 + childOffset;
+                decorations.push(
+                    Decoration.node(childPos, childPos + child.nodeSize, {
+                        class: "heading-fold-hidden",
+                    }),
+                );
+            });
+            decorations.push(
+                Decoration.widget(
+                    itemPos + 1 + item.firstChild!.nodeSize - 1,
+                    (view: EditorView) => createItemEllipsis(view, hiddenCount),
+                    { key: `e:i:${hiddenCount}`, side: 1 },
+                ),
+            );
+        }
         // Nested lists inside the item: their items are units too.
         item.forEach((child: any, childOffset: number) => {
             if (isListNode(child)) {
-                emitItemGutters(child, itemPos + 1 + childOffset, decorations, parts);
+                emitItemGutters(child, itemPos + 1 + childOffset, decorations, parts, foldCtx);
             }
         });
     });
+}
+
+/** The collapsed list item's `…` widget: expand is a `set` meta targeting
+ * the innermost FOLDED list-item ancestor derived at CLICK time (the
+ * heading-ellipsis protocol applied to items). */
+function createItemEllipsis(view: EditorView, hiddenCount: number): HTMLElement {
+    const ellipsis = createFoldEllipsis(hiddenCount, () => {
+        if (!ellipsis.dom.isConnected) {
+            return;
+        }
+        try {
+            const folded = foldPluginKey.getState(view.state)?.folded;
+            const $pos = view.state.doc.resolve(view.posAtDOM(ellipsis.dom, 0));
+            for (let depth = $pos.depth; depth > 0; depth--) {
+                const before = $pos.before(depth);
+                if ($pos.node(depth).type.name === "list_item" && folded?.has(before)) {
+                    view.dispatch(
+                        view.state.tr
+                            .setMeta(foldPluginKey, {
+                                type: "set",
+                                pos: before,
+                                folded: false,
+                            } satisfies FoldMeta)
+                            .setMeta("addToHistory", false),
+                    );
+                    view.focus();
+                    return;
+                }
+            }
+        } catch {
+            /* widget no longer resolvable — nothing to expand */
+        }
+    });
+    return ellipsis.dom;
 }
 
 /**
@@ -1030,9 +1220,9 @@ function structureFingerprint(
             parts.push(`h${getHeadingLevel(node)}${collapsed ? "c" : ""}${foldable ? "f" : ""}`);
         } else if (isListNode(node)) {
             parts.push("L");
-            emitItemGutters(node, offset, null, parts);
+            emitItemGutters(node, offset, null, parts, foldCtx);
         } else {
-            const fold = calloutFoldInfo(node, offset, foldCtx);
+            const fold = blockFoldInfo(node, offset, foldCtx);
             parts.push(`${blockMarkerSpec(node)?.key ?? "·"}${foldKeyPart(fold)}`);
             if (isContainerNode(node)) {
                 emitContainerChildGutters(node, offset, null, parts, foldCtx);
@@ -1088,11 +1278,11 @@ function buildHeadingFoldDecorations(
             // hover-revealed gutter marker opening the block menu, plus the
             // host class that carries the shared positioning/hover CSS.
             if (isListNode(node)) {
-                emitItemGutters(node, offset, decorations, null);
+                emitItemGutters(node, offset, decorations, null, foldCtx);
                 return;
             }
             const spec = blockMarkerSpec(node);
-            const fold = calloutFoldInfo(node, offset, foldCtx);
+            const fold = blockFoldInfo(node, offset, foldCtx);
             if (spec !== null) {
                 decorations.push(
                     Decoration.node(offset, offset + node.nodeSize, {
@@ -1552,8 +1742,8 @@ export const headingFoldPlugin = $prose(() =>
 
 // ─── Fold commands (MAR-110: markdownWysiwyg.editor.fold/unfold/…) ──────────
 
-/** Every foldable containing `pos` (heading line or section; callout node),
- * innermost first. */
+/** Every foldable containing `pos` (heading line or section; callout, list
+ * item, table, or code block node), innermost first. */
 function foldablesContaining(state: EditorState, pos: number): number[] {
     const candidates: number[] = [];
     for (const [candidate, range] of cachedFoldRanges(state.doc)) {
@@ -1563,11 +1753,12 @@ function foldablesContaining(state: EditorState, pos: number): number[] {
     }
     const $pos = state.doc.resolve(Math.min(pos, state.doc.content.size));
     for (let depth = 1; depth <= $pos.depth; depth++) {
-        const node = $pos.node(depth);
-        // isFoldableCallout keeps list-item-nested callouts out — the fold
-        // command must never target what the decoration pass won't render.
-        if (isCalloutNode(node) && isFoldableCallout(state.doc, $pos.before(depth), node)) {
-            candidates.push($pos.before(depth));
+        const before = $pos.before(depth);
+        // foldHiddenRange keeps list-item-nested callouts/tables/code out —
+        // the fold command must never target what the decoration pass won't
+        // render. (Nested headings return null there too.)
+        if (!isHeadingNode($pos.node(depth)) && foldHiddenRange(state.doc, before) !== null) {
+            candidates.push(before);
         }
     }
     return candidates.sort((a, b) => b - a);
@@ -1587,11 +1778,7 @@ function dispatchFold(
     if (folded) {
         const range = foldHiddenRange(state.doc, pos);
         if (range && state.selection.from < range.to && state.selection.to > range.from) {
-            tr.setSelection(
-                isHeadingNode(state.doc.nodeAt(pos))
-                    ? TextSelection.near(tr.doc.resolve(Math.min(pos + 1, tr.doc.content.size)))
-                    : Selection.near(tr.doc.resolve(pos), -1),
-            );
+            tr.setSelection(foldEscapeSelection(tr, state.doc.nodeAt(pos), pos));
         }
     }
     dispatch(tr);
@@ -1708,11 +1895,17 @@ export const revealOnBackspace: Command = (state, dispatch) => {
         }
         return true;
     }
-    // …or a collapsed callout immediately before (its body is the hidden part).
-    const before = state.doc.resolve(blockStart).nodeBefore;
-    if (before && isCalloutNode(before) && pluginState.folded.has(blockStart - before.nodeSize)) {
+    // …or the join target — where Backspace would put the caret — sits
+    // inside collapsed hidden content: a collapsed callout/table/code block
+    // immediately before, or a list whose last item is folded. Reveal the
+    // innermost such fold instead of editing what the user can't see.
+    const target = Selection.near(state.doc.resolve(blockStart), -1).from;
+    const covering = foldedHiddenRanges(state)
+        .filter((r) => target >= r.from && target <= r.to)
+        .sort((a, b) => b.pos - a.pos)[0];
+    if (covering) {
         if (dispatch) {
-            dispatchFold(state, dispatch, blockStart - before.nodeSize, false);
+            dispatchFold(state, dispatch, covering.pos, false);
         }
         return true;
     }
@@ -1738,9 +1931,10 @@ export const revealOnDelete: Command = (state, dispatch) => {
         }
         return true;
     }
+    // …or the next sibling is any collapsed foldable (callout, table, code
+    // block): forward-deleting toward hidden content reveals it instead.
     const blockEnd = $from.after(1);
-    const after = state.doc.resolve(blockEnd).nodeAfter;
-    if (after && isCalloutNode(after) && pluginState.folded.has(blockEnd)) {
+    if (state.doc.resolve(blockEnd).nodeAfter && pluginState.folded.has(blockEnd)) {
         if (dispatch) {
             dispatchFold(state, dispatch, blockEnd, false);
         }
@@ -1765,6 +1959,18 @@ export const revealOnEnter: Command = (state, dispatch) => {
         return false;
     }
     const $from = state.selection.$from;
+    // Caret inside a FOLDED list item's visible first line: the split would
+    // tear the hidden subtree into the new sibling (splitListItem carries
+    // trailing children). Unfold first — same philosophy — and fall through.
+    for (let depth = $from.depth; depth > 0; depth--) {
+        if ($from.node(depth).type.name === "list_item") {
+            const itemPos = $from.before(depth);
+            if (pluginState.folded.has(itemPos) && dispatch) {
+                dispatchFold(state, dispatch, itemPos, false);
+            }
+            break; // innermost item decides; outer folds hide this line anyway
+        }
+    }
     if ($from.depth !== 1) {
         return false;
     }

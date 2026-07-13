@@ -1711,6 +1711,21 @@ body.toolbar-hidden::before {
     pointer-events: auto;
 }
 
+/* The same grammar for the MAR-125 foldables. List items: hovering the item
+   (its subtree included) with no DEEPER host hovered surfaces the innermost
+   chevron only — the marker-reveal rule's quiet-gutter contract. Tables and
+   code blocks host their gutter inside their own chrome (tbody / pre), so a
+   plain descendant match is safe (neither can nest another of its kind). */
+.milkdown .editor li.block-gutter-host--item:where(:hover):where(:not(:has(.block-gutter-host:hover))) > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .mw-table:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .code-block-wrapper:where(:hover):where(:not(:has(.block-gutter-host:hover))) .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor li.block-gutter-host--item.collapsed > .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .mw-table.collapsed .heading-fold-gutter--foldable .heading-fold-toggle,
+.milkdown .editor .code-block-wrapper.collapsed .heading-fold-gutter--foldable .heading-fold-toggle {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 /* Fold-affordance visibility derived from the user's own editor config
    (MAR-110, no new setting). The baseline above is VS Code's default
    `editor.showFoldingControls: "mouseover"`. */

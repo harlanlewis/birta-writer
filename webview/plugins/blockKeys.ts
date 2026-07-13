@@ -37,6 +37,7 @@
  * so these bindings run first and fall through (return false) cleanly.
  */
 import { keydownHandler } from "@milkdown/prose/keymap";
+import type { Node as PMNode } from "@milkdown/prose/model";
 import { Plugin, Selection, TextSelection, type EditorState, type Transaction } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { $prose } from "@milkdown/utils";
@@ -53,6 +54,7 @@ import {
     foldHiddenRange,
     foldPluginKey,
     foldedSectionEnds,
+    isListNode,
     type FoldMeta,
 } from "./headingFold";
 
@@ -427,13 +429,23 @@ export function foldSelectedBlocks(fold: boolean): Command {
             return false;
         }
         const positions: number[] = [];
-        state.doc.forEach((node, offset) => {
+        const collect = (node: PMNode, pos: number): void => {
             if (
-                offset >= sel.from && offset < sel.to &&
-                foldHiddenRange(state.doc, offset) !== null &&
-                foldState.folded.has(offset) !== fold
+                foldHiddenRange(state.doc, pos) !== null &&
+                foldState.folded.has(pos) !== fold
             ) {
-                positions.push(offset);
+                positions.push(pos);
+            }
+            // Lists carry no fold of their own — their ITEMS are the
+            // foldables (MAR-125), at every nesting depth. Descend so a
+            // block-selected list folds/unfolds its items.
+            if (isListNode(node) || node.type.name === "list_item") {
+                node.forEach((child, offset) => collect(child, pos + 1 + offset));
+            }
+        };
+        state.doc.forEach((node, offset) => {
+            if (offset >= sel.from && offset < sel.to) {
+                collect(node, offset);
             }
         });
         if (positions.length > 0 && dispatch) {

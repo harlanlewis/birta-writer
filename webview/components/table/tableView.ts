@@ -49,6 +49,8 @@ import { IconPlus } from "@/ui/icons";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { tagContentGuard } from "@/plugins/contentGuard";
+import { createFoldEllipsis } from "@/ui/foldEllipsis";
+import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 
 type GetPos = () => number | undefined;
 
@@ -1131,7 +1133,27 @@ export function createTableView(
     const overlay = document.createElement("div");
     overlay.className = "mw-table-overlay";
 
-    wrapper.append(table, overlay);
+    // Collapsed `…` (MAR-125): the shared fold-ellipsis mounted in the
+    // wrapper, shown only while the fold plugin's decoration marks the
+    // table `collapsed` (the callout-NodeView protocol — fold state arrives
+    // as a class, this view only renders the chip and dispatches the meta).
+    const foldEllipsis = createFoldEllipsis(
+        Math.max(0, node.childCount - 1),
+        () => {
+            const pos = getPos();
+            if (pos === undefined) return;
+            view.dispatch(
+                view.state.tr
+                    .setMeta(foldPluginKey, { type: "set", pos, folded: false } satisfies FoldMeta)
+                    .setMeta("addToHistory", false),
+            );
+            view.focus();
+        },
+        "rows",
+    );
+    foldEllipsis.dom.classList.add("mw-table-fold-ellipsis");
+
+    wrapper.append(table, overlay, foldEllipsis.dom);
 
     const controller = new TableController(
         node,
@@ -1153,6 +1175,7 @@ export function createTableView(
             }
             node = newNode;
             controller.setNode(newNode);
+            foldEllipsis.setCount(Math.max(0, newNode.childCount - 1));
             return true;
         },
 
@@ -1166,9 +1189,13 @@ export function createTableView(
             return !tbody.contains(target);
         },
 
-        // Keep ProseMirror out of interactions that originate in the overlay.
+        // Keep ProseMirror out of interactions that originate in the overlay
+        // (or the fold chip — chrome, never content).
         stopEvent(e: Event): boolean {
-            return overlay.contains(e.target as Node);
+            return (
+                overlay.contains(e.target as Node) ||
+                foldEllipsis.dom.contains(e.target as Node)
+            );
         },
 
         destroy(): void {
