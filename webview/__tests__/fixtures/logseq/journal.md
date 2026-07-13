@@ -1,0 +1,5 @@
+- Morning notes. Linked [[Project Atlas]] and tagged #standup.
+	- Discussed the [[Round-trip Fidelity]] risk.
+	- TODO Follow up with the design review #[[to review]]
+- NOW Writing the journal fixture
+- Reference to a decision: ((7f3e9a10-1234-5678-9abc-def012345678))
