@@ -152,7 +152,9 @@ cell:
 
 ---
 
-## Blockquotes
+## Quotes
+
+### Blockquotes
 
 > A single-line blockquote.
 
@@ -164,7 +166,7 @@ cell:
 
 ---
 
-## Callouts
+### Callouts
 
 GitHub alerts and Obsidian callouts render with a per-kind icon and accent
 color. The icon is a button — click it (or Enter/Space when focused) to
@@ -212,7 +214,7 @@ a marker line with inline **formatting**, or an escaped marker:
 
 > \[!NOTE] an escaped marker stays a plain blockquote
 
-### Notion export asides
+#### Notion export asides
 
 Notion's markdown export writes callouts as `<aside>` HTML ("there is no
 Markdown equivalent" — Notion's own docs). The emoji maps to an accent
@@ -234,7 +236,7 @@ sanitized HTML preview, byte-preserved.
 
 ---
 
-### Container directives
+#### Container directives
 
 `:::name` fenced blocks (the Docusaurus admonition syntax) render as labeled
 containers with an editable body and title. Known names pick up callout-style
@@ -270,7 +272,19 @@ this line and the fence above render as plain paragraphs.
 
 ---
 
+## Tables
+
+| Feature | Supported | Notes |
+|---|:---:|---|
+| Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
+| Line breaks | yes | first line<br>second line |
+| Alignment | yes | right-click a cell → **Align Column Left / Center / Right** (this Supported column is `:---:` centered); re-pick the current alignment to clear back to `---` |
+
+---
+
 ## Code blocks
+
+### Code
 
 Fenced code block with syntax highlighting:
 
@@ -291,19 +305,7 @@ Plain fenced block (no language):
 no highlighting here
 ```
 
----
-
-## Tables
-
-| Feature | Supported | Notes |
-|---|:---:|---|
-| Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
-| Line breaks | yes | first line<br>second line |
-| Alignment | yes | right-click a cell → **Align Column Left / Center / Right** (this Supported column is `:---:` centered); re-pick the current alignment to clear back to `---` |
-
----
-
-## Math
+### Math
 
 Inline math renders in place and is **edited in place**: arrow into
 $E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character
@@ -315,6 +317,24 @@ Block math:
 $$
 \int_0^1 x^2 \, dx = \frac{1}{3}
 $$
+
+### Diagrams (Mermaid)
+
+Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid` block.
+
+```mermaid
+graph TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Do thing]
+    B -->|No| D[Skip]
+```
+
+---
+
+## Frontmatter
+
+See the top of this file — YAML frontmatter is lossless. Flat key/value pairs
+get a table UI; complex/nested YAML preserved verbatim.
 
 ---
 
@@ -338,17 +358,6 @@ click-away, Escape cancels.
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
 
 ---
-
-## Diagrams (Mermaid)
-
-Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid` block.
-
-```mermaid
-graph TD
-    A[Start] --> B{Decision}
-    B -->|Yes| C[Do thing]
-    B -->|No| D[Skip]
-```
 
 ---
 
@@ -376,11 +385,6 @@ An HTML comment preserved and shown dimmed:
 <!-- This is a comment. It survives round-trips. -->
 
 ---
-
-## Frontmatter
-
-See the top of this file — YAML frontmatter is lossless. Flat key/value pairs
-get a table UI; complex/nested YAML preserved verbatim.
 
 ---
 
