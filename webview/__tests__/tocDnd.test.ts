@@ -328,14 +328,20 @@ describe("initToc drag integration", () => {
         vi.unstubAllGlobals();
     });
 
-    async function makeToc(md: string) {
+    async function makeToc(md: string, opts: { overlay?: boolean } = {}) {
+        if (opts.overlay) {
+            // Dock-vs-overlay is a pure viewport measure (hasEnoughSpace:
+            // innerWidth >= tocWidth + DOCKED_MIN_CONTENT_WIDTH); jsdom's
+            // default 1024px resolves to docked, so overlay tests narrow it.
+            vi.stubGlobal("innerWidth", 600);
+        }
         const editor = await makeEditor(md);
         const v = view(editor);
         const toc = initToc(fakeEventManager, () => v);
         document.body.appendChild(toc.panel); // the webview entry does this
         disposers.push(toc.dispose);
         flushRaf(); // run the init frame (mode/state commit)
-        toc.toggle(); // no #editor element → overlay mode; open it
+        toc.toggle(); // open the panel (docked by default; overlay when narrowed)
         return { editor, v, toc };
     }
 
@@ -413,7 +419,7 @@ describe("initToc drag integration", () => {
     });
 
     it("a mousedown on a gutter marker should not close the overlay toc", async () => {
-        const { toc } = await makeToc("# A\n\nalpha\n\n# B\n\nbeta");
+        const { toc } = await makeToc("# A\n\nalpha\n\n# B\n\nbeta", { overlay: true });
         expect(toc.isOpen()).toBe(true);
         // The outside-close handler registers on a zero-delay hop.
         await new Promise((resolve) => setTimeout(resolve, 1));
