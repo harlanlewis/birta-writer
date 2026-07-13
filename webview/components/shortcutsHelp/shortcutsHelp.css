@@ -5,13 +5,17 @@
  * platform-tuned width (--shortcuts-keycol) so the description column's
  * left edge is identical on EVERY row — chips right-align toward the
  * description they belong to, and multi-chip sets wrap inside the key
- * column (the 4 move chips become a 2×2 stack) without ever pushing the
- * description sideways. */
+ * column without ever pushing the description sideways. Chips are grouped
+ * into alternative PAIRS (.shortcuts-help__pair, one per gesture
+ * alternative), so a wrap can only fall between alternatives — the 4-chip
+ * move set stacks as a clean 2×2, never a 3+1 split. */
 
 .shortcuts-help {
-    /* Windows/Linux chords are word chains ("Ctrl+Shift+Enter"); size the
-       key column to the widest fixed chord so nothing overflows. */
-    --shortcuts-keycol: 138px;
+    /* Windows/Linux chords are word chains ("Ctrl+Shift+↑"); the column is
+       sized to the widest alternative PAIR (not the widest single chord):
+       at 146px the move row's pairs (79px and 145px) stack as a clean 2×2
+       and the 137px duplicate pair holds one line. */
+    --shortcuts-keycol: 146px;
 
     position: fixed;
     top: calc(var(--editor-topbar-height, 40px) + 6px);
@@ -51,10 +55,11 @@
     }
 
     /* macOS chords are compact symbol runs (⌘⇧↑) — tighten the column.
-       104px is deliberate: wide enough for any alternative pair (⇧⌥↑ ⇧⌥↓),
-       narrow enough that the 4-chip move set wraps as a 2×2 stack. */
+       112px is deliberate: wide enough for the widest alternative pair
+       (⌃⇧⌘→ ⌃⇧⌘← needs ≥111px to hold one line); pair-grouping keeps the
+       4-chip move set wrapping as a 2×2 stack. */
     &.shortcuts-help--mac {
-        --shortcuts-keycol: 104px;
+        --shortcuts-keycol: 112px;
     }
 }
 
@@ -125,6 +130,16 @@
     min-width: 0;
 }
 
+/* One gesture alternative's chips (e.g. the ↑/↓ chips of one move chord
+   family). inline-flex + nowrap keeps an alternative atomic: the key
+   column's flex wrap can only break BETWEEN pairs, never inside one. */
+.shortcuts-help__pair {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: baseline;
+    gap: 3px;
+}
+
 .shortcuts-help__desc {
     min-width: 0;
 }
@@ -170,12 +185,17 @@
     font-weight: 600;
 }
 
-/* Two-column name list — scans vertically instead of wrapping as prose. */
+/* Two-column name list — scans vertically instead of wrapping as prose.
+   A real ul/li for accessible delimitation; the grid supplies the visual
+   layout, so the native list box model is fully reset. */
 .shortcuts-help__group-items {
     display: grid;
     grid-template-columns: 1fr 1fr;
     column-gap: 12px;
     row-gap: 1px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
     color: var(--vscode-descriptionForeground);
 }
 
