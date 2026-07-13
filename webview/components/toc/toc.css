@@ -202,6 +202,17 @@ body.toc-resizing {
 }
 
 /* ─── Drag-and-drop chrome (see ./dnd.ts) ─────────────── */
+/* Items wired as section drag handles (top-level rows only) advertise the
+   grab; nested rows keep the plain navigation pointer. The mid-drag grabbing
+   cursor is also enforced page-wide by body.block-dragging (style.css). */
+.toc-item--draggable {
+    cursor: grab;
+
+    body.block-dragging & {
+        cursor: grabbing;
+    }
+}
+
 /* The rendered row of an in-flight TOC-initiated drag: ghosted in place
    (the cursor pill names the payload; the row marks the origin). */
 .toc-item--drag-source {

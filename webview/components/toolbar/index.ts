@@ -925,20 +925,28 @@ export function initToolbar(
             widthSegments.set(mode, segBtn);
         }
 
-        // ── Block handles: Always Show / Headings and hover / Hover only ──
+        // ── Block handles: Always show / Headings and hover / Hover only ──
         // Which block handles stay visible at rest (hover always reveals).
         // Radio rows like the font-family presets below — the labels are too
         // long for segments — under a caption that names the subject. Clicks
         // keep the menu open so the gutter visibly updates.
         const handlesCaption = document.createElement("div");
         handlesCaption.className = "tb-seg-caption";
+        handlesCaption.id = "tb-block-handles-caption";
         handlesCaption.textContent = t("Show Block Handles");
         const handlesLabels: Record<BlockHandlesMode, { label: string; title: string }> = {
-            always: { label: t("Always Show"), title: t("Every block's handle stays visible") },
+            always: { label: t("Always show"), title: t("Every block's handle stays visible") },
             headings: { label: t("Headings and hover"), title: t("Heading badges stay visible; the rest appear on hover") },
             hover: { label: t("Hover only"), title: t("Handles appear only on hover") },
         };
-        const handleItemEls: HTMLElement[] = [];
+        // The trio is one labelled group for assistive tech (the caption is
+        // visual-only otherwise). role="group", not "radiogroup": the rows
+        // are menuitemradio, whose ARIA container inside a menu is a group.
+        // wireHoverMenu's roving rows() matches .tb-fmt-item DESCENDANTS of
+        // the menu, so the extra wrapper is transparent to keyboard nav.
+        const handlesGroup = document.createElement("div");
+        handlesGroup.setAttribute("role", "group");
+        handlesGroup.setAttribute("aria-labelledby", handlesCaption.id);
         for (const mode of BLOCK_HANDLES_DISPLAY_ORDER) {
             const item = createCheckItem(handlesLabels[mode].label);
             // Single-select trio, not independent toggles.
@@ -950,7 +958,7 @@ export function initToolbar(
                 e.stopPropagation();
                 pickBlockHandles(mode);
             });
-            handleItemEls.push(item.el);
+            handlesGroup.appendChild(item.el);
             handleEntries.set(mode, item);
         }
 
@@ -1047,7 +1055,7 @@ export function initToolbar(
             makeSep(),
             widthRow,
             handlesCaption,
-            ...handleItemEls,
+            handlesGroup,
             makeSep(),
             ...fontItemEls,
             makeSep(),

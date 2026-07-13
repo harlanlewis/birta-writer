@@ -39,6 +39,7 @@ import {
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
+import { scrollElementBelowTopbar } from "../../utils/headingUtils";
 import { t } from "../../i18n";
 
 /** A droppable boundary between sibling blocks or sibling list items. */
@@ -199,9 +200,9 @@ function expandCoverOverFolds(
 
 /** Pixels of pointer travel before a mousedown becomes a drag. */
 const DRAG_THRESHOLD = 4;
-/** Viewport margin (px) inside which the window auto-scrolls.
- * Shared with the marquee so both pointer sessions scroll identically. */
-export const SCROLL_ZONE = 80;
+/** Viewport margin (px) inside which the window auto-scrolls. The marquee
+ * shares the whole ramp via scrollVelocityFor below, not this constant. */
+const SCROLL_ZONE = 80;
 /** Auto-scroll speed range (px per frame). */
 const SCROLL_MIN = 2;
 const SCROLL_MAX = 40;
@@ -354,6 +355,10 @@ function indicator(): HTMLElement {
     if (!indicatorEl) {
         indicatorEl = document.createElement("div");
         indicatorEl.className = "block-drag-indicator";
+    }
+    if (!indicatorEl.isConnected) {
+        // (Re)mount on use: the singleton lives for the module's lifetime,
+        // but a host teardown (tests resetting document.body) detaches it.
         document.body.appendChild(indicatorEl);
     }
     return indicatorEl;
@@ -441,15 +446,34 @@ function showIndicator(view: EditorView, target: DropBoundary): void {
 // drop semantics the primitive doesn't enforce.
 
 export interface DropZoneProvider {
-    /** Whether the viewport point sits inside this zone. */
+    /** Whether the viewport point sits inside this zone. With multiple
+     * providers registered, the FIRST one (in registration order) whose
+     * `contains` hits takes the pointer — zones must not overlap, or
+     * registration order silently decides the winner. */
     contains(x: number, y: number): boolean;
     /** A drag session started: the dragged unit, for slot precomputation. */
     sessionStart(view: EditorView, range: { from: number; to: number }, kind: "block" | "item"): void;
-    /** Renders its own chrome; returns the commit pos or null (no legal target). */
+    /**
+     * Renders the provider's OWN chrome and returns the commit pos, or null
+     * when the pointer sits inside the zone but over no legal slot — and a
+     * null return must also UN-render the chrome (the session never cleans
+     * up after a provider mid-hover; `clear` only fires on zone exit/end).
+     * Called on every mousemove inside the zone AND once per auto-scroll
+     * frame, so it must be cheap and idempotent — no layout writes when the
+     * answer hasn't changed.
+     */
     target(x: number, y: number, range: { from: number; to: number }): { pos: number } | null;
-    /** The pointer left the zone (or the session ended): clear the chrome. */
+    /** The pointer left the zone, or the session ended: remove all chrome.
+     * Distinct from `target() → null` (still inside, just no legal slot);
+     * both must be idempotent — the session may issue either repeatedly. */
     clear(): void;
-    /** Per-frame auto-scroll while pointer is inside; returns true if it scrolled (geometry moved). */
+    /**
+     * Per-frame edge auto-scroll while the pointer rests inside the zone.
+     * Return true iff the zone actually scrolled — the session then calls
+     * `target` again to re-aim at the shifted geometry. Returning false
+     * after scrolling leaves the committed target aimed at slots that no
+     * longer sit under the pointer.
+     */
     autoScroll(y: number): boolean;
     sessionEnd(): void;
 }
@@ -462,6 +486,22 @@ export function registerDropZoneProvider(provider: DropZoneProvider): () => void
     return () => {
         dropZoneProviders.delete(provider);
     };
+}
+
+/**
+ * Scroll the block a successful moveBlocks landed at under the topbar — the
+ * same scroll TOC navigation uses (scrollElementBelowTopbar), so a drop-zone
+ * commit and a TOC click settle the viewport identically. moveBlocks leaves
+ * the selection riding the moved content (caret or block range at the
+ * destination), so its top-level block IS the landing.
+ */
+function scrollLandedRangeIntoView(view: EditorView): void {
+    const from = view.state.selection.from;
+    const $from = view.state.doc.resolve(from);
+    const dom = view.nodeDOM($from.depth > 0 ? $from.before(1) : from);
+    if (dom instanceof HTMLElement) {
+        scrollElementBelowTopbar(dom);
+    }
 }
 
 // ── The pointer drag session ────────────────────────────────────────────────
@@ -669,9 +709,20 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
         const commitRange = range;
         const commitTarget = target;
         const commitMulti = multi;
+        // Captured before stop() nulls it: whether the target came from a
+        // drop-zone provider rather than a document boundary.
+        const commitViaProvider = activeProvider !== null;
         stop();
         if (commit) {
-            moveBlocks(view, commitRange!, commitTarget!.pos, { selectRun: commitMulti });
+            const moved = moveBlocks(view, commitRange!, commitTarget!.pos, { selectRun: commitMulti });
+            // A document drop lands where the pointer already is, but a
+            // drop-zone commit (a TOC "into" files at a section's end) can
+            // land anywhere — off-screen, the landing flash paints outside
+            // the viewport and the move reads as "my block disappeared".
+            // Bring the destination into view, provider path only.
+            if (moved && commitViaProvider) {
+                scrollLandedRangeIntoView(view);
+            }
         }
     };
 

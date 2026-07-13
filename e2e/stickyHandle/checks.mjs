@@ -5,7 +5,8 @@
  *   - the H-badge is a real <button> block handle (not a display-only span)
  *     and clicking it opens the block menu, marking the badge menu-open,
  *   - in "Hover only" mode (body.handles-rest-hover) the sticky gutter rests
- *     at opacity 0 and reveals while the sticky title is hovered.
+ *     at opacity 0 and reveals while the sticky title is hovered — except
+ *     when the stuck heading is collapsed (data-collapsed carve-out).
  */
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
@@ -120,4 +121,37 @@ export async function run({ page, check, baseUrl }) {
     }));
     check("scrolling into the next section swaps the sticky title",
         !swapped.hidden && swapped.text === "Section Two", JSON.stringify(swapped));
+
+    // ── 5. Hover-only mode spares a COLLAPSED stuck heading's gutter ──
+    // A collapsed section must keep its badge visible (the in-flow parity
+    // rule). Holding a REAL collapsed heading stuck is not stable in this
+    // two-section fixture — collapsing a section puts the next heading
+    // immediately below it, so the sticky is pushed out almost instantly —
+    // so stamp the dataset the plugin writes (updateSticky sets
+    // data-collapsed from the fold state on every refresh) and assert the
+    // CSS carve-out directly.
+    // The class flip first: the plugin's body-class observer re-runs
+    // updateSticky (which re-stamps data-collapsed from the fold state), so
+    // stamping in the same breath would be overwritten a frame later.
+    await page.evaluate(() => document.body.classList.add("handles-rest-hover"));
+    await page.mouse.move(500, 800); // pointer well away from the sticky
+    await page.waitForTimeout(200); // let the observer-driven refresh settle
+    await page.evaluate(() => {
+        document.querySelector(".heading-sticky-title").dataset.collapsed = "true";
+    });
+    await page.waitForTimeout(300);
+    const collapsedRest = await page.$eval(".heading-sticky-gutter", (el) =>
+        parseFloat(getComputedStyle(el).opacity));
+    check("hover-only mode: a collapsed sticky's gutter stays visible at rest",
+        collapsedRest === 1, `opacity=${collapsedRest}`);
+    // Restore the expanded stamp: the hide rule applies again.
+    await page.evaluate(() => {
+        document.querySelector(".heading-sticky-title").dataset.collapsed = "false";
+    });
+    await page.waitForTimeout(300);
+    const expandedRest = await page.$eval(".heading-sticky-gutter", (el) =>
+        parseFloat(getComputedStyle(el).opacity));
+    check("hover-only mode: the expanded sticky's gutter hides at rest again",
+        expandedRest === 0, `opacity=${expandedRest}`);
+    await page.evaluate(() => document.body.classList.remove("handles-rest-hover"));
 }

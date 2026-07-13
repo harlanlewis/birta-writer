@@ -560,38 +560,51 @@ function gutterBlockPos(view: EditorView, gutter: HTMLElement): number | null {
 }
 
 /**
- * The one marker-button protocol, shared by heading badges and block icons
- * so the click/drag/menu/aria wiring can never diverge between them (it has
- * churned across four critique-round commits; a one-sided fix would make
- * headings and paragraphs respond differently).
+ * The one marker-button protocol, shared by ALL block-handle buttons so the
+ * click/drag/menu/aria wiring can never diverge between them (it churned
+ * across four critique-round commits; a one-sided fix would make headings
+ * and paragraphs respond differently). Two call sites own every handle:
+ *   - createMarkerButton below (in-flow gutter badges and block icons),
+ *     with `draggable: true`;
+ *   - headingSticky's setStickyContent (the sticky heading's H-badge), with
+ *     `draggable: false` — encoding the sticky's fixed-mirror property: it
+ *     opens the same menu but is deliberately not a grabbable block.
  *
  * `name` is the block's identity for assistive tech ("H2 — Block options",
  * "Table — Block options"): with the action alone, a screen-reader scan
  * heard an undifferentiated stream of identical buttons.
+ *
+ * `blockPos` is resolved at INTERACTION time (never captured at build time —
+ * both callers' positions drift as content above shifts); null means the
+ * handle's block is gone and the click is a quiet no-op.
  */
-function createMarkerButton(
+export function wireMarkerButtonProtocol(
+    marker: HTMLButtonElement,
     view: EditorView,
-    gutter: HTMLElement,
     name: string,
-    className: string,
-    render: (el: HTMLButtonElement) => void,
-): HTMLButtonElement {
-    const marker = document.createElement("button");
-    marker.type = "button";
-    marker.className = className;
-    render(marker);
+    blockPos: () => number | null,
+    opts: { draggable: boolean },
+): void {
     marker.setAttribute("aria-label", `${name} — ${t("Block options")}`);
     marker.setAttribute("aria-haspopup", "menu");
     marker.setAttribute("aria-expanded", "false");
-    applyTooltip(marker, t("Click for options · Drag to move"), { placement: "above" });
+    applyTooltip(
+        marker,
+        opts.draggable ? t("Click for options · Drag to move") : t("Click for options"),
+        { placement: "above" },
+    );
     // mousedown: keep the editor selection/caret; click: open the menu.
     marker.addEventListener("mousedown", (event) => {
         event.preventDefault();
         event.stopPropagation();
     });
-    // The widget lives inside the contentEditable root, so activation keys
-    // on a FOCUSED marker would bubble to ProseMirror and type into the
-    // document; handle them here as button activation instead.
+    // The in-flow widgets live inside the contentEditable root, so
+    // activation keys on a FOCUSED marker would bubble to ProseMirror and
+    // type into the document; handle them here as button activation instead.
+    // Safe unconditionally: preventDefault on the keydown suppresses the
+    // native button activation click (Enter fires it on keydown, Space on
+    // keyup — both cancelled by the prevented keydown), so the body-mounted
+    // sticky badge gets exactly one click too, never a double fire.
     marker.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
@@ -603,19 +616,43 @@ function createMarkerButton(
         event.preventDefault();
         event.stopPropagation();
         // A drag that started on this marker must not also open the menu.
+        // (Without drag wiring the flag is never set — the check is inert.)
         if (marker.dataset["dragged"]) {
             delete marker.dataset["dragged"];
             return;
         }
-        const pos = gutterBlockPos(view, gutter);
+        const pos = blockPos();
         if (pos === null) {
             return;
         }
+        // The open menu supersedes the handle's tooltip (which otherwise
+        // lingers over it — the fixed-position sticky badge exhibited this).
+        hideTooltip();
         // A keyboard-activated button click reports detail 0 (no mouse click
         // count) — use it to move focus into the menu only for keyboard opens.
         openBlockMenu(view, pos, marker, event.detail === 0);
     });
-    wireMarkerDrag(view, marker, () => gutterBlockPos(view, gutter));
+    if (opts.draggable) {
+        wireMarkerDrag(view, marker, blockPos);
+    }
+}
+
+/** An in-flow gutter handle: a rendered badge/icon button wired with the
+ * shared protocol above, its position derived from the gutter's own DOM. */
+function createMarkerButton(
+    view: EditorView,
+    gutter: HTMLElement,
+    name: string,
+    className: string,
+    render: (el: HTMLButtonElement) => void,
+): HTMLButtonElement {
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = className;
+    render(marker);
+    wireMarkerButtonProtocol(marker, view, name, () => gutterBlockPos(view, gutter), {
+        draggable: true,
+    });
     return marker;
 }
 

@@ -131,6 +131,9 @@ function initDnd(v: EditorView, dom: { panel: HTMLElement; list: HTMLElement }):
 
 beforeEach(() => {
     vi.clearAllMocks();
+    // Provider-path commits scroll the landing into view (drag.ts calls
+    // scrollElementBelowTopbar → window.scrollTo, which jsdom lacks).
+    window.scrollTo = vi.fn();
 });
 
 afterEach(async () => {
@@ -191,7 +194,7 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
         const v = view(editor);
         const dom = buildTocDom(v);
         initDnd(v, dom);
-        const [entryA] = headingsOf(v);
+        const [entryA, entryB] = headingsOf(v);
         const itemA = dom.items.get(entryA!.pos)!;
 
         // Drag the Intro paragraph by its gutter marker into item A's middle
@@ -200,10 +203,53 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
         mouse(marker, "mousedown", { button: 0, clientX: 10, clientY: 300, buttons: 1 });
         mouse(document, "mousemove", { clientX: 600, clientY: 110, buttons: 1 });
         expect(itemA.classList.contains("toc-item--drop-into")).toBe(true);
+        // Honest into cue: the shared line ALSO marks the landing boundary —
+        // section A's end is heading B's gap, measured at item B's top edge
+        // (y 122 on the fixture's rhythm), so the indicator sits at y − 1.
+        const indicator = document.querySelector<HTMLElement>(".block-drag-indicator")!;
+        expect(indicator.style.display).toBe("block");
+        expect(indicator.style.top).toBe(
+            `${dom.items.get(entryB!.pos)!.getBoundingClientRect().top - 1}px`,
+        );
         mouse(document, "mouseup", { button: 0, buttons: 0 });
 
         expect(markdown(editor)).toBe("# A\n\na body\n\nIntro\n\n# B\n\nb body");
         expect(itemA.classList.contains("toc-item--drop-into")).toBe(false);
+        expect(indicator.style.display).toBe("none");
+    });
+
+    it("a provider commit should scroll the landed block into view (document commits do not — see blockDrag.test)", async () => {
+        const editor = await makeEditor("Intro\n\n# A\n\na body\n\n# B\n\nb body");
+        const v = view(editor);
+        const dom = buildTocDom(v);
+        initDnd(v, dom);
+
+        // Same into-A drop as above: the landing (section A's end) can be
+        // far off-screen, so the commit must attempt a scroll to it.
+        const marker = document.querySelector<HTMLElement>(".heading-fold-marker")!;
+        mouse(marker, "mousedown", { button: 0, clientX: 10, clientY: 300, buttons: 1 });
+        mouse(document, "mousemove", { clientX: 600, clientY: 110, buttons: 1 });
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+
+        expect(markdown(editor)).toBe("# A\n\na body\n\nIntro\n\n# B\n\nb body");
+        expect(window.scrollTo).toHaveBeenCalled();
+    });
+
+    it("wireItemDrag should mark only top-level items as draggable", async () => {
+        const editor = await makeEditor("# A\n\na body\n\n# B\n\nb body");
+        const v = view(editor);
+        const dom = buildTocDom(v);
+        const dnd = initDnd(v, dom);
+        const [entryA] = headingsOf(v);
+        const itemA = dom.items.get(entryA!.pos)!;
+        const nested = document.createElement("div");
+
+        dnd.wireItemDrag(itemA, entryA!);
+        // A nested heading is a landmark, not a handle — no grab affordance.
+        dnd.wireItemDrag(nested, { ...entryA!, topLevel: false });
+
+        expect(itemA.classList.contains("toc-item--draggable")).toBe(true);
+        expect(nested.classList.contains("toc-item--draggable")).toBe(false);
     });
 
     it("a toc-initiated drag should offer only gap slots (no into highlight)", async () => {
@@ -334,6 +380,24 @@ describe("initToc drag integration", () => {
 
         await new Promise((resolve) => setTimeout(resolve, 1)); // flag cleanup hop
         // The NEXT genuine click navigates.
+        mouse(item, "click", { button: 0 });
+        expect(item.classList.contains("toc-item--active")).toBe(true);
+    });
+
+    it("an in-place micro-drag should still navigate on release", async () => {
+        await makeToc("# A\n\nalpha\n\n# B\n\nbeta");
+        const item = itemAt(0);
+        // A rect the whole gesture stays inside: the 6px move below crosses
+        // the 4px drag threshold but never leaves the item — a jittery
+        // click, not a move.
+        item.getBoundingClientRect = () => rect(0, 0, 200, 30);
+        mouse(item, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
+        mouse(document, "mousemove", { clientX: 10, clientY: 16, buttons: 1 });
+        // The threshold was crossed: a session did start…
+        expect(item.classList.contains("toc-item--drag-source")).toBe(true);
+        mouse(item, "mouseup", { button: 0, buttons: 0 });
+        // …but the release's click must navigate anyway (no one-tick wait:
+        // the suppression flag clears synchronously on this path).
         mouse(item, "click", { button: 0 });
         expect(item.classList.contains("toc-item--active")).toBe(true);
     });

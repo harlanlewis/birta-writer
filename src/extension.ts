@@ -26,7 +26,7 @@ export async function promptBlockHandlesMode(): Promise<void> {
     // Most → least visible, the shared display order of the typography menu's
     // radio rows.
     const rows: Record<BlockHandlesMode, { label: string; description: string }> = {
-        always: { label: "Always Show", description: vscode.l10n.t("Every block's handle stays visible") },
+        always: { label: "Always show", description: vscode.l10n.t("Every block's handle stays visible") },
         headings: { label: "Headings and hover", description: vscode.l10n.t("Heading badges stay visible; other handles appear on hover (default)") },
         hover: { label: "Hover only", description: vscode.l10n.t("Handles appear only on hover") },
     };

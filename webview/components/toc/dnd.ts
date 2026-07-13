@@ -184,12 +184,26 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
                 return null;
             }
             if (slot.kind === "into") {
-                hideOwnIndicator();
                 const item = intoItems.get(slot.headingPos!) ?? null;
                 if (item !== dropIntoItem) {
                     clearDropInto();
                     item?.classList.add("toc-item--drop-into");
                     dropIntoItem = item;
+                }
+                // Honest cue: an into-slot's commit pos always equals some
+                // measured gap's pos (the section's end boundary — the next
+                // same-or-higher heading's gap, or the terminal gap), so draw
+                // the shared line THERE alongside the item wash: the wash
+                // says "into this section", the line says exactly where the
+                // blocks will land. A gap scrolled out of the list keeps the
+                // wash but no line (same visibility rule as the gap branch).
+                const gapTwin = measured.find((s) => s.kind === "gap" && s.pos === slot.pos);
+                const listRect = deps.list.getBoundingClientRect();
+                if (gapTwin && gapTwin.y >= listRect.top && gapTwin.y <= listRect.bottom) {
+                    showDropIndicatorAt({ left: gapTwin.left, width: gapTwin.width, y: gapTwin.y });
+                    indicatorShown = true;
+                } else {
+                    hideOwnIndicator();
                 }
                 return { pos: slot.pos };
             }
@@ -226,7 +240,18 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             if (list.scrollTop === before) {
                 return false; // already at the end — geometry didn't move
             }
-            measure(); // item rects shifted under the pointer
+            // The scroll moved the list's CONTENTS by exactly the clamped
+            // delta (the list box itself is fixed), so translate the cached
+            // snapshot instead of re-running measure() — this runs once per
+            // scrolled frame, and a full re-measure is O(items) rect reads
+            // plus a doc walk. The stale path (list rebuild) keeps measure().
+            const dy = before - list.scrollTop;
+            for (const slot of measured) {
+                slot.y += dy;
+                if (slot.top !== undefined) {
+                    slot.top += dy;
+                }
+            }
             return true;
         },
         sessionEnd() {
@@ -245,6 +270,9 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
         if (!entry.topLevel) {
             return;
         }
+        // Only wired items advertise the grab (nested rows keep the plain
+        // navigation pointer) — the cursor is the drag affordance here.
+        item.classList.add("toc-item--draggable");
         item.addEventListener("mousedown", (event: MouseEvent) => {
             if (event.button !== 0) {
                 return;
@@ -261,6 +289,28 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             event.preventDefault();
             event.stopPropagation();
             ownDragPos = entry.pos;
+            // A 5px jittery click crosses the 4px drag threshold but never
+            // leaves the item — a self-targeted "drag" whose target stays
+            // null. Track whether the pointer ever escapes the source item's
+            // mousedown-time rect so onStop can tell that micro-drag (a
+            // click; navigation must survive) from a real released-in-place
+            // drag (whose trailing click must stay suppressed).
+            const sourceRect = item.getBoundingClientRect();
+            let leftSource = false;
+            const trackLeave = (move: MouseEvent): void => {
+                if (
+                    move.clientX < sourceRect.left || move.clientX > sourceRect.right ||
+                    move.clientY < sourceRect.top || move.clientY > sourceRect.bottom
+                ) {
+                    leftSource = true;
+                }
+            };
+            // Registered NOW, not in onStart: a capture listener added while
+            // the threshold-crossing mousemove is already dispatching on
+            // `document` would miss that very move — the one that may
+            // already sit outside the item. onStop (which the session fires
+            // even for a never-started drag) removes it.
+            document.addEventListener("mousemove", trackLeave, true);
             startPointerDragSession(view, {
                 startX: event.clientX,
                 startY: event.clientY,
@@ -280,26 +330,36 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
                     item.classList.add("toc-item--drag-source");
                 },
                 onStop: () => {
+                    document.removeEventListener("mousemove", trackLeave, true);
                     ownDragPos = null;
                     // The list may have been rebuilt mid-drag — the ghosted
                     // state lives on whichever element carries it NOW.
                     const source =
                         deps.list.querySelector<HTMLElement>(".toc-item--drag-source") ?? item;
                     source.classList.remove("toc-item--drag-source");
-                    // The click-suppression flag must survive until the mouse
-                    // button's actual release (an Escape-cancel leaves it
-                    // held), then clear one tick after the click that release
-                    // produces — the wireMarkerDrag pattern in drag.ts.
                     const flagged =
                         deps.list.querySelector<HTMLElement>(".toc-item[data-dragged]") ?? item;
                     if (flagged.dataset["dragged"]) {
-                        document.addEventListener(
-                            "mouseup",
-                            () => setTimeout(() => {
-                                delete flagged.dataset["dragged"];
-                            }, 0),
-                            { once: true },
-                        );
+                        if (!leftSource) {
+                            // In-place micro-drag: the pointer never left the
+                            // item, so the gesture IS a click — clear the flag
+                            // synchronously so the trailing click navigates
+                            // instead of being swallowed.
+                            delete flagged.dataset["dragged"];
+                        } else {
+                            // Real drag: the click-suppression flag must
+                            // survive until the mouse button's actual release
+                            // (an Escape-cancel leaves it held), then clear
+                            // one tick after the click that release produces
+                            // — the wireMarkerDrag pattern in drag.ts.
+                            document.addEventListener(
+                                "mouseup",
+                                () => setTimeout(() => {
+                                    delete flagged.dataset["dragged"];
+                                }, 0),
+                                { once: true },
+                            );
+                        }
                     }
                 },
             });

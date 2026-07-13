@@ -80,13 +80,13 @@ export async function run({ page, check, baseUrl }) {
     check("--tb-menu-gap published to CSS from MENU_GAP", cssVar === "6px", `value="${cssVar}"`);
 
     // ── 5. Typography menu: the block-handles radio rows ──
-    // A captioned Always Show/Headings and hover/Hover only radio trio under
+    // A captioned Always show/Headings and hover/Hover only radio trio under
     // the width segments; picks apply the handles-rest-* body class
     // immediately (menu stays open) and post setBlockHandles for the
     // settings round-trip.
     const fontBtn = '[data-item-id="fontPreset"] .tb-fmt-btn';
     const fontMenu = '[data-item-id="fontPreset"] .tb-font-menu';
-    const handleRowLabels = ["Always Show", "Headings and hover", "Hover only"];
+    const handleRowLabels = ["Always show", "Headings and hover", "Hover only"];
     const fontOverflowed = await page.$eval(fontBtn, (el) => !!el.closest(".tb-more-menu"));
     check("font menu renders on the bar (not overflowed)", !fontOverflowed);
     await page.hover(fontBtn);
@@ -104,7 +104,7 @@ export async function run({ page, check, baseUrl }) {
     const atRest = await rowState();
     check("three radio rows in display order with Headings and hover (default) active",
         JSON.stringify(atRest) === JSON.stringify([
-            { label: "Always Show", on: false },
+            { label: "Always show", on: false },
             { label: "Headings and hover", on: true },
             { label: "Hover only", on: false },
         ]), JSON.stringify(atRest));
@@ -128,13 +128,13 @@ export async function run({ page, check, baseUrl }) {
         window.__posted.filter((m) => m.type === "setBlockHandles").map((m) => m.mode));
     check("the pick posts setBlockHandles for the settings round-trip",
         JSON.stringify(postedHandles) === JSON.stringify(["hover"]), JSON.stringify(postedHandles));
-    // Always Show is the third state: its own body class, replacing hover's.
-    const alwaysBox = await rowBox("Always Show");
+    // Always show is the third state: its own body class, replacing hover's.
+    const alwaysBox = await rowBox("Always show");
     await page.mouse.move(alwaysBox.x, alwaysBox.y);
     await page.mouse.down();
     await page.mouse.up();
     await page.waitForTimeout(30);
-    check("picking Always Show swaps in the handles-rest-always body class",
+    check("picking Always show swaps in the handles-rest-always body class",
         await page.evaluate(() => document.body.classList.contains("handles-rest-always")
             && !document.body.classList.contains("handles-rest-hover")));
     // Restore the default for any checks that follow.

@@ -365,6 +365,49 @@ describe("drop-zone providers", () => {
         }
     });
 
+    it("a provider commit should scroll the landed block into view", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        const v = view(editor);
+        window.scrollTo = vi.fn();
+        const provider = stubProvider(() => v.state.doc.content.size);
+        const unregister = registerDropZoneProvider(provider);
+        try {
+            const m = marker(); // Alpha's marker
+            mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 200, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 150, clientY: 210, buttons: 1 });
+            mouse(document, "mouseup", { button: 0, buttons: 0 });
+            expect(markdown(editor)).toBe("Beta\n\nGamma\n\nAlpha");
+            // A drop-zone landing (e.g. a TOC "into" at a section's end) can
+            // be off-screen — the commit must bring it into view.
+            expect(window.scrollTo).toHaveBeenCalled();
+        } finally {
+            unregister();
+        }
+    });
+
+    it("a document-path commit should not scroll the landing", async () => {
+        const editor = await makeEditor("Alpha\n\nBeta");
+        const v = view(editor);
+        window.scrollTo = vi.fn();
+        // jsdom has no layout: stub block rects so the document path measures
+        // real boundaries (Alpha y 0–20, Beta y 100–120, doc end y 120).
+        const [alphaDom, betaDom] = [v.nodeDOM(0), v.nodeDOM(7)] as HTMLElement[];
+        alphaDom!.getBoundingClientRect = () =>
+            ({ left: 0, top: 0, right: 200, bottom: 20, width: 200, height: 20, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+        betaDom!.getBoundingClientRect = () =>
+            ({ left: 0, top: 100, right: 200, bottom: 120, width: 200, height: 20, x: 0, y: 100, toJSON: () => ({}) }) as DOMRect;
+
+        const m = marker(); // Alpha's marker
+        mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 5, buttons: 1 });
+        // Pointer near the doc-end boundary (y 120) — a plain document drop.
+        mouse(document, "mousemove", { clientX: 12, clientY: 119, buttons: 1 });
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+
+        expect(markdown(editor)).toBe("Beta\n\nAlpha");
+        // The document drop lands where the pointer already is — no scroll.
+        expect(window.scrollTo).not.toHaveBeenCalled();
+    });
+
     it("the unregister function should remove the provider from future sessions", async () => {
         const editor = await makeEditor("Alpha\n\nBeta");
         view(editor);

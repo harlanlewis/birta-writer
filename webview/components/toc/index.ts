@@ -334,6 +334,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     }
 
+    // INVARIANT: any code path that mutates `list`'s children must end by
+    // calling dnd.notifyRerender() — the drop model snapshots item geometry
+    // per drag session, and a rebuild it never hears about leaves the
+    // measured slots aimed at detached elements (drops silently misaim) —
+    // and must re-apply the drag-source state via dnd.dragSourceHeadingPos()
+    // so a mid-drag rebuild keeps the source ghosted and click-suppressed.
     function renderHeadings(headings: HeadingEntry[]): void {
         list.innerHTML = "";
         if (headings.length === 0) {

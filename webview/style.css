@@ -1281,9 +1281,13 @@ body.editor-width-auto {
 /* "Hover only" block handles: the sticky heading follows the in-flow rest
    rule — its gutter (handle + chevron) appears only while the sticky is
    hovered or focused, and never fades while its menu is open. handles-quiet
-   (typing) suppresses the hover reveal, matching the in-flow markers. */
-body.handles-rest-hover .heading-sticky-title:not(:hover):not(:focus-within):not(:has(.heading-fold-marker--menu-open)) .heading-sticky-gutter,
-body.handles-rest-hover.handles-quiet .heading-sticky-title:not(:has(.heading-fold-marker--menu-open)) .heading-sticky-gutter {
+   (typing) suppresses the hover reveal, matching the in-flow markers.
+   A COLLAPSED stuck heading (data-collapsed, stamped by headingSticky) is
+   carved out and rests visible — the same discoverability parity as the
+   in-flow `.heading-fold-heading--collapsed` badge rule, which deliberately
+   outlives the in-flow hover-only hide: hidden content must keep a cue. */
+body.handles-rest-hover .heading-sticky-title:not([data-collapsed="true"]):not(:hover):not(:focus-within):not(:has(.heading-fold-marker--menu-open)) .heading-sticky-gutter,
+body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed="true"]):not(:has(.heading-fold-marker--menu-open)) .heading-sticky-gutter {
     opacity: 0;
 }
 
@@ -1338,7 +1342,8 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not(:has(.heading-fo
     font-size: 0.95rem;
     font-weight: inherit;
     line-height: 1;
-    opacity: 0.75;
+    /* Exact parity with the in-flow .heading-fold-marker rest opacity. */
+    opacity: 0.7;
     cursor: pointer;
     transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
 }

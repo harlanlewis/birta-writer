@@ -3,8 +3,12 @@ import { Plugin, TextSelection } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";
-import { findHeadingFoldRange, headingFoldPluginKey, type HeadingFoldMeta } from "./headingFold";
-import { openBlockMenu } from "../components/blockMenu";
+import {
+    findHeadingFoldRange,
+    headingFoldPluginKey,
+    wireMarkerButtonProtocol,
+    type HeadingFoldMeta,
+} from "./headingFold";
 import { t } from "../i18n";
 import {
     getTopbarBottom,
@@ -100,36 +104,27 @@ export function setStickyContent(
         gutter.appendChild(button);
     }
 
-    // A real block handle, not a display-only badge: it opens the same block
-    // menu as the in-flow marker (openBlockMenu is fully position-derived, so
-    // every action operates on the real heading). Drag-to-move is deliberately
-    // absent — the sticky is a fixed mirror, not a grabbable block.
+    // A real block handle, not a display-only badge: the shared marker-button
+    // protocol (wireMarkerButtonProtocol — the same wiring as the in-flow
+    // gutter handles) opens the same block menu for the real heading.
+    // `draggable: false` encodes the sticky's fixed-mirror property: it is
+    // deliberately not a grabbable block. The position callback applies the
+    // same live-pos rule as the fold toggle above: the captured pos goes
+    // stale when content above shifts; data-heading-pos is refreshed on
+    // every state update.
     const marker = document.createElement("button");
     marker.type = "button";
     marker.className = "heading-sticky-marker";
     const clampedLevel = Math.min(Math.max(level, 1), 6);
-    // Literal Markdown hashes, matching the in-document gutter (headingFold).
+    // The heading's level badge, matching the in-document gutter (headingFold).
     marker.textContent = `H${clampedLevel}`;
-    marker.setAttribute("aria-label", `H${clampedLevel} — ${t("Block options")}`);
-    marker.setAttribute("aria-haspopup", "menu");
-    marker.setAttribute("aria-expanded", "false");
-    applyTooltip(marker, t("Click for options"), { placement: "above" });
-    marker.addEventListener("mousedown", (event) => {
-        // Keep the editor selection/caret (the in-flow marker's rule).
-        event.preventDefault();
-        event.stopPropagation();
-    });
-    marker.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        // Same live-pos rule as the fold toggle above: the captured pos goes
-        // stale when content above shifts; data-heading-pos is refreshed on
-        // every state update.
-        const livePos = Number(sticky.dataset["headingPos"] ?? headingPos);
-        hideTooltip();
-        // detail 0 = keyboard activation — move focus into the menu then.
-        openBlockMenu(view, livePos, marker, event.detail === 0);
-    });
+    wireMarkerButtonProtocol(
+        marker,
+        view,
+        `H${clampedLevel}`,
+        () => Number(sticky.dataset["headingPos"] ?? headingPos),
+        { draggable: false },
+    );
     gutter.appendChild(marker);
 
     const label = document.createElement("span");

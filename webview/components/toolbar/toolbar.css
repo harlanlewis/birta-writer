@@ -202,16 +202,16 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* ─── Content width: Auto / Narrow / Wide segmented control ─── */
+/* ─── Content width: Full Width / Fixed segmented control ─── */
 .tb-seg-row {
     display: flex;
     gap: 4px;
     padding: 5px 12px 7px;
 }
 
-/* Caption above a segmented row whose values can't self-describe (the
-   gutter-markers None/Headings/All trio) — the block menu's section-header
-   voice. */
+/* Caption above a control whose values can't self-describe — currently the
+   block-handles radio rows ("Show Block Handles" over Always show/Headings
+   and hover/Hover only) — the block menu's section-header voice. */
 .tb-seg-caption {
     padding: 6px 12px 0;
     font-size: 10px;

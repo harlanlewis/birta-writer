@@ -79,7 +79,7 @@ describe("promptBlockHandlesMode", () => {
         // Assert
         expect(qp.show).toHaveBeenCalled();
         expect(qp.items.map((i) => i.mode)).toEqual(["always", "headings", "hover"]);
-        expect(qp.items.map((i) => i.label)).toEqual(["Always Show", "Headings and hover", "Hover only"]);
+        expect(qp.items.map((i) => i.label)).toEqual(["Always show", "Headings and hover", "Hover only"]);
         expect(qp.items.find((i) => i.mode === "hover")!.description).toMatch(/current$/);
         expect(qp.items.find((i) => i.mode === "headings")!.description).not.toMatch(/current$/);
         // Preselection is what makes Enter-on-open a no-op.

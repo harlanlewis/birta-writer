@@ -4,9 +4,10 @@
  *   - dragging a top-level TOC item reorders its whole section,
  *   - the shared drop-indicator line draws over the panel at gap slots,
  *   - Escape mid-drag cancels without touching the document,
- *   - the trailing click of a drag never also navigates; a plain click does,
+ *   - an in-place micro-drag (jittery click) still navigates on release,
  *   - a gutter-handle drag into an item's middle band highlights it
- *     (.toc-item--drop-into) and drops the block at that section's end,
+ *     (.toc-item--drop-into) AND draws the gap line at the section's end,
+ *     then drops the block there,
  *   - in overlay mode a handle drag entering the panel does not close it.
  */
 
@@ -126,26 +127,20 @@ export async function run({ page, check, baseUrl }) {
     check("indicator hides after the cancel",
         await page.$eval(".block-drag-indicator", (el) => getComputedStyle(el).display === "none"));
 
-    // ── 3. The trailing click of a drag never also navigates ──
-    // A micro-drag that starts and ends on "Gamma" (crossing the threshold but
-    // staying inside the item) releases as a click; the suppression flag must
-    // swallow it — the page stays unscrolled.
+    // ── 3. An in-place micro-drag still navigates on release ──
+    // A jittery click on "Gamma" crosses the 4px drag threshold but never
+    // leaves the item: the started (self-targeted, no-op) drag must not
+    // swallow the click the release produces — the user meant to navigate.
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(100);
     const gamma2 = await tocItemBox(page, "Gamma");
-    await page.mouse.move(gamma2.x, gamma2.y - 5);
+    await page.mouse.move(gamma2.x, gamma2.y - 3);
     await page.mouse.down();
-    await page.mouse.move(gamma2.x, gamma2.y + 5, { steps: 3 }); // >4px, same item
+    await page.mouse.move(gamma2.x, gamma2.y + 3, { steps: 3 }); // >4px, same item
     await page.mouse.up();
-    await page.waitForTimeout(150);
-    check("click-after-drag does not navigate",
-        (await page.evaluate(() => window.scrollY)) === 0);
-
-    // ── 4. A plain click still navigates ──
-    await page.mouse.click(gamma2.x, gamma2.y);
     // The navigation scroll is smooth — wait for it to settle (the active
     // item is re-derived from scroll position while in flight).
-    await page.evaluate(() => new Promise((resolve) => {
+    const settleScroll = () => page.evaluate(() => new Promise((resolve) => {
         let last = window.scrollY;
         const tick = () => {
             if (window.scrollY === last && window.scrollY > 0) return resolve();
@@ -154,6 +149,21 @@ export async function run({ page, check, baseUrl }) {
         };
         setTimeout(tick, 150);
     }));
+    await settleScroll();
+    await page.waitForTimeout(200);
+    const microNav = await page.evaluate(() => ({
+        scrolled: window.scrollY > 50,
+        active: [...document.querySelectorAll(".toc-item--active")].map((el) => el.textContent),
+    }));
+    check("an in-place micro-drag still navigates on release",
+        microNav.scrolled && microNav.active.includes("Gamma"), JSON.stringify(microNav));
+
+    // ── 4. A plain click also navigates ──
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(150);
+    const gamma3 = await tocItemBox(page, "Gamma");
+    await page.mouse.click(gamma3.x, gamma3.y);
+    await settleScroll();
     await page.waitForTimeout(200);
     const nav = await page.evaluate(() => ({
         scrolled: window.scrollY > 50,
@@ -164,8 +174,9 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 5. Gutter handle → item middle band refiles the block into the section ──
     // Drag "loose paragraph." (Gamma's last block) into "Alpha": the item
-    // highlights (drop-into, no gap line) and the block lands at the END of
-    // Alpha's whole section (after "alpha sub text.", before the next H1).
+    // highlights (drop-into) AND the shared gap line marks the landing — the
+    // END of Alpha's whole section, i.e. the "Gamma" item's top edge (after
+    // "alpha sub text.", before the next H1).
     const pMarker = await markerCenter(page, ".ProseMirror > p", "loose paragraph");
     const alphaItem = await tocItemBox(page, "Alpha");
     await page.mouse.move(pMarker.x, pMarker.y);
@@ -173,13 +184,22 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.move(pMarker.x + 8, pMarker.y + 8); // cross the threshold
     await page.mouse.move(alphaItem.x, alphaItem.y, { steps: 8 }); // item's middle band
     await page.waitForTimeout(100);
-    const intoState = await page.evaluate(() => ({
-        into: [...document.querySelectorAll(".toc-item--drop-into")].map((el) => el.textContent),
-        indicator: getComputedStyle(document.querySelector(".block-drag-indicator")).display !== "none",
-    }));
-    check("handle drag over an item's middle band highlights it (drop-into, no gap line)",
-        JSON.stringify(intoState.into) === JSON.stringify(["Alpha"]) && !intoState.indicator,
-        JSON.stringify(intoState));
+    const intoState = await page.evaluate(() => {
+        const ind = document.querySelector(".block-drag-indicator");
+        const gammaItem = [...document.querySelectorAll(".toc-item")]
+            .find((el) => el.textContent === "Gamma");
+        return {
+            into: [...document.querySelectorAll(".toc-item--drop-into")].map((el) => el.textContent),
+            indicator: getComputedStyle(ind).display !== "none",
+            // The 2px line centers on the boundary (top = y − 1).
+            lineAtSectionEnd: Math.abs(
+                ind.getBoundingClientRect().top + 1 - gammaItem.getBoundingClientRect().top) < 2,
+        };
+    });
+    check("handle drag over an item's middle band highlights it (drop-into)",
+        JSON.stringify(intoState.into) === JSON.stringify(["Alpha"]), JSON.stringify(intoState));
+    check("the into hover also draws the gap line at the section's end (Gamma's top)",
+        intoState.indicator && intoState.lineAtSectionEnd, JSON.stringify(intoState));
     await page.mouse.up();
     const refiled = await latestDoc(page, (doc) => {
         const loose = doc.indexOf("loose paragraph.");
