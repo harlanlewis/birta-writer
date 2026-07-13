@@ -252,7 +252,7 @@ const MARKER_IS_DEFAULT: Record<string, (bytes: string) => boolean> = {
 
 /** A move conserves everything, modulo dissolving containers it emptied and
  * the empty paragraph deleteRange refills a fully-emptied doc with. */
-function checkMove(delta: FingerprintDelta): string | null {
+export function checkMove(delta: FingerprintDelta): string | null {
     // The only legal gain: exactly ONE `count:paragraph`, and nothing else
     // (deleteRange refills a fully-emptied doc with a single empty
     // paragraph; any other gain is synthesized content).
@@ -283,7 +283,7 @@ function checkMove(delta: FingerprintDelta): string | null {
 }
 
 /** A duplicate loses nothing and gains exactly the declared copy. */
-function checkDuplicate(delta: FingerprintDelta, expected: Fingerprint): string | null {
+export function checkDuplicate(delta: FingerprintDelta, expected: Fingerprint): string | null {
     const firstLost = delta.lost.keys().next();
     if (!firstLost.done) {
         return `duplicate lost content (${firstLost.value})`;

@@ -10,50 +10,19 @@
  *      line survives verbatim (reference definitions, setext headings, HTML
  *      comments, escaping — nothing is silently dropped or rewritten).
  */
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, it, expect } from "vitest";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
+import { editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
+// Fixture loading, the real-editor factory, and sig() are shared with the
+// Layer-3 generative suites (corpusMoveSampling, moveProperty) — one corpus,
+// one editor recipe. The showcase (samples/content-inventory.md) rides along
+// as a corpus member: every content type it demonstrates must round-trip
+// byte-identically, so an inventory edit that breaks a fidelity claim fails
+// here.
+import { loadCorpusFixtures, makeCorpusEditor as makeEditor, sig } from "./helpers/moveFuzz";
 
-const FIXTURES_DIR = join(__dirname, "fixtures");
-const fixtures = readdirSync(FIXTURES_DIR)
-    .filter((f) => f.endsWith(".md"))
-    .map((f) => ({ name: f, content: readFileSync(join(FIXTURES_DIR, f), "utf8") }));
-
-// The living showcase (samples/content-inventory.md) doubles as a corpus
-// member: every content type it demonstrates must round-trip byte-identically,
-// so an inventory edit that breaks a fidelity claim fails here. The extension
-// strips YAML frontmatter before the webview ever sees content
-// (src/utils/contentTransform.ts), so the corpus tests the body exactly as
-// production delivers it.
-{
-    const raw = readFileSync(join(__dirname, "..", "..", "samples", "content-inventory.md"), "utf8");
-    const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
-    fixtures.push({ name: "samples/content-inventory.md (body)", content: body });
-}
-
-async function makeEditor(markdown: string): Promise<Editor> {
-    const root = document.createElement("div");
-    document.body.appendChild(root);
-    return Editor.make()
-        .config((ctx) => {
-            ctx.set(rootCtx, root);
-            ctx.set(defaultValueCtx, markdown);
-            configureSerialization(ctx);
-        })
-        .use(pureCommonmark)
-        .use(gfm)
-        .create();
-}
-
-/** Significant (non-blank) lines of a document. */
-function sig(text: string): string[] {
-    return text.split("\n").filter((l) => l.trim() !== "");
-}
+const fixtures = loadCorpusFixtures();
 
 describe("corpus invariant A — open then save without edits is byte-identical", () => {
     for (const { name, content } of fixtures) {
