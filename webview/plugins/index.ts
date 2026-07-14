@@ -29,6 +29,7 @@ export {
 } from "./horizontalRule";
 export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
+export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
 export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export { listEnterPlugin, listLiftPlugin, listSpreadNormalizePlugin } from "./list";
