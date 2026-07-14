@@ -459,6 +459,35 @@ describe("MarkdownEditorProvider disk-change reconciliation", () => {
             expect(document.getText()).toBe("line1\nline2 MINE\nline3\n");
         });
 
+        it("'keep your version' should preserve a UTF-8 BOM present on the disk file", async () => {
+            const { handler } = await setupConflictWithPick("keepMine");
+            // The file on disk carries a UTF-8 BOM; keepMine must not strip it.
+            (vscode.workspace.fs.readFile as Mock).mockImplementation(
+                async () =>
+                    Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(diskContent, "utf8")]),
+            );
+
+            await handler({ type: "resolveSyncConflict" });
+            await vi.advanceTimersByTimeAsync(500);
+
+            const [, bytes] = (vscode.workspace.fs.writeFile as Mock).mock.calls[0];
+            const buf = Buffer.from(bytes as Uint8Array);
+            expect([buf[0], buf[1], buf[2]]).toEqual([0xef, 0xbb, 0xbf]);
+            expect(buf.subarray(3).toString("utf8")).toBe("line1\nline2 MINE\nline3\n");
+        });
+
+        it("'keep your version' should not add a BOM when the disk file has none", async () => {
+            const { handler } = await setupConflictWithPick("keepMine");
+
+            await handler({ type: "resolveSyncConflict" });
+            await vi.advanceTimersByTimeAsync(500);
+
+            const [, bytes] = (vscode.workspace.fs.writeFile as Mock).mock.calls[0];
+            const buf = Buffer.from(bytes as Uint8Array);
+            expect(buf[0]).not.toBe(0xef);
+            expect(buf.toString("utf8")).toBe("line1\nline2 MINE\nline3\n");
+        });
+
         it("'reload from disk' should discard the editor content for the disk content", async () => {
             const { document, panel, handler } = await setupConflictWithPick("takeDisk");
 

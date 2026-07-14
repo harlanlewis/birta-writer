@@ -247,3 +247,92 @@ describe("merge3 guard rails", () => {
         expect(out).toHaveLength(5_000);
     });
 });
+
+describe("merge3 property/fuzz — three-way assembly", () => {
+    // Deterministic LCG so any failure reproduces from the printed round number.
+    function makeRand(seed: number) {
+        let s = seed & 0x7fffffff;
+        return (max: number): number => {
+            s = (s * 1103515245 + 12345) & 0x7fffffff;
+            return s % max;
+        };
+    }
+
+    it("disjoint per-segment edits should merge to the by-construction expected text", () => {
+        // Partition the base into contiguous segments, each owned by exactly one
+        // side (ours / theirs / neither). Because owned base ranges never
+        // overlap, the correct merge is unambiguous: each segment contributes
+        // that owner's replacement (or the base block if unchanged). This
+        // exercises merge3's offset/group-mapping across replace, multi-line
+        // insert, and whole-segment deletion — the assembly math the hand-picked
+        // cases don't fuzz.
+        const rand = makeRand(0x51ed3c7);
+        for (let round = 0; round < 400; round++) {
+            const base: string[] = [];
+            const ours: string[] = [];
+            const theirs: string[] = [];
+            const expected: string[] = [];
+
+            const segs = 1 + rand(7);
+            let lineId = 0;
+            for (let seg = 0; seg < segs; seg++) {
+                const block = Array.from({ length: 1 + rand(3) }, () => `b${lineId++}`);
+                // 'o'/'t' replacements use distinct prefixes so they can never
+                // accidentally equal a base line; length 0 models a deletion,
+                // length > block.length models an insertion.
+                const repl = (tag: string) => Array.from({ length: rand(4) }, (_, i) => `${tag}${seg}_${i}`);
+                base.push(...block);
+                const owner = rand(3); // 0 = ours, 1 = theirs, 2 = unchanged
+                if (owner === 0) {
+                    const r = repl("o");
+                    ours.push(...r);
+                    theirs.push(...block);
+                    expected.push(...r);
+                } else if (owner === 1) {
+                    const r = repl("t");
+                    ours.push(...block);
+                    theirs.push(...r);
+                    expected.push(...r);
+                } else {
+                    ours.push(...block);
+                    theirs.push(...block);
+                    expected.push(...block);
+                }
+            }
+
+            const result = merge3(base.join("\n"), ours.join("\n"), theirs.join("\n"));
+            expect(result.ok, `round ${round} should merge cleanly`).toBe(true);
+            expect((result as { ok: true; merged: string }).merged, `round ${round}`).toBe(
+                expected.join("\n"),
+            );
+        }
+    });
+
+    it("both sides rewriting the same segment differently should always conflict", () => {
+        const rand = makeRand(0x1a2b3c4);
+        for (let round = 0; round < 200; round++) {
+            const base: string[] = [];
+            const ours: string[] = [];
+            const theirs: string[] = [];
+
+            const segs = 2 + rand(5);
+            const clash = rand(segs); // the one segment both sides overwrite
+            let lineId = 0;
+            for (let seg = 0; seg < segs; seg++) {
+                const block = Array.from({ length: 1 + rand(3) }, () => `b${lineId++}`);
+                base.push(...block);
+                if (seg === clash) {
+                    // Different, non-empty rewrites of the SAME base lines → conflict.
+                    ours.push(...block.map((l) => `${l}-MINE`));
+                    theirs.push(...block.map((l) => `${l}-DISK`));
+                } else {
+                    ours.push(...block);
+                    theirs.push(...block);
+                }
+            }
+
+            const result = merge3(base.join("\n"), ours.join("\n"), theirs.join("\n"));
+            expect(result.ok, `round ${round} should conflict`).toBe(false);
+        }
+    });
+});

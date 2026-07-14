@@ -34,6 +34,18 @@
  * - Disk reads assume UTF-8. A non-UTF-8 file mis-decodes into "everything
  *   differs", which degrades SAFELY: clean documents revert (VS Code decodes
  *   correctly), dirty ones conflict — never a corrupting merge.
+ * - "Keep your version" writes UTF-8, preserving a leading UTF-8 BOM if the
+ *   disk file has one. A non-UTF-8 file (UTF-16, …) is re-encoded to UTF-8 —
+ *   its text is preserved, its byte encoding is not. Only that one explicit
+ *   user action re-encodes; every other path leaves bytes untouched.
+ * - A keystroke landing inside the sub-second merge window can be dropped: an
+ *   in-flight webview update that a reconcile supersedes is rebased onto the
+ *   merged text (stale-rejected by seq), so the character typed mid-merge is
+ *   lost. Inherent to the optimistic-sync model; the merge itself never loses
+ *   already-committed edits.
+ * - One tracked entry per document URI: a second editor panel on the same file
+ *   shares (and on close disarms) that entry — matching the provider's
+ *   existing one-panel-per-URI assumption.
  */
 import * as path from "path";
 import * as vscode from "vscode";
@@ -205,11 +217,21 @@ export class DiskSyncController {
         await this._hooks.enqueue(uriKey, async () => {
             if (!this._tracked.has(uriKey)) { return; }
             if (picked.action === "keepMine") {
-                // Written as UTF-8 — the one place this module writes bytes.
-                // (VS Code's own save would honor the file's encoding, but a
-                // forced save can't skip the conflict dialog from an extension.)
+                // Overwrite disk with the editor's content — the one place this
+                // module writes bytes. (VS Code's own save would honor the
+                // file's encoding, but a forced save can't skip the conflict
+                // dialog from an extension.) document.getText() is decoded
+                // UTF-8 without a BOM, so re-attach a leading UTF-8 BOM when the
+                // file on disk currently has one, preserving that byte for the
+                // common UTF-8-with-BOM (Windows) case. Non-UTF-8 encodings
+                // (UTF-16, …) can't be reconstructed from the decoded string
+                // here and still round-trip to UTF-8 — see Known limitations.
                 const ours = document.getText();
-                await vscode.workspace.fs.writeFile(document.uri, Buffer.from(ours, "utf8"));
+                const oursUtf8 = Buffer.from(ours, "utf8");
+                const bytes = (await this._diskHasUtf8Bom(document.uri))
+                    ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), oursUtf8])
+                    : oursUtf8;
+                await vscode.workspace.fs.writeFile(document.uri, bytes);
                 // Reload so the model is clean on the freshly written content.
                 await this._revertToDisk(document.uri);
                 this._baseText.set(uriKey, ours);
@@ -311,6 +333,16 @@ export class DiskSyncController {
         const bytes = await vscode.workspace.fs.readFile(uri);
         const text = Buffer.from(bytes).toString("utf8");
         return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+    }
+
+    /** True if the file on disk currently begins with a UTF-8 BOM (EF BB BF). */
+    private async _diskHasUtf8Bom(uri: vscode.Uri): Promise<boolean> {
+        try {
+            const bytes = await vscode.workspace.fs.readFile(uri);
+            return bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+        } catch {
+            return false;
+        }
     }
 
     /**
