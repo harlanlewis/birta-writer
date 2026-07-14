@@ -82,16 +82,25 @@ export async function run({ page, check, baseUrl }) {
         !(await fmtWrap.isVisible()),
     );
 
-    // Inverted chip: the palette ground is the editor FOREGROUND (harness
-    // --vscode-editor-foreground = #d4d4d4), reversing contrast like the tooltip.
-    const paletteBg = await page.evaluate(
-        () => getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor,
-    );
+    // Light theme (harness sets body.vscode-light): the palette INVERTS — its
+    // ground is the editor FOREGROUND (#d4d4d4), reversing contrast.
+    const bgOf = () =>
+        page.evaluate(() => getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor);
     check(
-        "the palette uses the inverted (editor-foreground) ground",
-        paletteBg === "rgb(212, 212, 212)",
-        paletteBg,
+        "in a light theme the palette inverts to the editor-foreground ground",
+        (await bgOf()) === "rgb(212, 212, 212)",
+        await bgOf(),
     );
+    // Dark theme: it must NOT invert — the ground is the normal hover-widget
+    // background (#252526), never reversed to light.
+    await page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
+    const darkBg = await bgOf();
+    check(
+        "in a dark theme the palette is NOT inverted (normal hover-widget ground)",
+        darkBg === "rgb(37, 37, 38)",
+        darkBg,
+    );
+    await page.evaluate(() => document.body.classList.replace("vscode-dark", "vscode-light"));
 
     // ── 3. Whole-block selection → format dropdown shown ──
     await selectWholeParagraph();
@@ -146,5 +155,34 @@ export async function run({ page, check, baseUrl }) {
     check(
         "opening the block menu dismisses the floating palette",
         !(await toolbar.isVisible()),
+    );
+
+    // ── 7. Block palette: the grab-menu button opens the gutter block menu ──
+    // Close any open menu, then select a whole block via the Escape ladder.
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    await page.locator(".ProseMirror p").first().click();
+    await page.waitForTimeout(150);
+    await page.keyboard.press("Escape"); // caret → whole-block (BlockRangeSelection)
+    await page.waitForTimeout(250);
+    const gripVisible = await page.evaluate(() => {
+        const bar = document.querySelector(".sel-toolbar");
+        if (!bar || bar.style.display === "none") return false;
+        const grip = [...bar.querySelectorAll(".sel-tb-btn")].find((b) =>
+            (b.getAttribute("aria-label") ?? "").startsWith("Block menu"));
+        return Boolean(grip && grip.style.display !== "none");
+    });
+    check("selecting a whole block shows the grab-menu button in the palette", gripVisible);
+
+    await page.evaluate(() => {
+        const bar = document.querySelector(".sel-toolbar");
+        const grip = [...bar.querySelectorAll(".sel-tb-btn")].find((b) =>
+            (b.getAttribute("aria-label") ?? "").startsWith("Block menu"));
+        grip.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    });
+    await page.waitForSelector(".block-menu", { state: "visible", timeout: 3000 }).catch(() => {});
+    check(
+        "clicking the grab-menu button opens the block menu",
+        await page.locator(".block-menu").isVisible(),
     );
 }

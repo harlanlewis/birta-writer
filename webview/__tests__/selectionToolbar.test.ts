@@ -608,6 +608,36 @@ describe("selection toolbar block-range mode", () => {
         return btn!;
     }
 
+    it("a whole-block selection should lead with the Block menu (grab) button, before Move Up", async () => {
+        // Arrange — three paragraphs, select the first two as whole blocks
+        editor = await makeEditor("one\n\ntwo\n\nthree\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        selectBlocks(v, 0, v.state.doc.child(0).nodeSize + 1);
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — the grab-menu button is shown, and it precedes Move Up (the
+        // whole gutter menu is reachable from the block palette itself)
+        const menuBtn = selToolbar().querySelector<HTMLButtonElement>(
+            '.sel-tb-btn[aria-label^="Block menu"]',
+        );
+        expect(menuBtn, "block menu button").not.toBeNull();
+        expect(menuBtn!.style.display).not.toBe("none");
+        const moveUp = selToolbar().querySelector<HTMLButtonElement>(
+            '.sel-tb-btn[aria-label^="Move Up"]',
+        );
+        expect(
+            Boolean(
+                menuBtn!.compareDocumentPosition(moveUp!) &
+                    Node.DOCUMENT_POSITION_FOLLOWING,
+            ),
+            "Block menu precedes Move Up",
+        ).toBe(true);
+    });
+
     it("a whole-block selection should show block ops and hide the inline buttons", async () => {
         // Arrange — three paragraphs, select the first two as whole blocks
         editor = await makeEditor("one\n\ntwo\n\nthree\n");

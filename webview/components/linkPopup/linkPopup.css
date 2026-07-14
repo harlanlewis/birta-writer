@@ -11,8 +11,13 @@
     display: flex;
     flex-direction: column;
     width: 280px;
-    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-    border: 1px solid var(--vscode-editorWidget-border);
+    /* Shared palette chip (style.css): inverted dark chip in light themes,
+       normal themed chip in dark. Ink-carrying text/glyphs below use
+       --palette-ink; inputs keep their own input tokens (a light field reads
+       fine on the dark chip), and the URL/error accents are theme hues. */
+    background: var(--palette-ground);
+    color: var(--palette-ink);
+    border: 1px solid var(--palette-border);
     border-radius: 8px;
     box-shadow: 0 4px 20px var(--vscode-widget-shadow);
     overflow: hidden;
@@ -33,7 +38,7 @@
     align-items: center;
     flex-shrink: 0;
     opacity: 0.5;
-    color: var(--vscode-editor-foreground);
+    color: var(--palette-ink);
 }
 
 .lp-url {
@@ -60,7 +65,7 @@
 .lp-anchor-hint {
     padding: 0 10px 7px 32px;
     font-size: 11px;
-    color: var(--vscode-editor-foreground);
+    color: var(--palette-ink);
     opacity: 0.55;
     white-space: nowrap;
     overflow: hidden;
@@ -72,7 +77,7 @@
 .lp-resolved {
     padding: 0 10px 7px 32px;
     font-size: 11px;
-    color: var(--vscode-editor-foreground);
+    color: var(--palette-ink);
     opacity: 0.55;
     white-space: nowrap;
     overflow: hidden;
@@ -100,21 +105,21 @@
     border: 1px solid transparent;
     cursor: pointer;
     background: transparent;
-    color: var(--vscode-editor-foreground);
+    color: var(--palette-ink);
     flex-shrink: 0;
     opacity: 0.6;
     transition: opacity 0.1s, background 0.1s, color 0.1s;
 
     &:hover {
         opacity: 1;
-        background: var(--vscode-toolbar-hoverBackground);
+        background: var(--palette-hover);
     }
 }
 
 /* Edit button active state (while in edit mode) */
 .lp-btn-edit.lp-btn-active {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground);
+    background: var(--palette-hover);
 }
 
 /* Unlink button hover: destructive, so its hover reads in the error color. All
@@ -141,7 +146,7 @@
 
 .lp-divider {
     height: 1px;
-    background: var(--vscode-editorWidget-border);
+    background: var(--palette-line);
     margin: 0 -10px 4px;
 }
 
@@ -163,6 +168,14 @@
     &:focus {
         border-color: var(--vscode-focusBorder);
     }
+}
+
+/* The format-switch label sits on the (possibly inverted) popup ground; recolor
+   its muted text to the palette ink so it reads on either polarity. The select
+   itself keeps its native dropdown tokens. */
+.lp-root .lfs-label {
+    color: var(--palette-ink);
+    opacity: 0.6;
 }
 
 /* The range the link editor will act on stays visibly "selected" while the

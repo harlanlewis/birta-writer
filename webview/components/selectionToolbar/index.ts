@@ -32,6 +32,7 @@ import {
     IconAlignCenter,
     IconAlignRight,
     IconTrash2,
+    IconGripVertical,
 } from "@/ui/icons";
 import { applyTooltip } from "@/ui/tooltip";
 import { t, kbd } from "@/i18n";
@@ -438,6 +439,15 @@ export function setupSelectionToolbar(
             // delete collapses to a caret) — no manual follow-up needed.
         }
     };
+    // Grab-menu button (leads the block group): opens the same gutter block
+    // menu — turn-into + all block actions — so the full menu is discoverable
+    // from the selection itself, not only the margin handle. Opening the menu
+    // dismisses this palette (index.ts focusin), a clean hand-off to block level.
+    const blockMenuBtn = sBtn(IconGripVertical, t("Block menu"), () =>
+        runEditorCommand("openBlockMenu", getEditor),
+    );
+    blockMenuBtn.style.display = "none";
+    toolbar.appendChild(blockMenuBtn);
     const blockSep = sSep();
     blockSep.style.display = "none";
     toolbar.appendChild(blockSep);
@@ -715,6 +725,7 @@ export function setupSelectionToolbar(
         deleteSep.style.display = "none";
     }
     function hideBlockButtons(): void {
+        blockMenuBtn.style.display = "none";
         blockSep.style.display = "none";
         moveUpBtn.style.display = "none";
         moveDownBtn.style.display = "none";
@@ -769,17 +780,19 @@ export function setupSelectionToolbar(
 
         // ── Block-range selection mode (whole blocks) ──
         // A multi-block BlockRangeSelection has no gutter-menu surface (that
-        // menu targets a single block), so the floating bar is its only mouse
-        // affordance: move, duplicate, delete the whole run.
+        // menu targets a single block), so the floating bar is its mouse
+        // affordance: the grab menu (turn-into + all block actions), then move,
+        // duplicate, delete the whole run.
         if (selection instanceof BlockRangeSelection) {
             hideAllInline();
             hideAllTable();
+            blockMenuBtn.style.display = "";
+            // Separator between the grab menu and the move/dup/delete group.
+            blockSep.style.display = "";
             moveUpBtn.style.display = "";
             moveDownBtn.style.display = "";
             dupBlockBtn.style.display = "";
             delBlockBtn.style.display = "";
-            // No leading separator: the block ops are the first (only) group.
-            blockSep.style.display = "none";
             toolbar.style.visibility = "hidden";
             toolbar.style.display = "flex";
             positionToolbar(view, selection.from, selection.to);

@@ -40,8 +40,10 @@
     align-items: stretch;
     gap: 3px;
     padding: 3px 5px;
-    background: var(--vscode-editorHoverWidget-background);
-    border: 1px solid var(--vscode-editorHoverWidget-border);
+    /* Shared palette chip (style.css): inverted in light themes, themed in dark. */
+    background: var(--palette-ground);
+    color: var(--palette-ink);
+    border: 1px solid var(--palette-border);
     border-radius: 5px;
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
     white-space: nowrap;
@@ -69,14 +71,14 @@
     background: none;
     border: none;
     border-radius: 3px;
-    color: var(--vscode-editorHoverWidget-foreground);
+    color: var(--palette-ink);
     cursor: pointer;
     font-size: 11px;
     line-height: 1;
 }
 
 .img-tb-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground);
+    background: var(--palette-hover);
 }
 
 .img-tb-btn svg {
@@ -87,7 +89,7 @@
 .img-tb-sep {
     width: 1px;
     height: 16px;
-    background: var(--vscode-editorHoverWidget-border);
+    background: var(--palette-line);
     margin: 0 2px;
     flex-shrink: 0;
 }
@@ -100,7 +102,8 @@
     gap: 6px;
 
     .img-tb-path-name {
-        color: var(--vscode-descriptionForeground);
+        color: var(--palette-ink);
+        opacity: 0.7;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -115,7 +118,24 @@
 
     &:hover .img-tb-path-name,
     &:hover .img-tb-path-pencil {
-        color: var(--vscode-editorHoverWidget-foreground);
+        color: var(--palette-ink);
+        opacity: 1;
+    }
+}
+
+/* The title input lives in the (possibly inverted) toolbar; recolor its quiet
+   text and hover border to the palette ink there without touching the shared
+   base rule the document caption also uses. */
+.image-toolbar .img-quiet-input {
+    color: var(--palette-ink);
+    opacity: 0.75;
+
+    &:hover:not(:focus) {
+        border-color: var(--palette-line);
+        opacity: 1;
+    }
+
+    &:focus {
         opacity: 1;
     }
 }
