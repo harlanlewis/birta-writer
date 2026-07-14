@@ -333,9 +333,15 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
    Mermaid `theme` palette is chosen from the same decision so they never clash. */
 :root {
     --mermaid-canvas: #ffffff;
+    /* Ink for text drawn directly *on* the canvas (the loading placeholder). Must
+       track the canvas, not the theme: on the forced-white canvas a dark-theme
+       foreground would be light-on-white and invisible. #333 matches Mermaid's
+       own default-theme text. */
+    --mermaid-canvas-fg: #333333;
 }
 body.mermaid-canvas-dark {
     --mermaid-canvas: var(--vscode-textCodeBlock-background);
+    --mermaid-canvas-fg: var(--vscode-editor-foreground);
 }
 
 /* ─── Inline preview area ─── */
@@ -382,7 +388,9 @@ body.mermaid-canvas-dark {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--vscode-descriptionForeground);
+    /* On the canvas, not the header — must read on the (possibly white) canvas. */
+    color: var(--mermaid-canvas-fg);
+    opacity: 0.6;
     font-size: 13px;
 }
 
@@ -405,6 +413,9 @@ body.mermaid-canvas-dark {
     margin: 0;
     max-height: 120px;
     overflow-y: auto;
+    /* This <pre> keeps the editor's dark code-block background (global `pre`
+       rule), so the theme foreground stays readable on it regardless of the
+       canvas — unlike the background-less loading text below. */
     color: var(--vscode-editor-foreground);
     opacity: 0.85;
 }

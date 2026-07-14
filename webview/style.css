@@ -1240,7 +1240,11 @@ body:not(.editor-width-auto) {
         hr {
             border: none;
             border-top: 1px solid var(--vscode-panel-border);
-            margin: var(--content-flow-gap) 0;
+            /* Own the bottom gap like every other block (top stays 0). A symmetric
+               top+bottom margin would collapse against a preceding margin-block but
+               not a padding-block (paragraphs), making the space above an hr depend
+               on its neighbor's type — the exact inconsistency this scale removes. */
+            margin: 0 0 var(--content-flow-gap);
             cursor: pointer;
             outline: 1px solid transparent;
             outline-offset: 2px;
