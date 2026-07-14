@@ -55,6 +55,7 @@ import {
     insertFootnoteCommand,
     linkInputRule,
     linkUrlCompletePlugin,
+    pasteLinkPlugin,
     mathInlineEditPlugin,
     tableAlignDefaultPlugin,
     wikiLinkCompletePlugin,
@@ -427,6 +428,9 @@ export async function createEditor(
         .use(footnoteNumberingPlugin)
         .use(linkInputRule)
         .use(linkUrlCompletePlugin)
+        // Pasting a URL over a selection links the selection instead of
+        // replacing it (handlePaste; no other plugin registers one).
+        .use(pasteLinkPlugin)
         .use(wikiLinkCompletePlugin)
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
