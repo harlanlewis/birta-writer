@@ -17,6 +17,12 @@ declare global {
             proofread?: ProofreadConfig;
             /** Per-item toolbar placement config (see the toolbar registry). */
             toolbar?: ToolbarConfig;
+            /**
+             * Floating selection toolbar: master on/off + per-item visibility
+             * (birta.floatingToolbar.enabled / .items.*). See the selection
+             * toolbar registry.
+             */
+            floatingToolbar?: { enabled?: boolean; items?: Record<string, boolean> };
             /** Editor content font preset (drives the toolbar font picker). */
             fontPreset?: FontPreset;
             /** Effective per-preset font stacks (user overrides applied). */

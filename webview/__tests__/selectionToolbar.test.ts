@@ -24,6 +24,7 @@ import {
 import { gfm } from "@milkdown/preset-gfm";
 import { Selection, TextSelection } from "@milkdown/prose/state";
 import { CellSelection } from "@milkdown/prose/tables";
+import { BlockRangeSelection } from "../plugins/blockRange";
 import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, pureCommonmark } from "../serialization";
@@ -367,5 +368,144 @@ describe("selection toolbar format menu", () => {
 
         // Assert
         expect(md(editor)).toBe("Heading");
+    });
+});
+
+describe("selection toolbar per-item visibility", () => {
+    let editor: Editor | null = null;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+    });
+
+    afterEach(async () => {
+        if (editor) {
+            await editor.destroy();
+            editor = null;
+        }
+    });
+
+    it("a text selection with link hidden by config should not show the link button", async () => {
+        // Arrange — link opted out via the per-item config
+        editor = await makeEditor("hello world\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+            { link: false },
+        );
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)),
+        );
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — bar shown, but the link button is hidden while bold stays
+        expect(selToolbar().style.display).toBe("flex");
+        expect(linkButton().style.display).toBe("none");
+        const boldBtn = selToolbar().querySelector<HTMLButtonElement>(
+            ":scope > .sel-tb-btn",
+        );
+        expect(boldBtn!.style.display).not.toBe("none");
+    });
+
+    it("with all items on a text selection should show the link button", async () => {
+        // Arrange — default config (undefined) means every item is visible
+        editor = await makeEditor("hello world\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+        );
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)),
+        );
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert
+        expect(linkButton().style.display).not.toBe("none");
+    });
+});
+
+describe("selection toolbar block-range mode", () => {
+    let editor: Editor | null = null;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+    });
+
+    afterEach(async () => {
+        if (editor) {
+            await editor.destroy();
+            editor = null;
+        }
+    });
+
+    /** Select whole top-level blocks [fromBlock, toBlock] as a BlockRangeSelection. */
+    function selectBlocks(v: EditorView, anchor: number, head: number): void {
+        const range = BlockRangeSelection.tryCreate(v.state.doc, anchor, head);
+        expect(range, "block range").toBeTruthy();
+        v.dispatch(v.state.tr.setSelection(range!));
+    }
+
+    function dangerButton(): HTMLButtonElement {
+        const btn = selToolbar().querySelector<HTMLButtonElement>(
+            ".sel-tb-danger-btn",
+        );
+        expect(btn, "block delete button").not.toBeNull();
+        return btn!;
+    }
+
+    it("a whole-block selection should show block ops and hide the inline buttons", async () => {
+        // Arrange — three paragraphs, select the first two as whole blocks
+        editor = await makeEditor("one\n\ntwo\n\nthree\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+        );
+        // Anchor at doc start, head inside the second block → snaps to two blocks
+        selectBlocks(v, 0, v.state.doc.child(0).nodeSize + 1);
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — bar shown in block mode: delete (danger) visible, link hidden
+        expect(selToolbar().style.display).toBe("flex");
+        expect(dangerButton().style.display).not.toBe("none");
+        expect(linkButton().style.display).toBe("none");
+    });
+
+    it("clicking the block delete button should remove the selected blocks in one step", async () => {
+        // Arrange — three paragraphs, select the first two
+        editor = await makeEditor("one\n\ntwo\n\nthree\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+        );
+        const before = v.state.doc.childCount;
+        selectBlocks(v, 0, v.state.doc.child(0).nodeSize + 1);
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Act — click Delete
+        mousedown(dangerButton());
+
+        // Assert — two blocks gone (only "three" remains)
+        expect(v.state.doc.childCount).toBeLessThan(before);
+        expect(md(editor)).toBe("three");
     });
 });

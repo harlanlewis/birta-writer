@@ -21,8 +21,13 @@ import {
     IconItalic,
     IconStrikethrough,
     IconCode,
+    IconHighlighter,
+    IconEraser,
+    IconMath,
     IconLink,
     IconChevronDown,
+    IconChevronUp,
+    IconCopy,
     IconAlignLeft,
     IconAlignCenter,
     IconAlignRight,
@@ -32,6 +37,13 @@ import { applyTooltip } from "@/ui/tooltip";
 import { t, kbd } from "@/i18n";
 import { runEditorCommand } from "@/editorCommands";
 import { createButton, createSeparator } from "@/ui/dom";
+import { BlockRangeSelection } from "@/plugins/blockRange";
+import {
+    moveSelectedBlocks,
+    duplicateSelectedBlocks,
+    deleteSelectedBlocks,
+} from "@/plugins/blockKeys";
+import { resolveVisible, type FloatingToolbarItems } from "./registry";
 import './selectionToolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -196,7 +208,13 @@ export function setupSelectionToolbar(
     getView: () => EditorView | null,
     getEditor: () => Editor | null,
     openLinkPrompt: () => void,
+    items?: FloatingToolbarItems,
 ): { onSelectionChange(view: EditorView): void } {
+    // Per-item visibility for the inline (text-mode) buttons. Resolved once at
+    // setup from the birta.floatingToolbar.items.* settings; a missing flag
+    // defaults to visible. Table-mode and block-mode buttons are contextual
+    // and not user-gated here.
+    const visible = resolveVisible(items);
     let lastView: EditorView | null = null;
     let isDragging = false;
 
@@ -345,10 +363,14 @@ export function setupSelectionToolbar(
             }
         },
     );
+    const highlightBtn = sBtn(IconHighlighter, t("Highlight"), () =>
+        runEditorCommand("toggleHighlight", getEditor),
+    );
     toolbar.appendChild(boldBtn);
     toolbar.appendChild(italicBtn);
     toolbar.appendChild(strikeBtn);
     toolbar.appendChild(codeBtn);
+    toolbar.appendChild(highlightBtn);
 
     // ── Link button (text mode only) ─────────────────
     // Opens the same Insert/Edit Link prompt as the main toolbar button and
@@ -366,6 +388,62 @@ export function setupSelectionToolbar(
         onClick: openLinkPrompt,
     });
     toolbar.appendChild(linkBtn);
+
+    // ── Insert group (text mode only): clear formatting + inline math ──
+    const insertSep = sSep();
+    toolbar.appendChild(insertSep);
+    const clearFmtBtn = sBtn(IconEraser, t("Clear Formatting"), () =>
+        runEditorCommand("clearFormatting", getEditor),
+    );
+    toolbar.appendChild(clearFmtBtn);
+    const mathBtn = sBtn(IconMath, t("Inline Math"), () =>
+        runEditorCommand("insertMath", getEditor),
+    );
+    toolbar.appendChild(mathBtn);
+
+    // ── Block-selection elements (shown only for a whole-block range) ──
+    // A multi-block BlockRangeSelection has no gutter-menu surface (that menu
+    // targets one block); these reuse the keyboard layer's range commands so
+    // move/duplicate/delete behave identically to Alt+↑/↓ etc. and stay one
+    // undo step. Hidden by default; the block branch of showAndPosition reveals
+    // them.
+    const runBlockCmd = (cmd: (
+        state: EditorView["state"],
+        dispatch: EditorView["dispatch"],
+        view: EditorView,
+    ) => boolean): void => {
+        const v = getView();
+        if (v) {
+            cmd(v.state, v.dispatch, v);
+            // The command's transaction fires a selection change, which
+            // re-runs showAndPosition (reposition after a move, hide after a
+            // delete collapses to a caret) — no manual follow-up needed.
+        }
+    };
+    const blockSep = sSep();
+    blockSep.style.display = "none";
+    toolbar.appendChild(blockSep);
+    const moveUpBtn = sBtn(IconChevronUp, t("Move Up"), () =>
+        runBlockCmd(moveSelectedBlocks(-1)),
+    );
+    moveUpBtn.style.display = "none";
+    toolbar.appendChild(moveUpBtn);
+    const moveDownBtn = sBtn(IconChevronDown, t("Move Down"), () =>
+        runBlockCmd(moveSelectedBlocks(1)),
+    );
+    moveDownBtn.style.display = "none";
+    toolbar.appendChild(moveDownBtn);
+    const dupBlockBtn = sBtn(IconCopy, t("Duplicate"), () =>
+        runBlockCmd(duplicateSelectedBlocks(1)),
+    );
+    dupBlockBtn.style.display = "none";
+    toolbar.appendChild(dupBlockBtn);
+    const delBlockBtn = sBtn(IconTrash2, t("Delete"), () =>
+        runBlockCmd(deleteSelectedBlocks),
+    );
+    delBlockBtn.classList.add("sel-tb-danger-btn");
+    delBlockBtn.style.display = "none";
+    toolbar.appendChild(delBlockBtn);
 
     // ── Table-mode elements (alignment + delete, all hidden initially) ──
     const tableSep = sSep();
@@ -593,6 +671,39 @@ export function setupSelectionToolbar(
         alignMenu.style.display = "none";
     }
 
+    // Group hide helpers — each mode shows its own controls and hides the
+    // others, so a stale button from a prior selection never lingers.
+    function hideAllInline(): void {
+        fmtWrap.style.display = "none";
+        textFmtSep.style.display = "none";
+        boldBtn.style.display = "none";
+        italicBtn.style.display = "none";
+        strikeBtn.style.display = "none";
+        codeBtn.style.display = "none";
+        highlightBtn.style.display = "none";
+        linkSep.style.display = "none";
+        linkBtn.style.display = "none";
+        insertSep.style.display = "none";
+        clearFmtBtn.style.display = "none";
+        mathBtn.style.display = "none";
+    }
+    function hideAllTable(): void {
+        tableSep.style.display = "none";
+        alignWrap.style.display = "none";
+        deleteRowBtn.style.display = "none";
+        clearHeaderBtn.style.display = "none";
+        deleteTableBtn.style.display = "none";
+        deleteColBtn.style.display = "none";
+        deleteSep.style.display = "none";
+    }
+    function hideBlockButtons(): void {
+        blockSep.style.display = "none";
+        moveUpBtn.style.display = "none";
+        moveDownBtn.style.display = "none";
+        dupBlockBtn.style.display = "none";
+        delBlockBtn.style.display = "none";
+    }
+
     function positionToolbar(view: EditorView, from: number, to: number): void {
         const tbW = toolbar.offsetWidth;
         const tbH = toolbar.offsetHeight;
@@ -629,6 +740,25 @@ export function setupSelectionToolbar(
         }
         const { selection } = view.state;
 
+        // ── Block-range selection mode (whole blocks) ──
+        // A multi-block BlockRangeSelection has no gutter-menu surface (that
+        // menu targets a single block), so the floating bar is its only mouse
+        // affordance: move, duplicate, delete the whole run.
+        if (selection instanceof BlockRangeSelection) {
+            hideAllInline();
+            hideAllTable();
+            moveUpBtn.style.display = "";
+            moveDownBtn.style.display = "";
+            dupBlockBtn.style.display = "";
+            delBlockBtn.style.display = "";
+            // No leading separator: the block ops are the first (only) group.
+            blockSep.style.display = "none";
+            toolbar.style.visibility = "hidden";
+            toolbar.style.display = "flex";
+            positionToolbar(view, selection.from, selection.to);
+            return;
+        }
+
         // ── Table CellSelection mode ───────────────────
         if (selection instanceof CellSelection) {
             const isRow = selection.isRowSelection();
@@ -639,16 +769,23 @@ export function setupSelectionToolbar(
             textFmtSep.style.display = "none";
 
             // Inline format buttons stay visible for every CellSelection
-            boldBtn.style.display = "";
-            italicBtn.style.display = "";
-            strikeBtn.style.display = "";
-            codeBtn.style.display = "";
+            // (subject to the user's per-item visibility settings).
+            boldBtn.style.display = visible.has("bold") ? "" : "none";
+            italicBtn.style.display = visible.has("italic") ? "" : "none";
+            strikeBtn.style.display = visible.has("strikethrough") ? "" : "none";
+            codeBtn.style.display = visible.has("inlineCode") ? "" : "none";
+            highlightBtn.style.display = visible.has("highlight") ? "" : "none";
 
             // Link: hidden in cell-selection mode — the link prompt replaces
             // a flat text range, which would corrupt the table structure
-            // when the selection spans cells.
+            // when the selection spans cells. Clear-formatting / math / block
+            // ops are not offered in cell mode either.
             linkSep.style.display = "none";
             linkBtn.style.display = "none";
+            insertSep.style.display = "none";
+            clearFmtBtn.style.display = "none";
+            mathBtn.style.display = "none";
+            hideBlockButtons();
 
             // Alignment: shown when a whole column is selected (and not the whole table)
             const isEntireTable = isEntireTableSelected(
@@ -693,26 +830,27 @@ export function setupSelectionToolbar(
 
         const inTable = isInTableCell($from);
 
-        // Format dropdown: hidden inside a table, shown normally outside one
-        fmtWrap.style.display = inTable ? "none" : "";
-        textFmtSep.style.display = inTable ? "none" : "";
+        // Text mode: each inline button honors its per-item visibility setting
+        // (birta.floatingToolbar.items.*). The format dropdown is additionally
+        // hidden inside a table cell (it is meaningless there).
+        fmtWrap.style.display = !inTable && visible.has("format") ? "" : "none";
+        textFmtSep.style.display = !inTable && visible.has("format") ? "" : "none";
+        boldBtn.style.display = visible.has("bold") ? "" : "none";
+        italicBtn.style.display = visible.has("italic") ? "" : "none";
+        strikeBtn.style.display = visible.has("strikethrough") ? "" : "none";
+        codeBtn.style.display = visible.has("inlineCode") ? "" : "none";
+        highlightBtn.style.display = visible.has("highlight") ? "" : "none";
+        linkSep.style.display = visible.has("link") ? "" : "none";
+        linkBtn.style.display = visible.has("link") ? "" : "none";
+        const showClear = visible.has("clearFormatting");
+        const showMath = visible.has("math");
+        clearFmtBtn.style.display = showClear ? "" : "none";
+        mathBtn.style.display = showMath ? "" : "none";
+        insertSep.style.display = showClear || showMath ? "" : "none";
 
-        // Inline formats + link: always visible in text mode
-        boldBtn.style.display = "";
-        italicBtn.style.display = "";
-        strikeBtn.style.display = "";
-        codeBtn.style.display = "";
-        linkSep.style.display = "";
-        linkBtn.style.display = "";
-
-        // Table-only elements: hidden
-        tableSep.style.display = "none";
-        alignWrap.style.display = "none";
-        deleteRowBtn.style.display = "none";
-        clearHeaderBtn.style.display = "none";
-        deleteTableBtn.style.display = "none";
-        deleteColBtn.style.display = "none";
-        deleteSep.style.display = "none";
+        // Table-only and block-only elements: hidden in text mode
+        hideAllTable();
+        hideBlockButtons();
 
         // Highlight the current format + update the format-button icon (only meaningful outside table mode)
         if (!inTable) {
