@@ -64,6 +64,15 @@ the raw text editor for good. Birta is built so that never happens.
   Cmd+S seemed to "not take" and the change quietly vanished on close is gone;
   your edits are never left stranded in the editor, unwritten.
 
+- **You're told when a file changes underneath you — it's never resolved
+  silently.** If another tool (a terminal, git, an AI assistant) rewrites a file
+  you have open *with unsaved edits*, a warning badge appears; one click reloads
+  from disk or shows a side-by-side compare. A file with no unsaved edits just
+  reloads on its own. **Why it matters:** editing alongside tools that also write
+  your files is normal now — Birta surfaces the collision and lets *you* pick the
+  winner instead of guessing a merge or quietly discarding a side. The editor
+  never writes or reverts your document on its own.
+
 Together these mean you can point Birta at a file from almost any Markdown tool,
 edit it like a document, and trust the save. Interop (see
 [Compatibility](#compatibility-with-other-markdown-tools) below) mostly falls

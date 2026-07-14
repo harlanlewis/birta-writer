@@ -64,6 +64,9 @@ const ORDER_ZONES: ToolbarPlacement[] = ["left", "right"];
 /** Movement (px) before a press becomes a drag — distinguishes a click from a drag. */
 const DRAG_THRESHOLD = 4;
 
+/** Pinned, non-user-placeable items: excluded from dragging and the persisted order. */
+const PINNED_ITEM_IDS = new Set(["debug", "syncConflict"]);
+
 /** Enter customize mode. Returns a function that exits it. */
 export function enterEditMode(deps: EditModeDeps): () => void {
     const { toolbar, zones, moreWrap, expandOverflow, onChange, onExit } = deps;
@@ -71,7 +74,7 @@ export function enterEditMode(deps: EditModeDeps): () => void {
     expandOverflow();
     toolbar.classList.add("toolbar--editing");
 
-    /** `.tb-item` wrappers across the given targets (excludes debug). */
+    /** `.tb-item` wrappers across the given targets (excludes pinned items). */
     function items(targets: ToolbarPlacement[] = PLACEMENTS): HTMLElement[] {
         const out: HTMLElement[] = [];
         for (const name of targets) {
@@ -79,7 +82,7 @@ export function enterEditMode(deps: EditModeDeps): () => void {
                 if (
                     el instanceof HTMLElement &&
                     el.classList.contains("tb-item") &&
-                    el.dataset["itemId"] !== "debug"
+                    !PINNED_ITEM_IDS.has(el.dataset["itemId"] ?? "")
                 ) {
                     out.push(el);
                 }
@@ -193,7 +196,7 @@ export function enterEditMode(deps: EditModeDeps): () => void {
             return; // a drag is already in flight; ignore a second pointer
         }
         const item = (e.target as HTMLElement)?.closest?.(".tb-item") as HTMLElement | null;
-        if (!item || item.dataset["itemId"] === "debug") {
+        if (!item || PINNED_ITEM_IDS.has(item.dataset["itemId"] ?? "")) {
             return;
         }
         const zone = placementOf(item.parentElement as HTMLElement);
