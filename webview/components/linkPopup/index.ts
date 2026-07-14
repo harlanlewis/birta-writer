@@ -55,7 +55,17 @@ export function openLinkEditor(opts: OpenLinkEditorOpts): void {
     linkEditorHandle?.(opts);
 }
 
+/**
+ * Dismiss the link popup if it is open (a no-op otherwise). Used when a
+ * higher-level surface takes over — e.g. opening the block (handle) menu, which
+ * shifts the user from inline to block-level intent.
+ */
+export function closeLinkEditor(): void {
+    linkEditorCloseHandle?.();
+}
+
 let linkEditorHandle: ((opts: OpenLinkEditorOpts) => void) | null = null;
+let linkEditorCloseHandle: (() => void) | null = null;
 
 interface LinkInfo {
     href: string;
@@ -1096,6 +1106,8 @@ export function setupLinkPopup(
     });
 
     // Expose the insert/edit entry point for the toolbar, Cmd/Ctrl+K, and the
-    // slash menu (see openLinkEditor above).
+    // slash menu (see openLinkEditor above), plus a close handle for surfaces
+    // that supersede the popup (see closeLinkEditor).
     linkEditorHandle = openForInsert;
+    linkEditorCloseHandle = hidePopup;
 }
