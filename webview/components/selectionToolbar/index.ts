@@ -44,6 +44,7 @@ import {
     deleteSelectedBlocks,
 } from "@/plugins/blockKeys";
 import { resolveVisible, type FloatingToolbarItems } from "./registry";
+import { computeToolbarActiveState } from "@/components/toolbar/activeState";
 import './selectionToolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -218,6 +219,24 @@ export function setupSelectionToolbar(
     let lastView: EditorView | null = null;
     let isDragging = false;
 
+    // Quiet "on" look for a button whose mark/construct is active on the
+    // selection — the same VS Code activated-option token the top toolbar uses
+    // (styled via .sel-tb-btn--active), so the two surfaces read identically.
+    const setActive = (el: HTMLElement, on: boolean): void => {
+        el.classList.toggle("sel-tb-btn--active", on);
+    };
+
+    // Reflow the palette when the editor content resizes — the ToC docking,
+    // resizing, or toggling reflows the text, as does a window resize. Without
+    // this the bar keeps the coordinates it had at selection time and drifts off
+    // its text (the scroll listener below only covers scrolling, not reflow).
+    let observedEl: Element | null = null;
+    const resizeObserver = new ResizeObserver(() => {
+        if (toolbar.style.display !== "none" && lastView) {
+            showAndPosition(lastView);
+        }
+    });
+
     document.addEventListener(
         "mousedown",
         (e) => {
@@ -363,6 +382,12 @@ export function setupSelectionToolbar(
             }
         },
     );
+    // Inline math sits with the mark buttons, right after inline code: it's an
+    // inline construct like code, not a block insert, so it reads better beside
+    // the marks than off in the clear-formatting group.
+    const mathBtn = sBtn(IconMath, t("Inline Math"), () =>
+        runEditorCommand("insertMath", getEditor),
+    );
     const highlightBtn = sBtn(IconHighlighter, t("Highlight"), () =>
         runEditorCommand("toggleHighlight", getEditor),
     );
@@ -370,6 +395,7 @@ export function setupSelectionToolbar(
     toolbar.appendChild(italicBtn);
     toolbar.appendChild(strikeBtn);
     toolbar.appendChild(codeBtn);
+    toolbar.appendChild(mathBtn);
     toolbar.appendChild(highlightBtn);
 
     // ── Link button (text mode only) ─────────────────
@@ -389,17 +415,13 @@ export function setupSelectionToolbar(
     });
     toolbar.appendChild(linkBtn);
 
-    // ── Insert group (text mode only): clear formatting + inline math ──
+    // ── Insert group: clear formatting ──
     const insertSep = sSep();
     toolbar.appendChild(insertSep);
     const clearFmtBtn = sBtn(IconEraser, t("Clear Formatting"), () =>
         runEditorCommand("clearFormatting", getEditor),
     );
     toolbar.appendChild(clearFmtBtn);
-    const mathBtn = sBtn(IconMath, t("Inline Math"), () =>
-        runEditorCommand("insertMath", getEditor),
-    );
-    toolbar.appendChild(mathBtn);
 
     // ── Block-selection elements (shown only for a whole-block range) ──
     // A multi-block BlockRangeSelection has no gutter-menu surface (that menu
@@ -734,6 +756,14 @@ export function setupSelectionToolbar(
 
     function showAndPosition(view: EditorView): void {
         lastView = view;
+        // Track the editor's content box so a reflow (ToC dock/resize/toggle,
+        // window resize) re-anchors the bar — view.dom is stable per session,
+        // so this observes once and no-ops thereafter.
+        if (view.dom !== observedEl) {
+            if (observedEl) { resizeObserver.unobserve(observedEl); }
+            resizeObserver.observe(view.dom);
+            observedEl = view.dom;
+        }
         if (isDragging) {
             hideToolbar();
             return;
@@ -805,6 +835,15 @@ export function setupSelectionToolbar(
             deleteSep.style.display =
                 isEntireTable || isRow || isCol ? "" : "none";
 
+            // Reflect active marks on the selected cells (matching the top
+            // toolbar). Hidden buttons toggle harmlessly.
+            const cellActive = computeToolbarActiveState(view.state);
+            setActive(boldBtn, cellActive.marks.bold);
+            setActive(italicBtn, cellActive.marks.italic);
+            setActive(strikeBtn, cellActive.marks.strikethrough);
+            setActive(codeBtn, cellActive.marks.inlineCode);
+            setActive(highlightBtn, cellActive.marks.highlight);
+
             // A single-cell selection with every inline mark opted out has no
             // structure controls either → don't flash an empty bar.
             const hasCellMarks =
@@ -831,7 +870,7 @@ export function setupSelectionToolbar(
             return;
         }
 
-        const { $from } = selection;
+        const { $from, $to } = selection;
 
         // Don't show inside a code block
         for (let d = $from.depth; d >= 0; d--) {
@@ -843,10 +882,20 @@ export function setupSelectionToolbar(
 
         const inTable = isInTableCell($from);
 
+        // Turn-into (P/H1–H6) is a BLOCK operation, so it only belongs on a
+        // block-scoped selection: the whole text of one block, or a run that
+        // spans blocks. On a substring within a block it conflates levels —
+        // you're formatting a phrase, not retyping the block — so hide it and
+        // leave block conversion to the gutter menu.
+        const wholeBlock =
+            !$from.sameParent($to) ||
+            (selection.from <= $from.start() && selection.to >= $to.end());
+
         // Text mode: each inline button honors its per-item visibility setting
         // (birta.floatingToolbar.items.*). The format dropdown is additionally
-        // hidden inside a table cell (it is meaningless there).
-        const showFormat = !inTable && visible.has("format");
+        // hidden inside a table cell (meaningless there) and on a substring
+        // selection (block op on a phrase — see wholeBlock above).
+        const showFormat = !inTable && visible.has("format") && wholeBlock;
         const showBold = visible.has("bold");
         const showItalic = visible.has("italic");
         const showStrike = visible.has("strikethrough");
@@ -867,8 +916,9 @@ export function setupSelectionToolbar(
 
         // A separator only appears between two non-empty groups, so hiding items
         // by config never leaves a leading, trailing, or doubled separator.
-        const hasMarks = showBold || showStrike || showItalic || showCode || showHighlight;
-        const hasInsert = showClear || showMath;
+        // Inline math now groups with the marks (it moved beside inline code).
+        const hasMarks = showBold || showItalic || showStrike || showCode || showMath || showHighlight;
+        const hasInsert = showClear;
         textFmtSep.style.display = showFormat && (hasMarks || showLink || hasInsert) ? "" : "none";
         linkSep.style.display = showLink && (showFormat || hasMarks) ? "" : "none";
         insertSep.style.display = hasInsert && (showFormat || hasMarks || showLink) ? "" : "none";
@@ -882,6 +932,20 @@ export function setupSelectionToolbar(
         // Table-only and block-only elements: hidden in text mode
         hideAllTable();
         hideBlockButtons();
+
+        // Reflect which inline marks/constructs are already applied on the
+        // selection — the same derivation the top toolbar uses, so the two
+        // surfaces can never disagree. Toggling a hidden button is harmless.
+        const active = computeToolbarActiveState(view.state);
+        setActive(boldBtn, active.marks.bold);
+        setActive(italicBtn, active.marks.italic);
+        setActive(strikeBtn, active.marks.strikethrough);
+        setActive(codeBtn, active.marks.inlineCode);
+        setActive(highlightBtn, active.marks.highlight);
+        setActive(mathBtn, active.inlineMath);
+        // A real [text](url) link is a mark; a [[wikilink]] is a node-selected
+        // atom — both light the one Link button (matching the top toolbar).
+        setActive(linkBtn, active.marks.link || active.wikiLink);
 
         // Highlight the current format + update the format-button icon (only meaningful outside table mode)
         if (!inTable) {

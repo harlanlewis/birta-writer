@@ -33,5 +33,16 @@ if (typeof Range !== "undefined") {
     Range.prototype.getBoundingClientRect ??= () => zeroRect;
 }
 
+// jsdom has no ResizeObserver; the floating selection palette constructs one to
+// re-anchor on editor reflow. A no-op stub lets it instantiate (real reflow is
+// covered by the e2e Chromium harness).
+if (typeof globalThis.ResizeObserver === "undefined") {
+    globalThis.ResizeObserver = class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+    } as unknown as typeof ResizeObserver;
+}
+
 /** Exposed for test assertions. */
 export { mockVscodeApi };

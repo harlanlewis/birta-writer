@@ -31,6 +31,15 @@
     background: var(--vscode-toolbar-hoverBackground);
 }
 
+/* A button reflecting a mark/construct already applied on the selection — the
+   same quiet VS Code activated-option token the top toolbar uses (background
+   only; a ring per lit button reads as clutter with several active at once). */
+.sel-tb-btn--active,
+.sel-tb-btn--active:hover {
+    background: var(--vscode-inputOption-activeBackground);
+    color: var(--vscode-inputOption-activeForeground);
+}
+
 /* Destructive action (block Delete): the icon reddens on hover to signal it
    removes content — the block menu's danger semantic, via a theme token. The
    edit is undoable, so this is a caution, not a barrier. */

@@ -36,7 +36,7 @@ import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
 import { isTaskCheckboxClick } from "./utils/taskCheckbox";
 
-import { setupLinkPopup } from "./components/linkPopup";
+import { setupLinkPopup, closeLinkEditor } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
 import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
@@ -455,6 +455,16 @@ eventManager.onDocument(
     "focusin",
     (e) => {
         const target = e.target as Element | null;
+        // Opening the block (handle) menu is a shift from inline/substring intent
+        // to block-level intent, so clear the inline chrome (the formatting
+        // palette AND the link editor) rather than stacking the menu over them.
+        // The menu focuses its "Search actions…" input on open, so this fires for
+        // both mouse and keyboard opens.
+        if (target?.closest(".block-menu")) {
+            selectionTb?.hide();
+            closeLinkEditor();
+            return;
+        }
         // Focus entering the shared link editor hands editing off to it, so
         // dismiss the floating selection palette — otherwise the palette (above
         // the selection) and the popup (below it) sandwich the range with two

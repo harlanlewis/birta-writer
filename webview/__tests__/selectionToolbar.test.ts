@@ -305,6 +305,97 @@ describe("selection toolbar link button", () => {
     });
 });
 
+/** A button identified by its aria-label prefix (buttons with a shortcut append
+ *  it to the label, e.g. "Bold ⌘B", so match on the leading name). */
+function btnByLabel(label: string): HTMLButtonElement {
+    const btn = selToolbar().querySelector<HTMLButtonElement>(
+        `.sel-tb-btn[aria-label^="${label}"]`,
+    );
+    expect(btn, `button ${label}`).not.toBeNull();
+    return btn!;
+}
+
+describe("selection toolbar layout & active state", () => {
+    let editor: Editor | null = null;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+    });
+
+    afterEach(async () => {
+        if (editor) {
+            await editor.destroy();
+            editor = null;
+        }
+    });
+
+    it("inline math should sit between inline code and highlight (not in the clear-formatting group)", () => {
+        // Arrange / Act
+        setupSelectionToolbar(() => null, () => null, vi.fn());
+
+        // Assert — DOM order: … Inline Code, Inline Math, Highlight …
+        const math = btnByLabel("Inline Math");
+        expect(math.previousElementSibling).toBe(btnByLabel("Inline Code"));
+        expect(math.nextElementSibling).toBe(btnByLabel("Highlight"));
+    });
+
+    it("a substring selection should hide the format (turn-into) dropdown", async () => {
+        // Arrange — select "hello" inside "hello world" (a substring, not the block)
+        editor = await makeEditor("hello world\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)),
+        );
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — bar shows (marks are relevant) but the format dropdown is hidden
+        expect(selToolbar().style.display).toBe("flex");
+        const fmtWrap = selToolbar().querySelector<HTMLElement>(".sel-tb-fmt-wrap");
+        expect(fmtWrap!.style.display).toBe("none");
+    });
+
+    it("a whole-block selection should show the format (turn-into) dropdown", async () => {
+        // Arrange — select the entire block text "hello world"
+        editor = await makeEditor("hello world\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 12)),
+        );
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert
+        const fmtWrap = selToolbar().querySelector<HTMLElement>(".sel-tb-fmt-wrap");
+        expect(fmtWrap!.style.display).not.toBe("none");
+    });
+
+    it("a bold selection should light the Bold button active (matching the top toolbar)", async () => {
+        // Arrange — "bold" carries a strong mark; select exactly it
+        editor = await makeEditor("**bold** plain\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 5)),
+        );
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — Bold lit, Italic not
+        expect(btnByLabel("Bold").classList.contains("sel-tb-btn--active")).toBe(true);
+        expect(btnByLabel("Italic").classList.contains("sel-tb-btn--active")).toBe(false);
+    });
+});
+
 describe("selection toolbar format menu", () => {
     let editor: Editor | null = null;
 
