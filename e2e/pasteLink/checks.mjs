@@ -13,6 +13,11 @@ export async function run({ page, check, baseUrl }) {
     const updates = () =>
         page.evaluate(() => window.__posted.filter((m) => m.type === "update").map((m) => m.content));
     const paletteVisible = () => page.locator(".lp-root").isVisible();
+    // The floating selection palette sits ABOVE the selection; the link popup
+    // opens BELOW it. When a URL paste opens the popup, the palette must dismiss
+    // (index.ts hides it on focus entering .lp-root) so the two don't sandwich
+    // the range. isVisible() already treats display:none as hidden.
+    const selToolbarVisible = () => page.locator(".sel-toolbar").isVisible();
 
     const para = page.locator(".ProseMirror p").first();
     await para.click();
@@ -45,10 +50,18 @@ export async function run({ page, check, baseUrl }) {
     // ── 1. Scheme URL over a selection → link + palette prefilled ──
     const sel = await selectWord(40); // "quick"
     check("a word is selected", sel.length > 0, JSON.stringify(sel));
+    // Precondition for the un-sandwich check below: selecting a word raises the
+    // floating formatting palette above it.
+    check("selecting a word raises the floating palette", await selToolbarVisible());
 
     await pasteText("https://example.com");
     await page.waitForSelector(".lp-root", { state: "visible", timeout: 3000 }).catch(() => {});
     check("pasting a URL opens the link palette", await paletteVisible());
+    await page.waitForTimeout(100); // let the popup's focus land (focusin → hide)
+    check(
+        "opening the link popup dismisses the floating palette (no sandwich)",
+        !(await selToolbarVisible()),
+    );
     const urlVal = await page.locator(".lp-root .lp-url-input").inputValue().catch(() => "");
     check("the palette is prefilled with the pasted URL", urlVal === "https://example.com", JSON.stringify(urlVal));
 

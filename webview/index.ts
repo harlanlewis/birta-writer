@@ -455,6 +455,16 @@ eventManager.onDocument(
     "focusin",
     (e) => {
         const target = e.target as Element | null;
+        // Focus entering the shared link editor hands editing off to it, so
+        // dismiss the floating selection palette — otherwise the palette (above
+        // the selection) and the popup (below it) sandwich the range with two
+        // chromes. This is the single choke point every link surface routes
+        // through (the palette's Link button, ⌘K, the slash menu, and pasting a
+        // URL over a selection), so one hide covers them all.
+        if (target?.closest(".lp-root")) {
+            selectionTb?.hide();
+            return;
+        }
         const pm = target?.closest(".ProseMirror");
         if (!pm) {
             return; // focus went outside the editor entirely — leave the bar as-is
