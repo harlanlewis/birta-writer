@@ -2,6 +2,7 @@
 .claude/**
 .github/**
 .mimocode/**
+scripts/**
 src/**
 webview/**
 shared/**

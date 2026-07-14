@@ -37,24 +37,24 @@ Whenever a work session changes extension or webview source (`src/`, `webview/`,
 1. `pnpm test` — all green.
 2. **Update `CHANGELOG.md`** if the change added, altered, or removed any user-visible behavior or setting: add or amend an entry under `## [Unreleased]`, in the correct Keep a Changelog section (`Added` / `Changed` / `Deprecated` / `Removed` / `Fixed`). Write it for a user of the editor — describe the observable behavior and any setting keys, not the internal plugins or APIs involved. Skip only for changes with no user-facing effect (refactors, tests, tooling, comments). This is the one step you can't reconstruct later, so do it while the change is fresh.
 3. **Review `docs/BENEFITS.md`** and, if appropriate, edit it. Unlike the CHANGELOG (an append-only log), this is a refined document — if the change altered a capability the doc describes, its fidelity/safety story, or the tool-compatibility table, revise the relevant entry *in place* to keep it accurate; don't append a new one. Most changes won't touch it — skip it when the benefits/compatibility story is unchanged. Keep the tone matter-of-fact: state what the capability is and *why* it matters, never marketing copy.
-4. `pnpm run package`
+4. `pnpm run package` — local packaging always writes `releases/birta-writer-0.0.0.vsix` (`package.json` is pinned at `0.0.0`; real CalVer versions are stamped only by the CI `Release` job — see [`docs/RELEASING.md`](docs/RELEASING.md)).
 5. Install into VS Code so it's on the new build, and make sure Birta is the **only** copy of this editor installed:
-   - `code --install-extension releases/birta-writer-<version>.vsix --force`
+   - `code --install-extension releases/birta-writer-0.0.0.vsix --force`
    - Remove any pre-rebrand build so VS Code never runs two copies over the same `.md` files: `code --uninstall-extension harlanlewis.md-wysiwyg-editor` (ignore a "not installed" message — it just means the cleanup already happened). Then confirm exactly one remains: `code --list-extensions | grep -iE 'birta|wysiwyg'` should print only `harlanlewis.birta-writer`.
 
    Both `--force`-installing `harlanlewis.birta-writer` and uninstalling the old `harlanlewis.md-wysiwyg-editor` id leave the user's `settings.json` untouched, so their Birta config (`birta.*` keys) carries across every reinstall — never edit or delete their settings as part of an install. `--force` allows reinstalling the same version. The VS Code `code` CLI is often not on `PATH` on this machine even though VS Code is installed — fall back to the app-bundle binary `"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension … --force` (and `… --uninstall-extension …`). Only if VS Code truly isn't installed, skip it and say so rather than failing the handoff.
 6. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
-Do this by default, without being asked, before handing control back. Bump the patch version when it helps the user confirm they're on the new build.
+Do this by default, without being asked, before handing control back. Don't touch `package.json`'s version to mark a build — it stays `0.0.0`; the window reload is what confirms the new build is live.
 
 ### Trying changes in the user's editor (VS Code)
 
 `pnpm build` only rebuilds `dist/`; the user's editor runs an **installed copy** of the extension, so a window reload alone never picks up source changes. When the user wants to try changes in their own VS Code window (rather than F5 debugging):
 
 1. `pnpm test` — must pass first.
-2. `pnpm run package` — writes `releases/birta-writer-<version>.vsix`.
+2. `pnpm run package` — writes `releases/birta-writer-0.0.0.vsix` (local builds are always `0.0.0`; see the handoff note above).
 3. Install into VS Code (`--force` allows reinstalling the same version), and clear out any legacy build so only one copy runs:
-   - `code --install-extension releases/birta-writer-<version>.vsix --force`
+   - `code --install-extension releases/birta-writer-0.0.0.vsix --force`
    - `code --uninstall-extension harlanlewis.md-wysiwyg-editor` (ignore "not installed"). Neither step touches the user's `settings.json`, so their `birta.*` config persists.
 4. Tell the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 

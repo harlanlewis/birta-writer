@@ -129,7 +129,9 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: releases/*.vsix
 
-      # Dormant until a VSCE_PAT secret is added — see repo settings.
+      # Dormant until a VSCE_PAT secret is added — see docs/RELEASING.md.
+      # A pre-release channel, if ever wanted, is a flag not a version: append
+      # `--pre-release` here for those builds; the CalVer scheme is unchanged.
       - name: Publish to VS Code Marketplace
         if: steps.plan.outputs.release == 'true' && env.HAS_VSCE == 'true'
         run: pnpm vsce publish --no-dependencies --packagePath releases/*.vsix
