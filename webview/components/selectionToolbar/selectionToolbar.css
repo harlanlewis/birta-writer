@@ -1,13 +1,20 @@
 /* ─── Text-selection floating toolbar ────────────────── */
 .sel-toolbar {
+    /* Inverted chip — the .custom-tooltip / .block-drag-pill family: the editor
+       foreground becomes the ground and vice versa, so contrast reverses in
+       every theme (a dark chip in a light theme, a light one in a dark theme).
+       `ink` is glyphs/text on that ground; hovers and the active state are a
+       translucent ink wash so they read on either polarity without a token. */
+    --stb-ground: var(--vscode-editor-foreground);
+    --stb-ink: var(--vscode-editor-background);
     position: fixed;
     z-index: 1200;
     display: none;
     align-items: center;
     gap: 2px;
     padding: 3px 6px;
-    background: var(--vscode-editorHoverWidget-background);
-    border: 1px solid var(--vscode-editorHoverWidget-border);
+    background: var(--stb-ground);
+    color: var(--stb-ink);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     user-select: none;
@@ -22,22 +29,23 @@
     background: none;
     border: none;
     border-radius: 4px;
-    color: var(--vscode-editorHoverWidget-foreground);
+    color: var(--stb-ink);
     cursor: pointer;
     line-height: 1;
 }
 
 .sel-tb-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground);
+    background: color-mix(in srgb, var(--stb-ink) 16%, transparent);
 }
 
-/* A button reflecting a mark/construct already applied on the selection — the
-   same quiet VS Code activated-option token the top toolbar uses (background
-   only; a ring per lit button reads as clutter with several active at once). */
+/* A button reflecting a mark/construct already applied on the selection — a
+   stronger ink wash than hover (background only; a ring per lit button reads as
+   clutter with several active at once). Mirrors the top toolbar's quiet "on"
+   idea, adapted to the inverted ground. */
 .sel-tb-btn--active,
 .sel-tb-btn--active:hover {
-    background: var(--vscode-inputOption-activeBackground);
-    color: var(--vscode-inputOption-activeForeground);
+    background: color-mix(in srgb, var(--stb-ink) 30%, transparent);
+    color: var(--stb-ink);
 }
 
 /* Destructive action (block Delete): the icon reddens on hover to signal it
@@ -55,7 +63,7 @@
 .sel-tb-sep {
     width: 1px;
     height: 18px;
-    background: var(--vscode-editorHoverWidget-border);
+    background: color-mix(in srgb, var(--stb-ink) 28%, transparent);
     margin: 0 3px;
     flex-shrink: 0;
 }
@@ -78,14 +86,16 @@
 }
 
 /* Format submenu: shown above the toolbar */
+/* Submenus stay in the inverted family (they descend from .sel-toolbar, so the
+   ground/ink vars carry through). */
 .sel-tb-fmt-menu {
     position: absolute;
     bottom: calc(100% + 6px);
     left: 0;
     display: none;
     flex-direction: column;
-    background: var(--vscode-editorHoverWidget-background);
-    border: 1px solid var(--vscode-editorHoverWidget-border);
+    background: var(--stb-ground);
+    color: var(--stb-ink);
     border-radius: 5px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     overflow: hidden;
@@ -95,18 +105,17 @@
 .sel-tb-fmt-item {
     padding: 5px 12px;
     font-size: 12px;
-    color: var(--vscode-editorHoverWidget-foreground);
+    color: var(--stb-ink);
     cursor: pointer;
     text-align: left;
     white-space: nowrap;
 }
 
 .sel-tb-fmt-item:hover {
-    background: var(--vscode-list-hoverBackground);
+    background: color-mix(in srgb, var(--stb-ink) 16%, transparent);
 }
 
 .sel-tb-fmt-item--active {
-    color: var(--vscode-focusBorder);
     font-weight: 600;
 }
 

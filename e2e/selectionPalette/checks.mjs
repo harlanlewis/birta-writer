@@ -82,6 +82,17 @@ export async function run({ page, check, baseUrl }) {
         !(await fmtWrap.isVisible()),
     );
 
+    // Inverted chip: the palette ground is the editor FOREGROUND (harness
+    // --vscode-editor-foreground = #d4d4d4), reversing contrast like the tooltip.
+    const paletteBg = await page.evaluate(
+        () => getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor,
+    );
+    check(
+        "the palette uses the inverted (editor-foreground) ground",
+        paletteBg === "rgb(212, 212, 212)",
+        paletteBg,
+    );
+
     // ── 3. Whole-block selection → format dropdown shown ──
     await selectWholeParagraph();
     check("the palette is visible for the whole block", await toolbar.isVisible());

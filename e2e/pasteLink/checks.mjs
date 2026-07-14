@@ -62,6 +62,42 @@ export async function run({ page, check, baseUrl }) {
         "opening the link popup dismisses the floating palette (no sandwich)",
         !(await selToolbarVisible()),
     );
+
+    // Field order: the URL/path leads the form, the label trails it.
+    const urlBeforeLabel = await page.evaluate(() => {
+        const root = document.querySelector(".lp-root");
+        const url = root.querySelector(".lp-url-input");
+        const text = root.querySelector(".lp-text-input");
+        return Boolean(
+            url.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+    });
+    check("the URL field comes before the label field", urlBeforeLabel);
+
+    // The popup re-anchors to its target as the editor reflows (the bug: it
+    // stayed put while the formatting palette moved). Shift the content box and
+    // confirm the popup follows, then restore the layout for later sections.
+    const popupBefore = await page.locator(".lp-root").boundingBox();
+    await page.evaluate(() => {
+        const pm = document.querySelector(".milkdown .ProseMirror");
+        pm.dataset.prevStyle = pm.getAttribute("style") ?? "";
+        pm.style.marginLeft = "180px";
+        pm.style.maxWidth = "360px";
+    });
+    await page.waitForTimeout(200);
+    const popupAfter = await page.locator(".lp-root").boundingBox();
+    check(
+        "the link popup re-anchors after the editor reflows",
+        Boolean(popupBefore && popupAfter) && Math.abs(popupAfter.x - popupBefore.x) > 1,
+        JSON.stringify({ before: popupBefore?.x, after: popupAfter?.x }),
+    );
+    await page.evaluate(() => {
+        const pm = document.querySelector(".milkdown .ProseMirror");
+        pm.setAttribute("style", pm.dataset.prevStyle ?? "");
+        delete pm.dataset.prevStyle;
+    });
+    await page.waitForTimeout(150);
+
     const urlVal = await page.locator(".lp-root .lp-url-input").inputValue().catch(() => "");
     check("the palette is prefilled with the pasted URL", urlVal === "https://example.com", JSON.stringify(urlVal));
 
