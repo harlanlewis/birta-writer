@@ -761,8 +761,8 @@ body:not(.editor-width-auto) {
         }
 
         /* Reference-style links ([text][ref]) render identically to inline
-           links — same color, no underline until hover — via the shared `a`
-           rule below; they need no distinct styling. */
+           links — same color and underline — via the shared `a` rule below;
+           they need no distinct styling. */
 
         /* Highlight (==mark==) — theme-aware translucent wash so the text
            color stays readable in light and dark themes alike. */
@@ -1225,13 +1225,15 @@ body:not(.editor-width-auto) {
             }
         }
 
-        /* Links */
+        /* Links — underlined at rest (the conventional link affordance, and the
+           underline this design reserves for links per DESIGN_PRINCIPLES; a
+           dotted underline means "reconsider" and belongs to proofreading). The
+           theme supplies only the color tokens; text-decoration is ours. */
         a {
             color: var(--vscode-textLink-foreground);
-            text-decoration: none;
+            text-decoration: underline;
 
             &:hover {
-                text-decoration: underline;
                 color: var(--vscode-textLink-activeForeground);
             }
         }
