@@ -3,6 +3,10 @@ dist/
 out/
 coverage/
 test/
+# ...but keep the @vscode/test-electron integration suite (the broad `test/` above
+# would otherwise ignore it). Its compiled output still lands in the ignored out/.
+!src/test/
+!src/test/**
 *.vsix
 releases/
 .DS_Store
@@ -12,3 +16,4 @@ releases/
 .env
 .env.*
 .e2e-shots/
+.vscode-test/

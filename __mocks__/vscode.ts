@@ -99,6 +99,14 @@ export class WorkspaceEdit {
     }
 }
 
+/** Mirrors vscode.TextEdit (used by the onWillSaveTextDocument flush path). */
+export class TextEdit {
+    constructor(public range: Range, public newText: string) {}
+    static replace(range: Range, newText: string): TextEdit {
+        return new TextEdit(range, newText);
+    }
+}
+
 export interface FakeTextDocumentChangeEvent {
     document: FakeTextDocument;
     contentChanges: Array<{
@@ -123,10 +131,38 @@ export function fireDidChangeTextDocument(e: FakeTextDocumentChangeEvent): void 
 /** Registry of fake documents so workspace.applyEdit can route edits by uri */
 const fakeTextDocuments = new Map<string, FakeTextDocument>();
 
-/** Drops all fake documents and change listeners; call in beforeEach */
+/** Listener list backing workspace.onWillSaveTextDocument */
+export interface FakeWillSaveEvent {
+    document: FakeTextDocument;
+    reason: number;
+    waitUntil(thenable: Promise<unknown>): void;
+}
+const willSaveTextDocumentListeners: Array<(e: FakeWillSaveEvent) => void> = [];
+
+/**
+ * Drives the onWillSaveTextDocument participants like a real save: each listener
+ * may call waitUntil(promise); this awaits them all and returns the collected
+ * results (TextEdit[] arrays) so a test can assert what a save would write.
+ */
+export async function fireWillSaveTextDocument(
+    document: FakeTextDocument,
+    reason = 1,
+): Promise<unknown[]> {
+    const waited: Array<Promise<unknown>> = [];
+    const e: FakeWillSaveEvent = {
+        document,
+        reason,
+        waitUntil: (thenable) => { waited.push(Promise.resolve(thenable)); },
+    };
+    for (const listener of [...willSaveTextDocumentListeners]) { listener(e); }
+    return Promise.all(waited);
+}
+
+/** Drops all fake documents and change/will-save listeners; call in beforeEach */
 export function resetTextDocumentMocks(): void {
     fakeTextDocuments.clear();
     textDocumentChangeListeners.length = 0;
+    willSaveTextDocumentListeners.length = 0;
 }
 
 export interface FakeTextDocument {
@@ -274,6 +310,19 @@ export const workspace = {
                     const idx = textDocumentChangeListeners.indexOf(listener);
                     if (idx >= 0) {
                         textDocumentChangeListeners.splice(idx, 1);
+                    }
+                }),
+            };
+        },
+    ),
+    onWillSaveTextDocument: vi.fn(
+        (listener: (e: FakeWillSaveEvent) => void) => {
+            willSaveTextDocumentListeners.push(listener);
+            return {
+                dispose: vi.fn(() => {
+                    const idx = willSaveTextDocumentListeners.indexOf(listener);
+                    if (idx >= 0) {
+                        willSaveTextDocumentListeners.splice(idx, 1);
                     }
                 }),
             };

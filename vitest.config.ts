@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 import path from "path";
 
 export default defineConfig({
@@ -10,6 +10,10 @@ export default defineConfig({
         },
     },
     test: {
+        // The @vscode/test-electron integration suite (src/test/**, compiled to
+        // out/**) runs in a real Extension Host via Mocha — never under Vitest.
+        // It uses bare Mocha globals and the real `vscode` API, so exclude it here.
+        exclude: [...configDefaults.exclude, "src/test/**", "out/**"],
         coverage: {
             provider: "v8",
             reporter: ["text", "lcov", "html"],

@@ -165,7 +165,10 @@ export type ProofreadConfig = {
  */
 export type ToExtensionMessage =
     | { type: "ready" }
-    | { type: "update"; content: string; baseSyncVersion: number }
+    // `seq` is a monotonic outbound-content counter (shared with flushResult). It
+    // totally orders view→document content messages so the extension can drop a
+    // stale `update` that would otherwise revert a fresher save-flush.
+    | { type: "update"; content: string; baseSyncVersion: number; seq: number }
     | { type: "openUrl"; url: string }
     // `wiki` marks a wikilink target: the fragment (if any) is always a
     // heading, never a line number, and bare names resolve by filename
@@ -217,6 +220,13 @@ export type ToExtensionMessage =
     // to `tocPosition`, which round-trips back as a `setTocPosition` message.
     | { type: "setTocPosition"; position: TocPosition }
     | { type: "lintBlocks"; id: number; blocks: LintBlock[] }
+    // Reply to a `flushSave` request: the webview serialized the live document
+    // immediately (bypassing its sync throttle) so a save can write the freshest
+    // content. `id` correlates with the request; `content` is display-space
+    // markdown; `baseSyncVersion` lets the extension drop a flush that raced an
+    // external change (same stale-guard as `update`); `seq` is the shared
+    // monotonic outbound-content counter (see `update`).
+    | { type: "flushResult"; id: string; content: string; baseSyncVersion: number; seq: number }
     // Selection serialized in the webview (copy-as-HTML / copy-as-Markdown from
     // the right-click menu); the extension writes `data` to the system clipboard.
     | { type: "clipboardWrite"; format: "html" | "markdown"; data: string };
@@ -280,6 +290,16 @@ export type ToWebviewMessage =
     // per open document and posts per-webview (never one global broadcast).
     | { type: "setFoldingControls"; controls: FoldingControlsMode; enabled: boolean }
     | { type: "lintResults"; id: number; results: LintBlockResult[] }
+    // TEST-ONLY: inserts text into the live editor at the caret. Sent only by the
+    // invisible (uncontributed) `birta._test.insertText` command from the
+    // integration suite, to drive the real Milkdown editor ahead of the backing
+    // document and exercise the save flush end-to-end. Never used in production.
+    | { type: "__testInsertText"; text: string }
+    // A save is imminent (onWillSaveTextDocument): the webview must serialize the
+    // live document NOW and reply with `flushResult` so the save writes the
+    // freshest content instead of whatever the throttle last shipped. `id`
+    // correlates the reply.
+    | { type: "flushSave"; id: string }
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).
     | { type: "editorCommand"; command: EditorCommandId; args?: unknown };

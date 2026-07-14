@@ -27,6 +27,7 @@ import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
 import { mark, measure } from "./perf";
 import { configureSerialization, pureCommonmark } from "./serialization";
+import { createSyncScheduler } from "./syncScheduler";
 import {
     applyMinimalChanges,
     computeRoundTripProtection,
@@ -173,6 +174,58 @@ let _isComposing = false;
 // compositionend. Only the most recent push matters — older ones are stale.
 let _pendingExternalMarkdown: string | null = null;
 
+// ── Outbound sync pipeline (view → document) ───────────────────────────────
+// The `updated` listener is O(1): it flags that an edit happened and asks the
+// scheduler when to sync. SERIALIZATION (whole-doc `getMarkdown()` +
+// `applyMinimalChanges` + round-trip protection) is expensive — O(document
+// size), ~49 ms on a 300 KB doc — so it runs ONLY in syncNow(), never on the
+// keystroke path, and the scheduler keeps it off mid-burst (leading edge →
+// dirty ASAP; trailing debounce → don't re-serialize while typing; max-wait →
+// bound crash-safety staleness). The definitive freshest content is always
+// captured at save via flushPendingEdit() regardless of where the debounce sits.
+// The scheduling policy lives in webview/syncScheduler.ts (unit-tested there).
+let _onUpdate: ((markdown: string) => void) | null = null;
+
+/**
+ * Serialize the live document, merge it into the saved bytes with round-trip
+ * protection, and ship it to the extension if it substantively changed. The
+ * scheduler guarantees this is never called mid-IME-composition.
+ */
+function syncNow(): void {
+    if (!_editor) { return; }
+    const markdown = _editor.action(getMarkdown());
+    const toSave = applyMinimalChanges(_savedMarkdown, markdown, getProtection());
+    if (toSave === _savedMarkdown) { return; } // no substantive change — no save
+    _savedMarkdown = toSave;
+    _onUpdate?.(toSave);
+}
+
+const _scheduler = createSyncScheduler({
+    now: () => performance.now(),
+    setTimer: (cb, ms) => setTimeout(cb, ms),
+    clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+    isComposing: () => _isComposing,
+    onSync: () => syncNow(),
+});
+
+/**
+ * Serialize immediately for a save flush and return the freshest file-ready
+ * (display-space) markdown, whether or not it changed since the last sync.
+ * Cancels any pending sync and returns the scheduler to its leading-ready
+ * posture so the FIRST edit after this save dirties the document immediately
+ * (a quick edit-then-save right after a prior save must not land in the
+ * trailing window and no-op). Called from the `flushSave` handler when the
+ * extension's onWillSaveTextDocument participant is about to write.
+ */
+export function flushPendingEdit(): string {
+    _scheduler.reset();
+    if (_editor) {
+        const markdown = _editor.action(getMarkdown());
+        _savedMarkdown = applyMinimalChanges(_savedMarkdown, markdown, getProtection());
+    }
+    return _savedMarkdown;
+}
+
 function setupInteractionTracking(): void {
     if (_interactionListenerAdded) return;
     _interactionListenerAdded = true;
@@ -248,24 +301,11 @@ export async function createEditor(
     _hasUserInteracted = false;
     setupInteractionTracking();
 
-    let debounceTimer: ReturnType<typeof setTimeout>;
-    // During IME composition (compositionstart → compositionend) stash the
-    // latest markdown so a half-typed pinyin/kana candidate is never saved.
+    // Reset the outbound sync pipeline for this editor instance.
+    _onUpdate = onUpdate;
+    _scheduler.reset();
     _isComposing = false;
     _pendingExternalMarkdown = null;
-    let pendingMd: string | null = null;
-
-    const fireUpdate = (md: string) => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => onUpdate(md), 300);
-    };
-    const debouncedUpdate = (md: string) => {
-        if (_isComposing) {
-            pendingMd = md; // composing: stash and send on compositionend
-            return;
-        }
-        fireUpdate(md);
-    };
 
     container.addEventListener('compositionstart', () => {
         _isComposing = true;
@@ -273,18 +313,15 @@ export async function createEditor(
     container.addEventListener('compositionend', () => {
         _isComposing = false;
         // Apply any inbound external sync that arrived mid-composition first, so
-        // the file's authoritative state wins; a now-stale outbound save below
+        // the file's authoritative state wins; a now-stale outbound sync below
         // is harmless (the extension's version check drops and re-pushes it).
         if (_pendingExternalMarkdown !== null) {
             const md = _pendingExternalMarkdown;
             _pendingExternalMarkdown = null;
             _applyExternalNow(md);
         }
-        if (pendingMd !== null) {
-            const md = pendingMd;
-            pendingMd = null;
-            fireUpdate(md); // fire immediately after composition (still 300ms debounced)
-        }
+        // Ship any edit that landed during composition, now that it's committed.
+        _scheduler.compositionEnded();
     });
 
     // Setting the initial content during editor.create() fires the update
@@ -309,20 +346,17 @@ export async function createEditor(
             // original file formatting (bullets, rules, table widths)
             configureSerialization(ctx);
             _savedMarkdown = initialMarkdown;
-            // The `updated` hook (doc-based) is used instead of
-            // `markdownUpdated`: plugin-listener captures the serializer from
-            // serializerCtx ONCE at SerializerReady, so markdownUpdated would
-            // race the fidelitySerializerPlugin swap and could serialize with
-            // the stock serializer. Reading serializerCtx at call time always
-            // uses the current (fidelity) serializer.
-            ctx.get(listenerCtx).updated((innerCtx, doc) => {
+            // O(1) hot path: only flag that an edit happened and (leading-edge)
+            // throttle a sync. The expensive serialize+diff runs in syncNow(),
+            // off the keystroke — never here — so typing stays O(1) w.r.t.
+            // document size. (The `updated` doc-based hook is used rather than
+            // `markdownUpdated` because plugin-listener captures the serializer
+            // once at SerializerReady; syncNow reads serializerCtx at call time
+            // via getMarkdown(), always using the current fidelity serializer.)
+            ctx.get(listenerCtx).updated(() => {
                 if (!isSettled) return;          // skip the synchronous trigger during init
                 if (!_hasUserInteracted) return; // skip async init triggers (RAF/microtask delivery)
-                const markdown = innerCtx.get(serializerCtx)(doc);
-                const toSave = applyMinimalChanges(_savedMarkdown, markdown, getProtection());
-                if (toSave === _savedMarkdown) return; // no substantive change — no save
-                _savedMarkdown = toSave;
-                debouncedUpdate(toSave);
+                _scheduler.request();
             });
             // Configure prism: use our refractor instance with the languages we registered
             ctx.set(prismConfig.key, {

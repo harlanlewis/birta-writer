@@ -234,6 +234,21 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
+    // TEST-ONLY hook: registered ONLY outside Production (i.e. the
+    // @vscode/test-electron Development/Test host), so the shipped extension never
+    // exposes it at all — zero production surface. Drives the active editor's real
+    // Milkdown view ahead of the document so the save flush can be verified
+    // end-to-end in a real host. Not contributed → invisible in the palette.
+    if (context.extensionMode !== vscode.ExtensionMode.Production) {
+        context.subscriptions.push(
+            vscode.commands.registerCommand(
+                "birta._test.insertText",
+                (text: string) =>
+                    MarkdownEditorProvider.current?.postToActivePanel({ type: "__testInsertText", text }),
+            ),
+        );
+    }
+
     // Toggle the master proofreading gate (keyboard shortcut / command palette);
     // the config-change listener below broadcasts the new state to every open
     // editor. This gates spelling + grammar + style at once without touching
