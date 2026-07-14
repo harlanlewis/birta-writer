@@ -373,21 +373,30 @@ describe("initToc drag integration", () => {
     it("a toc item click after a drag should not navigate", async () => {
         await makeToc("# A\n\nalpha\n\n# B\n\nbeta");
         const item = itemAt(0);
-        mouse(item, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
-        mouse(document, "mousemove", { clientX: 40, clientY: 40, buttons: 1 });
-        document.dispatchEvent(
-            new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
-        );
-        // The button's eventual release still produces a click on the item —
-        // it must stay suppressed.
-        mouse(item, "mouseup", { button: 0, buttons: 0 });
-        mouse(item, "click", { button: 0 });
-        expect(item.classList.contains("toc-item--active")).toBe(false);
+        // Fake timers so the suppression-flag cleanup hop (a production
+        // setTimeout(0)) is advanced deterministically, never raced against a
+        // real wall-clock wait. Enabled AFTER makeToc so editor creation still
+        // runs on real timers.
+        vi.useFakeTimers();
+        try {
+            mouse(item, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 40, clientY: 40, buttons: 1 });
+            document.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+            );
+            // The button's eventual release still produces a click on the item —
+            // it must stay suppressed.
+            mouse(item, "mouseup", { button: 0, buttons: 0 });
+            mouse(item, "click", { button: 0 });
+            expect(item.classList.contains("toc-item--active")).toBe(false);
 
-        await new Promise((resolve) => setTimeout(resolve, 1)); // flag cleanup hop
-        // The NEXT genuine click navigates.
-        mouse(item, "click", { button: 0 });
-        expect(item.classList.contains("toc-item--active")).toBe(true);
+            vi.advanceTimersByTime(1); // run the flag cleanup hop
+            // The NEXT genuine click navigates.
+            mouse(item, "click", { button: 0 });
+            expect(item.classList.contains("toc-item--active")).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("an in-place micro-drag should still navigate on release", async () => {
@@ -419,10 +428,15 @@ describe("initToc drag integration", () => {
     });
 
     it("a mousedown on a gutter marker should not close the overlay toc", async () => {
+        // Fake timers so the outside-close handler's zero-delay registration hop
+        // is advanced deterministically (the wait is load-bearing — without it
+        // the handler isn't attached and the test would pass vacuously).
+        vi.useFakeTimers();
+        try {
         const { toc } = await makeToc("# A\n\nalpha\n\n# B\n\nbeta", { overlay: true });
         expect(toc.isOpen()).toBe(true);
         // The outside-close handler registers on a zero-delay hop.
-        await new Promise((resolve) => setTimeout(resolve, 1));
+        await vi.advanceTimersByTimeAsync(1);
 
         const gutter = document.createElement("div");
         gutter.className = "heading-fold-marker";
@@ -433,5 +447,8 @@ describe("initToc drag integration", () => {
         // A genuinely-outside mousedown still closes the overlay.
         mouse(document.body, "mousedown", { button: 0 });
         expect(toc.isOpen()).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

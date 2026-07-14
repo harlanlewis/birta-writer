@@ -90,9 +90,9 @@ describe("generateFilename", () => {
     it("generates different file names when called consecutively with the same altText", () => {
         const n1 = generateFilename("test", "image/png");
         const n2 = generateFilename("test", "image/png");
-        // Extremely unlikely to be identical, enough to verify the uniqueness design
-        expect(typeof n1).toBe("string");
-        expect(typeof n2).toBe("string");
+        // The uniqueness design (random suffix) must actually produce distinct
+        // names for identical inputs — otherwise consecutive pastes collide.
+        expect(n1).not.toBe(n2);
     });
 });
 
