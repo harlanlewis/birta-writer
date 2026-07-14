@@ -27,6 +27,10 @@ export const IconNetwork = svg(`<rect x="16" y="16" width="6" height="6" rx="1"/
 export const IconMinus = svg(`<line x1="5" y1="12" x2="19" y2="12"/>`);
 export const IconPlus = svg(`<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>`);
 
+// Drag-handle grip (two columns of three dots) — the "grab" affordance, reused
+// by the floating block palette to open the same menu the gutter handle does.
+export const IconGripVertical = svg(`<line x1="9" y1="5" x2="9.01" y2="5"/><line x1="9" y1="12" x2="9.01" y2="12"/><line x1="9" y1="19" x2="9.01" y2="19"/><line x1="15" y1="5" x2="15.01" y2="5"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="15" y1="19" x2="15.01" y2="19"/>`);
+
 // ── Lists ────────────────────────────────────────────────
 export const IconList = svg(`<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>`);
 export const IconListOrdered = svg(`<line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>`);
