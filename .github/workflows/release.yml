@@ -1,40 +1,120 @@
 name: Release
 
+# Cuts a Birta Writer release: infers end-user highlights from the changelog,
+# packages the VSIX, tags the commit, and publishes a GitHub Release.
+#
+# Runs nightly and no-ops when nothing new has landed since the last tag.
+# Marketplace publishing stays dormant until a VSCE_PAT secret exists, so today
+# this only builds the downloadable VSIX + notes — exactly the "build, don't
+# publish yet" phase.
+#
+# Version source of truth is the git tag line (v0.3.1 -> v0.3.2), independent of
+# package.json's local build-counter; the VSIX is stamped to match at build time
+# without committing that bump back to the repo.
+
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  schedule:
+    # 11:00 UTC = 04:00 America/Los_Angeles during PDT (03:00 during PST).
+    # GitHub cron is UTC-only with no DST; adjust to '0 12 * * *' if you'd rather
+    # anchor 04:00 to PST (standard time) instead.
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Release even if no new commits since the last tag'
+        type: boolean
+        default: false
+
+# Prevent overlapping nightly + manual runs from double-tagging.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
-    name: Publish to VS Code Marketplace
+    name: Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      HAS_VSCE: ${{ secrets.VSCE_PAT != '' }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags for range detection and notes
+
+      - name: Determine next version and whether to release
+        id: plan
+        run: |
+          PREV=$(git tag -l 'v*' | sort -V | tail -1)
+          if [ -z "$PREV" ]; then PREV="v0.0.0"; fi
+          COUNT=$(git rev-list --count "${PREV}..HEAD")
+          echo "prev=$PREV"   >> "$GITHUB_OUTPUT"
+          echo "range=${PREV}..HEAD" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          BASE=${PREV#v}
+          IFS=. read -r MA MI PA <<< "$BASE"
+          NEXT="$MA.$MI.$((PA + 1))"
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -eq 0 ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "No commits since $PREV — skipping release." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Releasing v$NEXT ($COUNT commit(s) since $PREV)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - uses: pnpm/action-setup@v4
+        if: steps.plan.outputs.release == 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.plan.outputs.release == 'true'
         with:
           node-version: '20'
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.plan.outputs.release == 'true'
         run: pnpm install --frozen-lockfile
 
+      - name: Stamp package.json to the release version
+        if: steps.plan.outputs.release == 'true'
+        run: pnpm version "${{ steps.plan.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Generate release notes
+        if: steps.plan.outputs.release == 'true'
+        env:
+          RANGE: ${{ steps.plan.outputs.range }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          OUT: RELEASE_NOTES.md
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/gen-release-notes.mjs
+
       - name: Package extension
+        if: steps.plan.outputs.release == 'true'
         run: mkdir -p releases && pnpm run package
 
+      - name: Create and push tag
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          git tag "v${{ steps.plan.outputs.version }}"
+          git push origin "v${{ steps.plan.outputs.version }}"
+
+      - name: Create GitHub Release
+        if: steps.plan.outputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.plan.outputs.version }}
+          name: Birta Writer v${{ steps.plan.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          files: releases/*.vsix
+
+      # Dormant until a VSCE_PAT secret is added — see repo settings.
       - name: Publish to VS Code Marketplace
+        if: steps.plan.outputs.release == 'true' && env.HAS_VSCE == 'true'
         run: pnpm vsce publish --no-dependencies --packagePath releases/*.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: releases/*.vsix
-          generate_release_notes: true
