@@ -28,12 +28,13 @@ import {
     IconSearch,
     IconSettings,
     IconFileCode,
+    IconAlertTriangle,
 } from "@/ui/icons";
 import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
@@ -709,6 +710,8 @@ export function initToolbar(
     /** Blank the bar while focus is in a nested editable island (a callout title). */
     setDetached: () => void;
     setDebugMode: (enabled: boolean) => void;
+    /** Show/hide the disk-drift badge (file on disk changed vs unsaved edits). */
+    setSyncConflict: (active: boolean) => void;
     /** Rebuild the toolbar for a changed per-item placement config. */
     applyConfig: (config: ToolbarConfig) => void;
     /** Update the font picker's active-preset indicator (and optional stack previews). */
@@ -1596,6 +1599,22 @@ export function initToolbar(
         dbgItem = wrap("debug", dbgWrap);
     }
 
+    // ── Disk-drift badge (pinned at the front of the right zone, not
+    //    user-placeable; hidden unless the extension flags disk drift: the file
+    //    changed on disk while there are unsaved edits). Advisory only —
+    //    clicking opens the native reload/compare picker; nothing auto-edits. ──
+    let syncConflictVisible = false;
+    const syncConflictItem = wrap(
+        "syncConflict",
+        btn(
+            IconAlertTriangle,
+            t("This file changed on disk since your last edit — click to reload or compare"),
+            () => notifyResolveSyncConflict(),
+            "tb-sync-conflict-btn",
+        ),
+    );
+    syncConflictItem.style.display = "none";
+
     // ── Checks menu (spelling, grammar, style + per-check toggles) ───────────
     // One toolbar button opens a menu of checkmarkable items: the three masters
     // up top, then the style sub-checks grouped under headers. Every row toggles
@@ -2104,6 +2123,10 @@ export function initToolbar(
             dbgItem.style.display = debugVisible ? "" : "none";
         }
 
+        // Disk-drift badge: pinned at the front of the right zone.
+        rightZone.insertBefore(syncConflictItem, rightZone.firstChild);
+        syncConflictItem.style.display = syncConflictVisible ? "" : "none";
+
         setupOverflow();
     }
 
@@ -2201,6 +2224,16 @@ export function initToolbar(
             }
             // Toggling debug changes the right zone's width, which changes
             // the space available to the collapsible left zone.
+            overflow?.update(availableWidth());
+        },
+        setSyncConflict(active: boolean): void {
+            syncConflictVisible = active;
+            syncConflictItem.style.display = active ? "" : "none";
+            // Body-level flag: with the toolbar hidden, the badge would be
+            // invisible — the collapsed bar's expand tab tints instead, so drift
+            // is never a state the UI silently sits in.
+            document.body.classList.toggle("has-sync-conflict", active);
+            // Same as debug: the right zone's width changed.
             overflow?.update(availableWidth());
         },
         applyConfig(config: ToolbarConfig): void {

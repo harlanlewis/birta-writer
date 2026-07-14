@@ -8,6 +8,7 @@ import { computeLineMap } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
 import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
+import { DiskDriftController } from "./diskDrift";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { scanHeadings } from "./utils/headingScan";
 import { slugify } from "../shared/slug";
@@ -101,6 +102,19 @@ export class MarkdownEditorProvider
     // the save), this total order is what stops a stale update from reverting a
     // fresher flush.
     private readonly _appliedSeq = new Map<string, number>();
+
+    // Notify-only detection of external disk edits: raises an advisory toolbar
+    // badge when the file changes on disk while the document has unsaved edits.
+    // It never edits/reverts/writes the document — the user chooses (see
+    // src/diskDrift.ts). Relays drift transitions to the webview.
+    private readonly _diskDrift = new DiskDriftController({
+        onDriftChange: (uriKey, drifted) => {
+            this._webviewPanels.get(uriKey)?.webview.postMessage({
+                type: "syncConflict",
+                state: drifted ? "conflict" : "none",
+            } satisfies ToWebviewMessage);
+        },
+    });
 
     // Image webviewUri → relPath mapping (key: docUri.toString())
     private readonly _imageUriMaps = new Map<string, Map<string, string>>();
@@ -305,6 +319,11 @@ export class MarkdownEditorProvider
             this._editQueues.delete(uriKey);
             this._appliedSeq.delete(uriKey);
         });
+
+        // Watch the file for external writes so a dirty document can flag drift
+        // (VS Code auto-reloads clean documents on its own). Disposed with the panel.
+        const driftTracking = this._diskDrift.track(document, uriKey);
+        webviewPanel.onDidDispose(() => driftTracking.dispose());
 
         webviewPanel.webview.options = {
             enableScripts: true,
@@ -650,6 +669,11 @@ export class MarkdownEditorProvider
                         if (resolve) { resolve(message.content, message.baseSyncVersion, message.seq); }
                         break;
                     }
+                    case "resolveSyncConflict":
+                        // The disk-drift badge was clicked: offer the user the
+                        // native reload/compare picker. Never edits the document.
+                        void this._diskDrift.resolveDriftInteractively(document);
+                        break;
                 }
             },
         );

@@ -400,6 +400,22 @@
     opacity: 0.5;
 }
 
+/* Disk-drift badge: the file on disk changed while you have unsaved edits.
+   Rendered in the editor's warning color — the one state on this bar that
+   genuinely warns (a manual save would hit VS Code's "newer on disk" dialog);
+   clicking opens the native reload/compare picker. */
+.tb-sync-conflict-btn {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+/* With the toolbar hidden the badge has nowhere to render, so the collapsed
+   bar's expand tab carries the warning instead: full opacity (it normally
+   rests dim) and the warning color, until the drift is resolved. */
+body.has-sync-conflict .toolbar-toggle-tab {
+    opacity: 1;
+    color: var(--vscode-editorWarning-foreground);
+}
+
 /* Track + sliding knob. Off: a dim neutral track. On: the toolbar's "on" accent
    (--vscode-button-background), matching the active fills for lists, the Full/
    Fixed width segments, and the style/spell-check toolbar buttons — focusBorder

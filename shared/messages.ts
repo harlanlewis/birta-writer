@@ -230,7 +230,11 @@ export type ToExtensionMessage =
     | { type: "flushResult"; id: string; content: string; baseSyncVersion: number; seq: number }
     // Selection serialized in the webview (copy-as-HTML / copy-as-Markdown from
     // the right-click menu); the extension writes `data` to the system clipboard.
-    | { type: "clipboardWrite"; format: "html" | "markdown"; data: string };
+    | { type: "clipboardWrite"; format: "html" | "markdown"; data: string }
+    // The toolbar's disk-drift badge was clicked; the extension shows the
+    // native picker (reload from disk / compare with disk). The extension never
+    // edits the document itself — the user chooses.
+    | { type: "resolveSyncConflict" };
 
 /**
  * Extension → WebView messages.
@@ -305,4 +309,11 @@ export type ToWebviewMessage =
     | { type: "flushSave"; id: string }
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).
-    | { type: "editorCommand"; command: EditorCommandId; args?: unknown };
+    | { type: "editorCommand"; command: EditorCommandId; args?: unknown }
+    // Disk-drift state for this document: "conflict" while the file on disk has
+    // changed since the editor last agreed with it AND the editor has unsaved
+    // edits (the toolbar shows a quiet advisory badge — a manual save would hit
+    // VS Code's native "newer on disk" dialog); "none" once the user
+    // reloads/saves or the editor and disk converge. The extension never edits
+    // the document in response; it only notifies.
+    | { type: "syncConflict"; state: "conflict" | "none" };
