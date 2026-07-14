@@ -26,17 +26,42 @@ import { openLinkEditor } from "@/components/linkPopup";
 /** Scheme URL (https://…, ftp://…, and the authority-less mailto:). */
 const SCHEME_URL_REGEX = /^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/|mailto:)\S+$/;
 
-/** Bare web domain: host with ≥1 dot, optional leading www., optional path/query. */
-const BARE_DOMAIN_REGEX = /^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i;
+/**
+ * Bare web domain: labels separated by dots, optional leading www., then an
+ * ALPHABETIC top-level label (≥2 letters), then an optional path/query/fragment.
+ * The alphabetic-TLD requirement is what separates a real host from the many
+ * `word.word` shapes a user pastes to *replace* a selection — a version tag
+ * (`v1.2`), an IP (`10.0.0.1`), a media filename (`clip.mp4`) or any dotted
+ * identifier all have a numeric or 1-char final label and fall through to a
+ * normal paste. `example.com`, `www.foo.com/path`, `docs.foo.co.uk` still match.
+ */
+const BARE_DOMAIN_REGEX = /^(www\.)?[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}([/?#]\S*)?$/i;
 
 /**
  * File extensions that make a "host.tld" shape a pasted FILENAME, not a domain.
- * In a markdown editor these are the realistic collisions (`notes.md`,
- * `diagram.png`), so a bare token whose host ends in one is never auto-linked.
+ * In a markdown/dev editor these are the realistic collisions (`notes.md`,
+ * `app.ts`, `build.sh`, `main.rs`), so a bare token whose host ends in one is
+ * never auto-linked. A few of these (`.sh`, `.py`, `.rs`) are also obscure
+ * ccTLDs, but a lone `build.sh` pasted over a selection is overwhelmingly a
+ * file here, and the rare real domain on one of them still links when pasted
+ * with its scheme (`https://…`). Extensions that are also *popular* TLDs
+ * (`.io`, `.co`, `.me`, `.ai`, `.dev`, `.app`) are deliberately kept OUT so
+ * those domains still auto-link; numeric extensions (`.mp4`, `.mp3`) are
+ * already rejected by the alphabetic-TLD rule above, as are single-char ones
+ * (`.c`, `.h`).
  */
 const DOC_EXTENSIONS = new Set([
-    "md", "markdown", "txt", "png", "jpg", "jpeg", "gif",
-    "svg", "pdf", "csv", "json", "yaml", "yml",
+    // docs / data
+    "md", "markdown", "txt", "csv", "json", "yaml", "yml", "toml", "ini",
+    "log", "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    // images / media
+    "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp", "mov", "wav",
+    // web / markup / source
+    "html", "htm", "css", "scss", "sass", "less", "js", "jsx", "ts", "tsx",
+    "mjs", "cjs", "xml", "py", "rb", "go", "rs", "sh", "php", "java", "kt",
+    "swift", "cpp", "cs", "vue", "svelte",
+    // archives
+    "zip", "tar", "gz", "rar",
 ]);
 
 /**
@@ -65,17 +90,23 @@ export function detectPastedLinkTarget(clipboard: string): string | null {
     return null;
 }
 
-/** True when any text node in [from, to) carries a mark of the named type. */
-function rangeHasMark(state: EditorState, from: number, to: number, markName: string): boolean {
-    let found = false;
+/**
+ * True when any text node in [from, to) already carries a `link` mark (would
+ * double-wrap) or an inline-code mark (linkifying code is wrong). One walk
+ * covers both bail conditions.
+ */
+function rangeHasLinkOrCode(state: EditorState, from: number, to: number): boolean {
+    const linkType = state.schema.marks["link"];
+    let blocked = false;
     state.doc.nodesBetween(from, to, (node) => {
-        if (found) { return false; }
-        if (node.isText && node.marks.some((m) => m.type.name === markName)) {
-            found = true;
+        if (blocked) { return false; }
+        if (node.isText && node.marks.some((m) => m.type === linkType || m.type.spec.code)) {
+            blocked = true;
+            return false;
         }
         return undefined;
     });
-    return found;
+    return blocked;
 }
 
 export const pasteLinkPlugin = $prose(() =>
@@ -88,23 +119,21 @@ export const pasteLinkPlugin = $prose(() =>
 
                 const { selection } = state;
                 if (selection.empty) { return false; }
-                const { from, to, $from, $to } = selection;
 
-                // Single textblock only: a link mark spanning block boundaries is
-                // meaningless. Never inside code (block or inline).
-                if (!$from.sameParent($to)) { return false; }
-                if ($from.parent.type.spec.code) { return false; }
-                if (rangeHasMark(state, from, to, "link")) { return false; } // no double-wrap
-                // Inline code inside the selection: linkifying it would be wrong.
-                let hasCode = false;
-                state.doc.nodesBetween(from, to, (node) => {
-                    if (node.isText && node.marks.some((m) => m.type.spec.code)) { hasCode = true; }
-                });
-                if (hasCode) { return false; }
-
+                // Cheapest, most selective gate first: the vast majority of
+                // pastes over a selection are not a URL, so reject on the
+                // clipboard token before walking the selected range at all.
                 const clipboard = event.clipboardData?.getData("text/plain") ?? "";
                 const href = detectPastedLinkTarget(clipboard);
                 if (!href) { return false; }
+
+                const { from, to, $from, $to } = selection;
+                // Single textblock only: a link mark spanning block boundaries is
+                // meaningless. Never inside code (block or inline), and never
+                // over an existing link (no double-wrap).
+                if (!$from.sameParent($to)) { return false; }
+                if ($from.parent.type.spec.code) { return false; }
+                if (rangeHasLinkOrCode(state, from, to)) { return false; }
 
                 const selectedText = state.doc.textBetween(from, to);
                 view.dispatch(

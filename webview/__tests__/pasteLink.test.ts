@@ -37,6 +37,19 @@ describe("detectPastedLinkTarget", () => {
         it("a multi-label subdomain should be accepted", () => {
             expect(detectPastedLinkTarget("docs.foo.co.uk")).toBe("docs.foo.co.uk");
         });
+
+        it("a domain with a query string (no path) should be accepted verbatim", () => {
+            expect(detectPastedLinkTarget("example.com?q=1&r=2")).toBe("example.com?q=1&r=2");
+        });
+
+        it("a domain with only a fragment should be accepted verbatim", () => {
+            expect(detectPastedLinkTarget("example.com#section")).toBe("example.com#section");
+        });
+
+        it("a domain on a popular TLD that doubles as a file extension should link", () => {
+            // .io / .sh-style collisions: popular TLDs stay linkable.
+            expect(detectPastedLinkTarget("example.io")).toBe("example.io");
+        });
     });
 
     describe("rejected — pastes normally (null)", () => {
@@ -61,6 +74,34 @@ describe("detectPastedLinkTarget", () => {
             expect(detectPastedLinkTarget("notes.md")).toBeNull();
             expect(detectPastedLinkTarget("diagram.png")).toBeNull();
             expect(detectPastedLinkTarget("data.json")).toBeNull();
+        });
+
+        it("a source-code filename should return null (not linked as a domain)", () => {
+            expect(detectPastedLinkTarget("app.ts")).toBeNull();
+            expect(detectPastedLinkTarget("script.js")).toBeNull();
+            expect(detectPastedLinkTarget("styles.css")).toBeNull();
+            expect(detectPastedLinkTarget("index.html")).toBeNull();
+            expect(detectPastedLinkTarget("build.sh")).toBeNull();
+            expect(detectPastedLinkTarget("main.rs")).toBeNull();
+        });
+
+        it("an archive or media filename should return null", () => {
+            expect(detectPastedLinkTarget("archive.zip")).toBeNull();
+            expect(detectPastedLinkTarget("bundle.tar.gz")).toBeNull();
+            expect(detectPastedLinkTarget("report.docx")).toBeNull();
+            expect(detectPastedLinkTarget("clip.mov")).toBeNull();
+        });
+
+        it("a version tag or IP-like token (numeric last label) should return null", () => {
+            expect(detectPastedLinkTarget("v1.2")).toBeNull();
+            expect(detectPastedLinkTarget("1.2.3.4")).toBeNull();
+            expect(detectPastedLinkTarget("10.0.0.1")).toBeNull();
+            expect(detectPastedLinkTarget("clip.mp4")).toBeNull();
+        });
+
+        it("a dotted identifier with a single-char last label should return null", () => {
+            expect(detectPastedLinkTarget("a.b.c.d")).toBeNull();
+            expect(detectPastedLinkTarget("main.c")).toBeNull();
         });
 
         it("a workspace path should return null", () => {
