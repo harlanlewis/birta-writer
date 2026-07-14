@@ -402,6 +402,17 @@ export class MarkdownEditorProvider
                             syncVersion: 0,
                             ...(scrollToLine !== undefined ? { scrollToLine } : {}),
                         });
+                        // Deliver the current disk-drift state now that the webview
+                        // is listening. track()'s initial evaluate can set drift
+                        // before the webview boots (a restored/reopened dirty doc
+                        // already diverged from disk), and that early postMessage is
+                        // dropped — so re-send it here or the badge never appears.
+                        if (this._diskDrift.isDrifted(uriKey)) {
+                            webviewPanel.webview.postMessage({
+                                type: "syncConflict",
+                                state: "conflict",
+                            } satisfies ToWebviewMessage);
+                        }
                         break;
                     }
                     case "update":
