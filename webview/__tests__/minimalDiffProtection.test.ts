@@ -199,22 +199,24 @@ describe("applyMinimalChanges with protection — ordering (adversarial regressi
     });
 });
 
-describe("applyMinimalChanges — performance", () => {
-    it("a single edit in a 5000-line document should merge in a few milliseconds", () => {
+describe("applyMinimalChanges — at scale", () => {
+    it("a single edit in a 5000-line document should merge only that line", () => {
+        // Correctness-at-scale, not a wall-clock gate: the LCS window-trimming
+        // that keeps this fast (pre-trim was a ~380ms full 5000x5000 LCS) must
+        // still produce a MINIMAL merge — exactly the one edited paragraph
+        // changes, every other line survives byte-for-byte. Throughput itself is
+        // guarded by the e2e/perf harness (pnpm perf), not a flaky ms assertion.
         const lines = Array.from({ length: 5000 }, (_, i) => `paragraph number ${i}`);
         const saved = lines.join("\n\n") + "\n";
         const edited = [...lines];
         edited[2500] = "paragraph number 2500 EDITED";
         const serialized = edited.join("\n\n") + "\n";
 
-        const t0 = performance.now();
         const merged = applyMinimalChanges(saved, serialized);
-        const elapsed = performance.now() - t0;
 
-        expect(merged).toContain("paragraph number 2500 EDITED");
-        // Pre-trimming this took ~380ms (full 5000x5000 LCS). Generous CI
-        // bound; typical local time is ~2ms.
-        expect(elapsed).toBeLessThan(100);
+        // The merge must equal the saved document with ONLY line 2500 changed —
+        // no drift anywhere else across the 5000 lines.
+        expect(merged).toBe(serialized);
     });
 });
 

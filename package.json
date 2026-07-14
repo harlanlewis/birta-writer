@@ -1753,7 +1753,7 @@
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
         "test": "vitest run",
         "test:e2e": "node e2e/run.mjs",
-        "test:integration": "pnpm build && tsc -p tsconfig.integration.json && node out/test/runTest.js",
+        "test:integration": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && pnpm build && tsc -p tsconfig.integration.json && node out/test/runTest.js",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
         "perf": "node e2e/perf.mjs",

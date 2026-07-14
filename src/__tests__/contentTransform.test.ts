@@ -3,7 +3,6 @@ import {
     extractFrontmatter,
     restoreContentForSave,
 } from "../../src/utils/contentTransform";
-import { computeLineMap } from "../../src/utils/lineMap";
 
 // ─────────────────────────────────────────────────────────────
 // extractFrontmatter
@@ -159,60 +158,7 @@ describe("restoreContentForSave", () => {
     });
 });
 
-// ─────────────────────────────────────────────────────────────
-// computeLineMap
-// ─────────────────────────────────────────────────────────────
-describe("computeLineMap", () => {
-    it("empty content returns an empty array", () => {
-        expect(computeLineMap("")).toEqual([]);
-    });
-
-    it("content with only blank lines returns an empty array", () => {
-        expect(computeLineMap("\n\n\n")).toEqual([]);
-    });
-
-    it("single-line content returns [1]", () => {
-        expect(computeLineMap("# Hello")).toEqual([1]);
-    });
-
-    it("two paragraphs (separated by a blank line) return the starting line number of each", () => {
-        const content = "# Heading\n\nSome paragraph text.";
-        const lineMap = computeLineMap(content);
-        expect(lineMap).toEqual([1, 3]);
-    });
-
-    it("a code block is treated as a single paragraph", () => {
-        const content = "# H\n\n```ts\nconst x = 1;\nconst y = 2;\n```\n\n## H2";
-        const lineMap = computeLineMap(content);
-        // Expected: line 1 (heading), line 3 (code block), line 8 (H2)
-        expect(lineMap[0]).toBe(1);
-        expect(lineMap[1]).toBe(3);
-        expect(lineMap[2]).toBe(8);
-    });
-
-    it("a tilde code block (~~~) is handled correctly as well", () => {
-        const content = "~~~python\nprint('hello')\n~~~\n\n# After";
-        const lineMap = computeLineMap(content);
-        expect(lineMap.length).toBe(2);
-    });
-
-    it("line numbers start at 1 (1-indexed)", () => {
-        const content = "paragraph1\n\nparagraph2";
-        const lineMap = computeLineMap(content);
-        expect(lineMap[0]).toBe(1);
-    });
-
-    it("leading blank lines are not counted in the line number", () => {
-        const content = "\n\n# Heading";
-        const lineMap = computeLineMap(content);
-        expect(lineMap).toEqual([3]);
-    });
-
-    it("a large file (1000 lines) computes in under 100ms", () => {
-        const content = Array.from({ length: 200 }, (_, i) => `## Heading ${i}\n\nContent ${i}`).join("\n\n");
-        const start = performance.now();
-        computeLineMap(content);
-        const elapsed = performance.now() - start;
-        expect(elapsed).toBeLessThan(100);
-    });
-});
+// computeLineMap is owned and tested by src/__tests__/lineMap.test.ts (basic
+// blocks, code fences, CRLF, blank-line handling, ≥90% coverage floor). It was
+// previously duplicated here with weaker cases plus a wall-clock perf assertion;
+// perf belongs in the e2e/perf harness (pnpm perf), not a unit test.

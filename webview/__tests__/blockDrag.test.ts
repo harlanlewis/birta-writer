@@ -262,22 +262,30 @@ describe("drag session robustness", () => {
         const editor = await makeEditor("Alpha\n\nBeta");
         view(editor);
         const m = marker();
-        mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
-        mouse(document, "mousemove", { clientX: 30, clientY: 30, buttons: 1 });
-        expect(m.dataset["dragged"]).toBe("1");
-        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-        expect(document.body.classList.contains("block-dragging")).toBe(false);
-        // The button is STILL HELD after Escape — the flag must survive until
-        // the eventual release, whose click stays suppressed.
-        expect(m.dataset["dragged"]).toBe("1");
-        mouse(m, "mouseup", { button: 0, buttons: 0 });
-        mouse(m, "click", { button: 0 });
-        expect(document.querySelector(".block-menu")).toBeNull();
-        await new Promise((resolve) => setTimeout(resolve, 1)); // cleanup hop after the release
-        expect(m.dataset["dragged"]).toBeUndefined();
-        // The NEXT genuine click opens the menu.
-        mouse(m, "click", { button: 0 });
-        expect(document.querySelector(".block-menu")).not.toBeNull();
+        // Fake timers so the post-release cleanup hop (a production setTimeout(0))
+        // advances deterministically instead of racing a real 1ms wait. Enabled
+        // after makeEditor so editor creation still runs on real timers.
+        vi.useFakeTimers();
+        try {
+            mouse(m, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
+            mouse(document, "mousemove", { clientX: 30, clientY: 30, buttons: 1 });
+            expect(m.dataset["dragged"]).toBe("1");
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+            expect(document.body.classList.contains("block-dragging")).toBe(false);
+            // The button is STILL HELD after Escape — the flag must survive until
+            // the eventual release, whose click stays suppressed.
+            expect(m.dataset["dragged"]).toBe("1");
+            mouse(m, "mouseup", { button: 0, buttons: 0 });
+            mouse(m, "click", { button: 0 });
+            expect(document.querySelector(".block-menu")).toBeNull();
+            vi.advanceTimersByTime(1); // run the cleanup hop after the release
+            expect(m.dataset["dragged"]).toBeUndefined();
+            // The NEXT genuine click opens the menu.
+            mouse(m, "click", { button: 0 });
+            expect(document.querySelector(".block-menu")).not.toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("releasing outside the window with the threshold uncrossed should tear the session down", async () => {
