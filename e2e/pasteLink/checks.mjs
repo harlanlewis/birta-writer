@@ -73,6 +73,17 @@ export async function run({ page, check, baseUrl }) {
         posted.some((u) => u.includes("[quick](https://example.com)")),
         JSON.stringify(posted[posted.length - 1] ?? "").slice(0, 120),
     );
+    // The rendered link is underlined at rest (the affordance this design
+    // reserves for links; text-decoration is the webview's, not the theme's).
+    const linkDecoration = await page.evaluate(() => {
+        const a = document.querySelector(".milkdown .ProseMirror a");
+        return a ? getComputedStyle(a).textDecorationLine : null;
+    });
+    check(
+        "a rendered link is underlined at rest",
+        linkDecoration === "underline",
+        JSON.stringify(linkDecoration),
+    );
 
     // ── 2. Bare web domain (no scheme) over a selection → link ──
     const sel2 = await selectWord(85); // "brown"

@@ -191,8 +191,13 @@ function clearFormatting(getEditor: GetEditor): void {
         const { state } = view;
         const { from, to, empty } = state.selection;
         if (empty) { return; }
+        // A link is structure (a target), not inline formatting, so clearing
+        // formatting strips the styling marks but leaves links intact — matching
+        // Word/Docs, where Clear Formatting keeps the hyperlink.
+        const linkType = state.schema.marks["link"];
         let tr = state.tr;
         Object.values(state.schema.marks).forEach((markType) => {
+            if (markType === linkType) { return; }
             tr = tr.removeMark(from, to, markType);
         });
         view.dispatch(tr);
