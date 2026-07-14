@@ -1,20 +1,16 @@
 /* ─── Text-selection floating toolbar ────────────────── */
 .sel-toolbar {
-    /* Inverted chip — the .custom-tooltip / .block-drag-pill family: the editor
-       foreground becomes the ground and vice versa, so contrast reverses in
-       every theme (a dark chip in a light theme, a light one in a dark theme).
-       `ink` is glyphs/text on that ground; hovers and the active state are a
-       translucent ink wash so they read on either polarity without a token. */
-    --stb-ground: var(--vscode-editor-foreground);
-    --stb-ink: var(--vscode-editor-background);
+    /* Shared palette chip (style.css): a normal themed chip in dark themes, an
+       inverted dark chip in light themes. `--palette-ink` is glyphs/text. */
     position: fixed;
     z-index: 1200;
     display: none;
     align-items: center;
     gap: 2px;
     padding: 3px 6px;
-    background: var(--stb-ground);
-    color: var(--stb-ink);
+    background: var(--palette-ground);
+    color: var(--palette-ink);
+    border: 1px solid var(--palette-border);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     user-select: none;
@@ -29,13 +25,13 @@
     background: none;
     border: none;
     border-radius: 4px;
-    color: var(--stb-ink);
+    color: var(--palette-ink);
     cursor: pointer;
     line-height: 1;
 }
 
 .sel-tb-btn:hover {
-    background: color-mix(in srgb, var(--stb-ink) 16%, transparent);
+    background: var(--palette-hover);
 }
 
 /* A button reflecting a mark/construct already applied on the selection — a
@@ -44,8 +40,8 @@
    idea, adapted to the inverted ground. */
 .sel-tb-btn--active,
 .sel-tb-btn--active:hover {
-    background: color-mix(in srgb, var(--stb-ink) 30%, transparent);
-    color: var(--stb-ink);
+    background: var(--palette-active);
+    color: var(--palette-ink);
 }
 
 /* Destructive action (block Delete): the icon reddens on hover to signal it
@@ -63,7 +59,7 @@
 .sel-tb-sep {
     width: 1px;
     height: 18px;
-    background: color-mix(in srgb, var(--stb-ink) 28%, transparent);
+    background: var(--palette-line);
     margin: 0 3px;
     flex-shrink: 0;
 }
@@ -94,8 +90,8 @@
     left: 0;
     display: none;
     flex-direction: column;
-    background: var(--stb-ground);
-    color: var(--stb-ink);
+    background: var(--palette-ground);
+    color: var(--palette-ink);
     border-radius: 5px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     overflow: hidden;
@@ -105,14 +101,14 @@
 .sel-tb-fmt-item {
     padding: 5px 12px;
     font-size: 12px;
-    color: var(--stb-ink);
+    color: var(--palette-ink);
     cursor: pointer;
     text-align: left;
     white-space: nowrap;
 }
 
 .sel-tb-fmt-item:hover {
-    background: color-mix(in srgb, var(--stb-ink) 16%, transparent);
+    background: var(--palette-hover);
 }
 
 .sel-tb-fmt-item--active {

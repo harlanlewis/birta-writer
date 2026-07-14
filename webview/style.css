@@ -1522,6 +1522,32 @@ body.toolbar-hidden::before {
 }
 
 /* ─── Custom tooltip ─── */
+/* ── Floating palette chip (shared) ─────────────────────────────────────────
+   The selection formatter, the link popup, and the image toolbar read as one
+   chip family via these tokens. In DARK themes the chip is a normal themed
+   hover widget; in LIGHT themes it INVERTS to a dark chip on the light canvas,
+   so the controls pop and echo the inverted tooltip — dark themes are never
+   reversed to light. `ink` is glyphs/text on the ground; hovers and active
+   states are a translucent ink wash (color-mix), so no fixed token is needed
+   and they read on either polarity. */
+:root {
+    --palette-ground: var(--vscode-editorHoverWidget-background);
+    --palette-ink: var(--vscode-editorHoverWidget-foreground);
+    --palette-border: var(--vscode-editorHoverWidget-border);
+}
+body.vscode-light,
+body.vscode-high-contrast-light {
+    --palette-ground: var(--vscode-editor-foreground);
+    --palette-ink: var(--vscode-editor-background);
+    --palette-border: transparent;
+}
+/* Hover/active washes derived from ink, tuned once here. */
+:root {
+    --palette-hover: color-mix(in srgb, var(--palette-ink) 16%, transparent);
+    --palette-active: color-mix(in srgb, var(--palette-ink) 30%, transparent);
+    --palette-line: color-mix(in srgb, var(--palette-ink) 28%, transparent);
+}
+
 .custom-tooltip {
     position: fixed;
     z-index: 10000;

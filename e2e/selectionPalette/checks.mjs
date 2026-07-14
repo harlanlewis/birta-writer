@@ -82,16 +82,25 @@ export async function run({ page, check, baseUrl }) {
         !(await fmtWrap.isVisible()),
     );
 
-    // Inverted chip: the palette ground is the editor FOREGROUND (harness
-    // --vscode-editor-foreground = #d4d4d4), reversing contrast like the tooltip.
-    const paletteBg = await page.evaluate(
-        () => getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor,
-    );
+    // Light theme (harness sets body.vscode-light): the palette INVERTS — its
+    // ground is the editor FOREGROUND (#d4d4d4), reversing contrast.
+    const bgOf = () =>
+        page.evaluate(() => getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor);
     check(
-        "the palette uses the inverted (editor-foreground) ground",
-        paletteBg === "rgb(212, 212, 212)",
-        paletteBg,
+        "in a light theme the palette inverts to the editor-foreground ground",
+        (await bgOf()) === "rgb(212, 212, 212)",
+        await bgOf(),
     );
+    // Dark theme: it must NOT invert — the ground is the normal hover-widget
+    // background (#252526), never reversed to light.
+    await page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
+    const darkBg = await bgOf();
+    check(
+        "in a dark theme the palette is NOT inverted (normal hover-widget ground)",
+        darkBg === "rgb(37, 37, 38)",
+        darkBg,
+    );
+    await page.evaluate(() => document.body.classList.replace("vscode-dark", "vscode-light"));
 
     // ── 3. Whole-block selection → format dropdown shown ──
     await selectWholeParagraph();
