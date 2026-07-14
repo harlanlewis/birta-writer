@@ -31,6 +31,13 @@
     background: var(--vscode-toolbar-hoverBackground);
 }
 
+/* Destructive action (block Delete): the icon reddens on hover to signal it
+   removes content — the block menu's danger semantic, via a theme token. The
+   edit is undoable, so this is a caution, not a barrier. */
+.sel-tb-danger-btn:hover {
+    color: var(--vscode-errorForeground);
+}
+
 .sel-tb-btn svg {
     display: block;
     flex-shrink: 0;

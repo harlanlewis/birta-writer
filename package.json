@@ -1716,6 +1716,66 @@
                     "default": [],
                     "markdownDescription": "Left-to-right ordering of toolbar items within their zone. List item ids in the order you want; within each zone, listed items come first (in this order), then any unlisted items in the built-in order. Ids: `format`, `clearFormatting`, `fontPreset`, `bold`, `italic`, `strikethrough`, `highlight`, `inlineCode`, `link`, `image`, `table`, `footnote`, `math`, `listMenu`, `quote`, `codeBlock`, `horizontalRule`, `viewSource`, `styleCheck`, `find`, `settings`. Example: to put Clear Formatting last in a zone, list the other items in that zone before `clearFormatting`."
                 },
+                "birta.floatingToolbar.enabled": {
+                    "order": 53,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show a floating formatting palette above the current selection. For a text selection it offers inline formatting; for a whole-block (multi-block) selection it offers move, duplicate, and delete."
+                },
+                "birta.floatingToolbar.items.format": {
+                    "order": 54,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the text-level menu (paragraph, headings)."
+                },
+                "birta.floatingToolbar.items.bold": {
+                    "order": 55,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Bold button."
+                },
+                "birta.floatingToolbar.items.italic": {
+                    "order": 56,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Italic button."
+                },
+                "birta.floatingToolbar.items.strikethrough": {
+                    "order": 57,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Strikethrough button."
+                },
+                "birta.floatingToolbar.items.inlineCode": {
+                    "order": 58,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Inline Code button."
+                },
+                "birta.floatingToolbar.items.highlight": {
+                    "order": 59,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Highlight button."
+                },
+                "birta.floatingToolbar.items.link": {
+                    "order": 60,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Insert/Edit Link button."
+                },
+                "birta.floatingToolbar.items.clearFormatting": {
+                    "order": 61,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Clear Formatting button."
+                },
+                "birta.floatingToolbar.items.math": {
+                    "order": 62,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Inline Math button."
+                },
                 "birta.tocAutoHideThreshold": {
                     "order": 11,
                     "type": "number",
@@ -1749,7 +1809,7 @@
         "vscode:prepublish": "node esbuild.mjs --production",
         "build": "node esbuild.mjs",
         "watch": "node esbuild.mjs --watch",
-        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/birta-writer/blob/main --baseImagesUrl https://github.com/harlanlewis/birta-writer/raw/main",
+        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/birta-writer/blob/dev --baseImagesUrl https://github.com/harlanlewis/birta-writer/raw/dev",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
         "test": "vitest run",
         "test:e2e": "node e2e/run.mjs",

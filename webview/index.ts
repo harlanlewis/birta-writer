@@ -42,6 +42,7 @@ import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
+import { setupSelectionToolbar } from "./components/selectionToolbar";
 import { initToc } from "./components/toc";
 import type { Editor } from "@milkdown/core";
 
@@ -270,6 +271,20 @@ const topbarTb = topbar
 mark("toolbar-end");
 measure("initToolbar", "toolbar-start", "toolbar-end");
 
+// Floating selection palette (birta.floatingToolbar): a formatting bar above a
+// text selection, and move/duplicate/delete above a whole-block (multi-block)
+// selection. Gated on the master setting; per-item button visibility comes from
+// the items map. Reuses the top toolbar's openLinkPrompt so both surfaces drive
+// the single link-popup editor rather than stacking two.
+const selectionTb = (window.__i18n?.floatingToolbar?.enabled ?? true)
+    ? setupSelectionToolbar(
+        getEditorView,
+        () => currentEditor,
+        () => topbarTb?.openLinkPrompt(),
+        window.__i18n?.floatingToolbar?.items,
+    )
+    : null;
+
 // Register the editor-command hooks the toolbar does not own (find-with-
 // replace, find navigation, TOC toggle, frontmatter focus). The toolbar
 // itself registers openLinkPrompt / openImagePanel / openFind (MAR-9).
@@ -421,12 +436,12 @@ eventManager.onDocument("paste", (e) => {
         );
 });
 
-// The floating selection/table popovers were removed: text formatting lives on
-// the top toolbar + keyboard, and table structure editing lives in the
-// right-click menu + hover affordances. The main toolbar still tracks selection
-// to update its active-state.
+// Selection drives two surfaces: the top toolbar tracks it to update its
+// active-state, and (when birta.floatingToolbar.enabled) the floating palette
+// shows/positions itself above the selection. Both are fed the same view.
 registerSelectionChangeHandler((view) => {
     topbarTb?.onSelectionChange(view);
+    selectionTb?.onSelectionChange(view);
 });
 
 // Focus can leave ProseMirror for a nested editable island — a callout/directive

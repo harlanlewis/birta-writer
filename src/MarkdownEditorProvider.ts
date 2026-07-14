@@ -1171,13 +1171,14 @@ export class MarkdownEditorProvider
         const folding = this._getFoldingConfig(document.uri);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
         const toolbar = MarkdownEditorProvider.getToolbarConfig();
+        const floatingToolbar = MarkdownEditorProvider.getFloatingToolbarConfig();
         const documentUri = document.uri.toString();
         // The extension's display name, the single source for any UI that must
         // name the product (e.g. "Open <name> settings"). From package.json;
         // optional-chained so a stripped-down test context still resolves.
         const productName =
             (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -1339,6 +1340,20 @@ export class MarkdownEditorProvider
             placements: cfg.get("toolbar.items", {}),
             order: cfg.get<string[]>("toolbar.order", []),
             visible: cfg.get<boolean>("toolbar.visible", true),
+        };
+    }
+
+    /**
+     * Snapshot of the floating selection toolbar settings: the master on/off
+     * plus per-item visibility. `items` is the nested read (VS Code merges the
+     * contributed per-item defaults in, so every registered id resolves to its
+     * effective boolean).
+     */
+    public static getFloatingToolbarConfig(): { enabled: boolean; items: Record<string, boolean> } {
+        const cfg = vscode.workspace.getConfiguration("birta");
+        return {
+            enabled: cfg.get<boolean>("floatingToolbar.enabled", true),
+            items: cfg.get<Record<string, boolean>>("floatingToolbar.items", {}),
         };
     }
 
