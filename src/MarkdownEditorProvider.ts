@@ -650,7 +650,7 @@ export class MarkdownEditorProvider
                         MarkdownEditorProvider.updateSettingRespectingScope("tocPosition", message.position);
                         break;
                     case "spellAddWord":
-                        this._handleSpellAddWord(message.word);
+                        MarkdownEditorProvider.addUserWord(message.word);
                         break;
                     case "lintBlocks":
                         lintBlocks(message.blocks)
@@ -1439,17 +1439,26 @@ export class MarkdownEditorProvider
         );
     }
 
-    private _handleSpellAddWord(word: string): void {
+    /**
+     * Add a word to the personal spelling dictionary. Always writes to the
+     * user's GLOBAL settings, never the workspace: "Add to dictionary" is a
+     * personal, single-click choice, and a workspace write lands in the
+     * project's tracked `.vscode/settings.json` — silently committing the
+     * dictionary to git and sharing it with everyone. A personal word list
+     * applies across projects anyway (a name like "Birta" isn't project jargon;
+     * genuinely shared jargon is a deliberate edit of the workspace setting).
+     */
+    public static addUserWord(word: string): void {
         const trimmed = word?.trim();
         if (!trimmed) { return; }
         const cfg = vscode.workspace.getConfiguration("birta");
         const words = cfg.get<string[]>("spellCheck.userWords", []);
         if (words.includes(trimmed)) { return; }
-        // Prefer the workspace list (project jargon); fall back to user settings
-        const target = vscode.workspace.workspaceFolders?.length
-            ? vscode.ConfigurationTarget.Workspace
-            : vscode.ConfigurationTarget.Global;
-        void cfg.update("spellCheck.userWords", [...words, trimmed], target);
+        void cfg.update(
+            "spellCheck.userWords",
+            [...words, trimmed],
+            vscode.ConfigurationTarget.Global,
+        );
     }
 
     private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
