@@ -1,40 +1,143 @@
 name: Release
 
+# Cuts a Birta Writer release: infers end-user highlights from the changelog,
+# packages the VSIX, tags the commit, and publishes a GitHub Release.
+#
+# Runs nightly and no-ops when nothing new has landed since the last tag.
+# Marketplace publishing stays dormant until a VSCE_PAT secret exists, so today
+# this only builds the downloadable VSIX + notes — exactly the "build, don't
+# publish yet" phase.
+#
+# Versions are CalVer, derived from the release clock (America/Los_Angeles):
+#   YYYY . (month*100 + day) . (hour*10000 + min*100 + sec)
+#   e.g. 2026-07-14 04:00:00 PT -> 2026.714.40000
+# Every field is a plain integer, so the result is valid semver (VS Code requires
+# major.minor.patch and forbids leading zeros) and increases monotonically across
+# sub-day, day, month, and year boundaries — which the Marketplace/update ordering
+# depends on. This is the single source of truth: the same string tags the commit,
+# names the release, and stamps the VSIX. package.json is not a release authority;
+# it is overwritten at build time and not committed back.
+
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  schedule:
+    # 11:00 UTC = 04:00 America/Los_Angeles during PDT (03:00 during PST).
+    # GitHub cron is UTC-only with no DST; adjust to '0 12 * * *' if you'd rather
+    # anchor 04:00 to PST (standard time) instead.
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Release even if no new commits since the last tag'
+        type: boolean
+        default: false
+
+# Prevent overlapping nightly + manual runs from double-tagging.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
-    name: Publish to VS Code Marketplace
+    name: Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      HAS_VSCE: ${{ secrets.VSCE_PAT != '' }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the notes range
+          fetch-tags: true # the "anything new since the last tag?" guard needs them
+
+      - name: Determine version and whether to release
+        id: plan
+        run: |
+          PREV=$(git tag -l 'v*' | sort -V | tail -1)
+          if [ -z "$PREV" ]; then PREV="v0.0.0"; fi
+          COUNT=$(git rev-list --count "${PREV}..HEAD")
+          echo "prev=$PREV"          >> "$GITHUB_OUTPUT"
+          echo "range=${PREV}..HEAD" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT"        >> "$GITHUB_OUTPUT"
+
+          # CalVer from the release clock (see the header comment). Fields are
+          # zero-padded by date(1), so 10# forces base-10 arithmetic — otherwise
+          # bash reads "08"/"09" as invalid octal and the August/September builds
+          # would crash.
+          read -r Y MO DA HH MI SS < <(TZ='America/Los_Angeles' date +'%Y %m %d %H %M %S')
+          VERSION="$Y.$((10#$MO * 100 + 10#$DA)).$((10#$HH * 10000 + 10#$MI * 100 + 10#$SS))"
+          # A second release within the same clock-second is near-impossible (the
+          # `release` concurrency group serializes runs), but guard the tag anyway.
+          BUMP=0
+          while git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; do
+            BUMP=$((BUMP + 1))
+            VERSION="$Y.$((10#$MO * 100 + 10#$DA)).$((10#$HH * 10000 + 10#$MI * 100 + 10#$SS + BUMP))"
+          done
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "display=$(TZ='America/Los_Angeles' date +'%Y-%m-%d %H:%M %Z')" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -eq 0 ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "No commits since $PREV — skipping release." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Releasing v$VERSION ($COUNT commit(s) since $PREV)." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - uses: pnpm/action-setup@v4
+        if: steps.plan.outputs.release == 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.plan.outputs.release == 'true'
         with:
           node-version: '20'
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.plan.outputs.release == 'true'
         run: pnpm install --frozen-lockfile
 
+      - name: Stamp package.json to the release version
+        if: steps.plan.outputs.release == 'true'
+        run: pnpm version "${{ steps.plan.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Generate release notes
+        if: steps.plan.outputs.release == 'true'
+        env:
+          RANGE: ${{ steps.plan.outputs.range }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          OUT: RELEASE_NOTES.md
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Cheapest tier; kick up to claude-sonnet-5 or claude-opus-4-8 here if
+          # the highlights aren't good enough. Without the key the script falls
+          # back to a plain commit list regardless of model.
+          ANTHROPIC_MODEL: claude-haiku-4-5
+        run: node scripts/gen-release-notes.mjs
+
       - name: Package extension
+        if: steps.plan.outputs.release == 'true'
         run: mkdir -p releases && pnpm run package
 
+      # The release action creates the tag itself (at this run's commit) in the
+      # same step that publishes the release. Tagging separately, earlier, would
+      # risk an orphan tag if a later step failed — and that tag would then make
+      # the next run's "anything new since the last tag?" guard skip this content.
+      - name: Tag and create GitHub Release
+        if: steps.plan.outputs.release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.plan.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Birta Writer v${{ steps.plan.outputs.version }} (${{ steps.plan.outputs.display }})
+          body_path: RELEASE_NOTES.md
+          files: releases/*.vsix
+
+      # Dormant until a VSCE_PAT secret is added — see docs/RELEASING.md.
+      # A pre-release channel, if ever wanted, is a flag not a version: append
+      # `--pre-release` here for those builds; the CalVer scheme is unchanged.
       - name: Publish to VS Code Marketplace
+        if: steps.plan.outputs.release == 'true' && env.HAS_VSCE == 'true'
         run: pnpm vsce publish --no-dependencies --packagePath releases/*.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: releases/*.vsix
-          generate_release_notes: true

@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-> Running log for the hard fork. The extension's patch version (currently 0.2.x) is bumped on nearly every build so a new VSIX can be installed and reloaded during development — it is a build counter, not a semantic release. Everything below has shipped in those builds; it is grouped here by change type until the fork cuts its first tagged release.
+> Running log for the hard fork. Changes are grouped here by type as they land; the nightly `Release` workflow turns this section into end-user highlights when it cuts a versioned release. Release versions are CalVer, stamped from the release clock (`2026.714.40000`) — see [`docs/RELEASING.md`](docs/RELEASING.md). `package.json` is pinned at `0.0.0` and is not a version source.
 
 ### Added
 
