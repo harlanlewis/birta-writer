@@ -114,7 +114,7 @@ async function aiNotes(changelog, list) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 2000,
+        max_tokens: 4000,
         messages: [{ role: "user", content: PROMPT(changelog, list) }],
       }),
     });

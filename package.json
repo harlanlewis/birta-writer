@@ -1749,7 +1749,7 @@
         "vscode:prepublish": "node esbuild.mjs --production",
         "build": "node esbuild.mjs",
         "watch": "node esbuild.mjs --watch",
-        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/birta-writer/blob/dev --baseImagesUrl https://github.com/harlanlewis/birta-writer/raw/dev",
+        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/birta-writer/blob/main --baseImagesUrl https://github.com/harlanlewis/birta-writer/raw/main",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
         "test": "vitest run",
         "test:e2e": "node e2e/run.mjs",
