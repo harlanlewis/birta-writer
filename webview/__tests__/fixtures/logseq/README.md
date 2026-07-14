@@ -31,10 +31,11 @@ real graph and update the fixture. Tracked by MAR-131 / MAR-132 / MAR-133.
 
 ## How these fixtures are tested
 
-- **`roundTripCorpus.test.ts`** auto-discovers every `.md` here (this README is
-  skipped) and enforces the general trust contract shared by all fixtures:
-  invariant A (untouched → byte-identical) and invariant B (a real edit
-  preserves every original line, in order).
+- **`roundTripCorpus.test.ts`** auto-discovers every `.md` here — via the shared
+  `loadCorpusFixtures()` in `helpers/moveFuzz.ts`, which walks `fixtures/`
+  recursively and skips `README.md` — and enforces the general trust contract
+  shared by all fixtures: invariant A (untouched → byte-identical) and invariant
+  B (a real edit preserves every original line, in order).
 - **`logseqRoundTrip.test.ts`** pins only the Logseq-*specific* residual gaps
   (which assert non-identity, so they can't live in the corpus): editing a
   **tab-indented** block collapses its sibling subtree's tabs to spaces, and

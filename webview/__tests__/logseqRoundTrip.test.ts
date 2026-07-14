@@ -19,25 +19,17 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
 import { computeRoundTripProtection, applyMinimalChanges } from "../utils/minimalDiff";
+import { makeCorpusEditor } from "./helpers/moveFuzz";
 
-/** Parse `markdown` into the real editor and serialize it straight back. */
+/**
+ * Parse `markdown` into the real editor and serialize it straight back. Uses the
+ * shared corpus editor factory so this suite can't drift from the production
+ * serialization recipe the corpus (roundTripCorpus.test.ts) exercises.
+ */
 async function serialize(markdown: string): Promise<string> {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const editor = await Editor.make()
-        .config((ctx) => {
-            ctx.set(rootCtx, container);
-            ctx.set(defaultValueCtx, markdown);
-            configureSerialization(ctx);
-        })
-        .use(pureCommonmark)
-        .use(gfm)
-        .create();
+    const editor = await makeCorpusEditor(markdown);
     const out = editor.action(getMarkdown());
     await editor.destroy();
     return out;
@@ -74,7 +66,7 @@ async function saveEditing(find: string, replace: string): Promise<string> {
 }
 
 describe("Logseq round-trip — KNOWN GAPS: editing a fragile block churns its local region", () => {
-    it("editing a tab-indented block collapses tabs to spaces across its sibling subtree", async () => {
+    it("editing a tab-indented block should collapse tabs to spaces across its sibling subtree", async () => {
         const merged = await saveEditing("A nested child block", "An EDITED nested child block");
         // want: the edited subtree keeps its tabs ("\t- ...").
         expect(merged).toContain("  - An EDITED nested child block");
@@ -83,7 +75,7 @@ describe("Logseq round-trip — KNOWN GAPS: editing a fragile block churns its l
         expect(merged).toContain("\t- > A blockquote nested inside a bullet.");
     });
 
-    it("editing an org-cookie line backslash-escapes the cookie", async () => {
+    it("editing an org-cookie line should backslash-escape the cookie", async () => {
         const merged = await saveEditing(
             "Draft synthetic Logseq fixtures",
             "EDITED synthetic Logseq fixtures",
@@ -94,7 +86,7 @@ describe("Logseq round-trip — KNOWN GAPS: editing a fragile block churns its l
 });
 
 describe("Logseq round-trip — serializer preserves Logseq tokens as literal text", () => {
-    it("properties, refs, macros, tags, and wikilinks are not mangled on re-serialize", async () => {
+    it("properties, refs, macros, tags, and wikilinks should survive re-serialization unmangled", async () => {
         // Why this matters: because these survive a full re-serialize, an edit to
         // a block that CONTAINS one of them does not corrupt the token.
         const { baseline } = await loadPage();
