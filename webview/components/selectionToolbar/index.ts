@@ -209,7 +209,7 @@ export function setupSelectionToolbar(
     getEditor: () => Editor | null,
     openLinkPrompt: () => void,
     items?: FloatingToolbarItems,
-): { onSelectionChange(view: EditorView): void } {
+): { onSelectionChange(view: EditorView): void; hide(): void } {
     // Per-item visibility for the inline (text-mode) buttons. Resolved once at
     // setup from the birta.floatingToolbar.items.* settings; a missing flag
     // defaults to visible. Table-mode and block-mode buttons are contextual
@@ -922,5 +922,5 @@ export function setupSelectionToolbar(
         { capture: true },
     );
 
-    return { onSelectionChange: showAndPosition };
+    return { onSelectionChange: showAndPosition, hide: hideToolbar };
 }

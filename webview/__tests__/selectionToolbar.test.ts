@@ -237,6 +237,31 @@ describe("selection toolbar link button", () => {
         expect(linkedHref).toBe("x");
     });
 
+    it("hide() should dismiss a shown bar (the choke point the link editor uses to un-sandwich the selection)", async () => {
+        // Arrange — a text selection with the bar shown
+        editor = await makeEditor("hello world\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(
+            () => v,
+            () => editor,
+            vi.fn(),
+        );
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)),
+        );
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+        expect(selToolbar().style.display).toBe("flex");
+
+        // Act — the shared link editor opening calls hide() (wired in index.ts
+        // on focus entering the popup) so the palette above and the popup below
+        // don't sandwich the same range
+        selTb.hide();
+
+        // Assert
+        expect(selToolbar().style.display).toBe("none");
+    });
+
     it("with a table cell selection the button should be hidden while bold stays visible", async () => {
         // Arrange — real editor with a GFM table, select two header cells
         editor = await makeEditor("| a | b |\n| --- | --- |\n| c | d |\n");
