@@ -497,6 +497,27 @@ describe("MarkdownEditorProvider disk-change reconciliation", () => {
             expect(messagesOfType(panel, "syncConflict")).toHaveLength(0);
             expect(document.getText()).toBe("line1\nline2 MINE\nline3\n");
         });
+
+        it("a reconcile enqueued while the picker is open must not interleave with the resolution", async () => {
+            // The scenario the whole feature targets: an external tool writes
+            // the file again while the user is deciding how to resolve. The
+            // mutation must serialize on the edit queue AFTER the reconcile,
+            // never race its revert+reapply — otherwise the final content is
+            // indeterminate.
+            const { document, handler, fireDiskChange } = await setupConflictWithPick("takeDisk");
+
+            // A fresh external write lands and its watcher event is queued
+            // BEFORE the user's pick executes.
+            diskContent = "line1\nline2 DISK NEWER\nline3\n";
+            fireDiskChange();
+            await handler({ type: "resolveSyncConflict" });
+            await vi.advanceTimersByTimeAsync(500);
+
+            // "Reload from disk" wins deterministically on the latest bytes;
+            // the document is exactly the disk content, clean, no partial state.
+            expect(document.getText()).toBe("line1\nline2 DISK NEWER\nline3\n");
+            expect(document.isDirty).toBe(false);
+        });
     });
 
     describe("interplay with webview edits", () => {

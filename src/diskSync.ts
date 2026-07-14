@@ -178,22 +178,33 @@ export class DiskSyncController {
                 action: "takeDisk",
             },
         ];
+        // The pick itself waits OFF the edit queue — blocking the queue for
+        // the lifetime of a modal would freeze this document's disk sync.
         const picked = await vscode.window.showQuickPick(items, {
             placeHolder: vscode.l10n.t(
                 "The file changed on disk in a way that overlaps your unsaved edits",
             ),
         });
-        if (!picked) { return; }
-        switch (picked.action) {
-            case "compare":
-                // The built-in dirty-model-vs-disk diff; the conflict stays
-                // flagged until the user picks a side or saves.
-                await vscode.commands.executeCommand(
-                    "workbench.files.action.compareWithSaved",
-                    document.uri,
-                );
-                break;
-            case "keepMine": {
+        if (!picked || !this._tracked.has(uriKey)) { return; }
+
+        if (picked.action === "compare") {
+            // Read-only: the built-in dirty-model-vs-disk diff. Touches no
+            // state, so it needn't serialize; the conflict stays flagged until
+            // the user picks a side or saves.
+            await vscode.commands.executeCommand(
+                "workbench.files.action.compareWithSaved",
+                document.uri,
+            );
+            return;
+        }
+
+        // The mutating branches run ON the edit queue so they can never
+        // interleave with a watcher reconcile (an external tool can write the
+        // file while the picker is open — the whole scenario this feature is
+        // about). Content is re-read inside the task, after the queue drains.
+        await this._hooks.enqueue(uriKey, async () => {
+            if (!this._tracked.has(uriKey)) { return; }
+            if (picked.action === "keepMine") {
                 // Written as UTF-8 — the one place this module writes bytes.
                 // (VS Code's own save would honor the file's encoding, but a
                 // forced save can't skip the conflict dialog from an extension.)
@@ -203,14 +214,13 @@ export class DiskSyncController {
                 await this._revertToDisk(document.uri);
                 this._baseText.set(uriKey, ours);
                 this._setConflict(uriKey, false);
-                break;
-            }
-            case "takeDisk":
+            } else {
+                // takeDisk
                 await this._revertToDisk(document.uri);
                 this._baseText.set(uriKey, document.getText());
                 this._setConflict(uriKey, false);
-                break;
-        }
+            }
+        });
     }
 
     /**
