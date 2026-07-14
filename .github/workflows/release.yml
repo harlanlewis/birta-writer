@@ -109,6 +109,10 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
           OUT: RELEASE_NOTES.md
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Cheapest tier; kick up to claude-sonnet-5 or claude-opus-4-8 here if
+          # the highlights aren't good enough. Without the key the script falls
+          # back to a plain commit list regardless of model.
+          ANTHROPIC_MODEL: claude-haiku-4-5
         run: node scripts/gen-release-notes.mjs
 
       - name: Package extension

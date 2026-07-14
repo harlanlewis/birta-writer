@@ -19,7 +19,7 @@
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
 const VERSION = process.env.VERSION || "unreleased";
 const RANGE =
   process.env.RANGE ||
