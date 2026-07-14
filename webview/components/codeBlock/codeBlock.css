@@ -1,6 +1,8 @@
 /* ─── Code block NodeView ─── */
 .code-block-wrapper {
-    margin: 0 0 1em;
+    /* Owns the flow gap below the block (the inner <pre> is margin:0); shares
+       the content rhythm scale so code blocks space like every other block. */
+    margin: 0 0 var(--content-flow-gap);
     border-radius: 6px;
     /* keep overflow visible to avoid clipping the language dropdown menu */
     border: 1px solid var(--vscode-panel-border);
@@ -322,6 +324,26 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
    Mermaid diagram rendering
    ═══════════════════════════════════════════════════════════ */
 
+/* The Mermaid diagram canvas. Intentionally a fixed, non-theme surface — a
+   diagram reads like an embedded image/paper and stays legible on any editor
+   theme, so this is white by default even in dark mode (the `birta.mermaid.theme`
+   default is `light`). `dark`/`auto` flip it dark via the body class set in
+   syncMermaidCanvasClass(). This deliberate literal is the exception to the
+   "no custom colors" rule: the point is theme-independence, and the paired
+   Mermaid `theme` palette is chosen from the same decision so they never clash. */
+:root {
+    --mermaid-canvas: #ffffff;
+    /* Ink for text drawn directly *on* the canvas (the loading placeholder). Must
+       track the canvas, not the theme: on the forced-white canvas a dark-theme
+       foreground would be light-on-white and invisible. #333 matches Mermaid's
+       own default-theme text. */
+    --mermaid-canvas-fg: #333333;
+}
+body.mermaid-canvas-dark {
+    --mermaid-canvas: var(--vscode-textCodeBlock-background);
+    --mermaid-canvas-fg: var(--vscode-editor-foreground);
+}
+
 /* ─── Inline preview area ─── */
 .mermaid-preview {
     /* display is controlled by JS (none / flex) */
@@ -333,7 +355,7 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     position: relative;
     /* Height is set dynamically by JS from the SVG's natural size after rendering; CSS only provides a minimum for the loading placeholder */
     min-height: 300px;
-    background: var(--vscode-textCodeBlock-background);
+    background: var(--mermaid-canvas);
     /* Square bottom; the resize handle below provides the rounded corners. */
     border-radius: 0;
     cursor: grab;
@@ -366,7 +388,9 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--vscode-descriptionForeground);
+    /* On the canvas, not the header — must read on the (possibly white) canvas. */
+    color: var(--mermaid-canvas-fg);
+    opacity: 0.6;
     font-size: 13px;
 }
 
@@ -389,6 +413,9 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     margin: 0;
     max-height: 120px;
     overflow-y: auto;
+    /* This <pre> keeps the editor's dark code-block background (global `pre`
+       rule), so the theme foreground stays readable on it regardless of the
+       canvas — unlike the background-less loading text below. */
     color: var(--vscode-editor-foreground);
     opacity: 0.85;
 }
@@ -516,11 +543,16 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
     min-height: 0;
 }
 
-/* lightbox SVG container: likewise avoids % sizing to prevent zoom jumps */
+/* lightbox SVG container: likewise avoids % sizing to prevent zoom jumps.
+   Floated on the same canvas as the inline preview, so a light-theme diagram
+   (dark strokes) stays legible against the dark lightbox scrim. */
 .mermaid-lightbox-svg {
     display: inline-block;
     flex-shrink: 0;
     transform-origin: center center;
+    background: var(--mermaid-canvas);
+    padding: 20px;
+    border-radius: 8px;
 }
 
 .mermaid-lightbox-svg svg {

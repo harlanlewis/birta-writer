@@ -2,7 +2,7 @@
     "name": "birta-writer",
     "displayName": "Birta Writer",
     "description": "Birta Writer: a WYSIWYG Markdown editor for VS Code with live table editing",
-    "version": "0.2.170",
+    "version": "0.2.171",
     "publisher": "harlanlewis",
     "author": {
         "name": "Harlan Lewis",
@@ -1328,6 +1328,22 @@
                     ],
                     "default": "headings",
                     "description": "%config.blockHandles.description%"
+                },
+                "birta.mermaid.theme": {
+                    "order": 12,
+                    "type": "string",
+                    "enum": [
+                        "light",
+                        "dark",
+                        "auto"
+                    ],
+                    "enumDescriptions": [
+                        "%config.mermaid.theme.light%",
+                        "%config.mermaid.theme.dark%",
+                        "%config.mermaid.theme.auto%"
+                    ],
+                    "default": "light",
+                    "description": "%config.mermaid.theme.description%"
                 },
                 "birta.defaultMode": {
                     "order": 1,

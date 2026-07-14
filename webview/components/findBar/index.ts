@@ -82,6 +82,36 @@ function sortPos(m: SearchMatch): number {
 }
 
 /**
+ * PM ranges of code blocks currently showing their rendered preview (a Mermaid
+ * diagram or a LaTeX render) rather than their source. Find ignores these
+ * blocks entirely: matching their code text would land a highlight on hidden
+ * source, and scrolling to it would reveal a diagram, not the searched text.
+ * A previewable block toggled back to code view isn't hidden, so it's findable.
+ *
+ * Detected from the DOM (`pre.code-pre--preview-hidden`, added in preview mode),
+ * which covers both Mermaid and LaTeX previews and needs no per-NodeView
+ * registry — preview state lives in the NodeView, not the document.
+ */
+function previewCodeBlockRanges(view: EditorView): Array<[number, number]> {
+    const ranges: Array<[number, number]> = [];
+    view.state.doc.descendants((node, pos) => {
+        if (node.type.name !== "code_block") return undefined;
+        const dom = view.nodeDOM(pos);
+        if (dom instanceof HTMLElement && dom.querySelector("pre.code-pre--preview-hidden")) {
+            ranges.push([pos, pos + node.nodeSize]);
+        }
+        // Code blocks never contain other code blocks; no need to descend.
+        return false;
+    });
+    return ranges;
+}
+
+/** True when `pos` falls inside any of the given [from, to) ranges. */
+function posInRanges(pos: number, ranges: Array<[number, number]>): boolean {
+    return ranges.some(([from, to]) => pos >= from && pos < to);
+}
+
+/**
  * Query for the find-selection command (Cmd/Ctrl+D): the selected text, or
  * the word around the caret when the selection is empty (mirroring how
  * VS Code's "add selection to next find match" seeds its query).
@@ -497,6 +527,14 @@ export function initFindBar(
         matches = [...segMatches, ...blockMatches].sort(
             (a, b) => sortPos(a) - sortPos(b) || sortSub(a) - sortSub(b),
         );
+
+        // Drop matches inside code blocks that are showing their rendered
+        // preview (diagram/LaTeX) rather than their source — both tier-1 text
+        // hits and any tier-2 source-fallback block hits for the same code.
+        const previewRanges = previewCodeBlockRanges(view);
+        if (previewRanges.length) {
+            matches = matches.filter((m) => !posInRanges(sortPos(m), previewRanges));
+        }
 
         // Find-in-selection: keep only matches inside the captured range.
         if (inSelection && selectionScope) {

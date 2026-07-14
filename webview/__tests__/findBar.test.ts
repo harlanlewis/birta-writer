@@ -188,6 +188,48 @@ describe("initFindBar search", () => {
         expect(count.textContent).toBe("1/3");
     });
 
+    // A code block toggled to show its diagram/LaTeX render hides its source, so
+    // find must skip it — matching would highlight (and scroll to) hidden text.
+    // Preview state lives in the NodeView, surfaced to find via the DOM class
+    // `pre.code-pre--preview-hidden`; here a stub view reports that state.
+    function previewView(doc: PmNode): EditorView {
+        let codePos = -1;
+        doc.forEach((child, offset) => {
+            if (child.type.name === "code_block") codePos = offset;
+        });
+        const previewWrapper = document.createElement("div");
+        previewWrapper.innerHTML = '<pre class="code-pre--preview-hidden"></pre>';
+        let state = EditorState.create({ doc });
+        return {
+            get state() { return state; },
+            dispatch(tr: Transaction) { state = state.apply(tr); },
+            focus() {},
+            domAtPos() { throw new Error("no DOM mapping in tests"); },
+            nodeDOM: (pos: number) => (pos === codePos ? previewWrapper : null),
+            dom: document.createElement("div"),
+        } as unknown as EditorView;
+    }
+
+    it("code in a block showing its rendered preview should be excluded", () => {
+        const code = schema.node("code_block", { language: "mermaid" }, [schema.text("graph TD")]);
+        const doc = mkDoc(p("graph paper"), code);
+        const source = "graph paper\n\n```mermaid\ngraph TD\n```\n";
+        const { findBar, count } = setup(doc, { view: previewView(doc), source });
+        findBar.open("graph");
+        // Only the paragraph "graph", not the hidden diagram source.
+        expect(count.textContent).toBe("1/1");
+    });
+
+    it("code in a block showing its source should stay findable", () => {
+        const code = schema.node("code_block", { language: "mermaid" }, [schema.text("graph TD")]);
+        const doc = mkDoc(p("graph paper"), code);
+        const source = "graph paper\n\n```mermaid\ngraph TD\n```\n";
+        // Default fake view: nodeDOM returns null, so no block reports preview.
+        const { findBar, count } = setup(doc, { source });
+        findBar.open("graph");
+        expect(count.textContent).toBe("1/2");
+    });
+
     it("next/prev should cycle through matches", () => {
         const { findBar, count, btnNext, btnPrev } = setup(mkDoc(p("foo bar foo")));
         findBar.open("foo");

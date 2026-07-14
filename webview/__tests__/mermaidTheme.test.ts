@@ -8,7 +8,7 @@
  * removed, so a diagram is now themed purely from the native variable read here.
  */
 import { describe, it, expect } from "vitest";
-import { parseRgb, isDarkBackground, mermaidThemeForBackground } from "../components/codeBlock/mermaidTheme";
+import { parseRgb, isDarkBackground, mermaidThemeForBackground, isMermaidDark } from "../components/codeBlock/mermaidTheme";
 
 describe("parseRgb", () => {
     it("a 6-digit hex should parse to channels", () => {
@@ -93,5 +93,27 @@ describe("mermaidThemeForBackground", () => {
 
     it("a light editor background should select the 'default' Mermaid theme", () => {
         expect(mermaidThemeForBackground("#ffffff")).toBe("default");
+    });
+});
+
+describe("isMermaidDark", () => {
+    it("the 'light' mode should be light regardless of a dark editor background", () => {
+        expect(isMermaidDark("light", "#1e1e1e")).toBe(false);
+    });
+
+    it("the 'dark' mode should be dark regardless of a light editor background", () => {
+        expect(isMermaidDark("dark", "#ffffff")).toBe(true);
+    });
+
+    it("the 'auto' mode should follow a dark editor background", () => {
+        expect(isMermaidDark("auto", "#1e1e1e")).toBe(true);
+    });
+
+    it("the 'auto' mode should follow a light editor background", () => {
+        expect(isMermaidDark("auto", "#ffffff")).toBe(false);
+    });
+
+    it("the 'auto' mode with an unparseable background should default to dark", () => {
+        expect(isMermaidDark("auto", "")).toBe(true);
     });
 });

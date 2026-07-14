@@ -242,6 +242,27 @@ describe("setBlockHandles handler", () => {
     });
 });
 
+describe("setMermaidTheme handler", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.classList.remove("mermaid-canvas-dark");
+    });
+
+    it("a dark mode should mark the canvas dark and light should clear it", () => {
+        // Arrange
+        const handlers = createMessageHandlers(stubDeps());
+        const el = document.createElement("div");
+
+        // Act + Assert: dark forces the dark canvas class regardless of theme
+        handlers.setMermaidTheme?.({ type: "setMermaidTheme", mode: "dark" }, el);
+        expect(document.body.classList.contains("mermaid-canvas-dark")).toBe(true);
+
+        // Act + Assert: light clears it (white canvas)
+        handlers.setMermaidTheme?.({ type: "setMermaidTheme", mode: "light" }, el);
+        expect(document.body.classList.contains("mermaid-canvas-dark")).toBe(false);
+    });
+});
+
 describe("setFontFamily handler", () => {
     beforeEach(() => {
         vi.clearAllMocks();
