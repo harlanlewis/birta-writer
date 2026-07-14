@@ -40,12 +40,13 @@ describe("messaging — postMessage format", () => {
         });
     });
 
-    it("notifyUpdate should carry the content and the current baseSyncVersion", () => {
+    it("notifyUpdate should carry the content, the current baseSyncVersion, and a monotonic seq", () => {
         notifyUpdate("# Hello");
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "update",
             content: "# Hello",
             baseSyncVersion: 0,
+            seq: expect.any(Number),
         });
     });
 

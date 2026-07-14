@@ -84,6 +84,23 @@ export class MarkdownEditorProvider
     // of the first.
     private readonly _editQueues = new Map<string, Promise<void>>();
 
+    // In-flight save flushes (onWillSaveTextDocument): correlation id → resolver
+    // called with the webview's `flushResult` reply. A save posts `flushSave`,
+    // parks its waitUntil promise here, and the reply (or a timeout) resolves it.
+    private readonly _pendingFlushes = new Map<
+        string,
+        (content: string, baseSyncVersion: number, seq: number) => void
+    >();
+    private _flushSeq = 0;
+
+    // Highest outbound-content `seq` (key: uriKey) whose content the extension
+    // has committed to the document. A webview `update` is applied only if its
+    // seq exceeds this; a save-flush bumps it. Because the flush's TextEdits
+    // bypass the per-document _editQueue (they're applied by VS Code as part of
+    // the save), this total order is what stops a stale update from reverting a
+    // fresher flush.
+    private readonly _appliedSeq = new Map<string, number>();
+
     // Image webviewUri → relPath mapping (key: docUri.toString())
     private readonly _imageUriMaps = new Map<string, Map<string, string>>();
     private readonly _frontmatterMap = new Map<string, string>(); // uriKey → raw frontmatter string
@@ -285,6 +302,7 @@ export class MarkdownEditorProvider
             this._lastSyncedText.delete(uriKey);
             this._syncVersion.delete(uriKey);
             this._editQueues.delete(uriKey);
+            this._appliedSeq.delete(uriKey);
         });
 
         webviewPanel.webview.options = {
@@ -379,7 +397,18 @@ export class MarkdownEditorProvider
                                 break;
                             }
                             const newContent = this._prepareContentForSave(message.content, uriKey);
+                            const seq = message.seq;
                             void this._enqueueEdit(uriKey, async () => {
+                                // Ordering guard (checked at apply time, in queue
+                                // order): drop an update a save-flush has already
+                                // superseded, so it can never revert fresher content.
+                                if (seq <= (this._appliedSeq.get(uriKey) ?? -1)) { return; }
+                                // Advance the watermark now that we've committed to
+                                // this seq — even if the apply is a no-op — so it stays
+                                // a true monotonic high-water mark, matching the flush
+                                // path. (Later updates always carry a higher seq, so
+                                // this can never drop a legitimate one.)
+                                this._appliedSeq.set(uriKey, seq);
                                 // Identical to the current document (e.g. serializer no-op echo): nothing to do
                                 const applied = await this._applyWebviewEdit(document, newContent);
                                 if (!applied) { return; }
@@ -613,6 +642,13 @@ export class MarkdownEditorProvider
                             void vscode.env.clipboard.writeText(message.data);
                         }
                         break;
+                    case "flushResult": {
+                        // Reply to an onWillSaveTextDocument flush: hand the parked
+                        // waitUntil resolver the freshest serialized content.
+                        const resolve = this._pendingFlushes.get(message.id);
+                        if (resolve) { resolve(message.content, message.baseSyncVersion, message.seq); }
+                        break;
+                    }
                 }
             },
         );
@@ -653,10 +689,25 @@ export class MarkdownEditorProvider
                 this._pushExternalUpdate(document, panel, uriKey);
             }, 200);
         });
-        // Dispose the subscription when the panel closes
+        // Flush pending webview edits into the save. onWillSaveTextDocument
+        // fires ONLY for a dirty document — the webview's eager leading-edge sync
+        // (see editor.ts) makes the document dirty within an IPC hop of the first
+        // edit, so a fast Cmd+S reliably reaches here. waitUntil blocks the write
+        // until the webview hands back its freshest serialization, so a save can
+        // never persist content older than the editor state.
+        const willSaveSubscription = vscode.workspace.onWillSaveTextDocument((e) => {
+            if (e.document.uri.toString() !== uriKey) { return; }
+            e.waitUntil(this._flushWebviewEdits(document, uriKey));
+        });
+        // Dispose the subscriptions when the panel closes
         webviewPanel.onDidDispose(() => {
             if (externalChangeTimer !== undefined) { clearTimeout(externalChangeTimer); }
             changeSubscription.dispose();
+            willSaveSubscription.dispose();
+            // Fail any parked flush so a save mid-teardown never hangs.
+            for (const [id, resolve] of this._pendingFlushes) {
+                if (id.startsWith("flush:" + uriKey + ":")) { resolve("", -1, -1); }
+            }
         });
     }
 
@@ -725,6 +776,84 @@ export class MarkdownEditorProvider
             replace.replacement,
         );
         return vscode.workspace.applyEdit(edit);
+    }
+
+    /**
+     * onWillSaveTextDocument participant: ask the webview to serialize the live
+     * document NOW and resolve with the TextEdits that make the about-to-be-saved
+     * bytes match it. Returns [] fast when there's nothing to flush (no live/ready
+     * panel), and is bounded by a timeout so a wedged webview can never block the
+     * save — the document merely stays dirty and the next sync/save catches up.
+     */
+    private _flushWebviewEdits(
+        document: vscode.TextDocument,
+        uriKey: string,
+    ): Promise<vscode.TextEdit[]> {
+        const panel = this._webviewPanels.get(uriKey);
+        if (!panel || !this._initializedPanels.has(uriKey)) {
+            return Promise.resolve([]);
+        }
+        const id = `flush:${uriKey}:${++this._flushSeq}`;
+        return new Promise<vscode.TextEdit[]>((resolve) => {
+            const finish = (edits: vscode.TextEdit[]): void => {
+                clearTimeout(timer);
+                this._pendingFlushes.delete(id);
+                resolve(edits);
+            };
+            // Safety valve, well under VS Code's ~1.75s willSave budget: never
+            // hang a save on a wedged/slow webview. Reachable only when the
+            // webview can't serialize within 1s (a pathological multi-MB doc —
+            // see MAR-137). On expiry the save writes the current document (≤ one
+            // throttle window stale); the reply that lands late still re-baselines
+            // the webview, so the gap self-heals on the next real edit rather than
+            // on this save. The common case replies in a few ms.
+            const timer = setTimeout(() => finish([]), 1000);
+            this._pendingFlushes.set(id, (content, baseSyncVersion, seq) => {
+                this._computeFlushEdits(document, uriKey, content, baseSyncVersion, seq)
+                    .then(finish, () => finish([]));
+            });
+            try {
+                panel.webview.postMessage({ type: "flushSave", id });
+            } catch {
+                finish([]); // panel disposed between the guard and the post
+            }
+        });
+    }
+
+    /**
+     * Turn a webview flush reply into the TextEdits a save should apply. Guards:
+     * a flush that raced an external change (stale baseSyncVersion) or one a newer
+     * update already applied (stale seq) yields no edits. Bumps `_appliedSeq` so a
+     * still-queued older update no-ops instead of reverting the saved content.
+     */
+    private async _computeFlushEdits(
+        document: vscode.TextDocument,
+        uriKey: string,
+        content: string,
+        baseSyncVersion: number,
+        seq: number,
+    ): Promise<vscode.TextEdit[]> {
+        const currentVersion = this._syncVersion.get(uriKey) ?? 0;
+        if (baseSyncVersion !== currentVersion) { return []; }
+        if (seq <= (this._appliedSeq.get(uriKey) ?? -1)) { return []; }
+        const newContent = this._prepareContentForSave(content, uriKey);
+        const replace = computeReplaceRange(document.getText(), newContent);
+        this._appliedSeq.set(uriKey, seq);
+        if (!replace) { return []; } // document already current — nothing to write
+        // Record the echo baseline BEFORE the save applies these edits, so the
+        // resulting onDidChangeTextDocument is recognized as our own (not an
+        // external change to re-push). (No tab-pin here: a save only fires on an
+        // already-dirty document, which the dirtying update already pinned.)
+        this._lastSyncedText.set(uriKey, newContent);
+        return [
+            vscode.TextEdit.replace(
+                new vscode.Range(
+                    document.positionAt(replace.startOffset),
+                    document.positionAt(replace.endOffset),
+                ),
+                replace.replacement,
+            ),
+        ];
     }
 
     /** Pin the tab on first edit (remove the italic preview state) */

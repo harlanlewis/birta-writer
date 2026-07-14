@@ -19,11 +19,11 @@ import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
-import { setLogTableSel, syncExternalContent } from "./editor";
+import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor";
 import { setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
-import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion } from "./messaging";
+import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion, notifyFlushResult } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import { runEditorCommand } from "./editorCommands";
@@ -211,6 +211,24 @@ export function createMessageHandlers(
         },
         lineMapUpdate(msg) {
             setLineMap(msg.lineMap);
+        },
+        flushSave(msg) {
+            // A save is imminent: serialize the live document NOW (bypassing the
+            // throttle) and reply so the extension writes the freshest content.
+            notifyFlushResult(msg.id, flushPendingEdit());
+        },
+        __testInsertText(msg) {
+            // TEST-ONLY (see the message's declaration): insert text at the caret
+            // via a real ProseMirror transaction, so the integration suite can put
+            // the editor genuinely ahead of the backing document.
+            const view = getEditorView();
+            if (!view) { return; }
+            // Trip the "user has interacted" gate exactly as a real keystroke does
+            // (capture-phase keydown listener in editor.ts); without it the update
+            // listener skips the sync and the edit would never reach the document.
+            document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: msg.text.slice(0, 1) }));
+            view.focus();
+            view.dispatch(view.state.tr.insertText(msg.text, view.state.selection.to));
         },
         setDebugMode(msg) {
             setLogTableSel(msg.enabled);

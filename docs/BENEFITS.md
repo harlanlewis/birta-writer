@@ -57,6 +57,13 @@ the raw text editor for good. Birta is built so that never happens.
   convenience of block editing never comes at the cost of the document's
   integrity.
 
+- **A save always captures your latest edit.** The moment you type, the editor
+  marks the document unsaved — within a few milliseconds, faster than you can
+  reach Save — and a save then waits for the editor to hand back its freshest
+  content before writing to disk. **Why it matters:** the old trap where a quick
+  Cmd+S seemed to "not take" and the change quietly vanished on close is gone;
+  your edits are never left stranded in the editor, unwritten.
+
 Together these mean you can point Birta at a file from almost any Markdown tool,
 edit it like a document, and trust the save. Interop (see
 [Compatibility](#compatibility-with-other-markdown-tools) below) mostly falls

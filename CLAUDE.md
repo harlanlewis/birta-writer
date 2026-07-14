@@ -135,16 +135,19 @@ Project intent and ordering principles live in `README.md` ("Why this fork").
 |-------|-----------|-------|
 | Extension unit tests | **Vitest 2.x** (Node env) | `src/utils/`, `src/MarkdownEditorProvider.ts` |
 | WebView unit tests | **Vitest 2.x + jsdom 24.x** | `webview/utils/`, `webview/messaging.ts` |
-| Integration tests (planned) | **@vscode/test-electron + Mocha** | needs a real VS Code Extension Host |
+| Integration tests | **@vscode/test-electron + Mocha** | `src/test/` — real Extension Host: activation, `onWillSaveTextDocument`/`waitUntil` reaching disk, the custom-editor save cycle with a live webview |
 
 The `vscode` module is mocked centrally via `__mocks__/vscode.ts`, injected by `resolve.alias` in `vitest.config.ts`. Do not `vi.mock("vscode")` in individual test files.
+
+**Integration vs unit boundary:** unit tests mock `vscode` and cover the flush *protocol* logic (seq ordering, stale rejection, timeout) against a controllable fake webview; integration tests run in a downloaded VS Code and verify the behaviors a mock can't — that VS Code fires our will-save participant and applies its `TextEdit[]` to disk, and, driving the **real Milkdown editor**, that an edit living only in the webview is carried to disk by the save flush (the original data-loss bug, end-to-end). That last test uses `birta._test.insertText` — an **invisible, uncontributed, test-only** command that posts `__testInsertText` to the active webview; it is inert in production (no product code path invokes it). Webview *behavior* is otherwise exercised by the `e2e/` Chromium harness. The integration suite (`src/test/**`) compiles via `tsconfig.integration.json` to `out/` and is excluded from Vitest and the perf harness; it downloads VS Code on first run (cached in `.vscode-test/`, gitignored) and is **not** part of `pnpm test` — run it explicitly.
 
 ### Test commands
 
 ```bash
-pnpm test              # run all unit tests once
+pnpm test              # run all unit tests once (Vitest)
 pnpm test:watch        # watch mode (during development)
 pnpm test:coverage     # run tests + coverage report (coverage/)
+pnpm test:integration  # build + compile + run the real-VS-Code suite (downloads VS Code first run)
 ```
 
 ### Layout & naming
@@ -227,3 +230,32 @@ were removed before the rename; the custom timer only ever fired in configuratio
 redundant or actively fought the user's `files.autoSave` choice.) With the VS
 Code default (`files.autoSave: "off"`), edits stay dirty until Cmd+S / hot exit,
 exactly like any text editor.
+
+### View→document sync invariant (never lose an edit on save)
+
+The edit lives in the webview (Milkdown); the `TextDocument` is what VS Code
+saves. The pipeline that carries edits webview→document must satisfy, in order of
+priority:
+
+1. **A save never persists content older than the editor state.** The extension
+   registers `onWillSaveTextDocument` and, via `waitUntil`, asks the webview to
+   serialize the live document *now* and returns those bytes as the save's edits
+   (`_flushWebviewEdits` / `flushPendingEdit`). A save is bounded by a ~1s timeout
+   so a wedged webview degrades to "save current document" rather than hanging.
+2. **An edit is save-capturable the moment the user perceives it.** The first
+   edit after a save dirties the `TextDocument` within an IPC hop (leading-edge
+   sync in `webview/editor.ts`) — `onWillSaveTextDocument` only fires for a dirty
+   document, so this is what makes a fast Cmd+S actually save.
+3. **Ordering is total.** Every outbound content message carries a monotonic
+   `seq`; the extension drops any `update` a flush has superseded, so a slow
+   in-flight sync can never revert a newer save (`_appliedSeq`).
+
+The webview→document **debounce is load-bearing for crash-safety, not
+performance**: it bounds how far the `TextDocument` (which hot exit backs up)
+trails the editor. Serialization is O(document size); it runs off the keystroke
+path (on typing pause / max-wait / save), never per keystroke. Do not lengthen
+the debounce toward "save less often" or move serialization back onto the
+keystroke — the first breaks the crash-safety window, the second reintroduces
+per-keystroke O(n) cost. (Note: on very large documents typing itself is still
+bounded by ProseMirror's per-keystroke view reconciliation — a separate,
+document-size-scaling cost unrelated to this sync pipeline.)

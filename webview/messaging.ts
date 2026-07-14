@@ -28,8 +28,23 @@ export function notifyReady(): void {
     vscode.postMessage({ type: "ready" });
 }
 
+// Monotonic counter tagging every outbound content message (update + flushResult)
+// so the extension can totally order them and drop a stale update that would
+// revert a fresher flush.
+let outSeq = 0;
+
 export function notifyUpdate(markdown: string): void {
-    vscode.postMessage({ type: "update", content: markdown, baseSyncVersion });
+    vscode.postMessage({ type: "update", content: markdown, baseSyncVersion, seq: ++outSeq });
+}
+
+/**
+ * Reply to a `flushSave` request with the just-serialized content, so the
+ * extension's onWillSaveTextDocument participant can write the freshest bytes.
+ * Carries the current `baseSyncVersion` for the same stale-guard as `update`,
+ * and the next `seq` so a stale in-flight update can't supersede it.
+ */
+export function notifyFlushResult(id: string, content: string): void {
+    vscode.postMessage({ type: "flushResult", id, content, baseSyncVersion, seq: ++outSeq });
 }
 
 export function notifyOpenUrl(url: string): void {
