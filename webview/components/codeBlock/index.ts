@@ -153,14 +153,22 @@ function currentEditorBg(): string {
 }
 
 /**
+ * Effective dark/light for the current mode. Reads the editor background (a
+ * forced `getComputedStyle` reflow) only in `auto` mode — `light`/`dark` are
+ * fixed, so on the mount path and on theme events those modes cost nothing.
+ */
+function mermaidDarkNow(): boolean {
+    return isMermaidDark(mermaidThemeMode, mermaidThemeMode === "auto" ? currentEditorBg() : "");
+}
+
+/**
  * Reflect the effective (light/dark) Mermaid canvas onto <body>, so the CSS
  * `--mermaid-canvas` variable — white by default, dark under this class — backs
  * every diagram surface (inline preview and lightbox) consistently. Idempotent;
  * safe to call on every render and on theme/setting changes.
  */
 export function syncMermaidCanvasClass(): void {
-    const dark = isMermaidDark(mermaidThemeMode, currentEditorBg());
-    document.body.classList.toggle("mermaid-canvas-dark", dark);
+    document.body.classList.toggle("mermaid-canvas-dark", mermaidDarkNow());
 }
 
 /** Re-render every visible Mermaid diagram (after a theme or setting change). */
@@ -192,7 +200,7 @@ export function setMermaidThemeMode(mode: MermaidThemeMode): void {
  */
 async function ensureMermaid(): Promise<typeof import("mermaid")["default"]> {
     const mermaid = await loadMermaid();
-    const dark = isMermaidDark(mermaidThemeMode, currentEditorBg());
+    const dark = mermaidDarkNow();
     document.body.classList.toggle("mermaid-canvas-dark", dark);
     const currentTheme = dark ? "dark" : "default";
 
@@ -223,10 +231,12 @@ type MermaidInstance = {
 const mermaidInstances = new Set<MermaidInstance>();
 
 // Listen for theme-change events and re-render all Mermaid diagrams. Only `auto`
-// mode tracks the editor theme; `light`/`dark` are fixed, so the re-init is a
-// no-op there (lastMermaidTheme is unchanged) but the re-render stays harmless.
+// mode tracks the editor theme; `light`/`dark` render a fixed palette that a
+// theme switch cannot change, so we skip the re-init + re-render of every open
+// diagram entirely in those modes.
 if (typeof window !== 'undefined') {
     window.addEventListener('theme-changed', () => {
+        if (mermaidThemeMode !== 'auto') return;
         mermaidInitialized = false;
         syncMermaidCanvasClass();
         rerenderAllMermaid();
