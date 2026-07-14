@@ -81,15 +81,19 @@ function fallbackNotes(list) {
     .trim();
 }
 
-const PROMPT = (changelog, list) => `You are writing end-user release notes for Birta Writer, a WYSIWYG Markdown editor extension for VS Code. Produce Markdown in the style of https://cursor.com/changelog: lead with a few tentpole highlights that a non-technical user understands, each describing the benefit — what they can now do or what got better — not the internal implementation. Then a shorter list of smaller improvements, then fixes.
+const PROMPT = (changelog, list) => `You are writing end-user release notes for Birta Writer, a WYSIWYG Markdown editor extension for VS Code. Produce Markdown in the style of https://cursor.com/changelog: lead with the most significant new capabilities described for the benefit they deliver, then the rest, grouped by kind.
 
 Rules:
 - Matter-of-fact tone. State the capability and why it matters. No marketing adjectives ("powerful", "seamless", "delightful"), no exclamation marks.
-- Structure exactly these sections, omitting any that would be empty:
-  ## Highlights   (2-4 items; each a bold short title on its own line, then 1-2 plain sentences)
-  ## Improvements (bulleted; smaller UX/technical wins, one line each)
-  ## Fixes        (bulleted; user-visible bug fixes, one line each)
-- Merge duplicates; drop pure-internal churn (refactors, tests, tooling, version bumps) unless it changed something a user would notice.
+- Structure exactly these sections, in this order, omitting any that would be empty:
+  ## Breaking changes (only if any — changes that require the user to act; lead each with the action needed)
+  ## Highlights   (the 1-4 most significant NEW capabilities; each a bold short title on its own line, then 1-2 plain sentences)
+  ## New          (other new features; bulleted, one line each)
+  ## Improved     (existing features that changed or got better, including user-visible performance; bulleted, one line each)
+  ## Fixed        (user-visible bug fixes; bulleted, one line each)
+- A first release with no prior public version has only Highlights + New — there is nothing to improve or fix against yet.
+- Only describe what a user can observe. Drop anything invisible to them: refactors, internal performance, tooling, tests, dependency and version bumps. A performance win a user can feel ("faster launch") goes under Improved.
+- Merge duplicates and superseded iterations — describe the final capability once, not its development history.
 - Do NOT invent features. Only describe what the source material supports.
 - Do not include a top-level version heading; that is added separately.
 
