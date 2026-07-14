@@ -7,7 +7,7 @@
     border-left: 3px solid var(--directive-accent);
     border-radius: 4px;
     background: color-mix(in srgb, var(--directive-accent) 6%, transparent);
-    margin: 0 0 1em;
+    margin: 0 0 var(--content-flow-gap);
 
     &[data-name="note"],
     &[data-name="info"] {
@@ -65,7 +65,10 @@
     .directive-body {
         padding: 0.25em 0.9em 0.5em;
 
-        > p:last-child {
+        /* The body's own padding supplies the bottom whitespace, so the last
+           child (a paragraph, list, code block, …) must not add its flow gap. */
+        > :last-child {
+            margin-bottom: 0;
             padding-bottom: 0;
         }
     }

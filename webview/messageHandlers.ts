@@ -13,6 +13,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
 import { applyBlockHandles } from "./utils/blockHandles";
+import { setMermaidThemeMode } from "./components/codeBlock";
 import { applyFoldingControls } from "./utils/foldingControls";
 import { foldPluginKey, type FoldMeta } from "./plugins/foldState";
 import { setImageUriMap } from "./components/imageView";
@@ -262,6 +263,9 @@ export function createMessageHandlers(
         setBlockHandles(msg) {
             applyBlockHandles(msg.mode);
             topbarTb?.setBlockHandles(msg.mode);
+        },
+        setMermaidTheme(msg) {
+            setMermaidThemeMode(msg.mode);
         },
         setFoldingControls(msg) {
             // Chevron residency is pure CSS (body classes); the enabled flag

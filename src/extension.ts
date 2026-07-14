@@ -3,6 +3,7 @@ import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import type { TableWrapMode, FontPreset } from "../shared/messages";
 import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { normalizeBlockHandlesMode, DEFAULT_BLOCK_HANDLES_MODE, BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../shared/blockHandles";
+import { normalizeMermaidThemeMode, DEFAULT_MERMAID_THEME_MODE } from "../shared/mermaid";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 
@@ -359,6 +360,14 @@ export function activate(context: vscode.ExtensionContext) {
                         .get<string>("blockHandles", DEFAULT_BLOCK_HANDLES_MODE),
                 );
                 MarkdownEditorProvider.current?.postToAll({ type: "setBlockHandles", mode });
+            }
+            if (e.affectsConfiguration("birta.mermaid.theme")) {
+                const mode = normalizeMermaidThemeMode(
+                    vscode.workspace
+                        .getConfiguration("birta")
+                        .get<string>("mermaid.theme", DEFAULT_MERMAID_THEME_MODE),
+                );
+                MarkdownEditorProvider.current?.postToAll({ type: "setMermaidTheme", mode });
             }
             if (e.affectsConfiguration("editor.showFoldingControls")
                 || e.affectsConfiguration("editor.folding")) {

@@ -16,7 +16,8 @@ import {
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { loadMermaid } from "@/utils/mermaidLoader";
-import { mermaidThemeForBackground } from "./mermaidTheme";
+import { isMermaidDark } from "./mermaidTheme";
+import { normalizeMermaidThemeMode, type MermaidThemeMode } from "../../../shared/mermaid";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
 import { renderKatexInto } from "@/utils/katexLoader";
 import { highlight, ensureGrammars } from "@/highlighter";
@@ -139,18 +140,61 @@ function updateLineNumbers(gutter: HTMLElement, text: string, visualLineCounts?:
 // ─── Mermaid module-level initialization ─────────────────
 let mermaidInitialized = false;
 let lastMermaidTheme = "";
+
+// The active `birta.mermaid.theme` mode, seeded from the injected config and
+// kept current by setMermaidThemeMode() when the setting changes live.
+let mermaidThemeMode: MermaidThemeMode = normalizeMermaidThemeMode(window.__i18n?.mermaidTheme);
+
+/** The live editor background, used only when the mode is `auto`. */
+function currentEditorBg(): string {
+    return getComputedStyle(document.documentElement)
+        .getPropertyValue("--vscode-editor-background")
+        .trim();
+}
+
+/**
+ * Reflect the effective (light/dark) Mermaid canvas onto <body>, so the CSS
+ * `--mermaid-canvas` variable — white by default, dark under this class — backs
+ * every diagram surface (inline preview and lightbox) consistently. Idempotent;
+ * safe to call on every render and on theme/setting changes.
+ */
+export function syncMermaidCanvasClass(): void {
+    const dark = isMermaidDark(mermaidThemeMode, currentEditorBg());
+    document.body.classList.toggle("mermaid-canvas-dark", dark);
+}
+
+/** Re-render every visible Mermaid diagram (after a theme or setting change). */
+function rerenderAllMermaid(): void {
+    for (const instance of mermaidInstances) {
+        if (instance.isMermaid && instance.isPreviewMode && instance.lastRenderedCode) {
+            instance.renderMermaid(instance.lastRenderedCode);
+        }
+    }
+}
+
+/**
+ * Live-apply a `birta.mermaid.theme` change: update the mode, force a re-init on
+ * the next render, resync the canvas class, and re-render open diagrams.
+ */
+export function setMermaidThemeMode(mode: MermaidThemeMode): void {
+    if (mode === mermaidThemeMode) return;
+    mermaidThemeMode = mode;
+    mermaidInitialized = false;
+    syncMermaidCanvasClass();
+    rerenderAllMermaid();
+}
+
 /**
  * Load Mermaid on demand (lazily code-split) and (re-)initialize it for the
- * current theme, returning the module so the caller can render. Only invoked
- * when a diagram actually renders, so documents without ```mermaid blocks never
- * pull the Mermaid bundle into the launch path.
+ * current mode/theme, returning the module so the caller can render. Only
+ * invoked when a diagram actually renders, so documents without ```mermaid
+ * blocks never pull the Mermaid bundle into the launch path.
  */
 async function ensureMermaid(): Promise<typeof import("mermaid")["default"]> {
     const mermaid = await loadMermaid();
-    const bg = getComputedStyle(document.documentElement)
-        .getPropertyValue("--vscode-editor-background")
-        .trim();
-    const currentTheme = mermaidThemeForBackground(bg);
+    const dark = isMermaidDark(mermaidThemeMode, currentEditorBg());
+    document.body.classList.toggle("mermaid-canvas-dark", dark);
+    const currentTheme = dark ? "dark" : "default";
 
     // If the theme hasn't changed and it's already initialized, skip re-init.
     if (mermaidInitialized && lastMermaidTheme === currentTheme) return mermaid;
@@ -178,17 +222,14 @@ type MermaidInstance = {
 };
 const mermaidInstances = new Set<MermaidInstance>();
 
-// Listen for theme-change events and re-render all Mermaid diagrams
+// Listen for theme-change events and re-render all Mermaid diagrams. Only `auto`
+// mode tracks the editor theme; `light`/`dark` are fixed, so the re-init is a
+// no-op there (lastMermaidTheme is unchanged) but the re-render stays harmless.
 if (typeof window !== 'undefined') {
     window.addEventListener('theme-changed', () => {
-        // Force Mermaid to re-initialize (the theme may have changed)
         mermaidInitialized = false;
-        // Re-render every visible Mermaid diagram
-        for (const instance of mermaidInstances) {
-            if (instance.isMermaid && instance.isPreviewMode && instance.lastRenderedCode) {
-                instance.renderMermaid(instance.lastRenderedCode);
-            }
-        }
+        syncMermaidCanvasClass();
+        rerenderAllMermaid();
     });
 }
 

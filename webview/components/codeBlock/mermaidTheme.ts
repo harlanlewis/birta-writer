@@ -6,11 +6,14 @@
  *
  * Why this exists as its own module: Mermaid is the only consumer that needs a
  * binary dark/light choice derived from the theme (CSS-driven consumers just
- * follow the native `--vscode-*` variables). In `auto` mode — the only mode —
- * that background is whatever VS Code injects, so a robust parse of it is what
- * keeps a diagram's palette matching the editor at first paint and across live
- * theme switches, with no extension-host round-trip.
+ * follow the native `--vscode-*` variables). The `birta.mermaid.theme` setting
+ * picks the mode: `light`/`dark` force a fixed palette, and only `auto` derives
+ * it from the injected background — a robust parse of it is what keeps an
+ * auto-mode diagram's palette matching the editor at first paint and across
+ * live theme switches, with no extension-host round-trip.
  */
+
+import type { MermaidThemeMode } from "../../../shared/mermaid";
 
 /** Parse `#rgb` / `#rrggbb` / `rgb()` / `rgba()` into 0–255 channels; null otherwise. */
 export function parseRgb(color: string): { r: number; g: number; b: number } | null {
@@ -53,7 +56,19 @@ export function isDarkBackground(bg: string): boolean {
     return luminance < 128;
 }
 
-/** The Mermaid `theme` value for a given editor background. */
+/** The Mermaid `theme` value for a given editor background (the `auto` path). */
 export function mermaidThemeForBackground(bg: string): "dark" | "default" {
     return isDarkBackground(bg) ? "dark" : "default";
+}
+
+/**
+ * Whether the Mermaid canvas + palette should render dark, given the user's
+ * chosen mode and the live editor background. `light`/`dark` are fixed; only
+ * `auto` consults the background. This single boolean drives both the Mermaid
+ * `theme` and the canvas background color, so the two never disagree.
+ */
+export function isMermaidDark(mode: MermaidThemeMode, bg: string): boolean {
+    if (mode === "light") return false;
+    if (mode === "dark") return true;
+    return isDarkBackground(bg);
 }

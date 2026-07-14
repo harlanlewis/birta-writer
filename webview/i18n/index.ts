@@ -1,4 +1,5 @@
 import type { ProofreadConfig, ToolbarConfig, FontPreset, FontStacks } from "../../shared/messages";
+import type { MermaidThemeMode } from "../../shared/mermaid";
 
 declare global {
     interface Window {
@@ -26,6 +27,8 @@ declare global {
             contentWidth?: import("../../shared/contentWidth").ContentWidthMode;
             /** Fixed measure in ch, used when the mode is "fixed" (birta.maxContentWidth). */
             maxContentWidth?: number;
+            /** Mermaid diagram theme mode: light / dark / auto (birta.mermaid.theme). */
+            mermaidTheme?: MermaidThemeMode;
             /** Serialized document URI, used for context-menu command routing (MAR-9). */
             documentUri?: string;
             /** The extension's display name (package.json), for UI that names the product. */

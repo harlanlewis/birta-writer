@@ -8,6 +8,7 @@ import type { EditorCommandId } from "./editorCommands";
 import type { ContentWidthMode } from "./contentWidth";
 import type { BlockHandlesMode } from "./blockHandles";
 import type { FoldingControlsMode } from "./foldingControls";
+import type { MermaidThemeMode } from "./mermaid";
 
 /** Image metadata: disk-relative path + WebView-accessible URI + file name */
 export type ProjectImage = {
@@ -285,6 +286,8 @@ export type ToWebviewMessage =
     | { type: "setTocPosition"; position: TocPosition }
     // Live resting block-handle visibility update, after `blockHandles` changes.
     | { type: "setBlockHandles"; mode: BlockHandlesMode }
+    // Live Mermaid theme-mode update, after `birta.mermaid.theme` changes.
+    | { type: "setMermaidTheme"; mode: MermaidThemeMode }
     // Live fold-affordance update after `editor.showFoldingControls` /
     // `editor.folding` changes. Resource-scoped: the extension re-resolves
     // per open document and posts per-webview (never one global broadcast).

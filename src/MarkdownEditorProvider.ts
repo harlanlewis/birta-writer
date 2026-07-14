@@ -18,6 +18,7 @@ import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
 import { normalizeBlockHandlesMode, blockHandlesBodyClass, DEFAULT_BLOCK_HANDLES_MODE, type BlockHandlesMode } from "../shared/blockHandles";
+import { normalizeMermaidThemeMode, DEFAULT_MERMAID_THEME_MODE } from "../shared/mermaid";
 import { normalizeFoldingControlsMode, foldingBodyClasses, DEFAULT_FOLDING_CONTROLS_MODE, type FoldingControlsMode } from "../shared/foldingControls";
 
 /**
@@ -1131,6 +1132,7 @@ export class MarkdownEditorProvider
         const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
         const frontmatterExpanded = cfg.get<boolean>("frontmatterExpanded", true);
         const blockHandles = MarkdownEditorProvider._resolveBlockHandlesMode(cfg);
+        const mermaidTheme = normalizeMermaidThemeMode(cfg.get<string>("mermaid.theme", DEFAULT_MERMAID_THEME_MODE));
         const folding = this._getFoldingConfig(document.uri);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
         const toolbar = MarkdownEditorProvider.getToolbarConfig();
@@ -1140,7 +1142,7 @@ export class MarkdownEditorProvider
         // optional-chained so a stripped-down test context still resolves.
         const productName =
             (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, documentUri, productName })};`;
+        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
         const bodyClasses = [
             isAutoWidth ? "editor-width-auto" : "",
             codeBlockWordWrap ? "code-block-word-wrap" : "",

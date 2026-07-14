@@ -62,6 +62,7 @@ import { initKeyboardShortcuts } from "./keyboardShortcuts";
 import { createMessageHandlers, type Handler } from "./messageHandlers";
 import { createEventManager } from "./eventManager";
 import { observeNativeThemeChanges } from "./nativeThemeBridge";
+import { syncMermaidCanvasClass } from "./components/codeBlock";
 
 // ── Module-level state ─────────────────────────────────────
 let currentEditor: Editor | null = null;
@@ -561,6 +562,10 @@ onMessage(async (msg) => {
 // (Mermaid, etc.) refresh on every theme change, including OS light/dark
 // switching that never reaches the extension host.
 observeNativeThemeChanges();
+
+// Set the Mermaid canvas class up front (from the injected mode + current
+// background) so the first diagram paints on the right surface, with no flash.
+syncMermaidCanvasClass();
 
 // WebView finished loading.
 mark("ready-posted");
