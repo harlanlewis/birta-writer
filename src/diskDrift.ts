@@ -93,6 +93,13 @@ export class DiskDriftController {
             }),
         ];
 
+        // Evaluate once now: a document restored dirty (hot exit) — or reopened
+        // after the webview was disposed on switch-away — can already differ
+        // from a file that changed with no watcher event to catch. Nearly free
+        // in the common case: a CLEAN document short-circuits before any disk
+        // read (see _evaluate).
+        void this._evaluate(document, uriKey);
+
         return {
             dispose: () => {
                 if (timer !== undefined) { clearTimeout(timer); }

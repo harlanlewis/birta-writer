@@ -186,6 +186,34 @@ describe("DiskDriftController — notify-only disk drift", () => {
         });
     });
 
+    it("track() flags drift immediately when a dirty document already differs from disk (no watcher event)", async () => {
+        // The hot-exit-restore / reopen-after-switch-away shape: the document
+        // comes back dirty and the file already changed, with no watcher event
+        // to catch it. track() must evaluate once on its own.
+        diskContent = "line1\nline2\n";
+        const document = makeFakeTextDocument(diskContent, vscode.Uri.file("/project/note.md"));
+        const uriKey = document.uri.toString();
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(0)), "MINE ");
+        await vscode.workspace.applyEdit(edit);
+        expect(document.isDirty).toBe(true);
+        diskContent = "line1 DISK\nline2\n"; // disk already diverged before tracking
+
+        const controller = new DiskDriftController({
+            onDriftChange: (key, drifted) => transitions.push({ uriKey: key, drifted }),
+        });
+        controller.track(document as unknown as vscode.TextDocument, uriKey);
+        await vi.advanceTimersByTimeAsync(0); // let the initial async evaluate settle
+
+        expect(transitions).toEqual([{ uriKey, drifted: true }]);
+    });
+
+    it("track() on a clean document reads no disk (cheap mount path)", async () => {
+        setup(); // clean document
+        await vi.advanceTimersByTimeAsync(0);
+        expect(vscode.workspace.fs.readFile).not.toHaveBeenCalled();
+    });
+
     it("dispose stops watching and clears drift", async () => {
         const { document, uriKey, tracking, fireDiskChange } = setup();
         await dirtyEdit(document, 0, "MINE ");
