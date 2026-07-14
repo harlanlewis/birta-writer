@@ -433,6 +433,33 @@ describe("selection toolbar per-item visibility", () => {
         // Assert
         expect(linkButton().style.display).not.toBe("none");
     });
+
+    it("a text selection with every inline item hidden should not show an empty bar", async () => {
+        // Arrange — opt every inline item out; the bar would otherwise be empty
+        editor = await makeEditor("hello world\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn(), {
+            format: false,
+            bold: false,
+            italic: false,
+            strikethrough: false,
+            inlineCode: false,
+            highlight: false,
+            link: false,
+            clearFormatting: false,
+            math: false,
+        });
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)),
+        );
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — the bar stays hidden rather than flashing empty
+        expect(selToolbar().style.display).toBe("none");
+    });
 });
 
 describe("selection toolbar block-range mode", () => {

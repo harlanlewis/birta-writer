@@ -805,6 +805,19 @@ export function setupSelectionToolbar(
             deleteSep.style.display =
                 isEntireTable || isRow || isCol ? "" : "none";
 
+            // A single-cell selection with every inline mark opted out has no
+            // structure controls either → don't flash an empty bar.
+            const hasCellMarks =
+                visible.has("bold") ||
+                visible.has("italic") ||
+                visible.has("strikethrough") ||
+                visible.has("inlineCode") ||
+                visible.has("highlight");
+            if (!hasCellMarks && !isEntireTable && !isRow && !isCol) {
+                hideToolbar();
+                return;
+            }
+
             // Position
             toolbar.style.visibility = "hidden";
             toolbar.style.display = "flex";
@@ -833,20 +846,38 @@ export function setupSelectionToolbar(
         // Text mode: each inline button honors its per-item visibility setting
         // (birta.floatingToolbar.items.*). The format dropdown is additionally
         // hidden inside a table cell (it is meaningless there).
-        fmtWrap.style.display = !inTable && visible.has("format") ? "" : "none";
-        textFmtSep.style.display = !inTable && visible.has("format") ? "" : "none";
-        boldBtn.style.display = visible.has("bold") ? "" : "none";
-        italicBtn.style.display = visible.has("italic") ? "" : "none";
-        strikeBtn.style.display = visible.has("strikethrough") ? "" : "none";
-        codeBtn.style.display = visible.has("inlineCode") ? "" : "none";
-        highlightBtn.style.display = visible.has("highlight") ? "" : "none";
-        linkSep.style.display = visible.has("link") ? "" : "none";
-        linkBtn.style.display = visible.has("link") ? "" : "none";
+        const showFormat = !inTable && visible.has("format");
+        const showBold = visible.has("bold");
+        const showItalic = visible.has("italic");
+        const showStrike = visible.has("strikethrough");
+        const showCode = visible.has("inlineCode");
+        const showHighlight = visible.has("highlight");
+        const showLink = visible.has("link");
         const showClear = visible.has("clearFormatting");
         const showMath = visible.has("math");
+        fmtWrap.style.display = showFormat ? "" : "none";
+        boldBtn.style.display = showBold ? "" : "none";
+        italicBtn.style.display = showItalic ? "" : "none";
+        strikeBtn.style.display = showStrike ? "" : "none";
+        codeBtn.style.display = showCode ? "" : "none";
+        highlightBtn.style.display = showHighlight ? "" : "none";
+        linkBtn.style.display = showLink ? "" : "none";
         clearFmtBtn.style.display = showClear ? "" : "none";
         mathBtn.style.display = showMath ? "" : "none";
-        insertSep.style.display = showClear || showMath ? "" : "none";
+
+        // A separator only appears between two non-empty groups, so hiding items
+        // by config never leaves a leading, trailing, or doubled separator.
+        const hasMarks = showBold || showStrike || showItalic || showCode || showHighlight;
+        const hasInsert = showClear || showMath;
+        textFmtSep.style.display = showFormat && (hasMarks || showLink || hasInsert) ? "" : "none";
+        linkSep.style.display = showLink && (showFormat || hasMarks) ? "" : "none";
+        insertSep.style.display = hasInsert && (showFormat || hasMarks || showLink) ? "" : "none";
+
+        // Nothing to show (every inline item opted out) → don't flash an empty bar.
+        if (!showFormat && !hasMarks && !showLink && !hasInsert) {
+            hideToolbar();
+            return;
+        }
 
         // Table-only and block-only elements: hidden in text mode
         hideAllTable();
