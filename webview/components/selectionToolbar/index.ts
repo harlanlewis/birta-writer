@@ -45,6 +45,7 @@ import {
 } from "@/plugins/blockKeys";
 import { resolveVisible, type FloatingToolbarItems } from "./registry";
 import { computeToolbarActiveState } from "@/components/toolbar/activeState";
+import { trackEditorReflow } from "@/ui/editorReflow";
 import './selectionToolbar.css';
 
 type GetEditor = () => Editor | null;
@@ -226,16 +227,11 @@ export function setupSelectionToolbar(
         el.classList.toggle("sel-tb-btn--active", on);
     };
 
-    // Reflow the palette when the editor content resizes — the ToC docking,
-    // resizing, or toggling reflows the text, as does a window resize. Without
-    // this the bar keeps the coordinates it had at selection time and drifts off
-    // its text (the scroll listener below only covers scrolling, not reflow).
-    let observedEl: Element | null = null;
-    const resizeObserver = new ResizeObserver(() => {
-        if (toolbar.style.display !== "none" && lastView) {
-            showAndPosition(lastView);
-        }
-    });
+    // Keep the bar glued to its selection as the editor scrolls or reflows (ToC
+    // dock/resize/toggle, window resize) — via the shared reflow tracker, the
+    // same one the link popup uses. Created lazily on first show (the view is
+    // available by then) and never torn down (the palette lives for the session).
+    let reflowOff: (() => void) | null = null;
 
     document.addEventListener(
         "mousedown",
@@ -756,13 +752,14 @@ export function setupSelectionToolbar(
 
     function showAndPosition(view: EditorView): void {
         lastView = view;
-        // Track the editor's content box so a reflow (ToC dock/resize/toggle,
-        // window resize) re-anchors the bar — view.dom is stable per session,
-        // so this observes once and no-ops thereafter.
-        if (view.dom !== observedEl) {
-            if (observedEl) { resizeObserver.unobserve(observedEl); }
-            resizeObserver.observe(view.dom);
-            observedEl = view.dom;
+        // Start tracking scroll/reflow on first show (view.dom is live by now),
+        // re-running showAndPosition so the bar follows its selection.
+        if (!reflowOff) {
+            reflowOff = trackEditorReflow(view.dom, () => {
+                if (toolbar.style.display !== "none" && lastView) {
+                    showAndPosition(lastView);
+                }
+            });
         }
         if (isDragging) {
             hideToolbar();
@@ -974,17 +971,6 @@ export function setupSelectionToolbar(
         toolbar.style.display = "flex";
         positionToolbar(view, selection.from, selection.to);
     }
-
-    // Recompute the toolbar position on scroll (so the fixed toolbar follows the content)
-    window.addEventListener(
-        "scroll",
-        () => {
-            if (toolbar.style.display !== "none" && lastView) {
-                showAndPosition(lastView);
-            }
-        },
-        { capture: true },
-    );
 
     return { onSelectionChange: showAndPosition, hide: hideToolbar };
 }

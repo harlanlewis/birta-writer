@@ -23,6 +23,7 @@ import { createLinkFormatSwitch, wikiAllowedFor } from "@/ui/formatSwitch";
 import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
 import { setPendingRange } from "@/plugins/pendingRange";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { trackEditorReflow } from "@/ui/editorReflow";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -381,10 +382,13 @@ export function setupLinkPopup(
 
     // No confirm button: edits apply on Enter and on input blur (the panel
     // stays open on blur, so a focus trip elsewhere never loses a change).
+    // Field order follows the authoring flow: the target first (the URL/path is
+    // the point of a link), then the local-link format that shapes it, then the
+    // label the reader sees. Tab order follows this DOM order.
     body.appendChild(divider);
-    body.appendChild(inputText);
     body.appendChild(inputUrl);
     body.appendChild(formatSwitch.el);
+    body.appendChild(inputText);
 
     popup.appendChild(header);
     popup.appendChild(anchorHint);
@@ -419,6 +423,11 @@ export function setupLinkPopup(
     // open paths so an editor-focused Escape closes the popup (via blockKeys'
     // layer check) before any block-selection escalation.
     let escapeLayerOff: (() => void) | null = null;
+    // Reflow-tracker unregister handle (null while hidden), plus a source for the
+    // live anchor rect so the popup re-anchors to its target on scroll/reflow
+    // instead of stranding where it first opened. Set on each open path.
+    let reflowOff: (() => void) | null = null;
+    let anchorRectSource: (() => LinkEditorAnchorRect | null) | null = null;
 
     function clearHoverTimer(): void {
         if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
@@ -438,7 +447,9 @@ export function setupLinkPopup(
             // focus lives in the popup's inputs (a caret insert has from===to,
             // which the plugin treats as "nothing to highlight").
             highlightPending();
-            requestAnimationFrame(() => inputText.focus());
+            // Focus the URL first — it's the primary field and now leads the
+            // form; the label is usually prefilled from the selection anyway.
+            requestAnimationFrame(() => inputUrl.focus());
         } else {
             popup.insertBefore(resolvedHint, body);
             clearPending();
@@ -564,10 +575,47 @@ export function setupLinkPopup(
 
         updatePopupContent(link);
 
-        // Position (viewport rect of the hovered anchor).
+        // Position (viewport rect of the hovered anchor). The anchor is the live
+        // DOM node, so re-measuring it follows scroll/reflow.
         popup.style.display = "flex";
         escapeLayerOff ??= registerEscapeLayer(hidePopup);
-        positionPopupAt(anchorEl.getBoundingClientRect());
+        anchorRectSource = () => anchorEl.getBoundingClientRect();
+        positionPopupAt(anchorRectSource());
+        startReflowTracking();
+    }
+
+    /** Viewport rect spanning a document range [from, to), or null if it can't
+     *  be measured (a detached view). Used to re-anchor an insert/edit popup. */
+    function rectFromRange(
+        view: EditorView,
+        from: number,
+        to: number,
+    ): LinkEditorAnchorRect | null {
+        try {
+            const start = view.coordsAtPos(from);
+            const end = view.coordsAtPos(to, -1);
+            return {
+                left: Math.min(start.left, end.left),
+                right: Math.max(start.right, end.right),
+                top: Math.min(start.top, end.top),
+                bottom: Math.max(start.bottom, end.bottom),
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    /** Re-place the popup against its live anchor (called on scroll/reflow). */
+    function repositionToAnchor(): void {
+        const rect = anchorRectSource?.();
+        if (rect) { positionPopupAt(rect); }
+    }
+
+    /** Begin following the editor's scroll/reflow for the current open popup. */
+    function startReflowTracking(): void {
+        if (reflowOff) { return; }
+        const view = liveView();
+        if (view) { reflowOff = trackEditorReflow(view.dom, repositionToAnchor); }
     }
 
     /**
@@ -641,13 +689,27 @@ export function setupLinkPopup(
             urlEl.title = "";
         }
 
+        // Re-anchor to the live document range on scroll/reflow (the passed
+        // anchorRect is a one-time measurement); fall back to it when the range
+        // can't be measured.
+        anchorRectSource = () => {
+            const view = liveView();
+            return view && currentLink
+                ? rectFromRange(view, currentLink.from, currentLink.to) ?? opts.anchorRect
+                : opts.anchorRect;
+        };
         positionPopupAt(opts.anchorRect);
+        startReflowTracking();
     }
 
     function hidePopup(): void {
         // Every close path unregisters the Escape layer (idempotent).
         escapeLayerOff?.();
         escapeLayerOff = null;
+        // Stop following scroll/reflow.
+        reflowOff?.();
+        reflowOff = null;
+        anchorRectSource = null;
         clearHideTimer();
         clearHoverTimer();
         resolveGeneration++;
