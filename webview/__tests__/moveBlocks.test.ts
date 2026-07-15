@@ -550,10 +550,16 @@ describe("moveBlocks — veto awareness", () => {
     });
 
     /**
-     * "Returns false with the document untouched" covers side state too: the
-     * MAR-146 reveal is computed before the move but must not be COMMITTED
-     * until it lands, or a vetoed move leaves a section spuriously expanded —
-     * a visible change from a gesture that reported doing nothing.
+     * "Returns false with the document untouched" covers side state too: a
+     * vetoed move must not leave a section spuriously expanded — a visible
+     * change from a gesture that reported doing nothing.
+     *
+     * Holds by construction today (the MAR-146 reveal reads the POST-move doc,
+     * so a move that never lands has nothing to reveal), which makes this a
+     * contract spec more than a live tripwire. Kept because it is not
+     * hypothetical: it caught exactly this bug in the first cut of MAR-146,
+     * which predicted the reveal up front and committed it before dispatch.
+     * Anything that returns to predicting fails here again.
      */
     it("a vetoed move should not reveal the fold it would have landed in", async () => {
         const editor = await makeEditor("# One\n\nalpha\n\n# Last\n\nlast body");
