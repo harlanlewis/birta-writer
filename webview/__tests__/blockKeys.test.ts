@@ -647,6 +647,33 @@ describe("deleteSelectedBlocks (Cmd+Shift+K / palette)", () => {
         expect(deleteSelectedBlocks(view.state, view.dispatch)).toBe(false);
         expect(blockOrder(view)).toEqual(["Alpha"]);
     });
+
+    it("a bare caret inside a table cell should NOT delete the table (MAR-107)", async () => {
+        const view = await makeEditor("Intro\n\n| a | b |\n| --- | --- |\n| c | d |");
+        // Caret into the first cell's text.
+        let cell = -1;
+        view.state.doc.descendants((node, pos) => {
+            if (cell === -1 && node.isText && node.text === "a") cell = pos;
+            return cell === -1;
+        });
+        expect(cell).toBeGreaterThan(-1);
+        view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, cell)));
+        // No-op: the surprising blast radius is refused, the table stays.
+        expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(false);
+        expect(view.state.doc.child(1).type.name).toBe("table");
+    });
+
+    it("an explicit whole-table NodeSelection should still delete the table", async () => {
+        const view = await makeEditor("Intro\n\n| a | b |\n| --- | --- |\n| c | d |");
+        let tablePos = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (node.type.name === "table") tablePos = offset;
+        });
+        expect(tablePos).toBeGreaterThan(-1);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, tablePos)));
+        expect(deleteSelectedBlocks(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Intro"]);
+    });
 });
 
 describe("escalateSelectAll with a NodeSelection", () => {
