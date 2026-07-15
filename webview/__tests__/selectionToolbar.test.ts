@@ -608,6 +608,47 @@ describe("selection toolbar block-range mode", () => {
         return btn!;
     }
 
+    function blockMenuBtn(): HTMLButtonElement {
+        const btn = selToolbar().querySelector<HTMLButtonElement>(
+            '.sel-tb-btn[aria-label^="Block menu"]',
+        );
+        expect(btn, "block menu button").not.toBeNull();
+        return btn!;
+    }
+
+    it("the block-menu button shows the selected block's symbol — H1 for a heading", async () => {
+        // Arrange — a heading followed by a paragraph; select the heading block
+        editor = await makeEditor("# Title\n\nbody\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        selectBlocks(v, 0, 1); // snaps to the first whole block (the heading)
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — the menu button reads "H1" (the gutter's heading badge), not
+        // a generic grip
+        expect(blockMenuBtn().querySelector(".sel-tb-block-badge")?.textContent).toBe("H1");
+    });
+
+    it("the block-menu button shows an icon (not a text badge) for a paragraph", async () => {
+        // Arrange
+        editor = await makeEditor("one\n\ntwo\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        selectBlocks(v, 0, 1);
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — a paragraph badges as its gutter icon (the pilcrow SVG)
+        const btn = blockMenuBtn();
+        expect(btn.querySelector("svg"), "paragraph icon").not.toBeNull();
+        expect(btn.querySelector(".sel-tb-block-badge"), "no text badge").toBeNull();
+    });
+
     it("a whole-block selection should lead with the Block menu (grab) button, before Move Up", async () => {
         // Arrange — three paragraphs, select the first two as whole blocks
         editor = await makeEditor("one\n\ntwo\n\nthree\n");
