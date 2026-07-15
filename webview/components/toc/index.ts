@@ -472,7 +472,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabEl.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        hideFlyout(); // a click opens persistently; drop the transient flyout
+        hideFlyoutImmediate(); // a click opens persistently; drop the flyout now
         toggle();
     });
 
@@ -482,7 +482,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabEl.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            hideFlyout();
+            hideFlyoutImmediate();
             toggle();
         }
     });
@@ -495,9 +495,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // showFlyout bails when the panel is already open. ──
     let flyoutOpen = false;
     let flyoutHideTimer: ReturnType<typeof setTimeout> | null = null;
+    let flyoutCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+    // Must match the exit transition in toc.css (.toc-panel--flyout).
+    const FLYOUT_EXIT_MS = 150;
 
     function cancelFlyoutHide(): void {
         if (flyoutHideTimer) { clearTimeout(flyoutHideTimer); flyoutHideTimer = null; }
+    }
+    function cancelFlyoutCleanup(): void {
+        if (flyoutCleanupTimer) { clearTimeout(flyoutCleanupTimer); flyoutCleanupTimer = null; }
     }
     /** Anchor the flyout as a dropdown directly BELOW the reveal tab, aligned to
      *  the tab's docked side — the tab itself never moves, so the cursor stays
@@ -510,27 +516,55 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             ? `${Math.round(Math.max(8, r.right - tocWidth))}px`
             : `${Math.round(r.left)}px`;
     }
+    /** Fully remove the flyout box (after the exit transition, or immediately for
+     *  the dock-open path) and restore the docked drawer's CSS positioning. */
+    function teardownFlyout(): void {
+        cancelFlyoutCleanup();
+        panel.classList.remove("toc-panel--flyout", "toc-panel--flyout-in");
+        document.body.classList.remove("toc-flyout-open");
+        panel.style.top = "";
+        panel.style.left = "";
+    }
     function showFlyout(): void {
         cancelFlyoutHide();
-        if (isOpen || flyoutOpen) { return; }
+        cancelFlyoutCleanup(); // interrupt a pending exit teardown, if any
+        if (isOpen) { return; }
+        if (flyoutOpen) {
+            // Re-entered mid-exit-fade: just re-assert the shown state.
+            panel.classList.add("toc-panel--flyout-in");
+            return;
+        }
         flyoutOpen = true;
         // The flyout shows the ToC itself, so the tab's "Show table of contents"
-        // tooltip is now redundant (and would overlap the panel) — dismiss it.
+        // tooltip is redundant (and would overlap the panel) — dismiss it.
         hideTooltip();
         renderHeadings(getHeadings());
         panel.classList.add("toc-panel--flyout");
         document.body.classList.add("toc-flyout-open");
         positionFlyout();
+        // Commit the initial (down + faded) state, then transition to shown, so
+        // the reveal is a slight slide-DOWN + fade-in (not the drawer's slide).
+        void panel.offsetWidth;
+        panel.classList.add("toc-panel--flyout-in");
     }
+    /** Retract with a fade + slight slide-UP, tearing the box down only once the
+     *  exit transition finishes — so it never animates back through the full
+     *  drawer (the visible "shrink to hidden full size" artifact). */
     function hideFlyout(): void {
         cancelFlyoutHide();
         if (!flyoutOpen) { return; }
         flyoutOpen = false;
-        panel.classList.remove("toc-panel--flyout");
-        document.body.classList.remove("toc-flyout-open");
-        // Drop the inline top/left so the docked drawer's CSS position wins again.
-        panel.style.top = "";
-        panel.style.left = "";
+        panel.classList.remove("toc-panel--flyout-in"); // start the exit transition
+        cancelFlyoutCleanup();
+        flyoutCleanupTimer = setTimeout(teardownFlyout, FLYOUT_EXIT_MS + 20);
+    }
+    /** Drop the flyout with no exit transition — for the click/keyboard path that
+     *  docks the panel open, so the flyout box never overlaps the opening drawer. */
+    function hideFlyoutImmediate(): void {
+        cancelFlyoutHide();
+        if (!flyoutOpen && !flyoutCleanupTimer) { return; }
+        flyoutOpen = false;
+        teardownFlyout();
     }
     function scheduleFlyoutHide(): void {
         cancelFlyoutHide();

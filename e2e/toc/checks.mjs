@@ -78,6 +78,10 @@ export async function run({ page, check, baseUrl }) {
             sameSide: Math.abs(pr.left - tr.left) < 40, // roughly aligned to the tab
             tabMoved: Math.round(tr.left), // tab position captured for the "unmoved" check
             controlsHidden: getComputedStyle(panel.querySelector(".toc-controls")).display === "none",
+            zIndex: parseInt(getComputedStyle(panel).zIndex, 10) || 0,
+            capped: pr.height <= Math.min(0.7 * window.innerHeight, 620) + 1,
+            gapTop: Math.round(tr.bottom), // for the hover-band probe below
+            gapLeft: Math.round(pr.left + 40),
         };
     });
     check("hovering the tab flies the panel out", flyout.flyout && flyout.bodyFlag && flyout.visible,
@@ -86,6 +90,18 @@ export async function run({ page, check, baseUrl }) {
     check("the flyout sits BELOW the tab, on its side (not the full-height drawer)",
         flyout.belowTab && flyout.sameSide, JSON.stringify(flyout));
     check("the flyout hides the docked drawer's controls", flyout.controlsHidden);
+    check("the flyout is capped in height (the card scrolls, not the whole viewport)",
+        flyout.capped, JSON.stringify(flyout));
+    check("the flyout layers ABOVE the formatting/link palettes (z >= 9999)",
+        flyout.zIndex >= 9999, `z=${flyout.zIndex}`);
+
+    // Hover band: move into the gap between the tab and the flyout (below the
+    // tab, above the panel, within the panel's width) — the flyout must stay.
+    await page.mouse.move(flyout.gapLeft, flyout.gapTop + 3);
+    await page.waitForTimeout(300); // longer than the grace period
+    check("the hover band over the gap keeps the flyout open (no precision needed)",
+        await page.evaluate(() =>
+            document.querySelector(".toc-panel").classList.contains("toc-panel--flyout-in")));
     // The tab's own tooltip is suppressed while the flyout is out (it's redundant
     // and would overlap the panel) — no visible .custom-tooltip.
     const tipVisible = await page.evaluate(() => {
