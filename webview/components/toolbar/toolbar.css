@@ -404,8 +404,18 @@
    Rendered in the editor's warning color — the one state on this bar that
    genuinely warns (a manual save would hit VS Code's "newer on disk" dialog);
    clicking opens the native reload/compare picker. */
+/* A filled warning badge (not a bare tinted icon) so the drift is unmissable —
+   the status-bar warning tokens are a semantic amber ground + contrasting (white)
+   glyph pair, used the same way VS Code fills a status-bar warning item. */
 .tb-sync-conflict-btn {
-    color: var(--vscode-editorWarning-foreground);
+    background: var(--vscode-statusBarItem-warningBackground);
+    color: var(--vscode-statusBarItem-warningForeground);
+    border-radius: 4px;
+}
+
+.tb-sync-conflict-btn:hover {
+    background: var(--vscode-statusBarItem-warningHoverBackground);
+    color: var(--vscode-statusBarItem-warningForeground);
 }
 
 /* With the toolbar hidden the badge has nowhere to render, so the collapsed
