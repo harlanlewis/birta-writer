@@ -498,6 +498,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     let flyoutCleanupTimer: ReturnType<typeof setTimeout> | null = null;
     // Must match the exit transition in toc.css (.toc-panel--flyout).
     const FLYOUT_EXIT_MS = 150;
+    // Standard flyout width — a fixed dropdown width, independent of the docked
+    // sidebar's (possibly dragged) --toc-width. Kept in sync with toc.css.
+    const FLYOUT_WIDTH = 260;
+    const FLYOUT_GAP = 6;
 
     function cancelFlyoutHide(): void {
         if (flyoutHideTimer) { clearTimeout(flyoutHideTimer); flyoutHideTimer = null; }
@@ -510,11 +514,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  over it (no moving target). Positioned inline; CSS gives it card chrome. */
     function positionFlyout(): void {
         const r = tabEl.getBoundingClientRect();
-        const gap = 6;
-        panel.style.top = `${Math.round(r.bottom + gap)}px`;
+        const flyoutTop = Math.round(r.bottom + FLYOUT_GAP);
+        panel.style.top = `${flyoutTop}px`;
         panel.style.left = tocRight
-            ? `${Math.round(Math.max(8, r.right - tocWidth))}px`
+            ? `${Math.round(Math.max(8, r.right - FLYOUT_WIDTH))}px`
             : `${Math.round(r.left)}px`;
+        // The invisible hover band above the panel spans the whole gap up to the
+        // content-area top (the toolbar's bottom), so the flyout stays open while
+        // the pointer is anywhere in that column — no hyper-precise mousing down.
+        const bandHeight = Math.max(FLYOUT_GAP, flyoutTop - getTopbarBottom());
+        panel.style.setProperty("--toc-flyout-band-h", `${bandHeight}px`);
     }
     /** Fully remove the flyout box (after the exit transition, or immediately for
      *  the dock-open path) and restore the docked drawer's CSS positioning. */
@@ -524,6 +533,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         document.body.classList.remove("toc-flyout-open");
         panel.style.top = "";
         panel.style.left = "";
+        panel.style.removeProperty("--toc-flyout-band-h");
     }
     function showFlyout(): void {
         cancelFlyoutHide();

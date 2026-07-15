@@ -118,6 +118,34 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the tab tooltip is suppressed while the flyout is out", !tipVisible);
 
+    // The reveal tab holds its hover look while the flyout is open (a non-
+    // transparent background), even as the cursor roams the panel.
+    check("the reveal tab shows its hover state while the flyout is open",
+        await page.evaluate(() => {
+            const bg = getComputedStyle(document.querySelector(".toc-toggle-tab")).backgroundColor;
+            return bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent";
+        }));
+
+    // The flyout uses a FIXED standard width, not the (possibly dragged) docked
+    // --toc-width: widen the docked var and confirm the flyout stays put.
+    await page.evaluate(() => document.documentElement.style.setProperty("--toc-width", "440px"));
+    const flyoutW = await page.evaluate(() =>
+        Math.round(document.querySelector(".toc-panel").getBoundingClientRect().width));
+    check("the flyout uses a fixed standard width, not the dragged sidebar width",
+        flyoutW === 260, `${flyoutW}px`);
+
+    // The tall invisible band (up to the toolbar) keeps the flyout open when the
+    // pointer is high in the column, not just in the 6px gap.
+    const highPoint = await page.evaluate(() => {
+        const p = document.querySelector(".toc-panel").getBoundingClientRect();
+        return { x: Math.round(p.left + 60), y: Math.round(p.top - 18) };
+    });
+    await page.mouse.move(highPoint.x, highPoint.y);
+    await page.waitForTimeout(300);
+    check("hovering high in the band (toward the toolbar) keeps the flyout open",
+        await page.evaluate(() => document.querySelector(".toc-panel").classList.contains("toc-panel--flyout-in")),
+        JSON.stringify(highPoint));
+
     // Move the pointer away → the flyout retracts after its grace period.
     await page.mouse.move(760, 420);
     await page.waitForTimeout(400);
