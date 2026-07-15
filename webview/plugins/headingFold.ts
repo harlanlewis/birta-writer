@@ -1017,18 +1017,70 @@ export function isContainerNode(node: any): boolean {
     }
 }
 
-/** The marker for a block NESTED inside a container: its normal spec, with
- * two exceptions — text paragraphs are the container's own prose (the
- * container's marker is their handle; a P on every quoted line is noise),
- * and headings get a badge marker (nested headings don't own fold
- * sections, so no chevron machinery). */
-function nestedChildSpec(node: any): MarkerSpec | null {
+/** The marker for a block NESTED inside a container OR a list item: its
+ * normal spec, with two exceptions — text paragraphs are the container's own
+ * prose (the container's/item's marker is their handle; a P on every quoted or
+ * item line is noise), and headings get a badge marker (nested headings don't
+ * own fold sections, so no chevron machinery). Exported for the nesting-
+ * position coverage guard (gutterCoverage.test.ts). */
+export function nestedChildSpec(node: any): MarkerSpec | null {
     if (isHeadingNode(node)) {
         const level = Math.min(Math.max(getHeadingLevel(node), 1), 6);
         return { key: `h${level}`, icon: "", label: t("Heading"), text: `H${level}` };
     }
     const spec = blockMarkerSpec(node);
     return spec?.key === "P" ? null : spec;
+}
+
+/**
+ * Marker for ONE block nested inside a container or a list item, recursively
+ * (a callout inside a callout is grabbable at every depth): a list gets its
+ * per-item markers; any other block gets its nested-child marker and recurses
+ * into its own container children. `depth` is the block's container-nesting
+ * level (accent bars to its left) — it drives the marker's gutter column
+ * (--nested-gutter-depth) and is part of the widget identity, so a block that
+ * re-nests re-renders rather than reusing the old widget. Shared by
+ * emitContainerChildGutters and emitItemGutters (MAR-88).
+ */
+function emitNestedChildGutter(
+    child: any,
+    childPos: number,
+    decorations: Decoration[] | null,
+    parts: string[] | null,
+    foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
+    depth: number,
+): void {
+    if (isListNode(child)) {
+        // A list directly inside a container clears that container's bar(s):
+        // its items inherit the container depth (MAR-89). List nesting itself
+        // adds no bar, so deeper lists keep the same depth.
+        parts?.push("L");
+        emitItemGutters(child, childPos, decorations, parts, foldCtx, depth);
+        return;
+    }
+    const spec = nestedChildSpec(child);
+    if (spec !== null) {
+        const fold = blockFoldInfo(child, childPos, foldCtx);
+        const foldKey = foldKeyPart(fold);
+        parts?.push(`c${depth}${spec.key}${foldKey}`);
+        decorations?.push(
+            Decoration.node(childPos, childPos + child.nodeSize, {
+                class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}${fold?.collapsed ? " collapsed" : ""}`,
+            }),
+        );
+        decorations?.push(
+            Decoration.widget(
+                childPos + 1,
+                (view: EditorView) => createBlockGutter(view, spec, depth, fold ?? undefined),
+                { key: `g:${spec.key}:n${depth}${foldKey}`, side: -1 },
+            ),
+        );
+    } else {
+        parts?.push("·");
+    }
+    if (isContainerNode(child)) {
+        emitContainerChildGutters(child, childPos, decorations, parts, foldCtx, depth + 1);
+    }
 }
 
 /**
@@ -1046,38 +1098,7 @@ function emitContainerChildGutters(
     depth = 1,
 ): void {
     container.forEach((child: any, offset: number) => {
-        const childPos = containerPos + 1 + offset;
-        if (isListNode(child)) {
-            parts?.push("L");
-            emitItemGutters(child, childPos, decorations, parts, foldCtx);
-            return;
-        }
-        const spec = nestedChildSpec(child);
-        if (spec !== null) {
-            const fold = blockFoldInfo(child, childPos, foldCtx);
-            const foldKey = foldKeyPart(fold);
-            // Depth is part of the identity: it drives the marker's gutter
-            // column (--nested-gutter-depth), so a block that re-nests must
-            // re-render its widget, not reuse the old one.
-            parts?.push(`c${depth}${spec.key}${foldKey}`);
-            decorations?.push(
-                Decoration.node(childPos, childPos + child.nodeSize, {
-                    class: `block-gutter-host block-gutter-host--child block-gutter-host--d${Math.min(depth, 6)}${fold?.collapsed ? " collapsed" : ""}`,
-                }),
-            );
-            decorations?.push(
-                Decoration.widget(
-                    childPos + 1,
-                    (view: EditorView) => createBlockGutter(view, spec, depth, fold ?? undefined),
-                    { key: `g:${spec.key}:n${depth}${foldKey}`, side: -1 },
-                ),
-            );
-        } else {
-            parts?.push("·");
-        }
-        if (isContainerNode(child)) {
-            emitContainerChildGutters(child, childPos, decorations, parts, foldCtx, depth + 1);
-        }
+        emitNestedChildGutter(child, containerPos + 1 + offset, decorations, parts, foldCtx, depth);
     });
 }
 
@@ -1144,6 +1165,10 @@ function emitItemGutters(
     decorations: Decoration[] | null,
     parts: string[] | null,
     foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
+    // Number of accent-bar containers (callout/blockquote/directive) enclosing
+    // this list (0 = top-level list). Threaded so item markers step clear of
+    // every ancestor's colored bar instead of straddling it (MAR-89).
+    containerDepth = 0,
 ): void {
     // MAR-90: an ordered list's right-aligned ::marker ink widens leftward with
     // its widest number, so stamp that number's digit count on the <ol> for the
@@ -1169,7 +1194,11 @@ function emitItemGutters(
             ? { foldable: listItemHasDescendants(item), collapsed: foldCtx.folded.has(itemPos) }
             : null;
         const foldKey = foldKeyPart(fold);
-        parts?.push(`i${spec.key}${foldKey}`);
+        // Depth is part of the marker's identity (it moves the gutter column),
+        // so a list re-nesting into/out of a container re-renders its items'
+        // widgets rather than reusing the mispositioned old ones.
+        const depthKey = containerDepth > 0 ? `c${containerDepth}` : "";
+        parts?.push(`i${spec.key}${foldKey}${depthKey}`);
         const collapsed = Boolean(fold?.collapsed && fold.foldable);
         decorations?.push(
             Decoration.node(itemPos, itemPos + item.nodeSize, {
@@ -1179,8 +1208,18 @@ function emitItemGutters(
         decorations?.push(
             Decoration.widget(
                 itemPos + 1,
-                (view: EditorView) => createBlockGutter(view, spec, undefined, fold ?? undefined),
-                { key: `g:${spec.key}${foldKey}`, side: -1 },
+                (view: EditorView) => {
+                    const gutter = createBlockGutter(view, spec, undefined, fold ?? undefined);
+                    // MAR-89: a list nested inside a container steps its item
+                    // markers one inset per container level clear of every
+                    // ancestor's accent bar — the same margin-column convention
+                    // container children use, keeping the marker off the bar.
+                    if (containerDepth > 0) {
+                        gutter.style.setProperty("--item-container-depth", String(containerDepth));
+                    }
+                    return gutter;
+                },
+                { key: `g:${spec.key}${foldKey}${depthKey}`, side: -1 },
             ),
         );
         if (collapsed && decorations) {
@@ -1208,10 +1247,21 @@ function emitItemGutters(
                 ),
             );
         }
-        // Nested lists inside the item: their items are units too.
+        // The item's continuation content (everything after its first line).
+        // Nested lists are unit-bearing lists of their own at the SAME
+        // container depth (list nesting adds no accent bar). Every other block
+        // child (blockquote, callout, code block, table, nested heading —
+        // list_item content is `paragraph block*`) is a grabbable unit too
+        // (MAR-88), one nesting level deeper than the list's container context,
+        // so its marker clears into the item's margin column like a
+        // container's children. childOffset 0 is the item's own first line —
+        // the item marker is its handle, so it gets no separate marker.
         item.forEach((child: any, childOffset: number) => {
+            const childPos = itemPos + 1 + childOffset;
             if (isListNode(child)) {
-                emitItemGutters(child, itemPos + 1 + childOffset, decorations, parts, foldCtx);
+                emitItemGutters(child, childPos, decorations, parts, foldCtx, containerDepth);
+            } else if (childOffset > 0) {
+                emitNestedChildGutter(child, childPos, decorations, parts, foldCtx, containerDepth + 1);
             }
         });
     });
