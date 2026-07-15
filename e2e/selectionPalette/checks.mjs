@@ -180,22 +180,27 @@ export async function run({ page, check, baseUrl }) {
         !(await toolbar.isVisible()),
     );
 
-    // ── 7. Block palette: the grab-menu button opens the gutter block menu ──
-    // Close any open menu, then select a whole block via the Escape ladder.
+    // ── 7. Block palette: the grab-menu button shows the block symbol and
+    // opens the gutter block menu. Select the H1 heading as a whole block. ──
     await page.keyboard.press("Escape");
     await page.waitForTimeout(150);
-    await page.locator(".ProseMirror p").first().click();
+    await page.locator(".ProseMirror h1").first().click();
     await page.waitForTimeout(150);
     await page.keyboard.press("Escape"); // caret → whole-block (BlockRangeSelection)
     await page.waitForTimeout(250);
-    const gripVisible = await page.evaluate(() => {
+    const gripInfo = await page.evaluate(() => {
         const bar = document.querySelector(".sel-toolbar");
-        if (!bar || bar.style.display === "none") return false;
+        if (!bar || bar.style.display === "none") return { visible: false };
         const grip = [...bar.querySelectorAll(".sel-tb-btn")].find((b) =>
             (b.getAttribute("aria-label") ?? "").startsWith("Block menu"));
-        return Boolean(grip && grip.style.display !== "none");
+        return {
+            visible: Boolean(grip && grip.style.display !== "none"),
+            badge: grip?.querySelector(".sel-tb-block-badge")?.textContent ?? null,
+        };
     });
-    check("selecting a whole block shows the grab-menu button in the palette", gripVisible);
+    check("selecting a whole block shows the grab-menu button in the palette", gripInfo.visible);
+    check("the grab-menu button shows the block symbol (H1 for the heading)",
+        gripInfo.badge === "H1", JSON.stringify(gripInfo));
 
     await page.evaluate(() => {
         const bar = document.querySelector(".sel-toolbar");

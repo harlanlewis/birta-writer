@@ -56,6 +56,17 @@
     flex-shrink: 0;
 }
 
+/* Heading badge ("H2") in the block-menu button — a text glyph where other
+   block types use an SVG icon; sized to sit level with them. */
+.sel-tb-block-badge {
+    display: inline-block;
+    min-width: 16px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1;
+}
+
 .sel-tb-sep {
     width: 1px;
     height: 18px;

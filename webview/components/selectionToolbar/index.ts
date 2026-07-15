@@ -39,6 +39,7 @@ import { t, kbd } from "@/i18n";
 import { runEditorCommand } from "@/editorCommands";
 import { createButton, createSeparator } from "@/ui/dom";
 import { BlockRangeSelection } from "@/plugins/blockRange";
+import { blockMarkerSpec } from "@/plugins/headingFold";
 import {
     moveSelectedBlocks,
     duplicateSelectedBlocks,
@@ -142,6 +143,20 @@ function sBtn(
     onClick: () => void,
 ): HTMLButtonElement {
     return createButton({ className: "sel-tb-btn", icon, title, tooltipPlacement: "above", onClick });
+}
+
+/** The gutter symbol for a block node: a heading → an "H{n}" text badge, any
+ *  other block → its gutter marker icon (¶, image, table, code, …), so the
+ *  block palette's menu button reads as the very same affordance the margin
+ *  handle shows. Falls back to the grip glyph for a block the gutter doesn't
+ *  badge. */
+function blockSymbolHTML(node: PMNode | null): string {
+    if (!node) { return IconGripVertical; }
+    if (node.type.name === "heading") {
+        const level = Math.min(Math.max(Number(node.attrs["level"]) || 1, 1), 6);
+        return `<span class="sel-tb-block-badge">H${level}</span>`;
+    }
+    return blockMarkerSpec(node)?.icon ?? IconGripVertical;
 }
 
 function sSep(): HTMLElement {
@@ -786,6 +801,9 @@ export function setupSelectionToolbar(
         if (selection instanceof BlockRangeSelection) {
             hideAllInline();
             hideAllTable();
+            // The menu button shows the selected block's gutter symbol (¶ / H2 /
+            // image / table …), so it reads as the same handle the margin shows.
+            blockMenuBtn.innerHTML = blockSymbolHTML(view.state.doc.nodeAt(selection.from));
             blockMenuBtn.style.display = "";
             // Separator between the grab menu and the move/dup/delete group.
             blockSep.style.display = "";
