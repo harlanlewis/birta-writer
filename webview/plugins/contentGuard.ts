@@ -114,7 +114,17 @@ const MARKER_IDENTITY: Record<string, (node: ProseNode) => string> = {
     // The raw marker line carries kind, fold marker, and title bytes.
     callout: (n) => String(n.attrs["marker"] ?? ""),
     notion_callout: (n) => [n.attrs["icon"], n.attrs["kind"]].join(SEP),
-    container_directive: (n) => [n.attrs["openFence"], n.attrs["closeFence"]].join(SEP),
+    // Fence COLON COUNT is structural, not content: nesting a directive
+    // legitimately lengthens the outer fence (`::::` outside `:::`, MAR-120),
+    // so it is normalized to `:::` before comparison — the identity is the
+    // fence name + label/attrs, which IS user content. (Normalized to `:::`
+    // rather than stripped so the bytes still parse via parseOpenFence in
+    // MARKER_IS_DEFAULT below.)
+    container_directive: (n) =>
+        [
+            String(n.attrs["openFence"] ?? "").replace(/^:+/, ":::"),
+            String(n.attrs["closeFence"] ?? "").replace(/^:+/, ":::"),
+        ].join(SEP),
     footnote_definition: (n) => String(n.attrs["label"] ?? ""),
 };
 

@@ -225,14 +225,17 @@ describe("corpus move-sampling gate", () => {
 
 // ── Pinned repros for the real bugs the gate surfaced ───────────────────────
 //
-// Three PRE-EXISTING serializer round-trip bugs, found by this gate on its
+// PRE-EXISTING serializer/merge round-trip bugs, found by this gate on its
 // first run (see knownSavePipelineHazard in helpers/moveFuzz for the class
-// descriptions and the follow-up TODO). Each repro is minimal and pinned
-// with `it.fails`: the test PASSES today because the bug reproduces, and the
-// moment a serializer fix lands, `it.fails` starts failing — forcing the pin
-// to be promoted to a normal assertion and the hazard exclusion deleted.
-// These are NOT weakened gate assertions; they are the loud record of what
-// was excluded and why.
+// descriptions and the follow-up TODO). Each repro is minimal. A repro that is
+// still broken is pinned with `it.fails` (it PASSES today because the bug
+// reproduces; the moment a fix lands, `it.fails` starts failing, forcing the
+// pin to become a normal assertion and its hazard exclusion to be deleted). A
+// repro whose fix has landed is a normal `it` (labelled "MAR-NN, fixed") and
+// its exclusion is gone, so the gate now holds that shape to the full
+// contract. Remaining `it.fails`: B (raw fence re-pairing) and F (aside
+// nesting) — see MAR-120. These are NOT weakened gate assertions; they are the
+// loud record of what is excluded and why.
 
 /** Position of the first node of `type` whose text matches, or -1. */
 function findPos(doc: ProseNode, type: string, text: string): number {
@@ -257,7 +260,7 @@ function reparseDelta(editor: Editor, v: EditorView): string {
 }
 
 describe("known save-pipeline hazards — pinned repros (it.fails until the serializer is fixed)", () => {
-    it.fails("hazard A: a directive moved inside another directive should survive save+reopen", async () => {
+    it("hazard A (MAR-120, fixed): a directive moved inside another directive survives save+reopen", async () => {
         // The outer directive must end with a LIST for the bug to bite: a
         // trivially-nested `:::tip` after a paragraph happens to reparse,
         // but the corpus shape (nested fence following a list) does not.
@@ -275,9 +278,8 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
 
         expect(moveBlocks(v, { from: innerPos, to: innerPos + inner.nodeSize }, insideNote)).toBe(true);
 
-        // BUG: both directives serialize with 3-colon fences; after the
-        // list, the nested `:::info` fence fails to reparse as a directive
-        // and flattens to paragraph text.
+        // The serializer now lengthens the outer fence past the inner
+        // (`::::note` around `:::info`), so the nested directive re-nests.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
@@ -392,7 +394,7 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard G: an hr moved to the head of a directive body should stay an hr", async () => {
+    it("hazard G (MAR-120, fixed): an hr moved to the head of a directive body stays an hr", async () => {
         const editor = await makeEditor(':::info{title="T"}\nBody paragraph.\n:::\n\n---');
         const v = editorView(editor);
         const hrPos = findPos(v.state.doc, "hr", "");
@@ -401,9 +403,10 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         // Target: the first boundary inside the directive.
         expect(moveBlocks(v, { from: hrPos, to: hrPos + 1 }, 1)).toBe(true);
 
-        // BUG: the hr serializes directly under the open fence, and
-        // `fence-line + ---` reparses as a setext heading — destroying both
-        // the hr and the directive.
+        // The directive serializer now emits a blank line after the open fence
+        // when the body opens on a setext-underline-shaped line, so `---`
+        // reparses as a thematic break instead of turning the fence into a
+        // setext heading.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 });

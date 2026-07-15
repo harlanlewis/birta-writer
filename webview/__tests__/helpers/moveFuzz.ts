@@ -227,11 +227,12 @@ export function enumerateMovePairs(
 // and excluded — by this narrow predicate, never by weakening assertions —
 // from the sampled pair space until fixed:
 //
-//   (A) Directive nesting: a container_directive moved inside another
-//       serializes with EQUAL-length fences (`:::` inside `:::`), which
-//       fails to re-nest on reparse in some body contexts (observed: the
-//       inner fence following a list) — the inner directive flattens to
-//       paragraph text.
+//   (A) FIXED (MAR-120): directive nesting — the serializer now lengthens the
+//       OUTER fence past any fence in its body (`::::` outside `:::`, the
+//       CommonMark convention), so a nested directive re-nests on reparse.
+//       The fence colon count is structural, so the content fingerprint
+//       normalizes it (contentGuard container_directive marker). No longer
+//       excluded; held to the full contract by the gate.
 //   (B) Fence re-pairing: a closed directive moved below raw `:::`-prefixed
 //       prose (an unclosed fence that parses as a paragraph) lets that
 //       prose line pair with the directive's close fence on reparse.
@@ -255,16 +256,19 @@ export function enumerateMovePairs(
 //   (F) Aside nesting: a notion_callout (`<aside>` HTML) moved inside
 //       another aside or a directive is not recognized by the sub-parse on
 //       reopen — it flattens into raw html of its new parent.
-//   (G) hr into a directive: an `hr` moved to the head of a directive body
-//       serializes directly under the open fence, and `fence-line + ---`
-//       reparses as a SETEXT HEADING, destroying both the hr and the fence.
+//   (G) FIXED (MAR-120) for directives: an `hr` moved to the head of a
+//       directive body used to serialize directly under the open fence, and
+//       `fence-line + ---` reparsed as a SETEXT HEADING. The directive
+//       serializer now emits a blank line after the open fence when the body
+//       opens on a setext-underline-shaped line. (The same hazard in a
+//       blockquote/callout — `> text` + `> ---` — is NOT yet fixed; the
+//       `fragmentHasHr && targetQuote` guard below still excludes it.)
 //
-// TODO(MAR-113 follow-up): fix (A)/(B)/(G) in the directives serializer
-// (derive fence length from nesting depth; escape or guard raw fence-shaped
-// prose; keep a blank line after the open fence when the first child is
-// setext-hazardous) and (F) in the serializer's aside handling — then delete
-// this predicate and the remaining it.fails pins. (C), (D), and (E) are
-// fixed; see the class list above.
+// TODO(MAR-113 follow-up): (A), (C), (D), (E), and (G)-for-directives are
+// fixed (see the class list above). Remaining: (B) raw fence-shaped prose
+// re-pairing with a moved container's close fence, (F) `<aside>` nesting, and
+// the (G) setext hazard inside blockquote/callout containers — then delete
+// this predicate and the remaining it.fails pins.
 
 const QUOTE_FAMILY = new Set(["blockquote", "callout", "notion_callout"]);
 
@@ -323,13 +327,22 @@ export function knownSavePipelineHazard(
     if (fragmentHasHr && targetQuote !== -1) {
         return true;
     }
-    if (fragmentHasDirective || fragmentHasAside || fragmentHasHr || fragmentHasRawFence) {
+    // (F) Aside nesting is unfixed: a notion_callout (`<aside>` html) moved
+    // inside another container (directive or aside) flattens to raw html on
+    // reopen — CommonMark HTML-block parsing cannot nest `<aside>` (the blank
+    // line before the inner aside ends the outer block). Directive and hr
+    // nesting into a directive/aside are FIXED (MAR-120 A/G: the outer fence
+    // is lengthened past the inner, and a setext-hazard first line gets a blank
+    // line), so only an aside-bearing fragment is excluded here.
+    if (fragmentHasAside) {
         for (let d = $target.depth; d > 0; d--) {
             const name = $target.node(d).type.name;
             if (name === "container_directive" || name === "notion_callout") {
-                return true; // (A) / (F) / (G)
+                return true; // (F)
             }
         }
+    }
+    if (fragmentHasDirective || fragmentHasAside || fragmentHasHr || fragmentHasRawFence) {
         // (B): raw unclosed openers elsewhere in the doc — `:::` prose or an
         // unclosed `<aside>` html atom — can re-pair with the moved node's
         // own close fence/tag once the move puts them in range of each other.

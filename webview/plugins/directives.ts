@@ -281,8 +281,34 @@ function makeDirective(
     };
 }
 
-// toMarkdown: fences re-emitted verbatim around the standard flow
-// serialization; attachment flags reproduce the original blank-line shape.
+/** A serialized line that would reparse as a setext-heading underline
+ * (a run of `=` or `-`, ≤3 leading spaces): fatal directly under an open
+ * fence line, which is itself a text line (MAR-120 case G). */
+const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-+)[ \t]*$/;
+
+/** The longest `:::`-fence run anywhere in a serialized body (0 if none). */
+function maxFenceColons(flow: string): number {
+    let max = 0;
+    for (const line of flow.split("\n")) {
+        const m = /^(:{3,})/.exec(line);
+        if (m) {
+            max = Math.max(max, m[1]!.length);
+        }
+    }
+    return max;
+}
+
+// toMarkdown: fences re-emitted around the standard flow serialization;
+// attachment flags reproduce the original blank-line shape.
+//
+// Two reparse hazards are repaired here (MAR-120):
+//   (A) A nested directive must sit inside a STRICTLY LONGER fence, or the
+//       inner directive's close fence closes the outer one on reparse and the
+//       inner flattens. The outer fence is lengthened to exceed the longest
+//       fence in its serialized body (the CommonMark `::::`/`:::` convention).
+//   (G) When the first body line would reparse as a setext underline (`---`),
+//       an attached open fence (`:::info{…}\n---`) makes the fence line a
+//       heading. A blank line after the open fence defuses it.
 const directiveToMarkdown = {
     handlers: {
         containerDirective(
@@ -297,10 +323,19 @@ const directiveToMarkdown = {
                 { ...node, type: "containerDirective" },
                 tracker.current(),
             );
-            const open = node.openFence ?? ":::note";
-            const close = node.closeFence ?? ":::";
+            // (A) Fence length: strictly greater than any fence in the body.
+            const parts = parseOpenFence(node.openFence ?? ":::note");
+            const colons = Math.max(parts?.colons ?? 3, maxFenceColons(flow) + 1);
+            const open = parts
+                ? `${":".repeat(colons)}${parts.name}${parts.rest}`
+                : (node.openFence ?? ":::note");
+            const close = ":".repeat(colons);
+            // (G) Blank line after the open fence when the body opens on a
+            // setext-underline-shaped line.
+            const firstLine = flow.split("\n", 1)[0] ?? "";
+            const openAttached = node.openAttached && !SETEXT_UNDERLINE_RE.test(firstLine);
             const value =
-                (flow === "" ? open : `${open}${node.openAttached ? "\n" : "\n\n"}${flow}`) +
+                (flow === "" ? open : `${open}${openAttached ? "\n" : "\n\n"}${flow}`) +
                 `${node.closeAttached ? "\n" : "\n\n"}${close}`;
             exit();
             return value;
