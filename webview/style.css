@@ -302,6 +302,17 @@ body {
     initial-value: 14px;
 }
 
+/* Digit count of an ordered list's widest number, stamped per <ol> by the
+   gutter decoration pass (MAR-90). Its right-aligned ::marker ink widens
+   leftward with each digit, so the item grabber column offsets by it to stay
+   clear. Registered so it inherits as a real integer and calc() sees 1 by
+   default (single-digit lists, the common case, carry no stamp). */
+@property --ol-digits {
+    syntax: "<integer>";
+    inherits: true;
+    initial-value: 1;
+}
+
 #editor {
     font-family: var(--content-font-family, var(
             --vscode-editor-font-family,
@@ -2200,7 +2211,12 @@ body.block-marqueeing .milkdown .editor {
     left: -28px;
 }
 .milkdown .editor ol > li.block-gutter-host--item > .heading-fold-gutter--block {
-    left: -36px;
+    /* Base ≈ -36px at the default 14px content em, but em-anchored so it tracks
+       the content font scale — at 150–200% the old px constant sat under the
+       ink. Each digit past the first widens the right-aligned ::marker ink
+       leftward by ~0.6em; --ol-digits (the list's widest number) shifts the
+       whole grabber column clear of it, keeping every item's icon aligned. */
+    left: calc((-2.571 - (var(--ol-digits, 1) - 1) * 0.6) * var(--content-em));
 }
 /* Task items render their checkbox inside the li box, which starts ~21px
    further left than a bullet/ordered li at the same depth — the shared

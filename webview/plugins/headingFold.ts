@@ -1145,6 +1145,23 @@ function emitItemGutters(
     parts: string[] | null,
     foldCtx: { folded: ReadonlySet<number>; enabled: boolean },
 ): void {
+    // MAR-90: an ordered list's right-aligned ::marker ink widens leftward with
+    // its widest number, so stamp that number's digit count on the <ol> for the
+    // grabber-offset calc(). Only for multi-digit lists — single-digit lists (the
+    // common case) keep the default and add no decoration or fingerprint churn.
+    if (listNode.type.name === "ordered_list") {
+        const start = (listNode.attrs["order"] ?? 1) as number;
+        const maxNum = start + Math.max(listNode.childCount - 1, 0);
+        const digits = String(Math.max(maxNum, 1)).length;
+        if (digits > 1) {
+            parts?.push(`old${digits}`);
+            decorations?.push(
+                Decoration.node(listPos, listPos + listNode.nodeSize, {
+                    style: `--ol-digits:${digits}`,
+                }),
+            );
+        }
+    }
     listNode.forEach((item: any, offset: number) => {
         const itemPos = listPos + 1 + offset;
         const spec = itemMarkerSpec(listNode, item);

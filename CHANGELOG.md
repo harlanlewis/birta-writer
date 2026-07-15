@@ -65,6 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Moving a block between callouts no longer splits the callout on reopen** — dragging a paragraph out of one callout (or blockquote) and into another used to leave a stale blank line where the emptied callout sat, so on reload the destination callout was split in two and the moved block landed in a plain blockquote. The moved block now reopens inside the callout it was dropped into.
 - **Moving a block no longer corrupts an escaped `\==highlight==`** — a hand-escaped highlight literal (`\==not a highlight==`) kept as plain text now re-serializes with its backslash intact when its block is moved, instead of silently dropping the `==` bytes and turning into a highlight on reopen.
 - **Editing chords no longer change an unfocused document** — with the editor as the active tab but focus in the Explorer/sidebar, pressing a document-mutating shortcut (⌘⇧K delete block, ⌃J join lines, the list/heading/paragraph chords, ⌘K link) used to edit the document you weren't looking at. These chords now require the editor itself to be focused; find, fold, and navigation shortcuts are unchanged.
+- **The numbered-list block handle no longer hides under multi-digit numbers** — on a list reaching item 10+ (or at 150–200% content scale) the grabber sat on top of the number as an invisible click target. It now tracks the number's width and the content font size, staying clear of the ink.
 
 ---
 
