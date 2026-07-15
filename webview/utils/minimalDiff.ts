@@ -509,7 +509,9 @@ export function applyMinimalChanges(
     const serialGap = (to: number) => serialLines.slice(prevSerialIdx + 1, to);
 
     let prevLineText: string | null = null; // last significant line emitted
-    const isQuoteLine = (s: string): boolean => /^\s*>/.test(s);
+    // A blockquote marker allows at most 3 leading spaces; 4+ is an indented
+    // code block, where a leading `>` is literal text, not quote structure.
+    const isQuoteLine = (s: string): boolean => /^ {0,3}>/.test(s);
     const hasBlank = (lines: string[]): boolean => lines.some((l) => l.trim() === "");
 
     // The blank-line run to emit before the next significant line. Normally the
