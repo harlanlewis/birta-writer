@@ -64,6 +64,8 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "bails out when modifiers are held — typing-level Backspace handling, not a chord",
         "webview/plugins/blockKeys.ts":
             "bails out when modifiers are held — plain-Escape guard before the transient-surface layer check, not a chord",
+        "webview/proofread/popup.ts":
+            "bails out when modifiers are held — plain-Escape guard so the findings popup ignores modifier-Escape (Shift+Esc pops the layer stack), not a chord",
         "webview/plugins/mathInlineEdit.ts":
             "bails out when modifiers are held — typing-level arrow/Backspace boundary handling at a formula's edge, not a chord",
         "webview/plugins/codeBlockSelectAll.ts":
