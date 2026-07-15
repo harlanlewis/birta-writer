@@ -112,17 +112,20 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
         // extend block-wise ONLY when the selection already spans whole
         // blocks and must fall through (return false) to native text
         // selection otherwise, which a contributed keybinding cannot do; the
-        // Mod-Shift move chord stays PM-level as a second default alongside
-        // it. (Alt+Arrow move is NOT here: it is the contributed, rebindable
-        // birta.editor.moveBlockUp/Down command — MAR-144 — so the same
-        // keybinding moves a line in the raw editor and a block here.) Mod-a
-        // is the escalation ladder (block text → block → all blocks) and must
-        // fall through to baseKeymap's selectAll in tables. Only the Shift-Alt
-        // duplicate chords are claimed by the key-leak guard (content-scoped —
-        // they mutate the document); the rest stay unclaimed: VS Code's own
-        // Cmd+Shift+arrow defaults are editorTextFocus-scoped and inert while
-        // a webview has focus.
+        // Alt/Mod-Shift move chords share the same command layer and stay
+        // PM-level with them. Alt+Arrow move in particular MUST be hardcoded
+        // (MAR-144): on macOS Option+Arrow's native caret-nav default is only
+        // suppressible by a synchronous webview handler, so a contributed
+        // command can't own it — it's claimed by the key-leak guard instead.
+        // Mod-a is the escalation ladder (block text → block → all blocks) and
+        // must fall through to baseKeymap's selectAll in tables. The Alt-Arrow
+        // move and Shift-Alt duplicate chords are claimed by the key-leak
+        // guard (content-scoped — they mutate the document); the rest stay
+        // unclaimed: VS Code's own Cmd+Shift+arrow defaults are
+        // editorTextFocus-scoped and inert while a webview has focus.
         "webview/plugins/blockKeys.ts": [
+            "Alt-ArrowDown",
+            "Alt-ArrowUp",
             "Mod-Shift-ArrowDown",
             "Mod-Shift-ArrowUp",
             "Mod-a",

@@ -592,16 +592,6 @@
                 "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
-                "command": "birta.editor.moveBlockUp",
-                "key": "alt+up",
-                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
-            },
-            {
-                "command": "birta.editor.moveBlockDown",
-                "key": "alt+down",
-                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
-            },
-            {
                 "command": "birta.editor.joinLines",
                 "mac": "ctrl+j",
                 "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"

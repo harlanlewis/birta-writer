@@ -168,11 +168,6 @@ describe("editor command keybinding contributions", () => {
         findSelection: [{ key: "ctrl+d", mac: "cmd+d" }],
         selectAllOccurrences: [{ key: "ctrl+shift+l", mac: "cmd+shift+l" }],
         deleteBlock: [{ key: "ctrl+shift+k", mac: "cmd+shift+k" }],
-        // Move Block Up/Down: Alt+Up/Down on every platform, mirroring the
-        // built-in editor's Move Line — contributed (rebindable) rather than a
-        // hardcoded webview chord (MAR-144). `alt` is Option on macOS.
-        moveBlockUp: [{ key: "alt+up" }],
-        moveBlockDown: [{ key: "alt+down" }],
         // VS Code parity: Join Lines ships bound on macOS only (palette
         // elsewhere).
         joinLines: [{ mac: "ctrl+j" }],
@@ -220,8 +215,6 @@ describe("editor command keybinding contributions", () => {
         [
             "insertLink",
             "deleteBlock",
-            "moveBlockUp",
-            "moveBlockDown",
             "joinLines",
             "toggleOrderedList",
             "toggleBulletList",

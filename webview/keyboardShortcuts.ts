@@ -108,9 +108,13 @@ export const CLAIMED_SHORTCUTS: readonly ClaimedShortcut[] = [
     // selection and are hardcoded ProseMirror chords, so they are claimed
     // even though VS Code's own defaults on them are editorTextFocus-scoped —
     // a user-bound workbench action on the same chord must never fire
-    // alongside the edit. (Alt+Arrow move is deliberately NOT here: it is a
-    // contributed, rebindable command — birta.editor.moveBlockUp/Down — so it
-    // must stay visible to the workbench for the keybinding to resolve.)
+    // alongside the edit.
+    // blockKeys plugin: move block up/down (Alt+Arrow). Hardcoded rather than
+    // contributed because on macOS Option+Arrow's native caret-nav default
+    // must be suppressed synchronously (a contributed command runs too late);
+    // claimed so the workbench key forwarder can't also act on it.
+    { key: "arrowup", alt: true, content: true },
+    { key: "arrowdown", alt: true, content: true },
     // blockKeys plugin: duplicate block up/down
     { key: "arrowup", shift: true, alt: true, content: true },
     { key: "arrowdown", shift: true, alt: true, content: true },
