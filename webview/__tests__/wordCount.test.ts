@@ -116,4 +116,44 @@ describe("countText", () => {
     it("EMPTY_TEXT_COUNT should match counting an empty string", () => {
         expect(EMPTY_TEXT_COUNT).toEqual(countText(""));
     });
+
+    /**
+     * `countText` classifies whitespace from a hand-rolled numeric table rather
+     * than a per-character `/\s/` test, because the regex dominated the cost of
+     * counting a large document. A hand-rolled Unicode table silently drifts
+     * from the spec, so these sweep every code point and hold it to the regex —
+     * `characters` counts a code point exactly when `/\s/` does not match it.
+     */
+    describe("whitespace classification matches /\\s/", () => {
+        it("every BMP code point should be counted as a character exactly when it is not whitespace", () => {
+            const mismatches: string[] = [];
+            for (let cp = 0; cp <= 0xffff; cp++) {
+                if (cp >= 0xd800 && cp <= 0xdfff) { continue; } // lone surrogates: covered below
+                const ch = String.fromCodePoint(cp);
+                const expected = /\s/.test(ch) ? 0 : 1;
+                if (countText(ch).characters !== expected) {
+                    mismatches.push(`U+${cp.toString(16).toUpperCase().padStart(4, "0")}`);
+                }
+            }
+            expect(mismatches).toEqual([]);
+        });
+
+        it("astral code points should all count as one non-whitespace character", () => {
+            // No astral code point is `\s`, and each surrogate pair must decode
+            // to exactly one character rather than counting its two code units.
+            const mismatches: string[] = [];
+            for (let cp = 0x10000; cp <= 0x10ffff; cp += 37) {
+                if (countText(String.fromCodePoint(cp)).characters !== 1) {
+                    mismatches.push(`U+${cp.toString(16).toUpperCase()}`);
+                }
+            }
+            expect(mismatches).toEqual([]);
+        });
+
+        it("an unpaired surrogate should count as a single character", () => {
+            expect(countText("\ud800").characters).toBe(1);
+            expect(countText("\udc00").characters).toBe(1);
+            expect(countText("a\ud800b").characters).toBe(3);
+        });
+    });
 });
