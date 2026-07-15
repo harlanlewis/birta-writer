@@ -102,6 +102,14 @@ export async function run({ page, check, baseUrl }) {
     check("the hover band over the gap keeps the flyout open (no precision needed)",
         await page.evaluate(() =>
             document.querySelector(".toc-panel").classList.contains("toc-panel--flyout-in")));
+    // ...but the band must NOT reach into the tab: the tab stays fully clickable
+    // (its bottom edge hits the tab, not the panel's ::before band).
+    check("the reveal tab stays fully clickable under the flyout (band doesn't steal it)",
+        await page.evaluate(() => {
+            const t = document.querySelector(".toc-toggle-tab").getBoundingClientRect();
+            const el = document.elementFromPoint(t.left + t.width / 2, t.bottom - 2);
+            return Boolean(el && el.closest(".toc-toggle-tab"));
+        }));
     // The tab's own tooltip is suppressed while the flyout is out (it's redundant
     // and would overlap the panel) — no visible .custom-tooltip.
     const tipVisible = await page.evaluate(() => {
