@@ -60,6 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Delete Block (⌘⇧K) with the caret in a table cell no longer deletes the whole table** — from a plain caret inside a cell the command now does nothing, matching Join Lines' never-destructive rule; deleting a table stays deliberate (select the whole table via its handle, the block menu, or a block/marquee selection).
 - **Nesting one `:::` directive inside another survives a save** — moving a `:::note`/`:::info` admonition into another directive now writes the outer fence longer than the inner (`::::` around `:::`, the CommonMark convention), so the inner block reopens as a directive instead of flattening to plain text.
 - **Moving a horizontal rule to the top of a directive keeps it a rule** — a `---` dropped directly under a directive's opening fence used to reopen as a heading (the fence line became setext-underlined), destroying both the rule and the directive; the rule now stays a rule.
 - **Moving a block between callouts no longer splits the callout on reopen** — dragging a paragraph out of one callout (or blockquote) and into another used to leave a stale blank line where the emptied callout sat, so on reload the destination callout was split in two and the moved block landed in a plain blockquote. The moved block now reopens inside the callout it was dropped into.

@@ -398,10 +398,24 @@ export function duplicateSelectedBlocks(dir: -1 | 1): Command {
 /**
  * Contributed Cmd+Shift+K / palette Delete Block (MAR-103): delete the
  * caret's block or the selected block range in one undo step.
+ *
+ * A selection living INSIDE a table cell (a bare caret, or text within a
+ * cell) never deletes the whole table (MAR-107) — that blast radius surprised
+ * users, so like joinLines' never-destructive rule the command no-ops there.
+ * Whole-table deletion stays explicit: a NodeSelection/BlockRange over the
+ * table resolves at the top level (its `$from` sits above the table, so the
+ * ancestor walk finds nothing) and still deletes it, as do the table chrome
+ * and the block menu.
  */
 export const deleteSelectedBlocks: Command = (state, dispatch, view) => {
     if (!view || !dispatch) {
         return false;
+    }
+    const { $from } = state.selection;
+    for (let depth = $from.depth; depth > 0; depth--) {
+        if ($from.node(depth).type.name === "table") {
+            return false;
+        }
     }
     const range = actionRange(state, view);
     if (!range) {
