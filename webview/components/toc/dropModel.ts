@@ -9,10 +9,10 @@
  * land, WHICH slot a pointer means, and AT WHAT LEVEL a dropped section
  * lands.
  *
- * Slots DO relevel (MAR-81 reversed): the outline is both a view of the text
- * and a structural editor, so a drop's position dictates the dragged
- * section's rank — the drop context always wins, which is what makes an
- * outline drag readable from the insertion point alone.
+ * Slots DO relevel: the outline is both a view of the text and a structural
+ * editor, so a drop's position dictates the dragged section's rank — the drop
+ * context always wins, which is what makes an outline drag readable from the
+ * insertion point alone.
  *
  *   - gap  → SIBLING of the heading the line sits above (terminal gap: of
  *            the last section).
