@@ -459,6 +459,11 @@ const TURN_INTO_CHOICES: TurnIntoRow[] = (Object.keys(SLASH_ID_BY_KIND) as Conve
 // marker again) closes the previous one.
 let closeActiveBlockMenu: (() => void) | null = null;
 
+// Monotonic id source for the listbox container, so the combobox input's
+// aria-controls always points at a fresh, unique element even if a prior
+// menu lingers a tick during teardown.
+let blockMenuSeq = 0;
+
 /** Closes the currently open block menu, if any (used by the drag handle). */
 export function closeBlockMenu(): void {
     closeActiveBlockMenu?.();
@@ -504,21 +509,37 @@ export function openBlockMenu(
 
     const menu = document.createElement("div");
     menu.className = "block-menu";
-    menu.setAttribute("role", "menu");
+    // Not role="menu": this is an aria-activedescendant-driven COMBOBOX (the
+    // search input) over a LISTBOX of rows (the body), not a menu of
+    // menuitems — the input keeps focus and mirrors the highlight through
+    // aria-activedescendant, exactly like the slash menu's combobox model.
+    // The wrapper itself carries no role; the semantics live on the input
+    // (combobox) and the body (listbox).
 
     // ── "Search actions…" (the Notion pattern): a default-focused filter
     // input; typing narrows both sections to one flat ranked list, sharing
     // the slash menu's matcher and the registry's keywords. ──
+    const listboxId = `block-menu-listbox-${++blockMenuSeq}`;
     const search = document.createElement("input");
     search.type = "text";
     search.className = "block-menu-search";
     search.placeholder = t("Search actions…");
     search.setAttribute("aria-label", t("Search actions"));
+    // Full WAI-ARIA combobox contract: the input owns focus and drives the
+    // listbox rows via aria-activedescendant (set in setHl/clearHl below).
+    search.setAttribute("role", "combobox");
+    search.setAttribute("aria-haspopup", "listbox");
+    search.setAttribute("aria-autocomplete", "list");
+    search.setAttribute("aria-controls", listboxId);
+    search.setAttribute("aria-expanded", "true");
     menu.appendChild(search);
     // Rows re-render per keystroke into their own container so the input
-    // (and its focus/caret) is never rebuilt.
+    // (and its focus/caret) is never rebuilt. The container is the listbox
+    // aria-controls points at; its option rows are built by addRow.
     const body = document.createElement("div");
     body.className = "block-menu-body";
+    body.id = listboxId;
+    body.setAttribute("role", "listbox");
     menu.appendChild(body);
 
     const onDocMouseDown = (event: MouseEvent): void => {
@@ -696,10 +717,19 @@ export function openBlockMenu(
         row.type = "button";
         row.className = "block-menu-item";
         row.dataset["mutates"] = opts.mutates === false ? "0" : "1";
-        row.setAttribute("role", opts.radio ? "menuitemradio" : opts.check ? "menuitemcheckbox" : "menuitem");
+        // Every row is a listbox option (the combobox model): AT reaches it
+        // through the input's aria-activedescendant, not by focusing it.
+        // aria-selected carries the row's PERSISTENT state — the current
+        // block type in "Turn into" (radio) and the callout fold toggle
+        // (check) — a direct successor to the old aria-checked. (The
+        // transient keyboard highlight is a separate channel: the input's
+        // aria-activedescendant, set in setHl/clearHl. This is why blockMenu
+        // does not follow the slash menu's aria-selected=highlight rule — its
+        // rows, unlike the slash menu's, hold selectable state of their own.)
+        row.setAttribute("role", "option");
         row.tabIndex = -1;
         if (opts.radio || opts.check) {
-            row.setAttribute("aria-checked", opts.active ? "true" : "false");
+            row.setAttribute("aria-selected", opts.active ? "true" : "false");
         }
         row.classList.toggle("block-menu-item--active", Boolean(opts.active));
         row.classList.toggle("block-menu-item--danger", Boolean(opts.danger));
@@ -761,6 +791,9 @@ export function openBlockMenu(
     const addHeader = (label: string): void => {
         const header = document.createElement("div");
         header.className = "block-menu-header";
+        // Presentational inside the listbox (the slash menu's group-label
+        // idiom) — a group label, not a selectable option.
+        header.setAttribute("role", "presentation");
         header.textContent = label;
         body.appendChild(header);
     };
@@ -940,6 +973,13 @@ export function openBlockMenu(
                 spec.build();
             }
         }
+        // aria-expanded tracks whether the listbox is actually showing
+        // options — a zero-match filter ("No matching actions") collapses it,
+        // like the slash menu's zero-match state.
+        search.setAttribute(
+            "aria-expanded",
+            String(body.querySelector(".block-menu-item") !== null),
+        );
         if (q === "") {
             clearHl(); // browsing: no pre-highlight, grouped sections
         } else {

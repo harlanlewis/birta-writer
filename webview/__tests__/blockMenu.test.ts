@@ -1106,8 +1106,8 @@ describe("Collapsed by default (callout fold marker, MAR-110)", () => {
         const menu = openMenuOn(calloutMarker());
         const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
             .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Collapsed by default")!;
-        expect(row.getAttribute("role")).toBe("menuitemcheckbox");
-        expect(row.getAttribute("aria-checked")).toBe("false");
+        expect(row.getAttribute("role")).toBe("option");
+        expect(row.getAttribute("aria-selected")).toBe("false");
 
         // Act
         row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
@@ -1131,7 +1131,7 @@ describe("Collapsed by default (callout fold marker, MAR-110)", () => {
         const menu = openMenuOn(calloutMarker());
         const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
             .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Collapsed by default")!;
-        expect(row.getAttribute("aria-checked")).toBe("true");
+        expect(row.getAttribute("aria-selected")).toBe("true");
 
         // Act
         row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
@@ -1147,5 +1147,100 @@ describe("Collapsed by default (callout fold marker, MAR-110)", () => {
         const menu = openMenuOn(markers()[0]!);
         const labels = Array.from(menu.querySelectorAll(".block-menu-item-label")).map((el) => el.textContent);
         expect(labels).not.toContain("Collapsed by default");
+    });
+});
+
+describe("combobox/listbox ARIA contract (MAR-94)", () => {
+    function searchInput(menu: HTMLElement): HTMLInputElement {
+        const el = menu.querySelector<HTMLInputElement>(".block-menu-search");
+        expect(el, "search input not rendered").not.toBeNull();
+        return el!;
+    }
+    function listbox(menu: HTMLElement): HTMLElement {
+        const el = menu.querySelector<HTMLElement>(".block-menu-body");
+        expect(el, "listbox body not rendered").not.toBeNull();
+        return el!;
+    }
+
+    it("the search input should carry the full combobox contract", async () => {
+        // Arrange / Act
+        const editor = await makeEditor("# Heading\n\nBody");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const input = searchInput(menu);
+        const body = listbox(menu);
+
+        // Assert: role=combobox, aria-expanded, and aria-controls pointing at
+        // the listbox container (which carries a matching id + role=listbox).
+        expect(input.getAttribute("role")).toBe("combobox");
+        expect(input.getAttribute("aria-haspopup")).toBe("listbox");
+        expect(input.getAttribute("aria-expanded")).toBe("true");
+        expect(body.getAttribute("role")).toBe("listbox");
+        expect(body.id).not.toBe("");
+        expect(input.getAttribute("aria-controls")).toBe(body.id);
+    });
+
+    it("every row should be a listbox option and the current type carry aria-selected", async () => {
+        // Arrange
+        const editor = await makeEditor("# Heading\n\nBody");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const rows = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"));
+
+        // Assert: rows are options (not menuitem*), and the current block
+        // type (Heading 1 for this heading) is the selected option.
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows) {
+            expect(row.getAttribute("role")).toBe("option");
+        }
+        const current = rows.find(
+            (r) => r.querySelector(".block-menu-item-label")?.textContent === "Heading 1",
+        )!;
+        expect(current.getAttribute("aria-selected")).toBe("true");
+        const other = rows.find(
+            (r) => r.querySelector(".block-menu-item-label")?.textContent === "Heading 2",
+        )!;
+        expect(other.getAttribute("aria-selected")).toBe("false");
+    });
+
+    it("a zero-match filter should collapse aria-expanded", async () => {
+        // Arrange
+        const editor = await makeEditor("Body");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const input = searchInput(menu);
+
+        // Act: type a query that matches no action.
+        input.value = "zzzznomatch";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+
+        // Assert
+        expect(input.getAttribute("aria-expanded")).toBe("false");
+        expect(menu.querySelector(".block-menu-item")).toBeNull();
+    });
+
+    it("arrowing should mirror the highlight through aria-activedescendant", async () => {
+        // Arrange: a middle block so both Move Up and Move Down are enabled,
+        // giving the "move" filter two navigable option rows.
+        const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        view(editor);
+        const menu = openMenuOn(markers()[1]!);
+        const input = searchInput(menu);
+
+        // Act: filter so a row is pre-highlighted, then step down.
+        input.value = "move";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        const before = input.getAttribute("aria-activedescendant");
+        input.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+        );
+
+        // Assert: the input points at a real listbox option before and after,
+        // and the highlight moved.
+        expect(before).not.toBeNull();
+        const after = input.getAttribute("aria-activedescendant");
+        expect(after).not.toBeNull();
+        expect(menu.querySelector(`#${after}`)?.getAttribute("role")).toBe("option");
+        expect(after).not.toBe(before);
     });
 });

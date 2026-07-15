@@ -66,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Moving a block no longer corrupts an escaped `\==highlight==`** — a hand-escaped highlight literal (`\==not a highlight==`) kept as plain text now re-serializes with its backslash intact when its block is moved, instead of silently dropping the `==` bytes and turning into a highlight on reopen.
 - **Editing chords no longer change an unfocused document** — with the editor as the active tab but focus in the Explorer/sidebar, pressing a document-mutating shortcut (⌘⇧K delete block, ⌃J join lines, the list/heading/paragraph chords, ⌘K link) used to edit the document you weren't looking at. These chords now require the editor itself to be focused; find, fold, and navigation shortcuts are unchanged.
 - **The numbered-list block handle no longer hides under multi-digit numbers** — on a list reaching item 10+ (or at 150–200% content scale) the grabber sat on top of the number as an invisible click target. It now tracks the number's width and the content font size, staying clear of the ink.
+- **The slash command menu now opens inside headings** — typing `/` in a heading did nothing (the heading's own text normalization silently suppressed the menu right after the keystroke). It now opens the same insert menu it does in a paragraph.
 
 ---
 
