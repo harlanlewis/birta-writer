@@ -47,8 +47,8 @@
  *    still swallows its landing — the boundary is visible (it renders at the
  *    next heading's line) but sits inside the section, because fold extents
  *    derive from heading ranks. That slot is one the user aimed at, so the
- *    move REVEALS the fold rather than refusing or hiding the landing
- *    (foldsSwallowingInsertion; MAR-146).
+ *    move REVEALS the fold afterwards rather than refusing or hiding the
+ *    landing (revealPosition; MAR-146).
  * 5. SIDE-STATE RIDES ALONG — the fold plugin's move meta travels inside
  *    the primitive, so a collapsed section stays collapsed at its
  *    destination and nothing else inherits its fold.
@@ -64,11 +64,7 @@ import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState
 // Runtime-only cycle (moveBlocks → headingFold → blockMenu → moveBlocks):
 // isHiddenTargetPos is only called inside the function body, matching the
 // established contentGuard ↔ headingFold precedent.
-import {
-    foldsSwallowingInsertion,
-    isHiddenTargetPos,
-    landingHeadingLevel,
-} from "../plugins/headingFold";
+import { isHiddenTargetPos, revealPosition } from "../plugins/headingFold";
 import { markerKeyOf, tagContentGuard } from "../plugins/contentGuard";
 import { flashRange } from "../components/blockMenu/rangeIndicator";
 
@@ -236,28 +232,6 @@ export function moveBlocks(
     // can exempt exactly them and still veto the buggy-unwrap shape.
     const dissolvedMarkers = dissolvedMarkersFor(doc, { from: coveredFrom, to: coveredTo });
 
-    // ── Folds that would swallow the landing (revealed after the move) ──
-    // A collapsed section's END boundary is a slot the user can see and aim
-    // at, but content landed there falls INSIDE the section: fold extents are
-    // derived from heading ranks, so there is no position "after the section
-    // but before the next heading" (MAR-146). Placing content there is an
-    // explicit entry intent, so the folds that would hide it are opened rather
-    // than the landing left to vanish — revealPosition's rule, same as a Find
-    // match or a TOC click. Only a heading that out-ranks the section escapes,
-    // and foldsSwallowingInsertion already excludes those; `content` is
-    // post-relevel, so a TOC drop is judged at the rank it actually lands with.
-    // Interior targets never reach here: clause 4 refused them.
-    //
-    // Computed here (pre-move coords, while the fold ranges still describe the
-    // doc the target was chosen in) but dispatched only once the move has
-    // landed — a refused or guard-vetoed move must leave NO trace, fold state
-    // included.
-    const reveal = foldsSwallowingInsertion(
-        view.state,
-        targetPos,
-        landingHeadingLevel(content.firstChild),
-    );
-
     // ── The move: delete + insert in one transaction ──
     // deleteRange (not delete): removing a list's last item must dissolve
     // the emptied list instead of leaving a schema-invalid empty node — the
@@ -339,23 +313,20 @@ export function moveBlocks(
         // return false so drag/menu/keyboard callers report truthfully.
         return false;
     }
-    // The move landed: open the folds that would otherwise hide it (see the
-    // reveal note above). Positions map through the move's own steps; the
-    // fold plugin has already remapped its entries the same way, so these
-    // address the live headings. Stepless and addToHistory:false — undoing the
-    // move restores the document, and the reveal outlives it, matching
-    // revealPosition's "unfold and leave them unfolded".
-    if (reveal.length > 0) {
-        view.dispatch(
-            view.state.tr
-                .setMeta(headingFoldPluginKey, {
-                    type: "setMany",
-                    positions: reveal.map((pos) => tr.mapping.map(pos)),
-                    folded: false,
-                } satisfies HeadingFoldMeta)
-                .setMeta("addToHistory", false),
-        );
-    }
+    // The move landed. If it came to rest inside a collapsed section, open
+    // that fold rather than leave the block at display:none, where it reads as
+    // deleted (MAR-146): a section's END boundary is a slot the user can see
+    // and aim at, but content landed there falls INSIDE the section, because
+    // fold extents derive from heading ranks — there is no position "after the
+    // section but before the next heading". Placing content somewhere is an
+    // explicit entry intent, which is exactly what revealPosition unfolds for
+    // on a Find match or a TOC click.
+    //
+    // Asked of the RESULTING document, so it needs no prediction: post-move
+    // ranks (relevel included) and remapped fold entries already say where the
+    // landing sits. Targets INSIDE a fold never get here — clause 4 refused
+    // them — so this only ever fires for the boundary case.
+    revealPosition(view, insertAt);
     view.focus();
     // Landing flash at the destination — positions are valid in the new doc.
     flashRange(view, insertAt, insertAt + content.size);
