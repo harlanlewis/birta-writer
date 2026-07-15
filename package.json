@@ -8,7 +8,7 @@
         "name": "Harlan Lewis",
         "url": "https://www.harlanlewis.com"
     },
-    "license": "Apache-2.0",
+    "license": "FSL-1.1-ALv2",
     "engines": {
         "vscode": "^1.80.0"
     },

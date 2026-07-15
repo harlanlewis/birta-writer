@@ -1,7 +1,10 @@
 Birta Writer
 Copyright 2026 Harlan Lewis
 
-This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+This product is licensed under the Functional Source License, Version 1.1
+(FSL-1.1-ALv2) — see LICENSE. The FSL grants broad rights to use, modify, and
+redistribute the Software for any purpose other than a Competing Use, and
+converts to the Apache License, Version 2.0 two years after each release.
 
 Portions of this software are derived from md-wysiwyg-editor
 (https://github.com/git-xing/md-wysiwyg-editor), Copyright (c) 2025 Chance Liu,
