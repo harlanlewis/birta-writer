@@ -29,7 +29,7 @@ import {
 import type { EditorView } from "@milkdown/prose/view";
 import { TextSelection } from "@milkdown/prose/state";
 import { t } from "./i18n";
-import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifySetTocPosition, onMessage } from "./messaging";
+import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
 import { mark, measure } from "./perf";
 import type { ToWebviewMessage } from "../shared/messages";
 import { computeLineMap } from "../shared/lineMap";
@@ -597,6 +597,16 @@ onMessage(async (msg) => {
 // (Mermaid, etc.) refresh on every theme change, including OS light/dark
 // switching that never reaches the extension host.
 observeNativeThemeChanges();
+
+// Report webview focus to the extension so it can gate document-mutating
+// keybindings on real editor focus (MAR-104). We track the iframe window, not
+// the ProseMirror editor: focus parked on toolbar chrome still counts, but
+// focus leaving the webview for the Explorer/sidebar does not. Emit the current
+// state up front in case the webview loads already focused (VS Code focuses the
+// custom editor on activation, which may precede our listener).
+eventManager.onWindow("focus", () => notifyFocusState(true));
+eventManager.onWindow("blur", () => notifyFocusState(false));
+notifyFocusState(document.hasFocus());
 
 // Set the Mermaid canvas class up front (from the injected mode + current
 // background) so the first diagram paints on the right surface, with no flash.

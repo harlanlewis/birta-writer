@@ -234,7 +234,14 @@ export type ToExtensionMessage =
     // The toolbar's disk-drift badge was clicked; the extension shows the
     // native picker (reload from disk / compare with disk). The extension never
     // edits the document itself — the user chooses.
-    | { type: "resolveSyncConflict" };
+    | { type: "resolveSyncConflict" }
+    // Whether the webview (the iframe as a whole, not just the ProseMirror
+    // editor) currently holds OS focus. The extension mirrors this into the
+    // `birta.webviewFocused` when-clause context key so document-mutating
+    // keybindings fire only while the editor is truly focused — not merely
+    // because its tab is the active custom editor with focus parked in the
+    // Explorer (MAR-104).
+    | { type: "focusState"; focused: boolean };
 
 /**
  * Extension → WebView messages.

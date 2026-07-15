@@ -51,6 +51,16 @@ export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }
 
+/**
+ * Report whether the webview holds OS focus, so the extension can gate
+ * document-mutating keybindings on real editor focus (MAR-104). Tracks the
+ * iframe window, not the ProseMirror editor, so focus parked on toolbar chrome
+ * still counts as focused.
+ */
+export function notifyFocusState(focused: boolean): void {
+    vscode.postMessage({ type: "focusState", focused });
+}
+
 export function notifyOpenFile(relativePath: string, opts?: { wiki?: true }): void {
     vscode.postMessage({
         type: "openFile",

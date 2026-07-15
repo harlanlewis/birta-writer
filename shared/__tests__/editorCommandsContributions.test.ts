@@ -205,9 +205,44 @@ describe("editor command keybinding contributions", () => {
         }
     });
 
+    // MAR-104: document-mutating keybindings additionally require real webview
+    // focus, so they can't fire from the Explorer/sidebar while the editor is
+    // merely the active custom-editor tab. Non-mutating chords (find family,
+    // fold, navigation, block menu) intentionally fire without content focus.
+    // Keep this set in lockstep with the `&& birta.webviewFocused` clauses in
+    // package.json's keybindings.
+    const FOCUS_GATED = new Set(
+        [
+            "insertLink",
+            "deleteBlock",
+            "joinLines",
+            "toggleOrderedList",
+            "toggleBulletList",
+            "toggleTaskList",
+            "setParagraph",
+            "setHeading1",
+            "setHeading2",
+            "setHeading3",
+            "setHeading4",
+            "setHeading5",
+            "setHeading6",
+        ].map((id) => EDITOR_COMMAND_PREFIX + id),
+    );
+    const FOCUS_WHEN = `${PALETTE_WHEN} && birta.webviewFocused`;
+
     it("every editor keybinding should be scoped to the active custom editor", () => {
         for (const kb of editorKeybindings) {
-            expect(kb.when, `keybinding for ${kb.command} must be scoped`).toBe(PALETTE_WHEN);
+            const expected = FOCUS_GATED.has(kb.command) ? FOCUS_WHEN : PALETTE_WHEN;
+            expect(kb.when, `keybinding for ${kb.command} must be scoped`).toBe(expected);
+        }
+    });
+
+    it("every focus-gated command should actually contribute a keybinding", () => {
+        // Guards the other direction: a command listed in FOCUS_GATED that lost
+        // its keybinding would silently drop the MAR-104 protection.
+        const bound = new Set(editorKeybindings.map((k) => k.command));
+        for (const command of FOCUS_GATED) {
+            expect(bound.has(command), `focus-gated ${command} has no keybinding`).toBe(true);
         }
     });
 
