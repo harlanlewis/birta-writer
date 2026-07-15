@@ -251,10 +251,9 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
         expect(nested.classList.contains("toc-item--draggable")).toBe(false);
     });
 
-    it("a toc-initiated drag should offer only gap slots (no into highlight)", async () => {
+    it("a toc-initiated drag onto an item's middle band should offer the into slot", async () => {
         const editor = await makeEditor("# A\n\na body\n\n# B\n\nb body");
         const v = view(editor);
-        const before = markdown(editor);
         const dom = buildTocDom(v);
         const dnd = initDnd(v, dom);
         const [entryA, entryB] = headingsOf(v);
@@ -263,16 +262,105 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
         dnd.wireItemDrag(itemA, entryA!);
 
         mouse(itemA, "mousedown", { button: 0, clientX: 600, clientY: 105, buttons: 1 });
-        // y=131 sits inside item B's middle band (127–137): a document drag
-        // would highlight "into B", but a section drag falls through to the
-        // gap contest — whose winner (B's own top edge) is the dragged
-        // range's end, i.e. the put-it-back gesture.
+        // y=131 sits inside item B's middle band (127–137). A section drag
+        // takes "into" targets like any other run now: dropping ONTO an item
+        // means "become its child" (the outline is a structural editor).
         mouse(document, "mousemove", { clientX: 600, clientY: 131, buttons: 1 });
-        expect(document.querySelector(".toc-item--drop-into")).toBeNull();
-        expect(itemB.classList.contains("toc-item--drop-into")).toBe(false);
+        expect(itemB.classList.contains("toc-item--drop-into")).toBe(true);
         mouse(document, "mouseup", { button: 0, buttons: 0 });
 
-        expect(markdown(editor)).toBe(before);
+        // A files under B as its child: H1 → H2 (B's level + 1), appended at
+        // the end of B's section.
+        expect(markdown(editor)).toBe("# B\n\nb body\n\n## A\n\na body");
+    });
+
+    it("a section dropped into a deeper section should relevel to that owner's level + 1", async () => {
+        // Dragging an H2 onto an H3 must land it as an H4 — the drop position
+        // dictates the rank.
+        const editor = await makeEditor("# Top\n\n### Deep\n\ndeep body\n\n## Two\n\ntwo body");
+        const v = view(editor);
+        const dom = buildTocDom(v);
+        const dnd = initDnd(v, dom);
+        const entries = headingsOf(v);
+        const deep = entries.find((e) => e.text === "Deep")!;
+        const two = entries.find((e) => e.text === "Two")!;
+        const itemTwo = dom.items.get(two.pos)!;
+        dnd.wireItemDrag(itemTwo, two);
+
+        // Item index of "Deep" is 1 → band 122–142, middle band 127–137.
+        const deepIndex = entries.findIndex((e) => e.text === "Deep");
+        expect(deepIndex).toBe(1);
+        mouse(itemTwo, "mousedown", { button: 0, clientX: 600, clientY: 149, buttons: 1 });
+        mouse(document, "mousemove", { clientX: 600, clientY: 131, buttons: 1 });
+        expect(dom.items.get(deep.pos)!.classList.contains("toc-item--drop-into")).toBe(true);
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+
+        expect(markdown(editor)).toBe("# Top\n\n### Deep\n\ndeep body\n\n#### Two\n\ntwo body");
+    });
+
+    it("a section dropped on a gap line should relevel to the following heading's level", async () => {
+        // Gap above "### Deep" ⇒ sibling of Deep ⇒ the dragged H2 becomes H3.
+        const editor = await makeEditor("# Top\n\n### Deep\n\ndeep body\n\n## Two\n\ntwo body");
+        const v = view(editor);
+        const dom = buildTocDom(v);
+        const dnd = initDnd(v, dom);
+        const entries = headingsOf(v);
+        const two = entries.find((e) => e.text === "Two")!;
+        const itemTwo = dom.items.get(two.pos)!;
+        dnd.wireItemDrag(itemTwo, two);
+
+        mouse(itemTwo, "mousedown", { button: 0, clientX: 600, clientY: 149, buttons: 1 });
+        // y=122 is item Deep's top edge — the gap line above it, outside the
+        // middle band, so the gap wins.
+        mouse(document, "mousemove", { clientX: 600, clientY: 122, buttons: 1 });
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+
+        expect(markdown(editor)).toBe("# Top\n\n### Two\n\ntwo body\n\n### Deep\n\ndeep body");
+    });
+
+    it("a relevel that would overflow H6 should clamp the subtree at H6", async () => {
+        // Dragging the "## Mid" section (carrying an H5) into "### Deep"
+        // implies +2; the H5 child would reach H7 and clamps to H6.
+        const editor = await makeEditor(
+            "# Top\n\n### Deep\n\ndeep body\n\n## Mid\n\nmid body\n\n##### Child\n\nchild body",
+        );
+        const v = view(editor);
+        const dom = buildTocDom(v);
+        const dnd = initDnd(v, dom);
+        const entries = headingsOf(v);
+        const mid = entries.find((e) => e.text === "Mid")!;
+        const itemMid = dom.items.get(mid.pos)!;
+        dnd.wireItemDrag(itemMid, mid);
+
+        mouse(itemMid, "mousedown", { button: 0, clientX: 600, clientY: 149, buttons: 1 });
+        mouse(document, "mousemove", { clientX: 600, clientY: 131, buttons: 1 });
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+
+        // Mid H2→H4 (+2); Child H5→H6 (clamped, not H7). The section's whole
+        // subtree travels and shifts together.
+        expect(markdown(editor)).toBe(
+            "# Top\n\n### Deep\n\ndeep body\n\n#### Mid\n\nmid body\n\n###### Child\n\nchild body",
+        );
+    });
+
+    it("a section drop that changes no rank should leave every heading level untouched", async () => {
+        // Gap above sibling "# B" ⇒ target level 1 == the dragged level:
+        // delta 0, a purely positional move.
+        const editor = await makeEditor("# A\n\na body\n\n# B\n\nb body\n\n# C\n\nc body");
+        const v = view(editor);
+        const dom = buildTocDom(v);
+        const dnd = initDnd(v, dom);
+        const entries = headingsOf(v);
+        const c = entries.find((e) => e.text === "C")!;
+        const itemC = dom.items.get(c.pos)!;
+        dnd.wireItemDrag(itemC, c);
+
+        mouse(itemC, "mousedown", { button: 0, clientX: 600, clientY: 149, buttons: 1 });
+        // y=122 = item B's top edge = the gap above B.
+        mouse(document, "mousemove", { clientX: 600, clientY: 122, buttons: 1 });
+        mouse(document, "mouseup", { button: 0, buttons: 0 });
+
+        expect(markdown(editor)).toBe("# A\n\na body\n\n# C\n\nc body\n\n# B\n\nb body");
     });
 
     it("wireItemDrag on a stale headingPos should not start a session", async () => {
@@ -348,13 +436,60 @@ describe("initToc drag integration", () => {
         return document.querySelector<HTMLElement>(`.toc-item[data-heading-pos="${pos}"]`)!;
     }
 
-    it("renderHeadings during an active toc drag should re-apply the drag-source class", async () => {
+    it("a heading nested in a container should still reach the outline as a landmark", async () => {
+        // getHeadings prunes its walk at every TEXTBLOCK (a heading's content
+        // is inline, so no heading can hide inside one) — but it must still
+        // descend through CONTAINERS. A blockquote is not a textblock, so the
+        // heading inside it is found, and stays a landmark rather than a drag
+        // handle (only doc-root sections carry section semantics).
+        await makeToc("# A\n\nalpha\n\n> ## Quoted\n>\n> inside\n\n# B\n\nbeta");
+        const rows = [...document.querySelectorAll<HTMLElement>(".toc-item")];
+        expect(rows.map((el) => el.textContent)).toEqual(["A", "Quoted", "B"]);
+        const quoted = rows.find((el) => el.textContent === "Quoted")!;
+        expect(quoted.classList.contains("toc-item--draggable")).toBe(false);
+        expect(rows[0]!.classList.contains("toc-item--draggable")).toBe(true);
+    });
+
+    it("a refresh while the panel is flown out should re-render the outline", async () => {
+        // Rendering used to be gated on `isOpen` alone, but the flyout shows
+        // the panel with isOpen === false — so a flown-out outline never
+        // tracked the document. It showed stale rows, and their stale
+        // data-headingPos values then armed the NEXT drag against positions
+        // the document had already moved past (the drag would silently do
+        // nothing). Both symptoms trace back to this one guard.
+        const { v, toc } = await makeToc("# A\n\nalpha\n\n# B\n\nbeta");
+        toc.toggle(); // collapse — the flyout only exists while the tab shows
+        const tab = document.querySelector<HTMLElement>(".toc-toggle-tab")!;
+        tab.dispatchEvent(new MouseEvent("mouseenter"));
+        expect(itemAt(0).textContent).toBe("A");
+
+        v.dispatch(v.state.tr.insertText("!", 2)); // rename heading A
+        toc.refresh();
+
+        expect(itemAt(0).textContent).toBe("A!");
+    });
+
+    it("a refresh whose outline is unchanged should not rebuild the list", async () => {
         const { toc } = await makeToc("# A\n\nalpha\n\n# B\n\nbeta");
+        const item = itemAt(0);
+        // The outline now refreshes once per doc-changing frame, so the
+        // overwhelmingly common case (an edit that leaves headings alone) must
+        // cost no DOM churn — same elements, and the drag geometry snapshot
+        // they anchor stays valid.
+        toc.refresh();
+        expect(itemAt(0)).toBe(item);
+    });
+
+    it("renderHeadings during an active toc drag should re-apply the drag-source class", async () => {
+        const { v, toc } = await makeToc("# A\n\nalpha\n\n# B\n\nbeta");
         const item = itemAt(0);
         mouse(item, "mousedown", { button: 0, clientX: 10, clientY: 10, buttons: 1 });
         mouse(document, "mousemove", { clientX: 40, clientY: 40, buttons: 1 });
         expect(item.classList.contains("toc-item--drag-source")).toBe(true);
 
+        // A real outline change (heading A's text) — an unchanged outline is
+        // now a deliberate no-op, so force the rebuild this test is about.
+        v.dispatch(v.state.tr.insertText("!", 2));
         toc.refresh(); // full list rebuild mid-drag
 
         const rebuilt = itemAt(0);

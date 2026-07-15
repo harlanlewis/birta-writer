@@ -461,8 +461,18 @@ export interface DropZoneProvider {
      * Called on every mousemove inside the zone AND once per auto-scroll
      * frame, so it must be cheap and idempotent — no layout writes when the
      * answer hasn't changed.
+     *
+     * `relevelDelta` (optional) rides along to the moveBlocks commit: a zone
+     * whose slots carry structural intent (the TOC outline) reports the rank
+     * shift its drop implies. Omitted ⇒ a literal move. The DOCUMENT path
+     * never sets it — dragging in the text is a literal move; dragging in
+     * the outline is a structural edit.
      */
-    target(x: number, y: number, range: { from: number; to: number }): { pos: number } | null;
+    target(
+        x: number,
+        y: number,
+        range: { from: number; to: number },
+    ): { pos: number; relevelDelta?: number } | null;
     /** The pointer left the zone, or the session ended: remove all chrome.
      * Distinct from `target() → null` (still inside, just no legal slot);
      * both must be idempotent — the session may issue either repeatedly. */
@@ -535,7 +545,7 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
     const { startX, startY } = source;
     let dragging = false;
     let sessionStarted = false; // providers were told sessionStart
-    let target: { pos: number } | null = null;
+    let target: { pos: number; relevelDelta?: number } | null = null;
     let range: { from: number; to: number } | null = null;
     let boundaries: DropBoundary[] = [];
     let draggedKind: "block" | "item" = "block";
@@ -714,7 +724,12 @@ export function startPointerDragSession(view: EditorView, source: DragSessionSou
         const commitViaProvider = activeProvider !== null;
         stop();
         if (commit) {
-            const moved = moveBlocks(view, commitRange!, commitTarget!.pos, { selectRun: commitMulti });
+            const moved = moveBlocks(view, commitRange!, commitTarget!.pos, {
+                selectRun: commitMulti,
+                // Set only by a structural zone (the TOC outline); the
+                // document boundary path leaves it undefined.
+                relevelDelta: commitTarget!.relevelDelta ?? 0,
+            });
             // A document drop lands where the pointer already is, but a
             // drop-zone commit (a TOC "into" files at a section's end) can
             // land anywhere — off-screen, the landing flash paints outside

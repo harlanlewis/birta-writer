@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- e2e harness: TOC outline-as-structural-editor (relevel on drop) plus
+     refresh freshness/timeliness. Same skeleton as the tocDrag suite, but with
+     its own fixture: a deliberately MIXED-RANK outline (H1 / H3 / H2 / H1) so
+     "sibling of the heading below" and "child of the owner" produce different,
+     observable levels — a uniform H1 outline would make every relevel a no-op
+     and prove nothing. Four headings (> tocAutoHideThreshold 3) auto-open the
+     panel; `editor-width-auto` pins docked mode at the runner's 1000px width. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-list-activeSelectionBackground: rgba(0, 127, 212, 0.26);
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-icon-foreground: #cccccc; --vscode-input-placeholderForeground: #888888;
+    --vscode-symbolIcon-keywordForeground: #c586c0;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", () => document.body.classList.add("editor-width-auto"));
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 3 };
+  window.__posted = [];
+  const DOC = [
+    "# One",
+    "",
+    "one text.",
+    "",
+    "### Deep",
+    "",
+    "deep text.",
+    "",
+    "## Two",
+    "",
+    "two text.",
+    "",
+    "# Three",
+    "",
+    "three text.",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", frontmatter: "", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

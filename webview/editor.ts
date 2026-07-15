@@ -38,6 +38,8 @@ import {
     codeBlockBackspacePlugin,
     contentGuardPlugin,
     codeBlockSelectAllPlugin,
+    docChangePlugin,
+    setDocChangeListener,
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,
     foldRevealKeymapPlugin,
@@ -185,6 +187,24 @@ let _pendingExternalMarkdown: string | null = null;
 // The scheduling policy lives in webview/syncScheduler.ts (unit-tested there).
 let _onUpdate: ((markdown: string) => void) | null = null;
 
+// ── Doc-change notification (view → view) ──────────────────────────────────
+// DELIBERATELY NOT the sync pipeline above, and deliberately not Milkdown's
+// `listenerCtx.updated` either. Pure VIEWS of the document (the TOC outline)
+// must track the doc itself, not a save/serialize cadence:
+//   • riding _onUpdate made a view's latency a function of the user's recent
+//     edit history — near-immediate on a leading edge, up to idleMs mid-burst,
+//     up to maxWaitMs under continuous typing — and skipped it entirely
+//     whenever syncNow() found no substantive markdown change;
+//   • riding plugin-listener's `updated` would still cost a flat 200ms
+//     trailing debounce baked into that plugin (see plugins/docChange).
+// Both read as an outline that updates "sometimes fast, sometimes late".
+//
+// docChangePlugin reports the change synchronously with the transaction; this
+// callback carries no payload (a view reads view.state.doc itself) and does no
+// serialization. Subscribers own their own coalescing — see the rAF batching
+// at the call site in index.ts.
+let _onDocChange: (() => void) | null = null;
+
 /**
  * Serialize the live document, merge it into the saved bytes with round-trip
  * protection, and ship it to the extension if it substantively changed. The
@@ -292,6 +312,7 @@ export async function createEditor(
     container: HTMLElement,
     initialMarkdown: string,
     onUpdate: (markdown: string) => void,
+    onDocChange?: () => void,
 ): Promise<Editor> {
     // Milkdown's listener delivers updates asynchronously after create()
     // completes (RAF/microtask), by which point isSettled is already true and
@@ -302,6 +323,10 @@ export async function createEditor(
 
     // Reset the outbound sync pipeline for this editor instance.
     _onUpdate = onUpdate;
+    _onDocChange = onDocChange ?? null;
+    // Re-pointed per editor instance, so a destroyed editor's subscriber never
+    // outlives its replacement (initEditor destroys before it recreates).
+    setDocChangeListener(() => _onDocChange?.());
     _scheduler.reset();
     _isComposing = false;
     _pendingExternalMarkdown = null;
@@ -402,6 +427,9 @@ export async function createEditor(
         // so tests can't wire gfm without them and diverge (MAR-143).
         .use(gfmFidelity)
         .use(listener)
+        // Synchronous doc-change reporting for views (the TOC), free of
+        // plugin-listener's 200ms debounce — see plugins/docChange.
+        .use(docChangePlugin)
         .use(prism)
         .use(historyPlugin)
         .use(historyKeymapPlugin)

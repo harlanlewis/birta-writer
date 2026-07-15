@@ -2,6 +2,7 @@ export { insertCalloutCommand } from "./callouts";
 export { toggleHighlightCommand } from "./highlight";
 export { caretScrollMarginPlugin } from "./caretScrollMargin";
 export { contentGuardPlugin, tagContentGuard } from "./contentGuard";
+export { docChangePlugin, setDocChangeListener } from "./docChange";
 export { codeBlockBackspacePlugin } from "./codeBlockBackspace";
 export { codeBlockSelectAllPlugin } from "./codeBlockSelectAll";
 export {

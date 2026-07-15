@@ -312,6 +312,82 @@ describe("moveBlocks — allowed normalization and side-state", () => {
 
 // ── Contract 1: veto awareness ──────────────────────────────────────────────
 
+// ── Contract 3's declared exception: caller-requested relevel ───────────────
+
+describe("moveBlocks — opt-in heading relevel", () => {
+    it("no relevelDelta should leave heading levels untouched (the literal move)", async () => {
+        const editor = await makeEditor("# A\n\nbody a\n\n## B\n\nbody b");
+        const v = view(editor);
+        const from = nodePos(v, "B", "heading");
+        expect(moveBlocks(v, { from, to: v.state.doc.content.size }, 0)).toBe(true);
+        expect(markdown(editor)).toBe("## B\n\nbody b\n\n# A\n\nbody a");
+    });
+
+    it("a relevelDelta should shift every heading in the moved run by the same amount", async () => {
+        const editor = await makeEditor("# A\n\nbody a\n\n## B\n\nbody b\n\n### C\n\nbody c");
+        const v = view(editor);
+        const from = nodePos(v, "B", "heading");
+        // B's section carries C: both shift +1 together, preserving the
+        // section's internal hierarchy (B > C stays B > C).
+        expect(
+            moveBlocks(v, { from, to: v.state.doc.content.size }, 0, { relevelDelta: 1 }),
+        ).toBe(true);
+        expect(markdown(editor)).toBe("### B\n\nbody b\n\n#### C\n\nbody c\n\n# A\n\nbody a");
+        expect(refusals()).toEqual([]);
+    });
+
+    it("a relevel should clamp at H6 rather than refuse or emit an H7", async () => {
+        const editor = await makeEditor("# A\n\nbody a\n\n##### E\n\nbody e\n\n###### F\n\nbody f");
+        const v = view(editor);
+        const from = nodePos(v, "E", "heading");
+        expect(
+            moveBlocks(v, { from, to: v.state.doc.content.size }, 0, { relevelDelta: 3 }),
+        ).toBe(true);
+        // E: H5+3 = H8 → H6. F: H6+3 = H9 → H6. Both floor at H6; the
+        // distinction between them is lost, which is the accepted cost of a
+        // drop that never blocks.
+        expect(markdown(editor)).toBe("###### E\n\nbody e\n\n###### F\n\nbody f\n\n# A\n\nbody a");
+    });
+
+    it("a relevel should not trip the content guard (ranks are attrs, not content)", async () => {
+        const editor = await makeEditor("# A\n\nbody a\n\n## B\n\nbody b");
+        const v = view(editor);
+        const from = nodePos(v, "B", "heading");
+        const before = v.state.doc;
+        expect(
+            moveBlocks(v, { from, to: v.state.doc.content.size }, 0, { relevelDelta: 2 }),
+        ).toBe(true);
+        // The move actually applied (no veto — a veto leaves doc identity).
+        expect(v.state.doc).not.toBe(before);
+        expect(guardErrors()).toEqual([]);
+        expect(markdown(editor)).toBe("#### B\n\nbody b\n\n# A\n\nbody a");
+    });
+
+    it("a target at the source's own start should relevel IN PLACE instead of no-opping", async () => {
+        // The TOC's "make this section a child of the one above it" gesture:
+        // the run does not move, only its rank changes. Without the exemption
+        // the put-it-back guard would swallow it entirely.
+        const editor = await makeEditor("# A\n\nbody a\n\n## B\n\nbody b");
+        const v = view(editor);
+        const from = nodePos(v, "B", "heading");
+        expect(
+            moveBlocks(v, { from, to: v.state.doc.content.size }, from, { relevelDelta: 1 }),
+        ).toBe(true);
+        expect(markdown(editor)).toBe("# A\n\nbody a\n\n### B\n\nbody b");
+        expect(refusals()).toEqual([]);
+    });
+
+    it("a target at the source's own start with no relevel should stay a no-op", async () => {
+        const editor = await makeEditor("# A\n\nbody a\n\n## B\n\nbody b");
+        const v = view(editor);
+        const from = nodePos(v, "B", "heading");
+        const before = markdown(editor);
+        expect(moveBlocks(v, { from, to: v.state.doc.content.size }, from)).toBe(false);
+        expect(markdown(editor)).toBe(before);
+        expect(refusals()).toEqual([]); // a quiet no-op, never a refusal
+    });
+});
+
 describe("moveBlocks — veto awareness", () => {
     it("a filtered (vetoed) dispatch should return false and skip the landing flash", async () => {
         const editor = await makeEditor("Alpha\n\nBravo");
