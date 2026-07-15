@@ -235,6 +235,9 @@ export function setupSelectionToolbar(
     const visible = resolveVisible(items);
     let lastView: EditorView | null = null;
     let isDragging = false;
+    // Last block symbol painted into the menu button, so scroll/reflow re-runs of
+    // showAndPosition don't re-parse the SVG and rebuild the DOM every frame.
+    let lastBlockSymbol = "";
 
     // Quiet "on" look for a button whose mark/construct is active on the
     // selection — the same VS Code activated-option token the top toolbar uses
@@ -803,7 +806,12 @@ export function setupSelectionToolbar(
             hideAllTable();
             // The menu button shows the selected block's gutter symbol (¶ / H2 /
             // image / table …), so it reads as the same handle the margin shows.
-            blockMenuBtn.innerHTML = blockSymbolHTML(view.state.doc.nodeAt(selection.from));
+            // Only rewrite when it changes (this branch re-runs on scroll/reflow).
+            const symbol = blockSymbolHTML(view.state.doc.nodeAt(selection.from));
+            if (symbol !== lastBlockSymbol) {
+                blockMenuBtn.innerHTML = symbol;
+                lastBlockSymbol = symbol;
+            }
             blockMenuBtn.style.display = "";
             // Separator between the grab menu and the move/dup/delete group.
             blockSep.style.display = "";
