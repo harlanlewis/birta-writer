@@ -1482,7 +1482,10 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
     top: 0;
     left: 0;
     right: 0;
-    z-index: 1200;
+    /* The toolbar and its downward-opening menus must sit above ALL content-area
+       chrome below it — the selection/link palettes and, notably, the ToC flyout
+       (z 10000) — so a menu opened over the flyout is never occluded by it. */
+    z-index: 10002;
     display: flex;
     align-items: center;
     padding: 5px 8px;

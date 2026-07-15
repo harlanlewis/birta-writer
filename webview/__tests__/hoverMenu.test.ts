@@ -17,6 +17,9 @@ function build(): { wrap: HTMLElement; button: HTMLButtonElement; menu: HTMLElem
     return { wrap, button, menu };
 }
 
+// Matches hoverMenu's default openDelayMs — hover opens are gated behind it.
+const OPEN_DELAY_MS = 140;
+
 function fire(el: HTMLElement, type: "mouseenter" | "mouseleave"): void {
     el.dispatchEvent(new MouseEvent(type));
 }
@@ -40,14 +43,48 @@ describe("wireHoverMenu", () => {
             onOpen: () => calls.push(menu.style.display), // captured before show
         });
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         expect(menu.style.display).toBe("flex");
         expect(calls).toEqual(["none"]); // onOpen ran first, while still hidden
+    });
+
+    it("does not open until the hover-intent delay elapses", () => {
+        const { wrap, button, menu } = build();
+        wireHoverMenu(wrap, button, menu);
+        fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS - 1);
+        expect(menu.style.display).toBe("none"); // still closed under the delay
+        vi.advanceTimersByTime(1);
+        expect(menu.style.display).toBe("flex"); // opens exactly at the delay
+    });
+
+    it("cancels a pending hover-open if the pointer leaves before the delay", () => {
+        const { wrap, button, menu } = build();
+        wireHoverMenu(wrap, button, menu);
+        fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS - 20);
+        fire(wrap, "mouseleave"); // swept past before it opened
+        vi.advanceTimersByTime(300);
+        expect(menu.style.display).toBe("none"); // never opened — no flicker
+    });
+
+    it("keyboard open is instant (the intent delay is mouse-only)", () => {
+        const { wrap, button, menu } = build();
+        const row = document.createElement("div");
+        row.className = "tb-fmt-item";
+        menu.appendChild(row);
+        wireHoverMenu(wrap, button, menu);
+        button.focus();
+        button.dispatchEvent(key("ArrowDown"));
+        // No timer advance: keyboard opens immediately.
+        expect(menu.style.display).toBe("flex");
     });
 
     it("marks the wrap open so its CSS gap-bridge is live, and clears it on close", () => {
         const { wrap, button, menu } = build();
         wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         expect(wrap.classList.contains("tb-menu-open")).toBe(true);
         fire(wrap, "mouseleave");
         vi.advanceTimersByTime(0);
@@ -58,6 +95,7 @@ describe("wireHoverMenu", () => {
         const { wrap, button, menu } = build();
         wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         fire(wrap, "mouseleave");
         // The default delay is 0 — the menu closes on the very next tick, so
         // switching between adjacent dropdowns never briefly stacks them.
@@ -69,6 +107,7 @@ describe("wireHoverMenu", () => {
         const { wrap, button, menu } = build();
         wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         fire(wrap, "mouseleave"); // pointer leaves the wrap
         fire(menu, "mouseenter"); // ...but reaches the menu before the hide tick
         vi.advanceTimersByTime(500);
@@ -79,6 +118,7 @@ describe("wireHoverMenu", () => {
         const { wrap, button, menu } = build();
         wireHoverMenu(wrap, button, menu, { hideDelayMs: 50 });
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         fire(wrap, "mouseleave");
         vi.advanceTimersByTime(49);
         expect(menu.style.display).toBe("flex");
@@ -103,6 +143,7 @@ describe("wireHoverMenu", () => {
         const { wrap, button, menu } = build();
         wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         expect(menu.style.display).toBe("flex");
         button.focus();
         button.dispatchEvent(key("Enter"));
@@ -179,10 +220,12 @@ describe("wireHoverMenu", () => {
         const { wrap, button, menu } = build();
         const { close } = wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         expect(closeTopmostLayer()).toBe(true); // open registered a layer...
         expect(menu.style.display).toBe("none"); // ...whose close closes the menu
 
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         close();
         expect(menu.style.display).toBe("none");
         expect(button.getAttribute("aria-expanded")).toBe("false");
@@ -195,10 +238,12 @@ describe("wireHoverMenu", () => {
         const { wrap, button, menu } = build();
         const { close } = wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         close();
         // Reopen after a proper close: exactly one live layer entry again
         // (a leaked escapeOff used to suppress re-registration via ??=).
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         expect(closeTopmostLayer()).toBe(true);
         expect(closeTopmostLayer()).toBe(false);
     });
@@ -207,6 +252,7 @@ describe("wireHoverMenu", () => {
         const { wrap, button, menu } = build();
         const { dispose } = wireHoverMenu(wrap, button, menu);
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         fire(wrap, "mouseleave"); // schedules the hide
         dispose();
         vi.advanceTimersByTime(500);
@@ -215,6 +261,7 @@ describe("wireHoverMenu", () => {
         // Listeners are gone: further hovers do nothing.
         menu.style.display = "none";
         fire(wrap, "mouseenter");
+        vi.advanceTimersByTime(OPEN_DELAY_MS);
         expect(menu.style.display).toBe("none");
     });
 });
