@@ -53,6 +53,21 @@ export type HarperLint = {
 
 export type LintBlockResult = { key: number; lints: HarperLint[] };
 
+/**
+ * Word / character / reading-time counts for a run of text (MAR-29). Counting
+ * is CJK-aware: Latin runs contribute whole words, while each CJK character
+ * counts as one "word" — see webview/utils/wordCount.ts. Posted for the whole
+ * document, and (when a selection exists) for the selected range as well.
+ */
+export interface TextCount {
+    /** Latin words + CJK characters. */
+    words: number;
+    /** Non-whitespace characters (Unicode code points). */
+    characters: number;
+    /** Estimated reading time in whole minutes, rounded up (0 for empty text). */
+    readingTimeMinutes: number;
+}
+
 /** A toolbar zone, or "hidden" to omit the item entirely. */
 export type ToolbarZone = "left" | "right";
 export type ToolbarPlacement = ToolbarZone | "hidden";
@@ -235,6 +250,11 @@ export type ToExtensionMessage =
     // native picker (reload from disk / compare with disk). The extension never
     // edits the document itself — the user chooses.
     | { type: "resolveSyncConflict" }
+    // Word / character / reading-time counts computed in the webview from the
+    // live editor state (MAR-29). `selection` is non-null only when a non-empty
+    // selection exists. Debounced off the keystroke path; the extension renders
+    // it into the status bar item for the active editor.
+    | { type: "wordCount"; doc: TextCount; selection: TextCount | null }
     // Whether the webview (the iframe as a whole, not just the ProseMirror
     // editor) currently holds OS focus. The extension mirrors this into the
     // `birta.webviewFocused` when-clause context key so document-mutating

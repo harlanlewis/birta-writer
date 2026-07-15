@@ -6,6 +6,7 @@ import { normalizeBlockHandlesMode, DEFAULT_BLOCK_HANDLES_MODE, BLOCK_HANDLES_DI
 import { normalizeMermaidThemeMode, DEFAULT_MERMAID_THEME_MODE } from "../shared/mermaid";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
+import { WordCountStatusBar } from "./wordCountStatus";
 
 /**
  * "Block Handles" in the command palette: a QuickPick of the three resting
@@ -86,6 +87,12 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         MarkdownEditorProvider.register(context),
     );
+
+    // Status bar word/character/reading-time readout (MAR-29): created once here
+    // and driven by the provider from the active editor's `wordCount` messages.
+    const wordCountStatusBar = new WordCountStatusBar();
+    context.subscriptions.push(wordCountStatusBar);
+    MarkdownEditorProvider.current?.setWordCountView(wordCountStatusBar);
 
     // Sync editorAssociations once on activation
     const initialMode = vscode.workspace
