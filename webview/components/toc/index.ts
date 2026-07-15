@@ -1,6 +1,6 @@
 import './toc.css';
 import type { EditorView } from "@milkdown/prose/view";
-import { applyTooltip } from "@/ui/tooltip";
+import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { notifyTocWidth, notifySetTocPosition } from "@/messaging";
 import { revealPosition } from "@/plugins/headingFold";
@@ -468,7 +468,58 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabEl.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        hideFlyout(); // a click opens persistently; drop the transient flyout
         toggle();
+    });
+
+    // ── Flyout: while the collapsed tab is hovered or focused, reveal the panel
+    // transiently as a floating overlay (the Claude-desktop sidebar pattern),
+    // retracting when the pointer/focus leaves both the tab and the panel. A
+    // click still opens it persistently (toggle above). The flyout floats OVER
+    // the content (never pushes it) and never fights the persistent open state:
+    // showFlyout bails when the panel is already open. ──
+    let flyoutOpen = false;
+    let flyoutHideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function cancelFlyoutHide(): void {
+        if (flyoutHideTimer) { clearTimeout(flyoutHideTimer); flyoutHideTimer = null; }
+    }
+    function showFlyout(): void {
+        cancelFlyoutHide();
+        if (isOpen || flyoutOpen) { return; }
+        flyoutOpen = true;
+        // The flyout shows the ToC itself, so the tab's "Show table of contents"
+        // tooltip is now redundant (and would overlap the panel) — dismiss it.
+        hideTooltip();
+        renderHeadings(getHeadings());
+        panel.classList.add("toc-panel--flyout");
+        document.body.classList.add("toc-flyout-open");
+    }
+    function hideFlyout(): void {
+        cancelFlyoutHide();
+        if (!flyoutOpen) { return; }
+        flyoutOpen = false;
+        panel.classList.remove("toc-panel--flyout");
+        document.body.classList.remove("toc-flyout-open");
+    }
+    function scheduleFlyoutHide(): void {
+        cancelFlyoutHide();
+        // A short grace period lets the pointer cross the gap from tab to panel.
+        flyoutHideTimer = setTimeout(hideFlyout, 220);
+    }
+
+    tabEl.addEventListener("mouseenter", showFlyout);
+    tabEl.addEventListener("mouseleave", scheduleFlyoutHide);
+    tabEl.addEventListener("focus", showFlyout);
+    tabEl.addEventListener("blur", scheduleFlyoutHide);
+    // Moving onto the flown-out panel keeps it; leaving it retracts (unless a
+    // click already promoted it to a persistent open, when flyoutOpen is false).
+    panel.addEventListener("mouseenter", () => { if (flyoutOpen) { cancelFlyoutHide(); } });
+    panel.addEventListener("mouseleave", () => { if (flyoutOpen) { scheduleFlyoutHide(); } });
+    panel.addEventListener("focusout", (e) => {
+        if (flyoutOpen && !panel.contains(e.relatedTarget as Node | null)) {
+            scheduleFlyoutHide();
+        }
     });
 
     // ── Auto-expand detection ─────────────────────────────

@@ -58,4 +58,32 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(toggleTransitions));
     check("panel is closed after the hide toggle",
         !(await page.locator(".toc-panel").evaluate((el) => el.classList.contains("toc-panel--open"))));
+
+    // ── Flyout: hovering the collapsed reveal tab flies the panel out
+    // transiently; leaving retracts it, and it never becomes a persistent open ──
+    await page.waitForTimeout(300); // settle the collapse
+    await page.locator(".toc-toggle-tab").hover();
+    await page.waitForTimeout(350); // let the slide/fade-in (0.2s) settle
+    const flyout = await page.evaluate(() => {
+        const panel = document.querySelector(".toc-panel");
+        return {
+            flyout: panel.classList.contains("toc-panel--flyout"),
+            bodyFlag: document.body.classList.contains("toc-flyout-open"),
+            open: panel.classList.contains("toc-panel--open"),
+            visible: getComputedStyle(panel).opacity === "1",
+        };
+    });
+    check("hovering the tab flies the panel out", flyout.flyout && flyout.bodyFlag && flyout.visible,
+        JSON.stringify(flyout));
+    check("the flyout is transient, not a persistent open", !flyout.open);
+
+    // Move the pointer away → the flyout retracts after its grace period.
+    await page.mouse.move(760, 420);
+    await page.waitForTimeout(400);
+    const retracted = await page.evaluate(() => ({
+        flyout: document.querySelector(".toc-panel").classList.contains("toc-panel--flyout"),
+        bodyFlag: document.body.classList.contains("toc-flyout-open"),
+    }));
+    check("leaving the tab/panel retracts the flyout",
+        !retracted.flyout && !retracted.bodyFlag, JSON.stringify(retracted));
 }

@@ -34,6 +34,23 @@
     opacity: 1;
 }
 
+/* Flyout: the collapsed tab's hover/focus reveals the panel transiently. It
+   slides in like the open state but floats ABOVE the content (never pushing it),
+   so it casts a shadow and carries an inner-edge border to read as a floating
+   overlay rather than the flush docked drawer. Sits above the docked z-index. */
+.toc-panel--flyout {
+    transform: translateX(0);
+    opacity: 1;
+    z-index: 100;
+    box-shadow: 0 8px 30px var(--vscode-widget-shadow);
+    border-right: 1px solid var(--vscode-panel-border);
+}
+
+.toc-panel--right.toc-panel--flyout {
+    border-right: none;
+    border-left: 1px solid var(--vscode-panel-border);
+}
+
 /* ─── Drag-to-resize handle (VS Code sash style) ─────── */
 /* The 8px band is the (transparent) hit area — wide enough to grab without much
    precision; the ::after pseudo-element paints a crisp 2px line on the panel's
