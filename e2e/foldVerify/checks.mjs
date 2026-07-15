@@ -626,4 +626,67 @@ export async function run({ page, check, baseUrl }) {
     check("the moved heading is still collapsed (fold entry travelled)",
         stillCollapsed.collapsed && stillCollapsed.hidden, JSON.stringify(stillCollapsed));
     await shot(page, "07-after-collapsed-drag");
+
+    // ── 6. Drop at a collapsed section's end REVEALS it (MAR-146) ──
+    // The end-of-document slot sits inside a collapsed LAST section: fold
+    // extents derive from heading ranks, so a section nothing terminates owns
+    // every later boundary. The slot is visible and aimable (the drag UI
+    // offers it), so the drop is honored by opening the fold — before the fix
+    // the block silently landed at display:none and read as deleted.
+    await clickHeadingChevron(page, "Last Section");
+    const hiddenUnderLast = await page.$$eval(".ProseMirror > *", (els) =>
+        els.filter((el) => /last content one|last content two/.test(el.textContent)
+                && el.tagName !== "H1")
+            .every((el) => getComputedStyle(el).display === "none"));
+    check("precondition: the last section is collapsed and its body hidden", hiddenUnderLast);
+
+    // Grab a visible TOP-LEVEL paragraph (only those carry a block gutter
+    // marker) and drop it past the bottom of the document.
+    const dragged = "beta content";
+    const src = await rectOf(page, ".ProseMirror > p", dragged);
+    await page.mouse.move(src.x + 40, src.cy);
+    await page.waitForTimeout(150);
+    const pMarker = await page.$$eval(".heading-fold-marker--paragraph", (els, t) => {
+        const el = els.find((e) => e.closest("p")?.textContent.includes(t));
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
+    }, dragged);
+    let revealChecks = { grabbed: pMarker !== null };
+    if (pMarker) {
+        const lastBlock = await page.evaluate(() => {
+            const els = [...document.querySelectorAll(".ProseMirror > *")]
+                .filter((el) => getComputedStyle(el).display !== "none");
+            const r = els[els.length - 1].getBoundingClientRect();
+            return { cx: r.x + r.width / 2, bottom: r.bottom };
+        });
+        await page.mouse.move(pMarker.cx, pMarker.cy);
+        await page.mouse.down();
+        await page.mouse.move(pMarker.cx + 10, pMarker.cy + 10);
+        await page.mouse.move(lastBlock.cx, lastBlock.bottom - 1, { steps: 10 });
+        await page.waitForTimeout(120);
+        revealChecks.indicatorShown = await page.$eval(".block-drag-indicator", (el) =>
+            getComputedStyle(el).display !== "none");
+        await page.mouse.up();
+        await page.waitForTimeout(700);
+        Object.assign(revealChecks, await page.$$eval(".ProseMirror > *", (els, t) => {
+            const visible = (el) => getComputedStyle(el).display !== "none";
+            const landed = els.find((el) => el.textContent.includes(t) && el.tagName === "P");
+            const head = els.find((el) => el.textContent.includes("Last Section")
+                && el.tagName === "H1");
+            return {
+                // The dragged block is where the user put it — and can see it.
+                landingVisible: landed ? visible(landed) : false,
+                // The fold that would have swallowed it is open.
+                revealed: head ? !head.classList.contains("heading-fold-heading--collapsed") : false,
+                bodyVisible: els.filter((el) => /last content one|last content two/
+                    .test(el.textContent) && el.tagName !== "H1").every(visible),
+            };
+        }, dragged));
+    }
+    check("dropping at a collapsed last section's end reveals it instead of hiding the landing",
+        revealChecks.grabbed && revealChecks.indicatorShown && revealChecks.landingVisible
+            && revealChecks.revealed && revealChecks.bodyVisible,
+        JSON.stringify(revealChecks));
+    await shot(page, "08-reveal-on-drop");
 }

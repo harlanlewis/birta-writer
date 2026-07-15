@@ -589,9 +589,12 @@ function checkDrop(
             }
             // Step coords live in the doc AFTER steps 0..i-1; map the hidden
             // ranges (old-state coords) forward, then apply the shared
-            // open/closed rule (hiddenRangeCoversTarget: heading sections
+            // occupancy rule (hiddenRangeCoversTarget: heading sections
             // half-open at `to`, callout bodies inclusive) — the same
             // registry the move primitive and the drag slot filter consume.
+            // Occupancy only: a native drop AT a collapsed section's end is
+            // still allowed here and still lands hidden, because this gate
+            // can't reveal the way moveBlocks does (MAR-146 follow-up).
             const map = tr.mapping.slice(0, i);
             for (const range of hidden) {
                 const mapped = {

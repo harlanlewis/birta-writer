@@ -86,6 +86,19 @@ function nodePos(v: EditorView, text: string, type?: string): number {
     return found;
 }
 
+/**
+ * Text of every block the fold decoration currently hides — the independent
+ * observable for "did content vanish". Read from the DOM class the decoration
+ * pass stamps (what actually drives display:none), NOT from the fold set or
+ * foldedHiddenRanges: those are the state the fix manipulates, so asserting on
+ * them would only restate the mechanism.
+ */
+function hiddenBlockTexts(v: EditorView): string[] {
+    return Array.from(v.dom.querySelectorAll(".heading-fold-hidden")).map(
+        (el) => el.textContent ?? "",
+    );
+}
+
 let errorSpy: ReturnType<typeof vi.spyOn>;
 
 /** The [moveBlocks] console.error lines emitted so far. */
@@ -236,6 +249,132 @@ describe("moveBlocks — fold-hidden target legality", () => {
             "## Section\n\nBody one\n\nBody two\n\nIntro\n\n## Next\n\nAfter",
         );
         expect(refusals()).toEqual([]);
+    });
+
+    /**
+     * MAR-146. The markdown above is right, but a section's end boundary is
+     * INSIDE the section it ends: fold extents derive from heading ranks, so
+     * "Intro" landing before `## Next` joins Section's range, and a collapsed
+     * Section would hide the block the user just placed — reading as a delete.
+     * The slot is one the user can see and aim at (it renders at the visible
+     * `## Next` line), so the move REVEALS instead of refusing or hiding.
+     *
+     * Asserted on the fold registry rather than "the move succeeded": the move
+     * succeeded before this fix too — while the landing sat at display:none.
+     */
+    it("landing at a collapsed section's end should reveal the section, not hide the landing", async () => {
+        const { editor, v, sectionEnd } = await makeFolded();
+        const hPos = nodePos(v, "Section", "heading");
+        expect(moveBlocks(v, moveRangeAt(v, 0)!, sectionEnd)).toBe(true);
+
+        expect(headingFoldPluginKey.getState(v.state)!.folded.has(hPos)).toBe(false);
+        // Asserted on the DECORATION, not the fold set: the set is what the
+        // fix manipulates, so checking it (or foldedHiddenRanges, which is
+        // derived from it) only restates the mechanism. The class the fold
+        // plugin's decoration pass stamps is what actually makes the block
+        // display:none — the thing the user would lose.
+        expect(hiddenBlockTexts(v)).toEqual([]);
+        expect(markdown(editor)).toBe(
+            "## Section\n\nBody one\n\nBody two\n\nIntro\n\n## Next\n\nAfter",
+        );
+    });
+
+    /**
+     * The rank that decides is the one the run LANDS with, not the one it
+     * started with: a TOC outline drop relevels in the same transaction
+     * (clause 3), so the drop that MAKES a section a child is exactly the one
+     * that can bury it. The pair below differs only in post-relevel rank —
+     * reading `moved` instead of `content` would be a live TOC bug that the
+     * rest of the suite sleeps through.
+     */
+    it("a relevel that makes the run a child of a collapsed section should reveal it", async () => {
+        const editor = await makeEditor("## Deep\n\ndeep body\n\n## Mover\n\nmover body");
+        const v = view(editor);
+        const deepPos = nodePos(v, "Deep", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: deepPos, folded: true,
+        } satisfies HeadingFoldMeta));
+        expect(hiddenBlockTexts(v)).toEqual(["deep body"]);
+
+        // The TOC's "make this a child of the one above" gesture: an in-place
+        // relevel at the run's own start, which is Deep's section end. H2 -> H3
+        // lands it INSIDE collapsed Deep — pre-relevel its rank tied Deep's and
+        // would have looked safe.
+        const moverPos = nodePos(v, "Mover", "heading");
+        expect(moveBlocks(v, moveRangeAt(v, moverPos)!, moverPos, { relevelDelta: 1 })).toBe(true);
+
+        expect(markdown(editor)).toBe("## Deep\n\ndeep body\n\n### Mover\n\nmover body");
+        expect(hiddenBlockTexts(v), "the relevelled run was buried in the fold").toEqual([]);
+    });
+
+    it("a relevel that still out-ranks a collapsed section should NOT reveal it", async () => {
+        const editor = await makeEditor("## Deep\n\ndeep body\n\n# Mover\n\nmover body");
+        const v = view(editor);
+        const deepPos = nodePos(v, "Deep", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: deepPos, folded: true,
+        } satisfies HeadingFoldMeta));
+
+        // H1 -> H2 ties Deep's rank, so it still ends Deep's section: visible
+        // where it lands, and Deep stays folded.
+        const moverPos = nodePos(v, "Mover", "heading");
+        expect(moveBlocks(v, moveRangeAt(v, moverPos)!, moverPos, { relevelDelta: 1 })).toBe(true);
+
+        expect(markdown(editor)).toBe("## Deep\n\ndeep body\n\n## Mover\n\nmover body");
+        expect(hiddenBlockTexts(v), "Deep must stay collapsed").toEqual(["deep body"]);
+    });
+
+    /**
+     * The same hazard with nothing after the section: a collapsed LAST section
+     * runs to doc end, so the end-of-document slot — which the drag UI offers
+     * and every "move this to the bottom" gesture aims at — lands inside it.
+     */
+    it("landing at doc end should reveal a collapsed last section", async () => {
+        const editor = await makeEditor("# One\n\nalpha\n\n# Last\n\nlast body");
+        const v = view(editor);
+        const lastPos = nodePos(v, "Last", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: lastPos, folded: true,
+        } satisfies HeadingFoldMeta));
+        expect(foldedHiddenRanges(v.state)).toHaveLength(1);
+
+        const alpha = moveRangeAt(v, nodePos(v, "alpha", "paragraph"))!;
+        expect(moveBlocks(v, alpha, v.state.doc.content.size)).toBe(true);
+
+        expect(markdown(editor)).toBe("# One\n\n# Last\n\nlast body\n\nalpha");
+        const alphaPos = nodePos(v, "alpha", "paragraph");
+        expect(
+            foldedHiddenRanges(v.state).filter(
+                (r) => alphaPos >= r.from && alphaPos < r.to,
+            ),
+            "the block moved to the end of the document landed inside the collapsed last section",
+        ).toEqual([]);
+    });
+
+    /**
+     * Scope guard, not an MAR-146 regression pin (it passes on the unfixed
+     * code too): a heading ranked at or above the collapsed one TERMINATES its
+     * section, so it stays visible on its own and the fold must survive the
+     * move. It kills the two tempting over-corrections — "reveal whenever a
+     * fold is near the target" and `>=` where the rule needs `>`.
+     */
+    it("a heading that out-ranks a collapsed section should land at its end WITHOUT revealing it", async () => {
+        const editor = await makeEditor("# Mover\n\nmover body\n\n# Keep\n\nkept body");
+        const v = view(editor);
+        const keepPos = nodePos(v, "Keep", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: keepPos, folded: true,
+        } satisfies HeadingFoldMeta));
+        // Keep is the LAST section, so its range runs to doc end and the end
+        // slot lands "inside" it — but `# Mover` ties Keep's rank, ending its
+        // section where it lands, so it needs no reveal to stay visible.
+        expect(moveBlocks(v, moveRangeAt(v, 0)!, v.state.doc.content.size)).toBe(true);
+
+        expect(markdown(editor)).toBe("# Keep\n\nkept body\n\n# Mover\n\nmover body");
+        expect(
+            headingFoldPluginKey.getState(v.state)!.folded.size,
+            "moving a section past a collapsed one must not reveal it",
+        ).toBe(1);
     });
 
     it("targets inside a collapsed callout body (end-of-body slot included) should be refused", async () => {
@@ -408,6 +547,39 @@ describe("moveBlocks — veto awareness", () => {
         expect(moveBlocks(v, moveRangeAt(v, 0)!, v.state.doc.content.size)).toBe(false);
         expect(markdown(editor)).toBe(before);
         expect(flashRange).not.toHaveBeenCalled();
+    });
+
+    /**
+     * "Returns false with the document untouched" covers side state too: the
+     * MAR-146 reveal is computed before the move but must not be COMMITTED
+     * until it lands, or a vetoed move leaves a section spuriously expanded —
+     * a visible change from a gesture that reported doing nothing.
+     */
+    it("a vetoed move should not reveal the fold it would have landed in", async () => {
+        const editor = await makeEditor("# One\n\nalpha\n\n# Last\n\nlast body");
+        const v = view(editor);
+        const lastPos = nodePos(v, "Last", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: lastPos, folded: true,
+        } satisfies HeadingFoldMeta));
+        v.updateState(v.state.reconfigure({
+            plugins: [
+                ...v.state.plugins,
+                new Plugin({
+                    filterTransaction: (tr) => tr.getMeta(contentGuardKey) === undefined,
+                }),
+            ],
+        }));
+        const before = markdown(editor);
+
+        const alpha = moveRangeAt(v, nodePos(v, "alpha", "paragraph"))!;
+        expect(moveBlocks(v, alpha, v.state.doc.content.size)).toBe(false);
+
+        expect(markdown(editor)).toBe(before);
+        expect(
+            hiddenBlockTexts(v),
+            "the fold was opened for a move that never happened",
+        ).toEqual(["last body"]);
     });
 
     it("a legal move should apply, flash its landing, and report success", async () => {
