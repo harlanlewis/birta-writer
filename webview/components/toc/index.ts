@@ -499,6 +499,17 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     function cancelFlyoutHide(): void {
         if (flyoutHideTimer) { clearTimeout(flyoutHideTimer); flyoutHideTimer = null; }
     }
+    /** Anchor the flyout as a dropdown directly BELOW the reveal tab, aligned to
+     *  the tab's docked side — the tab itself never moves, so the cursor stays
+     *  over it (no moving target). Positioned inline; CSS gives it card chrome. */
+    function positionFlyout(): void {
+        const r = tabEl.getBoundingClientRect();
+        const gap = 6;
+        panel.style.top = `${Math.round(r.bottom + gap)}px`;
+        panel.style.left = tocRight
+            ? `${Math.round(Math.max(8, r.right - tocWidth))}px`
+            : `${Math.round(r.left)}px`;
+    }
     function showFlyout(): void {
         cancelFlyoutHide();
         if (isOpen || flyoutOpen) { return; }
@@ -509,6 +520,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         renderHeadings(getHeadings());
         panel.classList.add("toc-panel--flyout");
         document.body.classList.add("toc-flyout-open");
+        positionFlyout();
     }
     function hideFlyout(): void {
         cancelFlyoutHide();
@@ -516,6 +528,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         flyoutOpen = false;
         panel.classList.remove("toc-panel--flyout");
         document.body.classList.remove("toc-flyout-open");
+        // Drop the inline top/left so the docked drawer's CSS position wins again.
+        panel.style.top = "";
+        panel.style.left = "";
     }
     function scheduleFlyoutHide(): void {
         cancelFlyoutHide();

@@ -34,21 +34,39 @@
     opacity: 1;
 }
 
-/* Flyout: the collapsed tab's hover/focus reveals the panel transiently. It
-   slides in like the open state but floats ABOVE the content (never pushing it),
-   so it casts a shadow and carries an inner-edge border to read as a floating
-   overlay rather than the flush docked drawer. Sits above the docked z-index. */
+/* Flyout: the collapsed tab's hover/focus reveals the panel transiently as a
+   floating dropdown BELOW the tab (top/left set inline by positionFlyout). The
+   tab itself never moves, so the cursor stays over it. This is a floating card —
+   auto height (capped, scrolls), rounded, shadowed, bordered — not the flush
+   full-height edge drawer, and it floats above content (never pushing it). */
 .toc-panel--flyout {
-    transform: translateX(0);
+    top: auto; /* overridden inline; declared so the drawer's top never lingers */
+    left: auto;
+    right: auto;
+    height: auto;
+    max-height: min(70vh, 620px);
+    width: var(--toc-width, 220px);
+    transform: none;
     opacity: 1;
     z-index: 100;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
     box-shadow: 0 8px 30px var(--vscode-widget-shadow);
-    border-right: 1px solid var(--vscode-panel-border);
+    overflow-y: auto;
+    /* Its own fade/slide-down entrance, independent of the drawer's translateX. */
+    animation: toc-flyout-in 120ms ease;
 }
 
-.toc-panel--right.toc-panel--flyout {
-    border-right: none;
-    border-left: 1px solid var(--vscode-panel-border);
+@keyframes toc-flyout-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* The docked-drawer chrome (side-switch/hide controls, resize sash) is
+   meaningless in the transient flyout — hide it so it reads as a clean menu. */
+.toc-panel--flyout .toc-controls,
+.toc-panel--flyout .toc-resize-handle {
+    display: none;
 }
 
 /* ─── Drag-to-resize handle (VS Code sash style) ─────── */

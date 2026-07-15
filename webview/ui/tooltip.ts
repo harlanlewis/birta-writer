@@ -127,10 +127,12 @@ export function applyTooltip(
         }
         // No tooltips while a block drag or marquee is in flight (belt to
         // the editor's pointer-events suppression — body-mounted chrome
-        // still hit-tests).
+        // still hit-tests), nor while the ToC flyout is out (the tab's
+        // "Show table of contents" tip is redundant then and overlaps it).
         if (
             document.body.classList.contains("block-dragging") ||
-            document.body.classList.contains("block-marqueeing")
+            document.body.classList.contains("block-marqueeing") ||
+            document.body.classList.contains("toc-flyout-open")
         ) {
             return;
         }
