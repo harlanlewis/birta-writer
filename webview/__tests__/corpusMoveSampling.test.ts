@@ -351,7 +351,7 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard E: an empty paragraph moved to the top level should survive save+reopen", async () => {
+    it("hazard E (MAR-123, fixed): moving an empty paragraph conserves content", async () => {
         // `> [!NOTE]` with no body auto-fills an empty paragraph.
         const editor = await makeEditor("> [!NOTE]\n\nAfter.");
         const v = editorView(editor);
@@ -360,8 +360,10 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
 
         expect(moveBlocks(v, { from: emptyPos, to: emptyPos + 2 }, v.state.doc.content.size)).toBe(true);
 
-        // BUG: the empty paragraph serializes to nothing — the block the
-        // user moved simply vanishes from the reopened file.
+        // The empty paragraph serializes to nothing and does not reopen — but
+        // an empty paragraph is not content (it cannot round-trip in pure
+        // Markdown), so the content fingerprint no longer counts it and the
+        // save pipeline conserves everything that IS content.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 

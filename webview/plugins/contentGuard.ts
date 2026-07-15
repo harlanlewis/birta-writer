@@ -129,6 +129,37 @@ export function markerKeyOf(node: ProseNode): string | null {
 }
 
 /**
+ * A CONTENTLESS paragraph — empty, or holding nothing but hard breaks — that
+ * is NOT a table cell. Markdown has no syntax for one (the editor deliberately
+ * emits no `<br />` filler to stay pure Markdown — see serialization.ts), so
+ * it always degrades to blank lines and never survives a save→reopen. It is
+ * therefore not content: a move that relocates one (which then vanishes on
+ * save), or a container's auto-fill blank being absorbed when real content
+ * joins it, loses zero user bytes. The fingerprint skips it so the guard's
+ * oracle matches that reality (MAR-123) rather than flagging a phantom
+ * `count:paragraph` loss. Table cells legitimately hold break-only / empty
+ * content that DOES round-trip (MAR-17), so they are excluded.
+ */
+export function isBlankParagraph(node: ProseNode, parent: ProseNode | null): boolean {
+    if (node.type.name !== "paragraph") {
+        return false;
+    }
+    if (parent?.type.name.startsWith("table")) {
+        return false;
+    }
+    if (node.content.size === 0) {
+        return true;
+    }
+    let blank = true;
+    node.forEach((child: ProseNode) => {
+        if (child.type.name !== "hardbreak") {
+            blank = false;
+        }
+    });
+    return blank;
+}
+
+/**
  * Fingerprint a document (or any node/fragment) in one descendants pass.
  * O(doc); runs only for tagged/drop transactions, never on typing.
  */
@@ -137,12 +168,19 @@ export function fingerprintDoc(content: ProseNode | Fragment): Fingerprint {
     const add = (key: string): void => {
         fp.set(key, (fp.get(key) ?? 0) + 1);
     };
-    content.descendants((node: ProseNode) => {
+    content.descendants((node: ProseNode, _pos: number, parent: ProseNode | null) => {
         if (node.isText) {
             // No count entry for text nodes: leaf boundaries are
             // presentational (marks split them); the bytes are the identity.
             add(`text:${node.text ?? ""}`);
             return true;
+        }
+        // A contentless paragraph carries no bytes and cannot round-trip, so
+        // it is not fingerprinted (neither its count nor a hardbreak-only
+        // body) — the oracle must not treat its save-time disappearance as
+        // loss (MAR-123). Skipping its subtree drops the break atoms too.
+        if (isBlankParagraph(node, parent)) {
+            return false;
         }
         const name = node.type.name;
         const atom = ATOM_IDENTITY[name];
@@ -270,15 +308,16 @@ const MARKER_IS_DEFAULT: Record<string, (bytes: string) => boolean> = {
     },
 };
 
-/** A move conserves everything, modulo dissolving containers it emptied and
- * the empty paragraph deleteRange refills a fully-emptied doc with. */
+/** A move conserves everything, modulo dissolving containers it emptied. */
 export function checkMove(
     delta: FingerprintDelta,
     dissolvedMarkers?: ReadonlySet<string>,
 ): string | null {
-    // The only legal gain: exactly ONE `count:paragraph`, and nothing else
-    // (deleteRange refills a fully-emptied doc with a single empty
-    // paragraph; any other gain is synthesized content).
+    // A move synthesizes no content, so any gain is a violation. (The empty
+    // paragraph deleteRange refills a fully-emptied doc with is a blank
+    // paragraph, which the fingerprint no longer counts — MAR-123 — so the
+    // former `count:paragraph`-gain exemption is vestigial; a NON-blank
+    // paragraph gain carries text and must still veto.)
     if (delta.gained.size > 0) {
         if (delta.gained.size > 1 || delta.gained.get("count:paragraph") !== 1) {
             const first = delta.gained.keys().next().value as string;

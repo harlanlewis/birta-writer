@@ -244,9 +244,13 @@ export function enumerateMovePairs(
 //       stale blank line where the dissolved source container sat, so the
 //       merged file splits the target quote — the moved block reopens in a
 //       bare blockquote instead of the container it was dropped into.
-//   (E) Empty paragraphs: an empty paragraph (e.g. a callout's blank quote
-//       line, or the auto-fill of an empty callout) serializes to NOTHING
-//       once moved, so it vanishes from the reopened file.
+//   (E) FIXED (MAR-123): empty paragraphs — an empty (or hardbreak-only)
+//       paragraph serializes to nothing and never round-trips in pure
+//       Markdown, so it is NOT content. The content fingerprint
+//       (contentGuard.isBlankParagraph) no longer counts it, so a move that
+//       relocates one (it then vanishes on save) or drops a container's
+//       auto-fill blank conserves everything that IS content. No longer
+//       excluded here; held to the full contract by the gate.
 //   (F) Aside nesting: a notion_callout (`<aside>` HTML) moved inside
 //       another aside or a directive is not recognized by the sub-parse on
 //       reopen — it flattens into raw html of its new parent.
@@ -258,9 +262,9 @@ export function enumerateMovePairs(
 // (derive fence length from nesting depth; escape or guard raw fence-shaped
 // prose; keep a blank line after the open fence when the first child is
 // setext-hazardous), (D) in the minimal-diff merge (never keep a blank line
-// that splits a serialized quote block), (E)/(F) in the serializer's
-// empty-paragraph and aside handling — then delete this predicate and the
-// remaining it.fails pins. (C) is fixed; see the class list above.
+// that splits a serialized quote block), (F) in the serializer's aside
+// handling — then delete this predicate and the remaining it.fails pins.
+// (C) and (E) are fixed; see the class list above.
 
 const QUOTE_FAMILY = new Set(["blockquote", "callout", "notion_callout"]);
 
@@ -273,25 +277,6 @@ function quoteAncestorPos(doc: ProseNode, pos: number): number {
         }
     }
     return -1;
-}
-
-/** A textblock with no text bytes: empty, or hardbreak-only. Both serialize
- * to nothing (or a bare continuation) once moved out of the context that
- * produced them. */
-function isBlankTextblock(node: ProseNode): boolean {
-    if (!node.isTextblock) {
-        return false;
-    }
-    if (node.content.size === 0) {
-        return true;
-    }
-    let blank = true;
-    node.forEach((child: ProseNode) => {
-        if (child.type.name !== "hardbreak") {
-            blank = false;
-        }
-    });
-    return blank;
 }
 
 export function knownSavePipelineHazard(
@@ -307,9 +292,8 @@ export function knownSavePipelineHazard(
     let fragmentHasDirective = false;
     let fragmentHasAside = false;
     let fragmentHasHr = false;
-    let fragmentHasBlankTextblock = false;
     let fragmentHasRawFence = false;
-    fragment.descendants((node: ProseNode, _pos: number, parent: ProseNode | null) => {
+    fragment.descendants((node: ProseNode) => {
         if (node.type.name === "container_directive") {
             fragmentHasDirective = true;
         }
@@ -318,11 +302,6 @@ export function knownSavePipelineHazard(
         }
         if (node.type.name === "hr") {
             fragmentHasHr = true;
-        }
-        if (isBlankTextblock(node) && !parent?.type.name.startsWith("table")) {
-            // Table cells legitimately hold break-only content — the
-            // dedicated cell-break serialization handles them.
-            fragmentHasBlankTextblock = true;
         }
         if (node.isTextblock && node.textContent.startsWith(":::")) {
             fragmentHasRawFence = true;
@@ -337,25 +316,7 @@ export function knownSavePipelineHazard(
         }
         return true;
     });
-    if (fragmentHasBlankTextblock) {
-        return true; // (E) — the moved blank block itself vanishes
-    }
     const $target = doc.resolve(target);
-    // (E) from the target side: inserting into a container whose body holds
-    // an auto-filled blank textblock (an empty `> [!NOTE]` callout) stops
-    // that blank block round-tripping — it only survives while it is the
-    // container's ONLY child (re-created by createAndFill on reopen).
-    if ($target.depth > 0) {
-        let targetParentHasBlank = false;
-        $target.parent.forEach((child: ProseNode) => {
-            if (isBlankTextblock(child)) {
-                targetParentHasBlank = true;
-            }
-        });
-        if (targetParentHasBlank) {
-            return true;
-        }
-    }
     const sourceQuote = quoteAncestorPos(doc, source.from);
     const targetQuote = quoteAncestorPos(doc, target);
     if (sourceQuote !== -1 && targetQuote !== -1 && sourceQuote !== targetQuote) {
