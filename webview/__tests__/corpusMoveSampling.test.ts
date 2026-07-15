@@ -6,9 +6,8 @@
  * uses, and a deterministic pseudo-random sample of moves is executed
  * through the hardened primitive. After each move:
  *
- *   (a) the doc still satisfies every schema invariant
- *       (checkDocModuloSpreadQuirk — full doc.check() modulo the one
- *       documented upstream string-`spread` parse quirk);
+ *   (a) the doc still satisfies every schema invariant (strict doc.check(),
+ *       now that list `spread` parses as a real boolean — MAR-124);
  *   (b) content is conserved per the guard's OWN oracle (checkMove over
  *       fingerprintDoc/diffFingerprints — the exact functions the runtime
  *       guard runs, so test and guard cannot drift), and the guard itself
@@ -56,7 +55,6 @@ import {
 import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 import {
-    checkDocModuloSpreadQuirk,
     editorView,
     enumerateMovePairs,
     hashString,
@@ -173,9 +171,10 @@ function sampleMoves(
             expect(v.state.doc, `refused move mutated the doc — ${context}`).toBe(docBefore);
             continue;
         }
-        // (a) Schema validity.
+        // (a) Schema validity — strict doc.check() now that list `spread`
+        // parses as a real boolean (MAR-124).
         expect(
-            () => checkDocModuloSpreadQuirk(v.state.doc),
+            () => v.state.doc.check(),
             `doc.check() failed — ${context}`,
         ).not.toThrow();
         // (b) Conservation per the guard's own oracle — including the same

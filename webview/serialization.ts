@@ -8,6 +8,7 @@ import { calloutsPlugin } from "./plugins/callouts";
 import { directivesPlugin } from "./plugins/directives";
 import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { highlightPlugin } from "./plugins/highlight";
+import { listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
@@ -119,6 +120,7 @@ export const pureCommonmark = [
         }
         if (sourceStyleReplacedPlugins.has(plugin)) return false;
         if (tableBreakReplacedPlugins.has(plugin)) return false;
+        if (listSpreadReplacedPlugins.has(plugin)) return false;
         // Stock `#` input rule ADDS hashes to an existing heading's level;
         // headingAbsoluteInputRule (plugins/headingInput.ts) replaces it.
         if (headingInputReplacedPlugins.has(plugin)) return false;
@@ -134,6 +136,10 @@ export const pureCommonmark = [
     ...mathPlugin,
     ...sourceStylePlugin,
     ...tableBreaksPlugin,
+    // AFTER the preset: override the bullet_list / ordered_list / list_item
+    // parseMarkdown runners so `spread` parses as a real boolean, not a string
+    // (MAR-124). See plugins/list.ts.
+    ...listSpreadBooleanPlugins,
     fidelitySerializerPlugin,
 ];
 

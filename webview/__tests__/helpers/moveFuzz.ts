@@ -13,6 +13,7 @@ import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
 import { configureSerialization, pureCommonmark } from "../../serialization";
+import { listItemSpreadBoolPlugins } from "../../plugins/list";
 import { moveRangeAt } from "../../components/blockMenu";
 import {
     blockBoundaryPositions,
@@ -88,7 +89,10 @@ export async function makeCorpusEditor(
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm);
+        .use(gfm)
+        // After gfm so the boolean-`spread` list_item override wins over gfm's
+        // task-list schema (MAR-124), mirroring the production editor.
+        .use(listItemSpreadBoolPlugins);
     for (const plugin of extras) {
         builder = builder.use(plugin);
     }
@@ -106,35 +110,10 @@ export function sig(text: string): string[] {
     return text.split("\n").filter((l) => l.trim() !== "");
 }
 
-/**
- * doc.check(), modulo ONE documented upstream quirk: Milkdown's parse runner
- * stores the list `spread` attr as a STRING ("true"/"false") while the
- * schema's validate declares boolean, so a freshly parsed doc containing any
- * list fails check() outright — before any gesture runs. The quirk is known
- * and compensated downstream (plugins/fidelitySerializer.ts delta (c)
- * re-coerces at serialize time; listSpreadNormalizePlugin rewrites to real
- * booleans on edit), so it is neutralized here — by coercing, never by
- * skipping: every OTHER schema invariant (content expressions, marks,
- * remaining attrs) is still enforced on the whole tree.
- * TODO(MAR-113 follow-up): fix the string spread at parse time, then inline
- * plain doc.check() here.
- */
-export function checkDocModuloSpreadQuirk(doc: ProseNode): void {
-    const coerce = (node: ProseNode): ProseNode => {
-        if (node.isText) {
-            return node;
-        }
-        const children: ProseNode[] = [];
-        node.forEach((child: ProseNode) => children.push(coerce(child)));
-        const spread = node.attrs["spread"];
-        const attrs =
-            typeof spread === "string"
-                ? { ...node.attrs, spread: spread === "true" }
-                : node.attrs;
-        return node.type.create(attrs, Fragment.from(children), node.marks);
-    };
-    coerce(doc).check();
-}
+// (Historical: `checkDocModuloSpreadQuirk` lived here to neutralize Milkdown's
+// string-`spread` parse quirk before doc.check(). MAR-124 fixed the quirk at
+// parse time — the list-schema overrides in plugins/list.ts store `spread` as a
+// real boolean — so the generative suites now assert plain `doc.check()`.)
 
 // ── Seeded PRNG ─────────────────────────────────────────────────────────────
 
