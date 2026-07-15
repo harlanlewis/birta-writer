@@ -325,14 +325,12 @@ export function checkMove(
 ): string | null {
     // A move synthesizes no content, so any gain is a violation. (The empty
     // paragraph deleteRange refills a fully-emptied doc with is a blank
-    // paragraph, which the fingerprint no longer counts — MAR-123 — so the
-    // former `count:paragraph`-gain exemption is vestigial; a NON-blank
-    // paragraph gain carries text and must still veto.)
-    if (delta.gained.size > 0) {
-        if (delta.gained.size > 1 || delta.gained.get("count:paragraph") !== 1) {
-            const first = delta.gained.keys().next().value as string;
-            return `move gained content (${first})`;
-        }
+    // paragraph, which the fingerprint no longer counts — MAR-123 — so there
+    // is no legitimate gain to exempt; a NON-blank paragraph gain carries text
+    // and vetoes here.)
+    const firstGain = delta.gained.keys().next();
+    if (!firstGain.done) {
+        return `move gained content (${firstGain.value})`;
     }
     for (const key of delta.lost.keys()) {
         const m = /^(count|marker):([^:]+)/.exec(key);
