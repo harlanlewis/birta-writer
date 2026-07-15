@@ -70,16 +70,18 @@
     min-height: 0; /* let the flex list shrink within the capped card and scroll */
 }
 
-/* A forgiving hover band spanning the flyout's full width over the gap up to the
-   tab, so mousing DOWN into the panel never needs pixel precision — hovering the
-   band keeps the panel :hover (its mouseenter cancels the retract). */
+/* A forgiving hover band spanning the flyout's full width over the 6px gap to
+   the tab, so mousing DOWN into the panel needs no horizontal precision —
+   hovering the band keeps the panel :hover (its mouseenter cancels the retract).
+   Sized to the gap exactly (positionFlyout's `gap`), so it never reaches into
+   the tab and steal its clicks. */
 .toc-panel--flyout::before {
     content: "";
     position: absolute;
     left: 0;
     right: 0;
     bottom: 100%;
-    height: 14px;
+    height: 6px;
 }
 
 /* The docked-drawer chrome (side-switch/hide controls, resize sash) is
