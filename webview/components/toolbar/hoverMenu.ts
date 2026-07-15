@@ -21,6 +21,12 @@ export interface HoverMenuOptions {
      * between adjacent dropdowns never briefly stacks them.
      */
     hideDelayMs?: number;
+    /**
+     * Hover-intent delay before OPENING on hover (mouse only — keyboard opens
+     * are always instant). Guards against menus flashing open while the cursor
+     * merely sweeps across the bar. Leaving before it elapses cancels the open.
+     */
+    openDelayMs?: number;
 }
 
 export interface HoverMenuHandle {
@@ -55,7 +61,9 @@ export function wireHoverMenu(
     options: HoverMenuOptions = {},
 ): HoverMenuHandle {
     const hideDelay = options.hideDelayMs ?? 0;
+    const openDelay = options.openDelayMs ?? 140;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    let openTimer: ReturnType<typeof setTimeout> | null = null;
     // Escape-layer unregister handle (null while closed): a hover-opened
     // menu leaves focus in the editor, where Escape routes through the
     // layer stack (blockKeys) — registering makes that Escape close the
@@ -68,9 +76,16 @@ export function wireHoverMenu(
             hideTimer = null;
         }
     };
+    const cancelOpen = (): void => {
+        if (openTimer !== null) {
+            clearTimeout(openTimer);
+            openTimer = null;
+        }
+    };
     const isOpen = (): boolean => menu.style.display === "flex";
     const open = (): void => {
         cancelHide();
+        cancelOpen();
         options.onOpen?.();
         menu.style.display = "flex";
         placeMenu(button, menu);
@@ -83,13 +98,22 @@ export function wireHoverMenu(
         escapeOff?.();
         escapeOff = null;
         cancelHide();
+        cancelOpen();
         menu.style.display = "none";
         button.setAttribute("aria-expanded", "false");
         wrap.classList.remove("tb-menu-open");
     };
     const scheduleHide = (): void => {
+        cancelOpen(); // a pending hover-open is abandoned when the pointer leaves
         cancelHide();
         hideTimer = setTimeout(close, hideDelay);
+    };
+    // Hover open, gated by an intent delay so a cursor sweeping across the bar
+    // doesn't flash menus. Already-open (from an adjacent switch) opens at once.
+    const scheduleOpen = (): void => {
+        cancelHide();
+        if (isOpen() || openTimer !== null) { return; }
+        openTimer = setTimeout(() => { openTimer = null; open(); }, openDelay);
     };
 
     button.setAttribute("aria-haspopup", "menu");
@@ -155,7 +179,7 @@ export function wireHoverMenu(
         }
     };
 
-    wrap.addEventListener("mouseenter", open);
+    wrap.addEventListener("mouseenter", scheduleOpen);
     wrap.addEventListener("mouseleave", scheduleHide);
     menu.addEventListener("mouseenter", cancelHide);
     button.addEventListener("keydown", onButtonKeydown);
@@ -168,7 +192,8 @@ export function wireHoverMenu(
             escapeOff?.();
             escapeOff = null;
             cancelHide();
-            wrap.removeEventListener("mouseenter", open);
+            cancelOpen();
+            wrap.removeEventListener("mouseenter", scheduleOpen);
             wrap.removeEventListener("mouseleave", scheduleHide);
             menu.removeEventListener("mouseenter", cancelHide);
             button.removeEventListener("keydown", onButtonKeydown);

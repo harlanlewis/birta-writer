@@ -34,13 +34,26 @@ export async function run({ page, check, baseUrl }) {
     const overflowed = await page.$eval(listWrap, (el) => !!el.closest(".tb-more-menu"));
     check("Lists + Quote render on the bar (not overflowed)", !overflowed);
 
-    // ── 1. Switching adjacent dropdowns never stacks two menus ──
+    // Menus open on a hover-intent delay (~140ms) now, so wait past it before
+    // asserting a hover opened one; closes are still instant.
+    const OPEN_WAIT = 220;
+
+    // The toolbar (and its downward menus) layer above the content-area chrome
+    // — above the ToC flyout (z 10000) so a menu is never occluded by it.
+    check("the toolbar layers above the content-area chrome (z > flyout)",
+        await page.evaluate(() =>
+            parseInt(getComputedStyle(document.querySelector(".editor-topbar")).zIndex, 10) > 10000));
+
+    // ── 1. Hover-intent delay: not instant, opens after the delay ──
     await page.hover(listBtn);
-    await page.waitForTimeout(30);
-    check("hovering Lists opens its menu", (await disp(listMenu)) === "flex");
+    await page.waitForTimeout(45); // well under the intent delay
+    check("a hover does NOT open the menu instantly (intent delay guards flicker)",
+        (await disp(listMenu)) === "none");
+    await page.waitForTimeout(OPEN_WAIT);
+    check("hovering Lists opens its menu after the intent delay", (await disp(listMenu)) === "flex");
 
     await page.hover(quoteBtn);
-    await page.waitForTimeout(30); // let the instant (setTimeout 0) close fire
+    await page.waitForTimeout(OPEN_WAIT); // Lists closes at once; Quote opens after the intent delay
     const listAfter = await disp(listMenu);
     const quoteAfter = await disp(quoteMenu);
     check("moving to Quote closes Lists (no stack)", listAfter === "none", `lists=${listAfter}`);
@@ -53,7 +66,7 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 2. button→menu gap traversal keeps the menu open ──
     await page.hover(quoteBtn);
-    await page.waitForTimeout(30);
+    await page.waitForTimeout(OPEN_WAIT);
     check("Quote menu open before the gap cross", (await disp(quoteMenu)) === "flex");
     const qb = await box(quoteBtn);
     const qm = await box(quoteMenu);
@@ -90,7 +103,7 @@ export async function run({ page, check, baseUrl }) {
     const fontOverflowed = await page.$eval(fontBtn, (el) => !!el.closest(".tb-more-menu"));
     check("font menu renders on the bar (not overflowed)", !fontOverflowed);
     await page.hover(fontBtn);
-    await page.waitForTimeout(30);
+    await page.waitForTimeout(OPEN_WAIT);
     check("hovering the A button opens the typography menu", (await disp(fontMenu)) === "flex");
     const caption = await page.$eval(`${fontMenu} .tb-seg-caption`, (el) => el.textContent).catch(() => null);
     check("the handle rows carry their caption", caption === "Show Block Handles", `caption=${caption}`);
@@ -156,7 +169,7 @@ export async function run({ page, check, baseUrl }) {
     const gearBtn = '[data-item-id="settings"] .tb-fmt-btn';
     const gearMenu = '[data-item-id="settings"] .tb-settings-menu';
     await page.hover(gearBtn);
-    await page.waitForTimeout(30);
+    await page.waitForTimeout(OPEN_WAIT);
     check("hovering the gear opens the settings menu", (await disp(gearMenu)) === "flex");
     const gearShape = await page.$eval(gearMenu, (menu) => ({
         header: !!menu.querySelector(".tb-fmt-header"),
