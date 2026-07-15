@@ -602,6 +602,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             scheduleFlyoutHide();
         }
     });
+    // A drag holds the flyout open (scheduleFlyoutHide bails while block-dragging),
+    // but drag-end fires no mouseleave — so on mouseup, once the drag has settled,
+    // retract if the pointer no longer rests on the tab/panel/band. Without this
+    // the flyout is stuck open after a drag that ends off the panel.
+    document.addEventListener("mouseup", () => {
+        if (!flyoutOpen) { return; }
+        requestAnimationFrame(() => {
+            if (flyoutOpen && !panel.matches(":hover") && !tabEl.matches(":hover")) {
+                scheduleFlyoutHide();
+            }
+        });
+    }, true);
 
     // ── Auto-expand detection ─────────────────────────────
     // Docked when the viewport can hold the drawer plus a comfortable content
