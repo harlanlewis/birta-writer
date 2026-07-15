@@ -133,6 +133,22 @@ describe("slash command menu plugin", () => {
         );
     });
 
+    it("typing / in a heading should open the menu", async () => {
+        // Regression (MAR-94): typing into a heading re-dispatches a synthetic
+        // normalization transaction (addToHistory: false) right after the
+        // keystroke; that follow-up used to clobber the open-eligible verdict
+        // set by the real typing, so the menu silently never opened in
+        // headings even though the slash context matched.
+        await editor.destroy();
+        editor = await makeEditor("# Title\n");
+        v = view(editor);
+        v.dispatch(v.state.tr.setSelection(Selection.atEnd(v.state.doc)));
+
+        typeText(v, " /");
+
+        expect(menuVisible()).toBe(true);
+    });
+
     it("typing a query after / should narrow the menu", () => {
         typeText(v, "/");
         typeText(v, "hea");
