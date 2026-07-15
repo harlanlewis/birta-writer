@@ -386,14 +386,20 @@ export function foldedHiddenRanges(
 }
 
 /**
- * Whether the hidden range owned by `range.pos` makes boundary `target` an
- * illegal landing site — the ONE open/closed rule every consumer shares
- * (the move primitive, the drag slot filter, the native-drop guard). The
- * two fold kinds differ at the range's end:
- *   - a HEADING hides FOLLOWING sibling blocks: `to` is the first visible
- *     boundary after the section, a legal slot — half-open;
+ * Whether `target` sits inside content the fold at `range.pos` hides RIGHT
+ * NOW — the ONE occupancy rule every consumer shares (the caret skip-over,
+ * the drag slot filter, the move primitive, the native-drop guard). The two
+ * fold kinds differ at the range's end:
+ *   - a HEADING hides FOLLOWING sibling blocks: `to` is the position of the
+ *     heading that ends the section, which is visible — half-open;
  *   - a CALLOUT hides its own body: the end-of-body slot at `to` is still
  *     inside the collapsed node — inclusive.
+ *
+ * Occupancy is NOT insertion legality. A heading's `to` is visible, yet
+ * content INSERTED there lands inside the section and disappears — see
+ * hiddenRangeSwallowsInsertion (MAR-146). Use this to ask where the caret may
+ * rest or which slots to paint; use that one to ask what a drop would do.
+ *
  * `from`/`to` come from the argument (not re-derived), so callers that map
  * the span through pending steps (contentGuard's drop gate) share the rule.
  */
@@ -407,15 +413,104 @@ export function hiddenRangeCoversTarget(
 }
 
 /**
+ * The heading level content LEADS with, or null when it doesn't start with a
+ * heading — the only property of a landing fragment that decides whether a
+ * collapsed heading swallows it (see hiddenRangeSwallowsInsertion).
+ */
+export function landingHeadingLevel(first: ProseNodeLike | null | undefined): number | null {
+    return isHeadingNode(first) ? getHeadingLevel(first) : null;
+}
+
+/**
+ * Whether content landing AT `target` would end up inside the hidden range
+ * owned by `range.pos`.
+ *
+ * This is a DIFFERENT question from hiddenRangeCoversTarget's "is `target`
+ * inside hidden content right now", and the two answers legitimately differ at
+ * a heading section's end (MAR-146). `to` is the boundary before the heading
+ * that TERMINATES the section, so a caret resting there — and the slot the
+ * drag UI paints there — is on visible content. But content INSERTED at `to`
+ * pushes that terminator later and the section grows over it: fold extents are
+ * derived from heading ranks, so there is no position "after the section but
+ * before the next heading". Landed content escapes only by terminating the
+ * section itself — a heading ranked at or above the collapsed one. Anything
+ * else (a paragraph, a deeper heading) is swallowed.
+ *
+ * A swallowed landing is NOT refused: the slot is one the user can see and aim
+ * at, so the move reveals the fold instead (foldsSwallowingInsertion →
+ * moveBlocks), matching revealPosition's explicit-entry-intent semantics.
+ * Interior targets, whose slots render at display:none and can't be aimed at,
+ * stay refused via hiddenRangeCoversTarget.
+ *
+ * `landingLevel` is the leading heading level of the content that will land
+ * (post-relevel), or null when it doesn't start with a heading; see
+ * landingHeadingLevel.
+ */
+export function hiddenRangeSwallowsInsertion(
+    doc: ProseMirrorNode,
+    range: { pos: number; from: number; to: number },
+    target: number,
+    landingLevel: number | null,
+): boolean {
+    if (target < range.from) {
+        return false;
+    }
+    const owner = doc.nodeAt(range.pos);
+    if (!isHeadingNode(owner)) {
+        // Interior kinds (callout/code/table/list-item bodies) hide by
+        // containment, not by rank: `to` is inside the collapsed node, and no
+        // landing content can terminate a node it is being inserted into.
+        return target <= range.to;
+    }
+    if (target !== range.to) {
+        // Strictly inside the section — swallowed whatever lands. (A
+        // terminating heading dropped here would split the section rather
+        // than vanish, but an interior drop is refused on its own terms.)
+        return target < range.to;
+    }
+    // Only a heading ranked at or above the collapsed one terminates the
+    // section and stays visible. Anything else — a paragraph (null), a deeper
+    // heading — is swallowed; an absent level fails to the refusing side.
+    return typeof landingLevel !== "number" || landingLevel > getHeadingLevel(owner);
+}
+
+/**
  * True when a block boundary at `pos` sits inside content a collapsed fold
  * hides — the single target-legality registry (MAR-112). The move primitive
  * (editing/moveBlocks) rejects such targets and the drag UI
  * (visibleBoundaryPositions) never offers them, both through this function,
  * so UI slots and primitive legality cannot drift.
+ *
+ * Occupancy only: a section's END boundary is visible and stays legal here.
+ * Whether content LANDED there would then be swallowed is a separate question
+ * — see foldsSwallowingInsertion, which reveals rather than refuses.
  */
 export function isHiddenTargetPos(state: EditorState, pos: number): boolean {
     return foldedHiddenRanges(state).some((range) =>
         hiddenRangeCoversTarget(state.doc, range, pos));
+}
+
+/**
+ * The collapsed folds that would hide content landing at `target` — the folds
+ * a move must REVEAL to keep its landing visible (MAR-146). Empty for the
+ * common case of a target no fold reaches.
+ *
+ * Revealing rather than refusing is the explicit-entry-intent rule
+ * (revealPosition): a section's end boundary is a slot the user can see and
+ * aim at, so placing content there means "put it here" — and the only way to
+ * honor that is to open the fold that would otherwise swallow it. Targets
+ * INSIDE a fold are a different case and stay refused (isHiddenTargetPos):
+ * their slots are display:none, so no user ever aimed at one.
+ */
+export function foldsSwallowingInsertion(
+    state: EditorState,
+    target: number,
+    landingLevel: number | null,
+): number[] {
+    return foldedHiddenRanges(state)
+        .filter((range) =>
+            hiddenRangeSwallowsInsertion(state.doc, range, target, landingLevel))
+        .map((range) => range.pos);
 }
 
 /**

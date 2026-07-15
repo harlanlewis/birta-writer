@@ -248,11 +248,16 @@ export function scrollVelocityFor(clientY: number): number {
  * section: those blocks are display:none, so their rects measure at y=0 —
  * a drag toward the viewport top would silently commit the drop into the
  * hidden range and the dragged block would vanish mid-fold. The boundary
- * AT a heading section's end (the first visible slot after the unit)
- * survives; a collapsed callout's end-of-body slot does not (both per
- * hiddenRangeCoversTarget — the SAME legality registry moveBlocks enforces,
- * so the slots the UI offers and the targets the primitive accepts cannot
- * drift). Exported for unit testing.
+ * AT a heading section's end survives — it renders at the terminating
+ * heading's line, so the user can see and aim at it; a collapsed callout's
+ * end-of-body slot does not (both per hiddenRangeCoversTarget — the SAME
+ * legality registry moveBlocks enforces, so the slots the UI offers and the
+ * targets the primitive accepts cannot drift).
+ *
+ * That surviving slot is visible but sits INSIDE the section for insertion
+ * purposes, so a drop there would be swallowed; moveBlocks reveals the fold
+ * instead of hiding the landing (MAR-146). Offering it is therefore correct
+ * — the drop is honored, not silently lost. Exported for unit testing.
  */
 export function visibleBoundaryPositions(
     state: EditorState,
