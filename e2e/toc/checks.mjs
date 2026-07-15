@@ -156,6 +156,24 @@ export async function run({ page, check, baseUrl }) {
     check("leaving the tab/panel retracts the flyout",
         !retracted.flyout && !retracted.bodyFlag, JSON.stringify(retracted));
 
+    // A drag holds the flyout open (block-dragging guard); when it ends with the
+    // pointer OFF the panel, the flyout must not get stuck open (mouseup re-check).
+    await page.locator(".toc-toggle-tab").hover();
+    await page.waitForTimeout(350);
+    await page.mouse.move(800, 520); // pointer well off the tab/panel/band
+    const stuck = await page.evaluate(async () => {
+        document.body.classList.add("block-dragging");
+        document.querySelector(".toc-panel").dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 250));
+        const during = document.body.classList.contains("toc-flyout-open");
+        document.body.classList.remove("block-dragging");
+        document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); // drag ends off-panel
+        await new Promise((r) => setTimeout(r, 500));
+        return { during, after: document.body.classList.contains("toc-flyout-open") };
+    });
+    check("a drag holds the flyout open, then it retracts when the drag ends off-panel",
+        stuck.during && !stuck.after, JSON.stringify(stuck));
+
     // ── Keyboard: the tab is focusable (Tab order); focus flies it out, and
     // Enter docks it open persistently (a11y — not pointer-only) ──
     await page.evaluate(() => document.querySelector(".toc-toggle-tab").focus());
