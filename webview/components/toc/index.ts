@@ -222,12 +222,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     let initialLoad = true;
 
     // Drag-and-drop wiring: top-level items drag their whole sections, and
-    // the open panel is a drop zone for document drags (see ./dnd).
+    // the open panel is a drop zone for document drags (see ./dnd). The flyout
+    // counts as "open" here so internal reorder/refile behaves 1:1 with the
+    // docked sidebar — otherwise the dnd measure/contains bail and the drag
+    // falls through to the page (`flyoutOpen` is read lazily, at drag time).
     const dnd = initTocDnd({
         panel,
         list,
         getEditorView,
-        isOpen: () => isOpen,
+        isOpen: () => isOpen || flyoutOpen,
         getHeadings,
     });
 
@@ -578,6 +581,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
     function scheduleFlyoutHide(): void {
         cancelFlyoutHide();
+        // Never retract mid-drag: a reorder/refile drag moves the pointer around
+        // (and off the tab), which must not yank the panel out from under it. The
+        // drag end restores normal hover via the next pointer move.
+        if (document.body.classList.contains("block-dragging")) { return; }
         // A short grace period lets the pointer cross the gap from tab to panel.
         flyoutHideTimer = setTimeout(hideFlyout, 220);
     }

@@ -266,4 +266,42 @@ export async function run({ page, check, baseUrl }) {
     check("panel remains open after the canceled drag",
         await page.evaluate(() =>
             document.querySelector(".toc-panel").classList.contains("toc-panel--open")));
+
+    // ── Flyout parity: a reorder drag INSIDE the flyout must draw its indicator
+    // over the flyout panel (dnd engages, 1:1 with the docked sidebar), layer
+    // above the flyout, and not retract mid-drag. ──
+    await page.evaluate(() =>
+        document.querySelector(".toc-hide-btn")?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+    await page.waitForTimeout(400);
+    await page.locator(".toc-toggle-tab").hover();
+    await page.waitForTimeout(400);
+    check("the flyout is out for the drag-parity check",
+        await page.evaluate(() => document.querySelector(".toc-panel").classList.contains("toc-panel--flyout-in")));
+
+    const items = await page.$$eval(".toc-item", (els) => els.map((el) => el.textContent));
+    const src = await tocItemBox(page, items[1]); // some top-level item
+    const dst = await tocItemBox(page, items[0]); // drop above the first
+    await page.mouse.move(src.x, src.y);
+    await page.mouse.down();
+    await page.mouse.move(src.x + 6, src.y - 6); // cross the drag threshold
+    await page.mouse.move(dst.x, dst.top + 1, { steps: 6 });
+    await page.waitForTimeout(120);
+    const flyoutDrag = await page.evaluate(() => {
+        const ind = document.querySelector(".block-drag-indicator");
+        const panel = document.querySelector(".toc-panel").getBoundingClientRect();
+        const r = ind?.getBoundingClientRect();
+        return {
+            shown: !!ind && getComputedStyle(ind).display !== "none",
+            overPanel: !!r && r.left >= panel.left - 2 && r.right <= panel.right + 2,
+            indZ: ind ? parseInt(getComputedStyle(ind).zIndex, 10) : 0,
+            flyoutStillOpen: document.body.classList.contains("toc-flyout-open"),
+        };
+    });
+    check("flyout drag: the drop indicator draws over the FLYOUT panel, not the page",
+        flyoutDrag.shown && flyoutDrag.overPanel, JSON.stringify(flyoutDrag));
+    check("flyout drag: the indicator layers above the flyout (z > 10000)",
+        flyoutDrag.indZ > 10000, JSON.stringify(flyoutDrag));
+    check("flyout drag: the flyout stays open mid-drag (doesn't retract)",
+        flyoutDrag.flyoutStillOpen, JSON.stringify(flyoutDrag));
+    await page.mouse.up();
 }
