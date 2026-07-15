@@ -415,9 +415,16 @@ export class MarkdownEditorProvider
                 // but clearing here defends against a missed/late blur so the
                 // context key can't stay latched on the wrong panel (MAR-104).
                 this._setWebviewFocus(uriKey, false);
-                // No WYSIWYG editor is active here → clear the status bar readout
-                // (a text editor / another view now owns the status bar) (MAR-29).
-                this._wordCountView?.hide();
+                // Clear the status bar readout only if THIS panel currently owns
+                // it. A background panel deactivating in a split view — or an
+                // out-of-order viewState event on a tab switch, where the newly
+                // active panel already claimed `_activePanel` — must not blank
+                // the still-active document's counts (MAR-29). Mirrors the
+                // dispose handler's guard above.
+                if (this._activePanel === webviewPanel) {
+                    this._activePanel = null;
+                    this._wordCountView?.hide();
+                }
                 return;
             }
             // Track the active panel for command-palette / context-menu routing.

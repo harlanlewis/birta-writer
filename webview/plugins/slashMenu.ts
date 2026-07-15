@@ -523,7 +523,17 @@ export const slashMenuPlugin = $prose(() =>
                 // set true, the follow-up reset it to false before the view
                 // update read it). Undo/redo and paste/drop, by contrast, ARE
                 // the user's action and legitimately clear the flag.
-                if (tr.getMeta("addToHistory") === false) {
+                //
+                // An external-sync rewrite is also addToHistory:false but is
+                // NOT a same-tick fix-up of the user's typing — it's a
+                // standalone inbound file edit (git checkout, hot-exit restore,
+                // a side-by-side text edit). Since `openEligible` is sticky
+                // across caret moves, preserving it here would let a stale
+                // "typed a slash" verdict survive and pop the menu open on
+                // pre-existing `/word` text the user never just typed. It
+                // carries an `external-sync` meta the heading fix-up does not,
+                // so exclude it and let the verdict clear.
+                if (tr.getMeta("addToHistory") === false && !tr.getMeta("external-sync")) {
                     return prev;
                 }
                 return { openEligible: false };
