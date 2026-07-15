@@ -45,7 +45,7 @@ export { setSlashMenuHost, slashMenuPlugin } from "./slashMenu";
 export { tableAlignDefaultPlugin } from "./tableAlignDefault";
 export { cellClickFixPlugin } from "./tableCellClickFix";
 export { setLogTableSel } from "./tableDebug";
-export { blockKeysPlugin, deleteSelectedBlocks, duplicateSelectedBlocks } from "./blockKeys";
+export { blockKeysPlugin, deleteSelectedBlocks, duplicateSelectedBlocks, moveSelectedBlocks } from "./blockKeys";
 export { tabKeymapPlugin } from "./tabKeymap";
 export { tableKeymapPlugin } from "./tableKeymap";
 export { transformToLowercase, transformToTitleCase, transformToUppercase } from "./caseTransform";

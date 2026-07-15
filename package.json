@@ -419,6 +419,16 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.moveBlockUp",
+                "title": "%command.editor.moveBlockUp.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.moveBlockDown",
+                "title": "%command.editor.moveBlockDown.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.deleteBlock",
                 "title": "%command.editor.deleteBlock.title%",
                 "category": "Birta Writer"
@@ -955,6 +965,14 @@
                 },
                 {
                     "command": "birta.editor.duplicateBlockDown",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.moveBlockUp",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.moveBlockDown",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {

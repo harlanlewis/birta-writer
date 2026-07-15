@@ -84,6 +84,9 @@ export function moveBlocks(
         return false; // put-it-back gesture — a quiet no-op, never an error
     }
     const { doc } = view.state;
+    // The pre-move selection, captured before the transaction so a single
+    // move can restore the caret at its offset WITHIN the moved block (below).
+    const preMoveSel = view.state.selection;
     if (source.from < 0 || source.to > doc.content.size || targetPos < 0 || targetPos > doc.content.size) {
         return refuse(`range [${source.from}, ${source.to}) or target ${targetPos} is outside the document`);
     }
@@ -208,8 +211,19 @@ export function moveBlocks(
             ),
         );
     } else {
+        // A single move keeps the caret at its offset WITHIN the moved block,
+        // not snapped to the block's start. A start-of-block caret sits on the
+        // boundary with the block above, so the next keyboard move (Alt+↑/↓)
+        // would resolve to THAT block and escalate scope (MAR-144); a stable
+        // caret keeps repeated moves acting on the same block. When the
+        // pre-move selection isn't a caret inside the moved range — a drag or
+        // menu move driven from elsewhere — fall back to just inside the block.
+        const rel =
+            preMoveSel.empty && preMoveSel.from >= source.from && preMoveSel.from <= source.to
+                ? Math.max(preMoveSel.from - source.from, 1)
+                : 1;
         tr.setSelection(
-            TextSelection.near(tr.doc.resolve(Math.min(insertAt + 1, tr.doc.content.size))),
+            TextSelection.near(tr.doc.resolve(Math.min(insertAt + rel, tr.doc.content.size))),
         );
     }
 

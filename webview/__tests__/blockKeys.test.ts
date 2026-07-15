@@ -278,6 +278,45 @@ describe("moveSelectedBlocks (Alt+arrows / Cmd+Shift+arrows)", () => {
         undo(view.state, view.dispatch);
         expect(blockOrder(view)).toEqual(["Alpha", "Beta"]);
     });
+
+    it("a single caret move should keep the caret at its in-block offset, not the block start (MAR-144)", async () => {
+        const view = await makeEditor("Alpha\n\nBravo");
+        // Caret 3 chars into "Bravo" (after "Bra") — NOT at the block start.
+        let start = -1;
+        view.state.doc.forEach((node, offset) => { if (node.textContent === "Bravo") start = offset + 1; });
+        view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(start + 3))));
+
+        expect(moveSelectedBlocks(-1)(view.state, view.dispatch, view)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Bravo", "Alpha"]);
+
+        // The caret stayed inside the moved block at the same text offset,
+        // rather than snapping to offset 0 (the block's start).
+        const $c = view.state.doc.resolve(view.state.selection.from);
+        expect($c.parent.textContent).toBe("Bravo");
+        expect($c.parentOffset).toBe(3);
+    });
+
+    it("moving a paragraph up under a heading should not escalate the next move to the heading (MAR-144)", async () => {
+        const view = await makeEditor("# Head\n\nAlpha\n\nBravo");
+        let start = -1;
+        view.state.doc.forEach((node, offset) => { if (node.textContent === "Bravo") start = offset + 1; });
+        view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(start + 2))));
+
+        // Move Bravo up above Alpha — now directly under the heading.
+        moveSelectedBlocks(-1)(view.state, view.dispatch, view);
+        expect(blockOrder(view)).toEqual(["Head", "Bravo", "Alpha"]);
+        // The caret is still inside Bravo (not parked on the heading boundary),
+        // so the NEXT move keeps acting on Bravo. Old behavior left the caret
+        // at Bravo's start, which resolves to the heading and moved the whole
+        // section instead.
+        let $c = view.state.doc.resolve(view.state.selection.from);
+        expect($c.parent.textContent).toBe("Bravo");
+        expect($c.parentOffset).toBe(2);
+
+        moveSelectedBlocks(-1)(view.state, view.dispatch, view);
+        $c = view.state.doc.resolve(view.state.selection.from);
+        expect($c.parent.textContent).toBe("Bravo");
+    });
 });
 
 describe("escalateSelectAll (Mod+A ladder)", () => {

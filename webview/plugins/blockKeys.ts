@@ -482,6 +482,15 @@ const blockKeymap = keydownHandler({
     "Shift-ArrowDown": extendBlockSelection(1),
     "Shift-ArrowUp": extendBlockSelection(-1),
     "Mod-a": escalateSelectAll,
+    // Move block up/down. Alt+Arrow is a hardcoded chord (not a contributed
+    // keybinding) because on macOS Option+Arrow carries a native caret-nav
+    // default (to paragraph start/end) that only a SYNCHRONOUS webview handler
+    // can suppress: a contributed command runs async, after the native caret
+    // move has already fired, so the caret lands at the block edge instead of
+    // staying put. Same reason Duplicate (Shift+Alt+Arrow) stays hardcoded.
+    // Claimed in the key-leak guard so the workbench never double-handles it;
+    // the palette command birta.editor.moveBlockUp/Down exposes the action for
+    // discovery and additional user bindings.
     "Alt-ArrowDown": moveSelectedBlocks(1),
     "Alt-ArrowUp": moveSelectedBlocks(-1),
     "Mod-Shift-ArrowDown": moveSelectedBlocks(1),

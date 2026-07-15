@@ -152,6 +152,14 @@ export const EDITOR_COMMANDS = [
     // entries expose the same actions, and users can bind ADDITIONAL chords.
     { id: "duplicateBlockUp", title: "Duplicate Block Up", palette: true, sections: [] },
     { id: "duplicateBlockDown", title: "Duplicate Block Down", palette: true, sections: [] },
+    // Move Block Up/Down: palette entries for a HARDCODED chord (Alt+Arrow),
+    // exactly like Duplicate above. Alt+Arrow can't be a contributed default
+    // keybinding — on macOS Option+Arrow's native caret-nav default must be
+    // suppressed synchronously in the webview, which a contributed command
+    // (async round-trip) can't do. These entries give discovery + a target for
+    // additional user bindings; the default chord lives in blockKeys.ts.
+    { id: "moveBlockUp", title: "Move Block Up", palette: true, sections: [] },
+    { id: "moveBlockDown", title: "Move Block Down", palette: true, sections: [] },
     { id: "deleteBlock", title: "Delete Block", palette: true, sections: [] },
     // Contributed Ctrl+J on macOS only — VS Code parity (unbound elsewhere).
     { id: "joinLines", title: "Join Lines", palette: true, sections: [] },

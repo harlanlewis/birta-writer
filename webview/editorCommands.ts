@@ -31,6 +31,7 @@ import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset
 import {
     deleteSelectedBlocks,
     duplicateSelectedBlocks,
+    moveSelectedBlocks,
     expandSelection,
     foldAllCommand,
     foldAtCaret,
@@ -588,6 +589,8 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // can never diverge.
     duplicateBlockUp: (getEditor) => runCommand(getEditor, duplicateSelectedBlocks(-1)),
     duplicateBlockDown: (getEditor) => runCommand(getEditor, duplicateSelectedBlocks(1)),
+    moveBlockUp: (getEditor) => runCommand(getEditor, moveSelectedBlocks(-1)),
+    moveBlockDown: (getEditor) => runCommand(getEditor, moveSelectedBlocks(1)),
     deleteBlock: (getEditor) => runCommand(getEditor, deleteSelectedBlocks),
     joinLines: (getEditor) => runCommand(getEditor, joinLinesCommand),
     transformToUppercase: (getEditor) => runCommand(getEditor, transformToUppercase),

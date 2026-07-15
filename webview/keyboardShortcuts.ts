@@ -105,10 +105,16 @@ export const CLAIMED_SHORTCUTS: readonly ClaimedShortcut[] = [
     { key: "y", mod: true },                // redo
     // Block/selection chords (all content-scoped: overlay inputs keep their
     // native caret/selection behavior). These MUTATE the document or
-    // selection, so unlike the unclaimed Alt+Arrow move chords they are
-    // claimed even though VS Code's own defaults on them are
-    // editorTextFocus-scoped — a user-bound workbench action on the same
-    // chord must never fire alongside the edit.
+    // selection and are hardcoded ProseMirror chords, so they are claimed
+    // even though VS Code's own defaults on them are editorTextFocus-scoped —
+    // a user-bound workbench action on the same chord must never fire
+    // alongside the edit.
+    // blockKeys plugin: move block up/down (Alt+Arrow). Hardcoded rather than
+    // contributed because on macOS Option+Arrow's native caret-nav default
+    // must be suppressed synchronously (a contributed command runs too late);
+    // claimed so the workbench key forwarder can't also act on it.
+    { key: "arrowup", alt: true, content: true },
+    { key: "arrowdown", alt: true, content: true },
     // blockKeys plugin: duplicate block up/down
     { key: "arrowup", shift: true, alt: true, content: true },
     { key: "arrowdown", shift: true, alt: true, content: true },

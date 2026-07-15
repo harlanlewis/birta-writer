@@ -279,6 +279,8 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
             { key: "z", mod: true },
             { key: "z", mod: true, shift: true },
             { key: "y", mod: true },
+            { key: "arrowup", alt: true, content: true },
+            { key: "arrowdown", alt: true, content: true },
             { key: "arrowup", shift: true, alt: true, content: true },
             { key: "arrowdown", shift: true, alt: true, content: true },
             { key: "arrowright", mod: true, ctrl: true, shift: true, mac: true, content: true },
@@ -313,9 +315,19 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
         expect(workbenchForwarder).toHaveBeenCalledTimes(1);
     });
 
-    it("bare Alt+ArrowDown (move block) should keep propagating — deliberately unclaimed", () => {
+    it("bare Alt+ArrowDown (move block) inside content should be stopped (claimed)", () => {
+        // Move block is a hardcoded chord (MAR-144): on macOS Option+Arrow's
+        // native caret-nav default must be suppressed synchronously, so it
+        // can't be a contributed keybinding — and it's claimed so the workbench
+        // forwarder can't act on it alongside the in-webview move.
         init(true);
         pressKey("ArrowDown", { key: "ArrowDown", altKey: true }, proseMirrorEl);
+        expect(workbenchForwarder).not.toHaveBeenCalled();
+    });
+
+    it("bare Alt+ArrowDown in an overlay input should keep propagating (content-scoped)", () => {
+        init(true);
+        pressKey("ArrowDown", { key: "ArrowDown", altKey: true }, document.body);
         expect(workbenchForwarder).toHaveBeenCalledTimes(1);
     });
 
