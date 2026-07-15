@@ -282,6 +282,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     }
 
+    /** Whether the panel is on screen in ANY form — docked/overlay open, or
+     *  transiently flown out from the collapsed tab. The render/measure gate:
+     *  a visible outline must track the document regardless of which of the
+     *  two states is showing it. (`flyoutOpen` is declared below and read
+     *  lazily — every caller runs after module init.) */
+    function isPanelVisible(): boolean {
+        return isOpen || flyoutOpen;
+    }
+
     function syncTocState(): void {
         // Suppress the slide/fade only for the initial load reveal (see initialLoad).
         if (initialLoad) {
@@ -293,7 +302,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         updateBodyClasses();
         updateTab();
         syncOutsideClickHandler();
-        if (isOpen) {
+        // Render whenever the panel is VISIBLE — docked/overlay open OR flown
+        // out. `isOpen` alone excluded the flyout (which shows the panel with
+        // isOpen === false), so a flyout list never rebuilt after an edit: it
+        // showed a stale outline, and its stale data-headingPos values then
+        // armed the NEXT drag against positions the doc had moved past.
+        if (isPanelVisible()) {
             renderHeadings(getHeadings());
         }
         if (initialLoad) {
@@ -305,6 +319,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     // ── Extract all heading nodes from the ProseMirror document ────────
+    // Runs once per doc-changing FRAME now (index.ts's rAF coalescer), so its
+    // cost sits near the typing path — it must scale with BLOCKS, not
+    // characters. Returning false at every textblock prunes the walk before it
+    // descends into inline content (the overwhelming majority of nodes in a
+    // prose document): a heading's content is inline, so no heading can ever
+    // hide inside another textblock. Callers that only need to know whether the
+    // outline changed still pay this walk, which is why renderHeadings
+    // short-circuits on an unchanged signature rather than rebuilding.
     function getHeadings(): HeadingEntry[] {
         const view = getEditorView();
         if (!view) {
@@ -315,6 +337,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             0,
             view.state.doc.content.size,
             (node, pos) => {
+                if (!node.isTextblock) {
+                    return true; // a container — keep descending
+                }
                 if (node.type.name === "heading") {
                     const text = node.textContent.trim();
                     if (text) {
@@ -326,6 +351,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                         });
                     }
                 }
+                return false; // never walk a textblock's inline content
             },
         );
         return headings;
@@ -341,6 +367,39 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     }
 
+    // The outline the rendered list currently shows. renderHeadings runs on
+    // every doc-changing frame now, but the great majority of edits (typing
+    // body text) leave the outline identical — this lets those skip the DOM
+    // rebuild entirely, so the per-frame cost is just the getHeadings walk.
+    // null = "nothing rendered yet / force the next render".
+    let renderedSignature: string | null = null;
+
+    /** Everything a rendered row displays or acts on: rank (indent + class),
+     *  pos (navigation target AND the drag handle's document anchor), and
+     *  text (label). Any change to these must reach the DOM; nothing else in
+     *  the document can. */
+    // Control characters as delimiters: heading text is arbitrary user input,
+    // but a ProseMirror text node can never hold a control char, so NUL
+    // between fields and SOH between entries keep the encoding injective. A
+    // space-delimited signature would not: a heading titled "x3 4 y" would
+    // serialize identically to the two-heading outline [h1@2 "x", h3@4 "y"],
+    // and a collision silently SKIPS the rebuild — stranding exactly the
+    // stale outline this short-circuit sits in front of.
+    //
+    // Spelled as escapes, never as literal bytes: a raw control character
+    // makes the whole file read as BINARY to grep/ripgrep (searches for any
+    // symbol in it silently return nothing), and every editor and code
+    // review renders it as an innocent space. An invisible byte is the last
+    // thing that should carry a correctness argument.
+    const SIG_FIELD = "\u0000";
+    const SIG_ENTRY = "\u0001";
+
+    function outlineSignature(headings: HeadingEntry[]): string {
+        return headings
+            .map((h) => [h.level, h.pos, h.text].join(SIG_FIELD))
+            .join(SIG_ENTRY);
+    }
+
     // INVARIANT: any code path that mutates `list`'s children must end by
     // calling dnd.notifyRerender() — the drop model snapshots item geometry
     // per drag session, and a rebuild it never hears about leaves the
@@ -348,6 +407,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // and must re-apply the drag-source state via dnd.dragSourceHeadingPos()
     // so a mid-drag rebuild keeps the source ghosted and click-suppressed.
     function renderHeadings(headings: HeadingEntry[]): void {
+        const signature = outlineSignature(headings);
+        if (signature === renderedSignature) {
+            // Identical outline ⇒ identical DOM. Skipping leaves the existing
+            // rows (and the drag session's measured geometry) untouched, so
+            // NO notifyRerender here — nothing went stale.
+            return;
+        }
+        renderedSignature = signature;
         list.innerHTML = "";
         if (headings.length === 0) {
             const empty = document.createElement("div");

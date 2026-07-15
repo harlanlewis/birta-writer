@@ -113,9 +113,19 @@ That only holds if the editor does the things you expect from VS Code:
   entirely from the keyboard; a slash menu for inserts; find/replace with
   match-case, whole-word, and regex. **Why it matters:** the fast paths you
   already have muscle memory for in VS Code work here too.
-- **Folding, a table of contents, and go-to-heading** for navigating long
-  documents — none of which touch the file. **Why it matters:** structure you
-  can move through without scrolling, and without it leaking into what's saved.
+- **Folding and go-to-heading** for navigating long documents — neither touches
+  the file. **Why it matters:** structure you can move through without
+  scrolling, and without it leaking into what's saved.
+- **A table of contents you can also edit through.** It reads as an outline of
+  the document, and dragging within it restructures: drop a section onto a
+  heading to nest it beneath, or between headings to place it as a sibling. The
+  section's rank follows where you dropped it, its subtree moves and shifts with
+  it, and the whole reorder is one undo step. **Why it matters:** reorganizing a
+  long document is the one edit that's genuinely painful in raw Markdown —
+  cutting a section, finding its end, pasting it, then renumbering every `#`
+  underneath by hand. The outline is where that shape is actually visible, so
+  it's where the edit belongs. Dragging a heading's handle in the *document*
+  stays a literal move: the text is text, the outline is the structure.
 
 ## It stays out of the way
 

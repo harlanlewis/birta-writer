@@ -199,6 +199,27 @@ function retryScroll(fn: () => void): void {
     }
 }
 
+// ── Outline refresh scheduling ─────────────────────────────
+// The TOC tracks the document, so it must not ride the save debounce (see
+// _onDocChange in editor.ts). It also must not run per TRANSACTION: refresh()
+// walks the doc for headings — O(document size) — and a burst of typing is
+// many transactions per frame. One rAF-coalesced refresh per painted frame is
+// the honest ceiling: the outline can't visibly update more often than that
+// anyway, so anything finer is work the user cannot perceive. Within refresh,
+// an unchanged outline skips the DOM rebuild entirely (renderHeadings'
+// signature check), so ordinary typing costs just the walk.
+let tocRefreshRaf: number | null = null;
+
+function scheduleTocRefresh(): void {
+    if (tocRefreshRaf !== null) {
+        return;
+    }
+    tocRefreshRaf = requestAnimationFrame(() => {
+        tocRefreshRaf = null;
+        toc.refresh();
+    });
+}
+
 // ── Editor initialization ──────────────────────────────────
 async function initEditor(
     container: HTMLElement,
@@ -220,8 +241,11 @@ async function initEditor(
             markdownSource = updated;
             currentLineMap = computeLineMap(updated);
             notifyUpdate(updated);
-            toc.refresh();
         },
+        // The outline is a view of the document, so it refreshes on document
+        // changes — NOT on the save/serialize cadence this callback rides
+        // (see _onDocChange in editor.ts for what that coupling cost).
+        scheduleTocRefresh,
     );
     toc.refresh();
     // Seed the status-bar word count for the freshly loaded document (MAR-29):

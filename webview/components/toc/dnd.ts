@@ -6,14 +6,17 @@
  *
  *   - Drop zone: a DropZoneProvider covering the open panel. A document
  *     drag entering it retargets onto the outline's slots (./dropModel) — a
- *     gap line between top-level sections, or "into" a section (append at
- *     its end). The commit path stays the session's single moveBlocks call,
- *     so the panel can never invent drop semantics the primitive rejects.
+ *     gap line between sections (drop as SIBLING), or "into" a section (drop
+ *     as CHILD, appended at its end). The commit path stays the session's
+ *     single moveBlocks call, so the panel can never invent drop semantics
+ *     the primitive rejects.
  *   - Drag source: each TOP-LEVEL item is a handle for its whole section
  *     (moveRangeAt's heading semantics — a collapsed section carries its
- *     hidden body). A TOC-initiated drag offers only gap slots: a section
- *     reorders BETWEEN sections; "into" targets are for document blocks
- *     refiled from outside the panel.
+ *     hidden body).
+ *
+ * Outline drops RELEVEL (see ./dropModel): the slot dictates the dropped
+ * section's rank, and the delta rides to moveBlocks in the same transaction
+ * — one drag, one undo step.
  *
  * Geometry is snapshotted once per session (one getBoundingClientRect per
  * rendered item plus the list box) and re-measured lazily after a list
@@ -30,11 +33,13 @@ import {
     type DropZoneProvider,
 } from "../blockMenu/drag";
 import { moveRangeAt } from "../blockMenu/index";
-import { isHiddenTargetPos } from "../../plugins/headingFold";
+import { foldedSectionEnd, isHiddenTargetPos } from "../../plugins/headingFold";
 import {
+    draggedSectionLevel,
     tocDropSlots,
     tocDropTargetFor,
     tocPillLabel,
+    tocRelevelDelta,
     type MeasuredTocSlot,
     type TocHeadingEntry,
 } from "./dropModel";
@@ -74,6 +79,11 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
     let sessionView: EditorView | null = null;
     let sessionKind: "block" | "item" = "block";
     let allowInto = false;
+    // Rank of the section this session is carrying, or null for a non-heading
+    // run — the relevel baseline, fixed for the session (the dragged content
+    // can't change mid-drag; the doc-identity guard in drag.ts cancels if it
+    // somehow does).
+    let sessionDraggedLevel: number | null = null;
     let measured: MeasuredTocSlot[] = [];
     let intoItems = new Map<number, HTMLElement>();
     let stale = false;
@@ -112,6 +122,11 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             deps.getHeadings(),
             view.state.doc,
             (pos) => isHiddenTargetPos(view.state, pos),
+            // A collapsed section takes no "into" drop — see tocDropSlots.
+            // foldedSectionEnd answers "is the block at pos a COLLAPSED
+            // foldable heading" from the same fold registry the slot filter
+            // above consumes, so the two rules can't drift.
+            (pos) => foldedSectionEnd(view.state, pos) !== null,
         );
         if (slots.length === 0) {
             return;
@@ -167,17 +182,28 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             const rect = deps.panel.getBoundingClientRect();
             return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
         },
-        sessionStart(view, _range, kind) {
+        sessionStart(view, range, kind) {
             sessionView = view;
             sessionKind = kind;
-            allowInto = ownDragPos === null;
+            // Every block run may target "into" now, outline-initiated or
+            // not: with relevel, dropping ONTO an item has a precise meaning
+            // (become its child), so withholding it from section drags — the
+            // gesture most likely to want it — would be arbitrary. A section
+            // can't land inside itself: its own and its descendants' into
+            // slots resolve within the dragged range, which tocDropTargetFor
+            // rejects as the put-it-back gesture.
+            allowInto = true;
+            sessionDraggedLevel = draggedSectionLevel(view.state.doc, range);
             measure();
         },
         target(_x, y, range) {
             if (stale) {
                 measure();
             }
-            const slot = tocDropTargetFor(measured, y, range, { allowInto });
+            const slot = tocDropTargetFor(measured, y, range, {
+                allowInto,
+                draggedLevel: sessionDraggedLevel,
+            });
             if (!slot) {
                 hideOwnIndicator();
                 clearDropInto();
@@ -205,7 +231,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
                 } else {
                     hideOwnIndicator();
                 }
-                return { pos: slot.pos };
+                return { pos: slot.pos, relevelDelta: tocRelevelDelta(slot, sessionDraggedLevel) };
             }
             clearDropInto();
             // A gap line scrolled out of the list's viewport (or under the
@@ -218,7 +244,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             }
             showDropIndicatorAt({ left: slot.left, width: slot.width, y: slot.y });
             indicatorShown = true;
-            return { pos: slot.pos };
+            return { pos: slot.pos, relevelDelta: tocRelevelDelta(slot, sessionDraggedLevel) };
         },
         clear() {
             hideOwnIndicator();
@@ -256,6 +282,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
         },
         sessionEnd() {
             sessionView = null;
+            sessionDraggedLevel = null;
             measured = [];
             intoItems = new Map();
             stale = false;

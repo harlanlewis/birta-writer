@@ -10,9 +10,11 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
+    draggedSectionLevel,
     tocDropSlots,
     tocDropTargetFor,
     tocPillLabel,
+    tocRelevelDelta,
     type MeasuredTocSlot,
     type TocHeadingEntry,
 } from "../components/toc/dropModel";
@@ -136,14 +138,94 @@ describe("tocDropSlots", () => {
     });
 });
 
+describe("slot target levels (the structural-editor contract)", () => {
+    const neverHiddenLocal = (): boolean => false;
+
+    it("a gap slot should carry the level of the heading it sits above", async () => {
+        const editor = await makeEditor("# One\n\n### Deep\n\nbody\n\n## Two\n\nbody");
+        const doc = view(editor).state.doc;
+        const slots = tocDropSlots(outlineOf(doc, 6), doc, neverHiddenLocal);
+        const gaps = slots.filter((s) => s.kind === "gap");
+        // One gap per heading (H1, H3, H2) + the terminal slot.
+        expect(gaps.map((g) => g.targetLevel)).toEqual([1, 3, 2, 2]);
+    });
+
+    it("the terminal gap should carry the LAST section's level", async () => {
+        const editor = await makeEditor("# One\n\nbody\n\n#### Last\n\nbody");
+        const doc = view(editor).state.doc;
+        const slots = tocDropSlots(outlineOf(doc, 6), doc, neverHiddenLocal);
+        const terminal = slots.find((s) => s.kind === "gap" && s.pos === doc.content.size);
+        expect(terminal?.targetLevel).toBe(4);
+    });
+
+    it("a COLLAPSED section should offer no into slot (its gap survives)", async () => {
+        // Filing a run into a collapsed section lands it under the fold, at
+        // display:none — indistinguishable from a delete. The into slot's
+        // commit pos is legal and VISIBLE before the move, so isHiddenTarget
+        // cannot catch it; only refusing the slot up front can.
+        const editor = await makeEditor("# One\n\n### Deep\n\ndeep\n\n## Two\n\nbody");
+        const doc = view(editor).state.doc;
+        const headings = outlineOf(doc, 6);
+        const deepPos = headings.find((h) => h.text === "Deep")!.pos;
+        const slots = tocDropSlots(headings, doc, neverHiddenLocal, (pos) => pos === deepPos);
+        expect(slots.some((s) => s.kind === "into" && s.headingPos === deepPos)).toBe(false);
+        // Every other section keeps its into slot…
+        expect(slots.filter((s) => s.kind === "into").length).toBe(headings.length - 1);
+        // …and the collapsed section is still a legal SIBLING target (a drop
+        // there lands outside the fold), so the row is never a dead zone.
+        expect(slots.some((s) => s.kind === "gap" && s.pos === deepPos)).toBe(true);
+    });
+
+    it("an into slot should carry its owner's level + 1, clamped at H6", async () => {
+        const editor = await makeEditor("# One\n\nbody\n\n###### Deepest\n\nbody");
+        const doc = view(editor).state.doc;
+        const slots = tocDropSlots(outlineOf(doc, 6), doc, neverHiddenLocal);
+        const intos = slots.filter((s) => s.kind === "into");
+        // H1 → child H2; H6 → child would be H7, so it clamps to H6.
+        expect(intos.map((s) => s.targetLevel)).toEqual([2, 6]);
+    });
+});
+
+describe("draggedSectionLevel", () => {
+    it("a range starting at a heading should report that heading's level", async () => {
+        const editor = await makeEditor("# One\n\nbody\n\n### Three\n\nbody");
+        const doc = view(editor).state.doc;
+        const headings = outlineOf(doc, 6);
+        expect(draggedSectionLevel(doc, { from: headings[0]!.pos, to: headings[1]!.pos })).toBe(1);
+        expect(draggedSectionLevel(doc, { from: headings[1]!.pos, to: doc.content.size })).toBe(3);
+    });
+
+    it("a range starting at a non-heading should report null (nothing to relevel)", async () => {
+        const editor = await makeEditor("a paragraph\n\n# One");
+        const doc = view(editor).state.doc;
+        expect(draggedSectionLevel(doc, { from: 0, to: 13 })).toBeNull();
+    });
+});
+
+describe("tocRelevelDelta", () => {
+    const slot = (targetLevel: number): MeasuredTocSlot => ({
+        kind: "gap", pos: 0, tocIndex: 0, targetLevel, y: 0, left: 0, width: 100,
+    });
+
+    it("a heading run should shift by the gap between its rank and the target", () => {
+        expect(tocRelevelDelta(slot(4), 2)).toBe(2);   // H2 dropped under an H3 → H4
+        expect(tocRelevelDelta(slot(1), 3)).toBe(-2);  // H3 promoted to a top-level sibling
+        expect(tocRelevelDelta(slot(2), 2)).toBe(0);   // already the right rank
+    });
+
+    it("a non-heading run should never relevel", () => {
+        expect(tocRelevelDelta(slot(4), null)).toBe(0);
+    });
+});
+
 describe("tocDropTargetFor", () => {
     // Two items: item 0 spans y 100–140, item 1 spans y 140–180.
     const slots: MeasuredTocSlot[] = [
-        { kind: "gap", pos: 0, tocIndex: 0, y: 100, left: 0, width: 200 },
-        { kind: "into", pos: 50, tocIndex: 0, headingPos: 0, y: 120, top: 100, height: 40, left: 0, width: 200 },
-        { kind: "gap", pos: 50, tocIndex: 1, y: 140, left: 0, width: 200 },
-        { kind: "into", pos: 90, tocIndex: 1, headingPos: 50, y: 160, top: 140, height: 40, left: 0, width: 200 },
-        { kind: "gap", pos: 90, tocIndex: 2, y: 180, left: 0, width: 200 },
+        { kind: "gap", pos: 0, tocIndex: 0, targetLevel: 1, y: 100, left: 0, width: 200 },
+        { kind: "into", pos: 50, tocIndex: 0, headingPos: 0, targetLevel: 2, y: 120, top: 100, height: 40, left: 0, width: 200 },
+        { kind: "gap", pos: 50, tocIndex: 1, targetLevel: 1, y: 140, left: 0, width: 200 },
+        { kind: "into", pos: 90, tocIndex: 1, headingPos: 50, targetLevel: 2, y: 160, top: 140, height: 40, left: 0, width: 200 },
+        { kind: "gap", pos: 90, tocIndex: 2, targetLevel: 1, y: 180, left: 0, width: 200 },
     ];
     const elsewhere = { from: 200, to: 210 }; // a dragged range no slot touches
 
@@ -178,6 +260,38 @@ describe("tocDropTargetFor", () => {
         expect(tocDropTargetFor(slots, 100, { from: 0, to: 10 }, { allowInto: false })).toBeNull();
     });
 
+    it("a drop at the dragged range's own start should survive when it relevels", () => {
+        // Dropping a section ONTO the heading directly above it commits at
+        // the section's own start (the put-it-back position) — but the rank
+        // changes, so it is a real edit, not a no-op. Once drops relevel,
+        // "same position" stops implying "nothing happened".
+        // Slot 1 is into(pos 50, targetLevel 2); a range starting AT 50
+        // carrying an H4 means delta = 2 - 4 = -2 ≠ 0 ⇒ the drop stands.
+        const hit = tocDropTargetFor(slots, 120, { from: 50, to: 80 }, {
+            allowInto: true,
+            draggedLevel: 4,
+        });
+        expect(hit?.kind).toBe("into");
+        expect(hit?.pos).toBe(50);
+    });
+
+    it("a drop at the dragged range's own start with NO rank change should stay a no-op", () => {
+        // Same geometry, but the carried section is already an H2 — target
+        // level 2, delta 0: nothing would change, so it is the put-it-back
+        // gesture and must resolve to null.
+        expect(
+            tocDropTargetFor(slots, 120, { from: 50, to: 80 }, { allowInto: true, draggedLevel: 2 }),
+        ).toBeNull();
+    });
+
+    it("a drop strictly inside the dragged range should stay null even when it would relevel", () => {
+        // A section cannot nest inside its own subtree: only the range's
+        // START is exempt, never a position within it.
+        expect(
+            tocDropTargetFor(slots, 120, { from: 20, to: 80 }, { allowInto: true, draggedLevel: 4 }),
+        ).toBeNull();
+    });
+
     it("a pointer below the last item should resolve to the terminal end slot", () => {
         const hit = tocDropTargetFor(slots, 400, elsewhere, { allowInto: true });
         expect(hit?.kind).toBe("gap");
@@ -189,9 +303,9 @@ describe("tocDropTargetFor", () => {
         // An EMPTY section renders no band of its own: its into slot comes
         // through degenerate (height 0) at the same y as the boundary line.
         const coincident: MeasuredTocSlot[] = [
-            { kind: "gap", pos: 0, tocIndex: 0, y: 100, left: 0, width: 200 },
-            { kind: "into", pos: 10, tocIndex: 0, headingPos: 0, y: 100, top: 100, height: 0, left: 0, width: 200 },
-            { kind: "gap", pos: 10, tocIndex: 1, y: 100, left: 0, width: 200 },
+            { kind: "gap", pos: 0, tocIndex: 0, targetLevel: 1, y: 100, left: 0, width: 200 },
+            { kind: "into", pos: 10, tocIndex: 0, headingPos: 0, targetLevel: 2, y: 100, top: 100, height: 0, left: 0, width: 200 },
+            { kind: "gap", pos: 10, tocIndex: 1, targetLevel: 1, y: 100, left: 0, width: 200 },
         ];
         const hit = tocDropTargetFor(coincident, 100, elsewhere, { allowInto: true });
         expect(hit?.kind).toBe("gap");

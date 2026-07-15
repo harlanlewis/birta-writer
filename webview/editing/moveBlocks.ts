@@ -29,8 +29,17 @@
  *    guard used to catch as the last line of defense), and silent no-ops
  *    live. The ONLY allowed normalization is `deleteRange` dissolving a
  *    parent the move emptied (a list losing its last item). Nothing else:
- *    no retyping nodes to fit, no attr drops, no heading re-leveling
- *    (MAR-81), no dissolving non-empty containers.
+ *    no retyping nodes to fit, no attr drops, no dissolving non-empty
+ *    containers.
+ *
+ *    The clause forbids IMPLICIT rewrites — content silently reshaped to
+ *    make a drop fit. It does not forbid a transformation the CALLER asked
+ *    for: `relevelDelta` shifts the moved headings' ranks (MAR-81's blanket
+ *    "no heading re-leveling" is reversed — the TOC outline is a structural
+ *    editor as well as a view, so an outline drop's position is the user's
+ *    stated intent, not a fitting artifact). It is opt-in, declared at the
+ *    call site, applied before the fit check, and rides the SAME transaction
+ *    so a drag stays one undo step.
  * 4. TARGET LEGALITY IS STRUCTURAL — targets inside any fold-hidden range
  *    (collapsed heading sections AND collapsed callout bodies) are rejected
  *    through the same `isHiddenTargetPos` registry the drag UI's slot
@@ -58,6 +67,47 @@ export interface MoveBlocksOptions {
     /** Keep the moved run selected after the drop (multi-block drags — the
      * Tiptap post-drop convention); default is a caret at the destination. */
     selectRun?: boolean;
+    /**
+     * Shift every heading in the moved run by this many ranks, clamped to
+     * H1–H6 (see clause 3). Opt-in and caller-declared: only the TOC's
+     * outline drops pass it, because only there does the drop position carry
+     * structural intent. Omit / 0 for a literal move.
+     */
+    relevelDelta?: number;
+}
+
+/** Heading ranks a relevel may produce — markdown has no H0 or H7. */
+const MIN_HEADING_LEVEL = 1;
+const MAX_HEADING_LEVEL = 6;
+
+/**
+ * `nodes` with every heading's rank shifted by `delta`, clamped to H1–H6.
+ * Non-heading nodes and a zero/no-op delta pass through by identity, so the
+ * common (literal-move) path allocates nothing.
+ *
+ * Clamping is per node, so a subtree deep enough to overflow flattens at the
+ * floor instead of blocking the drop. This is content-guard-invisible by
+ * construction: the fingerprint counts `count:heading` and text leaves, and a
+ * rank lives in an attr — so a relevel conserves the fingerprint exactly and
+ * the move stays VETO-mode-safe (contentGuard.fingerprintDoc).
+ */
+function relevelHeadings(nodes: readonly ProseNode[], delta: number): readonly ProseNode[] {
+    if (delta === 0) {
+        return nodes;
+    }
+    return nodes.map((node) => {
+        if (node.type.name !== "heading") {
+            return node;
+        }
+        const current = typeof node.attrs["level"] === "number" ? (node.attrs["level"] as number) : 1;
+        const next = Math.min(Math.max(current + delta, MIN_HEADING_LEVEL), MAX_HEADING_LEVEL);
+        if (next === current) {
+            return node;
+        }
+        // Preserve every other attr (the TOC-anchor id among them) — only the
+        // rank changes, matching setHeadingLevelAt's heading→heading contract.
+        return node.type.create({ ...node.attrs, level: next }, node.content, node.marks);
+    });
 }
 
 /** Loud structural refusal: every caller handed us something the contract
@@ -80,8 +130,15 @@ export function moveBlocks(
     targetPos: number,
     opts?: MoveBlocksOptions,
 ): boolean {
-    if (targetPos >= source.from && targetPos <= source.to) {
-        return false; // put-it-back gesture — a quiet no-op, never an error
+    const relevelDelta = opts?.relevelDelta ?? 0;
+    // Put-it-back gesture — a quiet no-op, never an error. The exception is a
+    // drop AT the source's own start that also relevels: the run does not
+    // move, but its headings' ranks change, so it is a real edit (the TOC's
+    // "make this section a child of the one above it" gesture). Anything
+    // deeper inside the range stays a no-op: a run cannot land within itself.
+    const inPlaceRelevel = targetPos === source.from && relevelDelta !== 0;
+    if (!inPlaceRelevel && targetPos >= source.from && targetPos <= source.to) {
+        return false;
     }
     const { doc } = view.state;
     // The pre-move selection, captured before the transaction so a single
@@ -130,7 +187,11 @@ export function moveBlocks(
             `${parent.type.name} (whole-child cover is [${coveredFrom}, ${coveredTo}))`,
         );
     }
-    const content = Fragment.from(moved);
+    // Clause 3's declared exception: an opt-in, caller-requested rank shift.
+    // Applied BEFORE the fit check so `canReplace` verifies the fragment that
+    // actually lands (a relevel keeps the node type, so the answer is the
+    // same — checking the real fragment is the point, not a formality).
+    const content = Fragment.from(relevelHeadings(moved, relevelDelta));
 
     // ── 4. Target legality: never land inside fold-hidden content ──
     // Same registry as the drag UI's slot filter (visibleBoundaryPositions):
