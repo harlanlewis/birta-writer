@@ -36,8 +36,9 @@ beforeAll(() => {
             clearTimeout(id)) as unknown as typeof cancelAnimationFrame;
     }
 });
-import { editorViewCtx, type Editor } from "@milkdown/core";
+import { editorViewCtx, serializerCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
+import type { Node as ProseNode } from "@milkdown/prose/model";
 import { createEditor, syncExternalContent } from "../editor";
 import { notifyUpdate } from "../messaging";
 
@@ -71,6 +72,25 @@ function posAfterText(v: EditorView, text: string): number {
     });
     if (found < 0) throw new Error(`text not found in doc: ${text}`);
     return found;
+}
+
+/**
+ * Count whole-doc serializations by wrapping the live serializerCtx. syncNow()
+ * reads the serializer at call time (via getMarkdown()), so this sees every
+ * sync the pipeline performs. Serialization is the O(document) cost the save
+ * path is built to ration — it is the observable that distinguishes "no sync
+ * was requested" from "a sync ran and its diff came out empty".
+ */
+function countSerializations(ed: Editor): () => number {
+    let calls = 0;
+    ed.action((ctx) => {
+        const orig = ctx.get(serializerCtx);
+        ctx.set(serializerCtx, ((doc: ProseNode) => {
+            calls++;
+            return orig(doc);
+        }) as ReturnType<typeof ctx.get<typeof serializerCtx>>);
+    });
+    return () => calls;
 }
 
 /** All update-message contents posted through the real messaging layer. */
@@ -195,18 +215,27 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         ]);
     });
 
-    it("an inbound external change should not echo back to the extension as a save", async () => {
-        // The content came FROM the file, so re-posting it would be a pointless
-        // write (and a serialize the user pays for). plugin-listener used to
-        // skip these for free by ignoring `addToHistory: false`; docChangePlugin
-        // reports every doc change, so editor.ts suppresses the echo explicitly
-        // (_applyingExternal). Guards that the suppression survived the MAR-145
-        // rewiring.
-        vi.useRealTimers();
+    it("an inbound external change should not even REQUEST a sync, let alone echo one", async () => {
+        // The content came FROM the file, so a save would be a pointless write.
+        // plugin-listener used to skip these for free by ignoring
+        // `addToHistory: false`; docChangePlugin reports every doc change, so
+        // editor.ts suppresses the request explicitly (_applyingExternal).
+        //
+        // Asserting only on posted bytes would pin NOTHING: _applyExternalNow
+        // re-baselines _savedMarkdown before the scheduler's (async) leading
+        // edge fires, so syncNow()'s `toSave === _savedMarkdown` early-return
+        // swallows the echo even with the guard deleted — verified. The guard's
+        // real contract is that no sync is requested at all, whose observable is
+        // the O(document) serialize that never happens.
+        const serializations = countSerializations(editor);
+
+        // Synchronous: dispatches, re-baselines, and recomputes protection
+        // (which serializes once). Anything after it is the pipeline reacting.
         expect(syncExternalContent("Title\n=====\n\nExternally rewritten.\n")).toBe(true);
-        vi.useFakeTimers();
+        const afterApply = serializations();
         await vi.advanceTimersByTimeAsync(1000);
 
+        expect(serializations() - afterApply).toBe(0);
         expect(postedUpdates()).toEqual([]);
     });
 

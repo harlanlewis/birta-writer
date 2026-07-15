@@ -64,28 +64,32 @@ export async function run({ page, check, baseUrl }) {
     check(`leading edge re-arms after a lull (${second.toFixed(0)}ms)`,
         second < 50, `${second.toFixed(0)}ms — expected < 50ms`);
 
-    // ── Invariant #3: continuous typing still syncs, bounded by maxWaitMs ──
-    // The crash-safety window. A *trailing* debounce upstream of the scheduler
-    // starved this completely: typing faster than its 200ms wait reset the timer
-    // every keystroke, so the scheduler was never even asked for a sync and its
-    // maxWaitMs cap could never engage — the TextDocument (which hot exit backs
-    // up) trailed the editor by the entire length of the burst.
+    // ── Invariant #3: continuous typing keeps syncing, bounded by maxWaitMs ──
+    // The crash-safety window: during genuinely continuous typing (never an
+    // idleMs pause) a sync is still forced every maxWaitMs, bounding how far the
+    // TextDocument — which hot exit backs up — may trail the editor. A trailing
+    // debounce upstream of the scheduler starved this completely: it reset on
+    // every keystroke, so request() was never called and the cap never engaged.
+    //
+    // The assertion must be on the SECOND update. The first is the leading edge
+    // firing at burst start (~2ms), which says nothing about max-wait — an
+    // earlier version of this check asserted `first < 2500ms` and passed with
+    // maxWaitMs set to infinity. Real keystrokes (not execCommand) so the burst
+    // sets _hasUserInteracted itself rather than depending on a prior check.
     await page.evaluate(() => { window.__posted.length = 0; });
     await page.waitForTimeout(400);
-    const burst = await page.evaluate(async () => {
-        const start = performance.now();
-        // ~3s of keystrokes at 60ms — never a pause long enough to end a
-        // trailing 200ms debounce, and past syncScheduler's 2000ms max-wait.
-        for (let i = 0; i < 50; i++) {
-            document.execCommand("insertText", false, "a");
-            await new Promise((r) => setTimeout(r, 60));
-        }
-        const first = window.__posted.find((m) => m.type === "update");
-        return { start, firstAt: first ? first.__t : null };
-    });
-    check("continuous typing syncs within the max-wait cap (never starves)",
-        burst.firstAt !== null && burst.firstAt - burst.start < 2500,
-        burst.firstAt === null
-            ? "no update posted during a 3s continuous burst"
-            : `${(burst.firstAt - burst.start).toFixed(0)}ms`);
+    await page.evaluate(() => { window.__burstStart = performance.now(); });
+    // 50 keystrokes at 60ms ≈ 3s of typing — never a 300ms idle pause, and well
+    // past the 2000ms max-wait, so a working cap must fire inside the burst.
+    await page.keyboard.type("a".repeat(50), { delay: 60 });
+    const times = await page.evaluate(() =>
+        window.__posted.filter((m) => m.type === "update")
+            .map((m) => m.__t - window.__burstStart));
+
+    check("continuous typing keeps syncing — the max-wait cap fires mid-burst",
+        times.length >= 2,
+        `${times.length} update(s) across a 3s burst: [${times.map((t) => t.toFixed(0)).join(", ")}]`);
+    check(`the max-wait sync lands within the cap (${times[1]?.toFixed(0) ?? "n/a"}ms)`,
+        times[1] !== undefined && times[1] > 1000 && times[1] < 2600,
+        `expected the 2nd update in 1000–2600ms (maxWaitMs=2000), got ${times[1]?.toFixed(0) ?? "none"}`);
 }

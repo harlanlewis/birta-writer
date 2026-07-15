@@ -1,7 +1,7 @@
 ---
 name: grind
-description: Autonomous backlog loop — groom Linear so the queue can fill lanes, prioritize, pick work, and ship it end-to-end with iterative self-critique, tracking, and cleanup. Triggers: /grind, "review the backlog and get after it", "pick something and ship it", "work the backlog autonomously".
-version: 1.1.0
+description: Autonomous backlog loop — groom Linear so the queue holds the right work, prioritize, pick, and ship it end-to-end with iterative self-critique, tracking, and cleanup. Triggers: /grind, "review the backlog and get after it", "pick something and ship it", "work the backlog autonomously".
+version: 1.2.0
 ---
 
 # Grind — autonomous backlog loop
@@ -18,16 +18,16 @@ Optional `$ARGUMENTS` narrow the scope (e.g. `/grind phase-0 fidelity bugs`, `/g
 
 **A starved queue is the failure mode this step exists to prevent.** If `Todo` holds only two or three items, a pick "by principle" degrades into picking the only thing that's there, lanes sit idle, and real priorities stay invisible in `Backlog`. Never start from a thin queue — refill it, *then* prioritize.
 
-- **Read the board guide first** (`MAR-141` — 📌 START HERE, current working order). It is the maintainer's stated ordering and outranks your inference from labels.
-- **Pull wider than `Todo`**: `Todo` + `In Progress` + `Backlog`, in one parallel batch. The queue you prioritize over is the *groomed* union, not the default view.
+- **Read the board guide first** (`MAR-141` — 📌 START HERE, current working order). Its stated ordering outranks your inference from labels — but **it is an artifact, not an oracle: verify it, and fix it when it has drifted.** It goes stale the moment a session ships anything, and it is written in the confident voice of a plan either way. (2026-07-15: it listed a five-item queue of which four had already shipped.) Leaving it wrong silently mis-sequences the *next* session too, so updating it is part of grooming, not a nicety.
+- **Pull wider than `Todo`**: `Todo` + `In Progress` + `Backlog`. The queue you prioritize over is the *groomed* union, not the default view. **Pull the Backlog inside a subagent** and have it return a compact table (id, title, priority, labels, updated) — a real backlog exceeds the tool-output limit and will blow up in your face mid-groom if you fetch it inline (2026-07-15: 54 issues, 74k chars, hard error). `Todo`/`In Progress` are small enough to fetch directly, in parallel.
 - **Reconcile against reality — this is what makes the queue trustworthy:**
   - **Close silently-shipped work.** Cross-reference open tickets against `git log --oneline` (read diffs of recent omnibus `feat:`/`fix:` commits, not just subjects) and `CHANGELOG.md`. Verify against the working tree, never the CHANGELOG alone. Move to `Done` with the SHA.
   - **Re-scope tickets the code has outgrown** — a premise that no longer holds, or a partial fix already landed. Rewrite the title/description to what's actually left.
   - **Un-stick `In Progress`** items that aren't being worked: finished → `Done`; abandoned → back to `Todo`/`Backlog`.
-- **Promote until the queue can fill lanes.** Move ready work from `Backlog` → `Todo` until there are enough well-scoped items to work and to parallelize — rule of thumb: **at least 3–5 items, and ≥2× the lanes you intend to run**. "Ready" means a clear repro or acceptance criterion and a known blast radius; promote by the roadmap spine (`phase-*`, then `priority`), not by what looks easy.
-- **Prefer a promotable set that's independent.** Items touching disjoint files can run as parallel lanes (§1); items sharing a file must be coordinated serially. Note which is which when you promote — that mapping *is* your lane plan.
+- **Promote until the pick is a real choice.** Move ready work from `Backlog` → `Todo` until the top of the queue is genuinely the most important thing available — rule of thumb: **at least 3–5 ready items**. "Ready" means a clear repro or acceptance criterion and a known blast radius; promote by the roadmap spine (`phase-*`, then `priority`), not by what looks easy. The payoff is *sequencing*, not throughput: a queue of one makes "pick by principle" a fiction.
+- **Note which promoted items are independent** — disjoint files can run as parallel lanes (§2); items sharing a file must be coordinated serially. Be honest that in this repo the answer is usually *serial*: the fidelity work concentrates in a few shared files (`editor.ts`, `serialization.ts`, `minimalDiff.ts`, the fold plugins). Don't inflate the promote count chasing lanes that won't exist — the reliable parallelism here is **investigation** (fan-out subagents to read/audit/critique), not concurrent edits.
 - **File discovered work as you groom** (`/devlog`) rather than holding it in your head.
-- **Push the reconciliation reads into subagents** — the git-log/CHANGELOG cross-reference is exactly the broad, noisy read §1 says to delegate. Relay conclusions.
+- **Push the reconciliation reads into subagents** — the git-log/CHANGELOG cross-reference is exactly the broad, noisy read §2 says to delegate. Relay conclusions.
 - **If grooming genuinely finds nothing ready**, say so and ask — don't manufacture work to have something to do. `$ARGUMENTS` naming a specific ticket (e.g. `/grind MAR-120`) narrows grooming to that item's neighborhood; it doesn't skip the reconcile.
 
 ## 1. Orient & prioritize (once)
@@ -51,6 +51,8 @@ Repeat for each unit of work. Mark the task `in_progress` when you start it.
 2. **Implement** the smallest correct fix that matches the codebase's existing patterns (idioms, comment density, naming — not just "make it pass"). Respect the architecture constraints in `CLAUDE.md`.
 3. **Test** — reproduce-then-fix:
    - Add/pin a regression test (for a fidelity repro, promote its `it.fails` and remove the matching gate exclusion).
+   - **Prove every new test can fail — revert the exact line it pins, not the whole change, and watch it go red.** A test that passes either way is worse than none: it reads as coverage forever. Watch for a test that asserts a *downstream* observable some other mechanism already guarantees — it will pass for the wrong reason. (2026-07-15: an external-sync test asserted "no bytes posted", which a serializer early-return satisfied on its own; the guard it claimed to pin could be deleted with the suite green. The honest observable was "no serialize happened at all".) If a claim's only observable is work that *doesn't* happen, count the work.
+   - Re-read the numbers a passing check prints, and ask what they'd be if the thing were broken. (Same session: a max-wait check passed at `2ms` — that was the leading edge firing, not the 2000ms cap it claimed to prove.)
    - `pnpm test <focused>` → then full `pnpm test`; `pnpm typecheck`; `pnpm build`.
    - For webview runtime behavior beyond jsdom, use the `/verify` skill.
 4. **Critique** — run `/constructive-critique` on the change. *Verify against reality*: probe edge cases the tests miss, adversarially. Apply the improvements it surfaces; iterate until clean. (For pure bug-hunting on a diff, `/code-review` instead.)
