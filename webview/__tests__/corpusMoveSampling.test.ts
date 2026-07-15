@@ -337,7 +337,7 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard C: literal '\\==text==' prose should stay escaped after a move", async () => {
+    it("hazard C (MAR-121, fixed): literal '\\==text==' prose stays escaped after a move", async () => {
         const editor = await makeEditor(
             "Escaped \\==not a highlight== stays literal.\n\nAnchor paragraph.",
         );
@@ -346,9 +346,9 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
 
         expect(moveBlocks(v, { from: 0, to: para.nodeSize }, v.state.doc.content.size)).toBe(true);
 
-        // BUG: the serializer re-emits the text without the backslash, so
-        // reparse turns `==not a highlight==` into a highlight mark and the
-        // `==` bytes vanish from the text.
+        // The highlight `unsafe` pattern (plugins/highlight.ts) re-escapes the
+        // literal `==` opener, so reparse keeps it plain text — no highlight
+        // mark, no lost `==` bytes.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 

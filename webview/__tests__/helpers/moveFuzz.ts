@@ -256,9 +256,10 @@ export function enumerateMovePairs(
 //   (B) Fence re-pairing: a closed directive moved below raw `:::`-prefixed
 //       prose (an unclosed fence that parses as a paragraph) lets that
 //       prose line pair with the directive's close fence on reparse.
-//   (C) Highlight escaping: literal `\==text==` prose loses its backslash
-//       when the serializer re-emits it, so reparse turns it into a
-//       highlight mark and the `==` bytes vanish from the text.
+//   (C) FIXED (MAR-121): highlight escaping — a literal `\==text==` in prose
+//       now re-serializes with its backslash via the highlight `unsafe`
+//       pattern (plugins/highlight.ts), so it stays plain text on reparse.
+//       No longer excluded here; held to the full contract by the gate.
 //   (D) Quote splice: moving a block from one quote-family container
 //       (callout/blockquote) into another leaves the minimal-diff merge a
 //       stale blank line where the dissolved source container sat, so the
@@ -277,19 +278,10 @@ export function enumerateMovePairs(
 // TODO(MAR-113 follow-up): fix (A)/(B)/(G) in the directives serializer
 // (derive fence length from nesting depth; escape or guard raw fence-shaped
 // prose; keep a blank line after the open fence when the first child is
-// setext-hazardous), (C) in the highlight stringifier (escape literal
-// delimiter runs), (D) in the minimal-diff merge (never keep a blank line
+// setext-hazardous), (D) in the minimal-diff merge (never keep a blank line
 // that splits a serialized quote block), (E)/(F) in the serializer's
 // empty-paragraph and aside handling — then delete this predicate and the
-// it.fails pins.
-
-/** Literal text that the highlight grammar would match on reparse
- * (`==`, no edge spaces, no `=` inside). */
-const HIGHLIGHT_LITERAL = /==[^\s=](?:[^=]*[^\s=])?==/;
-
-const isCodeContext = (node: ProseNode, parent: ProseNode | null): boolean =>
-    parent?.type.name === "code_block" ||
-    node.marks.some((m) => m.type.name.toLowerCase().includes("code"));
+// remaining it.fails pins. (C) is fixed; see the class list above.
 
 const QUOTE_FAMILY = new Set(["blockquote", "callout", "notion_callout"]);
 
@@ -338,7 +330,6 @@ export function knownSavePipelineHazard(
     let fragmentHasHr = false;
     let fragmentHasBlankTextblock = false;
     let fragmentHasRawFence = false;
-    let fragmentHasHighlightLiteral = false;
     fragment.descendants((node: ProseNode, _pos: number, parent: ProseNode | null) => {
         if (node.type.name === "container_directive") {
             fragmentHasDirective = true;
@@ -365,18 +356,8 @@ export function knownSavePipelineHazard(
                 fragmentHasRawFence = true;
             }
         }
-        if (
-            node.isText &&
-            !isCodeContext(node, parent) &&
-            HIGHLIGHT_LITERAL.test(node.text ?? "")
-        ) {
-            fragmentHasHighlightLiteral = true;
-        }
         return true;
     });
-    if (fragmentHasHighlightLiteral) {
-        return true; // (C)
-    }
     if (fragmentHasBlankTextblock) {
         return true; // (E) — the moved blank block itself vanishes
     }

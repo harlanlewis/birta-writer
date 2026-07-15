@@ -58,6 +58,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Fast launch** — heavy dependencies (the KaTeX stylesheet, ~66 syntax-highlighting grammars, the Mermaid engine) load on demand rather than at every open; a document with no math, code, or diagrams loads a fraction of what it used to, and proofreading and fidelity checks settle in after first paint rather than blocking it.
 - **A hard fork, in English** — hard-forked from [`git-xing/md-wysiwyg-editor`](https://github.com/git-xing/md-wysiwyg-editor), with all Chinese content removed and English as the source and base language across code, UI, and docs (a CI guard prevents regressions). Source-available under the Functional Source License (FSL-1.1-ALv2) — free to read, run, modify, and self-host for any non-competing purpose, converting to Apache-2.0 two years after each release; portions derived from the upstream fork remain under their original MIT License — see `LICENSE`, `NOTICE`, and `LICENSE-MIT`.
 
+### Fixed
+
+- **Moving a block no longer corrupts an escaped `\==highlight==`** — a hand-escaped highlight literal (`\==not a highlight==`) kept as plain text now re-serializes with its backslash intact when its block is moved, instead of silently dropping the `==` bytes and turning into a highlight on reopen.
+
 ---
 
 ## [0.2.3] - 2026-07-04

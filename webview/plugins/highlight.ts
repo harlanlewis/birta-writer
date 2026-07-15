@@ -129,7 +129,22 @@ const highlightFromMarkdown = {
 // text contains `==` would not survive a reparse; the toggle command and
 // input rule can't produce one from parsed content, so this stays a
 // theoretical paste-edge, preserved as typed.)
+//
+// The `unsafe` entry re-escapes a LITERAL highlight run that appears in plain
+// prose: a text node holding `==word==` (e.g. the decoded form of a
+// hand-escaped `\==word==`) would otherwise re-serialize without a backslash
+// and reparse into a highlight mark, dropping the `==` bytes (MAR-121). The
+// `after` lookahead mirrors the tokenizer's grammar EXACTLY — `==`, then
+// content of 1+ non-`=` chars with no leading/trailing space, then `==` — so
+// the pattern fires only on a run that would truly re-highlight. Prose the
+// grammar already rejects (`a == b`, `==x=y==`, `====`, bare equals) is left
+// untouched. Escaping just the first `=` (`==x==` → `\==x==`) breaks the
+// opener on reparse; the mark's own serialization goes through the handler
+// above and never hits this, so real highlights are unaffected.
 const highlightToMarkdown = {
+    unsafe: [
+        { character: "=", after: "=[^\\s=](?:[^=]*[^\\s=])?==", inConstruct: "phrasing" },
+    ],
     handlers: {
         highlight(node: MdastNode & { children?: Array<{ value?: string }> }): string {
             const text = (node.children ?? []).map((c) => c.value ?? "").join("");
