@@ -1,4 +1,4 @@
-import type { ToExtensionMessage, ToWebviewMessage, ProjectImage } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, ProjectImage, TextCount } from "../shared/messages";
 
 export type { ProjectImage };
 
@@ -49,6 +49,15 @@ export function notifyFlushResult(id: string, content: string): void {
 
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
+}
+
+/**
+ * Report word / character / reading-time counts for the live document (and the
+ * current selection, if any) so the extension can render its status bar item
+ * (MAR-29). Called debounced, off the keystroke path.
+ */
+export function notifyWordCount(doc: TextCount, selection: TextCount | null): void {
+    vscode.postMessage({ type: "wordCount", doc, selection });
 }
 
 /**

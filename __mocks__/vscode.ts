@@ -406,12 +406,37 @@ function makeFakeQuickPick() {
     };
 }
 
+export const StatusBarAlignment = { Left: 1, Right: 2 } as const;
+
+/**
+ * Minimal createStatusBarItem fake (MAR-29): records text/tooltip/name and
+ * show/hide/dispose calls so a test can assert what the word-count readout
+ * rendered. Grab the instance via `window.createStatusBarItem.mock.results[0].value`.
+ */
+function makeFakeStatusBarItem() {
+    return {
+        id: "",
+        alignment: 0,
+        priority: 0,
+        text: "",
+        name: "",
+        tooltip: "" as string | undefined,
+        command: undefined as unknown,
+        show: vi.fn(),
+        hide: vi.fn(),
+        dispose: vi.fn(),
+    };
+}
+
 export const window = {
     showErrorMessage: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
     showQuickPick: vi.fn(),
     createQuickPick: vi.fn(makeFakeQuickPick),
+    createStatusBarItem: vi.fn((_id?: unknown, _alignment?: unknown, _priority?: unknown) =>
+        makeFakeStatusBarItem(),
+    ),
     /**
      * Tab-group state for command routing tests. Mutate
      * `tabGroups.activeTabGroup.activeTab` to simulate the focused tab;
