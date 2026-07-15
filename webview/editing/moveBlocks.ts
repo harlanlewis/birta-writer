@@ -34,12 +34,11 @@
  *
  *    The clause forbids IMPLICIT rewrites — content silently reshaped to
  *    make a drop fit. It does not forbid a transformation the CALLER asked
- *    for: `relevelDelta` shifts the moved headings' ranks (MAR-81's blanket
- *    "no heading re-leveling" is reversed — the TOC outline is a structural
- *    editor as well as a view, so an outline drop's position is the user's
- *    stated intent, not a fitting artifact). It is opt-in, declared at the
- *    call site, applied before the fit check, and rides the SAME transaction
- *    so a drag stays one undo step.
+ *    for: `relevelDelta` shifts the moved headings' ranks. The TOC outline is
+ *    a structural editor as well as a view, so an outline drop's position is
+ *    the user's stated intent, not a fitting artifact. It is opt-in, declared
+ *    at the call site, applied before the fit check, and rides the SAME
+ *    transaction so a drag stays one undo step.
  * 4. TARGET LEGALITY IS STRUCTURAL — targets inside any fold-hidden range
  *    (collapsed heading sections AND collapsed callout bodies) are rejected
  *    through the same `isHiddenTargetPos` registry the drag UI's slot
