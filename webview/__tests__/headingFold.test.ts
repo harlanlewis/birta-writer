@@ -206,7 +206,8 @@ describe("heading gutter level menu", () => {
             .toEqual(["Turn into", "Actions"]);
         const active = menu!.querySelector(".block-menu-item--active");
         expect(active!.querySelector(".block-menu-item-label")!.textContent).toBe("Heading 2");
-        expect(active!.getAttribute("aria-checked")).toBe("true");
+        expect(active!.getAttribute("role")).toBe("option");
+        expect(active!.getAttribute("aria-selected")).toBe("true");
     });
 
     it("picking a level should retype the heading and close the menu", async () => {

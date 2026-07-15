@@ -98,7 +98,10 @@ export function showFindingsPopup(view: EditorView, anchorPos: number, findings:
         if (!popup.contains(e.target as Node)) { hideLintPopup(); }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape") {
+        // Only a bare Escape closes a layer; modifier-Escape (Shift+Esc pops
+        // the escape-layer stack, etc.) must fall through untouched — no
+        // surface acts on modifier-Escape (matches blockKeys' guard).
+        if (e.key === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
             // Consume (the old bare hide let the key fall through to the
             // block-selection keymap, closing the popup AND selecting the
             // block) and route through the Escape-layer stack, so a surface

@@ -14,7 +14,8 @@ import { scanHeadings } from "./utils/headingScan";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
-import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset, TextCount } from "../shared/messages";
+import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
 import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
@@ -151,7 +152,33 @@ export class MarkdownEditorProvider
     // Prevents the line number from being wrongly fed back to the WebView after the text editor opens, triggering a redundant scrollToLine
     private _suppressNavFromTextEditor = false;
 
+    // Status bar word/character/reading-time readout (MAR-29). Injected from
+    // extension.ts so the item is created once; the provider drives it from the
+    // active panel's `wordCount` messages. Last-known counts are cached per
+    // document so re-activating a retained webview re-renders without waiting
+    // for a fresh report.
+    private _wordCountView: WordCountView | null = null;
+    private readonly _wordCounts = new Map<
+        string,
+        { doc: TextCount; selection: TextCount | null }
+    >();
+
     public static current: MarkdownEditorProvider | null = null;
+
+    /** Inject the status bar word-count view (called once from extension.ts). */
+    public setWordCountView(view: WordCountView): void {
+        this._wordCountView = view;
+    }
+
+    /** Render the cached counts for `uriKey`, or hide the readout if none exist. */
+    private _renderWordCount(uriKey: string): void {
+        const counts = this._wordCounts.get(uriKey);
+        if (counts) {
+            this._wordCountView?.update(counts.doc, counts.selection);
+        } else {
+            this._wordCountView?.hide();
+        }
+    }
 
     /** Called from extension.ts: when revealLine fires but the active tab hasn't switched, store the global fallback */
     public setGlobalRevealLine(line: number): void {
@@ -335,9 +362,17 @@ export class MarkdownEditorProvider
         this._webviewPanels.set(uriKey, webviewPanel);
         // A freshly resolved editor is the active one.
         this._activePanel = webviewPanel;
+        // Show cached counts if we've seen this document before, else clear any
+        // stale readout from the previously active editor until the webview
+        // reports (MAR-29).
+        this._renderWordCount(uriKey);
 
         webviewPanel.onDidDispose(() => {
             this._webviewPanels.delete(uriKey);
+            // Drop cached counts; hide the readout if this was the active editor
+            // (its status bar figures no longer describe anything) (MAR-29).
+            this._wordCounts.delete(uriKey);
+            if (this._activePanel === webviewPanel) { this._wordCountView?.hide(); }
             if (this._activePanel === webviewPanel) { this._activePanel = null; }
             this._pinnedDocuments.delete(uriKey);
             this._imageUriMaps.delete(uriKey);
@@ -380,10 +415,15 @@ export class MarkdownEditorProvider
                 // but clearing here defends against a missed/late blur so the
                 // context key can't stay latched on the wrong panel (MAR-104).
                 this._setWebviewFocus(uriKey, false);
+                // No WYSIWYG editor is active here → clear the status bar readout
+                // (a text editor / another view now owns the status bar) (MAR-29).
+                this._wordCountView?.hide();
                 return;
             }
             // Track the active panel for command-palette / context-menu routing.
             this._activePanel = p;
+            // Restore this document's cached counts into the status bar (MAR-29).
+            this._renderWordCount(uriKey);
             if (!this._initializedPanels.has(uriKey)) { return; }
             const line = this._consumePendingNavigation(document.uri.fsPath)
                 ?? this._consumeGlobalRevealLine();
@@ -726,6 +766,15 @@ export class MarkdownEditorProvider
                         // Gate document-mutating keybindings on real webview
                         // focus (MAR-104).
                         this._setWebviewFocus(uriKey, message.focused);
+                        break;
+                    case "wordCount":
+                        // Cache per document so re-activating a retained webview
+                        // re-renders instantly; only the active panel drives the
+                        // shared status bar item (MAR-29).
+                        this._wordCounts.set(uriKey, { doc: message.doc, selection: message.selection });
+                        if (this._activePanel === webviewPanel) {
+                            this._wordCountView?.update(message.doc, message.selection);
+                        }
                         break;
                 }
             },

@@ -508,8 +508,26 @@ export const slashMenuPlugin = $prose(() =>
         // dispatch batch, and the view updates once at the end.
         state: {
             init: () => ({ openEligible: false }),
-            apply: (tr, prev) =>
-                tr.docChanged ? { openEligible: opensSlashMenu(tr) } : prev,
+            apply: (tr, prev) => {
+                if (!tr.docChanged) {
+                    return prev;
+                }
+                if (opensSlashMenu(tr)) {
+                    return { openEligible: true };
+                }
+                // Not real typing. A same-action synthetic fix-up
+                // (addToHistory: false) — e.g. the normalization transaction
+                // ProseMirror re-dispatches right after typing into a HEADING —
+                // must stay TRANSPARENT: clobbering the verdict here is exactly
+                // why the menu silently failed to open in headings (the typing
+                // set true, the follow-up reset it to false before the view
+                // update read it). Undo/redo and paste/drop, by contrast, ARE
+                // the user's action and legitimately clear the flag.
+                if (tr.getMeta("addToHistory") === false) {
+                    return prev;
+                }
+                return { openEligible: false };
+            },
         },
         view: (editorView) => {
             const controller = new SlashMenuController(editorView);

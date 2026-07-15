@@ -61,6 +61,7 @@ import {
 import { initScrollPersistence } from "./scrollPersistence";
 import { initKeyboardShortcuts } from "./keyboardShortcuts";
 import { createMessageHandlers, type Handler } from "./messageHandlers";
+import { reportWordCount } from "./wordCountReporter";
 import { createEventManager } from "./eventManager";
 import { observeNativeThemeChanges } from "./nativeThemeBridge";
 import { syncMermaidCanvasClass } from "./components/codeBlock";
@@ -223,6 +224,12 @@ async function initEditor(
         },
     );
     toc.refresh();
+    // Seed the status-bar word count for the freshly loaded document (MAR-29):
+    // the selection-change handler only fires on later edits/selection moves, so
+    // without this the count would stay blank until the first interaction. The
+    // reporter debounces, keeping this off the first-paint path.
+    const initialView = getEditorView();
+    if (initialView) { reportWordCount(initialView); }
     // First frame with rendered content on screen: wait two RAFs so the mark
     // lands after the browser has actually painted the mounted ProseMirror doc.
     requestAnimationFrame(() =>
@@ -442,6 +449,9 @@ eventManager.onDocument("paste", (e) => {
 registerSelectionChangeHandler((view) => {
     topbarTb?.onSelectionChange(view);
     selectionTb?.onSelectionChange(view);
+    // Status-bar word count (MAR-29): fires on every selection OR doc change,
+    // debounced inside the reporter so it never rides the keystroke path.
+    reportWordCount(view);
 });
 
 // Focus can leave ProseMirror for a nested editable island — a callout/directive
