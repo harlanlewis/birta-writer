@@ -1524,39 +1524,16 @@ body.toolbar-hidden::before {
 /* ─── Custom tooltip ─── */
 /* ── Floating palette chip (shared) ─────────────────────────────────────────
    The selection formatter, the link popup, and the image toolbar read as one
-   chip family via these tokens. In DARK themes the chip is a normal themed
-   hover widget; in LIGHT themes it INVERTS to a dark chip on the light canvas,
-   so the controls pop and echo the inverted tooltip — dark themes are never
-   reversed to light. `ink` is glyphs/text on the ground; hovers and active
-   states are a translucent ink wash (color-mix), so no fixed token is needed
-   and they read on either polarity. */
-/* The hover/active/line washes MUST be defined in the same rule as --palette-ink
-   (not a separate :root that references var(--palette-ink)): a custom property's
-   var() references are substituted where it's declared and then inherit already
-   resolved, so a wash declared only on :root would freeze to the dark ink and
-   never pick up the light override. Declaring them alongside each --palette-ink
-   makes each wash resolve against that block's ink. */
+   chip family via these tokens: the editor's normal themed hover-widget chip in
+   every theme (light and dark alike) — no reversal. `ink` is glyphs/text on the
+   ground; hover/active/line are the editor's standard chrome tokens. */
 :root {
     --palette-ground: var(--vscode-editorHoverWidget-background);
     --palette-ink: var(--vscode-editorHoverWidget-foreground);
     --palette-border: var(--vscode-editorHoverWidget-border);
-    --palette-hover: color-mix(in srgb, var(--palette-ink) 16%, transparent);
-    --palette-active: color-mix(in srgb, var(--palette-ink) 30%, transparent);
-    --palette-line: color-mix(in srgb, var(--palette-ink) 28%, transparent);
-}
-body.vscode-light,
-body.vscode-high-contrast-light {
-    --palette-ground: var(--vscode-editor-foreground);
-    --palette-ink: var(--vscode-editor-background);
-    /* High-contrast themes rely on borders; keep one there. Non-HC light themes
-       lean on the shadow + strong ground/canvas contrast, so no border. */
-    --palette-border: transparent;
-    --palette-hover: color-mix(in srgb, var(--palette-ink) 16%, transparent);
-    --palette-active: color-mix(in srgb, var(--palette-ink) 30%, transparent);
-    --palette-line: color-mix(in srgb, var(--palette-ink) 28%, transparent);
-}
-body.vscode-high-contrast-light {
-    --palette-border: var(--vscode-contrastBorder, var(--vscode-editor-background));
+    --palette-hover: var(--vscode-toolbar-hoverBackground);
+    --palette-active: var(--vscode-inputOption-activeBackground);
+    --palette-line: var(--vscode-editorHoverWidget-border);
 }
 
 .custom-tooltip {
