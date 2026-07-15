@@ -15,10 +15,9 @@ import {
     defaultValueCtx,
     editorViewCtx,
 } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { CellSelection } from "@milkdown/prose/tables";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     setupSelectionToolbar,
     setPendingToolbarPos,
@@ -34,7 +33,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
 }
 

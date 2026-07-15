@@ -19,11 +19,10 @@ import {
     editorViewCtx,
     nodeViewCtx,
 } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { CellSelection, TableMap } from "@milkdown/prose/tables";
 import type { Node as PMNode } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     createTableView,
     nearestTargets,
@@ -44,7 +43,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             ctx.set(nodeViewCtx, [["table", createTableView]]);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         // Real guard in the loop (MAR-108): these suites exercise guarded ops.
         .use(contentGuardPlugin)
         .create();

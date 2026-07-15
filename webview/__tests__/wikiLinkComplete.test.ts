@@ -9,11 +9,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { wikiLinkCompletePlugin, wikiNameOf, rankWikiNames } from "../plugins/wikiLinkComplete";
 import { dispatchLinkTargetSuggestions } from "../components/pathLink/linkTargetComplete";
 
@@ -34,7 +33,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .use(wikiLinkCompletePlugin)
         .create();
 }

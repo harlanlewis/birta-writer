@@ -13,8 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";
 import { closeTopmostLayer } from "../ui/escapeLayers";
 
@@ -30,7 +29,7 @@ async function makeEditor(md: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     editors.push(editor);
     return editor;

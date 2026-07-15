@@ -541,7 +541,7 @@
                 "command": "birta.editor.insertLink",
                 "key": "ctrl+k",
                 "mac": "cmd+k",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.findNext",
@@ -579,72 +579,72 @@
                 "command": "birta.editor.deleteBlock",
                 "key": "ctrl+shift+k",
                 "mac": "cmd+shift+k",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.joinLines",
                 "mac": "ctrl+j",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.toggleOrderedList",
                 "key": "ctrl+shift+7",
                 "mac": "cmd+shift+7",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.toggleBulletList",
                 "key": "ctrl+shift+8",
                 "mac": "cmd+shift+8",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.toggleTaskList",
                 "key": "ctrl+shift+9",
                 "mac": "cmd+shift+9",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.setParagraph",
                 "key": "ctrl+alt+0",
                 "mac": "cmd+alt+0",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.setHeading1",
                 "key": "ctrl+alt+1",
                 "mac": "cmd+alt+1",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.setHeading2",
                 "key": "ctrl+alt+2",
                 "mac": "cmd+alt+2",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.setHeading3",
                 "key": "ctrl+alt+3",
                 "mac": "cmd+alt+3",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.setHeading4",
                 "key": "ctrl+alt+4",
                 "mac": "cmd+alt+4",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.setHeading5",
                 "key": "ctrl+alt+5",
                 "mac": "cmd+alt+5",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.setHeading6",
                 "key": "ctrl+alt+6",
                 "mac": "cmd+alt+6",
-                "when": "activeCustomEditorId == 'birta.editor'"
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             },
             {
                 "command": "birta.editor.fold",

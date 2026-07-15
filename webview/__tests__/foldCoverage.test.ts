@@ -8,10 +8,9 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     allFoldablePositions,
     computeFoldAnchors,
@@ -44,7 +43,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         })
         .use(foldRevealKeymapPlugin)
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .use(headingFoldPlugin)
         .create();
     editors.push(editor);

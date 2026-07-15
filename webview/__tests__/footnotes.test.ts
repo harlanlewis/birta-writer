@@ -33,11 +33,10 @@ import {
     editorViewCtx,
     commandsCtx,
 } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import type { Node as PMNode } from "@milkdown/prose/model";
 import { TextSelection } from "@milkdown/prose/state";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { createEditor } from "../editor";
 import { insertFootnoteCommand } from "../plugins";
 import {
@@ -58,7 +57,7 @@ async function makeDoc(markdown: string): Promise<{ doc: PMNode; destroy: () => 
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     const doc = editor.action((ctx) => ctx.get(editorViewCtx).state.doc);
     return { doc, destroy: () => editor.destroy() };

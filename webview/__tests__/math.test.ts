@@ -4,11 +4,10 @@
  */
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import { TextSelection } from "@milkdown/prose/state";
 import { INLINE_MATH_RULE_REGEX, isRealInlineMath } from "../plugins/math";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 import { normalizeCodeLanguage } from "../codeLanguages";
 import { runEditorCommand } from "../editorCommands";
@@ -86,7 +85,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
 }
 

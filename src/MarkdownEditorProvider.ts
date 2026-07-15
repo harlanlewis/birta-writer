@@ -141,6 +141,12 @@ export class MarkdownEditorProvider
     // Panels that have finished WebView initialization (sent a ready message) key: uriKey
     private readonly _initializedPanels = new Set<string>();
 
+    // Panels whose webview currently holds OS focus (MAR-104). Mirrored into the
+    // `birta.webviewFocused` when-clause context key so document-mutating
+    // keybindings fire only while an editor is truly focused, not merely because
+    // its tab is the active custom editor with focus parked elsewhere.
+    private readonly _focusedPanels = new Set<string>();
+
     // While switching to the text editor, suppress the line-number callback from onDidChangeActiveTextEditor
     // Prevents the line number from being wrongly fed back to the WebView after the text editor opens, triggering a redundant scrollToLine
     private _suppressNavFromTextEditor = false;
@@ -241,6 +247,28 @@ export class MarkdownEditorProvider
     }
 
     /**
+     * Records webview focus for `uriKey` and mirrors "any editor focused" into
+     * the `birta.webviewFocused` context key. A Set (not a single boolean)
+     * because split views can host several editor webviews; the key is true
+     * while any one of them holds focus. Called on focusState messages, and with
+     * `focused: false` when a panel disposes or goes inactive (MAR-104).
+     */
+    private _setWebviewFocus(uriKey: string, focused: boolean): void {
+        const had = this._focusedPanels.has(uriKey);
+        if (focused) {
+            this._focusedPanels.add(uriKey);
+        } else {
+            this._focusedPanels.delete(uriKey);
+        }
+        if (had === focused) { return; }
+        void vscode.commands.executeCommand(
+            "setContext",
+            "birta.webviewFocused",
+            this._focusedPanels.size > 0,
+        );
+    }
+
+    /**
      * Routes an editor command (keybinding / command palette / context menu)
      * to the webview. Target resolution, most to least specific:
      * 1. the panel named by `documentUriStr` (right-click context objects
@@ -318,6 +346,9 @@ export class MarkdownEditorProvider
             this._syncVersion.delete(uriKey);
             this._editQueues.delete(uriKey);
             this._appliedSeq.delete(uriKey);
+            // A disposed webview can't post a blur; clear its focus so the
+            // context key can't latch true after the editor is gone (MAR-104).
+            this._setWebviewFocus(uriKey, false);
         });
 
         // Watch the file for external writes so a dirty document can flag drift
@@ -344,7 +375,13 @@ export class MarkdownEditorProvider
         // When the panel is activated (e.g. clicking an already-open file from global search), check and send the pending navigation line
         // Only handle panels that are already initialized (ready), to avoid prematurely consuming the pending navigation when a new panel is created
         webviewPanel.onDidChangeViewState(({ webviewPanel: p }) => {
-            if (!p.active) { return; }
+            if (!p.active) {
+                // An inactive panel isn't focused. The webview also posts a blur,
+                // but clearing here defends against a missed/late blur so the
+                // context key can't stay latched on the wrong panel (MAR-104).
+                this._setWebviewFocus(uriKey, false);
+                return;
+            }
             // Track the active panel for command-palette / context-menu routing.
             this._activePanel = p;
             if (!this._initializedPanels.has(uriKey)) { return; }
@@ -684,6 +721,11 @@ export class MarkdownEditorProvider
                         // The disk-drift badge was clicked: offer the user the
                         // native reload/compare picker. Never edits the document.
                         void this._diskDrift.resolveDriftInteractively(document);
+                        break;
+                    case "focusState":
+                        // Gate document-mutating keybindings on real webview
+                        // focus (MAR-104).
+                        this._setWebviewFocus(uriKey, message.focused);
                         break;
                 }
             },

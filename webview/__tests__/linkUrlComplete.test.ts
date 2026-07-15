@@ -9,12 +9,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Mark } from "@milkdown/prose/model";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { linkInputRule } from "../plugins/linkInputRule";
 import { linkUrlCompletePlugin } from "../plugins/linkUrlComplete";
 import { dispatchLinkTargetSuggestions } from "../components/pathLink/linkTargetComplete";
@@ -36,7 +35,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .use(linkInputRule)
         .use(linkUrlCompletePlugin)
         .create();

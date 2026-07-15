@@ -21,13 +21,12 @@ import {
     defaultValueCtx,
     editorViewCtx,
 } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { Selection, TextSelection } from "@milkdown/prose/state";
 import { CellSelection } from "@milkdown/prose/tables";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     setupSelectionToolbar,
     setPendingToolbarPos,
@@ -45,7 +44,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     // The link button routes through the shared link editor (the hover popup
     // singleton); wire it to this editor's view.

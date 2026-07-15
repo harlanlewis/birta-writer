@@ -11,10 +11,9 @@ import {
     defaultValueCtx,
     editorViewCtx,
 } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { runEditorCommand } from "../editorCommands";
 
 async function makeEditor(markdown: string): Promise<Editor> {
@@ -27,7 +26,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
 }
 

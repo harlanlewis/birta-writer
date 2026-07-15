@@ -6,12 +6,11 @@
  */
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as PMNode } from "@milkdown/prose/model";
 import { TextSelection } from "@milkdown/prose/state";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     closeFenceColons,
     directiveTitle,
@@ -31,7 +30,7 @@ async function makeEditor(markdown: string): Promise<{
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     const view = editor.action((ctx) => ctx.get(editorViewCtx));
     return { editor, view };

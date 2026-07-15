@@ -6,13 +6,12 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, schemaCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import { liftListItem } from "@milkdown/prose/schema-list";
 import type { EditorView } from "@milkdown/prose/view";
 import type { NodeType } from "@milkdown/prose/model";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { sinkItemKeepingChildren } from "../plugins/tabKeymap";
 
 let editors: Editor[] = [];
@@ -27,7 +26,7 @@ async function makeEditor(markdown: string): Promise<{ view: EditorView; itemTyp
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     editors.push(editor);
     const view = editor.action((ctx) => ctx.get(editorViewCtx));

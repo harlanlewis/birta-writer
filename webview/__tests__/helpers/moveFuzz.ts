@@ -9,11 +9,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
-import { configureSerialization, pureCommonmark } from "../../serialization";
-import { listItemSpreadBoolPlugins } from "../../plugins/list";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
 import { moveRangeAt } from "../../components/blockMenu";
 import {
     blockBoundaryPositions,
@@ -89,10 +87,7 @@ export async function makeCorpusEditor(
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
-        // After gfm so the boolean-`spread` list_item override wins over gfm's
-        // task-list schema (MAR-124), mirroring the production editor.
-        .use(listItemSpreadBoolPlugins);
+        .use(gfmFidelity);
     for (const plugin of extras) {
         builder = builder.use(plugin);
     }
@@ -322,8 +317,20 @@ export function knownSavePipelineHazard(
     });
     const $target = doc.resolve(target);
     const targetQuote = quoteAncestorPos(doc, target);
-    // (G) in quote containers too: `> paragraph` + `> ---` reparses as a
-    // setext heading exactly like it does under a directive fence.
+    // (G) The setext hazard inside a quote — `> paragraph` + `> ---` reparsing
+    // as a setext heading — is DEFUSED for the plain case: unlike a directive's
+    // synthesized open fence (a text line), a paragraph and an hr are two mdast
+    // block siblings, so remark-stringify's block join emits the disambiguating
+    // blank `>` line between them. The quoteHazardPins regression tests
+    // (corpusMoveSampling.test.ts) lock this in for blockquotes and callouts.
+    //
+    // This guard nonetheless still excludes ALL hr-bearing fragments moved into
+    // a quote: such a fragment can also CARRY an unfixed container-nesting
+    // hazard (a directive/aside/callout whose fences re-pair once re-parented —
+    // manifestation B), and the failing cases those produce are the deferred
+    // parser-level work in MAR-120, not the setext hazard. Tightening it to let
+    // bare-hr moves into the sample destabilizes the (seed-sampled) gate against
+    // those still-open hazards.
     if (fragmentHasHr && targetQuote !== -1) {
         return true;
     }

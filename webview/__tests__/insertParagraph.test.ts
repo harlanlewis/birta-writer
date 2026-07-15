@@ -9,11 +9,10 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import { undo } from "@milkdown/prose/history";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { historyPlugin } from "../plugins/history";
 import { insertParagraphAfter, insertParagraphBefore } from "../plugins/insertParagraph";
 import { BlockRangeSelection } from "../plugins/blockRange";
@@ -30,7 +29,7 @@ async function makeEditor(markdown: string): Promise<EditorView> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .use(historyPlugin)
         .create();
     editors.push(editor);

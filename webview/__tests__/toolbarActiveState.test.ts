@@ -7,10 +7,9 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, commandsCtx } from "@milkdown/core";
 import { toggleStrongCommand, toggleEmphasisCommand } from "@milkdown/preset-commonmark";
-import { gfm } from "@milkdown/preset-gfm";
 import { Selection, TextSelection, NodeSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { insertCalloutCommand } from "../plugins/callouts";
 import { mathPlugin } from "../plugins/math";
 import { wikiLinksPlugin } from "../plugins/wikiLinks";
@@ -32,7 +31,7 @@ async function makeEditor(md: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .use(insertCalloutCommand)
         // The atom nodes the bar reflects off a NodeSelection live in these
         // plugins — include them so the schema carries wiki_link / math_inline /

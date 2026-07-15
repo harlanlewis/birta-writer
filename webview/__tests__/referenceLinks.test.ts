@@ -10,10 +10,9 @@
  */
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, nodeViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import { createHtmlView } from "../editor";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 
 async function makeEditor(markdown: string): Promise<Editor> {
@@ -31,7 +30,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             ]);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
 }
 

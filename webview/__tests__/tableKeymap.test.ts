@@ -7,11 +7,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import { CellSelection, selectedRect, TableMap } from "@milkdown/prose/tables";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { tableKeymapPlugin } from "../plugins/tableKeymap";
 
 const TABLE_MD = "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n";
@@ -33,7 +32,7 @@ describe("table keyboard navigation", () => {
             // commonmark base keymap (whose Backspace only clears cell contents).
             .use(tableKeymapPlugin)
             .use(pureCommonmark)
-            .use(gfm)
+            .use(gfmFidelity)
             .create();
     }
 

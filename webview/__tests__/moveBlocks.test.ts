@@ -14,12 +14,11 @@
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { Plugin } from "@milkdown/prose/state";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     allFoldablePositions,
     foldedHiddenRanges,
@@ -58,7 +57,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .use(headingFoldPlugin)
         .use(historyPlugin)
         .use(contentGuardPlugin)

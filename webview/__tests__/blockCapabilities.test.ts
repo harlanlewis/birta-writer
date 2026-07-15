@@ -19,11 +19,10 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, schemaCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import * as fs from "fs";
 import * as path from "path";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     ALL_KINDS,
     BLOCK_CAPABILITIES,
@@ -48,7 +47,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         // Real guard in the loop (MAR-108): these suites exercise guarded ops.
         .use(contentGuardPlugin)
         .create();

@@ -8,11 +8,9 @@
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
-import { configureSerialization, pureCommonmark } from "../serialization";
-import { listItemSpreadBoolPlugins } from "../plugins/list";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin } from "../plugins/contentGuard";
@@ -44,10 +42,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
-        // After gfm, matching production, so list_item `spread` is a real
-        // boolean and the doc.check() assertions below hold for list docs too.
-        .use(listItemSpreadBoolPlugins)
+        .use(gfmFidelity)
         .use(headingFoldPlugin)
         .use(historyPlugin)
         // Real guard in the loop: these suites exercise moves/duplicates,
