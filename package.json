@@ -1858,7 +1858,6 @@
     "dependencies": {
         "@milkdown/core": "7.21.2",
         "@milkdown/plugin-diff": "7.21.2",
-        "@milkdown/plugin-listener": "7.21.2",
         "@milkdown/plugin-prism": "7.21.2",
         "@milkdown/preset-commonmark": "7.21.2",
         "@milkdown/preset-gfm": "7.21.2",
