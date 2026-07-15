@@ -127,6 +127,34 @@ describe("MarkdownEditorProvider word-count status bar", () => {
         expect(view.hide).toHaveBeenCalled();
     });
 
+    it("deactivating a background panel should not hide the active document's readout", async () => {
+        const { view, panelA } = await setup();
+        view.hide.mockClear();
+
+        // panelA was never the active panel (B resolved last, owning the
+        // status bar). A background panel reporting inactive — a split view, or
+        // a stray viewState event — must not blank B's still-active readout.
+        panelA.active = false;
+        viewStateHandler(panelA)({ webviewPanel: panelA });
+
+        expect(view.hide).not.toHaveBeenCalled();
+    });
+
+    it("a late deactivation after another panel activated should not hide the readout", async () => {
+        const { view, panelA, panelB } = await setup();
+        // Tab switch B→A where A(active:true) is delivered before B(active:false):
+        // A claims _activePanel and renders. The late B(active:false) must not
+        // blank A (VS Code does not guarantee viewState event ordering).
+        panelA.active = true;
+        viewStateHandler(panelA)({ webviewPanel: panelA });
+        view.hide.mockClear();
+
+        panelB.active = false;
+        viewStateHandler(panelB)({ webviewPanel: panelB });
+
+        expect(view.hide).not.toHaveBeenCalled();
+    });
+
     it("disposing the active panel should hide the readout", async () => {
         const { view, panelB } = await setup();
         view.hide.mockClear();

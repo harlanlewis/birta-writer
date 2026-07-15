@@ -393,6 +393,30 @@ describe("slash command menu plugin", () => {
         expect(menuEl()).toBeNull();
     });
 
+    it("a stale open-eligible verdict should not survive an external-sync rewrite (MAR-94 regression)", () => {
+        // Type a slash construct so the menu opens (openEligible = true).
+        typeText(v, "/foo");
+        expect(menuVisible()).toBe(true);
+        // Close it the way a blur does, WITHOUT moving the caret off the
+        // construct — openEligible stays sticky-true across the close.
+        v.dom.dispatchEvent(new FocusEvent("blur"));
+        expect(menuEl()).toBeNull();
+
+        // An inbound external file edit (git checkout / a side-by-side text
+        // edit): addToHistory:false AND external-sync, changing the doc but
+        // leaving the /foo construct intact and still caret-matchable (a
+        // leading space keeps the `/` preceded by whitespace). The verdict must
+        // NOT be preserved here (only the heading-normalization fix-up, which
+        // carries no external-sync meta, is transparent) — otherwise the menu
+        // pops open on pre-existing text the user never just typed.
+        const external = v.state.tr.insertText(" ", 1);
+        external.setMeta("addToHistory", false);
+        external.setMeta("external-sync", true);
+        v.dispatch(external);
+
+        expect(menuEl()).toBeNull();
+    });
+
     it("pasted text ending in /word should not open the menu", () => {
         const tr = v.state.tr.insertText("pasted /tab", v.state.selection.from);
         tr.setMeta("uiEvent", "paste");
