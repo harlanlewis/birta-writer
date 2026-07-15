@@ -121,6 +121,31 @@ describe("highlight round-trip byte-identity", () => {
     }
 });
 
+describe("escaped highlight literals re-escape on serialize (MAR-121)", () => {
+    // A hand-escaped `\==word==` decodes to the plain text `==word==`; without
+    // re-escaping, a fresh serialization drops the backslash and the run
+    // reparses into a highlight, silently losing the `==` bytes. These forms
+    // must survive a raw round trip byte-identically.
+    const ESCAPED = [
+        "Escaped \\==not a highlight== stays literal.\n",
+        "A \\==single== word.\n",
+        "Mid \\==höhere Café ☕== unicode.\n",
+        "- Item \\==escaped== inside.\n",
+        "> Quote \\==escaped== inside.\n",
+    ];
+    for (const form of ESCAPED) {
+        it(`round-trips ${JSON.stringify(form.trim())} byte-identically`, async () => {
+            expect(await roundTrip(form)).toBe(form);
+        });
+    }
+
+    it("does not over-escape a run the grammar rejects (== with = inside)", async () => {
+        // `==x=y==` is not a highlight (interior `=`), so it needs no
+        // backslash — the escape must fire only on genuine highlight runs.
+        expect(await roundTrip("a ==x=y== b stays text.\n")).toBe("a ==x=y== b stays text.\n");
+    });
+});
+
 describe("fixture parse census", () => {
     // Byte round-trips can't catch a mis-parse (==x== serializes the same
     // whether it's a highlight or plain text), so the fixture is pinned to

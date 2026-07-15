@@ -580,7 +580,9 @@ export function setupLinkPopup(
         popup.style.display = "flex";
         escapeLayerOff ??= registerEscapeLayer(hidePopup);
         anchorRectSource = () => anchorEl.getBoundingClientRect();
-        positionPopupAt(anchorRectSource());
+        // Position from the live rect directly (non-null) rather than through
+        // the nullable anchorRectSource field.
+        positionPopupAt(anchorEl.getBoundingClientRect());
         startReflowTracking();
     }
 

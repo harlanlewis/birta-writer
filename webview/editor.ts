@@ -60,6 +60,7 @@ import {
     tableAlignDefaultPlugin,
     wikiLinkCompletePlugin,
     listEnterPlugin,
+    listItemSpreadBoolPlugins,
     listLiftPlugin,
     listSpreadNormalizePlugin,
     pendingRangePlugin,
@@ -403,6 +404,9 @@ export async function createEditor(
         // After gfm so the extended cell schemas (null alignment default —
         // inserted columns must not write `:---` markers) win over the preset's.
         .use(tableAlignDefaultPlugin)
+        // After gfm so the list_item override (boolean `spread`, MAR-124) wins
+        // over gfm's task-list schema, which it layers on to keep `checked`.
+        .use(listItemSpreadBoolPlugins)
         .use(listener)
         .use(prism)
         .use(historyPlugin)

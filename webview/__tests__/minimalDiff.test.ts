@@ -255,3 +255,48 @@ describe("applyMinimalChanges — list and boundary behavior", () => {
         expect(applyMinimalChanges(saved, serialized)).toBe("para1 new");
     });
 });
+
+describe("applyMinimalChanges — quote-merge blank line (MAR-122)", () => {
+    it("a block moved between callouts should not keep the stale separator blank", () => {
+        // A block moves out of the WARNING callout into the IMPORTANT one; the
+        // serializer merges them (`>` continuation, no blank). The saved blank
+        // that separated the two callouts must NOT survive, or the merged quote
+        // reopens split into a separate bare blockquote.
+        const saved = "> [!IMPORTANT]\n> Purple.\n\n> [!WARNING]\n> Yellow.\n";
+        const serialized = "> [!IMPORTANT]\n> Purple.\n>\n> Yellow.\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+
+    it("a plain blockquote absorbing a following quote should not keep the blank", () => {
+        const saved = "> a\n\n> b\n";
+        const serialized = "> a\n>\n> b\n"; // merged into one blockquote
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+
+    it("two genuinely separate quotes keep their separator (no churn)", () => {
+        // The serializer keeps them separate (blank between), so the saved
+        // blank is a real separator and must be preserved.
+        const saved = "> a\n\n> b\n";
+        const serialized = "> a\n\n> c\n"; // edited b→c, still two quotes
+
+        expect(applyMinimalChanges(saved, serialized)).toBe("> a\n\n> c\n");
+    });
+
+    it("a user's double blank between separate quotes is preserved", () => {
+        // Both sides keep the quotes separate; the extra blank is the user's
+        // spacing and the merge must not canonicalize it.
+        const saved = "> a\n\n\n> b\n";
+        const serialized = "> a\n\n> b\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe("> a\n\n\n> b\n");
+    });
+
+    it("a blank between a quote and a non-quote line is untouched", () => {
+        const saved = "> a\n\nplain\n";
+        const serialized = "> a\n\nplain\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+});

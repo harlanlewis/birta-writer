@@ -1,8 +1,186 @@
 import { schemaCtx } from "@milkdown/core";
+import {
+    bulletListSchema,
+    orderedListSchema,
+} from "@milkdown/preset-commonmark";
+import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
 import { keymap } from "@milkdown/prose/keymap";
 import { Plugin, TextSelection } from "@milkdown/prose/state";
 import { liftListItem } from "@milkdown/prose/schema-list";
 import { $prose } from "@milkdown/utils";
+
+// ── Parse-time spread coercion (MAR-124) ────────────────────────────────────
+//
+// The mdast `spread` prop is a real boolean from remark, but Milkdown's stock
+// list runners stringify it (`${node.spread}`) before storing it as the PM
+// attr, leaving `"true"`/`"false"` on every freshly parsed list. That string
+// fails the schema's own `validate: "boolean"` (so `doc.check()` throws on any
+// parsed list before a single edit) and skips mdast-util-to-markdown's
+// tight-list join on a raw round trip, loosening tight lists. The fidelity
+// serializer re-coerces on the way out and `listSpreadNormalizePlugin` fixes
+// it on the first edit, but the parsed doc itself was never valid. These
+// extended schemas override the parse runner to store a real boolean.
+//
+// Because that makes the PM `spread` attr a genuine boolean, the ordered_list
+// and list_item TOMARKDOWN runners — which hardcode `node.attrs.spread ===
+// "true"` — must be overridden too, or they compute `false` for every list
+// (`true === "true"` is false) and tighten loose lists on save. bullet_list's
+// stock toMarkdown passes the attr through untouched, so it needs no override.
+// `attrSpreadBool` accepts either form, so a doc still carrying a string
+// `spread` (e.g. from Milkdown's ordered-list-detection plugin, which writes
+// "true" on edit) also serializes correctly.
+//
+// Registered AFTER the preset so they override the stock definitions (the same
+// override-by-registration-order pattern math.ts uses for `code_block`);
+// list_item registers after gfm — see its schema doc below.
+
+interface ListMdastNode {
+    spread?: unknown;
+    start?: number;
+    label?: unknown;
+    children?: unknown;
+}
+
+/** The mdast boolean spread, or the schema's null-fallback, as a real boolean. */
+function spreadBool(node: ListMdastNode, fallback: boolean): boolean {
+    return node.spread != null ? Boolean(node.spread) : fallback;
+}
+
+/** A PM `spread` attr as a real boolean, tolerating the legacy string form. */
+function attrSpreadBool(spread: unknown): boolean {
+    return spread === true || spread === "true";
+}
+
+export const bulletListSpreadBoolSchema = bulletListSchema.extendSchema((prev) => (ctx) => {
+    const base = prev(ctx);
+    return {
+        ...base,
+        parseMarkdown: {
+            match: base.parseMarkdown.match,
+            runner: (state, node, type) => {
+                state
+                    .openNode(type, { spread: spreadBool(node as ListMdastNode, false) })
+                    .next(node.children)
+                    .closeNode();
+            },
+        },
+    };
+});
+
+export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev) => (ctx) => {
+    const base = prev(ctx);
+    return {
+        ...base,
+        parseMarkdown: {
+            match: base.parseMarkdown.match,
+            runner: (state, node, type) => {
+                const n = node as ListMdastNode;
+                state
+                    .openNode(type, { spread: spreadBool(n, true), order: n.start ?? 1 })
+                    .next(node.children)
+                    .closeNode();
+            },
+        },
+        toMarkdown: {
+            match: base.toMarkdown.match,
+            runner: (state, node) => {
+                state
+                    .openNode("list", undefined, {
+                        ordered: true,
+                        start: node.attrs["order"] ?? 1,
+                        spread: attrSpreadBool(node.attrs["spread"]),
+                    })
+                    .next(node.content)
+                    .closeNode();
+            },
+        },
+    };
+});
+
+/**
+ * `list_item` is owned by preset-gfm, not commonmark: gfm's
+ * `extendListItemSchemaForTask` re-registers it (adding the task-list `checked`
+ * attr) AFTER commonmark, and both its parse and serialize runners stringify /
+ * string-compare `spread`. So the coercion for list_item must layer on top of
+ * GFM's task schema — preserving `checked` and the task parseDOM/toDOM — and
+ * register AFTER gfm to win (schema registration is last-wins per node id). The
+ * runners below mirror GFM's own (RE-DIFF ON EVERY MILKDOWN UPGRADE) with the
+ * sole change that `spread` is a real boolean on both sides.
+ */
+export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema(
+    (prev) => (ctx) => {
+        const base = prev(ctx);
+        return {
+            ...base,
+            parseMarkdown: {
+                match: base.parseMarkdown.match,
+                runner: (state, node, type) => {
+                    const n = node as ListMdastNode & { checked?: unknown };
+                    const label = n.label != null ? `${n.label}.` : "•";
+                    const listType = n.label != null ? "ordered" : "bullet";
+                    const spread = spreadBool(n, true);
+                    const attrs =
+                        n.checked == null
+                            ? { label, listType, spread }
+                            : { label, listType, spread, checked: Boolean(n.checked) };
+                    state.openNode(type, attrs).next(node.children).closeNode();
+                },
+            },
+            toMarkdown: {
+                match: base.toMarkdown.match,
+                runner: (state, node) => {
+                    const spread = attrSpreadBool(node.attrs["spread"]);
+                    if (node.attrs["checked"] == null) {
+                        state.openNode("listItem", undefined, { spread })
+                            .next(node.content)
+                            .closeNode();
+                    } else {
+                        state
+                            .openNode("listItem", undefined, {
+                                label: node.attrs["label"],
+                                listType: node.attrs["listType"],
+                                spread,
+                                checked: node.attrs["checked"],
+                            })
+                            .next(node.content)
+                            .closeNode();
+                    }
+                },
+            },
+        };
+    },
+);
+
+/**
+ * bullet_list / ordered_list overrides, flattened for pureCommonmark (they
+ * replace the stock commonmark schemas — see listSpreadReplacedPlugins). The
+ * list_item override ships separately (listItemSpreadBoolPlugins) because it
+ * must register after gfm.
+ */
+export const listSpreadBooleanPlugins = [
+    bulletListSpreadBoolSchema,
+    orderedListSpreadBoolSchema,
+].flat();
+
+/** The list_item override, registered AFTER gfm (see the schema doc above). */
+export const listItemSpreadBoolPlugins = [listItemSpreadBoolSchema].flat();
+
+/**
+ * The stock commonmark list schemas the bullet/ordered overrides replace.
+ * `pureCommonmark` filters these out before adding `listSpreadBooleanPlugins`
+ * so only the coercing schemas register — the ProseMirror parser reads one
+ * parseMarkdown runner per node id from the winning schema, so a stock schema
+ * left in place would keep emitting string `spread`. (list_item is not here:
+ * gfm re-registers it after commonmark, so the list_item override wins by
+ * registering after gfm instead of by filtering.) Same pattern as
+ * sourceStyle/tableBreaks.
+ */
+export const listSpreadReplacedPlugins = new Set<unknown>([
+    bulletListSchema.ctx,
+    bulletListSchema.node,
+    orderedListSchema.ctx,
+    orderedListSchema.node,
+]);
 
 function isEmptyListItem(item: any): boolean {
     return (

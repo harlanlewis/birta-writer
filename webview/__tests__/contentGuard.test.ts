@@ -281,9 +281,28 @@ describe("guard veto — tagged moves", () => {
         expect(guardErrors()).toEqual([]);
     });
 
-    it("a tagged move gaining more than the single refill paragraph should be vetoed", async () => {
-        // The only legal gain is the ONE empty paragraph deleteRange refills
-        // a fully-emptied doc with — two synthesized paragraphs is a bug.
+    it("a tagged move that synthesizes a content-bearing paragraph should be vetoed", async () => {
+        // A move conserves content, so gaining a paragraph with text is a bug.
+        // (Empty paragraphs are non-content — the fingerprint no longer counts
+        // them, MAR-123 — so this exercises a CONTENT gain, the real invariant.)
+        const editor = await makeEditor("Alpha\n\nBravo");
+        const v = view(editor);
+        const docBefore = v.state.doc;
+        const synthesized = v.state.schema.nodes["paragraph"]!.create(
+            null,
+            v.state.schema.text("synthesized"),
+        );
+        const tr = v.state.tr.insert(0, synthesized);
+        tagContentGuard(tr, { kind: "move" });
+        v.dispatch(tr);
+        expect(v.state.doc).toBe(docBefore);
+        expect(guardErrors().some((line) => line.includes("move blocked"))).toBe(true);
+    });
+
+    it("a tagged move that synthesizes only empty paragraphs should apply (non-content)", async () => {
+        // Empty paragraphs carry no bytes and vanish on save (MAR-123), so
+        // creating them is not a conservation violation — the guard must not
+        // veto a move whose only "gain" is contentless paragraphs.
         const editor = await makeEditor("Alpha\n\nBravo");
         const v = view(editor);
         const docBefore = v.state.doc;
@@ -291,8 +310,9 @@ describe("guard veto — tagged moves", () => {
         const tr = v.state.tr.insert(0, para).insert(0, para);
         tagContentGuard(tr, { kind: "move" });
         v.dispatch(tr);
-        expect(v.state.doc).toBe(docBefore);
-        expect(guardErrors().some((line) => line.includes("move blocked"))).toBe(true);
+        expect(v.state.doc).not.toBe(docBefore); // applied, not vetoed
+        expect(v.state.doc.childCount).toBe(docBefore.childCount + 2);
+        expect(guardErrors()).toEqual([]);
     });
 
     it("a legal move should flash its landing and report success", async () => {

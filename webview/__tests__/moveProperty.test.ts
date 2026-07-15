@@ -9,8 +9,7 @@
  * (editing/moveBlocks, blockMenu's duplicateBlockRange), asserting after
  * every op:
  *
- *   - the doc still satisfies every schema invariant
- *     (checkDocModuloSpreadQuirk);
+ *   - the doc still satisfies every schema invariant (strict doc.check());
  *   - fingerprint conservation per the guard's OWN oracle — checkMove for
  *     moves, checkDuplicate (against the duplicate's declared gain) for
  *     duplicates — the exact functions the runtime guard runs;
@@ -43,7 +42,6 @@ import {
 import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
 import { duplicateBlockRange } from "../components/blockMenu";
 import {
-    checkDocModuloSpreadQuirk,
     childrenInRange,
     editorView,
     enumerateMovePairs,
@@ -241,7 +239,7 @@ describe("seeded move/duplicate property suite", () => {
                 }
                 successes++;
                 expect(
-                    () => checkDocModuloSpreadQuirk(v.state.doc),
+                    () => v.state.doc.check(),
                     `doc.check() failed — ${context()}`,
                 ).not.toThrow();
                 expect(reparseDiff(editor, v), `re-parse equivalence broken — ${context()}`).toBe("");

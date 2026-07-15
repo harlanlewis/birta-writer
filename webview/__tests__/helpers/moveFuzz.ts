@@ -13,6 +13,7 @@ import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
 import { configureSerialization, pureCommonmark } from "../../serialization";
+import { listItemSpreadBoolPlugins } from "../../plugins/list";
 import { moveRangeAt } from "../../components/blockMenu";
 import {
     blockBoundaryPositions,
@@ -88,7 +89,10 @@ export async function makeCorpusEditor(
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm);
+        .use(gfm)
+        // After gfm so the boolean-`spread` list_item override wins over gfm's
+        // task-list schema (MAR-124), mirroring the production editor.
+        .use(listItemSpreadBoolPlugins);
     for (const plugin of extras) {
         builder = builder.use(plugin);
     }
@@ -106,35 +110,10 @@ export function sig(text: string): string[] {
     return text.split("\n").filter((l) => l.trim() !== "");
 }
 
-/**
- * doc.check(), modulo ONE documented upstream quirk: Milkdown's parse runner
- * stores the list `spread` attr as a STRING ("true"/"false") while the
- * schema's validate declares boolean, so a freshly parsed doc containing any
- * list fails check() outright — before any gesture runs. The quirk is known
- * and compensated downstream (plugins/fidelitySerializer.ts delta (c)
- * re-coerces at serialize time; listSpreadNormalizePlugin rewrites to real
- * booleans on edit), so it is neutralized here — by coercing, never by
- * skipping: every OTHER schema invariant (content expressions, marks,
- * remaining attrs) is still enforced on the whole tree.
- * TODO(MAR-113 follow-up): fix the string spread at parse time, then inline
- * plain doc.check() here.
- */
-export function checkDocModuloSpreadQuirk(doc: ProseNode): void {
-    const coerce = (node: ProseNode): ProseNode => {
-        if (node.isText) {
-            return node;
-        }
-        const children: ProseNode[] = [];
-        node.forEach((child: ProseNode) => children.push(coerce(child)));
-        const spread = node.attrs["spread"];
-        const attrs =
-            typeof spread === "string"
-                ? { ...node.attrs, spread: spread === "true" }
-                : node.attrs;
-        return node.type.create(attrs, Fragment.from(children), node.marks);
-    };
-    coerce(doc).check();
-}
+// (Historical: `checkDocModuloSpreadQuirk` lived here to neutralize Milkdown's
+// string-`spread` parse quirk before doc.check(). MAR-124 fixed the quirk at
+// parse time — the list-schema overrides in plugins/list.ts store `spread` as a
+// real boolean — so the generative suites now assert plain `doc.check()`.)
 
 // ── Seeded PRNG ─────────────────────────────────────────────────────────────
 
@@ -248,48 +227,48 @@ export function enumerateMovePairs(
 // and excluded — by this narrow predicate, never by weakening assertions —
 // from the sampled pair space until fixed:
 //
-//   (A) Directive nesting: a container_directive moved inside another
-//       serializes with EQUAL-length fences (`:::` inside `:::`), which
-//       fails to re-nest on reparse in some body contexts (observed: the
-//       inner fence following a list) — the inner directive flattens to
-//       paragraph text.
+//   (A) FIXED (MAR-120): directive nesting — the serializer now lengthens the
+//       OUTER fence past any fence in its body (`::::` outside `:::`, the
+//       CommonMark convention), so a nested directive re-nests on reparse.
+//       The fence colon count is structural, so the content fingerprint
+//       normalizes it (contentGuard container_directive marker). No longer
+//       excluded; held to the full contract by the gate.
 //   (B) Fence re-pairing: a closed directive moved below raw `:::`-prefixed
 //       prose (an unclosed fence that parses as a paragraph) lets that
 //       prose line pair with the directive's close fence on reparse.
-//   (C) Highlight escaping: literal `\==text==` prose loses its backslash
-//       when the serializer re-emits it, so reparse turns it into a
-//       highlight mark and the `==` bytes vanish from the text.
-//   (D) Quote splice: moving a block from one quote-family container
-//       (callout/blockquote) into another leaves the minimal-diff merge a
-//       stale blank line where the dissolved source container sat, so the
-//       merged file splits the target quote — the moved block reopens in a
-//       bare blockquote instead of the container it was dropped into.
-//   (E) Empty paragraphs: an empty paragraph (e.g. a callout's blank quote
-//       line, or the auto-fill of an empty callout) serializes to NOTHING
-//       once moved, so it vanishes from the reopened file.
+//   (C) FIXED (MAR-121): highlight escaping — a literal `\==text==` in prose
+//       now re-serializes with its backslash via the highlight `unsafe`
+//       pattern (plugins/highlight.ts), so it stays plain text on reparse.
+//       No longer excluded here; held to the full contract by the gate.
+//   (D) FIXED (MAR-122): quote splice — moving a block between quote-family
+//       containers no longer leaves a stale separator blank in the merge.
+//       `applyMinimalChanges`'s gapBefore guard defers to the serializer's
+//       spacing when a saved blank would split a quote the serializer kept
+//       contiguous, so the moved block reopens inside its drop target. No
+//       longer excluded here; held to the full contract by the gate.
+//   (E) FIXED (MAR-123): empty paragraphs — an empty (or hardbreak-only)
+//       paragraph serializes to nothing and never round-trips in pure
+//       Markdown, so it is NOT content. The content fingerprint
+//       (contentGuard.isBlankParagraph) no longer counts it, so a move that
+//       relocates one (it then vanishes on save) or drops a container's
+//       auto-fill blank conserves everything that IS content. No longer
+//       excluded here; held to the full contract by the gate.
 //   (F) Aside nesting: a notion_callout (`<aside>` HTML) moved inside
 //       another aside or a directive is not recognized by the sub-parse on
 //       reopen — it flattens into raw html of its new parent.
-//   (G) hr into a directive: an `hr` moved to the head of a directive body
-//       serializes directly under the open fence, and `fence-line + ---`
-//       reparses as a SETEXT HEADING, destroying both the hr and the fence.
+//   (G) FIXED (MAR-120) for directives: an `hr` moved to the head of a
+//       directive body used to serialize directly under the open fence, and
+//       `fence-line + ---` reparsed as a SETEXT HEADING. The directive
+//       serializer now emits a blank line after the open fence when the body
+//       opens on a setext-underline-shaped line. (The same hazard in a
+//       blockquote/callout — `> text` + `> ---` — is NOT yet fixed; the
+//       `fragmentHasHr && targetQuote` guard below still excludes it.)
 //
-// TODO(MAR-113 follow-up): fix (A)/(B)/(G) in the directives serializer
-// (derive fence length from nesting depth; escape or guard raw fence-shaped
-// prose; keep a blank line after the open fence when the first child is
-// setext-hazardous), (C) in the highlight stringifier (escape literal
-// delimiter runs), (D) in the minimal-diff merge (never keep a blank line
-// that splits a serialized quote block), (E)/(F) in the serializer's
-// empty-paragraph and aside handling — then delete this predicate and the
-// it.fails pins.
-
-/** Literal text that the highlight grammar would match on reparse
- * (`==`, no edge spaces, no `=` inside). */
-const HIGHLIGHT_LITERAL = /==[^\s=](?:[^=]*[^\s=])?==/;
-
-const isCodeContext = (node: ProseNode, parent: ProseNode | null): boolean =>
-    parent?.type.name === "code_block" ||
-    node.marks.some((m) => m.type.name.toLowerCase().includes("code"));
+// TODO(MAR-113 follow-up): (A), (C), (D), (E), and (G)-for-directives are
+// fixed (see the class list above). Remaining: (B) raw fence-shaped prose
+// re-pairing with a moved container's close fence, (F) `<aside>` nesting, and
+// the (G) setext hazard inside blockquote/callout containers — then delete
+// this predicate and the remaining it.fails pins.
 
 const QUOTE_FAMILY = new Set(["blockquote", "callout", "notion_callout"]);
 
@@ -302,25 +281,6 @@ function quoteAncestorPos(doc: ProseNode, pos: number): number {
         }
     }
     return -1;
-}
-
-/** A textblock with no text bytes: empty, or hardbreak-only. Both serialize
- * to nothing (or a bare continuation) once moved out of the context that
- * produced them. */
-function isBlankTextblock(node: ProseNode): boolean {
-    if (!node.isTextblock) {
-        return false;
-    }
-    if (node.content.size === 0) {
-        return true;
-    }
-    let blank = true;
-    node.forEach((child: ProseNode) => {
-        if (child.type.name !== "hardbreak") {
-            blank = false;
-        }
-    });
-    return blank;
 }
 
 export function knownSavePipelineHazard(
@@ -336,10 +296,8 @@ export function knownSavePipelineHazard(
     let fragmentHasDirective = false;
     let fragmentHasAside = false;
     let fragmentHasHr = false;
-    let fragmentHasBlankTextblock = false;
     let fragmentHasRawFence = false;
-    let fragmentHasHighlightLiteral = false;
-    fragment.descendants((node: ProseNode, _pos: number, parent: ProseNode | null) => {
+    fragment.descendants((node: ProseNode) => {
         if (node.type.name === "container_directive") {
             fragmentHasDirective = true;
         }
@@ -348,11 +306,6 @@ export function knownSavePipelineHazard(
         }
         if (node.type.name === "hr") {
             fragmentHasHr = true;
-        }
-        if (isBlankTextblock(node) && !parent?.type.name.startsWith("table")) {
-            // Table cells legitimately hold break-only content — the
-            // dedicated cell-break serialization handles them.
-            fragmentHasBlankTextblock = true;
         }
         if (node.isTextblock && node.textContent.startsWith(":::")) {
             fragmentHasRawFence = true;
@@ -365,54 +318,31 @@ export function knownSavePipelineHazard(
                 fragmentHasRawFence = true;
             }
         }
-        if (
-            node.isText &&
-            !isCodeContext(node, parent) &&
-            HIGHLIGHT_LITERAL.test(node.text ?? "")
-        ) {
-            fragmentHasHighlightLiteral = true;
-        }
         return true;
     });
-    if (fragmentHasHighlightLiteral) {
-        return true; // (C)
-    }
-    if (fragmentHasBlankTextblock) {
-        return true; // (E) — the moved blank block itself vanishes
-    }
     const $target = doc.resolve(target);
-    // (E) from the target side: inserting into a container whose body holds
-    // an auto-filled blank textblock (an empty `> [!NOTE]` callout) stops
-    // that blank block round-tripping — it only survives while it is the
-    // container's ONLY child (re-created by createAndFill on reopen).
-    if ($target.depth > 0) {
-        let targetParentHasBlank = false;
-        $target.parent.forEach((child: ProseNode) => {
-            if (isBlankTextblock(child)) {
-                targetParentHasBlank = true;
-            }
-        });
-        if (targetParentHasBlank) {
-            return true;
-        }
-    }
-    const sourceQuote = quoteAncestorPos(doc, source.from);
     const targetQuote = quoteAncestorPos(doc, target);
-    if (sourceQuote !== -1 && targetQuote !== -1 && sourceQuote !== targetQuote) {
-        return true; // (D)
-    }
     // (G) in quote containers too: `> paragraph` + `> ---` reparses as a
     // setext heading exactly like it does under a directive fence.
     if (fragmentHasHr && targetQuote !== -1) {
         return true;
     }
-    if (fragmentHasDirective || fragmentHasAside || fragmentHasHr || fragmentHasRawFence) {
+    // (F) Aside nesting is unfixed: a notion_callout (`<aside>` html) moved
+    // inside another container (directive or aside) flattens to raw html on
+    // reopen — CommonMark HTML-block parsing cannot nest `<aside>` (the blank
+    // line before the inner aside ends the outer block). Directive and hr
+    // nesting into a directive/aside are FIXED (MAR-120 A/G: the outer fence
+    // is lengthened past the inner, and a setext-hazard first line gets a blank
+    // line), so only an aside-bearing fragment is excluded here.
+    if (fragmentHasAside) {
         for (let d = $target.depth; d > 0; d--) {
             const name = $target.node(d).type.name;
             if (name === "container_directive" || name === "notion_callout") {
-                return true; // (A) / (F) / (G)
+                return true; // (F)
             }
         }
+    }
+    if (fragmentHasDirective || fragmentHasAside || fragmentHasHr || fragmentHasRawFence) {
         // (B): raw unclosed openers elsewhere in the doc — `:::` prose or an
         // unclosed `<aside>` html atom — can re-pair with the moved node's
         // own close fence/tag once the move puts them in range of each other.

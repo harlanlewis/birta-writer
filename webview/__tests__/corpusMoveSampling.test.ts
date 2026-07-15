@@ -6,9 +6,8 @@
  * uses, and a deterministic pseudo-random sample of moves is executed
  * through the hardened primitive. After each move:
  *
- *   (a) the doc still satisfies every schema invariant
- *       (checkDocModuloSpreadQuirk — full doc.check() modulo the one
- *       documented upstream string-`spread` parse quirk);
+ *   (a) the doc still satisfies every schema invariant (strict doc.check(),
+ *       now that list `spread` parses as a real boolean — MAR-124);
  *   (b) content is conserved per the guard's OWN oracle (checkMove over
  *       fingerprintDoc/diffFingerprints — the exact functions the runtime
  *       guard runs, so test and guard cannot drift), and the guard itself
@@ -56,7 +55,6 @@ import {
 import { dissolvedMarkersFor, moveBlocks } from "../editing/moveBlocks";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 import {
-    checkDocModuloSpreadQuirk,
     editorView,
     enumerateMovePairs,
     hashString,
@@ -173,9 +171,10 @@ function sampleMoves(
             expect(v.state.doc, `refused move mutated the doc — ${context}`).toBe(docBefore);
             continue;
         }
-        // (a) Schema validity.
+        // (a) Schema validity — strict doc.check() now that list `spread`
+        // parses as a real boolean (MAR-124).
         expect(
-            () => checkDocModuloSpreadQuirk(v.state.doc),
+            () => v.state.doc.check(),
             `doc.check() failed — ${context}`,
         ).not.toThrow();
         // (b) Conservation per the guard's own oracle — including the same
@@ -226,14 +225,17 @@ describe("corpus move-sampling gate", () => {
 
 // ── Pinned repros for the real bugs the gate surfaced ───────────────────────
 //
-// Three PRE-EXISTING serializer round-trip bugs, found by this gate on its
+// PRE-EXISTING serializer/merge round-trip bugs, found by this gate on its
 // first run (see knownSavePipelineHazard in helpers/moveFuzz for the class
-// descriptions and the follow-up TODO). Each repro is minimal and pinned
-// with `it.fails`: the test PASSES today because the bug reproduces, and the
-// moment a serializer fix lands, `it.fails` starts failing — forcing the pin
-// to be promoted to a normal assertion and the hazard exclusion deleted.
-// These are NOT weakened gate assertions; they are the loud record of what
-// was excluded and why.
+// descriptions and the follow-up TODO). Each repro is minimal. A repro that is
+// still broken is pinned with `it.fails` (it PASSES today because the bug
+// reproduces; the moment a fix lands, `it.fails` starts failing, forcing the
+// pin to become a normal assertion and its hazard exclusion to be deleted). A
+// repro whose fix has landed is a normal `it` (labelled "MAR-NN, fixed") and
+// its exclusion is gone, so the gate now holds that shape to the full
+// contract. Remaining `it.fails`: B (raw fence re-pairing) and F (aside
+// nesting) — see MAR-120. These are NOT weakened gate assertions; they are the
+// loud record of what is excluded and why.
 
 /** Position of the first node of `type` whose text matches, or -1. */
 function findPos(doc: ProseNode, type: string, text: string): number {
@@ -258,7 +260,7 @@ function reparseDelta(editor: Editor, v: EditorView): string {
 }
 
 describe("known save-pipeline hazards — pinned repros (it.fails until the serializer is fixed)", () => {
-    it.fails("hazard A: a directive moved inside another directive should survive save+reopen", async () => {
+    it("hazard A (MAR-120, fixed): a directive moved inside another directive survives save+reopen", async () => {
         // The outer directive must end with a LIST for the bug to bite: a
         // trivially-nested `:::tip` after a paragraph happens to reparse,
         // but the corpus shape (nested fence following a list) does not.
@@ -276,13 +278,12 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
 
         expect(moveBlocks(v, { from: innerPos, to: innerPos + inner.nodeSize }, insideNote)).toBe(true);
 
-        // BUG: both directives serialize with 3-colon fences; after the
-        // list, the nested `:::info` fence fails to reparse as a directive
-        // and flattens to paragraph text.
+        // The serializer now lengthens the outer fence past the inner
+        // (`::::note` around `:::info`), so the nested directive re-nests.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard D: a block moved between callouts should reopen inside its drop target", async () => {
+    it("hazard D (MAR-122, fixed): a block moved between callouts reopens inside its drop target", async () => {
         const source = "> [!IMPORTANT]\n> Purple.\n\n> [!WARNING]\n> Yellow.\n";
         const editor = await makeEditor(source);
         const v = editorView(editor);
@@ -305,9 +306,10 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         const merged = applyMinimalChanges(source, editor.action(getMarkdown()), protection);
         const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
 
-        // BUG: the minimal-diff merge keeps the stale blank line where the
-        // dissolved WARNING callout sat, splitting the IMPORTANT quote — the
-        // moved paragraph reopens in a bare blockquote instead.
+        // The minimal-diff merge no longer keeps the stale blank line where the
+        // dissolved WARNING callout sat (gapBefore's quote-split guard defers to
+        // the serializer's contiguous spacing), so the moved paragraph reopens
+        // inside the IMPORTANT callout instead of a split-off bare blockquote.
         expect(
             formatFingerprintDiff(
                 diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
@@ -337,7 +339,7 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard C: literal '\\==text==' prose should stay escaped after a move", async () => {
+    it("hazard C (MAR-121, fixed): literal '\\==text==' prose stays escaped after a move", async () => {
         const editor = await makeEditor(
             "Escaped \\==not a highlight== stays literal.\n\nAnchor paragraph.",
         );
@@ -346,13 +348,13 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
 
         expect(moveBlocks(v, { from: 0, to: para.nodeSize }, v.state.doc.content.size)).toBe(true);
 
-        // BUG: the serializer re-emits the text without the backslash, so
-        // reparse turns `==not a highlight==` into a highlight mark and the
-        // `==` bytes vanish from the text.
+        // The highlight `unsafe` pattern (plugins/highlight.ts) re-escapes the
+        // literal `==` opener, so reparse keeps it plain text — no highlight
+        // mark, no lost `==` bytes.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard E: an empty paragraph moved to the top level should survive save+reopen", async () => {
+    it("hazard E (MAR-123, fixed): moving an empty paragraph conserves content", async () => {
         // `> [!NOTE]` with no body auto-fills an empty paragraph.
         const editor = await makeEditor("> [!NOTE]\n\nAfter.");
         const v = editorView(editor);
@@ -361,8 +363,10 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
 
         expect(moveBlocks(v, { from: emptyPos, to: emptyPos + 2 }, v.state.doc.content.size)).toBe(true);
 
-        // BUG: the empty paragraph serializes to nothing — the block the
-        // user moved simply vanishes from the reopened file.
+        // The empty paragraph serializes to nothing and does not reopen — but
+        // an empty paragraph is not content (it cannot round-trip in pure
+        // Markdown), so the content fingerprint no longer counts it and the
+        // save pipeline conserves everything that IS content.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
@@ -390,7 +394,7 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard G: an hr moved to the head of a directive body should stay an hr", async () => {
+    it("hazard G (MAR-120, fixed): an hr moved to the head of a directive body stays an hr", async () => {
         const editor = await makeEditor(':::info{title="T"}\nBody paragraph.\n:::\n\n---');
         const v = editorView(editor);
         const hrPos = findPos(v.state.doc, "hr", "");
@@ -399,9 +403,10 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         // Target: the first boundary inside the directive.
         expect(moveBlocks(v, { from: hrPos, to: hrPos + 1 }, 1)).toBe(true);
 
-        // BUG: the hr serializes directly under the open fence, and
-        // `fence-line + ---` reparses as a setext heading — destroying both
-        // the hr and the directive.
+        // The directive serializer now emits a blank line after the open fence
+        // when the body opens on a setext-underline-shaped line, so `---`
+        // reparses as a thematic break instead of turning the fence into a
+        // setext heading.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 });

@@ -279,3 +279,29 @@ describe("editing inside a directive", () => {
         await editor.destroy();
     });
 });
+
+describe("nested directive fences (MAR-120 case A)", () => {
+    // The outer fence must be strictly longer than any fence in its body, or
+    // the inner directive's close fence closes the outer one on reparse and
+    // the inner flattens. The serializer derives the length from the body.
+    it("a nested directive round-trips with a longer outer fence", async () => {
+        const doc = "::::note\nOuter.\n\n:::tip\nInner.\n:::\n\n::::\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("three levels of nesting keep each fence longer than the one it contains", async () => {
+        const doc = ":::::a\nA.\n\n::::b\nB.\n\n:::c\nC.\n:::\n\n::::\n\n:::::\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a nested directive parses as a directive (not flattened text)", async () => {
+        const { editor, view } = await makeEditor("::::note\nOuter.\n\n:::tip\nInner.\n:::\n\n::::\n");
+        const names: string[] = [];
+        view.state.doc.descendants((node) => {
+            if (node.type.name === "container_directive") names.push(node.attrs["name"] as string);
+            return true;
+        });
+        expect(names).toEqual(["note", "tip"]);
+        await editor.destroy();
+    });
+});
