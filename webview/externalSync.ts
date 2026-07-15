@@ -65,9 +65,11 @@ export function applyExternalSync(editor: Editor, newMarkdown: string): boolean 
             // keep it out of the webview's local undo history — these changes
             // originate outside the webview (VS Code's own undo/redo, git, a
             // side-by-side text editor), so they must not create phantom
-            // entries in the ProseMirror history stack. Marking addToHistory
-            // false also makes plugin-listener skip the transaction, which
-            // suppresses the save-pipeline echo back to the extension.
+            // entries in the ProseMirror history stack. The addToHistory tag
+            // governs ONLY undo history: suppressing the save-pipeline echo
+            // back to the extension is the caller's job (`_applyingExternal`
+            // in editor.ts), since the doc-change hook that now drives saves
+            // reports every doc change regardless of how it is tagged.
             tr.setMeta("external-sync", true);
             tr.setMeta("addToHistory", false);
             view.dispatch(tr);

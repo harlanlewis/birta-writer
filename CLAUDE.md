@@ -266,3 +266,16 @@ keystroke — the first breaks the crash-safety window, the second reintroduces
 per-keystroke O(n) cost. (Note: on very large documents typing itself is still
 bounded by ProseMirror's per-keystroke view reconciliation — a separate,
 document-size-scaling cost unrelated to this sync pipeline.)
+
+**`webview/syncScheduler.ts` must be the ONLY delay in this pipeline.** Its
+trigger is `webview/plugins/docChange.ts`, which reports every doc-changing
+transaction synchronously. Never put a debounce/throttle upstream of it, and
+never route the trigger through one — Milkdown's `@milkdown/plugin-listener`
+(unconditional trailing `debounce(fn, 200)`) used to sit there and broke two of
+the three invariants above at once: the first keystroke took ~208 ms to dirty
+the document (#2), and because a *trailing* debounce resets on every keystroke,
+continuous typing never fired it at all, so the scheduler was never asked, its
+max-wait never engaged, and the document stayed clean for the whole burst — a
+Cmd+S mid-burst was a no-op and hot exit backed up stale bytes (MAR-145). The
+scheduler already implements leading edge + trailing + max-wait together; a
+second timer upstream can only starve it. Pinned by `e2e/syncLatency`.

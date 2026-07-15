@@ -3,11 +3,11 @@
  *
  *   createEditor (webview/editor.ts, the full production plugin stack)
  *     → user edit (view.dispatch)
- *     → milkdown listener markdownUpdated (lodash debounce, 200ms)
+ *     → docChangePlugin reports the change synchronously
+ *     → syncScheduler (leading edge → trailing debounce → max-wait)
  *     → applyMinimalChanges against the saved baseline, with round-trip
  *       protection computed from the loaded file
- *     → editor.ts's own 300ms debounce → onUpdate
- *     → notifyUpdate → postMessage bytes to the Extension.
+ *     → onUpdate → notifyUpdate → postMessage bytes to the Extension.
  *
  * This is the seam that decides WHAT BYTES land in the user's file, so the
  * assertions are on exact file bytes: an edit must change only its own
@@ -38,7 +38,7 @@ beforeAll(() => {
 });
 import { editorViewCtx, type Editor } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
-import { createEditor } from "../editor";
+import { createEditor, syncExternalContent } from "../editor";
 import { notifyUpdate } from "../messaging";
 
 /** A file full of constructs a zero-edit round trip would destroy. */
@@ -81,7 +81,7 @@ function postedUpdates(): string[] {
         .map((msg) => msg.content!);
 }
 
-describe("webview save pipeline (edit → markdownUpdated → minimal diff → bytes)", () => {
+describe("webview save pipeline (edit → doc change → minimal diff → bytes)", () => {
     let editor: Editor;
     let onUpdate: ReturnType<typeof vi.fn>;
 
@@ -173,6 +173,41 @@ describe("webview save pipeline (edit → markdownUpdated → minimal diff → b
         );
         expect(saved[0]).toContain("=====");
         expect(saved[0]).toContain("[1]: https://example.com/");
+    });
+
+    it("the first edit after a lull should dirty the document within a frame, not a debounce", async () => {
+        // CLAUDE.md sync invariant #2: the first edit after a save must be
+        // save-capturable "the moment the user perceives it" —
+        // onWillSaveTextDocument only fires for a DIRTY document, so an edit
+        // that takes ~200ms to reach the extension is an edit a fast Cmd+S
+        // silently doesn't write. Regression pin for MAR-145: the trigger used
+        // to ride @milkdown/plugin-listener's `updated`, whose unconditional
+        // lodash debounce(fn, 200) sat UPSTREAM of syncScheduler and defeated
+        // its leading edge. The scheduler arms the leading edge at delay 0
+        // (async, so the keypress itself stays free), hence one timer tick.
+        const v = view(editor);
+
+        v.dispatch(v.state.tr.insertText(" now", posAfterText(v, "Some paragraph.")));
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(postedUpdates()).toEqual([
+            INITIAL.replace("Some paragraph.", "Some paragraph. now"),
+        ]);
+    });
+
+    it("an inbound external change should not echo back to the extension as a save", async () => {
+        // The content came FROM the file, so re-posting it would be a pointless
+        // write (and a serialize the user pays for). plugin-listener used to
+        // skip these for free by ignoring `addToHistory: false`; docChangePlugin
+        // reports every doc change, so editor.ts suppresses the echo explicitly
+        // (_applyingExternal). Guards that the suppression survived the MAR-145
+        // rewiring.
+        vi.useRealTimers();
+        expect(syncExternalContent("Title\n=====\n\nExternally rewritten.\n")).toBe(true);
+        vi.useFakeTimers();
+        await vi.advanceTimersByTimeAsync(1000);
+
+        expect(postedUpdates()).toEqual([]);
     });
 
     it("before any user interaction the pipeline must not post an update", async () => {
