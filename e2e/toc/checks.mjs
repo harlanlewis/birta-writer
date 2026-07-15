@@ -86,4 +86,18 @@ export async function run({ page, check, baseUrl }) {
     }));
     check("leaving the tab/panel retracts the flyout",
         !retracted.flyout && !retracted.bodyFlag, JSON.stringify(retracted));
+
+    // ── Keyboard: the tab is focusable (Tab order); focus flies it out, and
+    // Enter docks it open persistently (a11y — not pointer-only) ──
+    await page.evaluate(() => document.querySelector(".toc-toggle-tab").focus());
+    await page.waitForTimeout(350);
+    check("focusing the tab flies the panel out",
+        await page.evaluate(() => document.querySelector(".toc-panel").classList.contains("toc-panel--flyout")));
+    check("the reveal tab is in the tab order (tabIndex 0)",
+        await page.evaluate(() => document.querySelector(".toc-toggle-tab").tabIndex === 0));
+    await page.evaluate(() => document.querySelector(".toc-toggle-tab")
+        .dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    await page.waitForTimeout(300);
+    check("Enter on the focused tab docks the panel open",
+        await page.evaluate(() => document.querySelector(".toc-panel").classList.contains("toc-panel--open")));
 }

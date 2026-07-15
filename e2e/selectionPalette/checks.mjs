@@ -102,6 +102,29 @@ export async function run({ page, check, baseUrl }) {
     );
     await page.evaluate(() => document.body.classList.replace("vscode-dark", "vscode-light"));
 
+    // The derived washes (hover/active/separator) must invert WITH the ink, not
+    // freeze to the dark default — a separate :root that only referenced
+    // var(--palette-ink) would compute against the dark ink and never re-resolve.
+    // Read --palette-line via a probe element in each theme; they must differ.
+    const washIn = (kind) =>
+        page.evaluate((k) => {
+            const d = document.createElement("div");
+            d.style.background = `var(--palette-${k})`;
+            document.body.appendChild(d);
+            const c = getComputedStyle(d).backgroundColor;
+            d.remove();
+            return c;
+        }, kind);
+    const lightWash = await washIn("line");
+    await page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
+    const darkWash = await washIn("line");
+    await page.evaluate(() => document.body.classList.replace("vscode-dark", "vscode-light"));
+    check(
+        "the hover/separator washes invert with the theme (not frozen to dark ink)",
+        lightWash !== darkWash,
+        JSON.stringify({ lightWash, darkWash }),
+    );
+
     // ── 3. Whole-block selection → format dropdown shown ──
     await selectWholeParagraph();
     check("the palette is visible for the whole block", await toolbar.isVisible());
