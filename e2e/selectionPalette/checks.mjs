@@ -82,48 +82,23 @@ export async function run({ page, check, baseUrl }) {
         !(await fmtWrap.isVisible()),
     );
 
-    // Light theme (harness sets body.vscode-light): the palette INVERTS — its
-    // ground is the editor FOREGROUND (#d4d4d4), reversing contrast.
+    // The palette is the normal themed hover-widget chip in every theme — NOT
+    // reversed. Its ground is --vscode-editorHoverWidget-background (#252526 in
+    // the harness) whether the body carries vscode-light or vscode-dark.
     const bgOf = () =>
         page.evaluate(() => getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor);
     check(
-        "in a light theme the palette inverts to the editor-foreground ground",
-        (await bgOf()) === "rgb(212, 212, 212)",
+        "the palette uses the normal hover-widget ground in a light theme (not reversed)",
+        (await bgOf()) === "rgb(37, 37, 38)",
         await bgOf(),
     );
-    // Dark theme: it must NOT invert — the ground is the normal hover-widget
-    // background (#252526), never reversed to light.
     await page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
-    const darkBg = await bgOf();
     check(
-        "in a dark theme the palette is NOT inverted (normal hover-widget ground)",
-        darkBg === "rgb(37, 37, 38)",
-        darkBg,
+        "the palette uses the same normal ground in a dark theme",
+        (await bgOf()) === "rgb(37, 37, 38)",
+        await bgOf(),
     );
     await page.evaluate(() => document.body.classList.replace("vscode-dark", "vscode-light"));
-
-    // The derived washes (hover/active/separator) must invert WITH the ink, not
-    // freeze to the dark default — a separate :root that only referenced
-    // var(--palette-ink) would compute against the dark ink and never re-resolve.
-    // Read --palette-line via a probe element in each theme; they must differ.
-    const washIn = (kind) =>
-        page.evaluate((k) => {
-            const d = document.createElement("div");
-            d.style.background = `var(--palette-${k})`;
-            document.body.appendChild(d);
-            const c = getComputedStyle(d).backgroundColor;
-            d.remove();
-            return c;
-        }, kind);
-    const lightWash = await washIn("line");
-    await page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
-    const darkWash = await washIn("line");
-    await page.evaluate(() => document.body.classList.replace("vscode-dark", "vscode-light"));
-    check(
-        "the hover/separator washes invert with the theme (not frozen to dark ink)",
-        lightWash !== darkWash,
-        JSON.stringify({ lightWash, darkWash }),
-    );
 
     // ── 3. Whole-block selection → format dropdown shown ──
     await selectWholeParagraph();

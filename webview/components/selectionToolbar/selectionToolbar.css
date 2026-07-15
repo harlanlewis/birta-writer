@@ -34,14 +34,13 @@
     background: var(--palette-hover);
 }
 
-/* A button reflecting a mark/construct already applied on the selection — a
-   stronger ink wash than hover (background only; a ring per lit button reads as
-   clutter with several active at once). Mirrors the top toolbar's quiet "on"
-   idea, adapted to the inverted ground. */
+/* A button reflecting a mark/construct already applied on the selection — the
+   same quiet VS Code activated-option "on" look the top toolbar uses (background
+   only; a ring per lit button reads as clutter with several active at once). */
 .sel-tb-btn--active,
 .sel-tb-btn--active:hover {
     background: var(--palette-active);
-    color: var(--palette-ink);
+    color: var(--vscode-inputOption-activeForeground);
 }
 
 /* Destructive action (block Delete): the icon reddens on hover to signal it
