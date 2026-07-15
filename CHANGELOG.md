@@ -69,6 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Editing chords no longer change an unfocused document** — with the editor as the active tab but focus in the Explorer/sidebar, pressing a document-mutating shortcut (⌘⇧K delete block, ⌃J join lines, the list/heading/paragraph chords, ⌘K link) used to edit the document you weren't looking at. These chords now require the editor itself to be focused; find, fold, and navigation shortcuts are unchanged.
 - **The numbered-list block handle no longer hides under multi-digit numbers** — on a list reaching item 10+ (or at 150–200% content scale) the grabber sat on top of the number as an invisible click target. It now tracks the number's width and the content font size, staying clear of the ink.
 - **The slash command menu now opens inside headings** — typing `/` in a heading did nothing (the heading's own text normalization silently suppressed the menu right after the keystroke). It now opens the same insert menu it does in a paragraph.
+- **Blocks nested inside a list item now have a grabber** — a blockquote, code block, callout, table, or heading indented under a list item had no gutter handle at all, so its block menu and drag handle were unreachable. It now shows its own marker like the same block nested anywhere else; click it for the menu or drag it to move the block.
+- **List grabbers inside a callout, quote, or directive no longer overlap the accent bar** — a list nested in one of those containers drew its per-item handles on top of the container's colored bar. The handles now step clear of every enclosing bar, at any content font size.
 
 ---
 
