@@ -1956,7 +1956,10 @@ body.handles-rest-hover:where(:not(.handles-quiet)) .milkdown .editor :where(.he
 .block-drag-indicator {
     display: none;
     position: fixed;
-    z-index: 1200;
+    /* Above the ToC flyout (z 10000): a reorder drag INSIDE the flyout must show
+       its drop line over the panel, not lost beneath it. Still below the toolbar
+       (10002), which the line never needs to cross. */
+    z-index: 10001;
     height: 2px;
     border-radius: 1px;
     background: var(--vscode-focusBorder);
