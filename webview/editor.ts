@@ -8,7 +8,6 @@ import {
 } from "@milkdown/core";
 import { listener, listenerCtx } from "@milkdown/plugin-listener";
 import { prism, prismConfig } from "@milkdown/plugin-prism";
-import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import DOMPurify from "dompurify";
@@ -26,7 +25,7 @@ import { getMarkdown } from "@milkdown/utils";
 import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
 import { mark, measure } from "./perf";
-import { configureSerialization, pureCommonmark } from "./serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "./serialization";
 import { createSyncScheduler } from "./syncScheduler";
 import {
     applyMinimalChanges,
@@ -57,10 +56,8 @@ import {
     linkUrlCompletePlugin,
     pasteLinkPlugin,
     mathInlineEditPlugin,
-    tableAlignDefaultPlugin,
     wikiLinkCompletePlugin,
     listEnterPlugin,
-    listItemSpreadBoolPlugins,
     listLiftPlugin,
     listSpreadNormalizePlugin,
     pendingRangePlugin,
@@ -400,13 +397,10 @@ export async function createEditor(
         .use(foldRevealKeymapPlugin)
         .use(insertParagraphKeymapPlugin)
         .use(pureCommonmark)
-        .use(gfm)
-        // After gfm so the extended cell schemas (null alignment default —
-        // inserted columns must not write `:---` markers) win over the preset's.
-        .use(tableAlignDefaultPlugin)
-        // After gfm so the list_item override (boolean `spread`, MAR-124) wins
-        // over gfm's task-list schema, which it layers on to keep `checked`.
-        .use(listItemSpreadBoolPlugins)
+        // gfm plus its mandatory after-gfm overrides (null table-cell alignment
+        // default; boolean list `spread`, MAR-124). Bundled in serialization.ts
+        // so tests can't wire gfm without them and diverge (MAR-143).
+        .use(gfmFidelity)
         .use(listener)
         .use(prism)
         .use(historyPlugin)

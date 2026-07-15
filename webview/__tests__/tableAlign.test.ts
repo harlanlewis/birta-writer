@@ -7,13 +7,11 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import { TextSelection, NodeSelection } from "@milkdown/prose/state";
 import { CellSelection, cellAround } from "@milkdown/prose/tables";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
-import { tableAlignDefaultPlugin } from "../plugins/tableAlignDefault";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { runEditorCommand } from "../editorCommands";
 
 const TABLE = "| aa | bb |\n|---|---|\n| cc | dd |\n";
@@ -30,9 +28,7 @@ async function makeEditor(md: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
-        // Mirrors editor.ts: after gfm, so the null-alignment cell default wins.
-        .use(tableAlignDefaultPlugin)
+        .use(gfmFidelity)
         .create();
     editors.push(editor);
     return editor;

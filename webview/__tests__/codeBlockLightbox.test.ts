@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
-import { gfm } from "@milkdown/preset-gfm";
+import { gfmFidelity } from "../serialization";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as PMNode } from "@milkdown/prose/model";
 import { createCodeBlockView } from "../components/codeBlock";
@@ -35,7 +35,7 @@ async function makeCodeBlockView(md: string): Promise<CodeBlockNodeView> {
             ctx.set(defaultValueCtx, md);
         })
         .use(commonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     editors.push(editor);
 

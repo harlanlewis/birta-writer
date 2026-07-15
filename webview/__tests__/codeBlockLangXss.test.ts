@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
-import { gfm } from "@milkdown/preset-gfm";
+import { gfmFidelity } from "../serialization";
 import { langLabelHtml } from "../components/codeBlock";
 
 /**
@@ -28,7 +28,7 @@ async function parseCodeBlockLanguage(markdown: string): Promise<string> {
             ctx.set(defaultValueCtx, markdown);
         })
         .use(commonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
 
     let language = "";

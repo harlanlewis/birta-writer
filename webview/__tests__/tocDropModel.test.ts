@@ -6,10 +6,9 @@
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     tocDropSlots,
     tocDropTargetFor,
@@ -30,7 +29,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     editors.push(editor);
     return editor;

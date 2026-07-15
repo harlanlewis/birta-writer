@@ -5,9 +5,8 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { commitMarqueeSelection } from "../components/blockMenu/marquee";
 import { BlockRangeSelection } from "../plugins/blockRange";
@@ -24,7 +23,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .use(headingFoldPlugin)
         .create();
     editors.push(editor);

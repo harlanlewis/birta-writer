@@ -9,10 +9,9 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, schemaCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import * as path from "path";
 import * as fs from "fs";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { blockMarkerSpec } from "../plugins/headingFold";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -57,7 +56,7 @@ describe("every block type has a grabber", () => {
                 configureSerialization(ctx);
             })
             .use(pureCommonmark)
-            .use(gfm)
+            .use(gfmFidelity)
             .create();
         editors.push(editor);
         const schema = editor.action((ctx) => ctx.get(schemaCtx));

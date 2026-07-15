@@ -17,10 +17,9 @@ import {
     editorViewCtx,
     nodeViewCtx,
 } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "@milkdown/prose/view";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { createCalloutView, calloutLabel } from "../components/callout";
 import { escapeCalloutTitle, markerWithFold, markerWithTitle, parseCalloutMarker } from "../plugins/callouts";
 import { headingFoldPlugin } from "../plugins/headingFold";
@@ -40,7 +39,7 @@ async function makeEditor(markdown: string): Promise<{
             ctx.set(nodeViewCtx, [["callout", createCalloutView]]);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         // Fold state is owned by the fold plugin (MAR-110): it seeds the
         // `[!kind]-` default, renders the gutter chevron, and stamps the
         // `collapsed` class onto the NodeView as a decoration.

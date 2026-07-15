@@ -26,11 +26,11 @@ import {
     createCodeBlockCommand,
     insertHrCommand,
 } from "@milkdown/preset-commonmark";
-import { insertTableCommand, toggleStrikethroughCommand, gfm } from "@milkdown/preset-gfm";
+import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import { CellSelection, TableMap } from "@milkdown/prose/tables";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { editorCommands, runEditorCommand, setEditorCommandHost } from "../editorCommands";
 import { insertCalloutCommand } from "../plugins";
 import { mockVscodeApi } from "./setup";
@@ -170,7 +170,7 @@ describe("editorCommands registry — copy commands", () => {
                 configureSerialization(ctx);
             })
             .use(pureCommonmark)
-            .use(gfm)
+            .use(gfmFidelity)
             .create();
     }
 
@@ -261,7 +261,7 @@ describe("editorCommands registry — table row/column commands", () => {
                 configureSerialization(ctx);
             })
             .use(pureCommonmark)
-            .use(gfm)
+            .use(gfmFidelity)
             .create();
     }
 
@@ -431,7 +431,7 @@ describe("toggleCallout (toolbar Quote-dropdown checkbox semantics)", () => {
                 configureSerialization(ctx);
             })
             .use(pureCommonmark)
-            .use(gfm)
+            .use(gfmFidelity)
             .use(insertCalloutCommand)
             .create();
     }

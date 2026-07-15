@@ -18,11 +18,9 @@
  */
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import { configureSerialization, pureCommonmark } from "../serialization";
-import { listItemSpreadBoolPlugins } from "../plugins/list";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -34,8 +32,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
-        .use(listItemSpreadBoolPlugins)
+        .use(gfmFidelity)
         .create();
 }
 

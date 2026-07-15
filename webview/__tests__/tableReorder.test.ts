@@ -14,9 +14,8 @@ import {
     defaultValueCtx,
     editorViewCtx,
 } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import type { Node as PMNode } from "@milkdown/prose/model";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     resolveDropIndex,
     resolveDropIndexRange,
@@ -37,7 +36,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
 }
 

@@ -9,11 +9,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { TextSelection } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Mark } from "@milkdown/prose/model";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";
 import { setupLinkPopup } from "../components/linkPopup";
 import { runEditorCommand } from "../editorCommands";
@@ -28,7 +27,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     // The toolbar's openLinkPrompt routes through the shared link editor (the
     // hover popup singleton); wire it to this editor's view.

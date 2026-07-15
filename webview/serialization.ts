@@ -4,13 +4,15 @@
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
+import { gfm } from "@milkdown/preset-gfm";
 import { calloutsPlugin } from "./plugins/callouts";
 import { directivesPlugin } from "./plugins/directives";
 import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { highlightPlugin } from "./plugins/highlight";
-import { listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
+import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
+import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
 import { headingInputReplacedPlugins } from "./plugins/headingInput";
@@ -142,6 +144,22 @@ export const pureCommonmark = [
     ...listSpreadBooleanPlugins,
     fidelitySerializerPlugin,
 ];
+
+/**
+ * `gfm` plus the two overrides that MUST register after it, bundled so no
+ * editor-construction site (production or test) can wire gfm without them and
+ * silently diverge (MAR-143):
+ *
+ *   - `tableAlignDefaultPlugin` — null table-cell alignment default;
+ *   - `listItemSpreadBoolPlugins` — boolean list `spread` over gfm's task-list
+ *     schema (MAR-124).
+ *
+ * Order is preserved (gfm first, overrides after) so the overrides win. Use it
+ * wherever `.use(gfm)` was: register it after `pureCommonmark`, exactly as gfm
+ * was — production `editor.ts` and every test editor factory go through this
+ * one bundle so the test harness matches production by construction.
+ */
+export const gfmFidelity = [gfm, tableAlignDefaultPlugin, listItemSpreadBoolPlugins].flat();
 
 // Replace `break` nodes with `html` nodes carrying the recorded `<br>` bytes
 // (MAR-17). mdast-util-to-markdown's `hardBreak` handler cannot emit an

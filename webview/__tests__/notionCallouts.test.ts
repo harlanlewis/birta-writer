@@ -15,11 +15,10 @@ import {
     editorViewCtx,
     nodeViewCtx,
 } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as PMNode } from "@milkdown/prose/model";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { extractIcon, kindForIcon } from "../plugins/notionCallouts";
 import { createNotionCalloutView } from "../components/callout";
 
@@ -38,7 +37,7 @@ async function makeEditor(markdown: string): Promise<{
             ctx.set(nodeViewCtx, [["notion_callout", createNotionCalloutView]]);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .create();
     const view = editor.action((ctx) => ctx.get(editorViewCtx));
     return { editor, container, view };

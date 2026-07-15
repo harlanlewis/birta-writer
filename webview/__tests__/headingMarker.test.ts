@@ -6,8 +6,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
-import { configureSerialization, pureCommonmark } from "../serialization";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 
 let editors: Editor[] = [];
@@ -22,7 +21,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
+        .use(gfmFidelity)
         .use(headingFoldPlugin)
         .create();
     editors.push(editor);

@@ -9,11 +9,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { gfm } from "@milkdown/preset-gfm";
 import type { EditorView } from "@milkdown/prose/view";
 import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
-import { configureSerialization, pureCommonmark } from "../../serialization";
-import { listItemSpreadBoolPlugins } from "../../plugins/list";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
 import { moveRangeAt } from "../../components/blockMenu";
 import {
     blockBoundaryPositions,
@@ -89,10 +87,7 @@ export async function makeCorpusEditor(
             configureSerialization(ctx);
         })
         .use(pureCommonmark)
-        .use(gfm)
-        // After gfm so the boolean-`spread` list_item override wins over gfm's
-        // task-list schema (MAR-124), mirroring the production editor.
-        .use(listItemSpreadBoolPlugins);
+        .use(gfmFidelity);
     for (const plugin of extras) {
         builder = builder.use(plugin);
     }
