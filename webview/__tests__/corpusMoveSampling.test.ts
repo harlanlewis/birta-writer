@@ -409,6 +409,44 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         // setext heading.
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
+
+    // MAR-120 (G) in quote containers — the setext hazard the ticket describes
+    // for `> text` + `> ---`. Unlike a directive's synthesized open fence (a
+    // text line), a paragraph and an hr inside a blockquote/callout are two
+    // mdast block siblings, so remark-stringify's block join emits the
+    // disambiguating blank `>` line between them by construction — no serializer
+    // special-case needed. These pin that the plain case round-trips, so the
+    // knownSavePipelineHazard exclusion for hr-into-quote covers only the
+    // still-open container fence-repair family (B), not this.
+    it("hazard G in a blockquote: an hr moved in after a paragraph stays an hr", async () => {
+        const editor = await makeEditor("> quoted text\n\n---\n\nTail.");
+        const v = editorView(editor);
+        const hrPos = findPos(v.state.doc, "hr", "");
+        const bqPos = findPos(v.state.doc, "blockquote", "quoted text");
+        const bq = v.state.doc.nodeAt(bqPos)!;
+        expect(hrPos).toBeGreaterThan(-1);
+
+        // Target: the last boundary inside the blockquote (after the paragraph),
+        // so the hr serializes as `> ---` under `> quoted text`.
+        expect(
+            moveBlocks(v, { from: hrPos, to: hrPos + 1 }, bqPos + bq.nodeSize - 1),
+        ).toBe(true);
+        expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
+    });
+
+    it("hazard G in a callout: an hr moved in after the body stays an hr", async () => {
+        const editor = await makeEditor("> [!NOTE]\n> callout body\n\n---\n\nTail.");
+        const v = editorView(editor);
+        const hrPos = findPos(v.state.doc, "hr", "");
+        const coPos = findPos(v.state.doc, "callout", "callout body");
+        const co = v.state.doc.nodeAt(coPos)!;
+        expect(hrPos).toBeGreaterThan(-1);
+
+        expect(
+            moveBlocks(v, { from: hrPos, to: hrPos + 1 }, coPos + co.nodeSize - 1),
+        ).toBe(true);
+        expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
+    });
 });
 
 describe("corpus move-sampling gate — folded variant", () => {
