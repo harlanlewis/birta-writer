@@ -197,7 +197,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // reads as the control staying put while the panel slides away behind it.
     const tabEl = document.createElement("button");
     tabEl.className = "toc-toggle-tab";
-    tabEl.tabIndex = -1;
+    // Keyboard-reachable: Tab focuses it (flying the panel out as a preview via
+    // the focus listener below), Enter/Space docks it open. Without tabIndex 0 —
+    // and because the mousedown handler preventDefaults click-focus — the focus
+    // path would be dead and the flyout pointer-only.
+    tabEl.tabIndex = 0;
     document.body.appendChild(tabEl);
     applyTooltip(tabEl, t("Show table of contents"), { placement: "below" });
 
@@ -470,6 +474,17 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         e.stopPropagation();
         hideFlyout(); // a click opens persistently; drop the transient flyout
         toggle();
+    });
+
+    // Keyboard activation: Enter/Space docks the panel open (the mousedown
+    // handler above never fires for the keyboard, since a button synthesizes a
+    // click, not a mousedown). Space is prevented so it doesn't scroll.
+    tabEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            hideFlyout();
+            toggle();
+        }
     });
 
     // ── Flyout: while the collapsed tab is hovered or focused, reveal the panel
