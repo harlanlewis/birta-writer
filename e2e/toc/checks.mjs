@@ -66,16 +66,26 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(350); // let the slide/fade-in (0.2s) settle
     const flyout = await page.evaluate(() => {
         const panel = document.querySelector(".toc-panel");
+        const tab = document.querySelector(".toc-toggle-tab");
+        const pr = panel.getBoundingClientRect();
+        const tr = tab.getBoundingClientRect();
         return {
             flyout: panel.classList.contains("toc-panel--flyout"),
             bodyFlag: document.body.classList.contains("toc-flyout-open"),
             open: panel.classList.contains("toc-panel--open"),
             visible: getComputedStyle(panel).opacity === "1",
+            belowTab: pr.top >= tr.bottom - 1, // panel starts at/under the tab's bottom
+            sameSide: Math.abs(pr.left - tr.left) < 40, // roughly aligned to the tab
+            tabMoved: Math.round(tr.left), // tab position captured for the "unmoved" check
+            controlsHidden: getComputedStyle(panel.querySelector(".toc-controls")).display === "none",
         };
     });
     check("hovering the tab flies the panel out", flyout.flyout && flyout.bodyFlag && flyout.visible,
         JSON.stringify(flyout));
     check("the flyout is transient, not a persistent open", !flyout.open);
+    check("the flyout sits BELOW the tab, on its side (not the full-height drawer)",
+        flyout.belowTab && flyout.sameSide, JSON.stringify(flyout));
+    check("the flyout hides the docked drawer's controls", flyout.controlsHidden);
 
     // Move the pointer away → the flyout retracts after its grace period.
     await page.mouse.move(760, 420);
