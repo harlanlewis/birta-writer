@@ -56,7 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Remote workspaces** — works in Remote-SSH, WSL, and Codespaces.
 - **Fast launch** — heavy dependencies (the KaTeX stylesheet, ~66 syntax-highlighting grammars, the Mermaid engine) load on demand rather than at every open; a document with no math, code, or diagrams loads a fraction of what it used to, and proofreading and fidelity checks settle in after first paint rather than blocking it.
-- **A hard fork, in English** — hard-forked from [`git-xing/md-wysiwyg-editor`](https://github.com/git-xing/md-wysiwyg-editor), with all Chinese content removed and English as the source and base language across code, UI, and docs (a CI guard prevents regressions). Relicensed to Apache-2.0; portions derived from the upstream fork remain under their original MIT License — see `LICENSE`, `NOTICE`, and `LICENSE-MIT`.
+- **A hard fork, in English** — hard-forked from [`git-xing/md-wysiwyg-editor`](https://github.com/git-xing/md-wysiwyg-editor), with all Chinese content removed and English as the source and base language across code, UI, and docs (a CI guard prevents regressions). Source-available under the Functional Source License (FSL-1.1-ALv2) — free to read, run, modify, and self-host for any non-competing purpose, converting to Apache-2.0 two years after each release; portions derived from the upstream fork remain under their original MIT License — see `LICENSE`, `NOTICE`, and `LICENSE-MIT`.
 
 ---
 
