@@ -50,7 +50,7 @@
     right: auto;
     height: auto;
     max-height: min(70vh, 620px);
-    width: var(--toc-width, 220px);
+    width: 260px; /* a fixed standard width — NOT the dragged --toc-width (kept in sync with FLYOUT_WIDTH) */
     overflow: visible;
     opacity: 0;
     transform: translateY(-6px);
@@ -70,18 +70,19 @@
     min-height: 0; /* let the flex list shrink within the capped card and scroll */
 }
 
-/* A forgiving hover band spanning the flyout's full width over the 6px gap to
-   the tab, so mousing DOWN into the panel needs no horizontal precision —
-   hovering the band keeps the panel :hover (its mouseenter cancels the retract).
-   Sized to the gap exactly (positionFlyout's `gap`), so it never reaches into
-   the tab and steal its clicks. */
+/* Invisible hover band spanning the flyout's full width, from the panel up to
+   the content-area top (the toolbar's bottom) — height set inline by
+   positionFlyout. Hovering anywhere in this column keeps the panel :hover (its
+   mouseenter cancels the retract), so the flyout doesn't snap shut the instant
+   the pointer drifts off the small tab. The reveal tab is lifted ABOVE this band
+   (below) so its own clicks/hover still land. */
 .toc-panel--flyout::before {
     content: "";
     position: absolute;
     left: 0;
     right: 0;
     bottom: 100%;
-    height: 6px;
+    height: var(--toc-flyout-band-h, 6px);
 }
 
 /* The docked-drawer chrome (side-switch/hide controls, resize sash) is
@@ -360,4 +361,14 @@ body.toc-initial .toc-toggle-tab {
 body.toc-open .toc-toggle-tab,
 body.toc-overlay-open .toc-toggle-tab {
     display: none;
+}
+
+/* While the flyout is out: lift the reveal tab ABOVE the flyout panel and its
+   hover band (z 10000) so its own clicks/hover still land, and hold its hover
+   look — it reads as the active trigger of the open flyout even as the cursor
+   roams the panel. */
+body.toc-flyout-open .toc-toggle-tab {
+    z-index: 10001;
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground);
 }
