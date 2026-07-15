@@ -508,25 +508,60 @@ export function applyMinimalChanges(
     const savedGap = (to: number) => savedLines.slice(prevSavedIdx + 1, to);
     const serialGap = (to: number) => serialLines.slice(prevSerialIdx + 1, to);
 
+    let prevLineText: string | null = null; // last significant line emitted
+    const isQuoteLine = (s: string): boolean => /^\s*>/.test(s);
+    const hasBlank = (lines: string[]): boolean => lines.some((l) => l.trim() === "");
+
+    // The blank-line run to emit before the next significant line. Normally the
+    // saved file's spacing wins on unedited lines (`dirty` false) and the
+    // serializer's on edited ones — but a blank line between two quote-context
+    // (`>`-prefixed) lines SPLITS the quote block. When the saved spacing would
+    // introduce such a split yet the serializer kept the two lines contiguous,
+    // the blank was a block separator the edit dissolved (e.g. a block moving
+    // between callouts merges two quotes into one), so keeping it would reopen
+    // the merged block split in two. Defer to the serializer's spacing in that
+    // case only — a genuinely separate quote keeps its blank because the
+    // serializer emits one too, so this never churns real separators (MAR-122).
+    const gapBefore = (savedTo: number, serialTo: number, nextText: string): string[] => {
+        if (dirty) {
+            return serialGap(serialTo);
+        }
+        const saved = savedGap(savedTo);
+        if (
+            prevLineText !== null &&
+            isQuoteLine(prevLineText) &&
+            isQuoteLine(nextText) &&
+            hasBlank(saved)
+        ) {
+            const serial = serialGap(serialTo);
+            if (!hasBlank(serial)) {
+                return serial;
+            }
+        }
+        return saved;
+    };
+
     let e = 0;
     while (e < edits.length) {
         const edit = edits[e];
         const next = edits[e + 1];
         if (edit.op === "keep") {
-            out.push(...(dirty ? serialGap(edit.serial.lineIdx) : savedGap(edit.saved.lineIdx)));
+            out.push(...gapBefore(edit.saved.lineIdx, edit.serial.lineIdx, edit.saved.text));
             out.push(edit.saved.text);
             prevSavedIdx = edit.saved.lineIdx;
             prevSerialIdx = edit.serial.lineIdx;
+            prevLineText = edit.saved.text;
             dirty = false;
             e++;
         } else if (edit.op === "del" && next?.op === "ins") {
             // del immediately followed by ins = an in-place replacement: the
             // line changed but its surroundings did not, so the saved spacing
-            // around it is kept.
-            out.push(...(dirty ? serialGap(next.serial.lineIdx) : savedGap(edit.saved.lineIdx)));
+            // around it is kept (modulo the quote-split guard in gapBefore).
+            out.push(...gapBefore(edit.saved.lineIdx, next.serial.lineIdx, next.serial.text));
             out.push(next.serial.text);
             prevSavedIdx = edit.saved.lineIdx;
             prevSerialIdx = next.serial.lineIdx;
+            prevLineText = next.serial.text;
             dirty = false;
             e += 2;
         } else if (edit.op === "del") {
@@ -538,6 +573,7 @@ export function applyMinimalChanges(
             out.push(...serialGap(edit.serial.lineIdx));
             out.push(edit.serial.text);
             prevSerialIdx = edit.serial.lineIdx;
+            prevLineText = edit.serial.text;
             dirty = true;
             e++;
         }

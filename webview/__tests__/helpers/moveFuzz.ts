@@ -239,11 +239,12 @@ export function enumerateMovePairs(
 //       now re-serializes with its backslash via the highlight `unsafe`
 //       pattern (plugins/highlight.ts), so it stays plain text on reparse.
 //       No longer excluded here; held to the full contract by the gate.
-//   (D) Quote splice: moving a block from one quote-family container
-//       (callout/blockquote) into another leaves the minimal-diff merge a
-//       stale blank line where the dissolved source container sat, so the
-//       merged file splits the target quote — the moved block reopens in a
-//       bare blockquote instead of the container it was dropped into.
+//   (D) FIXED (MAR-122): quote splice — moving a block between quote-family
+//       containers no longer leaves a stale separator blank in the merge.
+//       `applyMinimalChanges`'s gapBefore guard defers to the serializer's
+//       spacing when a saved blank would split a quote the serializer kept
+//       contiguous, so the moved block reopens inside its drop target. No
+//       longer excluded here; held to the full contract by the gate.
 //   (E) FIXED (MAR-123): empty paragraphs — an empty (or hardbreak-only)
 //       paragraph serializes to nothing and never round-trips in pure
 //       Markdown, so it is NOT content. The content fingerprint
@@ -261,10 +262,9 @@ export function enumerateMovePairs(
 // TODO(MAR-113 follow-up): fix (A)/(B)/(G) in the directives serializer
 // (derive fence length from nesting depth; escape or guard raw fence-shaped
 // prose; keep a blank line after the open fence when the first child is
-// setext-hazardous), (D) in the minimal-diff merge (never keep a blank line
-// that splits a serialized quote block), (F) in the serializer's aside
-// handling — then delete this predicate and the remaining it.fails pins.
-// (C) and (E) are fixed; see the class list above.
+// setext-hazardous) and (F) in the serializer's aside handling — then delete
+// this predicate and the remaining it.fails pins. (C), (D), and (E) are
+// fixed; see the class list above.
 
 const QUOTE_FAMILY = new Set(["blockquote", "callout", "notion_callout"]);
 
@@ -317,11 +317,7 @@ export function knownSavePipelineHazard(
         return true;
     });
     const $target = doc.resolve(target);
-    const sourceQuote = quoteAncestorPos(doc, source.from);
     const targetQuote = quoteAncestorPos(doc, target);
-    if (sourceQuote !== -1 && targetQuote !== -1 && sourceQuote !== targetQuote) {
-        return true; // (D)
-    }
     // (G) in quote containers too: `> paragraph` + `> ---` reparses as a
     // setext heading exactly like it does under a directive fence.
     if (fragmentHasHr && targetQuote !== -1) {

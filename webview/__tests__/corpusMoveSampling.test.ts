@@ -281,7 +281,7 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard D: a block moved between callouts should reopen inside its drop target", async () => {
+    it("hazard D (MAR-122, fixed): a block moved between callouts reopens inside its drop target", async () => {
         const source = "> [!IMPORTANT]\n> Purple.\n\n> [!WARNING]\n> Yellow.\n";
         const editor = await makeEditor(source);
         const v = editorView(editor);
@@ -304,9 +304,10 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         const merged = applyMinimalChanges(source, editor.action(getMarkdown()), protection);
         const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
 
-        // BUG: the minimal-diff merge keeps the stale blank line where the
-        // dissolved WARNING callout sat, splitting the IMPORTANT quote — the
-        // moved paragraph reopens in a bare blockquote instead.
+        // The minimal-diff merge no longer keeps the stale blank line where the
+        // dissolved WARNING callout sat (gapBefore's quote-split guard defers to
+        // the serializer's contiguous spacing), so the moved paragraph reopens
+        // inside the IMPORTANT callout instead of a split-off bare blockquote.
         expect(
             formatFingerprintDiff(
                 diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
