@@ -105,10 +105,12 @@ export const CLAIMED_SHORTCUTS: readonly ClaimedShortcut[] = [
     { key: "y", mod: true },                // redo
     // Block/selection chords (all content-scoped: overlay inputs keep their
     // native caret/selection behavior). These MUTATE the document or
-    // selection, so unlike the unclaimed Alt+Arrow move chords they are
-    // claimed even though VS Code's own defaults on them are
-    // editorTextFocus-scoped — a user-bound workbench action on the same
-    // chord must never fire alongside the edit.
+    // selection and are hardcoded ProseMirror chords, so they are claimed
+    // even though VS Code's own defaults on them are editorTextFocus-scoped —
+    // a user-bound workbench action on the same chord must never fire
+    // alongside the edit. (Alt+Arrow move is deliberately NOT here: it is a
+    // contributed, rebindable command — birta.editor.moveBlockUp/Down — so it
+    // must stay visible to the workbench for the keybinding to resolve.)
     // blockKeys plugin: duplicate block up/down
     { key: "arrowup", shift: true, alt: true, content: true },
     { key: "arrowdown", shift: true, alt: true, content: true },

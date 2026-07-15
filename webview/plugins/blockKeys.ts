@@ -482,8 +482,11 @@ const blockKeymap = keydownHandler({
     "Shift-ArrowDown": extendBlockSelection(1),
     "Shift-ArrowUp": extendBlockSelection(-1),
     "Mod-a": escalateSelectAll,
-    "Alt-ArrowDown": moveSelectedBlocks(1),
-    "Alt-ArrowUp": moveSelectedBlocks(-1),
+    // Alt+Arrow move is NOT hardcoded here: it's the contributed, rebindable
+    // birta.editor.moveBlockUp/Down command (default Alt+Up/Down, mirroring the
+    // built-in editor's Move Line) so the same keybinding works across views
+    // and the workbench key forwarder doesn't swallow it. Mod+Shift+Arrow stays
+    // a hardcoded chord (a second, proven-working default).
     "Mod-Shift-ArrowDown": moveSelectedBlocks(1),
     "Mod-Shift-ArrowUp": moveSelectedBlocks(-1),
     "Shift-Alt-ArrowDown": duplicateSelectedBlocks(1),

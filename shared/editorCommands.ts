@@ -152,6 +152,16 @@ export const EDITOR_COMMANDS = [
     // entries expose the same actions, and users can bind ADDITIONAL chords.
     { id: "duplicateBlockUp", title: "Duplicate Block Up", palette: true, sections: [] },
     { id: "duplicateBlockDown", title: "Duplicate Block Down", palette: true, sections: [] },
+    // Move Block Up/Down IS contributed with a default keybinding (Alt+Up/Down,
+    // mirroring the built-in editor's Move Line) — unlike Duplicate above,
+    // which stays a hardcoded ProseMirror chord (Shift+Alt+Arrow collides with
+    // native contenteditable and needs synchronous default-suppression). Move
+    // follows the find-navigation precedent: a contributed, rebindable command
+    // so the SAME keybinding moves a line in the raw editor and a block here,
+    // and the webview never hardcodes Alt+Arrow itself (it would be swallowed
+    // by the workbench key forwarder anyway).
+    { id: "moveBlockUp", title: "Move Block Up", palette: true, sections: [] },
+    { id: "moveBlockDown", title: "Move Block Down", palette: true, sections: [] },
     { id: "deleteBlock", title: "Delete Block", palette: true, sections: [] },
     // Contributed Ctrl+J on macOS only — VS Code parity (unbound elsewhere).
     { id: "joinLines", title: "Join Lines", palette: true, sections: [] },

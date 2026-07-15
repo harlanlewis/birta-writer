@@ -3,8 +3,6 @@ title: Content inventory
 description: A living showcase of every content type the editor supports. Open it in the editor to eyeball rendering across themes and fonts; add to it as new types land.
 tags: [reference, showcase, regression]
 ---
-
-
 # Content inventory
 
 This document is a **living reference** of every content type Birta Writer supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.

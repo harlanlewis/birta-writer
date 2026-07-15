@@ -134,6 +134,8 @@
   "command.editor.swapTocSide.title": "Swap Table of Contents Side",
   "command.editor.duplicateBlockUp.title": "Duplicate Block Up",
   "command.editor.duplicateBlockDown.title": "Duplicate Block Down",
+  "command.editor.moveBlockUp.title": "Move Block Up",
+  "command.editor.moveBlockDown.title": "Move Block Down",
   "command.editor.deleteBlock.title": "Delete Block",
   "command.editor.joinLines.title": "Join Lines",
   "command.editor.transformToUppercase.title": "Transform to Uppercase",
