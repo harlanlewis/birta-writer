@@ -86,6 +86,13 @@ export async function run({ page, check, baseUrl }) {
     check("the flyout sits BELOW the tab, on its side (not the full-height drawer)",
         flyout.belowTab && flyout.sameSide, JSON.stringify(flyout));
     check("the flyout hides the docked drawer's controls", flyout.controlsHidden);
+    // The tab's own tooltip is suppressed while the flyout is out (it's redundant
+    // and would overlap the panel) — no visible .custom-tooltip.
+    const tipVisible = await page.evaluate(() => {
+        const tip = document.querySelector(".custom-tooltip");
+        return Boolean(tip && getComputedStyle(tip).display !== "none");
+    });
+    check("the tab tooltip is suppressed while the flyout is out", !tipVisible);
 
     // Move the pointer away → the flyout retracts after its grace period.
     await page.mouse.move(760, 420);
