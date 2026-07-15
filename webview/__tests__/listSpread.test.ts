@@ -98,6 +98,15 @@ describe("tight lists stay tight on a raw round trip", () => {
         const doc = "- parent\n  - child one\n  - child two\n- sibling\n";
         expect(await roundTrip(doc)).toBe(doc);
     });
+
+    it("a tight ordered item with a nested sub-list should not gain a blank line (MAR-87)", async () => {
+        // The exact regression: an ordered item followed by its nested ordered
+        // sub-list used to gain a blank line between them on save (string
+        // `spread` loosening the list), a byte-level round-trip break.
+        const doc =
+            "1. First step\n2. Second step\n   1. Sub-step a\n   2. Sub-step b\n3. Third step\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
 });
 
 describe("loose lists stay loose on a raw round trip (no over-correction)", () => {
