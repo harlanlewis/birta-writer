@@ -83,8 +83,8 @@ A short paragraph with a **bit** of emphasis and a [link](https://example.com).
 Another paragraph. That is all.
 `;
 
-const medium = repeatToSize("# Medium document", 18);   // ~40 KB
-const large = repeatToSize("# Large document", 140);     // ~300 KB
+const medium = repeatToSize("# Medium document", 18);   // ~12 KB
+const large = repeatToSize("# Large document", 140);     // ~96 KB
 
 const codeHeavy = (() => {
     let out = "# Code-heavy document\n\nExercises highlighter registration across many languages.\n\n";
@@ -107,3 +107,19 @@ const math = (() => {
 })();
 
 export const FIXTURES = { tiny, medium, large, "code-heavy": codeHeavy, math };
+
+// ~300 KB — the MAR-137 typing-lag tail (bites from ~40 KB up). Typing-harness
+// only: kept out of FIXTURES so `pnpm perf` runtimes and baseline.json stay
+// comparable across history. The footnote appendix makes the numbering
+// plugin's per-transaction work exercise the with-footnotes path, not just the
+// empty-map one.
+const xlarge = (() => {
+    let out = repeatToSize("# Extra-large document", 440);
+    out += "\nClosing notes[^first] with a couple of footnotes[^second].\n\n";
+    out += "[^first]: The first closing footnote.\n\n[^second]: The second closing footnote.\n";
+    return out;
+})();
+
+// tiny isolates the fixed per-keystroke floor; medium/large/xlarge give the
+// document-size scaling curve.
+export const TYPING_FIXTURES = { tiny, medium, large, xlarge };
