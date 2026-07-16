@@ -52,7 +52,9 @@ only inside an accepted-optimization commit.
 
 ## Fixtures
 
-Generated deterministically (no Date/random) in `fixtures.mjs`: `tiny`,
-`medium` (~40 KB mixed), `large` (~300 KB), `code-heavy` (many languages +
-mermaid), `math` (KaTeX). Injected by the runner as `window.__perfInit` before
-any script runs, so fixture I/O never pollutes the `roundtrip` measurement.
+Generated deterministically (no Date/random) in `fixtures.mjs`: `tiny` (~0.1 KB),
+`medium` (~12 KB mixed), `large` (~96 KB, 141 headings), `code-heavy` (~1 KB,
+many languages + mermaid), `math` (~1 KB, KaTeX). Injected by the runner as
+`window.__perfInit` before any script runs, so fixture I/O never pollutes the
+`roundtrip` measurement. (Sizes measured from `FIXTURES`, not estimated — they
+read as "how big is the document this row describes", so a wrong one misleads.)

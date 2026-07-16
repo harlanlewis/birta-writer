@@ -39,6 +39,7 @@ import {
 } from "../proofread/engine";
 import { hideLintPopup, showFindingsPopup, type PopupButton, type PopupFinding } from "../proofread/popup";
 import { notifyLintBlocks } from "../messaging";
+import { requestIdle } from "../utils/idle";
 import { t } from "../i18n";
 
 const SCAN_DEBOUNCE_MS = 350;
@@ -52,20 +53,6 @@ const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
  */
 function anyProofreadEnabled(c: ProofreadConfig): boolean {
     return c.proofreadingEnabled && (c.styleCheck || c.spellCheck || c.grammarCheck);
-}
-
-/** requestIdleCallback if the runtime has it (webview does; jsdom does not). */
-function requestIdle(cb: () => void): { cancel: () => void } {
-    const ric = (globalThis as {
-        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-        cancelIdleCallback?: (h: number) => void;
-    }).requestIdleCallback;
-    if (ric) {
-        const h = ric(cb, { timeout: FIRST_PASS_IDLE_TIMEOUT_MS });
-        return { cancel: () => (globalThis as { cancelIdleCallback?: (h: number) => void }).cancelIdleCallback?.(h) };
-    }
-    const t = setTimeout(cb, 0);
-    return { cancel: () => clearTimeout(t) };
 }
 
 /** Spec attached to a Harper decoration so the popup can render it. */
@@ -724,7 +711,7 @@ export const proofreadPlugin = $prose(() => {
                 firstPassIdle = requestIdle(() => {
                     firstPassReady = true;
                     schedule(0);
-                });
+                }, FIRST_PASS_IDLE_TIMEOUT_MS);
             }
 
             return {

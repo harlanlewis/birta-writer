@@ -17,6 +17,13 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 
+// Driving the real production stack costs a one-time ~2s (first deferred
+// proofread pass) on this file's first test — ~2.3s measured idle, which left
+// too little headroom under the 5s default and flaked under full-suite load.
+// See the longer note in savePipeline.test.ts. Scoped per-file so ordinary
+// webview tests keep the tight 5s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 // The full production plugin stack observes layout; jsdom lacks ResizeObserver
 // and (without pretendToBeVisual) rAF.
 beforeAll(() => {

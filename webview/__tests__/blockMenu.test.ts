@@ -492,6 +492,41 @@ describe("block actions", () => {
         expect(markdown(editor)).toBe("Alpha\n\nBeta"); // unchanged
     });
 
+    /**
+     * MAR-88 made a block nested in a list item menu-reachable for the first
+     * time, which exposed a row that rendered LIVE and did nothing: the item's
+     * first grabbable child is at index 1 of a `paragraph block*` list_item, so
+     * "Move Up" would promote a non-paragraph to the item's head — a move the
+     * primitive refuses. A row disables only when a NEIGHBOUR is missing, so it
+     * has to ask the primitive whether the hop is legal, not just whether a
+     * neighbour exists.
+     */
+    it("Move Up on a list item's first grabbable child should be disabled, not dead", async () => {
+        const editor = await makeEditor("- item one\n\n  > quoted inside item\n\n- item two");
+        view(editor);
+        // markers(): [item one, the blockquote, item two] — the item's leading
+        // paragraph is the item's own handle, so the blockquote is marker 1.
+        const menu = openMenuOn(markers()[1]!);
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Move Up")!;
+        expect(row.getAttribute("aria-disabled")).toBe("true");
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(markdown(editor)).toBe("- item one\n\n  > quoted inside item\n\n- item two");
+    });
+
+    it("Move Down on a list item's middle child should stay enabled and reorder in place", async () => {
+        // The complement: the guard must disable only the illegal hop, not the
+        // whole item-internal family (this one round-trips — see moveBlocks).
+        const editor = await makeEditor("- para\n\n  > quote\n\n  ```js\n  x()\n  ```\n\n- second");
+        view(editor);
+        const menu = openMenuOn(markers()[1]!); // the blockquote, index 1 of 3
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Move Down")!;
+        expect(row.getAttribute("aria-disabled")).toBeNull();
+        pickRow(menu, "Move Down");
+        expect(markdown(editor)).toBe("- para\n\n  ```js\n  x()\n  ```\n\n  > quote\n\n- second");
+    });
+
     it("Copy as Markdown should post the block's serialized source", async () => {
         const editor = await makeEditor("Alpha *em*\n\nBeta");
         view(editor);
@@ -1107,7 +1142,8 @@ describe("Collapsed by default (callout fold marker, MAR-110)", () => {
         const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
             .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Collapsed by default")!;
         expect(row.getAttribute("role")).toBe("option");
-        expect(row.getAttribute("aria-selected")).toBe("false");
+        // A fold toggle is CHECKED, not selected (see the ARIA contract suite).
+        expect(row.getAttribute("aria-checked")).toBe("false");
 
         // Act
         row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
@@ -1131,7 +1167,7 @@ describe("Collapsed by default (callout fold marker, MAR-110)", () => {
         const menu = openMenuOn(calloutMarker());
         const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
             .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Collapsed by default")!;
-        expect(row.getAttribute("aria-selected")).toBe("true");
+        expect(row.getAttribute("aria-checked")).toBe("true");
 
         // Act
         row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
@@ -1201,6 +1237,53 @@ describe("combobox/listbox ARIA contract (MAR-94)", () => {
             (r) => r.querySelector(".block-menu-item-label")?.textContent === "Heading 2",
         )!;
         expect(other.getAttribute("aria-selected")).toBe("false");
+    });
+
+    /**
+     * The container is a single-select listbox (no aria-multiselectable
+     * anywhere), so AT may hear at most ONE selected option. A callout that is
+     * collapsed by default has two rows in an "active" state — "Callout" (the
+     * current block type) and "Collapsed by default" (the fold toggle) — which
+     * is only valid because they use DIFFERENT properties: selection for the
+     * single-select type set, checkedness for the independent toggle.
+     */
+    it("a collapsed-by-default callout should expose ONE selected option, with the fold toggle checked instead", async () => {
+        // Arrange: `-` in the marker = collapsed by default, so the fold row
+        // is active at the same time as the "Callout" turn-into row.
+        const editor = await makeEditor("> [!NOTE]- Title\n> Body.");
+        view(editor);
+        const menu = openMenuOn(markers().find((m) => m.dataset["pill"] === "Callout")!);
+        const rows = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"));
+        const labelOf = (r: HTMLElement): string =>
+            r.querySelector(".block-menu-item-label")?.textContent ?? "";
+
+        // Assert: exactly one selected option in the whole listbox.
+        const selected = rows.filter((r) => r.getAttribute("aria-selected") === "true");
+        expect(selected.map(labelOf)).toEqual(["Callout"]);
+
+        // The fold toggle carries the checked state it is (not selection), and
+        // never claims selection on top of it.
+        const fold = rows.find((r) => labelOf(r) === "Collapsed by default")!;
+        expect(fold.getAttribute("aria-checked")).toBe("true");
+        expect(fold.getAttribute("aria-selected")).toBeNull();
+
+        // Command rows (no persistent state) claim neither.
+        const duplicate = rows.find((r) => labelOf(r) === "Duplicate")!;
+        expect(duplicate.getAttribute("aria-selected")).toBeNull();
+        expect(duplicate.getAttribute("aria-checked")).toBeNull();
+    });
+
+    it("the section divider should not be a listbox child role", async () => {
+        // `listbox` owns `option` and `group` only — a `separator` child is not
+        // permitted, so the decorative rule must be presentational.
+        const editor = await makeEditor("# Heading\n\nBody");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const dividers = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-divider"));
+        expect(dividers.length).toBeGreaterThan(0);
+        for (const divider of dividers) {
+            expect(divider.getAttribute("role")).toBe("presentation");
+        }
     });
 
     it("a zero-match filter should collapse aria-expanded", async () => {

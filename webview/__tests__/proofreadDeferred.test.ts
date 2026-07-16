@@ -13,6 +13,13 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 
+// The scan this file exists to test IS the one-time ~2s cost (compiling the
+// style wordlists into matchers): ~1.9s measured idle for the test that lets the
+// pass actually run, which flaked under full-suite load against the 5s default.
+// See the longer note in savePipeline.test.ts. Scoped per-file so ordinary
+// webview tests keep the tight 5s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 beforeAll(() => {
     if (typeof globalThis.ResizeObserver === "undefined") {
         globalThis.ResizeObserver = class {

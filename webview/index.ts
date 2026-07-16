@@ -201,13 +201,17 @@ function retryScroll(fn: () => void): void {
 
 // ── Outline refresh scheduling ─────────────────────────────
 // The TOC tracks the document, so it must not ride the save debounce (see
-// _onDocChange in editor.ts). It also must not run per TRANSACTION: refresh()
-// walks the doc for headings — O(document size) — and a burst of typing is
-// many transactions per frame. One rAF-coalesced refresh per painted frame is
-// the honest ceiling: the outline can't visibly update more often than that
-// anyway, so anything finer is work the user cannot perceive. Within refresh,
-// an unchanged outline skips the DOM rebuild entirely (renderHeadings'
-// signature check), so ordinary typing costs just the walk.
+// _onDocChange in editor.ts). It also must not run per TRANSACTION: the
+// outline walk is O(document size) and a burst of typing is many transactions
+// per frame. One rAF-coalesced refresh per painted frame is the honest
+// ceiling: the outline can't visibly update more often than that anyway, so
+// anything finer is work the user cannot perceive.
+//
+// This calls refreshContent (NOT refresh): a doc change can only change the
+// outline, so it must not re-commit the panel's presentation — that path
+// re-parses the tab's SVG and cycles a document listener, which on a keystroke
+// is pure waste. See the contract on those two functions before repointing
+// this at refresh().
 let tocRefreshRaf: number | null = null;
 
 function scheduleTocRefresh(): void {
@@ -216,7 +220,7 @@ function scheduleTocRefresh(): void {
     }
     tocRefreshRaf = requestAnimationFrame(() => {
         tocRefreshRaf = null;
-        toc.refresh();
+        toc.refreshContent();
     });
 }
 
@@ -608,7 +612,8 @@ const handlers = createMessageHandlers({
         initEditor,
         retryScroll,
         getEditorView,
-        refreshToc: () => toc.refresh(),
+        // An external edit changes the document, not the panel's own state.
+        refreshToc: () => toc.refreshContent(),
         setTocPosition: (position) => toc.setPosition(position),
     },
     topbarTb,

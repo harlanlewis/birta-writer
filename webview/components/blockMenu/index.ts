@@ -55,7 +55,7 @@ import {
     IconTrash2,
 } from "../../ui/icons";
 import { blockMarkdownAt, selectInto } from "./turnInto";
-import { moveBlocks } from "../../editing/moveBlocks";
+import { moveBlocks, moveFits } from "../../editing/moveBlocks";
 import { tagContentGuard } from "../../plugins/contentGuard";
 import {
     canConvert,
@@ -363,17 +363,28 @@ export function moveBlockAt(view: EditorView, pos: number, dir: -1 | 1): boolean
     return moveBlocks(view, range, target);
 }
 
-/** Whether a move in `dir` has somewhere to go (drives row disabling). */
+/**
+ * Whether a move in `dir` is actually possible (drives row disabling). A
+ * neighbour to hop is necessary but NOT sufficient: the move must also be one
+ * the primitive will accept, so the answer defers to moveBlocks' own verdict
+ * (moveFits) rather than re-deriving legality here. Without that, a row can
+ * render live and do nothing on click — the shape a list item's first
+ * grabbable child had, whose "Move Up" would promote a non-paragraph to the
+ * head of a `paragraph block*` item and be refused (MAR-88).
+ */
 function canMove(view: EditorView, pos: number, dir: -1 | 1): boolean {
     const range = moveRangeAt(view, pos);
     if (!range) {
         return false;
     }
     const node = view.state.doc.nodeAt(pos);
-    if (view.state.doc.resolve(pos).depth > 0) {
-        return moveNestedTarget(view, pos, dir) !== null;
+    const target = view.state.doc.resolve(pos).depth > 0
+        ? moveNestedTarget(view, pos, dir)
+        : moveTargetFor(view.state, range, node?.type.name === "heading", dir);
+    if (target === null) {
+        return false;
     }
-    return moveTargetFor(view.state, range, node?.type.name === "heading", dir) !== null;
+    return moveFits(view.state, range, target);
 }
 
 /**
@@ -718,18 +729,35 @@ export function openBlockMenu(
         row.className = "block-menu-item";
         row.dataset["mutates"] = opts.mutates === false ? "0" : "1";
         // Every row is a listbox option (the combobox model): AT reaches it
-        // through the input's aria-activedescendant, not by focusing it.
-        // aria-selected carries the row's PERSISTENT state — the current
-        // block type in "Turn into" (radio) and the callout fold toggle
-        // (check) — a direct successor to the old aria-checked. (The
+        // through the input's aria-activedescendant, not by focusing it. The
         // transient keyboard highlight is a separate channel: the input's
         // aria-activedescendant, set in setHl/clearHl. This is why blockMenu
         // does not follow the slash menu's aria-selected=highlight rule — its
-        // rows, unlike the slash menu's, hold selectable state of their own.)
+        // rows, unlike the slash menu's, hold state of their own.
+        //
+        // That state splits across the TWO properties `option` supports,
+        // because the menu holds two different kinds of it:
+        //   - radio rows ("Turn into") are a single-select set — exactly one
+        //     block type is current — which is what aria-selected means. The
+        //     container is a single-select listbox (no aria-multiselectable),
+        //     so AT may hear at most ONE selected option in the whole menu.
+        //   - check rows (the callout fold toggle) are an independent on/off
+        //     that is CHECKED, not selected — the state the row carried before
+        //     the listbox move. Both properties are valid on `option`, so the
+        //     toggle keeps aria-checked while selection stays with the set
+        //     that actually has one.
+        // Collapsing both onto aria-selected made a collapsed-by-default
+        // callout announce TWO selected options ("Callout" and "Collapsed by
+        // default") in a single-select listbox — invalid — and lost the checked
+        // semantic on the way. Command rows (Duplicate, Delete, …) hold no
+        // state and so claim neither: aria-selected's default is `undefined`,
+        // which reads as "not selectable" — exactly what a command is.
         row.setAttribute("role", "option");
         row.tabIndex = -1;
-        if (opts.radio || opts.check) {
+        if (opts.radio) {
             row.setAttribute("aria-selected", opts.active ? "true" : "false");
+        } else if (opts.check) {
+            row.setAttribute("aria-checked", opts.active ? "true" : "false");
         }
         row.classList.toggle("block-menu-item--active", Boolean(opts.active));
         row.classList.toggle("block-menu-item--danger", Boolean(opts.danger));
@@ -800,7 +828,13 @@ export function openBlockMenu(
     const addDivider = (): void => {
         const divider = document.createElement("div");
         divider.className = "block-menu-divider";
-        divider.setAttribute("role", "separator");
+        // A listbox owns `option` and `group` — `separator` is not a permitted
+        // child, so the rule it draws is presentational here (the same call the
+        // section header above makes). A real `role="group"` + aria-label per
+        // section would expose MORE than this does, but the rows are a flat
+        // list that the filter and the highlight index address by position;
+        // regrouping them is its own change, not a rider on this one.
+        divider.setAttribute("role", "presentation");
         body.appendChild(divider);
     };
 

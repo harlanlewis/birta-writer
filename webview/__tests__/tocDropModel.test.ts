@@ -41,15 +41,28 @@ function view(editor: Editor): EditorView {
     return editor.action((ctx) => ctx.get(editorViewCtx));
 }
 
-/** Every heading in the doc as a TOC entry; `topLevelMax` caps which levels
- * count as top-tier outline items (the TOC's own notion, not doc depth). */
-function outlineOf(doc: ProseNode, topLevelMax: number): TocHeadingEntry[] {
+/**
+ * Every heading in the doc as a TOC entry, built exactly as production does
+ * (components/toc/index.ts's getHeadings): `atDocRoot` is DOC DEPTH, never
+ * rank. The distinction is the whole point — an earlier version of this helper
+ * modelled it as "level <= N", which made H3s non-root and had the suite
+ * exercising a distribution production never produces (in a flat document
+ * every heading is at the root, so the whole outline drags). Descends into
+ * containers so a heading inside a blockquote/list — the one case that really
+ * is non-root — is reported with atDocRoot false.
+ */
+function outlineOf(doc: ProseNode): TocHeadingEntry[] {
     const headings: TocHeadingEntry[] = [];
-    doc.forEach((node: ProseNode, offset: number) => {
+    doc.descendants((node: ProseNode, pos: number) => {
         if (node.type.name === "heading") {
-            const level = node.attrs["level"] as number;
-            headings.push({ level, text: node.textContent, pos: offset, topLevel: level <= topLevelMax });
+            headings.push({
+                level: node.attrs["level"] as number,
+                text: node.textContent,
+                pos,
+                atDocRoot: doc.resolve(pos).depth === 0,
+            });
         }
+        return true;
     });
     return headings;
 }
@@ -72,7 +85,7 @@ describe("tocDropSlots", () => {
     it("a flat outline should yield a gap per heading, a terminal end slot, and an into per heading", async () => {
         const editor = await makeEditor("# A\n\na body\n\n# B\n\nb body\n\n# C");
         const doc = view(editor).state.doc;
-        const headings = outlineOf(doc, 1);
+        const headings = outlineOf(doc);
         const slots = tocDropSlots(headings, doc, neverHidden);
         const gaps = slots.filter((s) => s.kind === "gap");
         const intos = slots.filter((s) => s.kind === "into");
@@ -94,9 +107,12 @@ describe("tocDropSlots", () => {
     it("an H2 with H3 children should get an into slot past the children's sections", async () => {
         const editor = await makeEditor("## A\n\n### A1\n\nx\n\n### A2\n\ny\n\n## B\n\nz");
         const doc = view(editor).state.doc;
-        const headings = outlineOf(doc, 2); // H2s are top-tier; H3s are nested
-        const nested = headings.filter((h) => !h.topLevel);
-        expect(nested).toHaveLength(2); // the raw material: A1/A2 exist
+        // A flat document: every heading is at the doc root, subsections
+        // included, so every one of them drags and gets its own slots. Rank is
+        // what makes A1/A2 A's children — and that is a fold-range fact, not a
+        // slot-eligibility one.
+        const headings = outlineOf(doc);
+        expect(headings.every((h) => h.atDocRoot)).toBe(true);
         const slots = tocDropSlots(headings, doc, neverHidden);
         const intoA = slots.find((s) => s.kind === "into" && s.headingPos === headings[0]!.pos)!;
         // A's section spans BOTH H3 subsections — into A appends after them.
@@ -104,21 +120,25 @@ describe("tocDropSlots", () => {
         expect(intoA.pos).toBe(bPos);
     });
 
-    it("a nested (topLevel false) heading should produce no slots", async () => {
-        const editor = await makeEditor("## A\n\n### A1\n\nx\n\n### A2\n\ny\n\n## B\n\nz");
+    it("a heading nested inside a container should produce no slots", async () => {
+        // The ONLY way to be non-root: inside a blockquote. Rank never does it
+        // — an H3 at the doc root is a perfectly good drop row (above).
+        const editor = await makeEditor("# Root\n\nbody\n\n> # Quoted\n>\n> quoted body");
         const doc = view(editor).state.doc;
-        const headings = outlineOf(doc, 2);
+        const headings = outlineOf(doc);
+        const nested = headings.filter((h) => !h.atDocRoot);
+        expect(nested.map((h) => h.text)).toEqual(["Quoted"]); // the raw material exists
         const slots = tocDropSlots(headings, doc, neverHidden);
-        const nestedPositions = headings.filter((h) => !h.topLevel).map((h) => h.pos);
+        const nestedPositions = nested.map((h) => h.pos);
         expect(slots.some((s) => s.kind === "gap" && nestedPositions.includes(s.pos))).toBe(false);
         expect(slots.some((s) => s.headingPos !== undefined && nestedPositions.includes(s.headingPos))).toBe(false);
-        expect(slots.filter((s) => s.kind === "gap")).toHaveLength(3); // A, B, terminal
+        expect(slots.filter((s) => s.kind === "gap")).toHaveLength(2); // Root + terminal
     });
 
     it("isHiddenTarget should remove buried slots and keep the rest", async () => {
         const editor = await makeEditor("# A\n\na body\n\n# B\n\nb body");
         const doc = view(editor).state.doc;
-        const headings = outlineOf(doc, 1);
+        const headings = outlineOf(doc);
         const bPos = headings[1]!.pos;
         // Pretend A's section end (== B's pos) is fold-hidden.
         const slots = tocDropSlots(headings, doc, (pos) => pos === bPos);
@@ -128,12 +148,14 @@ describe("tocDropSlots", () => {
         expect(slots.some((s) => s.kind === "gap" && s.pos === doc.content.size)).toBe(true);
     });
 
-    it("an empty top-level outline should produce no slots (not even the terminal one)", async () => {
-        const editor = await makeEditor("just a paragraph\n\n### deep only");
+    it("an outline with no root-level heading should produce no slots (not even the terminal one)", async () => {
+        const editor = await makeEditor("just a paragraph\n\n> ### quoted only");
         const doc = view(editor).state.doc;
         expect(tocDropSlots([], doc, neverHidden)).toEqual([]);
-        // All-nested outline: same answer.
-        const nestedOnly = outlineOf(doc, 2); // the H3 stays topLevel: false
+        // Every heading nested inside a container: same answer.
+        const nestedOnly = outlineOf(doc);
+        expect(nestedOnly.length).toBeGreaterThan(0);
+        expect(nestedOnly.every((h) => !h.atDocRoot)).toBe(true);
         expect(tocDropSlots(nestedOnly, doc, neverHidden)).toEqual([]);
     });
 });
@@ -144,7 +166,7 @@ describe("slot target levels (the structural-editor contract)", () => {
     it("a gap slot should carry the level of the heading it sits above", async () => {
         const editor = await makeEditor("# One\n\n### Deep\n\nbody\n\n## Two\n\nbody");
         const doc = view(editor).state.doc;
-        const slots = tocDropSlots(outlineOf(doc, 6), doc, neverHiddenLocal);
+        const slots = tocDropSlots(outlineOf(doc), doc, neverHiddenLocal);
         const gaps = slots.filter((s) => s.kind === "gap");
         // One gap per heading (H1, H3, H2) + the terminal slot.
         expect(gaps.map((g) => g.targetLevel)).toEqual([1, 3, 2, 2]);
@@ -153,33 +175,34 @@ describe("slot target levels (the structural-editor contract)", () => {
     it("the terminal gap should carry the LAST section's level", async () => {
         const editor = await makeEditor("# One\n\nbody\n\n#### Last\n\nbody");
         const doc = view(editor).state.doc;
-        const slots = tocDropSlots(outlineOf(doc, 6), doc, neverHiddenLocal);
+        const slots = tocDropSlots(outlineOf(doc), doc, neverHiddenLocal);
         const terminal = slots.find((s) => s.kind === "gap" && s.pos === doc.content.size);
         expect(terminal?.targetLevel).toBe(4);
     });
 
-    it("a COLLAPSED section should offer no into slot (its gap survives)", async () => {
-        // Filing a run into a collapsed section lands it under the fold, at
-        // display:none — indistinguishable from a delete. The into slot's
-        // commit pos is legal and VISIBLE before the move, so isHiddenTarget
-        // cannot catch it; only refusing the slot up front can.
+    it("a COLLAPSED section should still offer its into slot (landings are revealed, not refused)", async () => {
+        // The model does not know or care about fold state. A drop into a
+        // collapsed section is a slot the user aimed at, and moveBlocks opens
+        // the fold over the landing afterwards (clause 4 / revealPosition,
+        // MAR-146) — so the hazard has exactly ONE rule, and it is not here.
+        // This module's only fold input stays `isHiddenTarget`, which refuses
+        // targets that are ALREADY buried.
         const editor = await makeEditor("# One\n\n### Deep\n\ndeep\n\n## Two\n\nbody");
         const doc = view(editor).state.doc;
-        const headings = outlineOf(doc, 6);
+        const headings = outlineOf(doc);
         const deepPos = headings.find((h) => h.text === "Deep")!.pos;
-        const slots = tocDropSlots(headings, doc, neverHiddenLocal, (pos) => pos === deepPos);
-        expect(slots.some((s) => s.kind === "into" && s.headingPos === deepPos)).toBe(false);
-        // Every other section keeps its into slot…
-        expect(slots.filter((s) => s.kind === "into").length).toBe(headings.length - 1);
-        // …and the collapsed section is still a legal SIBLING target (a drop
-        // there lands outside the fold), so the row is never a dead zone.
+        const slots = tocDropSlots(headings, doc, neverHiddenLocal);
+        expect(slots.some((s) => s.kind === "into" && s.headingPos === deepPos)).toBe(true);
+        // Every section gets one — no fold state subtracts from the offer.
+        expect(slots.filter((s) => s.kind === "into").length).toBe(headings.length);
+        // …and the section is a legal SIBLING target too, as always.
         expect(slots.some((s) => s.kind === "gap" && s.pos === deepPos)).toBe(true);
     });
 
     it("an into slot should carry its owner's level + 1, clamped at H6", async () => {
         const editor = await makeEditor("# One\n\nbody\n\n###### Deepest\n\nbody");
         const doc = view(editor).state.doc;
-        const slots = tocDropSlots(outlineOf(doc, 6), doc, neverHiddenLocal);
+        const slots = tocDropSlots(outlineOf(doc), doc, neverHiddenLocal);
         const intos = slots.filter((s) => s.kind === "into");
         // H1 → child H2; H6 → child would be H7, so it clamps to H6.
         expect(intos.map((s) => s.targetLevel)).toEqual([2, 6]);
@@ -190,7 +213,7 @@ describe("draggedSectionLevel", () => {
     it("a range starting at a heading should report that heading's level", async () => {
         const editor = await makeEditor("# One\n\nbody\n\n### Three\n\nbody");
         const doc = view(editor).state.doc;
-        const headings = outlineOf(doc, 6);
+        const headings = outlineOf(doc);
         expect(draggedSectionLevel(doc, { from: headings[0]!.pos, to: headings[1]!.pos })).toBe(1);
         expect(draggedSectionLevel(doc, { from: headings[1]!.pos, to: doc.content.size })).toBe(3);
     });

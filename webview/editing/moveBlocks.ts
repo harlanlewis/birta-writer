@@ -22,15 +22,23 @@
  *    heading produced a range ending outside its container, and deleteRange
  *    destroyed content that was never re-inserted) is refused LOUDLY — dev
  *    console.error plus a no-op — instead of trusted.
- * 3. EXPLICIT FIT — the target must be a node boundary whose parent
- *    `canReplace`s the exact fragment at that index, verified BEFORE any
- *    transaction exists. Implicit `replaceStep` fitting is never relied on:
- *    that is where silent wraps, splits (the code-block-split class the
- *    guard used to catch as the last line of defense), and silent no-ops
- *    live. The ONLY allowed normalization is `deleteRange` dissolving a
- *    parent the move emptied (a list losing its last item). Nothing else:
- *    no retyping nodes to fit, no attr drops, no dissolving non-empty
- *    containers.
+ * 3. EXPLICIT FIT, ON BOTH SIDES — the target must be a node boundary whose
+ *    parent `canReplace`s the exact fragment at that index, AND the source's
+ *    parent must still be valid once the run leaves it; both verified BEFORE
+ *    any transaction exists. Implicit `replaceStep` fitting is never relied
+ *    on: that is where silent wraps, splits (the code-block-split class the
+ *    guard used to catch as the last line of defense), silent no-ops, and
+ *    filler nodes live. The ONLY allowed normalization is `deleteRange`
+ *    dissolving a parent the move emptied (a list losing its last item).
+ *    Nothing else: no retyping nodes to fit, no attr drops, no dissolving
+ *    non-empty containers, no re-heading a stranded parent with a filler.
+ *
+ *    The source side is the mirror of the target side and was the later
+ *    lesson: `replaceStep` repairs a parent whose remainder stops matching
+ *    its content expression by INJECTING a node, rather than refusing. That
+ *    escapes both other defenses — the result is schema-valid and conserves
+ *    content — and only shows up as corruption after save+reopen. See
+ *    `resolveMove`'s source-side clause.
  *
  *    The clause forbids IMPLICIT rewrites — content silently reshaped to
  *    make a drop fit. It does not forbid a transformation the CALLER asked
@@ -58,7 +66,7 @@
  */
 import type { EditorView } from "@milkdown/prose/view";
 import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
-import { TextSelection } from "@milkdown/prose/state";
+import { TextSelection, type EditorState } from "@milkdown/prose/state";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState";
 // Runtime-only cycle (moveBlocks → headingFold → blockMenu → moveBlocks):
@@ -122,6 +130,156 @@ function refuse(reason: string): false {
     return false;
 }
 
+/** resolveMove's verdict: a refusal reason, or the derived move payload. */
+type MoveResolution =
+    | { reason: string }
+    | {
+        reason: null;
+        content: Fragment;
+        coveredFrom: number;
+        coveredTo: number;
+    };
+
+/**
+ * The structural verdict on a move, decided on the document alone — clauses
+ * 2/3/4 of the contract, and the SINGLE place they are decided. `moveBlocks`
+ * refuses on a reason; the UI asks the same question through `moveFits` to
+ * DISABLE a gesture rather than offer one that silently no-ops. Sharing the
+ * verdict is the point: a menu row that predicts legality with its own copy
+ * of these rules drifts from the primitive the moment either side changes
+ * (the same reason the drag's slot filter and clause 4 share one registry).
+ */
+function resolveMove(
+    state: EditorState,
+    source: { from: number; to: number },
+    targetPos: number,
+    relevelDelta: number,
+): MoveResolution {
+    const { doc } = state;
+    if (source.from < 0 || source.to > doc.content.size || targetPos < 0 || targetPos > doc.content.size) {
+        return { reason: `range [${source.from}, ${source.to}) or target ${targetPos} is outside the document` };
+    }
+
+    // ── 2. Source range integrity ──
+    // Collect the moved children directly from their common parent — a
+    // doc.slice through a LIST would wrap the items in a phantom list node
+    // (open slice), nesting a list inside the drop target. Works uniformly
+    // for top-level blocks (parent = doc) and nested children (list items,
+    // container children).
+    const $from = doc.resolve(source.from);
+    const parent = $from.depth === 0 ? doc : $from.parent;
+    if (parent.isTextblock) {
+        return {
+            reason: `source range start ${source.from} resolves inside a ${parent.type.name}, not at a block boundary`,
+        };
+    }
+    const base = $from.depth === 0 ? 0 : $from.start();
+    const moved: ProseNode[] = [];
+    let firstIndex = -1;
+    let coveredFrom = -1;
+    let coveredTo = -1;
+    parent.forEach((child: ProseNode, offset: number, index: number) => {
+        const childPos = base + offset;
+        if (childPos >= source.from && childPos < source.to) {
+            if (moved.length === 0) {
+                coveredFrom = childPos;
+                firstIndex = index;
+            }
+            moved.push(child);
+            coveredTo = childPos + child.nodeSize;
+        }
+    });
+    if (moved.length === 0) {
+        return { reason: `source range [${source.from}, ${source.to}) covers no children of its parent` };
+    }
+    if (coveredFrom !== source.from || coveredTo !== source.to) {
+        // The fe6a1fe malformed-range class: a range that does not cleanly
+        // tile whole children would DELETE [from, to) but re-insert only the
+        // children it happened to cover — data loss. Refuse it up front.
+        return {
+            reason:
+                `source range [${source.from}, ${source.to}) does not cleanly cover whole children of ` +
+                `${parent.type.name} (whole-child cover is [${coveredFrom}, ${coveredTo}))`,
+        };
+    }
+    // Clause 3's declared exception: an opt-in, caller-requested rank shift.
+    // Applied BEFORE the fit check so `canReplace` verifies the fragment that
+    // actually lands (a relevel keeps the node type, so the answer is the
+    // same — checking the real fragment is the point, not a formality).
+    const content = Fragment.from(relevelHeadings(moved, relevelDelta));
+
+    // ── 4. Target legality: never land inside fold-hidden content ──
+    // Same registry as the drag UI's slot filter (visibleBoundaryPositions):
+    // collapsed heading sections are half-open at `to`, collapsed callout
+    // bodies inclusive. A hidden target here means a caller drifted from the
+    // registry — content committed into display:none reads as deletion.
+    // (A target AT a section's end is visible and legal, but the landing may
+    // still fall inside the fold — revealed, not refused, by the caller.)
+    if (isHiddenTargetPos(state, targetPos)) {
+        return { reason: `target ${targetPos} is inside fold-hidden content` };
+    }
+
+    // ── 3. Explicit fit, before any transaction exists ──
+    const $target = doc.resolve(targetPos);
+    if ($target.textOffset !== 0) {
+        return { reason: `target ${targetPos} is inside a text node, not at a node boundary` };
+    }
+    const targetIndex = $target.index();
+    if (!$target.parent.canReplace(targetIndex, targetIndex, content)) {
+        // The code-block-split class: tr.insert's replaceStep would "fit"
+        // the fragment by splitting the target (or silently no-op). The
+        // primitive refuses instead — structurally, before the guard would.
+        return {
+            reason:
+                `target parent ${$target.parent.type.name} cannot hold the moved ` +
+                `${moved.map((n) => n.type.name).join("+")} at index ${targetIndex}`,
+        };
+    }
+
+    // ── 3, source side: the vacated parent must survive the removal ──
+    // Clause 3 forbids IMPLICIT fitting on BOTH sides, but only the target
+    // side was ever checked. The delete has the mirror-image failure: when
+    // the remainder no longer matches the parent's content expression,
+    // replaceStep does not refuse — it silently injects a FILLER node to
+    // repair the parent. `list_item` is `paragraph block*`, so moving an
+    // item's leading paragraph down leaves `[blockquote, paragraph]`, and
+    // ProseMirror re-heads the item with an EMPTY paragraph. That doc is
+    // schema-valid (doc.check passes) and conserves content (the guard's
+    // fingerprint ignores empty paragraphs — MAR-123), so BOTH existing
+    // defenses pass it. It serializes to a bare `-` marker line, which on
+    // reparse splits the list: silent corruption at save+reopen.
+    //
+    // The one allowed normalization stays allowed: a removal that empties
+    // the parent entirely is the declared dissolution deleteRange performs
+    // (a list losing its last item), so it is exempt — this clause is only
+    // about a parent left non-empty AND invalid.
+    const survivors = parent.childCount - moved.length;
+    if (survivors > 0 && !parent.canReplace(firstIndex, firstIndex + moved.length)) {
+        return {
+            reason:
+                `removing ${moved.map((n) => n.type.name).join("+")} at index ${firstIndex} would strand ` +
+                `${parent.type.name} (its remaining content no longer fits "${parent.type.spec.content ?? ""}")`,
+        };
+    }
+    return { reason: null, content, coveredFrom, coveredTo };
+}
+
+/**
+ * Whether `moveBlocks` would structurally accept this move. The block menu's
+ * Move rows disable on `false` instead of rendering live and no-opping on
+ * click. Answers the STRUCTURAL question only: a target inside the source
+ * range fits here but is moveBlocks' quiet "put it back" no-op, so callers
+ * that can produce one must exclude it themselves (the Move rows cannot — a
+ * sibling hop always lands outside the run).
+ */
+export function moveFits(
+    state: EditorState,
+    source: { from: number; to: number },
+    targetPos: number,
+): boolean {
+    return resolveMove(state, source, targetPos, 0).reason === null;
+}
+
 /**
  * Move the contiguous block run `source` so it starts at boundary
  * `targetPos`, as a single guarded transaction (one undo step). Returns
@@ -149,81 +307,15 @@ export function moveBlocks(
     // The pre-move selection, captured before the transaction so a single
     // move can restore the caret at its offset WITHIN the moved block (below).
     const preMoveSel = view.state.selection;
-    if (source.from < 0 || source.to > doc.content.size || targetPos < 0 || targetPos > doc.content.size) {
-        return refuse(`range [${source.from}, ${source.to}) or target ${targetPos} is outside the document`);
-    }
 
-    // ── 2. Source range integrity ──
-    // Collect the moved children directly from their common parent — a
-    // doc.slice through a LIST would wrap the items in a phantom list node
-    // (open slice), nesting a list inside the drop target. Works uniformly
-    // for top-level blocks (parent = doc) and nested children (list items,
-    // container children).
-    const $from = doc.resolve(source.from);
-    const parent = $from.depth === 0 ? doc : $from.parent;
-    if (parent.isTextblock) {
-        return refuse(
-            `source range start ${source.from} resolves inside a ${parent.type.name}, not at a block boundary`,
-        );
+    // ── 2/3/4. Structural legality — decided by resolveMove, the shared
+    // verdict the UI also consults (so a live-looking row and the primitive
+    // can never disagree about what is possible).
+    const resolution = resolveMove(view.state, source, targetPos, relevelDelta);
+    if (resolution.reason !== null) {
+        return refuse(resolution.reason);
     }
-    const base = $from.depth === 0 ? 0 : $from.start();
-    const moved: ProseNode[] = [];
-    let coveredFrom = -1;
-    let coveredTo = -1;
-    parent.forEach((child: ProseNode, offset: number) => {
-        const childPos = base + offset;
-        if (childPos >= source.from && childPos < source.to) {
-            if (moved.length === 0) {
-                coveredFrom = childPos;
-            }
-            moved.push(child);
-            coveredTo = childPos + child.nodeSize;
-        }
-    });
-    if (moved.length === 0) {
-        return refuse(`source range [${source.from}, ${source.to}) covers no children of its parent`);
-    }
-    if (coveredFrom !== source.from || coveredTo !== source.to) {
-        // The fe6a1fe malformed-range class: a range that does not cleanly
-        // tile whole children would DELETE [from, to) but re-insert only the
-        // children it happened to cover — data loss. Refuse it up front.
-        return refuse(
-            `source range [${source.from}, ${source.to}) does not cleanly cover whole children of ` +
-            `${parent.type.name} (whole-child cover is [${coveredFrom}, ${coveredTo}))`,
-        );
-    }
-    // Clause 3's declared exception: an opt-in, caller-requested rank shift.
-    // Applied BEFORE the fit check so `canReplace` verifies the fragment that
-    // actually lands (a relevel keeps the node type, so the answer is the
-    // same — checking the real fragment is the point, not a formality).
-    const content = Fragment.from(relevelHeadings(moved, relevelDelta));
-
-    // ── 4. Target legality: never land inside fold-hidden content ──
-    // Same registry as the drag UI's slot filter (visibleBoundaryPositions):
-    // collapsed heading sections are half-open at `to`, collapsed callout
-    // bodies inclusive. A hidden target here means a caller drifted from the
-    // registry — content committed into display:none reads as deletion.
-    // (A target AT a section's end is visible and legal, but the landing may
-    // still fall inside the fold — revealed, not refused, below.)
-    if (isHiddenTargetPos(view.state, targetPos)) {
-        return refuse(`target ${targetPos} is inside fold-hidden content`);
-    }
-
-    // ── 3. Explicit fit, before any transaction exists ──
-    const $target = doc.resolve(targetPos);
-    if ($target.textOffset !== 0) {
-        return refuse(`target ${targetPos} is inside a text node, not at a node boundary`);
-    }
-    const targetIndex = $target.index();
-    if (!$target.parent.canReplace(targetIndex, targetIndex, content)) {
-        // The code-block-split class: tr.insert's replaceStep would "fit"
-        // the fragment by splitting the target (or silently no-op). The
-        // primitive refuses instead — structurally, before the guard would.
-        return refuse(
-            `target parent ${$target.parent.type.name} cannot hold the moved ` +
-            `${moved.map((n) => n.type.name).join("+")} at index ${targetIndex}`,
-        );
-    }
+    const { content, coveredFrom, coveredTo } = resolution;
 
     // ── Declared dissolution: which marker-bearing containers this move
     // empties ── deleteRange dissolves an emptied parent (and any ancestor

@@ -13,7 +13,7 @@
  * like the browser. acquireVsCodeApi is injected by setup.ts.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx, serializerCtx } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { Plugin } from "@milkdown/prose/state";
@@ -28,8 +28,15 @@ import {
     type HeadingFoldMeta,
 } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
-import { contentGuardKey, contentGuardPlugin } from "../plugins/contentGuard";
-import { moveBlocks } from "../editing/moveBlocks";
+import {
+    checkMove,
+    contentGuardKey,
+    contentGuardPlugin,
+    diffFingerprints,
+    fingerprintDoc,
+    formatFingerprintDiff,
+} from "../plugins/contentGuard";
+import { dissolvedMarkersFor, moveBlocks, moveFits } from "../editing/moveBlocks";
 import { moveRangeAt } from "../components/blockMenu";
 import {
     blockBoundaryPositions,
@@ -205,6 +212,109 @@ describe("moveBlocks — explicit target fit", () => {
         expect(dispatchSpy).not.toHaveBeenCalled();
         expect(refusals().some((line) => line.includes("not at a node boundary"))).toBe(true);
         expect(markdown(editor)).toBe(before);
+    });
+});
+
+// ── Contract 3, source side: the vacated parent must survive ────────────────
+
+describe("moveBlocks — explicit source fit", () => {
+    /**
+     * The arrangement the source-side clause exists to prevent, reached the
+     * way the primitive USED to reach it (deleteRange + insert, no fit check
+     * on the vacated parent). This is the "why" pin: it demonstrates that
+     * every other defense passes the corrupt result, so removing the clause
+     * cannot be made safe by leaning on the guard or on doc.check().
+     */
+    it("stranding a list item's leading paragraph should survive both other defenses yet break round-trip", async () => {
+        const editor = await makeEditor("- item one\n\n  > quoted inside item\n\n- item two");
+        const v = view(editor);
+        const paraPos = nodePos(v, "item one", "paragraph");
+        const para = v.state.doc.nodeAt(paraPos)!;
+        const quotePos = paraPos + para.nodeSize;
+        const quoteEnd = quotePos + v.state.doc.nodeAt(quotePos)!.nodeSize;
+
+        // The raw steps the primitive would have taken: hop the leading
+        // paragraph past the blockquote inside its own item.
+        const tr = v.state.tr.deleteRange(paraPos, paraPos + para.nodeSize);
+        tr.insert(tr.mapping.map(quoteEnd), para);
+        const stranded = tr.doc;
+
+        // `list_item` is `paragraph block*`, so the remainder no longer fits —
+        // and replaceStep REPAIRS it rather than refusing, re-heading the item
+        // with an EMPTY paragraph nobody asked for.
+        const item = stranded.child(0).child(0);
+        expect(item.type.name).toBe("list_item");
+        expect(item.child(0).type.name).toBe("paragraph");
+        expect(item.child(0).textContent).toBe(""); // the injected filler
+        expect(item.child(1).type.name).toBe("blockquote");
+
+        // Defense 1 — the schema: passes. The filler makes it VALID.
+        expect(() => stranded.check()).not.toThrow();
+
+        // Defense 2 — the content guard: passes. Asked through the guard's OWN
+        // oracle (checkMove — the function the runtime guard runs), not a
+        // hand-rolled equivalent. Its fingerprint ignores empty paragraphs
+        // (MAR-123: they serialize to nothing, so they are not content), so the
+        // injected filler is invisible to conservation.
+        expect(
+            checkMove(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(stranded)),
+                new Set(dissolvedMarkersFor(v.state.doc, { from: paraPos, to: paraPos + para.nodeSize })),
+            ),
+        ).toBeNull();
+
+        // Defense 3 — the round trip: FAILS. The empty leading paragraph
+        // serializes to a bare `-` marker line, which on reparse ends the list
+        // and splits the rest into a second one. Silent corruption at
+        // save+reopen — invisible until the file is reopened.
+        const serialized = editor.action((ctx) => ctx.get(serializerCtx)(stranded));
+        expect(serialized).toMatch(/^-\s*$/m); // the bare, contentless marker
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(serialized))!;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(stranded), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: count:bullet_list");
+    });
+
+    it("a move that would strand its source parent should be refused with NO transaction dispatched", async () => {
+        const editor = await makeEditor("- item one\n\n  > quoted inside item\n\n- item two");
+        const v = view(editor);
+        const before = markdown(editor);
+        const docBefore = v.state.doc;
+        const paraPos = nodePos(v, "item one", "paragraph");
+        const para = v.state.doc.nodeAt(paraPos)!;
+        const quotePos = paraPos + para.nodeSize;
+        const quoteEnd = quotePos + v.state.doc.nodeAt(quotePos)!.nodeSize;
+        const dispatchSpy = vi.spyOn(v, "dispatch");
+
+        expect(moveBlocks(v, { from: paraPos, to: paraPos + para.nodeSize }, quoteEnd)).toBe(false);
+
+        expect(dispatchSpy).not.toHaveBeenCalled(); // BEFORE the guard, not caught BY it
+        expect(guardErrors()).toEqual([]);
+        expect(refusals().some((line) => line.includes("would strand list_item"))).toBe(true);
+        expect(v.state.doc).toBe(docBefore); // a refused move is a PERFECT no-op
+        expect(markdown(editor)).toBe(before);
+        expect(flashRange).not.toHaveBeenCalled();
+    });
+
+    // The dissolution exemption this clause must NOT swallow (a move that
+    // empties its source parent entirely) is pinned by the two "allowed
+    // normalization" tests below — not duplicated here.
+
+    it("moveFits should agree with the primitive on a stranding move", async () => {
+        const editor = await makeEditor("- item one\n\n  > quoted inside item\n\n- item two");
+        const v = view(editor);
+        const paraPos = nodePos(v, "item one", "paragraph");
+        const para = v.state.doc.nodeAt(paraPos)!;
+        const quotePos = paraPos + para.nodeSize;
+        const quoteEnd = quotePos + v.state.doc.nodeAt(quotePos)!.nodeSize;
+        const range = { from: paraPos, to: paraPos + para.nodeSize };
+
+        // The UI's question and the primitive's answer come from one place, so
+        // a row can never render live over a move that will be refused.
+        expect(moveFits(v.state, range, quoteEnd)).toBe(false);
+        expect(moveBlocks(v, range, quoteEnd)).toBe(false);
     });
 });
 
