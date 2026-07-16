@@ -39,7 +39,7 @@ const entries = listing
 // covers some (.vscode-test, node_modules); listing them anyway means an
 // upstream default change can't silently regress us.
 const banned =
-    /^extension\/(\.vscode-test|\.vscode-test-web|\.e2e-shots|releases|node_modules|coverage|out)\//;
+    /^extension\/(\.vscode-test|\.vscode-test-web|\.e2e-shots|releases|node_modules|coverage|out|packages)\//;
 const offenders = entries.filter((name) => banned.test(name));
 
 // A clean package is 96 files (2026-07). Headroom for legitimate growth;

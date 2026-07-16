@@ -1,0 +1,9 @@
+{
+    "name": "@birta/minimal-diff",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Format-agnostic serialize-then-minimal-diff engine: LCS line merge plus round-trip protection, parameterized by an injected FormatProfile.",
+    "license": "FSL-1.1-ALv2",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts"
+}

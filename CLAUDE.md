@@ -72,7 +72,8 @@ src/utils/imageService.ts                     — Local image save (MD5 dedup) +
 webview/index.ts                              — WebView entry
 webview/editor.ts                             — Milkdown editor init (incl. keymap plugins)
 webview/serialization.ts                      — Serializer config (stringify options, table handler, pure-markdown preset)
-webview/utils/minimalDiff.ts                  — Minimal-diff merge of serializer output into the saved file
+packages/minimal-diff/src/index.ts            — Format-agnostic minimal-diff engine (LCS merge + round-trip protection), workspace package
+webview/utils/minimalDiff.ts                  — Markdown FormatProfile (classifier + normalizers) + profile-bound minimal-diff API
 webview/messaging.ts                          — WebView ↔ Extension message protocol (the only comms layer)
 webview/style.css                             — VS Code theming (--vscode-* CSS variables)
 webview/i18n/index.ts                         — t() / kbd() translation functions
@@ -164,6 +165,7 @@ src/__tests__/              — Extension-side unit tests (Node env)
 webview/__tests__/          — WebView-side unit tests (jsdom env)
 webview/__tests__/setup.ts  — jsdom global setup (injects acquireVsCodeApi)
 shared/__tests__/           — Shared-type tests
+packages/*/src/__tests__/   — Workspace-package tests (Node env; e.g. the minimal-diff core)
 __mocks__/vscode.ts         — Central vscode API mock
 ```
 
