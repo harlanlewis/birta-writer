@@ -229,60 +229,27 @@ export function enumerateMovePairs(
 // gate now holds the FULL pair space to the contract. The B/F repros are
 // normal pins in corpusMoveSampling.test.ts asserting the refusal.
 
-// ── Known MERGE-tier hazards (MAR-161) ──────────────────────────────────────
+// ── MERGE-tier hazard history (MAR-161) ─────────────────────────────────────
 //
-// Two `applyMinimalChanges` bugs found the moment the full pair space opened
-// up. Both are CLEAN at the raw serialize→reparse tier (so the MAR-120
-// save-survival refusal correctly does not fire — refusing a valid gesture
-// for a merge bug would punish the user for the merge's fault); the damage
-// appears only when the serialized output is merged against the saved bytes:
+// Two `applyMinimalChanges` bugs were found the moment the full pair space
+// opened up. Both were CLEAN at the raw serialize→reparse tier (so the
+// MAR-120 save-survival refusal correctly did not fire); the damage appeared
+// only when the serialized output was merged against the saved bytes. Both
+// are FIXED and pinned as normal repros in corpusMoveSampling.test.ts (with
+// distilled string-level repros in minimalDiff.test.ts):
 //
-//   (M1) the merge drops the blank line the serializer emits to keep raw
-//        `:::` fence prose inert at a directive body's tail (the mirror of
-//        the fixed MAR-122: there gapBefore KEPT a stale blank, here it
-//        REMOVES a live one);
-//   (M2) FIXED (MAR-131 normalizer rework): the line normalizer used to
-//        match a setext heading's underline (`-----`) to a saved thematic
-//        break (`***`) and "repair" it, dissolving the heading. Thematic
-//        breaks now key by marker character, so cross-character repair is
-//        impossible. No longer excluded; a dash-hr vs dash-underline
-//        collision would still key equal (needs line-above context) and
-//        stays open on MAR-161.
+//   (M1) the merge dropped the blank line the serializer emits to keep raw
+//        `:::` fence prose inert at a directive body's tail — gapBefore now
+//        defers to the serializer's separating blank when gluing would
+//        change the next line's attachment (the dual of the MAR-122 rule);
+//   (M2) the line normalizer matched a setext heading's underline to a
+//        saved thematic break and "repaired" it, dissolving the heading —
+//        thematic breaks now key by marker character (MAR-131 rework), and
+//        the line classifier keys an attached dash run as a setext
+//        underline, closing the same-character residual too.
 //
-// Excluded here by the narrowest predicate that covers M1 — never by
-// weakening assertions — and pinned as an `it.fails` repro in
-// corpusMoveSampling.test.ts. Delete this predicate (and promote the pin)
-// when MAR-161 closes.
-
-export function knownMergeTierHazard(
-    view: EditorView,
-    source: { from: number; to: number },
-    target: number,
-): boolean {
-    const { doc } = view.state;
-    const fragment = childrenInRange(doc, source);
-    if (!fragment) {
-        return false; // malformed range — the primitive refuses it anyway
-    }
-    let fragmentHasRawFence = false;
-    fragment.descendants((node: ProseNode) => {
-        if (node.isTextblock && !node.type.spec.code && node.textContent.startsWith(":::")) {
-            fragmentHasRawFence = true;
-        }
-        return true;
-    });
-    // (M1): raw fence prose moved inside a container directive needs the
-    // serializer's separating blank line, which the merge may remove.
-    if (fragmentHasRawFence) {
-        const $target = doc.resolve(target);
-        for (let d = $target.depth; d > 0; d--) {
-            if ($target.node(d).type.name === "container_directive") {
-                return true;
-            }
-        }
-    }
-    return false;
-}
+// The `knownMergeTierHazard` exclusion predicate that kept M1-shaped pairs
+// out of the sampled space is deleted: the gates hold the FULL pair space.
 
 /**
  * The whole children of `parent`-under-`doc` covered by [from, to), as the

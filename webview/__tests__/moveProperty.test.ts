@@ -46,7 +46,6 @@ import {
     editorView,
     enumerateMovePairs,
     enumerateMoveSources,
-    knownMergeTierHazard,
     makeCorpusEditor,
     mulberry32,
     randomInt,
@@ -172,14 +171,11 @@ describe("seeded move/duplicate property suite", () => {
                 let record: OpRecord;
 
                 if (rng() < 0.75) {
-                    // Move: any UI-expressible pair. B/F fence-hazard pairs
-                    // are refused by the save-survival check (MAR-120) and
-                    // exercise the failed-op no-op branch below. Only the
-                    // MERGE-tier bugs (MAR-161, pinned elsewhere) are
-                    // excluded — clean at the tier the refusal observes.
-                    const pairs = enumerateMovePairs(v).filter(
-                        ({ source, target }) => !knownMergeTierHazard(v, source, target),
-                    );
+                    // Move: any UI-expressible pair, nothing excluded. B/F
+                    // fence-hazard pairs are refused by the save-survival
+                    // check (MAR-120) and exercise the failed-op no-op
+                    // branch below; the MERGE-tier bugs (MAR-161) are fixed.
+                    const pairs = enumerateMovePairs(v);
                     if (pairs.length === 0) {
                         continue;
                     }
@@ -203,17 +199,9 @@ describe("seeded move/duplicate property suite", () => {
                     // create a B/F fence shape a clean doc didn't have (an
                     // opener above the original means the doc was dirty
                     // before the op — excluded by the precondition). The
-                    // MERGE-tier exclusion (MAR-161) does apply: a copied
-                    // setext heading or fence-prose line meets the same
-                    // applyMinimalChanges repair hazards a moved one does.
-                    const sources = enumerateMoveSources(v).filter(
-                        (source) =>
-                            !knownMergeTierHazard(
-                                v,
-                                { from: source.from, to: source.to },
-                                source.from,
-                            ),
-                    );
+                    // former MERGE-tier exclusion (MAR-161) is gone: those
+                    // applyMinimalChanges bugs are fixed.
+                    const sources = enumerateMoveSources(v);
                     if (sources.length === 0) {
                         continue;
                     }

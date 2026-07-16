@@ -199,6 +199,69 @@ describe("applyMinimalChanges with protection — ordering (adversarial regressi
     });
 });
 
+describe("protection with construct-crossing bytes (MAR-161 M3)", () => {
+    // A tab-indented code block whose content is `***`, plus a REAL `***` hr
+    // elsewhere. The serializer canonicalizes the code block to a fence;
+    // before line classification the code line normalized to the same key as
+    // the hr, the edit script mis-paired them, protection's self-check
+    // failed, and the resulting NULL protection let a zero-edit save rewrite
+    // the file (invariant-A violation).
+    const CODE_SAVED = "Intro paragraph.\n\n\t***\n\nMiddle prose.\n\n***\n\nTail prose.\n";
+    const CODE_BASELINE = "Intro paragraph.\n\n```\n***\n```\n\nMiddle prose.\n\n***\n\nTail prose.\n";
+
+    it("indented code sharing bytes with an hr should still yield protection", () => {
+        const protection = computeRoundTripProtection(CODE_SAVED, CODE_BASELINE);
+        expect(protection).not.toBeNull();
+    });
+
+    it("a zero-edit save should return the saved text byte-identically", () => {
+        const protection = computeRoundTripProtection(CODE_SAVED, CODE_BASELINE);
+        expect(applyMinimalChanges(CODE_SAVED, CODE_BASELINE, protection)).toBe(CODE_SAVED);
+    });
+
+    it("an edit elsewhere should preserve the tab-indented code block's bytes", () => {
+        const protection = computeRoundTripProtection(CODE_SAVED, CODE_BASELINE);
+        const serializedAfterEdit = CODE_BASELINE.replace("Tail prose.", "Tail prose EDITED.");
+
+        const merged = applyMinimalChanges(CODE_SAVED, serializedAfterEdit, protection);
+
+        expect(merged).toContain("\t***");
+        expect(merged).not.toContain("```");
+        expect(merged).toContain("Tail prose EDITED.");
+    });
+});
+
+describe("repair matching uses one pristine analysis (MAR-161 review finding)", () => {
+    // A tilde fence: the serializer rewrites it to backticks, producing TWO
+    // protection regions (open line, close line). Sequential re-analysis
+    // between repairs used to break this: restoring the `~~~` open made the
+    // serializer's following ``` close classify as content of an unclosed
+    // tilde fence, region 2 stopped matching, the self-check failed, and the
+    // null protection let a zero-edit save rewrite the fence.
+    const TILDE_SAVED = "~~~python\ntilde = 'fence'\n~~~\n\ntail prose\n";
+    const TILDE_BASELINE = "```python\ntilde = 'fence'\n```\n\ntail prose\n";
+
+    it("a tilde fence should yield protection despite spanning two regions", () => {
+        expect(computeRoundTripProtection(TILDE_SAVED, TILDE_BASELINE)).not.toBeNull();
+    });
+
+    it("a zero-edit save should keep the tilde fence byte-identically", () => {
+        const protection = computeRoundTripProtection(TILDE_SAVED, TILDE_BASELINE);
+        expect(applyMinimalChanges(TILDE_SAVED, TILDE_BASELINE, protection)).toBe(TILDE_SAVED);
+    });
+
+    it("an edit elsewhere should preserve the tilde fence's bytes", () => {
+        const protection = computeRoundTripProtection(TILDE_SAVED, TILDE_BASELINE);
+        const serializedAfterEdit = TILDE_BASELINE.replace("tail prose", "tail prose EDITED");
+
+        const merged = applyMinimalChanges(TILDE_SAVED, serializedAfterEdit, protection);
+
+        expect(merged).toContain("~~~python");
+        expect(merged).not.toContain("```");
+        expect(merged).toContain("tail prose EDITED");
+    });
+});
+
 describe("applyMinimalChanges — at scale", () => {
     it("a single edit in a 5000-line document should merge only that line", () => {
         // Correctness-at-scale, not a wall-clock gate: the LCS window-trimming

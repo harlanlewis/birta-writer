@@ -310,3 +310,130 @@ describe("applyMinimalChanges — quote-merge blank line (MAR-122)", () => {
         expect(applyMinimalChanges(saved, serialized)).toBe(saved);
     });
 });
+
+describe("applyMinimalChanges — attachment-sensitive blank lines (MAR-161 M1)", () => {
+    it("raw ':::' prose replacing a directive close keeps the serializer's separating blank", () => {
+        // The distilled M1 shape: fence prose moves to a directive body's
+        // tail; the serializer lengthens the outer fence and emits a blank
+        // to keep the raw `:::` line inert. The LCS pairs the old close
+        // fence with the moved prose as an in-place replacement, whose
+        // saved spacing was GLUED — gluing would re-attach the prose to the
+        // paragraph above (a `:::` line cannot interrupt a paragraph).
+        const saved =
+            ":::tip Title\nBody para.\n:::\n\nOther one.\n\nOther two.\n\n::: raw prose line\n";
+        const serialized =
+            "::::tip Title\nBody para.\n\n::: raw prose line\n::::\n\nOther one.\n\nOther two.\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+
+    it("an hr replacing a glued paragraph line keeps its separating blank (never a setext)", () => {
+        // Same rule, dash arm: gluing `---` under "alpha" would turn the
+        // paragraph into a setext heading (setext takes precedence over hr).
+        const saved = "alpha\nold line\n\ntail\n";
+        const serialized = "alpha\n\n---\n\ntail\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+
+    it("an edit elsewhere leaves a directive glued under a heading NOT separated", () => {
+        // A heading terminates its own block, so the glued `:::note` parses
+        // as a directive either way — the saved spacing is the user's style
+        // and must survive an unrelated edit. (An edit elsewhere is required
+        // to exercise the rule at all: with zero edits the merge
+        // short-circuits to the saved bytes before any gap decision runs.)
+        const saved = "# H\n:::note\nbody\n:::\n\ntail old\n";
+        const serialized = "# H\n\n:::note\nbody\n:::\n\ntail new\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "# H\n:::note\nbody\n:::\n\ntail new\n",
+        );
+    });
+});
+
+describe("applyMinimalChanges — line classification (MAR-161): keys never cross constructs", () => {
+    it("a whitespace-only tab→space edit inside a top-level fence should register as an edit", () => {
+        // Top-level fence content is verbatim user bytes (a Makefile recipe
+        // line): the outline-indent normalizer must not equate the tab with
+        // two spaces here, or the edit is silently dropped on save.
+        const saved = "```make\nall:\n\tcc main.c\n```\n";
+        const serialized = "```make\nall:\n  cc main.c\n```\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+
+    it("nested-fence content keeps depth-normalized comparison (Logseq outline, no churn)", () => {
+        // A fence nested in a tab-indented outline re-serializes with space
+        // indentation (MAR-131); every line must still compare equal or an
+        // untouched file churns on save.
+        const saved = "- bullet\n\t- child\n\t  ```js\n\t  code()\n\t  ```\n";
+        const serialized = "- bullet\n  - child\n    ```js\n    code()\n    ```\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+
+    it("a tab-indented lazy continuation stays outline-normalized (not indented code)", () => {
+        const saved = "- item\n\tcontinuation\n";
+        const serialized = "- item\n  continuation\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+    });
+
+    it("an hr glued under a table keeps its glue across an unrelated edit (no setext misread)", () => {
+        // A table row cannot be underlined — `---` after it is an hr whether
+        // glued or separated, so the saved glue is the user's style. The
+        // setext classifier must not key the saved side differently from
+        // the serializer's blank-separated emission (review finding 2).
+        const saved = "| a | b |\n| --- | --- |\n| c | d |\n---\n\ntail old\n";
+        const serialized = "| a | b |\n| --- | --- |\n| c | d |\n\n---\n\ntail new\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "| a | b |\n| --- | --- |\n| c | d |\n---\n\ntail new\n",
+        );
+    });
+
+    it("an hr glued under a quote or list item keeps its glue across an unrelated edit", () => {
+        // A setext underline cannot be a lazy continuation, so `> quote` /
+        // `- item` glued above `---` parse as quote/list + hr — the dash arm
+        // of the attachment rule must stay silent there (review finding 3).
+        const savedQuote = "> quote\n---\n\ntail old\n";
+        const serializedQuote = "> quote\n\n---\n\ntail new\n";
+        expect(applyMinimalChanges(savedQuote, serializedQuote)).toBe(
+            "> quote\n---\n\ntail new\n",
+        );
+
+        const savedList = "- item\n---\n\ntail old\n";
+        const serializedList = "- item\n\n---\n\ntail new\n";
+        expect(applyMinimalChanges(savedList, serializedList)).toBe(
+            "- item\n---\n\ntail new\n",
+        );
+    });
+
+    it("indented code glued after a fence close classifies as code on both sides", () => {
+        // A fence close terminates its block, so the glued indented line IS
+        // code — the classifier must not read it as a lazy continuation on
+        // the saved side while the serializer's blank-separated emission
+        // reads as code (review finding 4: key mismatch on an untouched
+        // line let the serializer's spacing win).
+        const saved = "```\nx\n```\n    indented code\n\ntail old\n";
+        const serialized = "```\nx\n```\n\n    indented code\n\ntail new\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "```\nx\n```\n    indented code\n\ntail new\n",
+        );
+    });
+
+    it("a setext heading moved above a dash hr keeps its underline (never the hr's bytes)", () => {
+        // The M2 dash residual: a spaced `- - -` hr and an attached `----`
+        // underline used to share the key `---`, which tied the LCS between
+        // "keep the heading" and "keep the hr" — and the wrong pick emitted
+        // the saved hr bytes where the underline belongs, dissolving the
+        // heading on reopen (a spaced run cannot be a setext underline).
+        // Setext-classified underlines key by their raw bytes, so the hr can
+        // never stand in for one.
+        const saved = "alpha\n\n- - -\n\nT\n----\n\nomega\n";
+        const serialized = "alpha\n\nT\n----\n\n- - -\n\nomega\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+});
