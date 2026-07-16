@@ -55,8 +55,10 @@
  *    still swallows its landing — the boundary is visible (it renders at the
  *    next heading's line) but sits inside the section, because fold extents
  *    derive from heading ranks. That slot is one the user aimed at, so the
- *    move REVEALS the fold afterwards rather than refusing or hiding the
- *    landing (revealPosition; MAR-146).
+ *    fold is REVEALED rather than the landing refused or hidden (MAR-146).
+ *    The reveal is not this module's job: the fold plugin sees the section's
+ *    end grow over the landing and expands it, in this very transaction
+ *    (swallowedVisibleContent; MAR-149).
  * 5. SIDE-STATE RIDES ALONG — the fold plugin's move meta travels inside
  *    the primitive, so a collapsed section stays collapsed at its
  *    destination and nothing else inherits its fold.
@@ -72,7 +74,7 @@ import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState
 // Runtime-only cycle (moveBlocks → headingFold → blockMenu → moveBlocks):
 // isHiddenTargetPos is only called inside the function body, matching the
 // established contentGuard ↔ headingFold precedent.
-import { isHiddenTargetPos, revealPosition } from "../plugins/headingFold";
+import { isHiddenTargetPos } from "../plugins/headingFold";
 import { markerKeyOf, tagContentGuard } from "../plugins/contentGuard";
 import { flashRange } from "../components/blockMenu/rangeIndicator";
 
@@ -405,20 +407,13 @@ export function moveBlocks(
         // return false so drag/menu/keyboard callers report truthfully.
         return false;
     }
-    // The move landed. If it came to rest inside a collapsed section, open
-    // that fold rather than leave the block at display:none, where it reads as
-    // deleted (MAR-146): a section's END boundary is a slot the user can see
-    // and aim at, but content landed there falls INSIDE the section, because
-    // fold extents derive from heading ranks — there is no position "after the
-    // section but before the next heading". Placing content somewhere is an
-    // explicit entry intent, which is exactly what revealPosition unfolds for
-    // on a Find match or a TOC click.
-    //
-    // Asked of the RESULTING document, so it needs no prediction: post-move
-    // ranks (relevel included) and remapped fold entries already say where the
-    // landing sits. Targets INSIDE a fold never get here — clause 4 refused
-    // them — so this only ever fires for the boundary case.
-    revealPosition(view, insertAt);
+    // The move landed. A landing that came to rest inside a collapsed section
+    // (the END-boundary case in clause 4) is revealed by the fold plugin
+    // itself, in this same transaction: its "no edit may hide visible content"
+    // rule sees the section grow over the landing and expands it (MAR-149).
+    // This site used to reveal explicitly (MAR-146); that became unreachable
+    // once the general rule landed, and a second dispatch could only re-do
+    // what the move transaction already carries.
     view.focus();
     // Landing flash at the destination — positions are valid in the new doc.
     flashRange(view, insertAt, insertAt + content.size);

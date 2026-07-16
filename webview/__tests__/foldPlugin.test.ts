@@ -28,6 +28,7 @@ import {
     revealOnDelete,
     revealOnEnter,
     revealPosition,
+    setHeadingLevelAt,
     unfoldAllCommand,
     unfoldAtCaret,
     type FoldMeta,
@@ -671,6 +672,109 @@ describe("Enter at a collapsed heading boundary", () => {
         expect(revealOnEnter(v.state, v.dispatch)).toBe(false);
         expect(v.state).toBe(stateBefore);
         expect(folded(v).size).toBe(1);
+    });
+});
+
+describe("an edit must not hide content it didn't put there (MAR-149)", () => {
+    /**
+     * Text of every block the fold decoration currently hides — read from the
+     * DOM class that actually drives display:none, NOT from the fold set or
+     * foldedHiddenRanges, which are the state the fix manipulates (asserting
+     * those would only restate the mechanism).
+     */
+    const hiddenTexts = (v: EditorView): string[] =>
+        Array.from(v.dom.querySelectorAll(".heading-fold-hidden")).map((el) => el.textContent ?? "");
+
+    /** `# One / ### Deep / deep text / ## Two / two text / # Three`, Deep collapsed. */
+    async function docWithDeepCollapsed(): Promise<EditorView> {
+        const v = view(await makeEditor("# One\n\n### Deep\n\ndeep text\n\n## Two\n\ntwo text\n\n# Three\n"));
+        toggle(v, posOf(v, "heading") + 5); // ### Deep
+        expect(hiddenTexts(v)).toEqual(["deep text"]);
+        return v;
+    }
+
+    /** Top-level position of the heading whose text is `text`. */
+    function headingPos(v: EditorView, text: string): number {
+        let pos = -1;
+        v.state.doc.forEach((node, offset) => {
+            if (node.type.name === "heading" && node.textContent === text) {
+                pos = offset;
+            }
+        });
+        expect(pos, `no heading "${text}"`).toBeGreaterThanOrEqual(0);
+        return pos;
+    }
+
+    it("retyping a heading below the fold's rank should reveal rather than bury the blocks it swallows", async () => {
+        // Arrange: Deep (H3) is collapsed; Two (H2) out-ranks it, so Two and
+        // its body sit OUTSIDE Deep's section and are visible.
+        const v = await docWithDeepCollapsed();
+
+        // Act: retype Two H2 -> H4 (the gutter H-badge path). Deep now
+        // out-ranks Two, so Deep's rank-derived section grows over it.
+        expect(setHeadingLevelAt(v, headingPos(v, "Two"), 4)).toBe(true);
+
+        // Assert: one click must not put blocks the user never touched at
+        // display:none. Deep expands instead.
+        expect(hiddenTexts(v)).toEqual([]);
+    });
+
+    it("deleting a terminating heading should reveal rather than bury the body it orphans", async () => {
+        // Arrange
+        const v = await docWithDeepCollapsed();
+
+        // Act: delete the `## Two` heading node alone. `two text` loses the
+        // heading that kept it out of Deep's section.
+        const pos = headingPos(v, "Two");
+        v.dispatch(v.state.tr.delete(pos, pos + v.state.doc.nodeAt(pos)!.nodeSize));
+
+        // Assert
+        expect(hiddenTexts(v)).toEqual([]);
+    });
+
+    it("retyping a heading that leaves the fold's extent alone should keep it collapsed", async () => {
+        // Arrange
+        const v = await docWithDeepCollapsed();
+
+        // Act: retype Two H2 -> H1. Deep's section still ends at Two.
+        expect(setHeadingLevelAt(v, headingPos(v, "Two"), 1)).toBe(true);
+
+        // Assert: the rule is narrow — an edit that hides nothing new must not
+        // cost the user their fold.
+        expect(hiddenTexts(v)).toEqual(["deep text"]);
+    });
+
+    it("typing in a sibling section should keep the fold collapsed", async () => {
+        // Arrange
+        const v = await docWithDeepCollapsed();
+
+        // Act: type into `two text`, below the collapsed section.
+        v.dispatch(v.state.tr.insertText("X", headingPos(v, "Two") + 6));
+
+        // Assert
+        expect(hiddenTexts(v)).toEqual(["deep text"]);
+    });
+
+    it("appending at the END of a collapsed callout's body should keep it collapsed", async () => {
+        // Arrange: unlike a heading (whose `to` is the VISIBLE terminating
+        // heading), a callout's `to` is the last position INSIDE the collapsed
+        // node — an append there was never visible, so it must not read as the
+        // fold swallowing anything. An external sync (git pull, an edit in the
+        // raw text editor) appends at exactly this position, and treating the
+        // two kinds alike silently expanded the callout.
+        const v = view(await makeEditor("> [!note] T\n> Body.\n\nAfter"));
+        const pos = posOf(v, "callout");
+        toggle(v, pos);
+        // The `collapsed` class is the node decoration the CSS keys on to
+        // hide the body — the observable, not the fold set the fix touches.
+        expect(v.dom.querySelector(".callout.collapsed")).not.toBeNull();
+        const range = foldHiddenRange(v.state.doc, pos)!;
+
+        // Act
+        v.dispatch(v.state.tr.insertText(" more", range.to));
+
+        // Assert: the user keeps the fold they set.
+        expect(v.dom.querySelector(".callout.collapsed")).not.toBeNull();
     });
 });
 
