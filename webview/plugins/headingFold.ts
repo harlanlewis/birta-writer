@@ -484,12 +484,20 @@ function isFoldEntryAt(doc: any, pos: number): boolean {
  * the other kinds' `to` is the last position INSIDE the collapsed node, so an
  * append there was never visible and must not cost the user their fold (`+1`).
  *
- * Scope — this is a `to`-end rule, not yet the general invariant:
- *   - growth at the `from` end (a list item's / table's visible first child
- *     growing over hidden content) is invisible to it — MAR-155;
- *   - entries RELOCATED by a move meta never reach it (their coordinates
- *     don't map); `relocationChangedHiddenContent` asks them the same
- *     question by hidden-text identity instead — MAR-156.
+ * Both ends are checked. A list item's / table's `from` sits AFTER its
+ * visible first child, so growing that first child pushes `from` forward
+ * over content the user could see — pasting two paragraphs mid-way through
+ * a collapsed item's first line tore its own text in half, the tail at
+ * display:none (MAR-155). The `from` assoc MIRRORS the `to` assoc: a
+ * heading's `from` is the first HIDDEN position, so a block landing exactly
+ * there vanishes and must count (`+1` keeps the old boundary before it),
+ * while the other kinds' `from` is inside the collapsed node, where a
+ * prepend (an external sync) was never visible and must not cost the fold
+ * (`-1` — the exact counterpart of the `to` append rule).
+ *
+ * Scope: entries RELOCATED by a move meta never reach this (their
+ * coordinates don't map); `relocationChangedHiddenContent` asks them the
+ * same question by hidden-text identity instead — MAR-156.
  */
 function swallowedVisibleContent(
     tr: Transaction,
@@ -504,7 +512,10 @@ function swallowedVisibleContent(
         return false;
     }
     const assoc = isHeadingNode(newDoc.nodeAt(newPos)) ? -1 : 1;
-    return after.to > tr.mapping.map(before.to, assoc);
+    return (
+        after.to > tr.mapping.map(before.to, assoc) ||
+        after.from < tr.mapping.map(before.from, -assoc)
+    );
 }
 
 /**
