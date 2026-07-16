@@ -10,6 +10,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { TextSelection } from "@milkdown/prose/state";
+import { Fragment, Slice } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
@@ -774,6 +775,111 @@ describe("an edit must not hide content it didn't put there (MAR-149)", () => {
         v.dispatch(v.state.tr.insertText(" more", range.to));
 
         // Assert: the user keeps the fold they set.
+        expect(v.dom.querySelector(".callout.collapsed")).not.toBeNull();
+    });
+});
+
+describe("a fold must not grow at its FROM end over visible content (MAR-155)", () => {
+    /** Same DOM-level observable as the MAR-149 suite above. */
+    const hiddenTexts = (v: EditorView): string[] =>
+        Array.from(v.dom.querySelectorAll(".heading-fold-hidden")).map((el) => el.textContent ?? "");
+
+    /** Absolute position of `needle`'s first character in the document. */
+    function textPos(v: EditorView, needle: string): number {
+        let pos = -1;
+        v.state.doc.descendants((node, offset) => {
+            if (pos === -1 && node.isText && node.text!.includes(needle)) {
+                pos = offset + node.text!.indexOf(needle);
+            }
+            return pos === -1;
+        });
+        expect(pos, `text "${needle}" not found`).toBeGreaterThanOrEqual(0);
+        return pos;
+    }
+
+    /** Collapsed `- First` item hiding its two child bullets. */
+    async function collapsedItem(): Promise<EditorView> {
+        const v = view(await makeEditor("- First\n  - Child A\n  - Child B\n"));
+        toggle(v, deepPosOf(v, "list_item"));
+        expect(hiddenTexts(v)).toEqual(["Child AChild B"]);
+        return v;
+    }
+
+    it("pasting block content into a collapsed item's first line should reveal rather than tear its text into the fold", async () => {
+        // Arrange
+        const v = await collapsedItem();
+
+        // Act: paste two paragraphs mid-way through the visible first line —
+        // the exact slice shape ProseMirror's paste handler builds
+        // (openStart/openEnd 1). The item's first child becomes "FirP1",
+        // pushing the fold's `from` forward over "st": text the user typed,
+        // could see, and never selected.
+        const at = textPos(v, "First") + 3; // Fir|st
+        const p = v.state.schema.nodes["paragraph"]!;
+        const slice = new Slice(
+            Fragment.from([
+                p.create(null, v.state.schema.text("P1")),
+                p.create(null, v.state.schema.text("P2 line")),
+            ]),
+            1,
+            1,
+        );
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, at)).replaceSelection(slice),
+        );
+
+        // Assert: nothing the user could see is at display:none — the fold
+        // expands instead of the item silently reading "- FirP1".
+        expect(hiddenTexts(v)).toEqual([]);
+    });
+
+    it("typing in a collapsed item's first line should keep it collapsed", async () => {
+        // Arrange
+        const v = await collapsedItem();
+
+        // Act: an ordinary insertion inside the visible first line moves the
+        // fold's `from` by exactly the mapped delta.
+        v.dispatch(v.state.tr.insertText("X", textPos(v, "First") + 5));
+
+        // Assert: the narrow rule — an edit that hides nothing new must not
+        // cost the user their fold.
+        expect(hiddenTexts(v)).toEqual(["Child AChild B"]);
+    });
+
+    it("a block landing directly under a collapsed heading should reveal rather than vanish", async () => {
+        // Arrange: a heading's `from` is the first hidden position; content
+        // landed exactly there (a programmatic insert — the interactive Enter
+        // path has its own reveal keymap) disappears into the fold.
+        const v = view(await makeEditor("## H\n\nBody\n\n## Next"));
+        const pos = posOf(v, "heading");
+        toggle(v, pos);
+        const hidden = foldHiddenRange(v.state.doc, pos)!;
+
+        // Act
+        const p = v.state.schema.nodes["paragraph"]!;
+        v.dispatch(v.state.tr.insert(hidden.from, p.create(null, v.state.schema.text("landed"))));
+
+        // Assert: same reveal semantics as content landing at the section's
+        // END boundary (MAR-146/149) — the two boundaries must not differ.
+        expect(hiddenTexts(v)).toEqual([]);
+    });
+
+    it("content inserted at the start of a collapsed callout's body should keep it collapsed", async () => {
+        // Arrange: the FROM-end mirror of "appending at the END of a
+        // collapsed callout's body" above — a prepend at exactly `from` is
+        // INSIDE the collapsed node, was never visible, and is how an
+        // external sync lands. It must not cost the user their fold.
+        const v = view(await makeEditor("> [!note] T\n> Body.\n\nAfter"));
+        const pos = posOf(v, "callout");
+        toggle(v, pos);
+        expect(v.dom.querySelector(".callout.collapsed")).not.toBeNull();
+        const range = foldHiddenRange(v.state.doc, pos)!;
+
+        // Act
+        const p = v.state.schema.nodes["paragraph"]!;
+        v.dispatch(v.state.tr.insert(range.from, p.create(null, v.state.schema.text("prepended"))));
+
+        // Assert
         expect(v.dom.querySelector(".callout.collapsed")).not.toBeNull();
     });
 });
