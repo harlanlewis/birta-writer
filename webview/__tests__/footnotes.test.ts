@@ -305,6 +305,51 @@ describe("footnote NodeViews (real editor stack)", () => {
         expect(countRefs(container)).toBe(0);
     });
 
+    it("typing prose that cannot renumber should not sweep the DOM for chips", async () => {
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        editor = await createEditor(container, SAMPLE, () => {});
+        const view = editor.action((ctx) => ctx.get(editorViewCtx));
+
+        // Count the work that must NOT happen: the numbering plugin's whole-doc
+        // chip sweep, identified by its exact selector. (Asserting on posted
+        // numbers alone would pass even with the sweep running every keystroke.)
+        const spy = vi.spyOn(view.dom, "querySelectorAll");
+        view.dispatch(view.state.tr.insertText("x", 1));
+        const chipSweeps = spy.mock.calls.filter(([sel]) => sel === '[data-fn-ref="1"]');
+        expect(chipSweeps).toHaveLength(0);
+        spy.mockRestore();
+
+        // The skip must not have cost correctness: numbering is still intact.
+        const chips = container.querySelectorAll<HTMLElement>(".footnote-ref");
+        expect(Array.from(chips).map((c) => c.textContent)).toEqual(["1", "2", "2"]);
+    });
+
+    it("deleting a reference should renumber the remaining chips in the DOM", async () => {
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        editor = await createEditor(container, SAMPLE, () => {});
+        const view = editor.action((ctx) => ctx.get(editorViewCtx));
+
+        // Delete the [^1] reference — the two [^note] chips renumber 2 → 1.
+        let refPos = -1;
+        view.state.doc.descendants((node, pos) => {
+            if (refPos === -1 && node.type.name === "footnote_reference" && node.attrs["label"] === "1") {
+                refPos = pos;
+                return false;
+            }
+            return true;
+        });
+        expect(refPos).toBeGreaterThan(-1);
+        view.dispatch(view.state.tr.delete(refPos, refPos + 1));
+
+        const noteChips = Array.from(
+            container.querySelectorAll<HTMLElement>(".footnote-ref"),
+        ).filter((c) => c.dataset["label"] === "note");
+        expect(noteChips).toHaveLength(2);
+        expect(noteChips.map((c) => c.textContent)).toEqual(["1", "1"]);
+    });
+
     it("editing a definition body should keep the label on serialize", async () => {
         const container = document.createElement("div");
         document.body.appendChild(container);

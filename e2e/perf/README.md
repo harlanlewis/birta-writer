@@ -1,3 +1,9 @@
+# Performance harnesses
+
+Two runners share this directory's page stub (`index.html`) and fixtures
+(`fixtures.mjs`): the **launch** harness below, and the **typing** harness
+(`e2e/perf-typing.mjs`) at the end.
+
 # Launch-performance harness
 
 Measures webview cold-start (open `.md` → editor painted) by driving the **real
@@ -58,3 +64,44 @@ many languages + mermaid), `math` (~1 KB, KaTeX). Injected by the runner as
 `window.__perfInit` before any script runs, so fixture I/O never pollutes the
 `roundtrip` measurement. (Sizes measured from `FIXTURES`, not estimated — they
 read as "how big is the document this row describes", so a wrong one misleads.)
+
+# Typing-cost harness (`e2e/perf-typing.mjs`)
+
+Measures **per-keystroke dispatch block** — the dominant slice of MAR-137
+(large-document typing lag). The bundle wraps transaction dispatch
+(`instrumentTransactions` in `webview/perf.ts`) so every doc-changing
+transaction stamps an `mdw:tx-apply` measure: state apply + view DOM
+reconciliation + every plugin view's `update`. The runner types real keystrokes
+(Playwright `keyboard.type`) into each fixture and reports the distribution
+(median / p95 / max) after a discarded warmup burst.
+
+**What the span does NOT cover** (~1/3 of a typing burst's total main-thread
+block on `xlarge`, measured via longtask observation): ProseMirror's
+pre-dispatch input path (DOM-observer read, input-rule scan) and rAF-coalesced
+followers (TOC refresh, the scheduled serialize). Corollary: a change that
+merely moves work out of dispatch into a rAF reads as improved here without
+being so — confirm surprising wins in a devtools Performance trace.
+
+```bash
+pnpm build && pnpm perf:typing            # all typing fixtures
+node e2e/perf-typing.mjs xlarge           # one fixture
+node e2e/perf-typing.mjs --keys 150 --json after.json
+node e2e/perf-typing.mjs --compare before.json after.json
+```
+
+Fixtures are `TYPING_FIXTURES` in `fixtures.mjs`: `tiny`/`medium`/`large` shared
+with the launch harness plus `xlarge` (~300 KB — the MAR-137 tail; kept out of
+the launch set so `pnpm perf` runtimes and `baseline.json` stay comparable).
+
+Same A/B discipline as launch: absolute ms drift with machine load, so gate on
+a same-session `--compare`. Per-keystroke medians are small, so the noise gate
+is **≥10% AND ≥0.5 ms**. The same marks work in the webview devtools against
+any real document (Performance panel → User Timing), which is how to profile a
+user-reported slow file.
+
+Reference numbers (2026-07-16, M-series laptop, median of 80 keystrokes):
+`tiny` ~0.7 ms, `medium` (12 KB) ~1.3 ms, `large` (96 KB) ~7 ms, `xlarge`
+(300 KB) ~47 ms dispatch block (total per-keystroke block ≈ +30% on top). The
+scaling is ProseMirror's per-keystroke view reconciliation (see MAR-137) — at
+300 KB every keystroke blows the 16 ms frame budget, which is why MAR-137's
+engine-lane decision exists.

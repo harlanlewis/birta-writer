@@ -23,7 +23,7 @@ import { createTableView } from "./components/table/tableView";
 import { getMarkdown } from "@milkdown/utils";
 import { refractor, ensureGrammars } from "./highlighter";
 import { applyExternalSync } from "./externalSync";
-import { mark, measure } from "./perf";
+import { instrumentTransactions, mark, measure } from "./perf";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "./serialization";
 import { createSyncScheduler } from "./syncScheduler";
 import {
@@ -540,6 +540,11 @@ export async function createEditor(
         .create();
     mark("create-end");
     measure("create", "create-start", "create-end");
+
+    // Per-transaction cost marks (mdw:tx-apply) — read by e2e/perf-typing.mjs
+    // and available in devtools against any real document. Installed once per
+    // editor instance; initEditor destroys before it recreates.
+    instrumentTransactions(_editor.action((ctx) => ctx.get(editorViewCtx)));
 
     // Snapshot the pristine document and defer its round-trip protection off the
     // critical path (see _protectionSnapshot above): the zero-edit
