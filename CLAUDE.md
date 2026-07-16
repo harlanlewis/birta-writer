@@ -114,7 +114,7 @@ Webview cold-start (open `.md` → editor painted) is a first-class concern — 
 
 ## Issue tracking
 
-All bugs and planned work live in **Linear** (team "Markdown Editor", `MAR-` prefix) — never GitHub Issues, and never local files.
+All bugs and planned work live in **Linear** (team "Birta Writer", `MAR-` prefix) — never GitHub Issues, and never local files. The `MAR-` prefix predates the rebrand and is unchanged; the team name is what the Linear tools take, and querying a wrong one returns an empty list that reads exactly like an empty queue.
 
 - **Known bug**: `#Bug` label; only for issues still unfixed after development.
 - **Feature request**: `#Improvement` label; record maturity, implementation approach, and affected files.
