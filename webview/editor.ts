@@ -291,15 +291,39 @@ export function flushPendingEdit(): string {
     return _savedMarkdown;
 }
 
+/**
+ * Lift `_hasUserInteracted` on the first real user input.
+ *
+ * This flag is the SOLE gate between a doc-changing transaction and a dirty
+ * TextDocument (see onDocChanged): while it is down, no sync is requested, so
+ * the document never dirties, so onWillSaveTextDocument never fires — a Cmd+S
+ * silently writes nothing. Any input channel that can change the doc without
+ * first tripping a listener here is therefore a data-loss path, not a cosmetic
+ * gap. The list must stay a superset of the ways text can enter the editor.
+ *
+ * `beforeinput` is the broad net: it precedes every editable mutation — IME
+ * commits, dictation, autofill, Android soft keyboards, virtual keyboards — many
+ * of which never emit a `keydown`. `compositionstart` covers the IME case
+ * explicitly and fires even earlier. Both are cheap one-way flags, so overlap
+ * with keydown/mousedown costs nothing and the redundancy is deliberate: it
+ * retires the whole "input method that doesn't fire keydown ⇒ Cmd+S no-ops"
+ * class rather than the one instance we happened to think of.
+ *
+ * These fire only on genuine DOM input; programmatic transactions (loading a
+ * file, plugin normalization) emit none, so opening a document still cannot
+ * trigger a silent save.
+ */
 function setupInteractionTracking(): void {
     if (_interactionListenerAdded) return;
     _interactionListenerAdded = true;
     const mark = () => { _hasUserInteracted = true; };
-    document.addEventListener('keydown',   mark, { capture: true });
-    document.addEventListener('mousedown', mark, { capture: true });
-    document.addEventListener('paste',     mark, { capture: true });
-    document.addEventListener('drop',      mark, { capture: true });
-    document.addEventListener('cut',       mark, { capture: true });
+    document.addEventListener('keydown',          mark, { capture: true });
+    document.addEventListener('mousedown',        mark, { capture: true });
+    document.addEventListener('paste',            mark, { capture: true });
+    document.addEventListener('drop',             mark, { capture: true });
+    document.addEventListener('cut',              mark, { capture: true });
+    document.addEventListener('compositionstart', mark, { capture: true });
+    document.addEventListener('beforeinput',      mark, { capture: true });
 }
 
 export function getEditorView(): EditorView | null {

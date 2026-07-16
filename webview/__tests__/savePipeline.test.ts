@@ -358,4 +358,70 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         // Assert — opening a file must never trigger a silent save
         expect(silentUpdate).not.toHaveBeenCalled();
     });
+
+    // _hasUserInteracted is the SOLE gate between a doc change and a dirty
+    // TextDocument: while it is down no sync is requested, the document stays
+    // clean, onWillSaveTextDocument never fires, and Cmd+S silently writes
+    // nothing. So every channel that can enter text WITHOUT a keydown is a
+    // data-loss path, not a cosmetic gap. An IME (pinyin/kana) announces itself
+    // with `compositionstart`; dictation and soft keyboards go through
+    // `beforeinput`. Neither is guaranteed to emit a keydown first. In practice
+    // a click focuses the editor before either can happen, which is why this is
+    // latent rather than live — these pin it shut.
+    //
+    // Both events are dispatched on the CONTAINER, not on `document`, because
+    // that is where a real one originates (on the contenteditable, bubbling
+    // out). It matters: editor.ts has a SECOND compositionstart listener on the
+    // container that sets _isComposing, and an event dispatched directly on
+    // `document` never reaches it — so a document-dispatched compositionstart
+    // would exercise the interaction gate while silently skipping composition
+    // itself, testing a state no real IME can produce.
+    it("an edit composed through an IME should reach postMessage when the candidate commits", async () => {
+        // Arrange — a fresh editor that has NEVER seen a keydown/mousedown
+        await editor.destroy();
+        vi.useRealTimers();
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const update = vi.fn();
+        editor = await createEditor(container, "hello\n", update);
+        vi.useFakeTimers();
+
+        // Act — composition starts (lifting the interaction gate AND raising
+        // _isComposing), and the candidate lands in the doc mid-composition.
+        container.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText("!", 6));
+        await vi.advanceTimersByTimeAsync(600);
+
+        // Assert — a half-formed candidate is never serialized to the file...
+        expect(update).not.toHaveBeenCalled();
+
+        // ...but committing it ships the edit (scheduler.compositionEnded).
+        container.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        await vi.advanceTimersByTimeAsync(600);
+        expect(update).toHaveBeenCalledTimes(1);
+        expect(update).toHaveBeenCalledWith("hello!\n");
+    });
+
+    it("an edit whose first interaction is beforeinput should still reach postMessage", async () => {
+        // Arrange — a fresh editor that has NEVER seen a keydown/mousedown
+        await editor.destroy();
+        vi.useRealTimers();
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const update = vi.fn();
+        editor = await createEditor(container, "hello\n", update);
+        vi.useFakeTimers();
+
+        // Act — dictation/soft keyboard: beforeinput precedes the mutation, with
+        // no keydown anywhere in the sequence.
+        container.dispatchEvent(new InputEvent("beforeinput", { bubbles: true }));
+        const v = view(editor);
+        v.dispatch(v.state.tr.insertText("!", 6));
+        await vi.advanceTimersByTimeAsync(600);
+
+        // Assert — the edit is save-capturable (invariant #2)
+        expect(update).toHaveBeenCalledTimes(1);
+        expect(update).toHaveBeenCalledWith("hello!\n");
+    });
 });
