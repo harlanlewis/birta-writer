@@ -19,8 +19,10 @@ interface HeadingEntry {
     level: number;
     text: string;
     pos: number;
-    /** Top-tier outline item (depth 0) — the only rows that drag/drop. */
-    topLevel: boolean;
+    /** At the document root (`resolve(pos).depth === 0`) — the only rows that
+     *  drag/drop. Depth, NOT rank: in a flat document that is every heading,
+     *  H6 included. See TocHeadingEntry in ./dropModel. */
+    atDocRoot: boolean;
 }
 
 const TOC_DEFAULT_WIDTH = 220;
@@ -43,7 +45,12 @@ type TocMode = "docked" | "overlay";
 export function initToc(eventManager: EventManager, getEditorView: () => EditorView | null): {
     panel: HTMLElement;
     toggle: () => void;
+    /** Full re-sync (presentation + content) — load time, and any caller whose
+     *  own state may have changed. Not for doc changes: see refreshContent. */
     refresh: () => void;
+    /** THE HOT PATH: the outline tracks a changed document. Costs at most one
+     *  heading walk, and touches the DOM only when the outline really moved. */
+    refreshContent: () => void;
     setPosition: (position: "left" | "right") => void;
     /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
     isOpen: () => boolean;
@@ -291,7 +298,19 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         return isOpen || flyoutOpen;
     }
 
-    function syncTocState(): void {
+    /**
+     * Re-commit the panel's whole presentation: open/docked classes, the tab
+     * glyph, the outside-click listener, and (when visible) the list. This is
+     * the RARE path — a toggle, a responsive flip, an edge swap, or load —
+     * never a keystroke: `updateTab` re-parses an SVG and
+     * `syncOutsideClickHandler` cycles a document listener, neither of which
+     * any doc change can affect. `refreshContent` is the hot counterpart.
+     *
+     * `headings` lets a caller that has already walked the doc hand its result
+     * in; only a caller with nothing to reuse pays a walk here, and only when
+     * the panel is actually visible.
+     */
+    function syncTocState(headings?: HeadingEntry[]): void {
         // Suppress the slide/fade only for the initial load reveal (see initialLoad).
         if (initialLoad) {
             document.body.classList.add("toc-initial");
@@ -308,7 +327,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // showed a stale outline, and its stale data-headingPos values then
         // armed the NEXT drag against positions the doc had moved past.
         if (isPanelVisible()) {
-            renderHeadings(getHeadings());
+            renderHeadings(headings ?? getHeadings());
         }
         if (initialLoad) {
             // Flush the no-transition state, then re-enable transitions with no
@@ -324,9 +343,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // characters. Returning false at every textblock prunes the walk before it
     // descends into inline content (the overwhelming majority of nodes in a
     // prose document): a heading's content is inline, so no heading can ever
-    // hide inside another textblock. Callers that only need to know whether the
-    // outline changed still pay this walk, which is why renderHeadings
-    // short-circuits on an unchanged signature rather than rebuilding.
+    // hide inside another textblock. This walk is the hot path's whole budget —
+    // refreshContent runs it AT MOST once per frame and skips it outright when
+    // the panel is hidden and can't auto-open, and renderHeadings turns its
+    // result into DOM work only when the outline's structure actually changed.
     function getHeadings(): HeadingEntry[] {
         const view = getEditorView();
         if (!view) {
@@ -347,7 +367,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                             level: node.attrs["level"] as number,
                             text,
                             pos,
-                            topLevel: view.state.doc.resolve(pos).depth === 0,
+                            atDocRoot: view.state.doc.resolve(pos).depth === 0,
                         });
                     }
                 }
@@ -361,23 +381,52 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         return tocMode === "docked" && headings.length > tocAutoHideThreshold;
     }
 
+    /**
+     * Whether a doc change could still open the panel on its own — i.e. whether
+     * `shouldAutoOpen`'s answer depends on the outline at all. It is exactly
+     * that predicate's heading-INDEPENDENT half, so the two must move together.
+     *
+     * This is what lets a hidden panel skip the walk: once the user has taken
+     * the decision (`userToggled`), or the panel is in overlay mode (where
+     * auto-open never fires), the heading count cannot change anything, and
+     * counting it is work with no possible effect.
+     */
+    function autoOpenPossible(): boolean {
+        return !userToggled && tocMode === "docked";
+    }
+
     function syncAutoOpenState(headings: HeadingEntry[]): void {
         if (!userToggled) {
             isOpen = shouldAutoOpen(headings);
         }
     }
 
-    // The outline the rendered list currently shows. renderHeadings runs on
-    // every doc-changing frame now, but the great majority of edits (typing
-    // body text) leave the outline identical — this lets those skip the DOM
-    // rebuild entirely, so the per-frame cost is just the getHeadings walk.
-    // null = "nothing rendered yet / force the next render".
+    // The outline STRUCTURE the rendered list currently shows. renderHeadings
+    // runs on every doc-changing frame, so this decides whether that frame
+    // pays a DOM rebuild. null = "nothing rendered yet / force the next
+    // render".
     let renderedSignature: string | null = null;
 
-    /** Everything a rendered row displays or acts on: rank (indent + class),
-     *  pos (navigation target AND the drag handle's document anchor), and
-     *  text (label). Any change to these must reach the DOM; nothing else in
-     *  the document can. */
+    /**
+     * What a rendered row's STRUCTURE is: rank (indent + class), top-level-ness
+     * (whether the row is a drag handle at all), and text (label + tooltip).
+     * A change to any of these can only reach the DOM by rebuilding the rows.
+     *
+     * `pos` is deliberately NOT here, though every row carries one (its nav
+     * target and drag anchor). Positions shift on almost every keystroke —
+     * typing anywhere above a heading renumbers every heading after it — so
+     * folding pos into this signature rebuilt the ENTIRE list on almost every
+     * keystroke: an innerHTML wipe, then per row an element, a tooltip, a drag
+     * wiring and three listeners. Measured in the real bundle (140 headings, 20
+     * keystrokes typed into the first paragraph): 2800 rows torn out and
+     * rebuilt — every row, every keystroke — versus 0 now. It also made the
+     * price depend on where the caret sat: typing below the last heading shifts
+     * no pos and cost nothing, typing at the top cost everything.
+     *
+     * Positions instead sync in place onto the surviving rows (syncItemPositions),
+     * which is why a row's pos is read from its `dataset.headingPos` at event
+     * time and never captured in a handler's closure.
+     */
     // Control characters as delimiters: heading text is arbitrary user input,
     // but a ProseMirror text node can never hold a control char, so NUL
     // between fields and SOH between entries keep the encoding injective. A
@@ -396,7 +445,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     function outlineSignature(headings: HeadingEntry[]): string {
         return headings
-            .map((h) => [h.level, h.pos, h.text].join(SIG_FIELD))
+            .map((h) => [h.level, h.atDocRoot ? 1 : 0, h.text].join(SIG_FIELD))
             .join(SIG_ENTRY);
     }
 
@@ -406,12 +455,36 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // measured slots aimed at detached elements (drops silently misaim) —
     // and must re-apply the drag-source state via dnd.dragSourceHeadingPos()
     // so a mid-drag rebuild keeps the source ghosted and click-suppressed.
+    /**
+     * Carry shifted document positions onto the rows already on screen — the
+     * common case, since an edit above a heading moves every later heading
+     * without changing a thing the outline DISPLAYS.
+     *
+     * Touches no structure: no element is created, moved, or removed, so the
+     * drag session's measured geometry stays valid and this must NOT call
+     * notifyRerender (nothing went stale). Row order is the outline's order by
+     * construction — the signature that got us here pins both the count and
+     * every row's identity — so index alignment is exact.
+     */
+    function syncItemPositions(headings: HeadingEntry[]): void {
+        const items = list.querySelectorAll<HTMLElement>(".toc-item");
+        if (items.length !== headings.length) {
+            return; // structure drift the signature should have caught — never rewrite blind
+        }
+        headings.forEach((entry, i) => {
+            const item = items[i]!;
+            item.dataset["headingPos"] = String(entry.pos);
+            item.classList.toggle("toc-item--active", activeHeadingPos === entry.pos);
+        });
+    }
+
     function renderHeadings(headings: HeadingEntry[]): void {
         const signature = outlineSignature(headings);
         if (signature === renderedSignature) {
-            // Identical outline ⇒ identical DOM. Skipping leaves the existing
-            // rows (and the drag session's measured geometry) untouched, so
-            // NO notifyRerender here — nothing went stale.
+            // Identical structure ⇒ identical DOM, but the same edit that left
+            // the outline looking unchanged has usually MOVED it: refresh the
+            // rows' anchors in place rather than rebuilding to carry a number.
+            syncItemPositions(headings);
             return;
         }
         renderedSignature = signature;
@@ -425,13 +498,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             return;
         }
         headings.forEach((entry) => {
-            const { level, text, pos } = entry;
+            // `entry.pos` is this row's anchor AS OF NOW — correct to seed the
+            // DOM with, but never to capture: see the signature note above.
+            const { level, text } = entry;
             const item = document.createElement("div");
             item.className = `toc-item toc-item--h${level}`;
-            item.dataset["headingPos"] = String(pos);
+            item.dataset["headingPos"] = String(entry.pos);
             item.style.paddingLeft = `${(level - 1) * 12 + 8}px`;
             item.textContent = text || `${t("Heading")} ${level}`;
-            item.classList.toggle("toc-item--active", activeHeadingPos === pos);
+            item.classList.toggle("toc-item--active", activeHeadingPos === entry.pos);
             applyTooltip(item, text, {
                 placement: "above",
                 truncatedOnly: true,
@@ -439,7 +514,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             dnd.wireItemDrag(item, entry);
             // A mid-drag rebuild replaces the drag-source item: restore its
             // ghosted state (and the click-suppression flag) on the new one.
-            if (dnd.dragSourceHeadingPos() === pos) {
+            if (dnd.dragSourceHeadingPos() === entry.pos) {
                 item.classList.add("toc-item--drag-source");
                 item.dataset["dragged"] = "1";
             }
@@ -461,6 +536,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                 if (!view) {
                     return;
                 }
+                // Read the anchor from the DOM, never from `entry`: this row
+                // outlives the outline snapshot that built it (syncItemPositions
+                // re-anchors it in place), so a captured pos would navigate to
+                // wherever this heading USED to be.
+                const pos = Number(item.dataset["headingPos"]);
                 try {
                     // A heading hidden inside a collapsed ancestor fold is
                     // an explicit entry intent: unfold everything containing
@@ -490,15 +570,57 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         dnd.notifyRerender();
     }
 
+    /**
+     * Full re-sync: presentation AND content. Load-time and any caller that
+     * knows the panel's own state may have changed. One doc walk, shared.
+     */
     function refresh(): void {
         const headings = getHeadings();
         syncAutoOpenState(headings);
-        syncTocState();
+        syncTocState(headings);
         // The first refresh with a mounted editor is the load-time reveal — once
         // it has committed (instantly, above), later syncs animate as usual.
         if (initialLoad && getEditorView()) {
             initialLoad = false;
         }
+    }
+
+    /**
+     * THE HOT PATH: one doc-changing frame (index.ts's rAF coalescer), so it
+     * sits next to the typing path and may cost only what a doc change can
+     * actually change — the outline. Everything `syncTocState` commits is
+     * invariant under a doc edit, and re-committing it per frame was pure
+     * waste: an SVG re-parse for the tab, seven classList toggles, and a
+     * listener remove/add + setTimeout, on every keystroke, panel open or
+     * collapsed alike.
+     *
+     * What remains: at most ONE getHeadings() walk, shared by the auto-open
+     * decision and the render, and `renderHeadings`' signature check drops the
+     * DOM rebuild for the great majority of edits (body text leaves the
+     * outline identical). Ordinary typing then genuinely costs just the walk.
+     *
+     * The bail is narrow on purpose. An invisible panel renders nothing, but
+     * auto-open is a pure function of the heading COUNT — a docked panel whose
+     * document grows past the threshold must still open itself — so a hidden
+     * panel may only skip the walk once that decision can no longer swing
+     * (autoOpenPossible). When the walk does flip visibility, that IS a state
+     * change, and it takes the full sync.
+     */
+    function refreshContent(): void {
+        if (!isPanelVisible() && !autoOpenPossible()) {
+            return; // nothing to render, and nothing left to auto-decide
+        }
+        const headings = getHeadings();
+        const wasVisible = isPanelVisible();
+        syncAutoOpenState(headings);
+        if (isPanelVisible() !== wasVisible) {
+            syncTocState(headings); // auto-open flipped: presentation changed too
+            return;
+        }
+        if (!isPanelVisible()) {
+            return;
+        }
+        renderHeadings(headings);
     }
 
     function outsideClickHandler(e: MouseEvent): void {
@@ -785,6 +907,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         panel,
         toggle,
         refresh,
+        refreshContent,
         setPosition,
         isOpen: () => isOpen,
         isRight: () => tocRight,

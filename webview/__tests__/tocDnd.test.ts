@@ -69,7 +69,7 @@ function headingsOf(v: EditorView): TocHeadingEntry[] {
                 level: node.attrs["level"] as number,
                 text: node.textContent.trim(),
                 pos,
-                topLevel: v.state.doc.resolve(pos).depth === 0,
+                atDocRoot: v.state.doc.resolve(pos).depth === 0,
             });
         }
     });
@@ -245,7 +245,7 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
 
         dnd.wireItemDrag(itemA, entryA!);
         // A nested heading is a landmark, not a handle — no grab affordance.
-        dnd.wireItemDrag(nested, { ...entryA!, topLevel: false });
+        dnd.wireItemDrag(nested, { ...entryA!, atDocRoot: false });
 
         expect(itemA.classList.contains("toc-item--draggable")).toBe(true);
         expect(nested.classList.contains("toc-item--draggable")).toBe(false);
@@ -371,8 +371,12 @@ describe("TOC drop-zone provider (document/TOC drags into the outline)", () => {
         const dnd = initDnd(v, dom);
         const [entryA] = headingsOf(v);
         const itemA = dom.items.get(entryA!.pos)!;
-        // A stale outline entry: its pos now points at the "a body" paragraph.
-        dnd.wireItemDrag(itemA, { ...entryA!, pos: 3 });
+        dnd.wireItemDrag(itemA, entryA!);
+        // A stale row: its ANCHOR now points at the "a body" paragraph. The
+        // dataset is where the anchor lives (a row is re-anchored in place
+        // across edits, so the entry that built it is never the authority) —
+        // staleness has to be injected there to be injected at all.
+        itemA.dataset["headingPos"] = "3";
 
         mouse(itemA, "mousedown", { button: 0, clientX: 600, clientY: 105, buttons: 1 });
         mouse(document, "mousemove", { clientX: 600, clientY: 400, buttons: 1 });

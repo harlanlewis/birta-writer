@@ -69,6 +69,28 @@ async function dragItem(page, from, to, where) {
     return highlighted;
 }
 
+/** Hover a drag from `from` over `to`'s slot and report the drop line's left
+ *  edge, WITHOUT dropping — the indent is the only cue for the rank a drop
+ *  will impose, so it has to be readable mid-gesture. */
+async function hoverLineLeft(page, from, to, where) {
+    const src = await tocItemBox(page, from);
+    const dst = await tocItemBox(page, to);
+    await page.mouse.move(src.x, src.y);
+    await page.mouse.down();
+    await page.mouse.move(src.x + 6, src.y + (src.y > dst.y ? -6 : 6));
+    await page.mouse.move(dst.x, where === "into" ? dst.y : dst.top + 1, { steps: 8 });
+    await page.waitForTimeout(120);
+    const left = await page.evaluate(() => {
+        const el = document.querySelector(".block-drag-indicator");
+        if (!el || getComputedStyle(el).display === "none") return null;
+        return Math.round(el.getBoundingClientRect().left);
+    });
+    await page.keyboard.press("Escape"); // cancel: measure the cue, don't commit
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    return left;
+}
+
 export async function run({ page, check, baseUrl }) {
     // ── 0. Baseline: the fixture's mixed-rank outline renders ──
     await boot(page, baseUrl);
@@ -118,11 +140,14 @@ export async function run({ page, check, baseUrl }) {
     check("...and relevels it IN PLACE (H2 → H4) instead of doing nothing",
         inPlace !== null, JSON.stringify(inPlace));
 
-    // ── 3b. A COLLAPSED section takes no child — content must never vanish ──
-    // Relevelling a run into a collapsed section's child puts it under that
-    // fold: it lands at display:none, which reads as a delete. The into slot's
-    // commit pos is legal and visible BEFORE the move, so the hidden-target
-    // filter can't see it coming — the slot itself has to be withheld.
+    // ── 3b. A COLLAPSED section takes a child — and OPENS to show it ──
+    // Relevelling a run into a collapsed section would land it under that fold,
+    // at display:none, which reads as a delete. The rule is that landings are
+    // REVEALED, not refused (moveBlocks clause 4 / revealPosition, MAR-146):
+    // the drop is offered like any other, and the fold opens over the landing
+    // afterwards. Refusing the slot instead — the rule this suite used to pin —
+    // would deny the plainest nesting gesture the outline has, to defend against
+    // a hazard that no longer exists.
     await boot(page, baseUrl);
     await page.$$eval(".ProseMirror h3", (els) => {
         els.find((e) => e.textContent.includes("Deep"))?.scrollIntoView({ block: "center" });
@@ -149,8 +174,8 @@ export async function run({ page, check, baseUrl }) {
             .some((p) => p.textContent.includes("deep text") &&
                 getComputedStyle(p).display === "none")));
     const collapsedHighlight = await dragItem(page, "Two", "Deep", "into");
-    check("a collapsed section offers NO into target (no child drop under a fold)",
-        JSON.stringify(collapsedHighlight) === JSON.stringify([]), JSON.stringify(collapsedHighlight));
+    check("a collapsed section OFFERS its into target (the landing is revealed, not refused)",
+        JSON.stringify(collapsedHighlight) === JSON.stringify(["Deep"]), JSON.stringify(collapsedHighlight));
     await page.waitForTimeout(500);
     const nothingHidden = await page.evaluate(() =>
         [...document.querySelector(".ProseMirror").children]
@@ -159,6 +184,36 @@ export async function run({ page, check, baseUrl }) {
     check("nothing the drag touched ends up hidden (no content vanishes)",
         !nothingHidden.some((t) => t.includes("two text") || t.includes("Two")),
         JSON.stringify(nothingHidden));
+    // The fold OPENED — the whole point. Its own body coming back is the proof
+    // the section unfolded, rather than the run merely landing outside it.
+    check("...and the fold opened, so the section's own body is visible again",
+        !nothingHidden.some((t) => t.includes("deep text")), JSON.stringify(nothingHidden));
+    // The drop still did what it said: Two is now Deep's child (H3 → H4).
+    const nested = await latestDoc(page, (doc) => /### Deep\s+deep text\.\s+#### Two/.test(doc));
+    check("...and the run landed as the collapsed section's child (H2 → H4)",
+        nested !== null, JSON.stringify(nested));
+
+    // ── 3c. The drop line INDENTS to the rank the drop will impose ──
+    // The outline is the one surface where a drop silently changes rank, so it
+    // is the one that most needs the depth cue the canvas already draws
+    // (DESIGN_PRINCIPLES: "the accent drop line, indented to the target
+    // depth"). Every gap line used to span the full list width, so an H1
+    // dropped above an H3 became an H3 with nothing on screen saying so.
+    // Rows indent by (level - 1) * 12 + 8, and the line must agree.
+    await boot(page, baseUrl);
+    const listLeft = await page.$eval(".toc-list", (el) => Math.round(el.getBoundingClientRect().left));
+    // Gap above "Deep" (H3) ⇒ sibling of an H3 ⇒ indent (3-1)*12+8 = 32.
+    const deepGapLeft = await hoverLineLeft(page, "Three", "Deep", "gap");
+    // Gap above "Three" (H1) ⇒ sibling of an H1 ⇒ indent 8. Dragged from
+    // "Deep", whose section ends before Three — dragging "Two" here would aim
+    // at a slot inside Two's OWN section, which is refused (no line to read).
+    const rootGapLeft = await hoverLineLeft(page, "Deep", "Three", "gap");
+    check("a gap line above an H3 indents to H3's depth (not the full list width)",
+        deepGapLeft === listLeft + 32, JSON.stringify({ listLeft, deepGapLeft }));
+    check("a gap line above an H1 indents to H1's depth",
+        rootGapLeft === listLeft + 8, JSON.stringify({ listLeft, rootGapLeft }));
+    check("...so the two depths are visibly different (the cue actually carries information)",
+        deepGapLeft - rootGapLeft === 24, JSON.stringify({ deepGapLeft, rootGapLeft }));
 
     // ── 4. Timeliness: the outline tracks the doc, not the save debounce ──
     // The outline used to refresh only from the serialize callback, so its

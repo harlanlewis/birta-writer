@@ -1,7 +1,7 @@
 /**
  * components/toc/dropModel.ts
  *
- * Pure drop model for TOC drag-and-drop: maps the outline's top-level items
+ * Pure drop model for TOC drag-and-drop: maps the outline's root-level headings
  * to the legal document positions a dragged block run may commit at (via
  * editing/moveBlocks). Zero DOM access — the TOC panel pairs these slots
  * with measured geometry and registers itself as a DropZoneProvider (see
@@ -33,9 +33,16 @@ export interface TocHeadingEntry {
     level: number;
     text: string;
     pos: number;
-    /** Whether the entry is a top-tier item of the rendered outline — only
-     * these produce slots (nested headings are landmarks, not drop rows). */
-    topLevel: boolean;
+    /**
+     * Whether the heading sits at the DOCUMENT ROOT (`resolve(pos).depth === 0`)
+     * — only these produce slots. This is about structural depth, NOT rank: in
+     * an ordinary document every heading is at the root, H6 included, so the
+     * whole outline drags. The false case is a heading nested inside a
+     * container (a blockquote, a list item), which the outline still lists as
+     * a landmark but cannot offer as a drop row: its section boundaries live
+     * inside another node, so a root-level move can't express them.
+     */
+    atDocRoot: boolean;
 }
 
 export interface TocSlot {
@@ -55,30 +62,26 @@ export interface TocSlot {
 }
 
 /**
- * Every legal drop slot for the current outline: a gap before each
- * top-level heading, one "into" per top-level heading (the end of its WHOLE
- * section, subsections included — the fold range is the section), and a
- * terminal end-of-doc gap. Slots whose pos is fold-hidden (per the caller's
- * predicate, built from the same fold registry moveBlocks enforces) are
- * dropped, so the slots the TOC offers and the targets the primitive
- * accepts cannot drift. An empty top-level outline yields NO slots — with
- * nothing rendered there is nothing to aim at.
+ * Every legal drop slot for the current outline: a gap before each root-level
+ * heading, one "into" per root-level heading (the end of its WHOLE section,
+ * subsections included — the fold range is the section), and a terminal
+ * end-of-doc gap. Slots whose pos is fold-hidden (per the caller's predicate,
+ * built from the same fold registry moveBlocks enforces) are dropped, so the
+ * slots the TOC offers and the targets the primitive accepts cannot drift. An
+ * outline with no root-level heading yields NO slots — with nothing rendered
+ * there is nothing to aim at.
+ *
+ * A COLLAPSED section still offers its "into" slot. Its commit pos (the
+ * section's END boundary) is legal and visible, and the drop is the user's
+ * stated intent — so the landing is REVEALED, not refused: moveBlocks opens
+ * the fold over the landing after the move (clause 4 / revealPosition,
+ * MAR-146). That is the single rule for this hazard; this model does not
+ * also second-guess it by withholding the slot.
  */
 export function tocDropSlots(
     headings: readonly TocHeadingEntry[],
     doc: ProseNode,
     isHiddenTarget: (pos: number) => boolean,
-    /** Whether the section owned by the heading at `pos` is COLLAPSED. Such a
-     * section offers no "into" slot: filing a run into it would drop the run
-     * under a fold and it would land at display:none — indistinguishable from
-     * a delete. `isHiddenTarget` cannot catch this, because the into slot's
-     * commit pos (the section's END boundary) is legal and visible BEFORE the
-     * move; it is the drop itself — a relevel making the run a child, or
-     * simply the section growing to swallow what was appended at its edge —
-     * that closes the fold over the landing. Refusing the slot up front is
-     * the only check that sees it coming. Defaults to "nothing collapsed" so
-     * the pure model stays callable without fold state. */
-    isCollapsed: (pos: number) => boolean = () => false,
 ): TocSlot[] {
     const slots: TocSlot[] = [];
     let topIndex = 0;
@@ -86,7 +89,7 @@ export function tocDropSlots(
     // trails the most recent top-level heading's rank.
     let lastLevel = MIN_HEADING_LEVEL;
     for (const heading of headings) {
-        if (!heading.topLevel) {
+        if (!heading.atDocRoot) {
             continue;
         }
         const node = doc.nodeAt(heading.pos);
@@ -101,17 +104,15 @@ export function tocDropSlots(
             // run this heading's sibling, hence its exact rank.
             targetLevel: heading.level,
         });
-        if (!isCollapsed(heading.pos)) {
-            slots.push({
-                kind: "into",
-                // The section's end; a heading with no body ends right after
-                // its own line (so "into" an empty section drops just below it).
-                pos: findHeadingFoldRange(doc, heading.pos, heading.level)?.to ?? heading.pos + node.nodeSize,
-                tocIndex: topIndex,
-                headingPos: heading.pos,
-                targetLevel: Math.min(heading.level + 1, MAX_HEADING_LEVEL),
-            });
-        }
+        slots.push({
+            kind: "into",
+            // The section's end; a heading with no body ends right after
+            // its own line (so "into" an empty section drops just below it).
+            pos: findHeadingFoldRange(doc, heading.pos, heading.level)?.to ?? heading.pos + node.nodeSize,
+            tocIndex: topIndex,
+            headingPos: heading.pos,
+            targetLevel: Math.min(heading.level + 1, MAX_HEADING_LEVEL),
+        });
         lastLevel = heading.level;
         topIndex++;
     }

@@ -187,4 +187,46 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(300);
     check("Enter on the focused tab docks the panel open",
         await page.evaluate(() => document.querySelector(".toc-panel").classList.contains("toc-panel--open")));
+
+    // ── Typing above a heading re-anchors the rows IN PLACE (never rebuilds) ──
+    // Every heading's document position shifts when you type above it, but the
+    // outline still LOOKS identical, so the rows must survive and simply take
+    // new anchors. Rebuilding them instead is invisible in a screenshot and
+    // ruinous in a big document (it was every row, every keystroke), so the
+    // only way to pin it is element IDENTITY: stamp each row with an expando,
+    // which no attribute copy would carry, and require it to survive the edit.
+    // The dataset must nonetheless move, or the rows still point at stale
+    // positions — the two halves together are the whole contract.
+    await page.evaluate(() => {
+        document.querySelectorAll(".toc-item").forEach((el, i) => { el.__probeId = i; });
+    });
+    const before = await page.$$eval(".toc-item", (els) =>
+        els.map((e) => e.dataset.headingPos));
+    // Caret into the FIRST body paragraph — above every heading but the first,
+    // so their positions all shift while no heading's text changes.
+    await page.evaluate(() => {
+        const p = document.querySelector(".ProseMirror > p");
+        const r = document.createRange();
+        r.selectNodeContents(p);
+        r.collapse(false);
+        const s = getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+    });
+    await page.keyboard.type("zz");
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => ({
+        ids: [...document.querySelectorAll(".toc-item")].map((e) => e.__probeId),
+        pos: [...document.querySelectorAll(".toc-item")].map((e) => e.dataset.headingPos),
+        labels: [...document.querySelectorAll(".toc-item")].map((e) => e.textContent),
+    }));
+    check("typing above a heading does NOT rebuild the outline rows (identity survives)",
+        JSON.stringify(after.ids) === JSON.stringify([0, 1, 2, 3, 4]), JSON.stringify(after.ids));
+    check("...and every shifted row is re-anchored to its new document position",
+        after.pos.length === before.length &&
+        after.pos.every((p, i) => i === 0 ? p === before[i] : Number(p) === Number(before[i]) + 2),
+        JSON.stringify({ before, after: after.pos }));
+    check("...and the outline still reads the same",
+        JSON.stringify(after.labels) === JSON.stringify(["One", "Two", "Three", "Four", "Five"]),
+        JSON.stringify(after.labels));
 }

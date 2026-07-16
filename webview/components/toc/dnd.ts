@@ -10,9 +10,11 @@
  *     as CHILD, appended at its end). The commit path stays the session's
  *     single moveBlocks call, so the panel can never invent drop semantics
  *     the primitive rejects.
- *   - Drag source: each TOP-LEVEL item is a handle for its whole section
+ *   - Drag source: each ROOT-LEVEL item is a handle for its whole section
  *     (moveRangeAt's heading semantics — a collapsed section carries its
- *     hidden body).
+ *     hidden body). "Root-level" is depth, not rank: in an ordinary document
+ *     that is every row, H6 included — only a heading nested inside a
+ *     blockquote or list item is left as a navigation-only landmark.
  *
  * Outline drops RELEVEL (see ./dropModel): the slot dictates the dropped
  * section's rank, and the delta rides to moveBlocks in the same transaction
@@ -33,7 +35,7 @@ import {
     type DropZoneProvider,
 } from "../blockMenu/drag";
 import { moveRangeAt } from "../blockMenu/index";
-import { foldedSectionEnd, isHiddenTargetPos } from "../../plugins/headingFold";
+import { isHiddenTargetPos } from "../../plugins/headingFold";
 import {
     draggedSectionLevel,
     tocDropSlots,
@@ -55,7 +57,10 @@ export interface TocDndDeps {
 
 export interface TocDnd {
     /** Arm a rendered item as a drag handle for its section. No-op for
-     * nested headings — they are landmarks, not handles. */
+     * headings that aren't at the document root — they are landmarks, not
+     * handles. `entry` supplies the row's fixed traits (label, root-ness);
+     * the document anchor is read from the item's own dataset at mousedown,
+     * because a row outlives the entry that built it. */
     wireItemDrag(item: HTMLElement, entry: TocHeadingEntry): void;
     /** Heading pos of an in-flight TOC-initiated drag, else null — lets a
      * mid-drag list rebuild restore the source item's ghosted state. */
@@ -68,6 +73,20 @@ export interface TocDnd {
 
 /** List-edge band (px) inside which a hovering drag auto-scrolls the list. */
 const LIST_SCROLL_ZONE = 48;
+
+/**
+ * The drop line's geometry for a landing at `targetLevel`, indented to that
+ * rank exactly as the rendered rows are (index.ts's renderHeadings uses this
+ * same `(level - 1) * 12 + 8`) — so the line sits at the depth the run will
+ * land at, and the outline reads like the canvas does (design principles:
+ * "the accent drop line, indented to the target depth"). A ToC drop RELEVELS,
+ * so depth is the one thing the line must say: without it, an H1 dropped above
+ * an H3 becomes an H3 with nothing on screen having predicted it.
+ */
+function indentedLine(listRect: DOMRect, targetLevel: number): { left: number; width: number } {
+    const indent = (targetLevel - 1) * 12 + 8;
+    return { left: listRect.left + indent, width: Math.max(listRect.width - indent, 0) };
+}
 
 export function initTocDnd(deps: TocDndDeps): TocDnd {
     // Heading pos of this module's own in-flight drag (set on the handle's
@@ -122,11 +141,6 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             deps.getHeadings(),
             view.state.doc,
             (pos) => isHiddenTargetPos(view.state, pos),
-            // A collapsed section takes no "into" drop — see tocDropSlots.
-            // foldedSectionEnd answers "is the block at pos a COLLAPSED
-            // foldable heading" from the same fold registry the slot filter
-            // above consumes, so the two rules can't drift.
-            (pos) => foldedSectionEnd(view.state, pos) !== null,
         );
         if (slots.length === 0) {
             return;
@@ -153,8 +167,10 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
                     y: rect.top + rect.height / 2,
                     top: rect.top,
                     height: rect.height,
-                    left: listRect.left,
-                    width: listRect.width,
+                    // An into-drop lands as the owner's CHILD, so its line
+                    // indents to that child rank — not to the rank of the gap
+                    // twin it borrows a y from (a sibling of the next heading).
+                    ...indentedLine(listRect, slot.targetLevel),
                 });
                 intoItems.set(slot.headingPos!, el);
                 continue;
@@ -170,7 +186,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             if (y === null) {
                 continue;
             }
-            measured.push({ ...slot, y, left: listRect.left, width: listRect.width });
+            measured.push({ ...slot, y, ...indentedLine(listRect, slot.targetLevel) });
         }
     }
 
@@ -226,7 +242,9 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
                 const gapTwin = measured.find((s) => s.kind === "gap" && s.pos === slot.pos);
                 const listRect = deps.list.getBoundingClientRect();
                 if (gapTwin && gapTwin.y >= listRect.top && gapTwin.y <= listRect.bottom) {
-                    showDropIndicatorAt({ left: gapTwin.left, width: gapTwin.width, y: gapTwin.y });
+                    // y from the twin (where it lands), indent from THIS slot
+                    // (the child rank it lands at).
+                    showDropIndicatorAt({ left: slot.left, width: slot.width, y: gapTwin.y });
                     indicatorShown = true;
                 } else {
                     hideOwnIndicator();
@@ -294,7 +312,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
     const unregister = registerDropZoneProvider(provider);
 
     function wireItemDrag(item: HTMLElement, entry: TocHeadingEntry): void {
-        if (!entry.topLevel) {
+        if (!entry.atDocRoot) {
             return;
         }
         // Only wired items advertise the grab (nested rows keep the plain
@@ -308,14 +326,20 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
             if (!view) {
                 return;
             }
+            // The anchor comes from the DOM, not from `entry`: a row survives
+            // edits that move its heading (the panel re-anchors rows in place
+            // rather than rebuilding them — see syncItemPositions), so `entry`
+            // holds the pos this row was BORN with. Arming a drag against that
+            // would move whatever now occupies the old offset.
+            const pos = Number(item.dataset["headingPos"]);
             // Stale outline entry (the doc moved on since the last render):
             // never arm a session against a pos that isn't a heading.
-            if (view.state.doc.nodeAt(entry.pos)?.type.name !== "heading") {
+            if (!Number.isFinite(pos) || view.state.doc.nodeAt(pos)?.type.name !== "heading") {
                 return;
             }
             event.preventDefault();
             event.stopPropagation();
-            ownDragPos = entry.pos;
+            ownDragPos = pos;
             // A 5px jittery click crosses the 4px drag threshold but never
             // leaves the item — a self-targeted "drag" whose target stays
             // null. Track whether the pointer ever escapes the source item's
@@ -342,7 +366,7 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
                 startX: event.clientX,
                 startY: event.clientY,
                 resolveRange: () => {
-                    const range = moveRangeAt(view, entry.pos);
+                    const range = moveRangeAt(view, pos);
                     return range
                         ? {
                             range,
