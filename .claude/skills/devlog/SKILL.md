@@ -7,7 +7,7 @@ version: 3.0.0
 
 ## Purpose
 
-Manage the full lifecycle of Linear issues (team: **Markdown Editor**, `MAR-` prefix), using the Linear MCP tools (`mcp__claude_ai_Linear__save_issue`, `save_comment`, `get_issue`, `list_issues` etc. — load via ToolSearch if deferred):
+Manage the full lifecycle of Linear issues (team: **Birta Writer**, `MAR-` prefix), using the Linear MCP tools (`mcp__claude_ai_Linear__save_issue`, `save_comment`, `get_issue`, `list_issues` etc. — load via ToolSearch if deferred):
 
 1. **File** — a Known Bug (a bug left unfixed this session, or pre-existing; never record bugs already fixed during development) or a Feature Request (planned work not yet started).
 2. **Close / update** — move a shipped issue to `Done`, or re-scope one the code has outgrown.
@@ -44,7 +44,7 @@ Ask all at once:
 
 Call `save_issue` with:
 
-- `team`: `Markdown Editor`
+- `team`: `Birta Writer`
 - `title`: the symptom, no prefix (Linear labels replace the `[Bug]` convention)
 - `labels`: `["#Bug"]`, plus the matching `phase-*` label when one clearly applies
 - `priority`: 2 (High) / 3 (Medium) / 4 (Low), mapped from severity
@@ -85,7 +85,7 @@ Ask for the following fields:
 
 Call `save_issue` with:
 
-- `team`: `Markdown Editor`
+- `team`: `Birta Writer`
 - `title`: the feature summary, no prefix
 - `labels`: `["#Improvement"]`, plus the matching `phase-*` label when one clearly applies
 - `priority`: 2 (High) / 3 (Medium) / 4 (Low)
@@ -116,7 +116,7 @@ Call `save_issue` with:
 
 ***
 
-## Label reference (team: Markdown Editor)
+## Label reference (team: Birta Writer)
 
 - `#Bug` — defects, incorrect behavior
 - `#Improvement` — new functionality, enhancements
@@ -163,7 +163,7 @@ When the code has outgrown a ticket's premise (e.g. MAR-35's three-zone design a
 
 Triggered by "audit the backlog", "what's next", or a completeness review. Goal: the open list reflects reality, and next work is obvious.
 
-1. `list_issues` (team: Markdown Editor) across `backlog`, `unstarted`, and `started` states.
+1. `list_issues` (team: Birta Writer) across `backlog`, `unstarted`, and `started` states.
 2. Cross-check each against the **CHANGELOG** ("Unreleased" = shipped-but-untagged) and `git log`. Remember the two are complementary: the CHANGELOG lists shipped work (including untracked features), Linear lists planned work — "not in Linear" never means "not shipped."
 3. For anything that looks shipped, **verify in code** (above) before acting, then close or re-scope.
 4. Report a prioritized "do next" using the `phase-*` spine (`phase-0-fidelity` first — it's existential; then `2-syntax`, `3-interaction`, `4-differentiators`), ordered by `priority` within a phase, and honoring dependency/`blockedBy` links.
@@ -189,5 +189,5 @@ If several issues are touched, list every one.
 
 - If the user's information is insufficient, proactively follow up so the issue has enough context.
 - **Filing** planned work touches only Linear — do not modify local files for it. **Closing/auditing** may read local files and git to verify, but still records outcomes only in Linear (plus the CHANGELOG when you also ship the feature).
-- Check for duplicates first with `list_issues` (team: Markdown Editor) before creating.
+- Check for duplicates first with `list_issues` (team: Birta Writer) before creating.
 - Prefer batching independent Linear calls (multiple `save_issue` / `save_comment`) in one step.
