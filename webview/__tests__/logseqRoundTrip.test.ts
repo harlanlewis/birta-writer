@@ -19,21 +19,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { getMarkdown } from "@milkdown/utils";
 import { computeRoundTripProtection, applyMinimalChanges } from "../utils/minimalDiff";
-import { makeCorpusEditor } from "./helpers/moveFuzz";
-
-/**
- * Parse `markdown` into the real editor and serialize it straight back. Uses the
- * shared corpus editor factory so this suite can't drift from the production
- * serialization recipe the corpus (roundTripCorpus.test.ts) exercises.
- */
-async function serialize(markdown: string): Promise<string> {
-    const editor = await makeCorpusEditor(markdown);
-    const out = editor.action(getMarkdown());
-    await editor.destroy();
-    return out;
-}
+// The shared factory-backed serializer keeps this suite on the exact
+// production serialization recipe the corpus (roundTripCorpus.test.ts)
+// exercises.
+import { serializeCorpus as serialize } from "./helpers/moveFuzz";
 
 const PAGE = readFileSync(resolve(__dirname, "fixtures/logseq/page.md"), "utf8");
 

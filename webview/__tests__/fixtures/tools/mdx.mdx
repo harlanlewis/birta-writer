@@ -1,0 +1,21 @@
+import {Chart} from './snowfall.js'
+export const year = 2023
+
+# Last year's snowfall
+
+In {year}, the snowfall was above average. The expression {1 + 1} evaluates
+inline in MDX; in CommonMark both are plain text.
+
+<Chart color="#fcb32c" year={year} />
+
+JSX blocks can nest markdown:
+
+<section>
+  This is *markdown* inside JSX.
+</section>
+
+{/* MDX comments use JS syntax, not HTML. */}
+
+MDX makes a bare `<` or an unclosed `{` a hard syntax error; CommonMark
+reads both as ordinary text, which is exactly the mismatch that makes
+re-serialization unsafe.

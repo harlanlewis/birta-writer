@@ -188,9 +188,15 @@ to open and edit, not about matching every tool's feature set.
 - **Org mode** is a different markup language, not a Markdown dialect. Opening an
   `.org` file as Markdown would misparse it; it's out of scope by design.
 
-> **A note on confidence:** the fidelity claims above are grounded in how Birta's
-> serializer and round-trip-protection layer are built, and the tool dialects in
-> primary sources (Obsidian, Foam, Quarto, MDX, and Org documentation). They have
-> not yet been pinned down by an automated round-trip test corpus per tool — that
-> harness is tracked as planned work (MAR-128). Until it lands, treat the 🟢/🟡
-> rows as well-founded but not machine-verified.
+> **A note on confidence:** the claims above are machine-verified. One command —
+> `pnpm fidelity` — drives a per-tool fixture corpus (authored from each tool's
+> own documentation) through the production save pipeline and asserts the
+> table's claims: the 🟢/🟡 rows round-trip byte-identically and keep every
+> tool-specific construct named above through an edit (frontmatter, handled
+> before the editor ever sees content, is verified by the extension-side
+> suites), and the 🔴 rows for MDX
+> and Org are encoded as expected-corruption cases — an untouched save is still
+> byte-identical even for those, but an edit corrupts the edited construct (and
+> for Org, its neighbors too). The fixtures and how to read the suites live in
+> `webview/__tests__/fixtures/tools/README.md`; CI runs the same assertions on
+> every PR and push to main, so a claim that stops being true fails the build.
