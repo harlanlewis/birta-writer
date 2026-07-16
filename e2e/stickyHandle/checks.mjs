@@ -198,7 +198,85 @@ export async function run({ page, check, baseUrl }) {
     check("truncated title reveals its full text on hover",
         tt.clipped.display === "block" && tt.clipped.text === "Section Two", JSON.stringify(tt.clipped));
 
-    // ── 7. A long title clips to one ellipsised line instead of overflowing ──
+    // ── 7. The sticky's tooltip is never occluded by the topbar ──
+    // The sticky sits flush under the fixed topbar, and the topbar (z 10002)
+    // covers the tooltip (z 10000) — an "above" placement would render the
+    // tip half-hidden behind the bar, so position() must drop it below the
+    // label instead (the topbar's bottom edge is the placement ceiling).
+    const tipPos = await page.evaluate(() => {
+        const title = document.querySelector(".heading-sticky-title");
+        const label = document.querySelector(".heading-sticky-text");
+        title.style.width = "48px"; // force truncation so the tooltip shows
+        label.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        const tip = document.querySelector(".custom-tooltip").getBoundingClientRect();
+        const topbarBottom = document.querySelector(".editor-topbar").getBoundingClientRect().bottom;
+        const labelBottom = label.getBoundingClientRect().bottom;
+        label.dispatchEvent(new MouseEvent("mouseleave", { bubbles: true }));
+        title.style.width = "";
+        return {
+            tipTop: Math.round(tip.top),
+            topbarBottom: Math.round(topbarBottom),
+            labelBottom: Math.round(labelBottom),
+        };
+    });
+    check("the sticky tooltip drops below the label, clear of the topbar",
+        tipPos.tipTop >= tipPos.topbarBottom && tipPos.tipTop >= tipPos.labelBottom,
+        JSON.stringify(tipPos));
+
+    // ── 8. Clicking the sticky title jumps to the heading and places the caret ──
+    // The sticky mirrors the heading's left/width/typography, so a click x maps
+    // 1:1 onto the heading's first line: the heading scrolls fully below the
+    // topbar (un-sticking the mirror) and the caret lands at the clicked
+    // character. Click 1px into "T" of "Section Two" (text offset 8), measured
+    // on the label's own text node.
+    const clickProbe = await page.evaluate(() => {
+        const label = document.querySelector(".heading-sticky-text");
+        const range = document.createRange();
+        range.setStart(label.firstChild, 8);
+        range.setEnd(label.firstChild, 9);
+        const r = range.getBoundingClientRect();
+        const lr = label.getBoundingClientRect();
+        return { x: r.left + 1, y: lr.top + lr.height / 2 };
+    });
+    await page.mouse.click(clickProbe.x, clickProbe.y);
+    await page.waitForTimeout(250);
+    const afterClick = await page.evaluate(() => {
+        const topbarBottom = document.querySelector(".editor-topbar").getBoundingClientRect().bottom;
+        const h = [...document.querySelectorAll(".ProseMirror h1")]
+            .find((el) => el.textContent.includes("Section Two"));
+        const sel = document.getSelection();
+        return {
+            headingTop: Math.round(h.getBoundingClientRect().top),
+            topbarBottom: Math.round(topbarBottom),
+            stickyHidden: document.querySelector(".heading-sticky-title").hidden,
+            stickyText: document.querySelector(".heading-sticky-text")?.textContent ?? null,
+            anchorText: sel?.anchorNode?.textContent ?? null,
+            anchorOffset: sel?.anchorOffset ?? null,
+            inHeading: Boolean(sel?.anchorNode && h.contains(sel.anchorNode)),
+        };
+    });
+    check("clicking the sticky title scrolls the heading fully below the topbar",
+        afterClick.headingTop >= afterClick.topbarBottom &&
+            afterClick.headingTop <= afterClick.topbarBottom + 24,
+        JSON.stringify(afterClick));
+    // The clicked heading is fully visible, so ITS mirror is gone — the sticky
+    // either hides or hands over to the previous section (push-away).
+    check("the jump un-sticks the clicked heading's mirror",
+        afterClick.stickyHidden || afterClick.stickyText !== "Section Two",
+        JSON.stringify(afterClick));
+    check("the caret lands in the heading at the clicked character",
+        afterClick.inHeading && afterClick.anchorOffset === 8, JSON.stringify(afterClick));
+
+    // Re-stick "Section Two" — the next section measures the sticky's rendered
+    // geometry, which needs it visible again after the jump above hid it.
+    await page.evaluate(() => {
+        const h = [...document.querySelectorAll(".ProseMirror h1")]
+            .find((el) => el.textContent.includes("Section Two"));
+        window.scrollTo(0, h.getBoundingClientRect().top + window.scrollY + 20);
+    });
+    await page.waitForTimeout(250);
+
+    // ── 9. A long title clips to one ellipsised line instead of overflowing ──
     // In a narrow content area a heading longer than the sticky must stay on a
     // single line and truncate with an ellipsis, never spill past the width the
     // plugin sets. The text span is block-level for overflow/text-overflow to
@@ -236,4 +314,27 @@ export async function run({ page, check, baseUrl }) {
         longTitle.scrollWidth > longTitle.clientWidth, JSON.stringify(longTitle));
     check("long title: text stays on a single line",
         longTitle.offsetHeight <= longTitle.lineHeight + 4, JSON.stringify(longTitle));
+
+    // ── 10. The in-flow gutter centers on the heading's first text line ──
+    // The gutter's top cancels the heading's padding-top
+    // (--content-heading-before) and its 1.3em box matches the line-height,
+    // so the badge/chevron's vertical center must coincide with the first
+    // line's center. (A hardcoded 1em top used to seat it 0.3em low — the
+    // top-level twin of the nested-heading overshoot fixed in MAR-158.)
+    const gutterAlign = await page.evaluate(() => {
+        const h = document.querySelector(".ProseMirror h1");
+        const gutter = h.querySelector(
+            ":scope > .heading-fold-gutter:not(.heading-fold-gutter--block)");
+        const style = getComputedStyle(h);
+        const firstLineCenter = h.getBoundingClientRect().top +
+            parseFloat(style.paddingTop) + parseFloat(style.lineHeight) / 2;
+        const g = gutter.getBoundingClientRect();
+        return {
+            gutterCenter: g.top + g.height / 2,
+            firstLineCenter,
+            delta: Math.abs(g.top + g.height / 2 - firstLineCenter),
+        };
+    });
+    check("the heading gutter centers on the first text line (≤1px drift)",
+        gutterAlign.delta <= 1, JSON.stringify(gutterAlign));
 }

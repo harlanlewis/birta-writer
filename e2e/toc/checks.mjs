@@ -43,6 +43,18 @@ export async function run({ page, check, baseUrl }) {
         await page.locator(".toc-panel").evaluate((el) =>
             getComputedStyle(el).transitionDuration.split(",")[0].trim() === "0.2s"));
 
+    // ── Docked: the list clears the floating controls chip ──
+    // The side-switch/hide buttons float over the list's top corner; the
+    // first row must START below them (rows may still scroll beneath later).
+    const clearance = await page.evaluate(() => ({
+        controlsBottom: Math.round(
+            document.querySelector(".toc-controls").getBoundingClientRect().bottom),
+        firstTop: Math.round(
+            document.querySelector(".toc-item").getBoundingClientRect().top),
+    }));
+    check("docked: the first TOC row starts below the floating controls (no overlap)",
+        clearance.firstTop >= clearance.controlsBottom, JSON.stringify(clearance));
+
     // ── A user-invoked hide must still animate ──
     await page.evaluate(() => { window.__phase = "toggle"; });
     await page.evaluate(() => {
@@ -90,6 +102,19 @@ export async function run({ page, check, baseUrl }) {
     check("the flyout sits BELOW the tab, on its side (not the full-height drawer)",
         flyout.belowTab && flyout.sameSide, JSON.stringify(flyout));
     check("the flyout hides the docked drawer's controls", flyout.controlsHidden);
+    // With the controls gone, the card keeps its own symmetric inset: the
+    // first/last rows must not sit flush against the rounded border.
+    const flyoutInset = await page.evaluate(() => {
+        const panel = document.querySelector(".toc-panel").getBoundingClientRect();
+        const items = document.querySelectorAll(".toc-item");
+        return {
+            top: Math.round(items[0].getBoundingClientRect().top - panel.top),
+            bottom: Math.round(
+                panel.bottom - items[items.length - 1].getBoundingClientRect().bottom),
+        };
+    });
+    check("the flyout's first and last rows keep a breathing inset inside the card",
+        flyoutInset.top >= 8 && flyoutInset.bottom >= 8, JSON.stringify(flyoutInset));
     check("the flyout is capped in height (the card scrolls, not the whole viewport)",
         flyout.capped, JSON.stringify(flyout));
     check("the flyout layers ABOVE the formatting/link palettes (z >= 9999)",

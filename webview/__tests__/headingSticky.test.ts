@@ -8,6 +8,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import type { EditorView } from "@milkdown/prose/view";
+import { TextSelection } from "@milkdown/prose/state";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { setStickyContent } from "../plugins/headingSticky";
@@ -54,6 +55,7 @@ function makeSticky(editorView: EditorView, headingPos: number): HTMLElement {
 }
 
 afterEach(() => {
+    vi.unstubAllGlobals();
     closeBlockMenu();
     for (const editor of editors) {
         void editor.destroy();
@@ -87,6 +89,35 @@ describe("sticky heading gutter", () => {
         expect(document.querySelector(".block-menu")).not.toBeNull();
         expect(marker?.classList.contains("heading-fold-marker--menu-open")).toBe(true);
         expect(marker?.getAttribute("aria-expanded")).toBe("true");
+    });
+
+    it("clicking the sticky title text should scroll to the heading and place the caret in it", async () => {
+        const editor = await makeEditor("## Section\n\nBody text.");
+        const editorView = view(editor);
+        // Park the selection away from the heading so the click's caret move is observable.
+        const paragraphPos = FIRST_HEADING_POS + editorView.state.doc.child(0).nodeSize;
+        editorView.dispatch(editorView.state.tr.setSelection(
+            TextSelection.create(editorView.state.doc, paragraphPos + 1),
+        ));
+        const sticky = makeSticky(editorView, FIRST_HEADING_POS);
+        // Run the post-scroll caret placement synchronously, and absorb the
+        // window scroll jsdom can't perform.
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+            cb(0);
+            return 0;
+        });
+        const scrollTo = vi.fn();
+        vi.stubGlobal("scrollTo", scrollTo);
+        const label = sticky.querySelector<HTMLElement>(".heading-sticky-text");
+
+        label?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: 40 }));
+
+        // The heading is scrolled below the topbar…
+        expect(scrollTo).toHaveBeenCalled();
+        // …and the caret lands inside the heading (jsdom has no layout, so
+        // coordinate resolution falls back to the heading's start).
+        expect(editorView.state.selection.from).toBe(FIRST_HEADING_POS + 1);
+        expect(editorView.state.selection.empty).toBe(true);
     });
 
     it("the sticky badge click should derive the heading position from data-heading-pos at click time", async () => {

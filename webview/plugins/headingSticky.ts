@@ -31,6 +31,41 @@ function scrollHeadingIntoStickyPosition(view: EditorView, headingPos: number): 
     });
 }
 
+/**
+ * Put the caret on the heading's first text line at the given viewport x.
+ * Coordinate resolution needs real layout; when it is unavailable (jsdom) or
+ * misses, the caret falls back to the heading's start.
+ */
+export function placeCaretOnHeadingFirstLine(
+    view: EditorView,
+    headingPos: number,
+    clientX: number,
+): void {
+    const heading = view.nodeDOM(headingPos);
+    const node = view.state.doc.nodeAt(headingPos);
+    if (!(heading instanceof HTMLElement) || !node) {
+        return;
+    }
+    let pos = headingPos + 1;
+    try {
+        const rect = heading.getBoundingClientRect();
+        const style = window.getComputedStyle(heading);
+        const fontSize = parseFloat(style.fontSize) || 16;
+        const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.3;
+        const paddingTop = parseFloat(style.paddingTop) || 0;
+        const x = Math.min(Math.max(clientX, rect.left + 1), rect.right - 1);
+        const y = rect.top + paddingTop + lineHeight / 2;
+        const hit = view.posAtCoords({ left: x, top: y });
+        if (hit) {
+            pos = Math.min(Math.max(hit.pos, headingPos + 1), headingPos + 1 + node.content.size);
+        }
+    } catch {
+        // No layout engine — keep the heading-start fallback.
+    }
+    view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))));
+    view.focus();
+}
+
 function dispatchStickyActiveChange(headingPos: number | null): void {
     window.dispatchEvent(
         new CustomEvent(HEADING_STICKY_ACTIVE_CHANGE_EVENT, {
@@ -135,6 +170,30 @@ export function setStickyContent(
     // on hover exactly as the TOC does — the tooltip appears only when the text
     // is actually truncated, and measures on mouseenter, off the scroll path.
     applyTooltip(label, text, { placement: "above", truncatedOnly: true });
+
+    // Clicking the sticky's text is a navigation gesture: scroll the real
+    // heading fully into view (below the topbar) and drop the caret at the
+    // character under the click. The x coordinate maps 1:1 onto the heading's
+    // first line — the sticky shares its left/width and typography
+    // (syncStickyTypography) — so after the instant scroll the clicked point
+    // resolves against the live document.
+    label.addEventListener("mousedown", (event) => {
+        // No native focus/selection on the body-mounted clone; click owns it.
+        event.preventDefault();
+    });
+    label.addEventListener("click", (event) => {
+        const livePos = Number(sticky.dataset["headingPos"] ?? headingPos);
+        const target = view.nodeDOM(livePos);
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+        const clickX = event.clientX;
+        hideTooltip();
+        scrollElementBelowTopbar(target, 8, "auto");
+        requestAnimationFrame(() => {
+            placeCaretOnHeadingFirstLine(view, livePos, clickX);
+        });
+    });
 
     sticky.append(gutter, label);
 }

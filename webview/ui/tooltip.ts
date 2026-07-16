@@ -1,3 +1,5 @@
+import { getTopbarBottom } from "../utils/headingUtils";
+
 let tooltipEl: HTMLElement | null = null;
 
 // Element the visible tooltip belongs to. Hover and keyboard focus share the
@@ -52,7 +54,10 @@ function position(
 
     if (placement === "above") {
         y = elRect.top - tipRect.height - 6;
-        if (y < 4) {
+        // The fixed topbar (z 10002) covers the tooltip (z 10000), so "room
+        // above" ends at the bar's bottom edge, not the viewport top — chrome
+        // flush under the bar (the sticky heading) must drop its tip below.
+        if (y < getTopbarBottom() + 4) {
             y = elRect.bottom + 6;
         } // not enough room above, so drop below
     } else {

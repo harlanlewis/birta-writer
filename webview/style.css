@@ -873,7 +873,12 @@ body:not(.editor-width-auto) {
         .heading-fold-gutter {
             position: absolute;
             left: -10px;
-            top: 1em;
+            /* Cancels the heading's own padding-top so the 1.3em box (matching
+               the heading line-height) centers the badge/chevron on the first
+               text line. Must track --content-heading-before — the hardcoded
+               1em this shipped with sat every badge 0.3em low (the top-level
+               twin of the nested-heading overshoot fixed in MAR-158). */
+            top: var(--content-heading-before);
             transform: translateX(-100%);
             display: inline-flex;
             align-items: center;
@@ -1473,11 +1478,14 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
        which let a long heading spill past the (definite-width) sticky and out
        of a narrow content area. Block + nowrap keeps it to one ellipsised line
        — the same recipe as .toc-item, which pairs it with a truncatedOnly
-       tooltip (see setStickyContent) to recover the hidden text on hover. */
+       tooltip (see setStickyContent) to recover the hidden text on hover.
+       The text cursor advertises the click affordance: clicking scrolls the
+       real heading into view and places the caret at the clicked character. */
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: text;
 }
 
 @media (max-width: 720px) {
