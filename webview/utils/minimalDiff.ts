@@ -28,6 +28,145 @@
  * philosophy, extended from formatting to parsability.
  */
 
+// ─── Line classification (MAR-161) ──────────────────────────────────────────
+//
+// The comparison normalizers below are construct-specific: a thematic-break
+// key must only ever be produced by a line that PARSES as a thematic break.
+// Line bytes alone cannot tell — `***` is an hr in prose, verbatim text
+// inside a fence, and a code line when tab-indented; a solid dash run is an
+// hr on its own but a setext underline when attached to the paragraph above.
+// Feeding all of them through the same normalizers let the diff keep-pair
+// lines across constructs (a saved `\t***` code line against a real hr),
+// which mis-anchored the edit script badly enough to fail protection's
+// self-check — and a null protection means a ZERO-EDIT save rewrites the
+// file. So every line is classified once, in context, and each class gets
+// only the normalization that is meaning-preserving for it. Non-prose keys
+// carry a `\x00`-prefixed tag so no cross-class pair can ever compare equal.
+//
+// The classifier is an approximation of the block parser, not a replica —
+// what matters is that saved and serialized text classify CONSISTENTLY
+// (identical neighborhoods yield identical classes) and that no two
+// different constructs share a key. A deliberately unhandled case: indented
+// code nested deep inside a list item still classifies as prose (list
+// context wins for indent-candidates following a list-marker line) — the
+// pre-classifier status quo, kept because Logseq outlines (MAR-131) indent
+// their entire block tree with tabs and MUST stay depth-normalized.
+
+type LineClass =
+    | "prose"
+    // Content of a fence opened at column 0: verbatim user bytes, compared
+    // raw — a whitespace-only tab↔space edit in a Makefile fence is a real
+    // edit and must register as one.
+    | "fence-raw"
+    // Content of an INDENTED fence (a fence nested in a list/outline): the
+    // leading indentation is outline structure the serializer legitimately
+    // re-emits as spaces (MAR-131), so it stays depth-normalized. The cost —
+    // a whitespace-only tab↔space edit of the leading indent inside such a
+    // fence reads as no edit — is confined to nested fences.
+    | "fence-nested"
+    // An indented code block line: verbatim user bytes, compared raw.
+    | "code"
+    // A solid dash run attached to the paragraph line above it — a setext
+    // underline, NOT a thematic break. Compared as ordinary prose (raw dash
+    // bytes), so it can never be "repaired" into a saved hr (the M2 dash
+    // residual: same marker char, different construct).
+    | "setext";
+
+/** Leading-whitespace width in columns, tabs expanding to the next multiple
+ * of 4 (the CommonMark tab stop). */
+function leadingColumns(line: string): number {
+    let col = 0;
+    for (const ch of line) {
+        if (ch === " ") col++;
+        else if (ch === "\t") col += 4 - (col % 4);
+        else break;
+    }
+    return col;
+}
+
+const LIST_MARKER_RE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+const SETEXT_DASH_RE = /^ {0,3}-+[ \t]*$/;
+const ATX_HEADING_RE = /^ {0,3}#{1,6}(?:[ \t]|$)/;
+const QUOTE_MARKER_RE = /^ {0,3}>/;
+/** A code-fence open/close marker run, matched against a trimStart'd line. */
+const FENCE_LINE_RE = /^(`{3,}|~{3,})/;
+
+/** Classify every line of a document in one contextual pass. Blank lines are
+ * insignificant to the diff and classify as prose. */
+function classifyLines(lines: string[]): LineClass[] {
+    const classes: LineClass[] = new Array(lines.length);
+    let fence: { marker: string; nested: boolean } | null = null;
+    let prevNonBlank: { text: string; cls: LineClass } | null = null;
+    let blankBefore = true; // document start behaves like after-a-blank
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim() === "") {
+            classes[i] = "prose";
+            blankBefore = true;
+            continue;
+        }
+        let cls: LineClass = "prose";
+        const t = line.trimStart();
+        const f = FENCE_LINE_RE.exec(t);
+        if (fence) {
+            const closes =
+                f !== null &&
+                f[1][0] === fence.marker[0] &&
+                f[1].length >= fence.marker.length &&
+                t.slice(f[1].length).trim() === "";
+            if (closes) {
+                fence = null; // the close line itself compares as prose
+            } else {
+                cls = fence.nested ? "fence-nested" : "fence-raw";
+            }
+        } else if (f) {
+            fence = { marker: f[1], nested: /^[ \t]/.test(line) };
+        } else if (leadingColumns(line) >= 4) {
+            // Indented-code candidate. It is code when it opens a block
+            // outside a list context — after a blank, at document start, or
+            // glued to a line that TERMINATES its own block (a fence line,
+            // heading, or hr cannot lazily absorb it) — or continues a code
+            // block. Attached to an absorbing line it is a lazy
+            // continuation; following a list-marker line or any indented
+            // line it is (or plausibly is) list/outline content — both
+            // prose (the Logseq outline case, MAR-131).
+            if (prevNonBlank === null || prevNonBlank.cls === "code") {
+                cls = "code";
+            } else if (
+                !LIST_MARKER_RE.test(prevNonBlank.text) &&
+                leadingColumns(prevNonBlank.text) === 0 &&
+                (blankBefore ||
+                    ATX_HEADING_RE.test(prevNonBlank.text) ||
+                    THEMATIC_BREAK_RE.test(prevNonBlank.text) ||
+                    FENCE_LINE_RE.test(prevNonBlank.text.trimStart()))
+            ) {
+                cls = "code";
+            }
+        } else if (
+            SETEXT_DASH_RE.test(line) &&
+            !blankBefore &&
+            prevNonBlank !== null &&
+            prevNonBlank.cls === "prose" &&
+            // The line above must be able to BE a paragraph: after a heading,
+            // an hr, a list marker, a quote marker, or a table row, a dash
+            // run is not an underline (misclassifying those would spawn
+            // needless protection regions, since the serializer
+            // blank-separates real hrs).
+            !THEMATIC_BREAK_RE.test(prevNonBlank.text) &&
+            !ATX_HEADING_RE.test(prevNonBlank.text) &&
+            !LIST_MARKER_RE.test(prevNonBlank.text) &&
+            !QUOTE_MARKER_RE.test(prevNonBlank.text) &&
+            !TABLE_ROW_RE.test(prevNonBlank.text.trim())
+        ) {
+            cls = "setext";
+        }
+        classes[i] = cls;
+        prevNonBlank = { text: line, cls };
+        blankBefore = false;
+    }
+    return classes;
+}
+
 // ─── Comparison normalizers ─────────────────────────────────────────────────
 
 const SEP_ROW_RE = /^\|[\s\-:|]+\|$/;
@@ -35,10 +174,13 @@ const TABLE_ROW_RE = /^\|.*\|$/;
 // A line that is nothing but a thematic break: three or more of a single
 // `*`/`_`/`-` marker, optionally separated by spaces (`***`, `___`, `- - -`,
 // `-----`). Source-style preservation (MAR-16) keeps the original marker, but
-// this normalizer still collapses breaks that differ only in marker char,
-// repetition count, or spacing so a legacy `---` save compares equal to a
-// freshly preserved `***` and never churns. Setext underlines are NOT matched
-// here (a two-line construct that must stay attached to its heading text).
+// this normalizer still collapses breaks that differ only in repetition count
+// or spacing so a legacy `- - -` save compares equal to a freshly preserved
+// `---` and never churns. The key preserves the marker CHARACTER and is
+// tagged (`\x00B`) so it can never collide with raw line bytes: `-` runs are
+// also setext underlines, and an untagged `---` key equals a literal `---`
+// underline byte-for-byte (MAR-161 M2 and its dash residual). Setext
+// underlines themselves classify as "setext" and never reach this branch.
 const THEMATIC_BREAK_RE = /^\s{0,3}([*_-])[ \t]*(\1[ \t]*){2,}$/;
 
 // Normalize a table separator row: collapse dashes and cell padding, keeping
@@ -119,15 +261,14 @@ function normalizeFenceOpen(line: string): string {
 // the serializer re-emits as two spaces (Logseq graphs indent their whole
 // block tree with tabs — MAR-131). DEPTH-preserving by construction: `\t\t`
 // and four spaces compare equal, but `\t` never equals `\t\t`, so a genuine
-// outdent still registers as an edit. Applies to every line, including
-// fenced-code content: inside a Logseq bullet the fence's content lines
+// outdent still registers as an edit. Applies to prose and to NESTED-fence
+// content ("fence-nested"): inside a Logseq bullet the fence's content lines
 // carry the same list indentation, and skipping them would re-open the churn
-// this exists to close. The cost: a whitespace-ONLY edit swapping a leading
-// tab for exactly two spaces (or the reverse, any per-tab multiple) inside
-// fenced code — at ANY nesting depth, either direction — reads as no edit
-// and keeps the saved bytes. In tab-sensitive content (a Makefile fence)
-// that silently drops a real edit; the honest fix is fence-aware line
-// classification for the whole normalizer family, tracked on MAR-161.
+// this exists to close. The residual cost is confined to nested fences: a
+// whitespace-ONLY edit swapping a leading tab for exactly two spaces (or the
+// reverse, any per-tab multiple) there reads as no edit and keeps the saved
+// bytes. Top-level fence content ("fence-raw") and indented code compare
+// raw, so the same edit in a Makefile fence registers (MAR-161).
 function normalizeOutlineIndent(line: string): string {
     return line.replace(/^[ \t]+/, (ws) => ws.replace(/\t/g, "  "));
 }
@@ -187,7 +328,7 @@ export function unescapeOrgCookies(markdown: string): string {
     return lines
         .map((line) => {
             const t = line.trimStart();
-            const f = /^(`{3,}|~{3,})/.exec(t);
+            const f = FENCE_LINE_RE.exec(t);
             if (fence) {
                 if (
                     f &&
@@ -210,12 +351,17 @@ export function unescapeOrgCookies(markdown: string): string {
         .join("\n");
 }
 
-function normLineForCompare(line: string): string {
+function normLineForCompare(line: string, cls: LineClass): string {
+    // Verbatim classes: raw bytes behind a class tag, so no amount of
+    // byte coincidence can pair them with a prose-normalized key.
+    if (cls === "fence-raw") return "\x00F" + line;
+    if (cls === "fence-nested") return "\x00F" + normalizeOutlineIndent(line);
+    if (cls === "code") return "\x00C" + line;
     line = normalizeOutlineIndent(line);
     const t = line.trim();
     if (SEP_ROW_RE.test(t)) return normalizeSepRow(line);
     if (TABLE_ROW_RE.test(t)) return normalizeTableDataRow(line);
-    if (THEMATIC_BREAK_RE.test(line)) {
+    if (cls !== "setext" && THEMATIC_BREAK_RE.test(line)) {
         // Preserve the marker CHARACTER: `***` and `---` are interchangeable
         // as thematic breaks, but a `-` run is also a setext-heading
         // underline — two constructs whose meaning depends on the line
@@ -224,8 +370,11 @@ function normLineForCompare(line: string): string {
         // (MAR-161 M2). Same-character style runs (`- - -` vs `---`) still
         // compare equal.
         const marker = /^\s{0,3}([*_-])/.exec(line)![1];
-        return marker.repeat(3);
+        return "\x00B" + marker;
     }
+    // A "setext" line falls through: none of the remaining normalizers can
+    // touch a dash run, so its key is its raw bytes — an underline only ever
+    // matches an identical underline in an identical attachment context.
     if (/^`{3,}/.test(t)) return normalizeFenceOpen(line);
     return normalizeWrappedLinkEmphasis(normalizeSplitStrong(normalizeOrgCookieEscape(line)));
 }
@@ -235,6 +384,10 @@ function normLineForCompare(line: string): string {
 interface SigLine {
     text: string;
     lineIdx: number;
+    /** Class-aware comparison key (normLineForCompare) — computed once here
+     * so every consumer (the LCS, region anchors, repair matching) keys the
+     * same line identically. */
+    norm: string;
 }
 
 type Edit =
@@ -242,11 +395,18 @@ type Edit =
     | { op: "del"; saved: SigLine }
     | { op: "ins"; serial: SigLine };
 
-function sigLines(lines: string[]): SigLine[] {
-    return lines.reduce<SigLine[]>((acc, line, i) => {
-        if (line.trim() !== "") acc.push({ text: line, lineIdx: i });
-        return acc;
-    }, []);
+/** Significant (non-blank) lines with their comparison keys. Classification
+ * needs the FULL line array (fence state, blank adjacency), so it happens
+ * here, before blanks are dropped. */
+function analyzeLines(lines: string[]): SigLine[] {
+    const classes = classifyLines(lines);
+    const sig: SigLine[] = [];
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== "") {
+            sig.push({ text: lines[i], lineIdx: i, norm: normLineForCompare(lines[i], classes[i]) });
+        }
+    }
+    return sig;
 }
 
 /**
@@ -264,13 +424,13 @@ function computeEditScript(saved: string, serialized: string): {
 } {
     const savedLines = saved.split("\n");
     const serialLines = serialized.split("\n");
-    const savedSig = sigLines(savedLines);
-    const serialSig = sigLines(serialLines);
+    const savedSig = analyzeLines(savedLines);
+    const serialSig = analyzeLines(serialLines);
     const n = savedSig.length;
     const m = serialSig.length;
 
-    const savedNorm = savedSig.map((l) => normLineForCompare(l.text));
-    const serialNorm = serialSig.map((l) => normLineForCompare(l.text));
+    const savedNorm = savedSig.map((l) => l.norm);
+    const serialNorm = serialSig.map((l) => l.norm);
 
     // Peel the common prefix / suffix (greedy keep-pairing of equal lines is
     // always LCS-optimal).
@@ -404,8 +564,8 @@ function buildProtectedRegions(
 
         const prevKeep = start > 0 ? (edits[start - 1] as Extract<Edit, { op: "keep" }>) : null;
         const nextKeep = k < edits.length ? (edits[k] as Extract<Edit, { op: "keep" }>) : null;
-        const anchorPrevNorm = prevKeep ? normLineForCompare(prevKeep.saved.text) : null;
-        const anchorNextNorm = nextKeep ? normLineForCompare(nextKeep.saved.text) : null;
+        const anchorPrevNorm = prevKeep ? prevKeep.saved.norm : null;
+        const anchorNextNorm = nextKeep ? nextKeep.saved.norm : null;
 
         // Split the run into per-construct sub-regions when both sides break
         // into the same number of adjacency groups (consecutive line numbers
@@ -423,7 +583,7 @@ function buildProtectedRegions(
             const last = sub.delSpan[sub.delSpan.length - 1].lineIdx;
             regions.push({
                 savedSpanLines: savedLines.slice(first, last + 1),
-                insNorms: sub.insSpan.map((s) => normLineForCompare(s.text)),
+                insNorms: sub.insSpan.map((s) => s.norm),
                 anchorPrevNorm,
                 anchorNextNorm,
             });
@@ -449,14 +609,26 @@ function groupByAdjacency(lines: SigLine[]): SigLine[][] {
  * edited or removed the construct) are left alone — the edit applies.
  */
 function repairSerialized(serialized: string, protection: RoundTripProtection): string {
-    let lines = serialized.split("\n");
+    // Every region is matched against ONE analysis of the pristine
+    // serialized text. Repairs swap serializer-canonical lines for saved
+    // bytes, which can change the classification context of LATER lines
+    // (restoring a `~~~` fence open makes the serializer's following ```
+    // close line look like content of an unclosed tilde fence) — so
+    // re-analyzing after each splice would invalidate the very norms the
+    // regions were recorded under, the later regions would stop matching,
+    // and protection's self-check would fail (null protection = the file is
+    // rewritten on a zero-edit save). Raw indices found on the pristine text
+    // are translated into the output through `offset`; matching walks left
+    // to right with a forward-only cursor, so every later match lies beyond
+    // every splice already applied.
+    const pristine = serialized.split("\n");
+    const sig = analyzeLines(pristine);
+    const norms = sig.map((l) => l.norm);
 
-    // Matching walks left to right so repeated identical constructs map to
-    // their occurrences in document order.
-    let cursor = 0;
+    let lines = pristine;
+    let cursor = 0; // pristine raw-line index; repeated constructs map in document order
+    let offset = 0; // lines.length delta accumulated by applied splices
     for (const region of protection.regions) {
-        const sig = sigLines(lines);
-        const norms = sig.map((l) => normLineForCompare(l.text));
 
         if (region.insNorms.length > 0) {
             // Score every candidate occurrence by how well its neighborhood
@@ -487,11 +659,12 @@ function repairSerialized(serialized: string, protection: RoundTripProtection): 
             const firstRaw = sig[best].lineIdx;
             const lastRaw = sig[best + len - 1].lineIdx;
             lines = [
-                ...lines.slice(0, firstRaw),
+                ...lines.slice(0, firstRaw + offset),
                 ...region.savedSpanLines,
-                ...lines.slice(lastRaw + 1),
+                ...lines.slice(lastRaw + 1 + offset),
             ];
-            cursor = firstRaw + region.savedSpanLines.length;
+            offset += region.savedSpanLines.length - (lastRaw + 1 - firstRaw);
+            cursor = lastRaw + 1;
         } else {
             // Dropped construct: re-insert next to its anchor. Prefer the
             // anchorPrev occurrence that is directly followed by anchorNext
@@ -527,15 +700,24 @@ function repairSerialized(serialized: string, protection: RoundTripProtection): 
             // Both anchors gone (surrounding content rewritten): keep the
             // construct anyway, at the end — data loss is never acceptable.
             if (rawAt === -1) {
-                rawAt = lines.length - countTrailingBlanks(lines);
+                rawAt = pristine.length - countTrailingBlanks(pristine);
             }
             // Blank-separate the construct from significant neighbors on
-            // either side (never at the document edge, never doubled).
+            // either side (never at the document edge, never doubled). The
+            // neighbors are read from the pristine text: an already-applied
+            // splice only ever swaps a span for the saved bytes, and both
+            // span endpoints are significant lines either way, so the
+            // blank-or-not answer is the same.
             const insertion = [...region.savedSpanLines];
-            if (rawAt > 0 && lines[rawAt - 1].trim() !== "") insertion.unshift("");
-            if (rawAt < lines.length && lines[rawAt].trim() !== "") insertion.push("");
-            lines = [...lines.slice(0, rawAt), ...insertion, ...lines.slice(rawAt)];
-            cursor = rawAt + insertion.length;
+            if (rawAt > 0 && pristine[rawAt - 1].trim() !== "") insertion.unshift("");
+            if (rawAt < pristine.length && pristine[rawAt].trim() !== "") insertion.push("");
+            lines = [
+                ...lines.slice(0, rawAt + offset),
+                ...insertion,
+                ...lines.slice(rawAt + offset),
+            ];
+            offset += insertion.length;
+            cursor = rawAt;
         }
     }
     return lines.join("\n");
@@ -620,6 +802,39 @@ export function applyMinimalChanges(
     const isQuoteLine = (s: string): boolean => /^ {0,3}>/.test(s);
     const hasBlank = (lines: string[]): boolean => lines.some((l) => l.trim() === "");
 
+    // Would gluing `next` directly under `prev` change next's block-level
+    // construct? Only then is a serializer-emitted separating blank structure
+    // rather than style. Two arms (both verified against the real parser):
+    //   - a `:::` run cannot interrupt a paragraph, so glued to ANY
+    //     absorbing line (paragraph, quote content, list-item content) it
+    //     becomes a lazy continuation instead of a fence/inert prose;
+    //   - a solid dash run becomes a setext underline (setext takes
+    //     precedence over hr) — but ONLY under a genuine paragraph line: a
+    //     quote line, list-marker line, or table row cannot be underlined
+    //     (the run after them parses as an hr either way), and firing there
+    //     would churn legitimately glued saved bytes.
+    // Lines that terminate their own block (ATX headings, fence lines,
+    // thematic breaks) absorb nothing; legitimate saved files DO glue there
+    // (a heading directly above a directive), so neither arm may fire on
+    // them: a zero-edit save must keep those bytes verbatim. Solid
+    // `***`/`___` runs, backtick fences, headings, and list markers all
+    // interrupt a paragraph, so their attachment never depends on the blank.
+    const glueChangesConstruct = (prev: string, next: string): boolean => {
+        if (
+            /^ {0,3}(?:#{1,6}(?:[ \t]|$)|`{3,}|~{3,}|:{3,})/.test(prev) ||
+            THEMATIC_BREAK_RE.test(prev)
+        ) {
+            return false;
+        }
+        if (/^ {0,3}:{3,}/.test(next)) return true;
+        return (
+            /^ {0,3}-+[ \t]*$/.test(next) &&
+            !isQuoteLine(prev) &&
+            !LIST_MARKER_RE.test(prev) &&
+            !TABLE_ROW_RE.test(prev.trim())
+        );
+    };
+
     // The blank-line run to emit before the next significant line. Normally the
     // saved file's spacing wins on unedited lines (`dirty` false) and the
     // serializer's on edited ones — but a blank line between two quote-context
@@ -643,6 +858,24 @@ export function applyMinimalChanges(
         ) {
             const serial = serialGap(serialTo);
             if (!hasBlank(serial)) {
+                return serial;
+            }
+        }
+        // The dual rule (MAR-161 M1): the serializer SEPARATES the next line
+        // with a blank the saved bytes don't have. When gluing would change
+        // the next line's construct (raw `:::` fence prose at a directive
+        // tail, a dash run below a paragraph), the serializer's separating
+        // spacing is structure, not style, so it wins. A genuinely glued
+        // saved construct (a setext heading, lazy fence-prose continuation)
+        // keeps its bytes because the serializer re-emits it glued too, so
+        // this never churns.
+        if (
+            prevLineText !== null &&
+            !hasBlank(saved) &&
+            glueChangesConstruct(prevLineText, nextText)
+        ) {
+            const serial = serialGap(serialTo);
+            if (hasBlank(serial)) {
                 return serial;
             }
         }

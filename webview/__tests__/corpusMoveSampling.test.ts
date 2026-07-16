@@ -58,7 +58,6 @@ import {
     editorView,
     enumerateMovePairs,
     hashString,
-    knownMergeTierHazard,
     loadCorpusFixtures,
     makeCorpusEditor,
     mulberry32,
@@ -136,17 +135,12 @@ function sampleMoves(
 ): void {
     const baseState = v.state;
     const rng = mulberry32((SEED ^ hashString(fixture.name)) >>> 0);
-    // B/F-shaped pairs are NOT excluded: the save-survival check
-    // (plugins/reparseHazard, MAR-120 refuse lane) refuses them and they
-    // land in the refused-is-a-perfect-no-op branch below, which is itself
-    // the contract for them. The only exclusions left are the two MERGE-tier
-    // bugs (MAR-161) — clean at the tier the refusal observes, corrupted
-    // only by applyMinimalChanges — pinned as it.fails repros below.
-    // Shuffle BEFORE filtering: the sampled prefix then stays stable when a
-    // hazard class is fixed and its exclusion removed.
-    const pairs = shuffled(enumerateMovePairs(v), rng).filter(
-        ({ source, target }) => !knownMergeTierHazard(v, source, target),
-    );
+    // NOTHING is excluded: B/F-shaped pairs are refused by the save-survival
+    // check (plugins/reparseHazard, MAR-120 refuse lane) and land in the
+    // refused-is-a-perfect-no-op branch below, which is itself the contract
+    // for them; the two MERGE-tier bugs (MAR-161) are fixed and pinned as
+    // normal repros below. The gate holds the full pair space.
+    const pairs = shuffled(enumerateMovePairs(v), rng);
     expect(pairs.length, `no move pairs enumerable in ${fixture.name}`).toBeGreaterThan(0);
     const sample = pairs.slice(0, SAMPLE_SIZE);
     for (const { source, target } of sample) {
@@ -430,13 +424,13 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
     });
 
     // The two MAR-161 merge-tier pins drive the CORPUS fixtures rather than
-    // synthetic minimal sources: both bugs depend on the merge's repair-
-    // region matching seeing the fixture's surrounding lines (isolated
-    // minimal docs merge correctly — verified while pinning). Minimizing the
-    // repro is MAR-161's first work item. Both are clean at the raw
-    // serialize→reparse tier, so the MAR-120 refusal correctly stays quiet.
+    // synthetic minimal sources: both bugs depend on the LCS pairing lines
+    // across the fixture's surrounding content (isolated minimal docs merge
+    // correctly — the distilled string-level repros live in
+    // minimalDiff.test.ts). Both are clean at the raw serialize→reparse
+    // tier, so the MAR-120 refusal correctly stays quiet.
 
-    it.fails("merge hazard M1 (MAR-161): raw ':::' prose moved into a directive keeps its separating blank line through the merge", async () => {
+    it("merge hazard M1 (MAR-161, fixed): raw ':::' prose moved into a directive keeps its separating blank line through the merge", async () => {
         const fixture = fixtures.find((f) => f.name === "directives.md")!;
         const editor = await makeEditor(fixture.content);
         const v = editorView(editor);
@@ -453,10 +447,11 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         ).toBe(true);
 
         // The serializer emits a blank line between the body paragraph and
-        // the fence-shaped prose. BUG: applyMinimalChanges removes that
-        // blank, repairing toward the saved bytes' adjacency, and the prose
-        // line attaches to the paragraph above on reopen
-        // (`gained: atom:hardbreak:`). MDW_MOVE_SEED=7 finds this pair.
+        // the fence-shaped prose. FIXED: gapBefore's attachment rule defers
+        // to the serializer's separating blank when the saved bytes' glued
+        // spacing would re-attach a `:::` line to the paragraph above
+        // (before the fix the prose line reopened as `gained:
+        // atom:hardbreak:`). MDW_MOVE_SEED=7 finds this pair.
         const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
         const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
         expect(
