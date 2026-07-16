@@ -65,6 +65,7 @@ import type {
     Serializer,
 } from "@milkdown/transformer";
 import { Stack, StackElement } from "@milkdown/transformer";
+import { unescapeOrgCookies } from "../utils/minimalDiff";
 import type { Editor } from "@milkdown/core";
 import {
     SerializerReady,
@@ -133,7 +134,11 @@ export class FidelitySerializerState extends Stack<
         const state = new this(schema);
         return (content: Node) => {
             state.run(content);
-            return state.toString(remark);
+            // Org-cookie unescape (MAR-131) runs here — the one point where
+            // the WHOLE serialized document exists, which the pass needs to
+            // be definition-aware (a `[label]:` anywhere makes `[label]` a
+            // live reference) and fence-aware. See unescapeOrgCookies.
+            return unescapeOrgCookies(state.toString(remark));
         };
     };
 

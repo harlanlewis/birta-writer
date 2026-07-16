@@ -466,7 +466,7 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
         ).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("merge hazard M2 (MAR-161): a moved setext heading's underline survives the merge next to a saved hr", async () => {
+    it("merge hazard M2 (MAR-161, fixed): a moved setext heading's underline survives the merge next to a saved hr", async () => {
         const fixture = fixtures.find((f) => f.name === "kitchen-sink.md")!;
         const editor = await makeEditor(fixture.content);
         const v = editorView(editor);
@@ -484,11 +484,13 @@ describe("known save-pipeline hazards — pinned repros (fixed or refused, per c
             moveBlocks(v, { from: headingPos, to: headingPos + heading.nodeSize }, target),
         ).toBe(true);
 
-        // BUG: the merge's line normalizer matches the setext underline
-        // (`-----`) to the saved `***` thematic break and "repairs" it,
-        // dissolving the heading into paragraph + hr on reopen
-        // (`lost: count:heading; gained: count:hr, count:paragraph`).
-        // MDW_MOVE_SEED=99 finds this pair.
+        // FIXED (MAR-131's normalizer rework): normLineForCompare keys
+        // thematic breaks by their marker CHARACTER, so a `-----` setext
+        // underline no longer compares equal to a saved `***` hr and the
+        // merge cannot "repair" one into the other. (A dash-hr vs dash-
+        // underline collision would still key equal — that residual needs
+        // line-above context and stays open on MAR-161.) Before the fix the
+        // heading dissolved into paragraph + hr; MDW_MOVE_SEED=99 found it.
         const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
         const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
         expect(
