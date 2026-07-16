@@ -748,6 +748,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // the reveal is a slight slide-DOWN + fade-in (not the drawer's slide).
         void panel.offsetWidth;
         panel.classList.add("toc-panel--flyout-in");
+        // Open at the reader's place in the document, never at the top: the
+        // list renders before the card's capped geometry exists, so the active
+        // row can sit far below the fold. Center it now that the final layout
+        // is committed (manual scroll math — scrollIntoView would also scroll
+        // the window). The enter transition is transform/opacity only, so the
+        // geometry is already final here.
+        const active = list.querySelector<HTMLElement>(".toc-item--active");
+        if (active) {
+            const listRect = list.getBoundingClientRect();
+            const itemRect = active.getBoundingClientRect();
+            list.scrollTop += itemRect.top - listRect.top - (list.clientHeight - itemRect.height) / 2;
+        }
     }
     /** Retract with a fade + slight slide-UP, tearing the box down only once the
      *  exit transition finishes — so it never animates back through the full

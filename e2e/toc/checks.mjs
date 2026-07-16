@@ -254,4 +254,43 @@ export async function run({ page, check, baseUrl }) {
     check("...and the outline still reads the same",
         JSON.stringify(after.labels) === JSON.stringify(["One", "Two", "Three", "Four", "Five"]),
         JSON.stringify(after.labels));
+
+    // ── The flyout opens at the reader's place, not at the top ──
+    // The list renders before the card's capped geometry exists, so without a
+    // post-layout correction the active row (the section you're reading) can
+    // sit below the fold. Shrink the viewport so the 5-row list genuinely
+    // overflows the 70vh card cap, scroll the DOCUMENT to the bottom (active
+    // heading = a late section), then fly out and require the active row to be
+    // visible inside the list's viewport.
+    await page.setViewportSize({ width: 1000, height: 220 });
+    await page.evaluate(() => {
+        document.querySelector(".toc-hide-btn")
+            ?.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+    await page.waitForTimeout(300); // settle the collapse
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(250); // let the scroll-driven active update run
+    await page.locator(".toc-toggle-tab").hover();
+    await page.waitForTimeout(350);
+    const opensAtPlace = await page.evaluate(() => {
+        const listEl = document.querySelector(".toc-list");
+        const activeEl = document.querySelector(".toc-item--active");
+        if (!activeEl) {
+            return { active: null };
+        }
+        const l = listEl.getBoundingClientRect();
+        const a = activeEl.getBoundingClientRect();
+        return {
+            active: activeEl.textContent,
+            scrollable: listEl.scrollHeight > listEl.clientHeight,
+            scrollTop: Math.round(listEl.scrollTop),
+            visible: a.top >= l.top - 1 && a.bottom <= l.bottom + 1,
+        };
+    });
+    check("shrunk viewport: the flyout list actually overflows (guard the guard)",
+        opensAtPlace.active !== null && opensAtPlace.scrollable, JSON.stringify(opensAtPlace));
+    check("the flyout opens scrolled to the active heading (not the top)",
+        opensAtPlace.visible && opensAtPlace.scrollTop > 0, JSON.stringify(opensAtPlace));
+    await page.mouse.move(800, 100); // retract the flyout
+    await page.setViewportSize({ width: 1000, height: 720 });
 }

@@ -79,7 +79,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Screen readers no longer hear two selected items in the block menu** — on a callout set to "Collapsed by default", both that row and the "Callout" block type announced as selected, though the menu allows only one selection. The fold toggle now announces as a checked item, which is what it is; the block type keeps the selection.
 - **Heading grabber handles now center on their text line** — every top-level heading's H1–H6 badge and fold chevron sat about a third of a line below the first line of text (the same wrong-size padding compensation already fixed for nested headings). They now center on the line at every level and content scale.
 - **The pinned heading's tooltips are no longer hidden behind the toolbar** — hovering a truncated pinned-heading title (or its fold chevron) drew the tooltip on top of, and partly behind, the fixed toolbar. A tooltip now drops below its control whenever the toolbar leaves no room above.
-- **The table of contents no longer starts its first row under the panel buttons** — docked, the side-switch and hide buttons floated on top of the first outline row. The list now starts below them, and the hover flyout gained breathing room above the first and below the last row inside its card.
+- **The ToC flyout now opens at your place in the document** — hovering the collapsed tab used to show the outline scrolled to the top, so in a long document the highlighted current section sat out of view below the fold; the flyout now opens with the active heading centered in the list.
+- **The table of contents no longer starts its first row under the panel buttons** — docked, the side-switch and hide buttons floated on top of the first outline row. The list now starts below them and keeps clear of the window's bottom edge, and the hover flyout gained breathing room above the first and below the last row inside its card.
 
 ### Changed
 

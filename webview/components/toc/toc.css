@@ -219,8 +219,9 @@ body.toc-resizing {
     overflow-y: auto;
     /* The top inset clears the floating controls chip (7px inset + 22px box,
        .toc-controls) so the first row never starts underneath it; rows still
-       scroll beneath the chip once the list is in motion. */
-    padding: 32px 0 8px;
+       scroll beneath the chip once the list is in motion. The bottom inset
+       keeps the last row clear of the window edge. */
+    padding: 32px 0 24px;
 }
 
 .toc-item {
