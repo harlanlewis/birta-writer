@@ -487,8 +487,9 @@ function isFoldEntryAt(doc: any, pos: number): boolean {
  * Scope — this is a `to`-end rule, not yet the general invariant:
  *   - growth at the `from` end (a list item's / table's visible first child
  *     growing over hidden content) is invisible to it — MAR-155;
- *   - entries RELOCATED by a move meta are checked by the caller before this
- *     runs, and are exempt — MAR-156.
+ *   - entries RELOCATED by a move meta never reach it (their coordinates
+ *     don't map); `relocationChangedHiddenContent` asks them the same
+ *     question by hidden-text identity instead — MAR-156.
  */
 function swallowedVisibleContent(
     tr: Transaction,
@@ -504,6 +505,47 @@ function swallowedVisibleContent(
     }
     const assoc = isHeadingNode(newDoc.nodeAt(newPos)) ? -1 : 1;
     return after.to > tr.mapping.map(before.to, assoc);
+}
+
+/**
+ * The relocation counterpart of `swallowedVisibleContent` (MAR-156): a moved
+ * entry's old and new positions live in different coordinate spaces, so the
+ * mapped-position comparison is meaningless — but the same question can be
+ * asked of the resulting document by CONTENT: the relocated fold must hide
+ * the same text it hid before. A grown extent (the destination put nothing
+ * between the moved section and following blocks that out-ranks it) fails
+ * this; so does an extent that swallowed one block while releasing another.
+ * Either way the fold would hide content the user could see, so it expands
+ * instead — reveal, don't refuse (MAR-146), exactly as
+ * `swallowedVisibleContent` treats in-place growth.
+ *
+ * Text identity rather than node identity on purpose: a TOC drop relevels
+ * the moved section's headings in the same transaction, which changes their
+ * `level` attrs but hides nothing new — a fold whose hidden BYTES changed
+ * only in heading rank still travels. (Every shipped mover passes moveRangeAt
+ * or cover-expanded ranges that carry the whole collapsed unit; this check is
+ * what keeps a future caller with a narrower range from burying content
+ * silently.) Block separators and leaf-type tokens make boundaries and
+ * non-text leaves part of the identity, so an hr swapped for an empty
+ * paragraph reads as a change. Two different block TYPES with byte-identical
+ * text would evade it — accepted: this is a burial net, not an identity
+ * proof, and that doppelgänger needs the destination to contain the fold's
+ * exact text by coincidence.
+ */
+function relocationChangedHiddenContent(
+    oldDoc: any,
+    newDoc: any,
+    oldPos: number,
+    newPos: number,
+): boolean {
+    const before = foldHiddenRange(oldDoc, oldPos);
+    const after = foldHiddenRange(newDoc, newPos);
+    if (!before || !after) {
+        return false;
+    }
+    const hiddenText = (doc: any, r: { from: number; to: number }) =>
+        doc.textBetween(r.from, r.to, " | ", (leaf: ProseMirrorNode) => ` [${leaf.type.name}] `);
+    return hiddenText(newDoc, after) !== hiddenText(oldDoc, before);
 }
 
 function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<number> {
@@ -1609,10 +1651,15 @@ export const headingFoldPlugin = $prose(() =>
                     const next = new Set<number>();
                     for (const pos of value.folded) {
                         // Entries inside a moved range travel with the
-                        // content to its new location.
+                        // content to its new location — unless the fold
+                        // hides DIFFERENT content there than it did before
+                        // (MAR-156).
                         if (move && pos >= move.from && pos < move.to) {
                             const relocated = move.insertAt + (pos - move.from);
-                            if (isFoldEntryAt(newState.doc, relocated)) {
+                            if (
+                                isFoldEntryAt(newState.doc, relocated) &&
+                                !relocationChangedHiddenContent(oldState.doc, newState.doc, pos, relocated)
+                            ) {
                                 next.add(relocated);
                             }
                             continue;
