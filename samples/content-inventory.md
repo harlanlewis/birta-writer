@@ -9,6 +9,10 @@ This document is a **living reference** of every content type Birta Writer suppo
 
 ---
 
+---
+
+---
+
 ## Headings
 
 # Heading 1
@@ -35,6 +39,14 @@ Setext H2
 
 ---
 
+
+
+---
+
+---
+
+---
+
 ## Inline text
 
 The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~strikethrough~~, ==highlight==, and `inline code`.
@@ -57,6 +69,10 @@ inside a highlight renders literally.
 A hard line break ends this line here →<br>and continues on the next.
 
 
+
+---
+
+---
 
 ---
 
@@ -118,6 +134,10 @@ cell:
 
 ---
 
+---
+
+---
+
 ## Lists
 
 ### Bullet list
@@ -130,6 +150,8 @@ cell:
       - Even more deeply nested item
 
 - Third item with `code` and a [link](https://example.com)
+
+
 
 ### Ordered list
 
@@ -147,6 +169,10 @@ cell:
 - [ ] Incomplete task
 - [x] Completed task
 - [ ] Task with **formatting** and a [link](https://example.com)
+
+---
+
+---
 
 ---
 
@@ -270,6 +296,10 @@ this line and the fence above render as plain paragraphs.
 
 ---
 
+---
+
+---
+
 ## Tables
 
 | Feature | Supported | Notes |
@@ -277,6 +307,10 @@ this line and the fence above render as plain paragraphs.
 | Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
 | Line breaks | yes | first line<br>second line |
 | Alignment | yes | right-click a cell → **Align Column Left / Center / Right** (this Supported column is `:---:` centered); re-pick the current alignment to clear back to `---` |
+
+---
+
+---
 
 ---
 
@@ -290,6 +324,10 @@ delete, and the editable title on its own row. Edits apply on Enter or
 click-away, Escape cancels.
 
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
+
+---
+
+---
 
 ---
 
@@ -342,10 +380,18 @@ graph TD
 
 ---
 
+---
+
+---
+
 ## Frontmatter
 
 See the top of this file — YAML frontmatter is lossless. Flat key/value pairs
 get a table UI; complex/nested YAML preserved verbatim.
+
+---
+
+---
 
 ---
 
@@ -354,6 +400,12 @@ get a table UI; complex/nested YAML preserved verbatim.
 A sentence with a footnote reference.[^note] Footnotes are auto-numbered and their definitions round-trip.
 
 [^note]: The footnote definition, with a second sentence for good measure.
+
+---
+
+---
+
+---
 
 ---
 
@@ -379,6 +431,10 @@ Inline and block HTML render as a sanitized, read-only preview (editing raw HTML
 An HTML comment preserved and shown dimmed:
 
 <!-- This is a comment. It survives round-trips. -->
+
+---
+
+---
 
 ---
 
@@ -437,6 +493,10 @@ The master switch above governs every category below; each also has its own
 - Non-ASCII punctuation (`nonAsciiPunct`): She called it “clever,” then trailed off… (curly quotes and an ellipsis glyph)
 - Passive voice (`passive`): The report was written overnight.
 - Negative parallelism (`negativeParallelism`): It's not a bug, it's a feature.
+
+---
+
+---
 
 ---
 
