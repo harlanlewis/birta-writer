@@ -399,9 +399,9 @@ export function foldedHiddenRanges(
  * so the caret may rest there and the drag UI paints a slot — yet content
  * INSERTED there lands INSIDE the section, because the insert pushes the
  * terminating heading later and the rank-derived extent grows over it
- * (MAR-146). Nothing tries to foresee that: the mover reveals whatever hides
- * its landing once the move has landed (moveBlocks → revealPosition), which
- * asks the resulting document instead of predicting it.
+ * (MAR-146). Nothing tries to foresee that: `swallowedVisibleContent` sees the
+ * section's END grow over the landing and expands the fold (MAR-149), asking
+ * the resulting document instead of predicting it.
  *
  * `from`/`to` come from the argument (not re-derived), so callers that map
  * the span through pending steps (contentGuard's drop gate) share the rule.
@@ -424,7 +424,7 @@ export function hiddenRangeCoversTarget(
  *
  * Occupancy only: a section's END boundary is visible and stays legal here.
  * Content landed there may still end up inside the fold — that is not refused
- * but revealed, after the fact (moveBlocks → revealPosition; MAR-146).
+ * but revealed, by `swallowedVisibleContent` (MAR-146, MAR-149).
  */
 export function isHiddenTargetPos(state: EditorState, pos: number): boolean {
     return foldedHiddenRanges(state).some((range) =>
@@ -458,6 +458,52 @@ export function revealPosition(view: EditorView, pos: number): void {
 /** Whether `pos` holds a block the fold plugin may keep an entry for. */
 function isFoldEntryAt(doc: any, pos: number): boolean {
     return isFoldableKindNode(doc.nodeAt(pos));
+}
+
+/**
+ * Whether the fold at `oldPos` came out of `tr` hiding content past the END of
+ * what it hid before — an edit the user did not frame as a fold growing a
+ * collapsed section over its neighbours (MAR-149). Applies MAR-146's principle
+ * (content the user can see must not be hidden by an edit that isn't a fold)
+ * to the case that principle's per-call-site guards could not reach.
+ *
+ * A HEADING's extent is DERIVED from ranks, never stored, so an edit that
+ * touches no folded content can still grow one: retyping `## Two` to
+ * `#### Two` under a collapsed `### Deep` puts Two and its body inside Deep;
+ * deleting a terminating heading does the same. The plugin's own bookkeeping
+ * cannot notice — the entry maps cleanly and still hides something, so
+ * `cleanFoldedPositions` keeps it — and each entry point (the H-badge, the
+ * toolbar, `wrapInHeadingCommand`, the `### ` input rule, a native drop) would
+ * otherwise need its own guard.
+ *
+ * Asked of the RESULTING document rather than predicted from the edit: the new
+ * extent is compared against where the old one's end actually landed. The
+ * `assoc` split is the same one `hiddenRangeCoversTarget` makes, for the same
+ * reason — a heading's `to` is the VISIBLE terminating heading, so content
+ * inserted there is swallowed and the old end must not follow it (`-1`);
+ * the other kinds' `to` is the last position INSIDE the collapsed node, so an
+ * append there was never visible and must not cost the user their fold (`+1`).
+ *
+ * Scope — this is a `to`-end rule, not yet the general invariant:
+ *   - growth at the `from` end (a list item's / table's visible first child
+ *     growing over hidden content) is invisible to it — MAR-155;
+ *   - entries RELOCATED by a move meta are checked by the caller before this
+ *     runs, and are exempt — MAR-156.
+ */
+function swallowedVisibleContent(
+    tr: Transaction,
+    oldDoc: any,
+    newDoc: any,
+    oldPos: number,
+    newPos: number,
+): boolean {
+    const before = foldHiddenRange(oldDoc, oldPos);
+    const after = foldHiddenRange(newDoc, newPos);
+    if (!before || !after) {
+        return false;
+    }
+    const assoc = isHeadingNode(newDoc.nodeAt(newPos)) ? -1 : 1;
+    return after.to > tr.mapping.map(before.to, assoc);
 }
 
 function cleanFoldedPositions(doc: any, folded: Iterable<number>): Set<number> {
@@ -1552,7 +1598,7 @@ export const headingFoldPlugin = $prose(() =>
                     fingerprint: structureFingerprint(state.doc, folded, computeFoldRanges(state.doc), enabled),
                 };
             },
-            apply(tr, value, _oldState, newState) {
+            apply(tr, value, oldState, newState) {
                 const meta = tr.getMeta(foldPluginKey) as FoldMeta | undefined;
                 let folded: ReadonlySet<number> = value.folded;
                 let enabled = value.enabled;
@@ -1591,6 +1637,12 @@ export const headingFoldPlugin = $prose(() =>
                         // through the move meta above.
                         const mapped = tr.mapping.mapResult(pos);
                         if (!mapped.deleted && isFoldEntryAt(newState.doc, mapped.pos)) {
+                            // An edit that grew this section over content it
+                            // didn't hide before expands it, rather than
+                            // burying blocks the user never touched.
+                            if (swallowedVisibleContent(tr, oldState.doc, newState.doc, pos, mapped.pos)) {
+                                continue;
+                            }
                             next.add(mapped.pos);
                         }
                     }
