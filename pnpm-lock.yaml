@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@birta/minimal-diff':
+        specifier: workspace:*
+        version: link:packages/minimal-diff
       '@milkdown/core':
         specifier: 7.21.2
         version: 7.21.2
@@ -105,6 +108,8 @@ importers:
       vscode-uri:
         specifier: ^3.1.0
         version: 3.1.0
+
+  packages/minimal-diff: {}
 
 packages:
 

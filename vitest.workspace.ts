@@ -6,7 +6,11 @@ export default defineWorkspace([
         test: {
             name: "extension",
             environment: "node",
-            include: ["src/__tests__/**/*.test.ts", "shared/__tests__/**/*.test.ts"],
+            include: [
+                "src/__tests__/**/*.test.ts",
+                "shared/__tests__/**/*.test.ts",
+                "packages/*/src/__tests__/**/*.test.ts",
+            ],
         },
     },
     {

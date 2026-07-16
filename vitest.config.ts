@@ -21,6 +21,7 @@ export default defineConfig({
                 "src/utils/**/*.ts",
                 "shared/**/*.ts",
                 "webview/utils/**/*.ts",
+                "packages/minimal-diff/src/**/*.ts",
                 // Shared pure logic (messages.ts is type-only — nothing to cover)
                 "shared/frontmatterTable.ts",
                 "shared/linkTargetSuggest.ts",

@@ -6,6 +6,8 @@ scripts/**
 src/**
 webview/**
 shared/**
+packages/**
+pnpm-workspace.yaml
 out/**
 coverage/**
 node_modules/**
