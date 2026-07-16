@@ -380,6 +380,13 @@ export async function run({ page, check, baseUrl }) {
         itemChevrons === 3, `foldable item gutters: ${itemChevrons}`);
 
     // Real hover on foo's first line reveals its chevron; click folds.
+    // Scroll it on-screen first — the fixture is taller than the viewport
+    // (same reason clickHeadingChevron scrolls), so hover coordinates for
+    // content this far down would otherwise land outside the window.
+    await page.$$eval(".ProseMirror li > p", (els) => {
+        els.find((e) => e.textContent === "foo")?.scrollIntoView({ block: "center" });
+    });
+    await page.waitForTimeout(100);
     const fooRect = await rectOf(page, ".ProseMirror li > p", "foo");
     await page.mouse.move(fooRect.x + 10, fooRect.cy);
     await page.waitForTimeout(200);
@@ -567,7 +574,12 @@ export async function run({ page, check, baseUrl }) {
         const r = el.getBoundingClientRect();
         return { cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
     });
-    // Drop below "beta content" (end of Section B's body).
+    // Drop below "beta content" (end of Section B's body). This slot is
+    // fold-preserving only because "# Section C" follows it and terminates
+    // the dropped H1's extent — a slot with no such terminator before the
+    // next content would GROW the fold over blocks the user never touched,
+    // and the relocation guard expands it instead (MAR-156, pinned by the
+    // moveBlocks unit suite).
     const beta = await rectOf(page, ".ProseMirror > p", "beta content");
     await page.mouse.move(marker.cx, marker.cy);
     await page.mouse.down();
@@ -585,12 +597,13 @@ export async function run({ page, check, baseUrl }) {
         const iAlpha = doc.indexOf("alpha one");
         const iSub = doc.indexOf("## Sub A1");
         const iNested = doc.indexOf("alpha nested");
+        const iC = doc.indexOf("# Section C");
         const once = (s) => doc.indexOf(s) === doc.lastIndexOf(s) && doc.indexOf(s) !== -1;
         return {
-            moved: iB !== -1 && iB < iA && iBeta < iA,
+            moved: iB !== -1 && iB < iA && iBeta < iA && iA < iC,
             sectionIntact: iA < iAlpha && iAlpha < iSub && iSub < iNested,
             eachOnce: ["# Section A", "alpha one", "## Sub A1", "alpha nested",
-                "# Section B", "beta content"].every(once),
+                "# Section B", "beta content", "# Section C", "gamma content"].every(once),
         };
     })();
     check("dragging a collapsed heading moves its hidden section with it",
@@ -602,7 +615,8 @@ export async function run({ page, check, baseUrl }) {
     const norm = (d) => d.split("\n").map((l) => l.trim()).filter(Boolean).sort().join("\n");
     const snippetsConserved = doc !== null && [
         "# Section A", "alpha one", "## Sub A1", "alpha nested",
-        "# Section B", "beta content", "Collapsed note", "hidden body line",
+        "# Section B", "beta content", "# Section C", "gamma content",
+        "Collapsed note", "hidden body line",
         "second hidden line", "Open tip", "tip first block", "tip second block",
         "quote intro", "Quoted callout", "quoted callout body",
         "list item one", "list item two",
@@ -621,10 +635,23 @@ export async function run({ page, check, baseUrl }) {
             hidden: [...document.querySelectorAll(".ProseMirror > *")]
                 .filter((el) => /alpha one|alpha nested/.test(el.textContent) && el.tagName !== "H1")
                 .every((el) => getComputedStyle(el).display === "none"),
+            // MAR-156: the travelled fold hides ONLY its own body — the
+            // destination's neighbors must stay visible. (Scenario-level
+            // pin only: this slot exercises the guard's KEEP branch; the
+            // expand-on-growth branch is pinned by the moveBlocks unit
+            // suite.) Requiring both matches keeps a fixture rename from
+            // vacating the check via an empty filter.
+            neighborsVisible: (() => {
+                const matches = [...document.querySelectorAll(".ProseMirror > *")]
+                    .filter((el) => /gamma content|Section C/.test(el.textContent));
+                return matches.length >= 2 &&
+                    matches.every((el) => getComputedStyle(el).display !== "none");
+            })(),
         };
     });
     check("the moved heading is still collapsed (fold entry travelled)",
-        stillCollapsed.collapsed && stillCollapsed.hidden, JSON.stringify(stillCollapsed));
+        stillCollapsed.collapsed && stillCollapsed.hidden && stillCollapsed.neighborsVisible,
+        JSON.stringify(stillCollapsed));
     await shot(page, "07-after-collapsed-drag");
 
     // ── 6. Drop at a collapsed section's end REVEALS it (MAR-146) ──
@@ -641,8 +668,16 @@ export async function run({ page, check, baseUrl }) {
     check("precondition: the last section is collapsed and its body hidden", hiddenUnderLast);
 
     // Grab a visible TOP-LEVEL paragraph (only those carry a block gutter
-    // marker) and drop it past the bottom of the document.
-    const dragged = "beta content";
+    // marker) and drop it past the bottom of the document. "gamma content"
+    // rather than "beta content": the drag's source hover and its bottom
+    // drop slot must BOTH be on-screen at once (mouse coordinates outside
+    // the viewport don't scroll), and gamma is the top-level paragraph
+    // close enough to the document end for one 900px window to hold both.
+    const dragged = "gamma content";
+    await page.$$eval(".ProseMirror > p", (els, t) => {
+        els.find((e) => e.textContent.includes(t))?.scrollIntoView({ block: "start" });
+    }, dragged);
+    await page.waitForTimeout(100);
     const src = await rectOf(page, ".ProseMirror > p", dragged);
     await page.mouse.move(src.x + 40, src.cy);
     await page.waitForTimeout(150);

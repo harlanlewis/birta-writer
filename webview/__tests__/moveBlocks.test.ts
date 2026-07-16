@@ -417,6 +417,121 @@ describe("moveBlocks — fold-hidden target legality", () => {
         expect(hiddenBlockTexts(v), "the relevelled run was buried in the fold").toEqual([]);
     });
 
+    /**
+     * MAR-156. Entries relocated by the move meta skipped the MAR-149 guard
+     * entirely, so moving a COLLAPSED section somewhere its rank-derived
+     * extent grows buried the destination's blocks. (The ticket's written
+     * repro — the bare heading moving away from its body — is unreachable:
+     * moveRangeAt carries the whole collapsed unit. The burial survives via
+     * that whole-unit path whenever nothing at the destination out-ranks the
+     * moved heading before the next visible block.)
+     */
+    it("a moved collapsed section whose extent grows at the destination should expand, not bury", async () => {
+        const editor = await makeEditor(
+            "# One\n\nvisible A\n\n## Two\n\ntwo text\n\n### Deep\n\ndeep text",
+        );
+        const v = view(editor);
+        const deepPos = nodePos(v, "Deep", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: deepPos, folded: true,
+        } satisfies HeadingFoldMeta));
+        expect(hiddenBlockTexts(v)).toEqual(["deep text"]);
+
+        // Move the collapsed unit (heading + hidden body) up so it lands
+        // before "two text": nothing between Deep (H3) and doc end now
+        // out-ranks it, so its derived extent would swallow the visible
+        // "two text" — a block the user never touched.
+        const target = nodePos(v, "two text");
+        expect(moveBlocks(v, moveRangeAt(v, deepPos)!, target)).toBe(true);
+
+        expect(markdown(editor)).toBe(
+            "# One\n\nvisible A\n\n## Two\n\n### Deep\n\ndeep text\n\ntwo text",
+        );
+        expect(
+            hiddenBlockTexts(v),
+            "the destination's block was buried in the moved fold",
+        ).toEqual([]);
+    });
+
+    it("a moved collapsed section whose extent is unchanged should stay collapsed (the fold travels)", async () => {
+        const editor = await makeEditor(
+            "# One\n\nvisible A\n\n### Deep\n\ndeep text\n\n## Two\n\ntwo text",
+        );
+        const v = view(editor);
+        const deepPos = nodePos(v, "Deep", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: deepPos, folded: true,
+        } satisfies HeadingFoldMeta));
+        expect(hiddenBlockTexts(v)).toEqual(["deep text"]);
+
+        // Move the collapsed unit to the top of the document: `# One`
+        // terminates the H3 extent exactly as `## Two` did, so the fold
+        // hides the same content — it must travel, not expand
+        // (e2e/foldVerify's "the fold entry travelled" contract).
+        expect(moveBlocks(v, moveRangeAt(v, deepPos)!, 0)).toBe(true);
+
+        expect(markdown(editor)).toBe(
+            "### Deep\n\ndeep text\n\n# One\n\nvisible A\n\n## Two\n\ntwo text",
+        );
+        expect(
+            hiddenBlockTexts(v),
+            "the fold should travel with the moved unit",
+        ).toEqual(["deep text"]);
+    });
+
+    /**
+     * The guard compares hidden CONTENT, not size: a caller that passes a
+     * bare-heading range (bypassing moveRangeAt's whole-unit expansion)
+     * strands the fold's body and re-derives an extent over whatever
+     * follows the destination. When that content differs — even at the
+     * same size — the fold must expand rather than silently hide blocks
+     * it never hid before. (No shipped mover passes such a range today;
+     * this pins the plugin-level guard's entry-point independence.)
+     */
+    it("a relocated fold hiding same-size but DIFFERENT content should expand, not bury", async () => {
+        const editor = await makeEditor("## Alpha\n\nxx\n\n# Bravo\n\nyy");
+        const v = view(editor);
+        const alphaPos = nodePos(v, "Alpha", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: alphaPos, folded: true,
+        } satisfies HeadingFoldMeta));
+        expect(hiddenBlockTexts(v)).toEqual(["xx"]);
+
+        // Bare heading range: exactly the node, not the collapsed unit.
+        const bare = {
+            from: alphaPos,
+            to: alphaPos + v.state.doc.nodeAt(alphaPos)!.nodeSize,
+        };
+        expect(moveBlocks(v, bare, nodePos(v, "yy"))).toBe(true);
+
+        // "yy" has the same size as the stranded "xx" — a size-only guard
+        // keeps the fold and buries it.
+        expect(markdown(editor)).toBe("xx\n\n# Bravo\n\n## Alpha\n\nyy");
+        expect(hiddenBlockTexts(v), "same-size destination content was buried").toEqual([]);
+    });
+
+    /**
+     * The in-place TOC promote is a relocation too (move meta with
+     * insertAt === from), so the exemption buried through it as well: a
+     * collapsed `## A` promoted to `# A` out-ranks the `## B` next door and
+     * swallows B's whole section. The guard sees the hidden text change and
+     * expands instead.
+     */
+    it("an in-place relevel that grows a collapsed section should expand it, not bury the neighbor", async () => {
+        const editor = await makeEditor("## A\n\na body\n\n## B\n\nb body");
+        const v = view(editor);
+        const aPos = nodePos(v, "A", "heading");
+        v.dispatch(v.state.tr.setMeta(headingFoldPluginKey, {
+            type: "set", pos: aPos, folded: true,
+        } satisfies HeadingFoldMeta));
+        expect(hiddenBlockTexts(v)).toEqual(["a body"]);
+
+        expect(moveBlocks(v, moveRangeAt(v, aPos)!, aPos, { relevelDelta: -1 })).toBe(true);
+
+        expect(markdown(editor)).toBe("# A\n\na body\n\n## B\n\nb body");
+        expect(hiddenBlockTexts(v), "B's section was buried by the promote").toEqual([]);
+    });
+
     it("a relevel that still out-ranks a collapsed section should NOT reveal it", async () => {
         const editor = await makeEditor("## Deep\n\ndeep body\n\n# Mover\n\nmover body");
         const v = view(editor);
