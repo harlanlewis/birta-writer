@@ -74,7 +74,19 @@ export async function run({ page, check, baseUrl }) {
     check("Lists dropdown renders on the bar (not overflowed)", !overflowed);
 
     await page.hover('[data-item-id="listMenu"] .tb-fmt-btn');
-    await page.waitForTimeout(30);
+    // Wait on the menu's actual visibility, not a hardcoded delay: toolbar
+    // menus open on a hover-INTENT delay (openDelayMs, 140ms default —
+    // components/toolbar/hoverMenu.ts), and the original 30ms wait predated
+    // that fix (13a9d6e) and sampled the menu before it could open, running
+    // the whole Escape stack off-by-one (MAR-147).
+    await page.waitForFunction(
+        (sel) => {
+            const el = document.querySelector(sel);
+            return el && getComputedStyle(el).display === "flex";
+        },
+        listMenu,
+        { timeout: 2000 },
+    ).catch(() => {});
     check("hover menu opens above the open find bar", (await menuDisplay()) === "flex");
 
     await page.keyboard.press("Escape");

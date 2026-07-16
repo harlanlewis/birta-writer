@@ -330,7 +330,13 @@ export function moveSelectedBlocks(dir: -1 | 1): Command {
             if (target === null) {
                 return true; // at a document edge — consume, no-op
             }
-            return moveBlocks(view, cover, target, { selectRun: true });
+            moveBlocks(view, cover, target, { selectRun: true });
+            // Consume whether the move landed or was refused (guard veto,
+            // save-survival refusal — both show their own notice): falling
+            // through would fire the chord's NATIVE default mid-gesture —
+            // Mod+Shift+Arrow would extend the selection to the document
+            // edge on top of a refused move.
+            return true;
         }
         // Bare caret in a list: move the ITEM among its siblings (innermost
         // item wins for nesting), never the whole list.

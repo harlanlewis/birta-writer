@@ -40,6 +40,10 @@ import { parseOpenFence } from "./directives";
 // these are only called inside filterTransaction bodies, matching the
 // established headingFold ↔ blockMenu precedent.
 import { foldedHiddenRanges, hiddenRangeCoversTarget } from "./headingFold";
+// Runtime-only cycle (contentGuard ⇄ reparseHazard): reparseRefusal is only
+// called inside the filterTransaction body, and reparseHazard only calls the
+// fingerprint helpers inside its own function bodies.
+import { reparseRefusal } from "./reparseHazard";
 
 // ── Guard mode ──────────────────────────────────────────────────────────────
 
@@ -642,7 +646,7 @@ function checkDrop(
 let noticeEl: HTMLElement | null = null;
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
-function showGuardNotice(message: string): void {
+export function showGuardNotice(message: string): void {
     if (typeof document === "undefined") {
         return;
     }
@@ -745,6 +749,22 @@ export const contentGuardPlugin = $prose(
                                 violation.includes("folded")
                                     ? t("Drop blocked — the target is hidden inside a fold.")
                                     : t("Drop blocked — it would have altered document content."),
+                            );
+                            return false;
+                        }
+                    }
+                    // A conserving drop can still re-pair container fences on
+                    // reparse (MAR-120 B/F) — the same save-survival refusal
+                    // moveBlocks applies, for the one mover that doesn't
+                    // route through it (ProseMirror's native drop). A
+                    // designed refusal, so console.warn, not report()'s
+                    // bug-voiced error.
+                    const hazard = reparseRefusal(state.doc, tr.doc);
+                    if (hazard) {
+                        console.warn(`[ContentGuard] drop refused: ${hazard}`);
+                        if (GUARD_MODE.drop === "veto") {
+                            showGuardNotice(
+                                t("Drop blocked — the result would not survive saving and reopening."),
                             );
                             return false;
                         }

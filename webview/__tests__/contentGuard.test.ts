@@ -532,6 +532,38 @@ describe("guard veto — native drops", () => {
         expect(markdown(editor)).toBe(before);
         expect(guardErrors().some((line) => line.includes("lost"))).toBe(true);
     });
+
+    it("a conserving drop that nests an aside inside an aside should be refused (MAR-120 F)", async () => {
+        // ProseMirror's native drag of a selected block doesn't route through
+        // moveBlocks, so the save-survival refusal must also hold on the
+        // uiEvent:"drop" path: this drop conserves content exactly (the
+        // fingerprint passes), but the nested <aside> cannot survive
+        // save+reopen — the reopened file loses the inner aside's text.
+        const editor = await makeEditor(
+            "<aside>\n💡 Outer body.\n</aside>\n\n<aside>\n🐛 Inner mover.\n</aside>",
+        );
+        const v = view(editor);
+        const before = markdown(editor);
+        let innerPos = -1;
+        let outerPos = -1;
+        v.state.doc.descendants((node: ProseNode, pos: number) => {
+            if (node.type.name === "notion_callout") {
+                if (node.textContent.includes("Inner mover")) innerPos = pos;
+                if (node.textContent.includes("Outer body")) outerPos = pos;
+                return false;
+            }
+            return true;
+        });
+        expect(innerPos).toBeGreaterThan(-1);
+        const inner = v.state.doc.nodeAt(innerPos)!;
+        const outer = v.state.doc.nodeAt(outerPos)!;
+        // In-document move shape: delete + insert at the outer aside's last
+        // inner boundary, one transaction, uiEvent: "drop".
+        const tr = v.state.tr.delete(innerPos, innerPos + inner.nodeSize);
+        tr.insert(tr.mapping.map(outerPos + outer.nodeSize - 1), inner).setMeta("uiEvent", "drop");
+        v.dispatch(tr);
+        expect(markdown(editor)).toBe(before);
+    });
 });
 
 // ── appendTransaction escape hatch ──────────────────────────────────────────

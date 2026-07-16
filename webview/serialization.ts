@@ -12,6 +12,7 @@ import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
+import { reparseHazardPlugin } from "./plugins/reparseHazard";
 import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
@@ -143,6 +144,11 @@ export const pureCommonmark = [
     // (MAR-124). See plugins/list.ts.
     ...listSpreadBooleanPlugins,
     fidelitySerializerPlugin,
+    // Registers this editor's serializer/parser for the save-survival move
+    // check (MAR-120). Rides the base preset so no construction site —
+    // production or test factory — can wire an editor without it (the
+    // MAR-143 argument).
+    reparseHazardPlugin,
 ];
 
 /**

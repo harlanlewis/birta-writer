@@ -17,7 +17,11 @@
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
 </style>
 <script>
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  // tocAutoHideThreshold: the MAR-158 fixture carries 4 headings, enough to
+  // auto-dock the ToC, whose panel would overlay the gutter and break every
+  // hover-path check. This suite measures gutter geometry, not the ToC —
+  // keep it hidden.
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 99 };
   window.__posted = [];
   const DOC = [
     "## A heading",
@@ -78,6 +82,10 @@
     "> A quoted intro line.",
     ">",
     "> # Nested Heading",
+    ">",
+    "> ### Nested Level Three",
+    ">",
+    "> ###### Nested Level Six",
     ">",
     "> > A nested quote.",
     "",

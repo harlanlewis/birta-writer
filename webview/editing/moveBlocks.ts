@@ -75,8 +75,10 @@ import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState
 // isHiddenTargetPos is only called inside the function body, matching the
 // established contentGuard ↔ headingFold precedent.
 import { isHiddenTargetPos } from "../plugins/headingFold";
-import { markerKeyOf, tagContentGuard } from "../plugins/contentGuard";
+import { markerKeyOf, showGuardNotice, tagContentGuard } from "../plugins/contentGuard";
+import { reparseRefusal } from "../plugins/reparseHazard";
 import { flashRange } from "../components/blockMenu/rangeIndicator";
+import { t } from "../i18n";
 
 export interface MoveBlocksOptions {
     /** Keep the moved run selected after the drop (multi-block drags — the
@@ -273,6 +275,12 @@ function resolveMove(
  * range fits here but is moveBlocks' quiet "put it back" no-op, so callers
  * that can produce one must exclude it themselves (the Move rows cannot — a
  * sibling hop always lands outside the run).
+ *
+ * The save-survival refusal (plugins/reparseHazard, MAR-120) is DELIBERATELY
+ * not consulted: it costs a serialize+reparse of the hypothetical post-move
+ * doc, which per hover/render of every Move row is real jank for a rare
+ * verdict. A hazard row therefore renders live and refuses on click — the
+ * quiet notice makes that non-silent, the accepted trade.
  */
 export function moveFits(
     state: EditorState,
@@ -340,6 +348,19 @@ export function moveBlocks(
         // Dispatching would commit the DELETE half alone: a failed move must
         // be a no-op, never a deletion.
         return refuse("insert no-opped after the delete — refusing the half-committed move");
+    }
+
+    // ── Save-survival refusal (MAR-120 B/F, refuse lane) ──
+    // A schema-valid, content-conserving move can still produce a document
+    // whose fences re-pair on reparse — corruption the guard's before/after
+    // fingerprint cannot see because it only appears at save+reopen. This is
+    // a designed refusal (a quiet no-op with a notice), NOT the loud
+    // refuse(): the caller handed us a legitimate gesture, not a bug.
+    const hazard = reparseRefusal(doc, tr.doc);
+    if (hazard) {
+        console.warn(`[moveBlocks] move refused: ${hazard}`);
+        showGuardNotice(t("Move blocked — the result would not survive saving and reopening."));
+        return false;
     }
 
     // ── 5. Side-state rides along ──

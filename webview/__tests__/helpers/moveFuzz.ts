@@ -214,71 +214,43 @@ export function enumerateMovePairs(
     return pairs;
 }
 
-// ── Known save-pipeline hazards (real bugs found by the MAR-113 gate) ──────
+// ── Save-pipeline hazard history (the MAR-113 gate's finds) ────────────────
 //
-// Four save/reopen round-trip bugs pre-date the gate. All conserve content
-// at the DOC level (the guard passes); the damage happens at save+reopen.
-// Each is pinned as a named `it.fails` repro in corpusMoveSampling.test.ts
-// and excluded — by this narrow predicate, never by weakening assertions —
-// from the sampled pair space until fixed:
+// Seven save/reopen round-trip bug classes (A–G) were found by this gate; all
+// conserved content at the DOC level (the guard passed) and corrupted only at
+// save+reopen. Every class is now either FIXED in the serializer (A directive
+// nesting, C highlight escaping, D quote splice, E empty paragraphs, G setext
+// underlines — for directives in directives.ts, for callouts in callouts.ts /
+// MAR-157) or REFUSED at the move primitive (B fence re-pairing, F aside
+// nesting — the save-survival check in plugins/reparseHazard.ts, the MAR-120
+// refuse lane). The `knownSavePipelineHazard` exclusion predicate that kept
+// B/F-shaped pairs out of the sampled space is deleted: a refused pair is
+// itself an assertion target (a refused move must be a perfect no-op), so the
+// gate now holds the FULL pair space to the contract. The B/F repros are
+// normal pins in corpusMoveSampling.test.ts asserting the refusal.
+
+// ── Known MERGE-tier hazards (MAR-161) ──────────────────────────────────────
 //
-//   (A) FIXED (MAR-120): directive nesting — the serializer now lengthens the
-//       OUTER fence past any fence in its body (`::::` outside `:::`, the
-//       CommonMark convention), so a nested directive re-nests on reparse.
-//       The fence colon count is structural, so the content fingerprint
-//       normalizes it (contentGuard container_directive marker). No longer
-//       excluded; held to the full contract by the gate.
-//   (B) Fence re-pairing: a closed directive moved below raw `:::`-prefixed
-//       prose (an unclosed fence that parses as a paragraph) lets that
-//       prose line pair with the directive's close fence on reparse.
-//   (C) FIXED (MAR-121): highlight escaping — a literal `\==text==` in prose
-//       now re-serializes with its backslash via the highlight `unsafe`
-//       pattern (plugins/highlight.ts), so it stays plain text on reparse.
-//       No longer excluded here; held to the full contract by the gate.
-//   (D) FIXED (MAR-122): quote splice — moving a block between quote-family
-//       containers no longer leaves a stale separator blank in the merge.
-//       `applyMinimalChanges`'s gapBefore guard defers to the serializer's
-//       spacing when a saved blank would split a quote the serializer kept
-//       contiguous, so the moved block reopens inside its drop target. No
-//       longer excluded here; held to the full contract by the gate.
-//   (E) FIXED (MAR-123): empty paragraphs — an empty (or hardbreak-only)
-//       paragraph serializes to nothing and never round-trips in pure
-//       Markdown, so it is NOT content. The content fingerprint
-//       (contentGuard.isBlankParagraph) no longer counts it, so a move that
-//       relocates one (it then vanishes on save) or drops a container's
-//       auto-fill blank conserves everything that IS content. No longer
-//       excluded here; held to the full contract by the gate.
-//   (F) Aside nesting: a notion_callout (`<aside>` HTML) moved inside
-//       another aside or a directive is not recognized by the sub-parse on
-//       reopen — it flattens into raw html of its new parent.
-//   (G) FIXED (MAR-120) for directives: an `hr` moved to the head of a
-//       directive body used to serialize directly under the open fence, and
-//       `fence-line + ---` reparsed as a SETEXT HEADING. The directive
-//       serializer now emits a blank line after the open fence when the body
-//       opens on a setext-underline-shaped line. (The same hazard in a
-//       blockquote/callout — `> text` + `> ---` — is NOT yet fixed; the
-//       `fragmentHasHr && targetQuote` guard below still excludes it.)
+// Two `applyMinimalChanges` bugs found the moment the full pair space opened
+// up. Both are CLEAN at the raw serialize→reparse tier (so the MAR-120
+// save-survival refusal correctly does not fire — refusing a valid gesture
+// for a merge bug would punish the user for the merge's fault); the damage
+// appears only when the serialized output is merged against the saved bytes:
 //
-// TODO(MAR-113 follow-up): (A), (C), (D), (E), and (G)-for-directives are
-// fixed (see the class list above). Remaining: (B) raw fence-shaped prose
-// re-pairing with a moved container's close fence, (F) `<aside>` nesting, and
-// the (G) setext hazard inside blockquote/callout containers — then delete
-// this predicate and the remaining it.fails pins.
+//   (M1) the merge drops the blank line the serializer emits to keep raw
+//        `:::` fence prose inert at a directive body's tail (the mirror of
+//        the fixed MAR-122: there gapBefore KEPT a stale blank, here it
+//        REMOVES a live one);
+//   (M2) the merge's line normalizer matches a setext heading's underline
+//        (`-----`) to a saved thematic break (`***`) and "repairs" it,
+//        dissolving the heading into paragraph + hr.
+//
+// Excluded here by the narrowest predicate that covers them — never by
+// weakening assertions — and pinned as `it.fails` repros in
+// corpusMoveSampling.test.ts. Delete this predicate (and promote the pins)
+// when MAR-161 closes.
 
-const QUOTE_FAMILY = new Set(["blockquote", "callout", "notion_callout"]);
-
-/** Start position of the outermost quote-family ancestor of `pos`, or -1. */
-function quoteAncestorPos(doc: ProseNode, pos: number): number {
-    const $pos = doc.resolve(pos);
-    for (let d = 1; d <= $pos.depth; d++) {
-        if (QUOTE_FAMILY.has($pos.node(d).type.name)) {
-            return $pos.before(d);
-        }
-    }
-    return -1;
-}
-
-export function knownSavePipelineHazard(
+export function knownMergeTierHazard(
     view: EditorView,
     source: { from: number; to: number },
     target: number,
@@ -288,89 +260,30 @@ export function knownSavePipelineHazard(
     if (!fragment) {
         return false; // malformed range — the primitive refuses it anyway
     }
-    let fragmentHasDirective = false;
-    let fragmentHasAside = false;
-    let fragmentHasHr = false;
     let fragmentHasRawFence = false;
+    let fragmentHasSetext = false;
     fragment.descendants((node: ProseNode) => {
-        if (node.type.name === "container_directive") {
-            fragmentHasDirective = true;
-        }
-        if (node.type.name === "notion_callout") {
-            fragmentHasAside = true;
-        }
-        if (node.type.name === "hr") {
-            fragmentHasHr = true;
-        }
-        if (node.isTextblock && node.textContent.startsWith(":::")) {
+        if (node.isTextblock && !node.type.spec.code && node.textContent.startsWith(":::")) {
             fragmentHasRawFence = true;
         }
-        if (node.type.name === "html") {
-            const html = String(node.attrs["value"] ?? "");
-            if (html.includes("<aside") || html.includes("</aside")) {
-                // Raw aside tag bytes kept as inert html (the fixture's
-                // degradation cases) re-pair with other asides once moved.
-                fragmentHasRawFence = true;
-            }
+        if (node.type.name === "heading" && node.attrs["setext"] === true) {
+            fragmentHasSetext = true;
         }
         return true;
     });
-    const $target = doc.resolve(target);
-    const targetQuote = quoteAncestorPos(doc, target);
-    // (G) The setext hazard inside a quote — `> paragraph` + `> ---` reparsing
-    // as a setext heading — is DEFUSED for the plain case: unlike a directive's
-    // synthesized open fence (a text line), a paragraph and an hr are two mdast
-    // block siblings, so remark-stringify's block join emits the disambiguating
-    // blank `>` line between them. The quoteHazardPins regression tests
-    // (corpusMoveSampling.test.ts) lock this in for blockquotes and callouts.
-    //
-    // This guard nonetheless still excludes ALL hr-bearing fragments moved into
-    // a quote: such a fragment can also CARRY an unfixed container-nesting
-    // hazard (a directive/aside/callout whose fences re-pair once re-parented —
-    // manifestation B), and the failing cases those produce are the deferred
-    // parser-level work in MAR-120, not the setext hazard. Tightening it to let
-    // bare-hr moves into the sample destabilizes the (seed-sampled) gate against
-    // those still-open hazards.
-    if (fragmentHasHr && targetQuote !== -1) {
+    // (M2): a relocated setext heading can have its underline "repaired"
+    // into a saved thematic break's bytes.
+    if (fragmentHasSetext) {
         return true;
     }
-    // (F) Aside nesting is unfixed: a notion_callout (`<aside>` html) moved
-    // inside another container (directive or aside) flattens to raw html on
-    // reopen — CommonMark HTML-block parsing cannot nest `<aside>` (the blank
-    // line before the inner aside ends the outer block). Directive and hr
-    // nesting into a directive/aside are FIXED (MAR-120 A/G: the outer fence
-    // is lengthened past the inner, and a setext-hazard first line gets a blank
-    // line), so only an aside-bearing fragment is excluded here.
-    if (fragmentHasAside) {
+    // (M1): raw fence prose moved inside a container directive needs the
+    // serializer's separating blank line, which the merge may remove.
+    if (fragmentHasRawFence) {
+        const $target = doc.resolve(target);
         for (let d = $target.depth; d > 0; d--) {
-            const name = $target.node(d).type.name;
-            if (name === "container_directive" || name === "notion_callout") {
-                return true; // (F)
+            if ($target.node(d).type.name === "container_directive") {
+                return true;
             }
-        }
-    }
-    if (fragmentHasDirective || fragmentHasAside || fragmentHasHr || fragmentHasRawFence) {
-        // (B): raw unclosed openers elsewhere in the doc — `:::` prose or an
-        // unclosed `<aside>` html atom — can re-pair with the moved node's
-        // own close fence/tag once the move puts them in range of each other.
-        let docHasRawOpener = false;
-        doc.descendants((node: ProseNode) => {
-            if (docHasRawOpener) {
-                return false;
-            }
-            if (node.isTextblock && node.textContent.startsWith(":::")) {
-                docHasRawOpener = true;
-                return false;
-            }
-            const html = node.type.name === "html" ? String(node.attrs["value"] ?? "") : "";
-            if (html.includes("<aside") && !html.includes("</aside>")) {
-                docHasRawOpener = true;
-                return false;
-            }
-            return true;
-        });
-        if (docHasRawOpener) {
-            return true;
         }
     }
     return false;

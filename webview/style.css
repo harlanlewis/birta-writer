@@ -2181,12 +2181,15 @@ body.block-marqueeing .milkdown .editor {
     top: 0;
 }
 /* Nested headings: the same first-line compensation the top-level
-   .heading-fold-gutter rule provides — top: 1em cancels the heading's own
-   1em padding-top, and the 1.3em height matches its line-height so the
-   centered badge sits on the text line (the flat top: 0 above left it a
-   full padding-height too high). */
+   .heading-fold-gutter rule provides — the offset cancels the heading's own
+   padding-top, which is --content-heading-before (0.7em), NOT 1em: the
+   hardcoded 1em this rule shipped with overshot every nested heading's
+   badge by 0.3em of its font-size (~8px on an h1, scaling with zoom —
+   MAR-158). The 1.3em height matches the line-height so the centered badge
+   sits on the text line (the flat top: 0 above left it a full
+   padding-height too high). */
 .milkdown .editor :is(h1, h2, h3, h4, h5, h6).block-gutter-host--child > .heading-fold-gutter--block {
-    top: 1em;
+    top: var(--content-heading-before);
     height: 1.3em;
 }
 /* Nested blockquotes: the same padded-body calibration as top level. */

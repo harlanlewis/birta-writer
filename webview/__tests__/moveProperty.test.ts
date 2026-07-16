@@ -46,7 +46,7 @@ import {
     editorView,
     enumerateMovePairs,
     enumerateMoveSources,
-    knownSavePipelineHazard,
+    knownMergeTierHazard,
     makeCorpusEditor,
     mulberry32,
     randomInt,
@@ -172,10 +172,13 @@ describe("seeded move/duplicate property suite", () => {
                 let record: OpRecord;
 
                 if (rng() < 0.75) {
-                    // Move: any UI-expressible pair (known serializer
-                    // hazards excluded — pinned elsewhere).
+                    // Move: any UI-expressible pair. B/F fence-hazard pairs
+                    // are refused by the save-survival check (MAR-120) and
+                    // exercise the failed-op no-op branch below. Only the
+                    // MERGE-tier bugs (MAR-161, pinned elsewhere) are
+                    // excluded — clean at the tier the refusal observes.
                     const pairs = enumerateMovePairs(v).filter(
-                        ({ source, target }) => !knownSavePipelineHazard(v, source, target),
+                        ({ source, target }) => !knownMergeTierHazard(v, source, target),
                     );
                     if (pairs.length === 0) {
                         continue;
@@ -194,10 +197,18 @@ describe("seeded move/duplicate property suite", () => {
                         expect(violation, `move violated conservation — ${context()}`).toBeNull();
                     }
                 } else {
-                    // Duplicate: declared gain is exactly the copied run.
+                    // Duplicate: declared gain is exactly the copied run. No
+                    // B/F filter: a duplicate inserts ADJACENT to its
+                    // original and never re-parents, so it cannot newly
+                    // create a B/F fence shape a clean doc didn't have (an
+                    // opener above the original means the doc was dirty
+                    // before the op — excluded by the precondition). The
+                    // MERGE-tier exclusion (MAR-161) does apply: a copied
+                    // setext heading or fence-prose line meets the same
+                    // applyMinimalChanges repair hazards a moved one does.
                     const sources = enumerateMoveSources(v).filter(
                         (source) =>
-                            !knownSavePipelineHazard(
+                            !knownMergeTierHazard(
                                 v,
                                 { from: source.from, to: source.to },
                                 source.from,

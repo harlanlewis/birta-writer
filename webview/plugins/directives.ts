@@ -283,8 +283,10 @@ function makeDirective(
 
 /** A serialized line that would reparse as a setext-heading underline
  * (a run of `=` or `-`, ≤3 leading spaces): fatal directly under an open
- * fence line, which is itself a text line (MAR-120 case G). */
-const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-+)[ \t]*$/;
+ * fence line, which is itself a text line (MAR-120 case G). Exported for
+ * the callout serializer, whose `[!NOTE]` marker line is the same kind of
+ * synthesized text line (MAR-157). */
+export const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-+)[ \t]*$/;
 
 /** The longest `:::`-fence run anywhere in a serialized body (0 if none). */
 function maxFenceColons(flow: string): number {
