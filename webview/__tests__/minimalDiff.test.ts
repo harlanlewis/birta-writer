@@ -129,13 +129,20 @@ describe("applyMinimalChanges — untouched formatting is preserved", () => {
         expect(applyMinimalChanges(saved, serialized)).toBe(saved);
     });
 
-    it("thematic breaks differing only in marker char should compare as unchanged", () => {
-        // A legacy `---` save vs a freshly preserved `***` (MAR-16): the rule
-        // normalizer collapses both to a canonical form so no churn is applied.
+    it("thematic breaks differing in marker CHAR should compare as an edit (never cross-repaired)", () => {
+        // REVERSED from the original pin (MAR-161 M2): keying `***` equal to
+        // a `-` run let the merge "repair" a moved setext heading's
+        // underline into a saved hr's bytes, dissolving the heading — a
+        // dash run's meaning depends on the line above it, so cross-
+        // character equivalence can silently swap constructs. The serializer
+        // preserves the saved marker style (sourceStyle, since 0.2.3), so
+        // same-document saves emit matching chars and nothing legitimate
+        // relies on this equivalence anymore. A cross-char difference is now
+        // an honest edit: the serialized bytes land.
         const saved = "para1\n\n***\n\npara2\n";
         const serialized = "para1\n\n---\n\npara2\n";
 
-        expect(applyMinimalChanges(saved, serialized)).toBe(saved);
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
     });
 
     it("thematic breaks differing only in repetition or spacing should compare as unchanged", () => {
@@ -145,11 +152,14 @@ describe("applyMinimalChanges — untouched formatting is preserved", () => {
         expect(applyMinimalChanges(saved, serialized)).toBe(saved);
     });
 
-    it("editing text next to a rule should not rewrite the rule marker", () => {
-        const saved = "intro\n\n___\n\noutro old\n";
+    it("editing text next to a same-char rule should not rewrite the rule's style run", () => {
+        // The style-preservation contract, restated for the char-preserving
+        // normalizer: within one marker character, spacing/repetition styles
+        // still compare equal and the saved bytes win.
+        const saved = "intro\n\n- - -\n\noutro old\n";
         const serialized = "intro\n\n---\n\noutro new\n";
 
-        expect(applyMinimalChanges(saved, serialized)).toBe("intro\n\n___\n\noutro new\n");
+        expect(applyMinimalChanges(saved, serialized)).toBe("intro\n\n- - -\n\noutro new\n");
     });
 
     it("table cells differing only in padding or <br /> placeholders should compare as unchanged", () => {

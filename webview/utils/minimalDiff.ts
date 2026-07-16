@@ -115,13 +115,119 @@ function normalizeFenceOpen(line: string): string {
     return line.replace(/^(\s*`{3,})\s+/, "$1");
 }
 
+// Normalize leading outline indentation: a tab is one nesting level, which
+// the serializer re-emits as two spaces (Logseq graphs indent their whole
+// block tree with tabs — MAR-131). DEPTH-preserving by construction: `\t\t`
+// and four spaces compare equal, but `\t` never equals `\t\t`, so a genuine
+// outdent still registers as an edit. Applies to every line, including
+// fenced-code content: inside a Logseq bullet the fence's content lines
+// carry the same list indentation, and skipping them would re-open the churn
+// this exists to close. The cost: a whitespace-ONLY edit swapping a leading
+// tab for exactly two spaces (or the reverse, any per-tab multiple) inside
+// fenced code — at ANY nesting depth, either direction — reads as no edit
+// and keeps the saved bytes. In tab-sensitive content (a Makefile fence)
+// that silently drops a real edit; the honest fix is fence-aware line
+// classification for the whole normalizer family, tracked on MAR-161.
+function normalizeOutlineIndent(line: string): string {
+    return line.replace(/^[ \t]+/, (ws) => ws.replace(/\t/g, "  "));
+}
+
+// Unescape org-mode cookie/timestamp brackets for comparison: the serializer
+// backslash-escapes `[` in prose, so a saved `[#A]` / `CLOCK: [2026-…]` /
+// `[3/7]` line re-serializes as `\[…]` and would never compare equal to its
+// own source (MAR-131). Deliberately shape-anchored — a priority cookie, an
+// org timestamp, or a progress cookie — so a REAL construct difference (a
+// link `[x](y)` vs escaped literal `\[x](y)`) can never false-match.
+// Exported for the serializer's text handler (serialization.ts), which
+// applies the same unescape to freshly emitted lines — one regex, one
+// definition of "an org cookie", both layers.
+export const ORG_COOKIE_ESCAPE_RE = /\\(\[(?:#[A-Z]|\d{4}-\d{2}-\d{2}[^\]\n]*|\d+\/\d+)\])/g;
+function normalizeOrgCookieEscape(line: string): string {
+    return line.replace(ORG_COOKIE_ESCAPE_RE, "$1");
+}
+
+/** CommonMark reference-label matching is case-insensitive with collapsed
+ * internal whitespace. */
+function normalizeRefLabel(label: string): string {
+    return label.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * Serializer post-pass (MAR-131): un-escape org-cookie brackets in a fully
+ * serialized document, so an EDITED task line emits `[#A]` / `CLOCK: [ts]` /
+ * `[3/7]` rather than `\[…]` (which Logseq renders as literal text,
+ * destroying the token). Whole-document deliberately, not per-text-node:
+ *
+ *   - DEFINITION-AWARE — `[label]` with a matching reference definition
+ *     anywhere in the document is a live shortcut reference, so unescaping
+ *     would manufacture a link out of literal text (found by adversarial
+ *     probe: `\[3/7]` + a `[3/7]: url` definition). Those keep the escape.
+ *   - FENCE-AWARE — fenced-code content is verbatim user bytes; a `\[#A]`
+ *     inside a fence is never touched. (The definition scan itself does not
+ *     skip fences: a fence-shaped "definition" can only make this MORE
+ *     conservative — an escape is kept, never wrongly dropped.)
+ *
+ * Applied at the single point where the whole serialized string exists
+ * (fidelitySerializer's returned closure), which also covers table-cell
+ * text that per-line compare normalizers never see.
+ */
+export function unescapeOrgCookies(markdown: string): string {
+    if (!markdown.includes("\\[")) {
+        return markdown;
+    }
+    const lines = markdown.split("\n");
+    const defs = new Set<string>();
+    for (const line of lines) {
+        const m = /^ {0,3}\[([^\]]+)\]:/.exec(line);
+        if (m) {
+            defs.add(normalizeRefLabel(m[1]));
+        }
+    }
+    let fence: string | null = null;
+    return lines
+        .map((line) => {
+            const t = line.trimStart();
+            const f = /^(`{3,}|~{3,})/.exec(t);
+            if (fence) {
+                if (
+                    f &&
+                    f[1][0] === fence[0] &&
+                    f[1].length >= fence.length &&
+                    t.slice(f[1].length).trim() === ""
+                ) {
+                    fence = null;
+                }
+                return line; // fence content (and its closer): verbatim
+            }
+            if (f) {
+                fence = f[1];
+                return line;
+            }
+            return line.replace(ORG_COOKIE_ESCAPE_RE, (whole, bracketed: string) =>
+                defs.has(normalizeRefLabel(bracketed.slice(1, -1))) ? whole : bracketed,
+            );
+        })
+        .join("\n");
+}
+
 function normLineForCompare(line: string): string {
+    line = normalizeOutlineIndent(line);
     const t = line.trim();
     if (SEP_ROW_RE.test(t)) return normalizeSepRow(line);
     if (TABLE_ROW_RE.test(t)) return normalizeTableDataRow(line);
-    if (THEMATIC_BREAK_RE.test(line)) return "---";
+    if (THEMATIC_BREAK_RE.test(line)) {
+        // Preserve the marker CHARACTER: `***` and `---` are interchangeable
+        // as thematic breaks, but a `-` run is also a setext-heading
+        // underline — two constructs whose meaning depends on the line
+        // above. Keying them equal let the merge "repair" a moved setext
+        // underline into a saved `***` hr, dissolving the heading
+        // (MAR-161 M2). Same-character style runs (`- - -` vs `---`) still
+        // compare equal.
+        const marker = /^\s{0,3}([*_-])/.exec(line)![1];
+        return marker.repeat(3);
+    }
     if (/^`{3,}/.test(t)) return normalizeFenceOpen(line);
-    return normalizeWrappedLinkEmphasis(normalizeSplitStrong(line));
+    return normalizeWrappedLinkEmphasis(normalizeSplitStrong(normalizeOrgCookieEscape(line)));
 }
 
 // ─── Line diff (shared by the merge and by protection computation) ─────────

@@ -241,13 +241,17 @@ export function enumerateMovePairs(
 //        `:::` fence prose inert at a directive body's tail (the mirror of
 //        the fixed MAR-122: there gapBefore KEPT a stale blank, here it
 //        REMOVES a live one);
-//   (M2) the merge's line normalizer matches a setext heading's underline
-//        (`-----`) to a saved thematic break (`***`) and "repairs" it,
-//        dissolving the heading into paragraph + hr.
+//   (M2) FIXED (MAR-131 normalizer rework): the line normalizer used to
+//        match a setext heading's underline (`-----`) to a saved thematic
+//        break (`***`) and "repair" it, dissolving the heading. Thematic
+//        breaks now key by marker character, so cross-character repair is
+//        impossible. No longer excluded; a dash-hr vs dash-underline
+//        collision would still key equal (needs line-above context) and
+//        stays open on MAR-161.
 //
-// Excluded here by the narrowest predicate that covers them — never by
-// weakening assertions — and pinned as `it.fails` repros in
-// corpusMoveSampling.test.ts. Delete this predicate (and promote the pins)
+// Excluded here by the narrowest predicate that covers M1 — never by
+// weakening assertions — and pinned as an `it.fails` repro in
+// corpusMoveSampling.test.ts. Delete this predicate (and promote the pin)
 // when MAR-161 closes.
 
 export function knownMergeTierHazard(
@@ -261,21 +265,12 @@ export function knownMergeTierHazard(
         return false; // malformed range — the primitive refuses it anyway
     }
     let fragmentHasRawFence = false;
-    let fragmentHasSetext = false;
     fragment.descendants((node: ProseNode) => {
         if (node.isTextblock && !node.type.spec.code && node.textContent.startsWith(":::")) {
             fragmentHasRawFence = true;
         }
-        if (node.type.name === "heading" && node.attrs["setext"] === true) {
-            fragmentHasSetext = true;
-        }
         return true;
     });
-    // (M2): a relocated setext heading can have its underline "repaired"
-    // into a saved thematic break's bytes.
-    if (fragmentHasSetext) {
-        return true;
-    }
     // (M1): raw fence prose moved inside a container directive needs the
     // serializer's separating blank line, which the merge may remove.
     if (fragmentHasRawFence) {
