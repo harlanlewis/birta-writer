@@ -10,6 +10,7 @@ import { directivesPlugin } from "./plugins/directives";
 import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
+import { imageStringAttrPlugins, imageStringAttrReplacedPlugins } from "./plugins/image";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { reparseHazardPlugin } from "./plugins/reparseHazard";
@@ -124,6 +125,7 @@ export const pureCommonmark = [
         if (sourceStyleReplacedPlugins.has(plugin)) return false;
         if (tableBreakReplacedPlugins.has(plugin)) return false;
         if (listSpreadReplacedPlugins.has(plugin)) return false;
+        if (imageStringAttrReplacedPlugins.has(plugin)) return false;
         // Stock `#` input rule ADDS hashes to an existing heading's level;
         // headingAbsoluteInputRule (plugins/headingInput.ts) replaces it.
         if (headingInputReplacedPlugins.has(plugin)) return false;
@@ -143,6 +145,10 @@ export const pureCommonmark = [
     // parseMarkdown runners so `spread` parses as a real boolean, not a string
     // (MAR-124). See plugins/list.ts.
     ...listSpreadBooleanPlugins,
+    // AFTER the preset: override the image parseMarkdown runner so a
+    // title-less image parses with "" (valid) instead of mdast's null, which
+    // fails the node's own attr validation. See plugins/image.ts.
+    ...imageStringAttrPlugins,
     fidelitySerializerPlugin,
     // Registers this editor's serializer/parser for the save-survival move
     // check (MAR-120). Rides the base preset so no construction site —

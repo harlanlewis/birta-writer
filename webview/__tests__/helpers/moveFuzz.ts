@@ -9,6 +9,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { join } from "node:path";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "@milkdown/prose/view";
 import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
@@ -96,6 +97,19 @@ export async function makeCorpusEditor(
 
 export function editorView(editor: Editor): EditorView {
     return editor.action((ctx) => ctx.get(editorViewCtx));
+}
+
+/**
+ * Parse `markdown` into the real editor and serialize it straight back — the
+ * first leg of the save pipeline. Shared by the per-tool fidelity suites
+ * (logseqRoundTrip, toolFidelity) so they can't drift from the production
+ * serialization recipe the corpus (roundTripCorpus.test.ts) exercises.
+ */
+export async function serializeCorpus(markdown: string): Promise<string> {
+    const editor = await makeCorpusEditor(markdown);
+    const out = editor.action(getMarkdown());
+    await editor.destroy();
+    return out;
 }
 
 // ── Significant-line survival ───────────────────────────────────────────────

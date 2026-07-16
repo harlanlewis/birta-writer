@@ -1,0 +1,25 @@
+#+TITLE: Reading queue
+#+AUTHOR: Harlan
+#+STARTUP: overview
+
+* Books to read
+:PROPERTIES:
+:CATEGORY: reading
+:END:
+
+** TODO How to Take Smart Notes
+SCHEDULED: <2026-08-01 Sat>
+:LOGBOOK:
+CLOCK: [2026-07-10 Fri 09:00]--[2026-07-10 Fri 09:45] =>  0:45
+:END:
+
+Org links look like [[https://orgmode.org][the org manual]], not Markdown.
+
+#+BEGIN_SRC emacs-lisp
+(setq org-log-done 'time)
+#+END_SRC
+
+- Plain lists overlap with Markdown syntax
+- [ ] checkboxes too, with a cookie [2/3]
+
+* Archive                                                          :noexport:
