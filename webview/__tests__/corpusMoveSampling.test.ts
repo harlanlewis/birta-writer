@@ -447,6 +447,22 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         ).toBe(true);
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
+
+    it("hazard G in a callout (MAR-157): an hr moved to the HEAD of the body stays an hr", async () => {
+        const editor = await makeEditor("> [!NOTE]\n> callout body\n\n---\n\nTail.");
+        const v = editorView(editor);
+        const hrPos = findPos(v.state.doc, "hr", "");
+        const coPos = findPos(v.state.doc, "callout", "callout body");
+        expect(hrPos).toBeGreaterThan(-1);
+
+        // Target: the FIRST boundary inside the callout, so the hr serializes
+        // directly under the `> [!NOTE]` marker line. The marker is a
+        // synthesized TEXT line (like a directive's open fence), so
+        // `> [!NOTE]` + `> ---` reparses as a setext heading unless the
+        // serializer emits the disambiguating blank `>` line.
+        expect(moveBlocks(v, { from: hrPos, to: hrPos + 1 }, coPos + 1)).toBe(true);
+        expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
+    });
 });
 
 describe("corpus move-sampling gate — folded variant", () => {

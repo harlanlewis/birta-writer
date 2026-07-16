@@ -34,6 +34,7 @@
 import { InputRule } from "@milkdown/prose/inputrules";
 import { wrapIn } from "@milkdown/prose/commands";
 import { $command, $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
+import { SETEXT_UNDERLINE_RE } from "./directives";
 
 export const calloutId = "callout";
 
@@ -318,10 +319,20 @@ const calloutToMarkdown = {
                 tracker.current(),
             );
             const marker = node.marker ?? "[!NOTE]";
+            // The marker is a synthesized TEXT line, exactly like a
+            // directive's open fence: a body whose first line would reparse
+            // as a setext underline (`---` after an hr move, MAR-157) turns
+            // the marker into a heading unless the blank `>` line separates
+            // them — the same (G) defusal directives.ts applies. No on-disk
+            // callout can carry this shape (it would have parsed as a
+            // heading, not a callout), so untouched-callout byte fidelity is
+            // unaffected.
+            const firstLine = flow.split("\n", 1)[0] ?? "";
+            const attached = node.attached && !SETEXT_UNDERLINE_RE.test(firstLine);
             const content =
                 flow === ""
                     ? marker
-                    : node.attached
+                    : attached
                       ? `${marker}\n${flow}`
                       : `${marker}\n\n${flow}`;
             const value: string = state.indentLines(content, calloutLineMap);
