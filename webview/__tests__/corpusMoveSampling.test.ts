@@ -58,7 +58,7 @@ import {
     editorView,
     enumerateMovePairs,
     hashString,
-    knownSavePipelineHazard,
+    knownMergeTierHazard,
     loadCorpusFixtures,
     makeCorpusEditor,
     mulberry32,
@@ -136,14 +136,16 @@ function sampleMoves(
 ): void {
     const baseState = v.state;
     const rng = mulberry32((SEED ^ hashString(fixture.name)) >>> 0);
-    // Known save-pipeline hazards (pre-existing serializer/merge bugs the
-    // gate itself surfaced — see knownSavePipelineHazard and the pinned
-    // `it.fails` repros below) are excluded from the pair space, so every
-    // remaining pair is held to the full contract. Shuffle BEFORE filtering:
-    // the sampled prefix then stays stable when a hazard class is fixed and
-    // its exclusion removed.
+    // B/F-shaped pairs are NOT excluded: the save-survival check
+    // (plugins/reparseHazard, MAR-120 refuse lane) refuses them and they
+    // land in the refused-is-a-perfect-no-op branch below, which is itself
+    // the contract for them. The only exclusions left are the two MERGE-tier
+    // bugs (MAR-161) — clean at the tier the refusal observes, corrupted
+    // only by applyMinimalChanges — pinned as it.fails repros below.
+    // Shuffle BEFORE filtering: the sampled prefix then stays stable when a
+    // hazard class is fixed and its exclusion removed.
     const pairs = shuffled(enumerateMovePairs(v), rng).filter(
-        ({ source, target }) => !knownSavePipelineHazard(v, source, target),
+        ({ source, target }) => !knownMergeTierHazard(v, source, target),
     );
     expect(pairs.length, `no move pairs enumerable in ${fixture.name}`).toBeGreaterThan(0);
     const sample = pairs.slice(0, SAMPLE_SIZE);
@@ -226,22 +228,40 @@ describe("corpus move-sampling gate", () => {
 // ── Pinned repros for the real bugs the gate surfaced ───────────────────────
 //
 // PRE-EXISTING serializer/merge round-trip bugs, found by this gate on its
-// first run (see knownSavePipelineHazard in helpers/moveFuzz for the class
-// descriptions and the follow-up TODO). Each repro is minimal. A repro that is
-// still broken is pinned with `it.fails` (it PASSES today because the bug
-// reproduces; the moment a fix lands, `it.fails` starts failing, forcing the
-// pin to become a normal assertion and its hazard exclusion to be deleted). A
-// repro whose fix has landed is a normal `it` (labelled "MAR-NN, fixed") and
-// its exclusion is gone, so the gate now holds that shape to the full
-// contract. Remaining `it.fails`: B (raw fence re-pairing) and F (aside
-// nesting) — see MAR-120. These are NOT weakened gate assertions; they are the
-// loud record of what is excluded and why.
+// first run (see the hazard-class history in helpers/moveFuzz). Each repro is
+// minimal. Every class is now closed one of two ways, and the pin asserts
+// whichever applies:
+//   - FIXED in the serializer ("MAR-NN, fixed"): the shape round-trips, so
+//     the pin asserts a clean reparse delta;
+//   - REFUSED at the primitive ("MAR-120, refused"): the reparse is
+//     parser-level work deliberately not built (maintainer decision,
+//     2026-07-15 — refuse lane), so the pin asserts the move returns false
+//     and the document is untouched (reference identity).
+// There are no it.fails pins and no sampling exclusions left: the gate holds
+// the full pair space to the contract. NOTE for future fixers: if B or F is
+// ever properly fixed at the parser level, the refusal stops firing only if
+// the round-trip actually survives — flip the refused pins back to
+// moved===true + clean-delta pins in the same change.
 
 /** Position of the first node of `type` whose text matches, or -1. */
 function findPos(doc: ProseNode, type: string, text: string): number {
     let found = -1;
     doc.descendants((node: ProseNode, pos: number) => {
         if (found === -1 && node.type.name === type && node.textContent === text) {
+            found = pos;
+        }
+        return found === -1;
+    });
+    return found;
+}
+
+/** Position of the first node of `type` whose text CONTAINS `text`, or -1 —
+ * content-addressing into corpus fixtures, robust to fixture edits around
+ * the anchor. */
+function findContaining(doc: ProseNode, type: string, text: string): number {
+    let found = -1;
+    doc.descendants((node: ProseNode, pos: number) => {
+        if (found === -1 && node.type.name === type && node.textContent.includes(text)) {
             found = pos;
         }
         return found === -1;
@@ -259,7 +279,7 @@ function reparseDelta(editor: Editor, v: EditorView): string {
     );
 }
 
-describe("known save-pipeline hazards — pinned repros (it.fails until the serializer is fixed)", () => {
+describe("known save-pipeline hazards — pinned repros (fixed or refused, per class)", () => {
     it("hazard A (MAR-120, fixed): a directive moved inside another directive survives save+reopen", async () => {
         // The outer directive must end with a LIST for the bug to bite: a
         // trivially-nested `:::tip` after a paragraph happens to reparse,
@@ -317,7 +337,7 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         ).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard B: a closed directive moved below raw ':::' prose should not re-pair fences", async () => {
+    it("hazard B (MAR-120, refused): a closed directive moved below raw ':::' prose is refused — fences would re-pair on reopen", async () => {
         const editor = await makeEditor(
             ":::caution\nClosed body.\n:::\n\n:::unclosed\n\nTail prose.",
         );
@@ -325,18 +345,28 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         const cautionPos = findPos(v.state.doc, "container_directive", "Closed body.");
         expect(cautionPos).toBeGreaterThan(-1);
         const caution = v.state.doc.nodeAt(cautionPos)!;
+        const docBefore = v.state.doc;
 
+        // The save-survival check (plugins/reparseHazard) refuses the move:
+        // on reparse the `:::unclosed` prose line would pair with the moved
+        // directive's close fence, swallowing the directive as its body —
+        // and the second save cycle cements the wrong nesting (the A-fix
+        // lengthens the outer fence), permanently flattening the directive.
+        // Refusal is the chosen lane (MAR-120); fixing the reparse is
+        // parser-level work, out of scope by decision.
         expect(
             moveBlocks(
                 v,
                 { from: cautionPos, to: cautionPos + caution.nodeSize },
                 v.state.doc.content.size,
             ),
-        ).toBe(true);
-
-        // BUG: on reparse the `:::unclosed` prose line pairs with the moved
-        // directive's close fence, swallowing the directive as its body.
-        expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
+        ).toBe(false);
+        // A refused move is a PERFECT no-op — reference identity.
+        expect(v.state.doc).toBe(docBefore);
+        // The user sees the quiet notice, not a silent snap-back.
+        expect(
+            document.querySelector(".content-guard-notice")?.textContent,
+        ).toContain("Move blocked");
     });
 
     it("hazard C (MAR-121, fixed): literal '\\==text==' prose stays escaped after a move", async () => {
@@ -370,7 +400,7 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    it.fails("hazard F: an aside moved inside another aside should survive save+reopen", async () => {
+    it("hazard F (MAR-120, refused): an aside moved inside another aside is refused — reopen deletes its text from disk", async () => {
         const editor = await makeEditor(
             "<aside>\n💡 Outer body.\n</aside>\n\n<aside>\n🐛 Inner mover.\n</aside>",
         );
@@ -380,18 +410,116 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(innerPos).toBeGreaterThan(-1);
         const inner = v.state.doc.nodeAt(innerPos)!;
         const outer = v.state.doc.nodeAt(outerPos)!;
+        const docBefore = v.state.doc;
 
+        // The save-survival check refuses: `<aside>` nesting is outside
+        // Notion's own export grammar — CommonMark HTML-block parsing ends
+        // the outer aside at the blank line before the inner one, and the
+        // reopened document holds a single paragraph; the resave after that
+        // writes the inner aside's text OUT OF THE FILE. The worst verified
+        // outcome on the board (hard byte loss), so the move is refused
+        // outright rather than allowed to degrade.
         expect(
             moveBlocks(
                 v,
                 { from: innerPos, to: innerPos + inner.nodeSize },
                 outerPos + outer.nodeSize - 1,
             ),
+        ).toBe(false);
+        expect(v.state.doc).toBe(docBefore);
+    });
+
+    // The two MAR-161 merge-tier pins drive the CORPUS fixtures rather than
+    // synthetic minimal sources: both bugs depend on the merge's repair-
+    // region matching seeing the fixture's surrounding lines (isolated
+    // minimal docs merge correctly — verified while pinning). Minimizing the
+    // repro is MAR-161's first work item. Both are clean at the raw
+    // serialize→reparse tier, so the MAR-120 refusal correctly stays quiet.
+
+    it.fails("merge hazard M1 (MAR-161): raw ':::' prose moved into a directive keeps its separating blank line through the merge", async () => {
+        const fixture = fixtures.find((f) => f.name === "directives.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+        const prosePos = findContaining(v.state.doc, "paragraph", "::: spaced-name");
+        const tipPos = findContaining(v.state.doc, "container_directive", "Attached content under a titled fence");
+        expect(prosePos).toBeGreaterThan(-1);
+        expect(tipPos).toBeGreaterThan(-1);
+        const prose = v.state.doc.nodeAt(prosePos)!;
+        const tip = v.state.doc.nodeAt(tipPos)!;
+
+        expect(
+            moveBlocks(v, { from: prosePos, to: prosePos + prose.nodeSize }, tipPos + tip.nodeSize - 1),
         ).toBe(true);
 
-        // BUG: the nested `<aside>` is not recognized by the sub-parse on
-        // reopen — it flattens into the outer aside's raw html.
-        expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
+        // The serializer emits a blank line between the body paragraph and
+        // the fence-shaped prose. BUG: applyMinimalChanges removes that
+        // blank, repairing toward the saved bytes' adjacency, and the prose
+        // line attaches to the paragraph above on reopen
+        // (`gained: atom:hardbreak:`). MDW_MOVE_SEED=7 finds this pair.
+        const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
+    it.fails("merge hazard M2 (MAR-161): a moved setext heading's underline survives the merge next to a saved hr", async () => {
+        const fixture = fixtures.find((f) => f.name === "kitchen-sink.md")!;
+        const editor = await makeEditor(fixture.content);
+        const v = editorView(editor);
+        const protection = computeRoundTripProtection(fixture.content, editor.action(getMarkdown()));
+        const headingPos = findContaining(v.state.doc, "heading", "tags: [combined, regression]");
+        expect(headingPos).toBeGreaterThan(-1);
+        const heading = v.state.doc.nodeAt(headingPos)!;
+        expect(heading.attrs["setext"]).toBe(true);
+        // The seed-99 landing slot: just before the inline-math paragraph,
+        // after the `***` hr.
+        const target = findContaining(v.state.doc, "paragraph", "Inline math like");
+        expect(target).toBeGreaterThan(-1);
+
+        expect(
+            moveBlocks(v, { from: headingPos, to: headingPos + heading.nodeSize }, target),
+        ).toBe(true);
+
+        // BUG: the merge's line normalizer matches the setext underline
+        // (`-----`) to the saved `***` thematic break and "repairs" it,
+        // dissolving the heading into paragraph + hr on reopen
+        // (`lost: count:heading; gained: count:hr, count:paragraph`).
+        // MDW_MOVE_SEED=99 finds this pair.
+        const merged = applyMinimalChanges(fixture.content, editor.action(getMarkdown()), protection);
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+        expect(
+            formatFingerprintDiff(
+                diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+            ),
+        ).toBe("lost: (none); gained: (none)");
+    });
+
+    it("a move in a document that ALREADY fails round-trip is not refused (the gesture didn't cause it)", async () => {
+        const editor = await makeEditor(
+            "First.\n\n:::caution\nBody.\n:::\n\nLast.",
+        );
+        const v = editorView(editor);
+        // Simulate the user TYPING raw fence prose above the directive — an
+        // untagged transaction the guard never inspects. The document is now
+        // in the B hazard shape on its own: its round-trip is dirty before
+        // any move happens.
+        const para = v.state.schema.nodes["paragraph"]!.create(
+            null,
+            v.state.schema.text(":::unclosed"),
+        );
+        v.dispatch(v.state.tr.insert(0, para));
+        expect(reparseDelta(editor, v)).not.toBe("lost: (none); gained: (none)");
+
+        // An unrelated paragraph move must still work: refusing every
+        // gesture in an already-broken document traps the user instead of
+        // protecting them (see reparseRefusal's pre-doc allowance).
+        const lastPos = findPos(v.state.doc, "paragraph", "Last.");
+        const last = v.state.doc.nodeAt(lastPos)!;
+        expect(moveBlocks(v, { from: lastPos, to: lastPos + last.nodeSize }, 0)).toBe(true);
     });
 
     it("hazard G (MAR-120, fixed): an hr moved to the head of a directive body stays an hr", async () => {
@@ -410,14 +538,17 @@ describe("known save-pipeline hazards — pinned repros (it.fails until the seri
         expect(reparseDelta(editor, v)).toBe("lost: (none); gained: (none)");
     });
 
-    // MAR-120 (G) in quote containers — the setext hazard the ticket describes
-    // for `> text` + `> ---`. Unlike a directive's synthesized open fence (a
-    // text line), a paragraph and an hr inside a blockquote/callout are two
-    // mdast block siblings, so remark-stringify's block join emits the
-    // disambiguating blank `>` line between them by construction — no serializer
-    // special-case needed. These pin that the plain case round-trips, so the
-    // knownSavePipelineHazard exclusion for hr-into-quote covers only the
-    // still-open container fence-repair family (B), not this.
+    // MAR-120 (G) in quote containers — the setext hazard for `> text` +
+    // `> ---`. Two distinct cases, both pinned here:
+    //   - AFTER a paragraph (blockquote or callout): defused by construction —
+    //     a paragraph and an hr are two mdast block siblings, so
+    //     remark-stringify's block join emits the disambiguating blank `>`
+    //     line between them. No serializer special-case needed.
+    //   - At the HEAD of a callout body: NOT by construction — the callout's
+    //     `[!NOTE]` marker is a synthesized text line (like a directive's
+    //     open fence), so the serializer must insert the blank `>` line
+    //     itself (callouts.ts, MAR-157; the directive twin lives in
+    //     directives.ts).
     it("hazard G in a blockquote: an hr moved in after a paragraph stays an hr", async () => {
         const editor = await makeEditor("> quoted text\n\n---\n\nTail.");
         const v = editorView(editor);
