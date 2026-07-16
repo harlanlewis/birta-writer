@@ -158,7 +158,7 @@ to open and edit, not about matching every tool's feature set.
 | **Obsidian** | ✅ vault of `.md` | ✅ directly | Wikilinks, `==highlights==`, `> [!callouts]`, footnotes, math, and YAML frontmatter render or round-trip; `#tags`, `^block-ids`, `![[embeds]]`, `%%comments%%` stay as preserved text | 🟢 Strong |
 | **Foam** | ✅ `.md` (VS Code-native) | ✅ directly | Same wikilink family as Obsidian; its optional CommonMark link-reference-definition shim is preserved, not inlined away | 🟢 Strong |
 | **"Second Brain" / PARA** | ✅ (a folder convention, not a format) | ✅ directly | Nothing tool-specific to preserve — it's just folders of Markdown | 🟢 Strong |
-| **Logseq** | ✅ `.md` | ✅ opens (round-trip unverified) | Text content is preserved, but Logseq is an outliner: every block is a bullet, so a file renders as one big nested list, and its block properties (`key:: value`), `((block-refs))`, and `TODO`/`DOING` keywords survive only as plain text. Whether Birta's list re-serialization preserves the exact bullet indentation Logseq's structure depends on is untested | 🟡 Opens, but structure at risk |
+| **Logseq** | ✅ `.md` | ✅ opens (round-trip tested) | Logseq is an outliner: every block is a bullet and tab indentation encodes the block tree, so a file renders as one big nested list. Untouched lines — tabs, `key:: value` properties, `((block-refs))`, `TODO`/`DOING`/`[#A]` markers, `CLOCK:` timestamps — are byte-preserved through an edit elsewhere, and an edited line keeps its org tokens unescaped (pinned by a round-trip test suite). The edited line itself re-emits with space indentation at the same depth; block *moves* within a tab-indented outline are not yet held to the strict gate | 🟡 Text-edit safe; structure renders flat |
 | **Quarto** (`.qmd`) | ✅ single `.qmd` file | ⚠️ needs a file association (see below) | Pandoc Markdown doesn't subtract from CommonMark, so untouched content round-trips safely; but executable ` ```{r} ` cells, `::: {.callout}` fenced divs, shortcodes, cross-refs, and citations are preserved as inert text/code, not understood | 🟡 Safe, not fluent |
 | **MDX** (`.mdx`) | ✅ `.mdx` file | ⚠️ not recommended | MDX *changes* CommonMark rules (`<` and `{` become special, indented code and HTML comments behave differently) and adds JSX/`import`/`export`; re-serializing edited regions risks producing invalid MDX | 🔴 Risky |
 | **Roam Research** | ❌ proprietary DB (JSON/EDN) | ❌ only after Markdown export | Moot until exported | 🔴 Not file-based |
@@ -171,8 +171,11 @@ to open and edit, not about matching every tool's feature set.
   renders the common extensions and preserves the tool-specific bits it doesn't
   render — so a round-trip is safe even where it isn't fully interactive.
   **Logseq** also opens, but it's an outliner: its whole-file structure (not just
-  its text) rides on exact bullet indentation, and whether that survives Birta's
-  list re-serialization is untested — treat it as read-friendly, edit-cautiously.
+  its text) rides on exact bullet indentation. Text edits are round-trip tested —
+  untouched lines keep their tab bytes and org tokens exactly, and the edited
+  line keeps its tokens unescaped (its own indentation re-emits as spaces at
+  the same nesting depth). Dragging blocks around inside a deeply nested
+  outline is the one gesture still treated cautiously.
 - **Markdown supersets (Quarto, MDX)** are plain files but extend or alter the
   language. Birta registers only `.md` and `.markdown`, so a `.qmd`/`.mdx` file
   won't open in Birta on its own — the reliable way is to rename it to `.md`, or
