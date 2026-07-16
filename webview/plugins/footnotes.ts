@@ -71,9 +71,8 @@ export const footnoteReferenceInputRule = $inputRule(() =>
     }),
 );
 
-/** Rewrites every visible chip/badge's number from current reference order. */
-function refreshFootnoteNumbers(dom: HTMLElement, doc: Parameters<typeof computeDisplayIndex>[0]): void {
-    const map = computeDisplayIndex(doc);
+/** Rewrites every visible chip/badge's number from the given reference order. */
+function refreshFootnoteNumbers(dom: HTMLElement, map: Map<string, number>): void {
     dom.querySelectorAll<HTMLElement>('[data-fn-ref="1"]').forEach((el) => {
         const label = el.dataset["label"] ?? "";
         const idx = map.get(label);
@@ -86,15 +85,40 @@ function refreshFootnoteNumbers(dom: HTMLElement, doc: Parameters<typeof compute
     });
 }
 
+/** Same label→number assignment, in the same first-reference order? */
+function sameDisplayIndex(a: Map<string, number>, b: Map<string, number>): boolean {
+    if (a.size !== b.size) return false;
+    for (const [label, idx] of a) {
+        if (b.get(label) !== idx) return false;
+    }
+    return true;
+}
+
 export const footnoteNumberingPlugin = $prose(
     () =>
         new Plugin({
-            view() {
+            view(editorView) {
+                // The whole-DOM refresh (two full querySelectorAll sweeps) used
+                // to run on EVERY doc-changing transaction — a per-keystroke tax
+                // that scales with document size and is almost always a no-op
+                // (typing prose cannot renumber footnotes). Gate it on the thing
+                // it actually depends on: recompute the label→number map (a
+                // cheap doc walk) and touch the DOM only when the map changed.
+                // Chips/badges self-render their own number when created (see
+                // the NodeViews in components/footnote) — that covers the
+                // initial document too, so the baseline map is simply the one
+                // at view creation and an unchanged map means every visible
+                // number is already right.
+                let lastMap = computeDisplayIndex(editorView.state.doc);
                 return {
                     update(view, prevState): void {
-                        if (!view.state.doc.eq(prevState.doc)) {
-                            refreshFootnoteNumbers(view.dom as HTMLElement, view.state.doc);
-                        }
+                        // Identity, not .eq(): ProseMirror reuses the doc node
+                        // when only the selection changed (see plugins/docChange).
+                        if (view.state.doc === prevState.doc) return;
+                        const map = computeDisplayIndex(view.state.doc);
+                        if (sameDisplayIndex(map, lastMap)) return;
+                        lastMap = map;
+                        refreshFootnoteNumbers(view.dom as HTMLElement, map);
                     },
                 };
             },
