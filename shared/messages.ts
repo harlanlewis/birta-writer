@@ -190,7 +190,6 @@ export type ToExtensionMessage =
     // heading, never a line number, and bare names resolve by filename
     // across the workspace instead of as document-relative paths.
     | { type: "openFile"; path: string; wiki?: true }
-    | { type: "debug"; message: string }
     | { type: "switchToTextEditor"; line?: number }
     // `query` optionally narrows the native Settings UI filter (e.g. to the
     // font settings); it must stay within this extension's namespace.

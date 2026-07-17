@@ -9,6 +9,7 @@ import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransf
 import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { DiskDriftController } from "./diskDrift";
+import { postToWebview } from "./webviewMessaging";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { scanHeadings } from "./utils/headingScan";
 import { slugify } from "../shared/slug";
@@ -110,10 +111,13 @@ export class MarkdownEditorProvider
     // src/diskDrift.ts). Relays drift transitions to the webview.
     private readonly _diskDrift = new DiskDriftController({
         onDriftChange: (uriKey, drifted) => {
-            this._webviewPanels.get(uriKey)?.webview.postMessage({
-                type: "syncConflict",
-                state: drifted ? "conflict" : "none",
-            } satisfies ToWebviewMessage);
+            const panel = this._webviewPanels.get(uriKey);
+            if (panel) {
+                postToWebview(panel.webview, {
+                    type: "syncConflict",
+                    state: drifted ? "conflict" : "none",
+                });
+            }
         },
     });
 
@@ -232,7 +236,7 @@ export class MarkdownEditorProvider
             const panel = this._webviewPanels.get(uriKey);
             // Only send immediately when the panel is currently visible (a hidden panel means the user just switched away, so don't send the line number back)
             if (panel && panel.visible) {
-                panel.webview.postMessage({ type: 'scrollToLine', line });
+                postToWebview(panel.webview, { type: 'scrollToLine', line });
                 // Don't delete _pendingNavigations; keep it as a fallback for ready on panel rebuild (valid within TTL 5s)
             }
         }
@@ -241,7 +245,7 @@ export class MarkdownEditorProvider
     /** Send an arbitrary message to the panel for the given URI (for extension.ts to call) */
     public postToPanel(uri: vscode.Uri, msg: ToWebviewMessage): void {
         const panel = this._webviewPanels.get(uri.toString());
-        if (panel) { panel.webview.postMessage(msg); }
+        if (panel) { postToWebview(panel.webview, msg); }
     }
 
     /** Called from extension.ts (revealLine command): send a scroll message directly to the panel */
@@ -249,7 +253,7 @@ export class MarkdownEditorProvider
         const uriKey = uri.toString();
         const panel = this._webviewPanels.get(uriKey);
         if (panel) {
-            panel.webview.postMessage({ type: 'scrollToLine', line });
+            postToWebview(panel.webview, { type: 'scrollToLine', line });
         }
     }
 
@@ -264,13 +268,13 @@ export class MarkdownEditorProvider
 
     public postToAll(msg: ToWebviewMessage): void {
         for (const panel of this._webviewPanels.values()) {
-            panel.webview.postMessage(msg);
+            postToWebview(panel.webview, msg);
         }
     }
 
     /** Sends a message to the active editor panel (no-op when none is active). */
     public postToActivePanel(msg: ToWebviewMessage): void {
-        this._activePanel?.webview.postMessage(msg);
+        if (this._activePanel) { postToWebview(this._activePanel.webview, msg); }
     }
 
     /**
@@ -310,14 +314,14 @@ export class MarkdownEditorProvider
         const msg: ToWebviewMessage = { type: "editorCommand", command, args };
         const named = documentUriStr ? this._webviewPanels.get(documentUriStr) : undefined;
         if (named) {
-            named.webview.postMessage(msg);
+            postToWebview(named.webview, msg);
             return;
         }
         const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
         if (activeTab?.input instanceof vscode.TabInputCustom) {
             const focused = this._webviewPanels.get(activeTab.input.uri.toString());
             if (focused) {
-                focused.webview.postMessage(msg);
+                postToWebview(focused.webview, msg);
                 return;
             }
         }
@@ -436,7 +440,7 @@ export class MarkdownEditorProvider
                 ?? this._consumeGlobalRevealLine();
             if (line !== undefined) {
                 console.log('[viewState] immediate scrollToLine:', line);
-                p.webview.postMessage({ type: "scrollToLine", line });
+                postToWebview(p.webview, { type: "scrollToLine", line });
                 return;
             }
             // revealLine may fire after the viewState change (global search timing is unpredictable)
@@ -451,7 +455,7 @@ export class MarkdownEditorProvider
                     ?? this._consumeGlobalRevealLine();
                 if (delayedLine !== undefined) {
                     console.log('[viewState] delayed scrollToLine:', delayedLine);
-                    p.webview.postMessage({ type: "scrollToLine", line: delayedLine });
+                    postToWebview(p.webview, { type: "scrollToLine", line: delayedLine });
                 }
             }, 1000);
         });
@@ -476,7 +480,7 @@ export class MarkdownEditorProvider
                         // Reset the sync version so the webview's baseSyncVersion
                         // starts aligned with the extension.
                         this._syncVersion.set(uriKey, 0);
-                        webviewPanel.webview.postMessage({
+                        postToWebview(webviewPanel.webview, {
                             type: "init",
                             content: displayContent,
                             lineMap: computeLineMap(initContent),
@@ -492,10 +496,10 @@ export class MarkdownEditorProvider
                         // already diverged from disk), and that early postMessage is
                         // dropped — so re-send it here or the badge never appears.
                         if (this._diskDrift.isDrifted(uriKey)) {
-                            webviewPanel.webview.postMessage({
+                            postToWebview(webviewPanel.webview, {
                                 type: "syncConflict",
                                 state: "conflict",
-                            } satisfies ToWebviewMessage);
+                            });
                         }
                         break;
                     }
@@ -528,7 +532,7 @@ export class MarkdownEditorProvider
                                 const applied = await this._applyWebviewEdit(document, newContent);
                                 if (!applied) { return; }
                                 this._pinTabOnFirstEdit(uriKey);
-                                webviewPanel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
+                                postToWebview(webviewPanel.webview, { type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
                             });
                         }
                         break;
@@ -561,7 +565,7 @@ export class MarkdownEditorProvider
                             const applied = await vscode.workspace.applyEdit(edit);
                             if (!applied) { return; }
                             this._pinTabOnFirstEdit(uriKey);
-                            webviewPanel.webview.postMessage({ type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
+                            postToWebview(webviewPanel.webview, { type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
                         });
                         break;
                     }
@@ -739,11 +743,11 @@ export class MarkdownEditorProvider
                     case "lintBlocks":
                         lintBlocks(message.blocks)
                             .then((results) => {
-                                void webviewPanel.webview.postMessage({
+                                postToWebview(webviewPanel.webview, {
                                     type: "lintResults",
                                     id: message.id,
                                     results,
-                                } satisfies ToWebviewMessage);
+                                });
                             })
                             .catch((err) => {
                                 console.error("[birta] harper lint failed", err);
@@ -867,7 +871,7 @@ export class MarkdownEditorProvider
         const version = this._syncVersion.get(uriKey) ?? 0;
         const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
         const tableWrap = vscode.workspace.getConfiguration("birta").get<TableWrapMode>("tableWrap", "normal");
-        panel.webview.postMessage({
+        postToWebview(panel.webview, {
             type: "externalUpdate",
             content: displayContent,
             lineMap: computeLineMap(text),
@@ -947,7 +951,7 @@ export class MarkdownEditorProvider
                     .then(finish, () => finish([]));
             });
             try {
-                panel.webview.postMessage({ type: "flushSave", id });
+                postToWebview(panel.webview, { type: "flushSave", id });
             } catch {
                 finish([]); // panel disposed between the guard and the post
             }
@@ -1157,7 +1161,7 @@ export class MarkdownEditorProvider
             }
         }
         try {
-            panel.webview.postMessage({ type: "linkTargetResolved", id, resolved });
+            postToWebview(panel.webview, { type: "linkTargetResolved", id, resolved });
         } catch {
             // Panel disposed while the resolver awaited stat/findFiles.
         }
@@ -1378,11 +1382,11 @@ export class MarkdownEditorProvider
     public broadcastFoldingConfig(): void {
         for (const [uriKey, panel] of this._webviewPanels) {
             const folding = this._getFoldingConfig(vscode.Uri.parse(uriKey));
-            panel.webview.postMessage({
+            postToWebview(panel.webview, {
                 type: "setFoldingControls",
                 controls: folding.controls,
                 enabled: folding.enabled,
-            } satisfies ToWebviewMessage);
+            });
         }
     }
 
@@ -1677,10 +1681,10 @@ export class MarkdownEditorProvider
             const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
             this._imageUriMaps.set(uriKey, uriMap);
             uriMap.set(url, relPath);
-            panel.webview.postMessage({ type: 'imageUploaded', id, url });
+            postToWebview(panel.webview, { type: 'imageUploaded', id, url });
         } catch (e) {
             const errMsg = e instanceof Error ? e.message : String(e);
-            panel.webview.postMessage({ type: 'imageUploadError', id, error: errMsg });
+            postToWebview(panel.webview, { type: 'imageUploadError', id, error: errMsg });
             vscode.window.showErrorMessage(vscode.l10n.t('Failed to save image: {0}', errMsg));
         }
     }
@@ -1750,7 +1754,7 @@ export class MarkdownEditorProvider
             } catch { /* directory not accessible */ }
         }
 
-        panel.webview.postMessage({ type: 'projectImagesList', id, images });
+        postToWebview(panel.webview, { type: 'projectImagesList', id, images });
     }
 
     /**
@@ -1783,7 +1787,7 @@ export class MarkdownEditorProvider
             .filter(([fsPath]) => fsPath !== docFsPath)
             .map(([, keyValues]) => keyValues);
         const values = rankListValues(otherFiles, key);
-        panel.webview.postMessage({ type: "fmSuggestions", key, values });
+        postToWebview(panel.webview, { type: "fmSuggestions", key, values });
     }
 
     private async _handleGetPathSuggestions(
@@ -1794,7 +1798,7 @@ export class MarkdownEditorProvider
     ): Promise<void> {
         const q = query.trim();
         if (!q) {
-            panel.webview.postMessage({ type: 'pathSuggestions', id, items: [] });
+            postToWebview(panel.webview, { type: 'pathSuggestions', id, items: [] });
             return;
         }
 
@@ -1828,7 +1832,7 @@ export class MarkdownEditorProvider
         try {
             entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(absDir));
         } catch {
-            panel.webview.postMessage({ type: 'pathSuggestions', id, items: [] });
+            postToWebview(panel.webview, { type: 'pathSuggestions', id, items: [] });
             return;
         }
 
@@ -1866,7 +1870,7 @@ export class MarkdownEditorProvider
                 return { path: fullPath, isDir: type === vscode.FileType.Directory, webviewUri };
             });
 
-        panel.webview.postMessage({ type: 'pathSuggestions', id, items });
+        postToWebview(panel.webview, { type: 'pathSuggestions', id, items });
     }
 
     /**
@@ -1883,7 +1887,7 @@ export class MarkdownEditorProvider
         query: string,
     ): Promise<void> {
         const post = (items: ReturnType<typeof rankLinkTargets>) =>
-            panel.webview.postMessage({ type: 'linkTargetSuggestions', id, items });
+            postToWebview(panel.webview, { type: 'linkTargetSuggestions', id, items });
 
         // An EMPTY query is allowed (the wikilink completer's bare `[[` —
         // ranking returns everything, markdown first, capped); a non-empty
@@ -1951,7 +1955,7 @@ export class MarkdownEditorProvider
             const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
             this._imageUriMaps.set(uriKey, uriMap);
             uriMap.set(webviewUri, relPath);
-            panel.webview.postMessage({ type: 'imagePathResolved', id, webviewUri });
+            postToWebview(panel.webview, { type: 'imagePathResolved', id, webviewUri });
         } catch { /* Invalid path, no response */ }
     }
 }
