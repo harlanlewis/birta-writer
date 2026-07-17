@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as vscode from "vscode";
-import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
+import { toggleProofreading } from "../config";
 
 const GATE = "proofreading.enabled";
 const DOMAIN = ["styleCheck.enabled", "spellCheck.enabled", "grammarCheck.enabled"];
@@ -33,7 +33,7 @@ describe("toggleProofreading", () => {
     it("with the gate on, should turn it off", () => {
         const { state } = stubConfig({ [GATE]: true });
 
-        MarkdownEditorProvider.toggleProofreading();
+        toggleProofreading();
 
         expect(state.get(GATE)).toBe(false);
     });
@@ -41,7 +41,7 @@ describe("toggleProofreading", () => {
     it("with the gate off, should turn it on", () => {
         const { state } = stubConfig({ [GATE]: false });
 
-        MarkdownEditorProvider.toggleProofreading();
+        toggleProofreading();
 
         expect(state.get(GATE)).toBe(true);
     });
@@ -49,7 +49,7 @@ describe("toggleProofreading", () => {
     it("should default to on when the gate is unset (so the first toggle turns it off)", () => {
         const { state } = stubConfig({});
 
-        MarkdownEditorProvider.toggleProofreading();
+        toggleProofreading();
 
         expect(state.get(GATE)).toBe(false);
     });
@@ -62,7 +62,7 @@ describe("toggleProofreading", () => {
             "grammarCheck.enabled": true,
         });
 
-        MarkdownEditorProvider.toggleProofreading();
+        toggleProofreading();
 
         const written = update.mock.calls.map((c) => c[0]);
         expect(written).toEqual([GATE]);

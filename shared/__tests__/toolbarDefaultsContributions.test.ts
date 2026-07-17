@@ -6,6 +6,10 @@
  * agree, or the Settings UI lies about what the user gets.
  *
  * To change the shipped defaults: edit `DEFAULT_PLACEMENTS`
+// Deliberate cross-project import: this node-env drift test asserts the
+// package.json contribution defaults against the webview registry, which is
+// verified DOM-free. The only place the extension test project reads webview
+// source.
  * (webview/components/toolbar/registry.ts) AND the matching package.json
  * defaults; the shipped in-zone order is the `TOOLBAR_ITEM_IDS` array order.
  */

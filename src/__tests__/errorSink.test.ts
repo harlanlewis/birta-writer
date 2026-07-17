@@ -54,6 +54,18 @@ describe("errorSink", () => {
             expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
         });
 
+        it("an identical message under distinct dedupe keys should notify per key", () => {
+            // The crash handler keys by document URI with a constant message:
+            // the same failure on one document stays a single toast, but a
+            // crash in a DIFFERENT editor later in the session must re-warn.
+            reportErrorWithNotification("crash", new Error("a"), "Editor error", "crash:/a.md");
+            reportErrorWithNotification("crash", new Error("a2"), "Editor error", "crash:/a.md");
+            reportErrorWithNotification("crash", new Error("b"), "Editor error", "crash:/b.md");
+
+            expect(consoleError).toHaveBeenCalledTimes(3);
+            expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(2);
+        });
+
         it("distinct messages past the session cap should log but stop notifying", () => {
             for (let i = 0; i < MAX_NOTIFICATIONS_PER_SESSION + 2; i++) {
                 reportErrorWithNotification("source", new Error(String(i)), `message ${i}`);
