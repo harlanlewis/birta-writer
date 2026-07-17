@@ -1,7 +1,7 @@
 ---
 name: devlog
 description: Record, close, update, or audit Linear issues; triggers: record a bug, known bug, feature request, record a feature request, close an issue, audit the backlog, /devlog
-version: 3.0.0
+version: 3.1.0
 ---
 # Devlog — Linear issue lifecycle skill
 
@@ -188,6 +188,7 @@ If several issues are touched, list every one.
 ## Notes
 
 - If the user's information is insufficient, proactively follow up so the issue has enough context.
+- **Autonomous sessions (e.g. `/grind`) must clear the filing bar before creating an issue** (grind §3.6): a nameable user-observable symptom or demonstrated hazard, **and** a genuine reason it can't be done in-session (blocked on a user decision/design/upstream, or untouched territory). Fix-now beats filing; low-value findings are declined in the session report, not filed (a small-but-real item that genuinely can't be done now may take a one-line slot on MAR-141's do-inline ledger instead of an issue). Never an omnibus "cleanups/follow-ups" ticket — one issue = one nameable outcome. Filing into `Backlog` is cheap for the filer and expensive for the queue.
 - **Filing** planned work touches only Linear — do not modify local files for it. **Closing/auditing** may read local files and git to verify, but still records outcomes only in Linear (plus the CHANGELOG when you also ship the feature).
 - Check for duplicates first with `list_issues` (team: Birta Writer) before creating.
 - Prefer batching independent Linear calls (multiple `save_issue` / `save_comment`) in one step.
