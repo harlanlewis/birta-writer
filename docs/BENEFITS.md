@@ -30,9 +30,11 @@ the raw text editor for good. Birta is built so that never happens.
 - **Syntax it can't perfectly reproduce is protected, not rewritten.** When
   Birta opens a file, it records every region it couldn't round-trip on its own
   (an unusual reference-link layout, a setext heading, hand-escaped text) and
-  restores those regions to their original bytes on save. **Why it matters:**
-  the editor can't silently "correct" Markdown you wrote deliberately — an edit
-  elsewhere in the document can never leak into syntax it doesn't fully model.
+  restores those regions to their original bytes on save — and lines the round
+  trip would *add* (like a closing fence for a deliberately unclosed one) are
+  withheld the same way. **Why it matters:** the editor can't silently
+  "correct" Markdown you wrote deliberately — an edit elsewhere in the document
+  can never leak into syntax it doesn't fully model.
 
 - **Non-standard syntax is preserved verbatim.** Wikilinks, `==highlights==`,
   callouts, and `:::` directives are stored as their exact source bytes and

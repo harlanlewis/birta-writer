@@ -13,8 +13,10 @@
  * every serialization even though the user never touched them. Protection
  * records those regions at load time and REPAIRS the serializer output before
  * the diff: each region's canonical replacement lines are swapped back for
- * the original saved bytes (and dropped constructs are re-inserted next to
- * their anchors). The repaired text then diffs against the saved file with
+ * the original saved bytes (dropped constructs are re-inserted next to their
+ * anchors, and lines the serializer synthesizes with no saved counterpart —
+ * e.g. a close fence for an unclosed one — are deleted). The repaired text
+ * then diffs against the saved file with
  * the plain merge — protected lines become ordinary `keep`s. If the user
  * edits the construct itself, its serialized form no longer matches the
  * recorded canonical lines, no repair happens, and the edit applies normally:
@@ -177,7 +179,14 @@ function computeEditScript(saved: string, serialized: string, profile: FormatPro
  * pass finds them in later serializations and swaps the original bytes back
  * in. When `insNorms` is empty the construct is dropped outright, and the
  * anchors (normalized nearest kept lines at baseline) position the
- * re-insertion instead.
+ * re-insertion instead. When `savedSpanLines` is empty the region is a
+ * SUPPRESSION: lines the serializer synthesizes with no saved counterpart
+ * (e.g. the close fence it emits for a document ending in an unclosed code
+ * fence) — the repair pass deletes them so a save never writes them. A
+ * suppression's identity lives entirely in its anchors, so repair demands
+ * BOTH of them (a rewrite needs only one): once the user edits either
+ * neighbor the synthetic lines are written after all — the canonical form
+ * wins on touched constructs, same as everywhere else in this engine.
  */
 interface ProtectedRegion {
     savedSpanLines: string[];
@@ -212,14 +221,18 @@ export function computeRoundTripProtection(
     // runs (e.g. a dropped construct sharing a run with a construct whose
     // canonical form has a different line count) — repairing with wrong
     // bytes is worse than canonicalization, so fall back to the fused
-    // region, and if even that cannot reproduce the baseline, ship no
-    // protection at all.
-    for (const allowSplit of [true, false]) {
-        const regions = buildProtectedRegions(edits, savedLines, allowSplit);
-        if (regions.length === 0) return null;
-        const protection = { regions };
-        if (applyMinimalChanges(saved, baselineSerialized, profile, protection) === saved) {
-            return protection;
+    // region. Suppression regions get the same discipline: if including them
+    // fails the self-check, retry without them (never worse than the
+    // pre-suppression engine), and if nothing can reproduce the baseline,
+    // ship no protection at all.
+    for (const suppressInsertions of [true, false]) {
+        for (const allowSplit of [true, false]) {
+            const regions = buildProtectedRegions(edits, savedLines, allowSplit, suppressInsertions);
+            if (regions.length === 0) continue;
+            const protection = { regions };
+            if (applyMinimalChanges(saved, baselineSerialized, profile, protection) === saved) {
+                return protection;
+            }
         }
     }
     return null;
@@ -230,6 +243,7 @@ function buildProtectedRegions(
     edits: Edit[],
     savedLines: string[],
     allowSplit: boolean,
+    suppressInsertions: boolean,
 ): ProtectedRegion[] {
     const regions: ProtectedRegion[] = [];
 
@@ -242,12 +256,28 @@ function buildProtectedRegions(
         const run = edits.slice(start, k);
         const dels = run.filter((e): e is Extract<Edit, { op: "del" }> => e.op === "del");
         const inses = run.filter((e): e is Extract<Edit, { op: "ins" }> => e.op === "ins");
-        if (dels.length === 0) continue; // pure insertion at baseline: nothing to preserve
 
         const prevKeep = start > 0 ? (edits[start - 1] as Extract<Edit, { op: "keep" }>) : null;
         const nextKeep = k < edits.length ? (edits[k] as Extract<Edit, { op: "keep" }>) : null;
         const anchorPrevNorm = prevKeep ? prevKeep.saved.norm : null;
         const anchorNextNorm = nextKeep ? nextKeep.saved.norm : null;
+
+        if (dels.length === 0) {
+            // Pure insertion at baseline: the serializer synthesized these
+            // lines out of nothing, so there are no saved bytes to pin —
+            // instead record a suppression region that deletes them from
+            // later serializations (invariant A: a zero-edit save never
+            // rewrites the file).
+            if (suppressInsertions) {
+                regions.push({
+                    savedSpanLines: [],
+                    insNorms: inses.map((i) => i.serial.norm),
+                    anchorPrevNorm,
+                    anchorNextNorm,
+                });
+            }
+            continue;
+        }
 
         // Split the run into per-construct sub-regions when both sides break
         // into the same number of adjacency groups (consecutive line numbers
@@ -324,9 +354,23 @@ function repairSerialized(
             // the document (e.g. a genuine `# Title` next to a protected
             // setext `Title/====`) from being mistaken for the construct
             // when the construct itself was edited or removed.
+            //
+            // A SUPPRESSION (empty savedSpanLines) must match BOTH anchors: a
+            // rewrite's insNorms carry the construct's own identity, so one
+            // anchor is corroboration — but a suppression's insNorms are just
+            // the synthetic lines (a bare close fence), which any legitimate
+            // twin can equal. Deleting a wrong match is corruption, so when
+            // either neighbor changed the suppression stands down and the
+            // synthetic lines are written — canonical form wins on touched
+            // constructs. This NARROWS the twin hazard rather than removing
+            // it: a twin whose entire neighborhood keys equal to the anchors
+            // can still be mistaken for the synthetic lines (MAR-174 records
+            // the residual — reachable only where the construct is
+            // parse-neutral anyway).
             const len = region.insNorms.length;
+            const isSuppression = region.savedSpanLines.length === 0;
             let best = -1;
-            let bestScore = 0;
+            let bestScore = isSuppression ? 1 : 0;
             for (
                 let at = findContiguous(norms, region.insNorms, cursorSigIndex(sig, cursor));
                 at !== -1;

@@ -131,3 +131,92 @@ describe("computeRoundTripProtection (core, synthetic profile)", () => {
         ).toBe("alpha\n\n%%secret%%\n\nomega EDITED\n");
     });
 });
+
+describe("round-trip protection — suppression regions (serializer-synthesized lines)", () => {
+    // The serializer emits a trailing CLOSE line the saved file lacks (the
+    // markdown incarnation: a close fence synthesized for a document ending
+    // in an unclosed code fence — MAR-162). At baseline that is a pure
+    // insertion, which byte-pinning cannot express; protection records it as
+    // a suppression region instead.
+    const saved = "alpha\n\ncode line\n";
+    const baseline = "alpha\n\ncode line\nCLOSE\n";
+
+    it("a zero-edit save should not write the synthesized line", () => {
+        const protection = computeRoundTripProtection(saved, baseline, plain);
+        expect(protection).not.toBeNull();
+        expect(applyMinimalChanges(saved, baseline, plain, protection)).toBe(saved);
+    });
+
+    it("an edit elsewhere should still suppress the synthesized line", () => {
+        const protection = computeRoundTripProtection(saved, baseline, plain);
+        expect(
+            applyMinimalChanges(saved, "alpha EDITED\n\ncode line\nCLOSE\n", plain, protection),
+        ).toBe("alpha EDITED\n\ncode line\n");
+    });
+
+    it("editing a suppression anchor should stand down and write the canonical line", () => {
+        // The user touched the construct the synthesized line belongs to
+        // (its preceding neighbor changed), so the suppression's identity is
+        // gone — canonical form wins on touched constructs, same as for
+        // rewrites: the CLOSE line is written after all.
+        const protection = computeRoundTripProtection(saved, baseline, plain);
+        expect(
+            applyMinimalChanges(saved, "alpha\n\ncode line MORE\nCLOSE\n", plain, protection),
+        ).toBe("alpha\n\ncode line MORE\nCLOSE\n");
+    });
+
+    it("a user-typed twin of the synthesized line must not be deleted (both anchors required)", () => {
+        // The user deleted the construct and typed a literal CLOSE line of
+        // their own at the end. It matches the recorded insNorms and sits at
+        // the recorded end-of-document anchor, but its OTHER neighbor does
+        // not match — deleting it would be data loss, so the suppression
+        // must not fire on a single anchor hit.
+        const protection = computeRoundTripProtection(saved, baseline, plain);
+        expect(
+            applyMinimalChanges(saved, "alpha\nCLOSE\n", plain, protection),
+            // (the blank is the saved spacing — "code line"→"CLOSE" merges as
+            // an in-place replacement; what matters here is CLOSE surviving)
+        ).toBe("alpha\n\nCLOSE\n");
+    });
+
+    it("suppression should compose with a byte-pinned rewrite in the same document", () => {
+        const saved2 = "Title\n=====\n\nmid\n\ncode line\n";
+        const baseline2 = "# Title\n\nmid\n\ncode line\nCLOSE\n";
+        const protection = computeRoundTripProtection(saved2, baseline2, plain);
+        expect(protection).not.toBeNull();
+        expect(applyMinimalChanges(saved2, baseline2, plain, protection)).toBe(saved2);
+        expect(
+            applyMinimalChanges(saved2, "# Title\n\nmid EDITED\n\ncode line\nCLOSE\n", plain, protection),
+        ).toBe("Title\n=====\n\nmid EDITED\n\ncode line\n");
+    });
+});
+
+describe("round-trip protection — mid-document suppression (two string anchors)", () => {
+    // Suppressions are not EOF-only: a container construct can auto-close
+    // mid-document (markdown: an unclosed fence nested in a blockquote closes
+    // at the quote's end), giving the region a real line on BOTH sides.
+    const saved = "alpha\ninner last\nafter\n\nomega\n";
+    const baseline = "alpha\ninner last\nSYNTH\nafter\n\nomega\n";
+
+    it("a zero-edit save should not write the synthesized line", () => {
+        const protection = computeRoundTripProtection(saved, baseline, plain);
+        expect(protection).not.toBeNull();
+        expect(applyMinimalChanges(saved, baseline, plain, protection)).toBe(saved);
+    });
+
+    it("an edit elsewhere should still suppress the synthesized line", () => {
+        const protection = computeRoundTripProtection(saved, baseline, plain);
+        expect(
+            applyMinimalChanges(saved, "alpha\ninner last\nSYNTH\nafter\n\nomega EDITED\n", plain, protection),
+        ).toBe("alpha\ninner last\nafter\n\nomega EDITED\n");
+    });
+
+    it("editing the FOLLOWING anchor should stand down and write the canonical line", () => {
+        // The EOF-shaped tests can only exercise the preceding anchor; this
+        // pins that the next-side anchor is checked too.
+        const protection = computeRoundTripProtection(saved, baseline, plain);
+        expect(
+            applyMinimalChanges(saved, "alpha\ninner last\nSYNTH\nafter EDITED\n\nomega\n", plain, protection),
+        ).toBe("alpha\ninner last\nSYNTH\nafter EDITED\n\nomega\n");
+    });
+});
