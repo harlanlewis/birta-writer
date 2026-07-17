@@ -10,18 +10,20 @@ import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSugge
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { DiskDriftController } from "./diskDrift";
 import { postToWebview } from "./webviewMessaging";
+import { getBirtaConfiguration, readBirtaConfig, readBirtaSetting, type BirtaConfig } from "./config";
+import { BIRTA_CONFIG_DEFAULTS } from "../shared/config";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { scanHeadings } from "./utils/headingScan";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
-import type { ToExtensionMessage, ToWebviewMessage, TableWrapMode, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset, TextCount } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset, TextCount } from "../shared/messages";
 import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
-import { resolveFontFamily, resolveFontStacks, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
-import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
-import { normalizeBlockHandlesMode, blockHandlesBodyClass, DEFAULT_BLOCK_HANDLES_MODE, type BlockHandlesMode } from "../shared/blockHandles";
-import { normalizeMermaidThemeMode, DEFAULT_MERMAID_THEME_MODE } from "../shared/mermaid";
+import { resolveFontFamily, resolveFontStacks, clampFontSizePercent } from "../shared/fontPresets";
+import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
+import { normalizeBlockHandlesMode, blockHandlesBodyClass } from "../shared/blockHandles";
+import { normalizeMermaidThemeMode } from "../shared/mermaid";
 import { normalizeFoldingControlsMode, foldingBodyClasses, DEFAULT_FOLDING_CONTROLS_MODE, type FoldingControlsMode } from "../shared/foldingControls";
 
 /**
@@ -473,8 +475,7 @@ export class MarkdownEditorProvider
                         const scrollToLine = this._consumePendingNavigation(document.uri.fsPath)
                             ?? this._consumeGlobalRevealLine();
                         console.log('[ready] scrollToLine:', scrollToLine);
-                        const cfg = vscode.workspace.getConfiguration("birta");
-                        const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
+                        const tableWrap = readBirtaSetting("tableWrap");
                         // Reset the echo baseline: init hands this exact text to the webview
                         this._lastSyncedText.set(uriKey, initContent);
                         // Reset the sync version so the webview's baseSyncVersion
@@ -870,7 +871,7 @@ export class MarkdownEditorProvider
         // re-bump, or the count would drift ahead of the webview's baseline.
         const version = this._syncVersion.get(uriKey) ?? 0;
         const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
-        const tableWrap = vscode.workspace.getConfiguration("birta").get<TableWrapMode>("tableWrap", "normal");
+        const tableWrap = readBirtaSetting("tableWrap");
         postToWebview(panel.webview, {
             type: "externalUpdate",
             content: displayContent,
@@ -1102,9 +1103,7 @@ export class MarkdownEditorProvider
             containingFolder?.uri.fsPath ??
             vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
 
-        const smartLinks = vscode.workspace
-            .getConfiguration("birta", document.uri)
-            .get<boolean>("smartLinks", true);
+        const smartLinks = readBirtaSetting("smartLinks", document.uri);
 
         const ctx = { docFsPath, workspaceRootFsPath: workspaceRoot, smartLinks };
         const io: ResolverIo = {
@@ -1215,17 +1214,17 @@ export class MarkdownEditorProvider
     }
 
     private _getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
-        const cfg = vscode.workspace.getConfiguration("birta");
-        const maxHeight = cfg.get<number>("codeBlockMaxHeight", 500);
+        const config = readBirtaConfig();
+        const maxHeight = config.codeBlockMaxHeight;
         const contentWidth = MarkdownEditorProvider.resolveContentWidthConfig();
         const maxWidthCssValue = contentWidth.cssValue;
-        const tocContentGap = this._getPixelSettingCssValue(cfg.get<number>("tocContentGap", 100), 100, 16, 240);
+        const tocContentGap = this._getPixelSettingCssValue(config.tocContentGap, BIRTA_CONFIG_DEFAULTS.tocContentGap, 16, 240);
         // User-dragged TOC panel width, persisted across documents and sessions
         const tocWidth = this._getNumberSettingValue(this.context.globalState.get<number>("tocWidth"), 220, 150, 600);
-        const tocRight = cfg.get<string>("tocPosition", "right") === "right";
+        const tocRight = config.tocPosition === "right";
         const isAutoWidth = contentWidth.isAuto;
-        const fontPreset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
-        const fontStacks = MarkdownEditorProvider.getFontStacks(cfg);
+        const fontPreset = config.fontPreset;
+        const fontStacks = MarkdownEditorProvider.getFontStacks(config);
         // `null` for the "editor" preset (inherit the VS Code editor font). When
         // set, this is injected as an INLINE style on <html> below — not into the
         // <style> block — so that switching to the "editor" preset at runtime,
@@ -1238,10 +1237,10 @@ export class MarkdownEditorProvider
         const contentFontStyleAttr = resolvedFont
             ? ` style="--content-font-family: ${escapeHtmlAttr(resolvedFont)}"`
             : "";
-        const fontSize = clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT));
-        const maxContentWidth = clampMaxWidthCh(cfg.get<number>("maxContentWidth", DEFAULT_MAX_WIDTH_CH));
-        const customCssUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customCss", []));
-        const customJsUris = this._getCustomResourceUris(webview, document.uri, cfg.get<string[]>("customJs", []));
+        const fontSize = clampFontSizePercent(config.fontSize);
+        const maxContentWidth = clampMaxWidthCh(config.maxContentWidth);
+        const customCssUris = this._getCustomResourceUris(webview, document.uri, config.customCss);
+        const customJsUris = this._getCustomResourceUris(webview, document.uri, config.customJs);
         const scriptUri = webview.asWebviewUri(
             vscode.Uri.joinPath(
                 this.context.extensionUri,
@@ -1262,14 +1261,14 @@ export class MarkdownEditorProvider
         // English is the sole source language: t() falls back to the key itself,
         // so the webview renders the English base strings with no translation map.
         const translations: Record<string, string> = {};
-        const debugMode = cfg.get<boolean>("debugMode", false);
-        const codeBlockAutoConvert = cfg.get<boolean>("codeBlockAutoConvert", true);
-        const smartLinks = cfg.get<boolean>("smartLinks", true);
-        const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, cfg);
-        const tocAutoHideThreshold = this._getNumberSettingValue(cfg.get<number>("tocAutoHideThreshold", 3), 3, 0, 20);
-        const frontmatterExpanded = cfg.get<boolean>("frontmatterExpanded", true);
-        const blockHandles = MarkdownEditorProvider._resolveBlockHandlesMode(cfg);
-        const mermaidTheme = normalizeMermaidThemeMode(cfg.get<string>("mermaid.theme", DEFAULT_MERMAID_THEME_MODE));
+        const debugMode = config.debugMode;
+        const codeBlockAutoConvert = config.codeBlockAutoConvert;
+        const smartLinks = config.smartLinks;
+        const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
+        const tocAutoHideThreshold = this._getNumberSettingValue(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);
+        const frontmatterExpanded = config.frontmatterExpanded;
+        const blockHandles = normalizeBlockHandlesMode(config.blockHandles);
+        const mermaidTheme = normalizeMermaidThemeMode(config.mermaidTheme);
         const folding = this._getFoldingConfig(document.uri);
         const proofread = MarkdownEditorProvider.getProofreadConfig();
         const toolbar = MarkdownEditorProvider.getToolbarConfig();
@@ -1315,21 +1314,15 @@ export class MarkdownEditorProvider
 	</html>`;
     }
 
-    /** The effective `blockHandles` mode, normalized to a known value. */
-    private static _resolveBlockHandlesMode(cfg: vscode.WorkspaceConfiguration): BlockHandlesMode {
-        return normalizeBlockHandlesMode(cfg.get<string>("blockHandles", DEFAULT_BLOCK_HANDLES_MODE));
-    }
-
     /**
      * Resolve the effective content width from the `contentWidth` mode (full /
      * fixed) and the `maxContentWidth` ch setting. Shared by the initial HTML
      * injection and the live `onDidChangeConfiguration` broadcast.
      */
     public static resolveContentWidthConfig(): ContentWidthResolution {
-        const cfg = vscode.workspace.getConfiguration("birta");
         return resolveContentWidth(
-            normalizeContentWidthMode(cfg.get<string>("contentWidth", DEFAULT_CONTENT_WIDTH_MODE)),
-            cfg.get<number>("maxContentWidth", DEFAULT_MAX_WIDTH_CH),
+            normalizeContentWidthMode(readBirtaSetting("contentWidth")),
+            readBirtaSetting("maxContentWidth"),
         );
     }
 
@@ -1392,9 +1385,8 @@ export class MarkdownEditorProvider
 
     private _getCodeBlockWordWrap(
         documentUri: vscode.Uri,
-        cfg: vscode.WorkspaceConfiguration,
+        value: BirtaConfig["codeBlockWordWrap"],
     ): boolean {
-        const value = cfg.get<"inherit" | "on" | "off">("codeBlockWordWrap", "inherit");
         if (value === "on") {
             return true;
         }
@@ -1410,38 +1402,29 @@ export class MarkdownEditorProvider
 
     /** Snapshot of the proofread (style check + spell check) settings. */
     public static getProofreadConfig(): ProofreadConfig {
-        const cfg = vscode.workspace.getConfiguration("birta");
+        const {
+            proofreadingEnabled, styleCheck, fillers, redundancies, cliches,
+            wordiness, aiVocabulary, aiArtifacts, passive, negativeParallelism,
+            longSentences, ruleOfThree, emDash, nonAsciiPunct, styleExceptions,
+            spellCheck, grammarCheck, userWords,
+        } = readBirtaConfig();
         return {
-            proofreadingEnabled: cfg.get<boolean>("proofreading.enabled", true),
-            styleCheck: cfg.get<boolean>("styleCheck.enabled", true),
-            fillers: cfg.get<boolean>("styleCheck.fillers", true),
-            redundancies: cfg.get<boolean>("styleCheck.redundancies", true),
-            cliches: cfg.get<boolean>("styleCheck.cliches", true),
-            wordiness: cfg.get<boolean>("styleCheck.wordiness", true),
-            aiVocabulary: cfg.get<boolean>("styleCheck.aiVocabulary", true),
-            aiArtifacts: cfg.get<boolean>("styleCheck.aiArtifacts", true),
-            passive: cfg.get<boolean>("styleCheck.passive", true),
-            negativeParallelism: cfg.get<boolean>("styleCheck.negativeParallelism", true),
-            longSentences: cfg.get<boolean>("styleCheck.longSentences", true),
-            ruleOfThree: cfg.get<boolean>("styleCheck.ruleOfThree", true),
-            emDash: cfg.get<boolean>("styleCheck.emDash", true),
-            nonAsciiPunct: cfg.get<boolean>("styleCheck.nonAsciiPunct", true),
-            styleExceptions: cfg.get<string[]>("styleCheck.exceptions", []),
-            spellCheck: cfg.get<boolean>("spellCheck.enabled", true),
-            grammarCheck: cfg.get<boolean>("grammarCheck.enabled", true),
-            userWords: cfg.get<string[]>("spellCheck.userWords", []),
+            proofreadingEnabled, styleCheck, fillers, redundancies, cliches,
+            wordiness, aiVocabulary, aiArtifacts, passive, negativeParallelism,
+            longSentences, ruleOfThree, emDash, nonAsciiPunct, styleExceptions,
+            spellCheck, grammarCheck, userWords,
         };
     }
 
     /** Snapshot of the per-item toolbar placement settings. */
     public static getToolbarConfig(): ToolbarConfig {
-        const cfg = vscode.workspace.getConfiguration("birta");
-        // VS Code merges contributed defaults into this nested read, so every
-        // registered item id is present with its effective value.
+        // VS Code merges contributed defaults into the nested `toolbar.items`
+        // read, so every registered item id is present with its effective value.
+        const config = readBirtaConfig();
         return {
-            placements: cfg.get("toolbar.items", {}),
-            order: cfg.get<string[]>("toolbar.order", []),
-            visible: cfg.get<boolean>("toolbar.visible", true),
+            placements: config.toolbarPlacements,
+            order: config.toolbarOrder,
+            visible: config.toolbarVisible,
         };
     }
 
@@ -1452,10 +1435,10 @@ export class MarkdownEditorProvider
      * effective boolean).
      */
     public static getFloatingToolbarConfig(): { enabled: boolean; items: Record<string, boolean> } {
-        const cfg = vscode.workspace.getConfiguration("birta");
+        const config = readBirtaConfig();
         return {
-            enabled: cfg.get<boolean>("floatingToolbar.enabled", true),
-            items: cfg.get<Record<string, boolean>>("floatingToolbar.items", {}),
+            enabled: config.floatingToolbarEnabled,
+            items: config.floatingToolbarItems,
         };
     }
 
@@ -1465,12 +1448,11 @@ export class MarkdownEditorProvider
     }
 
     /** The effective per-preset font stacks (user overrides over the built-ins). */
-    public static getFontStacks(cfg?: vscode.WorkspaceConfiguration): import("../shared/messages").FontStacks {
-        const c = cfg ?? vscode.workspace.getConfiguration("birta");
+    public static getFontStacks(config: BirtaConfig = readBirtaConfig()): import("../shared/messages").FontStacks {
         return resolveFontStacks({
-            sans: c.get<string>("fontFamilySans", ""),
-            serif: c.get<string>("fontFamilySerif", ""),
-            mono: c.get<string>("fontFamilyMono", ""),
+            sans: config.fontFamilySans,
+            serif: config.fontFamilySerif,
+            mono: config.fontFamilyMono,
         });
     }
 
@@ -1489,7 +1471,7 @@ export class MarkdownEditorProvider
      * write would be silently overridden by an existing workspace value.
      */
     public static updateSettingRespectingScope(key: string, value: unknown): void {
-        const cfg = vscode.workspace.getConfiguration("birta");
+        const cfg = getBirtaConfiguration();
         const target = cfg.inspect(key)?.workspaceValue !== undefined
             ? vscode.ConfigurationTarget.Workspace
             : vscode.ConfigurationTarget.Global;
@@ -1534,10 +1516,9 @@ export class MarkdownEditorProvider
      * switches, so turning it back on restores exactly what was enabled before.
      */
     public static toggleProofreading(): void {
-        const cfg = vscode.workspace.getConfiguration("birta");
         MarkdownEditorProvider.updateSettingRespectingScope(
             "proofreading.enabled",
-            !cfg.get<boolean>("proofreading.enabled", true),
+            !readBirtaSetting("proofreadingEnabled"),
         );
     }
 
@@ -1553,10 +1534,9 @@ export class MarkdownEditorProvider
     public static addUserWord(word: string): void {
         const trimmed = word?.trim();
         if (!trimmed) { return; }
-        const cfg = vscode.workspace.getConfiguration("birta");
-        const words = cfg.get<string[]>("spellCheck.userWords", []);
+        const words = readBirtaSetting("userWords");
         if (words.includes(trimmed)) { return; }
-        void cfg.update(
+        void getBirtaConfiguration().update(
             "spellCheck.userWords",
             [...words, trimmed],
             vscode.ConfigurationTarget.Global,
@@ -1564,10 +1544,9 @@ export class MarkdownEditorProvider
     }
 
     private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
-        const cfg = vscode.workspace.getConfiguration("birta");
         const paths = [
-            ...cfg.get<string[]>("customCss", []),
-            ...cfg.get<string[]>("customJs", []),
+            ...readBirtaSetting("customCss"),
+            ...readBirtaSetting("customJs"),
         ];
         const roots: vscode.Uri[] = [];
         const seen = new Set<string>();
@@ -1671,7 +1650,7 @@ export class MarkdownEditorProvider
         altText: string,
     ): Promise<void> {
         const uriKey = document.uri.toString();
-        const cfg = vscode.workspace.getConfiguration('birta', document.uri);
+        const cfg = getBirtaConfiguration(document.uri);
         try {
             // Images are always saved to the local workspace; nothing is uploaded off the machine.
             const { relPath, absUri } = await saveImageLocally(document.uri, cfg, data, mimeType, altText);
@@ -1695,8 +1674,7 @@ export class MarkdownEditorProvider
         uriKey: string,
         id: string,
     ): Promise<void> {
-        const cfg = vscode.workspace.getConfiguration('birta', document.uri);
-        const customPath = cfg.get<string>('imageLocalPath', '').trim();
+        const customPath = readBirtaSetting("imageLocalPath", document.uri).trim();
         const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.tiff', '.ico']);
         const CANDIDATE_DIRS = ['images', 'imgs', 'assets/images', 'assets'];
 

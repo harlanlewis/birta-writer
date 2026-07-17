@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
-import type { TableWrapMode, FontPreset } from "../shared/messages";
-import { resolveFontFamily, DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, clampFontSizePercent } from "../shared/fontPresets";
-import { normalizeBlockHandlesMode, DEFAULT_BLOCK_HANDLES_MODE, BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../shared/blockHandles";
-import { normalizeMermaidThemeMode, DEFAULT_MERMAID_THEME_MODE } from "../shared/mermaid";
+import { resolveFontFamily, clampFontSizePercent } from "../shared/fontPresets";
+import { normalizeBlockHandlesMode, BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../shared/blockHandles";
+import { normalizeMermaidThemeMode } from "../shared/mermaid";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { WordCountStatusBar } from "./wordCountStatus";
+import { getBirtaConfiguration, readBirtaSetting } from "./config";
 
 /**
  * "Block Handles" in the command palette: a QuickPick of the three resting
@@ -19,11 +19,7 @@ import { WordCountStatusBar } from "./wordCountStatus";
  * testing.
  */
 export async function promptBlockHandlesMode(): Promise<void> {
-    const current = normalizeBlockHandlesMode(
-        vscode.workspace
-            .getConfiguration("birta")
-            .get<string>("blockHandles", DEFAULT_BLOCK_HANDLES_MODE),
-    );
+    const current = normalizeBlockHandlesMode(readBirtaSetting("blockHandles"));
     type ModeItem = vscode.QuickPickItem & { mode: BlockHandlesMode };
     // Most → least visible, the shared display order of the typography menu's
     // radio rows.
@@ -95,18 +91,14 @@ export function activate(context: vscode.ExtensionContext) {
     MarkdownEditorProvider.current?.setWordCountView(wordCountStatusBar);
 
     // Sync editorAssociations once on activation
-    const initialMode = vscode.workspace
-        .getConfiguration("birta")
-        .get<string>("defaultMode", "preview");
+    const initialMode = readBirtaSetting("defaultMode");
     syncEditorAssociation(initialMode);
 
     // Under priority:option, file opening is not taken over automatically; use onDidChangeTabs to watch text tabs and switch to WYSIWYG
     // Diff views only produce TabInputTextDiff and won't trigger this logic
     context.subscriptions.push(
         vscode.window.tabGroups.onDidChangeTabs(async (event) => {
-            const mode = vscode.workspace
-                .getConfiguration("birta")
-                .get<string>("defaultMode", "preview");
+            const mode = readBirtaSetting("defaultMode");
             if (mode !== "preview") { return; }
 
             for (const tab of event.opened) {
@@ -207,9 +199,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     // Debug mode: initialize the context variable
-    const initialDebug = vscode.workspace
-        .getConfiguration("birta")
-        .get<boolean>("debugMode", false);
+    const initialDebug = readBirtaSetting("debugMode");
     vscode.commands.executeCommand(
         "setContext",
         "birta.debugModeActive",
@@ -218,9 +208,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Debug mode toggle command (two mutually exclusive commands, whose display is switched via when conditions to achieve the ✓ prefix effect)
     const toggleDebugMode = () => {
-        const cfg = vscode.workspace.getConfiguration("birta");
-        const next = !cfg.get<boolean>("debugMode", false);
-        cfg.update("debugMode", next, vscode.ConfigurationTarget.Global);
+        const next = !readBirtaSetting("debugMode");
+        getBirtaConfiguration().update("debugMode", next, vscode.ConfigurationTarget.Global);
         vscode.commands.executeCommand(
             "setContext",
             "birta.debugModeActive",
@@ -297,15 +286,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration("birta.defaultMode")) {
-                const mode = vscode.workspace
-                    .getConfiguration("birta")
-                    .get<string>("defaultMode", "preview");
-                syncEditorAssociation(mode);
+                syncEditorAssociation(readBirtaSetting("defaultMode"));
             }
             if (e.affectsConfiguration("birta.debugMode")) {
-                const v = vscode.workspace
-                    .getConfiguration("birta")
-                    .get<boolean>("debugMode", false);
+                const v = readBirtaSetting("debugMode");
                 vscode.commands.executeCommand(
                     "setContext",
                     "birta.debugModeActive",
@@ -317,9 +301,10 @@ export function activate(context: vscode.ExtensionContext) {
                 });
             }
             if (e.affectsConfiguration("birta.tableWrap")) {
-                const cfg = vscode.workspace.getConfiguration("birta");
-                const tableWrap = cfg.get<TableWrapMode>("tableWrap", "normal");
-                MarkdownEditorProvider.current?.postToAll({ type: "setTableWrap", wrap: tableWrap });
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "setTableWrap",
+                    wrap: readBirtaSetting("tableWrap"),
+                });
             }
             if (e.affectsConfiguration("birta.proofreading")
                 || e.affectsConfiguration("birta.styleCheck")
@@ -337,9 +322,8 @@ export function activate(context: vscode.ExtensionContext) {
                 || e.affectsConfiguration("birta.fontFamilySans")
                 || e.affectsConfiguration("birta.fontFamilySerif")
                 || e.affectsConfiguration("birta.fontFamilyMono")) {
-                const cfg = vscode.workspace.getConfiguration("birta");
-                const preset = cfg.get<FontPreset>("fontPreset", DEFAULT_FONT_PRESET);
-                const stacks = MarkdownEditorProvider.getFontStacks(cfg);
+                const preset = readBirtaSetting("fontPreset");
+                const stacks = MarkdownEditorProvider.getFontStacks();
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setFontFamily",
                     fontFamily: resolveFontFamily(preset, stacks),
@@ -348,32 +332,21 @@ export function activate(context: vscode.ExtensionContext) {
                 });
             }
             if (e.affectsConfiguration("birta.fontSize")) {
-                const cfg = vscode.workspace.getConfiguration("birta");
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setFontSize",
-                    size: clampFontSizePercent(cfg.get<number>("fontSize", DEFAULT_FONT_SIZE_PERCENT)),
+                    size: clampFontSizePercent(readBirtaSetting("fontSize")),
                 });
             }
             if (e.affectsConfiguration("birta.tocPosition")) {
-                const position = vscode.workspace
-                    .getConfiguration("birta")
-                    .get<string>("tocPosition", "right") === "left" ? "left" : "right";
+                const position = readBirtaSetting("tocPosition") === "left" ? "left" : "right";
                 MarkdownEditorProvider.current?.postToAll({ type: "setTocPosition", position });
             }
             if (e.affectsConfiguration("birta.blockHandles")) {
-                const mode = normalizeBlockHandlesMode(
-                    vscode.workspace
-                        .getConfiguration("birta")
-                        .get<string>("blockHandles", DEFAULT_BLOCK_HANDLES_MODE),
-                );
+                const mode = normalizeBlockHandlesMode(readBirtaSetting("blockHandles"));
                 MarkdownEditorProvider.current?.postToAll({ type: "setBlockHandles", mode });
             }
             if (e.affectsConfiguration("birta.mermaid.theme")) {
-                const mode = normalizeMermaidThemeMode(
-                    vscode.workspace
-                        .getConfiguration("birta")
-                        .get<string>("mermaid.theme", DEFAULT_MERMAID_THEME_MODE),
-                );
+                const mode = normalizeMermaidThemeMode(readBirtaSetting("mermaidTheme"));
                 MarkdownEditorProvider.current?.postToAll({ type: "setMermaidTheme", mode });
             }
             if (e.affectsConfiguration("editor.showFoldingControls")
