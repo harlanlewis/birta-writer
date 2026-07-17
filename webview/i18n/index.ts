@@ -10,6 +10,10 @@ declare global {
             codeBlockAutoConvert?: boolean;
             /** Smart link resolution + wikilink autocomplete (birta.smartLinks). */
             smartLinks?: boolean;
+            /** Inline calc-on-`=` master gate (birta.calc.enabled). */
+            calcEnabled?: boolean;
+            /** Auto-insert the calc result on `=` instead of suggesting (birta.calc.autoInsert). */
+            calcAutoInsert?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
             /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */

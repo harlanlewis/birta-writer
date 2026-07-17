@@ -21,6 +21,8 @@ import { applyExternalSync } from "./externalSync";
 import { instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import {
+    calcAutoInsertPlugin,
+    calcSuggestPlugin,
     caretScrollMarginPlugin,
     cellClickFixPlugin,
     codeBlockBackspacePlugin,
@@ -553,6 +555,11 @@ export async function createEditor(
         // replacing it (handlePaste; no other plugin registers one).
         .use(pasteLinkPlugin)
         .use(wikiLinkCompletePlugin)
+        // Inline calc-on-`=` (MAR-177): advisory suggestion by default, or an
+        // input rule when birta.calc.autoInsert is on. Both gated on
+        // birta.calc.enabled; each is inert (returns null early) when inactive.
+        .use(calcSuggestPlugin)
+        .use(calcAutoInsertPlugin)
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
         .use(blockKeysPlugin)

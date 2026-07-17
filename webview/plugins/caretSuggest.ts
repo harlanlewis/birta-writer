@@ -49,6 +49,14 @@ export interface CaretSuggestSpec {
     ): LinkSuggestMenu | null;
     /** Applies a picked suggestion to the document. */
     pick(view: EditorView, match: CaretMatch, picked: string): void;
+    /**
+     * Pre-highlight the first row the moment the menu opens, so Enter/Tab pick
+     * it without an arrow-key first. Used by the inline calc suggestion, where
+     * the menu is a single advisory result the user confirms with Return/Tab —
+     * an autocomplete list (link/wikilink) leaves this off so plain Enter keeps
+     * its normal editing meaning until the user deliberately selects a row.
+     */
+    autoActivate?: boolean;
 }
 
 class CaretSuggestController {
@@ -191,6 +199,9 @@ class CaretSuggestController {
             },
             (picked) => this.pick(picked),
         );
+        // Advisory single-result menus (calc) pre-select their row so Return/Tab
+        // confirm it directly; moveActive(1) lifts the highlight from -1 to 0.
+        if (this.menu && this.spec.autoActivate) { this.menu.moveActive(1); }
     }
 
     /** Viewport coordinates of the caret (menu anchor). */
@@ -229,16 +240,20 @@ class CaretSuggestController {
             return;
         }
 
-        if (e.key === "Enter") {
+        if (e.key === "Enter" || e.key === "Tab") {
             if (this.menu.pickActive()) {
+                // A highlighted row exists (always so for an autoActivate menu;
+                // for a link/wikilink list only after an arrow key or hover).
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
-            } else {
+            } else if (e.key === "Enter") {
                 // No highlight: Enter keeps its normal editing meaning, but
                 // the menu must not outlive the block it was anchored in.
                 this.closeMenu();
             }
+            // A Tab with no highlight falls through to normal tab handling
+            // (indent); the menu survives and the next transaction re-evaluates.
             return;
         }
 

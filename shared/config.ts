@@ -69,6 +69,10 @@ export interface BirtaConfig extends ProofreadConfig {
     /** Nested `floatingToolbar.items` read; same merge rule as toolbarPlacements. */
     floatingToolbarItems: Record<string, boolean>;
     smartLinks: boolean;
+    /** Inline calc-on-`=` master gate (birta.calc.enabled). */
+    calcEnabled: boolean;
+    /** Insert the result on `=` instead of suggesting it (birta.calc.autoInsert). */
+    calcAutoInsert: boolean;
     imageLocalPath: string;
 }
 
@@ -121,6 +125,8 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     floatingToolbarEnabled: "floatingToolbar.enabled",
     floatingToolbarItems: "floatingToolbar.items",
     smartLinks: "smartLinks",
+    calcEnabled: "calc.enabled",
+    calcAutoInsert: "calc.autoInsert",
     imageLocalPath: "imageLocalPath",
 };
 
@@ -179,5 +185,8 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     floatingToolbarEnabled: true,
     floatingToolbarItems: {},
     smartLinks: true,
+    // Calc: the feature ships on, but advisory (no silent mutation) by default.
+    calcEnabled: true,
+    calcAutoInsert: false,
     imageLocalPath: "",
 };

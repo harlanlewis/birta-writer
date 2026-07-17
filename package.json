@@ -1824,6 +1824,18 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.smartLinks.description%"
+                },
+                "birta.calc.enabled": {
+                    "order": 107,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.calc.enabled.description%"
+                },
+                "birta.calc.autoInsert": {
+                    "order": 108,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.calc.autoInsert.description%"
                 }
             }
         }
