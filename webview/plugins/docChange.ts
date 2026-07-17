@@ -22,12 +22,33 @@
  * "content actually changed" — no walk, no compare. Unlike plugin-listener this
  * does NOT skip `addToHistory: false` transactions: a transaction that changes
  * the doc must reach the save pipeline however it is tagged, since the tag
- * governs undo history, not persistence. Subscribers that need to distinguish
- * an inbound external change from a user edit do so at their own layer (see
- * `_applyingExternal` in editor.ts).
+ * governs undo history, not persistence.
+ *
+ * Subscribers that need to distinguish an inbound external change from a user
+ * edit do so at their own layer, and the two layers deliberately use two
+ * mechanisms for two different questions (MAR-152):
+ *   - "is THIS TRANSACTION part of a sync?" → the `EXTERNAL_SYNC_META`
+ *     transaction meta (set by externalSync.ts, read by slashMenu's history
+ *     gate);
+ *   - "is this doc change CAUSED BY the sync?" → `_applyingExternal` in
+ *     editor.ts, a flag spanning the synchronous dispatch. These are not
+ *     interchangeable: capturing the meta into plugin state here was tried
+ *     (2026-07-17) and failed savePipeline's no-echo pin, because plugins
+ *     react to a sync by dispatching NEW transactions reentrantly — those
+ *     carry neither the meta nor ProseMirror's `appendedTransaction` stamp,
+ *     so no per-transaction provenance can cover the span. The flag's
+ *     synchronous-dispatch assumption is itself pinned by that same test: an
+ *     async refactor of the sync path would un-suppress the echo and turn
+ *     the test red.
  */
 import { Plugin, PluginKey } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
+
+/** The transaction meta marking an inbound external sync. One definition —
+ * set by externalSync.ts, read by per-transaction consumers (slashMenu's
+ * history gate). Span-scoped consumers use editor.ts's `_applyingExternal`
+ * instead — see the module header for why the two cannot be unified. */
+export const EXTERNAL_SYNC_META = "external-sync";
 
 export const docChangeKey = new PluginKey("birta-doc-change");
 

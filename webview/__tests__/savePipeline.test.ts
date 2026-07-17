@@ -320,7 +320,11 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
         // The content came FROM the file, so a save would be a pointless write.
         // plugin-listener used to skip these for free by ignoring
         // `addToHistory: false`; docChangePlugin reports every doc change, so
-        // editor.ts suppresses the request explicitly (_applyingExternal).
+        // editor.ts suppresses the request explicitly (_applyingExternal — the
+        // span-scoped mechanism MAR-152 settled on after the per-transaction
+        // meta capture failed THIS test on a reentrant plugin fix-up). This
+        // test also pins the flag's synchronous-dispatch assumption: an async
+        // sync path would un-suppress the echo and fail here.
         //
         // Asserting only on posted bytes would pin NOTHING: _applyExternalNow
         // re-baselines _savedMarkdown before the scheduler's (async) leading

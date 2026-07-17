@@ -151,10 +151,19 @@ let _interactionListenerAdded = false;
 let _isSettled = false;
 
 // True only for the synchronous span in which an INBOUND external change is
-// being dispatched. ProseMirror's dispatch runs plugin views synchronously, so
-// this is precisely scoped to the external-sync transaction and read by the
-// doc-change subscriber to keep that change from echoing back as a save (see
-// _applyExternalNow).
+// being dispatched, read by the doc-change subscriber to keep that change from
+// echoing back as a save (see _applyExternalNow).
+//
+// Why a flag and not the EXTERNAL_SYNC_META transaction meta (MAR-152): the
+// meta answers "is this TRANSACTION part of a sync?", but this question is
+// "is this doc change CAUSED BY the sync?" — plugins react to the sync by
+// dispatching NEW transactions reentrantly (observed empirically: capturing
+// the meta into docChange plugin state, even with appendedTransaction root
+// attribution, failed savePipeline's no-echo pin on exactly such a reentrant
+// fix-up). Only a span over the synchronous dispatch covers derived work.
+// The synchronous assumption this relies on is itself pinned: an async
+// refactor of applyExternalSync would un-suppress the echo and turn
+// savePipeline's "should not even REQUEST a sync" test red.
 let _applyingExternal = false;
 
 // IME composition state, hoisted to module scope so inbound external syncs can
@@ -246,6 +255,8 @@ const _scheduler = createSyncScheduler({
  *     echo a no-op at syncNow()'s equality check anyway, but that is a
  *     property of the diff, not a decision; suppressing the request outright
  *     keeps the intent explicit and saves a pointless O(document) serialize.
+ *     `_applyingExternal` is the span-scoped mechanism for this — see its
+ *     declaration for why the per-transaction meta cannot express it.
  * Views are still told about an external change — the doc really did change.
  */
 function onDocChanged(): void {
@@ -347,8 +358,11 @@ function _applyExternalNow(newMarkdown: string): boolean {
         return false;
     }
     // Scoped across the dispatch so the doc-change subscriber can tell this
-    // transaction from a user edit and not echo it back as a save. ProseMirror
-    // dispatches synchronously, so the flag is down again before this returns.
+    // transaction — and everything plugins reentrantly derive from it — from
+    // a user edit and not echo it back as a save. ProseMirror dispatches
+    // synchronously, so the flag is down again before this returns (an
+    // assumption pinned by savePipeline's no-echo test; see the flag's
+    // declaration).
     let applied: boolean;
     _applyingExternal = true;
     try {
