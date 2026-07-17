@@ -25,6 +25,7 @@ export const FLOATING_TOOLBAR_ITEM_IDS = [
     "inlineCode",
     "highlight",
     "link",
+    "sectionLink",
     "clearFormatting",
     "math",
 ] as const;

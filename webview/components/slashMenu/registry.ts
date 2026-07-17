@@ -23,6 +23,7 @@ import {
     IconEraser,
     IconFileCode,
     IconFootnote,
+    IconHash,
     IconHighlighter,
     IconImage,
     IconItalic,
@@ -171,6 +172,10 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "math", group: "insert", label: t("Inline Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula", "inline"], commandId: "insertMath" },
     { id: "mathBlock", group: "insert", label: t("Math Block"), icon: IconMath, hint: "$$", keywords: ["math", "latex", "katex", "equation", "formula", "block", "display"], commandId: "insertCodeBlock", args: "LaTeX" },
     { id: "link", group: "insert", label: t("Link"), icon: IconLink, hint: "[]()", keywords: ["link", "url", "anchor"], commandId: "insertLink" },
+    // In-note anchor link to a heading (MAR-176). Terse noun label per the slash
+    // convention; the verb-phrase "Link to Section" lives on the palette/tooltip.
+    // Search-revealed (like the other parity rows) so the browse list stays lean.
+    { id: "sectionLink", group: "insert", label: t("Section Link"), icon: IconHash, keywords: ["section", "anchor", "jump", "toc"], commandId: "insertSectionLink", searchOnly: true },
     { id: "footnote", group: "insert", label: t("Footnote"), icon: IconFootnote, hint: "[^]", keywords: ["footnote", "reference", "note"], commandId: "insertFootnote" },
     { id: "divider", group: "insert", label: t("Horizontal Rule"), icon: IconMinus, hint: "---", keywords: ["hr", "divider", "rule", "line", "separator"], commandId: "insertHorizontalRule" },
     // ── Inline formatting (toolbar parity; all search-revealed) ──

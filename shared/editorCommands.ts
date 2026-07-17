@@ -58,6 +58,10 @@ export const EDITOR_COMMANDS = [
     { id: "insertHorizontalRule", title: "Horizontal Rule", palette: true, sections: [] },
     { id: "insertTable", title: "Insert Table", palette: true, sections: [] },
     { id: "insertLink", title: "Insert/Edit Link", palette: true, sections: ["link"] },
+    // In-note anchor link (MAR-176): pick a heading, insert `[text](#slug)`.
+    // Palette-only (no right-click section) — the discoverable surfaces are the
+    // slash menu and the floating selection toolbar's own button.
+    { id: "insertSectionLink", title: "Link to Section", palette: true, sections: [] },
     { id: "insertImage", title: "Insert Image", palette: true, sections: [] },
     { id: "insertMath", title: "Insert Math", palette: true, sections: [] },
     { id: "insertFootnote", title: "Insert Footnote", palette: true, sections: [] },

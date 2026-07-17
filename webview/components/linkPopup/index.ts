@@ -13,7 +13,7 @@ import {
 } from "@/ui/icons";
 import { t } from "@/i18n";
 import { applyTooltip } from "@/ui/tooltip";
-import { slugify } from "@/utils/slug";
+import { slugify, slugifyHeadings } from "@/utils/slug";
 import { attachInputUndo } from "@/utils/inputUndo";
 import {
     attachLinkTargetComplete,
@@ -252,16 +252,14 @@ function findHeadingElement(id: string, container: HTMLElement): HTMLElement | n
 
     // Fallback: re-scan by slug (ProseMirror may have stripped the id attribute).
     // getHeadingText strips the gutter chrome — raw textContent would include
-    // the "##" marker glyphs and corrupt every slug.
-    const headings = container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6");
-    const counts = new Map<string, number>();
-    for (const h of Array.from(headings)) {
-        const base = slugify(getHeadingText(h));
-        if (!base) continue;
-        const count = counts.get(base) ?? 0;
-        const slug = count === 0 ? base : `${base}-${count}`;
-        counts.set(base, count + 1);
-        if (slug === id) return h;
+    // the "##" marker glyphs and corrupt every slug. The slug (incl. the `-N`
+    // duplicate suffix) is computed by the shared slugifyHeadings, the SAME code
+    // the section-link picker uses to MINT `#slug` hrefs — so a link to the
+    // second "Foo" resolves to the second "Foo" and never the first.
+    const headings = Array.from(container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6"));
+    const slugs = slugifyHeadings(headings.map((h) => getHeadingText(h)));
+    for (let i = 0; i < headings.length; i++) {
+        if (slugs[i] === id) return headings[i];
     }
     return null;
 }

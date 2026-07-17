@@ -561,6 +561,7 @@ describe("selection toolbar per-item visibility", () => {
             inlineCode: false,
             highlight: false,
             link: false,
+            sectionLink: false,
             clearFormatting: false,
             math: false,
         });

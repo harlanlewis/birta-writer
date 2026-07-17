@@ -93,6 +93,7 @@
   "command.editor.insertHorizontalRule.title": "Horizontal Rule",
   "command.editor.insertTable.title": "Insert Table",
   "command.editor.insertLink.title": "Insert/Edit Link",
+  "command.editor.insertSectionLink.title": "Link to Section",
   "command.editor.insertImage.title": "Insert Image",
   "command.editor.insertMath.title": "Insert Math",
   "command.editor.insertFootnote.title": "Insert Footnote",

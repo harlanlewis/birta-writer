@@ -5,4 +5,4 @@
  * must agree with in-page anchors byte-for-byte). Webview imports keep this
  * path.
  */
-export { slugify } from "../../shared/slug";
+export { slugify, slugifyHeadings } from "../../shared/slug";

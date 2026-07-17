@@ -50,6 +50,7 @@ import {
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { openBlockMenuAtCaret } from "@/components/blockMenu";
+import { openSectionLinkPicker } from "@/components/sectionLink";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { getView, lift } from "@/pm";
 import { liftListItem } from "@/pm";
@@ -541,6 +542,9 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertHorizontalRule: (getEditor) => callCmd(getEditor, insertHrCommand),
     insertTable: (getEditor) => callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
     insertLink: () => host.openLinkPrompt?.(),
+    // Capture the selection/caret and open the heading picker; picking inserts
+    // `[text](#slug)` via the shared link editor (see components/sectionLink).
+    insertSectionLink: (getEditor) => runProse(getEditor, (view) => openSectionLinkPicker(view)),
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),
     insertFootnote: (getEditor) => insertFootnote(getEditor),

@@ -13,6 +13,7 @@ import {
     getAllHeadings,
     findHeadingPos,
     findActiveHeading,
+    collectDocHeadings,
 } from "@/utils/headingUtils";
 import { initTocDnd } from "./dnd";
 
@@ -442,28 +443,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                 return outlineHeadings;
             }
         }
-        const headings: HeadingEntry[] = [];
-        doc.nodesBetween(
-            0,
-            doc.content.size,
-            (node, pos) => {
-                if (!node.isTextblock) {
-                    return true; // a container — keep descending
-                }
-                if (node.type.name === "heading") {
-                    const text = node.textContent.trim();
-                    if (text) {
-                        headings.push({
-                            level: node.attrs["level"] as number,
-                            text,
-                            pos,
-                            atDocRoot: doc.resolve(pos).depth === 0,
-                        });
-                    }
-                }
-                return false; // never walk a textblock's inline content
-            },
-        );
+        // The doc walk itself is shared with the section-link picker
+        // (collectDocHeadings); only `atDocRoot` — which the TOC alone needs
+        // for its drag/drop model — is derived here, on the slow path that
+        // runs only when the outline's structure actually changed.
+        const headings: HeadingEntry[] = collectDocHeadings(doc).map((h) => ({
+            ...h,
+            atDocRoot: doc.resolve(h.pos).depth === 0,
+        }));
         outlineDoc = doc;
         outlineHeadings = headings;
         return headings;

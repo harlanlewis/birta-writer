@@ -10,9 +10,47 @@
  * - Find the document position corresponding to a heading
  */
 
-import type { EditorView } from "../pm";
+import type { EditorView, Node as PmNode } from "../pm";
 
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
+
+/** One heading pulled from the document model: its level, trimmed text, and
+ *  the position of the heading node itself (its nav/anchor target). */
+export interface DocHeading {
+    level: number;
+    text: string;
+    pos: number;
+}
+
+/**
+ * Walk the ProseMirror document and collect its headings in document order,
+ * skipping empty ones. Reads the DOC MODEL, never the rendered DOM: `textContent`
+ * here is the clean heading text, whereas the DOM's textContent would include
+ * the `##` gutter-marker glyphs and corrupt every slug.
+ *
+ * This is the shared outline walk behind BOTH the table of contents (whose
+ * getHeadings wraps it with position caching) and the section-link picker, so
+ * the two can never disagree about what the document's headings are. The walk
+ * scales with BLOCKS, not characters: returning false at every textblock prunes
+ * descent into inline content, and a heading's content is inline, so it can
+ * never hide inside another textblock.
+ */
+export function collectDocHeadings(doc: PmNode): DocHeading[] {
+    const headings: DocHeading[] = [];
+    doc.nodesBetween(0, doc.content.size, (node, pos) => {
+        if (!node.isTextblock) {
+            return true; // a container — keep descending
+        }
+        if (node.type.name === "heading") {
+            const text = node.textContent.trim();
+            if (text) {
+                headings.push({ level: node.attrs["level"] as number, text, pos });
+            }
+        }
+        return false; // never walk a textblock's inline content
+    });
+    return headings;
+}
 
 /**
  * Get the bottom position of the top toolbar (0 when hidden via toolbar.visible).

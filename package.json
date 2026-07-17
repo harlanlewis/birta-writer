@@ -204,6 +204,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.insertSectionLink",
+                "title": "%command.editor.insertSectionLink.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.insertImage",
                 "title": "%command.editor.insertImage.title%",
                 "category": "Birta Writer"
@@ -794,6 +799,10 @@
                 },
                 {
                     "command": "birta.editor.insertLink",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.insertSectionLink",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
@@ -1786,6 +1795,12 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Floating palette: show the Insert/Edit Link button."
+                },
+                "birta.floatingToolbar.items.sectionLink": {
+                    "order": 63,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Link to Section button (anchor link to a heading)."
                 },
                 "birta.floatingToolbar.items.clearFormatting": {
                     "order": 61,
