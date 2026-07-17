@@ -10,6 +10,8 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import { gfmFidelity } from "../serialization";
+import { markdownFormat } from "../format/markdown";
 
 const WEBVIEW = path.resolve(__dirname, "..");
 // serialization.ts defines the bundle and only names `.use(gfm)` in prose.
@@ -51,8 +53,16 @@ describe("gfm is only wired through the gfmFidelity bundle (MAR-143)", () => {
         ).toEqual([]);
     });
 
-    it("production editor.ts should adopt the gfmFidelity bundle", () => {
+    it("the production format module should adopt the gfmFidelity bundle", () => {
+        // editor.ts registers presets through the FormatModule seam (MAR-41),
+        // so the adoption check lives on the module: its presets must include
+        // the bundle BY IDENTITY — a lookalike `[gfm, ...]` array would not
+        // pass, which is exactly the divergence this guard exists to catch.
+        expect(markdownFormat.presets).toContain(gfmFidelity);
+    });
+
+    it("production editor.ts should build from the markdown format module", () => {
         const src = fs.readFileSync(path.join(WEBVIEW, "editor.ts"), "utf8");
-        expect(stripComments(src)).toContain(".use(gfmFidelity)");
+        expect(stripComments(src)).toContain("markdownFormat");
     });
 });

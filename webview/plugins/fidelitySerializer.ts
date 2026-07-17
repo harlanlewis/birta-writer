@@ -5,7 +5,7 @@
  * Vendored from `@milkdown/transformer@7.21.2`
  * (`node_modules/@milkdown/transformer/src/serializer/state.ts`, plus the
  * unexported `SerializerStackElement` from `stack-element.ts`). Everything is
- * verbatim except two behavioral deltas — RE-DIFF AGAINST THE PACKAGE SOURCE
+ * verbatim except three behavioral deltas — RE-DIFF AGAINST THE PACKAGE SOURCE
  * ON EVERY MILKDOWN UPGRADE:
  *
  * (a) Links open outermost. The stock `#runNode` sorts a node's marks by
@@ -15,19 +15,6 @@
  *     never merge. Here mark types `link` and `link_ref` sort as priority 25,
  *     so every segment of a formatted link serializes as
  *     `link{...formatting...}` and `#maybeMergeChildren` can rejoin them.
- *
- * (c) `spread` is coerced to a real boolean on `list` / `listItem` mdast
- *     nodes. Milkdown's list schemas store the ProseMirror `spread` attr as a
- *     STRING ("true"/"false") — the parse runner does `` `${node.spread}` ``
- *     and the toMarkdown runner passes that straight through as the mdast
- *     node's `spread` prop. mdast-util-to-markdown's `joinDefaults` only
- *     tightens list output when `typeof parent.spread === 'boolean'` (see
- *     `mdast-util-to-markdown/lib/join.js`); a string skips that branch and the
- *     items fall back to the loose `\n\n` separator. So a tight list
- *     (`- a\n- b`) loosened to `- a\n\n- b` on every raw round trip — top-level,
- *     inside blockquotes, and inside directives/asides alike. Coercing the
- *     prop back to a boolean here keeps tight lists tight and loose lists loose
- *     by construction (MAR-48), instead of relying on minimalDiff protection.
  *
  * (b) Edge-space trimming is deferred until after merging. The stock
  *     `#closeMark` hoists leading/trailing spaces out of EVERY mark's
@@ -43,6 +30,26 @@
  *     `emphasis`, `delete`), from their first/last DIRECT text child into the
  *     parent's child list. `link` / `linkReference` / `inlineCode` are never
  *     trimmed — spaces are legal at their edges.
+ *
+ * (c) `spread` is coerced to a real boolean on `list` / `listItem` mdast
+ *     nodes. Milkdown's list schemas store the ProseMirror `spread` attr as a
+ *     STRING ("true"/"false") — the parse runner does `` `${node.spread}` ``
+ *     and the toMarkdown runner passes that straight through as the mdast
+ *     node's `spread` prop. mdast-util-to-markdown's `joinDefaults` only
+ *     tightens list output when `typeof parent.spread === 'boolean'` (see
+ *     `mdast-util-to-markdown/lib/join.js`); a string skips that branch and the
+ *     items fall back to the loose `\n\n` separator. So a tight list
+ *     (`- a\n- b`) loosened to `- a\n\n- b` on every raw round trip — top-level,
+ *     inside blockquotes, and inside directives/asides alike. Coercing the
+ *     prop back to a boolean here keeps tight lists tight and loose lists loose
+ *     by construction (MAR-48), instead of relying on minimalDiff protection.
+ *
+ * NOT a vendoring delta: the optional whole-document `postSerialize` hook the
+ * factory takes (`createFidelitySerializerPlugin`) is an INJECTED seam, not a
+ * patch to vendored logic — the state itself is format-agnostic, and the
+ * format module supplies the pass (markdown injects the org-cookie unescape,
+ * MAR-131; see webview/format/markdown). It runs on the returned closure's
+ * output, outside every vendored code path.
  *
  * `serializerMatchError` lives in `@milkdown/exception`, which is not a
  * direct dependency under pnpm's strict layout; a plain `Error` replaces it.
@@ -65,7 +72,6 @@ import type {
     Serializer,
 } from "@milkdown/transformer";
 import { Stack, StackElement } from "@milkdown/transformer";
-import { unescapeOrgCookies } from "../utils/minimalDiff";
 import type { Editor } from "@milkdown/core";
 import {
     SerializerReady,
@@ -129,16 +135,22 @@ export class FidelitySerializerState extends Stack<
     /// Get the schema of state.
     readonly schema: Schema;
 
-    /// Create a serializer from schema and remark instance.
-    static create = (schema: Schema, remark: RemarkParser): Serializer => {
+    /// Create a serializer from schema and remark instance. The optional
+    /// `postSerialize` is the format-supplied whole-document post-pass (see
+    /// the header note): it runs here — the one point where the WHOLE
+    /// serialized document exists — so a pass can be document-context-aware
+    /// (markdown's org-cookie unescape needs to see every `[label]:`
+    /// definition and every fence; MAR-131).
+    static create = (
+        schema: Schema,
+        remark: RemarkParser,
+        postSerialize?: (serialized: string) => string,
+    ): Serializer => {
         const state = new this(schema);
         return (content: Node) => {
             state.run(content);
-            // Org-cookie unescape (MAR-131) runs here — the one point where
-            // the WHOLE serialized document exists, which the pass needs to
-            // be definition-aware (a `[label]:` anywhere makes `[label]` a
-            // live reference) and fence-aware. See unescapeOrgCookies.
-            return unescapeOrgCookies(state.toString(remark));
+            const out = state.toString(remark);
+            return postSerialize ? postSerialize(out) : out;
         };
     };
 
@@ -473,16 +485,29 @@ export class FidelitySerializerState extends Stack<
 }
 
 /**
- * Swap the fidelity serializer into `serializerCtx` once the stock one is
- * ready. Consumers must read the slice at call time (`getMarkdown()` does;
- * see webview/editor.ts for the listener wiring) — a listener that captures
- * the serializer in a closure at `SerializerReady` may still hold the stock
- * one.
+ * Build a plugin that swaps the fidelity serializer into `serializerCtx` once
+ * the stock one is ready, applying the format-supplied `postSerialize` pass
+ * (if any) to every serialization. Consumers must read the slice at call time
+ * (`getMarkdown()` does; see webview/editor.ts for the listener wiring) — a
+ * listener that captures the serializer in a closure at `SerializerReady` may
+ * still hold the stock one.
+ *
+ * The pass is a parameter (not an import) so this file stays free of any
+ * format-specific dependency: markdown's preset instantiates it with the
+ * org-cookie unescape in serialization.ts.
  */
-export const fidelitySerializerPlugin: MilkdownPlugin = (ctx) => async () => {
-    await ctx.wait(SerializerReady);
-    ctx.set(
-        serializerCtx,
-        FidelitySerializerState.create(ctx.get(schemaCtx), ctx.get(remarkCtx)),
-    );
-};
+export function createFidelitySerializerPlugin(
+    postSerialize?: (serialized: string) => string,
+): MilkdownPlugin {
+    return (ctx) => async () => {
+        await ctx.wait(SerializerReady);
+        ctx.set(
+            serializerCtx,
+            FidelitySerializerState.create(
+                ctx.get(schemaCtx),
+                ctx.get(remarkCtx),
+                postSerialize,
+            ),
+        );
+    };
+}
