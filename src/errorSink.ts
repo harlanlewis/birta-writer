@@ -31,20 +31,25 @@ export function reportError(source: string, error: unknown): void {
 }
 
 /**
- * Log a failure AND notify the user once. Deduped per distinct `message` and
- * capped at MAX_NOTIFICATIONS_PER_SESSION per session, so repeated failures
- * (a crash-looping webview, a watcher stuck on a bad file) surface as a single
- * non-spammy toast while every occurrence still reaches the console.
+ * Log a failure AND notify the user once. Deduped per distinct `dedupeKey`
+ * (defaults to the message) and capped at MAX_NOTIFICATIONS_PER_SESSION per
+ * session, so repeated failures (a crash-looping webview, a watcher stuck on
+ * a bad file) surface as a single non-spammy toast while every occurrence
+ * still reaches the console. Callers whose message is a constant should key
+ * by failure IDENTITY instead (the crash handler keys by document URI), so a
+ * genuinely different failure later in the session still warns — without the
+ * key, a constant message would cap the whole session at one toast.
  */
 export function reportErrorWithNotification(
     source: string,
     error: unknown,
     message: string,
+    dedupeKey: string = message,
 ): void {
     reportError(source, error);
-    if (notifiedMessages.has(message)) { return; }
+    if (notifiedMessages.has(dedupeKey)) { return; }
     if (notifiedMessages.size >= MAX_NOTIFICATIONS_PER_SESSION) { return; }
-    notifiedMessages.add(message);
+    notifiedMessages.add(dedupeKey);
     void vscode.window.showErrorMessage(message);
 }
 

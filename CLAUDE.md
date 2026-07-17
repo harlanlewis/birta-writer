@@ -66,11 +66,21 @@ For iterative debugging, F5 (Extension Development Host) is still faster — no 
 
 ```
 src/extension.ts                              — Extension entry; registers CustomEditorProvider
-src/MarkdownEditorProvider.ts                 — Provider core (message routing, autosave, revert)
+src/MarkdownEditorProvider.ts                 — Provider core (message routing, webview lifecycle)
+src/saveFlushController.ts                    — Save flush/seq protocol (stale guard, injectable timeout)
+src/config.ts + shared/config.ts              — The birta.* config seam: typed snapshot reads + settings write-back
+src/externalChanges.ts                        — External-change detection ADR + both mechanisms' constants
+src/errorSink.ts                              — Extension-side failure sink (console vs deduped notification)
+src/webviewMessaging.ts                       — Typed extension→webview send funnel
+src/webviewHtml.ts                            — Webview HTML/CSP construction
 src/utils/getNonce.ts                         — CSP nonce generation
 src/utils/imageService.ts                     — Local image save (MD5 dedup) + server upload
 webview/index.ts                              — WebView entry
-webview/editor.ts                             — Milkdown editor init (incl. keymap plugins)
+webview/pm.ts                                 — THE ProseMirror import funnel (raw @milkdown/prose surface + getView/getState); guarded by pmFunnel.test.ts
+webview/editor.ts                             — Editor composition root (chrome plugins + the injected FormatModule)
+webview/format/                               — FormatModule seam: per-format presets/serialization/NodeViews/diff profile (markdown is format #1)
+webview/crashReporter.ts                      — Webview crash boundary (posts structured crash messages)
+webview/editing/blockOps.ts                   — Published block-operations surface for UI components
 webview/serialization.ts                      — Serializer config (stringify options, table handler, pure-markdown preset)
 packages/minimal-diff/src/index.ts            — Format-agnostic minimal-diff engine (LCS merge + round-trip protection), workspace package
 webview/utils/minimalDiff.ts                  — Markdown FormatProfile (classifier + normalizers) + profile-bound minimal-diff API
