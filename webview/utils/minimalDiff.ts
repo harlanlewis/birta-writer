@@ -429,7 +429,10 @@ const glueChangesConstruct = (prev: string, next: string): boolean => {
 
 // ─── The markdown FormatProfile, and the profile-bound public API ───────────
 
-const markdownProfile: FormatProfile = {
+/** Markdown's `@birta/minimal-diff` profile. Exported for the FormatModule
+ * seam (webview/format/markdown) — chrome consumers go through the bound
+ * wrappers below or through `formatModule.formatProfile`. */
+export const markdownProfile: FormatProfile = {
     keyLines(lines) {
         const classes = classifyLines(lines);
         return lines.map((line, i) =>

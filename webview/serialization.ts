@@ -7,7 +7,7 @@ import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-comm
 import { gfm } from "@milkdown/preset-gfm";
 import { calloutsPlugin } from "./plugins/callouts";
 import { directivesPlugin } from "./plugins/directives";
-import { fidelitySerializerPlugin } from "./plugins/fidelitySerializer";
+import { createFidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { imageStringAttrPlugins, imageStringAttrReplacedPlugins } from "./plugins/image";
@@ -24,8 +24,20 @@ import {
     sourceStyleReplacedPlugins,
 } from "./plugins/sourceStyle";
 import { tableBreakReplacedPlugins, tableBreaksPlugin } from "./plugins/tableBreaks";
+import { unescapeOrgCookies } from "./utils/minimalDiff";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
+
+/**
+ * Markdown's fidelity serializer: the vendored, patched `SerializerState`
+ * (plugins/fidelitySerializer.ts — a format-agnostic factory) instantiated
+ * with markdown's whole-document post-pass, the org-cookie unescape
+ * (MAR-131). Bound here, inside the preset, so every construction site —
+ * production editor.ts and every test factory — serializes with the pass by
+ * construction (the MAR-143 argument). The same function is declared as
+ * `postSerialize` on the markdown FormatModule (webview/format/markdown).
+ */
+const fidelitySerializerPlugin = createFidelitySerializerPlugin(unescapeOrgCookies);
 
 /**
  * The commonmark preset minus two of Milkdown's remark transforms, plus our
@@ -48,11 +60,12 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * is absent from the preset's .d.ts, so it is filtered by its withMeta
  * displayName rather than by identity.
  *
- * `fidelitySerializerPlugin` (plugins/fidelitySerializer.ts) swaps the stock
- * `SerializerState` for a vendored, patched copy that keeps a link
- * containing bold/italic/code children serialized as ONE link instead of
+ * `fidelitySerializerPlugin` (built above from plugins/fidelitySerializer.ts)
+ * swaps the stock `SerializerState` for a vendored, patched copy that keeps a
+ * link containing bold/italic/code children serialized as ONE link instead of
  * several adjacent same-URL links, and defers emphasis edge-space trimming
- * until after adjacent mark segments have merged.
+ * until after adjacent mark segments have merged. It carries markdown's
+ * whole-document post-pass (org-cookie unescape) as an injected hook.
  *
  * `mathPlugin` (plugins/math.ts) adds KaTeX inline/block math: `remark-math`
  * for parsing/serializing `$...$` and `$$...$$`, a visitor that routes block
