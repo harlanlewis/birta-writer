@@ -17,11 +17,22 @@
  * We add the link with tr.addMark rather than reusing createLinkifyTr's
  * delete+reinsert (linkInputRule.ts): addMark preserves any inline formatting
  * inside the selection, and leaves a single history step so one undo removes it.
+ *
+ * Paste-unfurl (MAR-178) — pasting a bare URL onto an EMPTY selection: instead
+ * of dropping the raw URL as plain text, we insert `[url](url)` (a link mark
+ * over the URL text) synchronously as ONE history step, then ask the extension
+ * to fetch the page title (the webview is CSP/CORS-locked, so only the
+ * extension can). handlePaste is sync and cannot await the fetch, so the reply
+ * arrives later as `unfurlResult` and upgrades the link TEXT to the title
+ * (webview/unfurl.ts). It degrades gracefully: offline / no title / the feature
+ * off → the bare link simply stays. Gated by `birta.pasteUnfurl.enabled`.
  */
 import { Plugin } from "@/pm";
-import type { EditorState } from "@/pm";
+import type { EditorState, EditorView, MarkType } from "@/pm";
 import { $prose } from "@milkdown/utils";
 import { openLinkEditor } from "@/components/linkPopup";
+import { notifyUnfurl } from "@/messaging";
+import { registerPendingUnfurl } from "@/unfurl";
 
 /** Scheme URL (https://…, ftp://…, and the authority-less mailto:). */
 const SCHEME_URL_REGEX = /^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/|mailto:)\S+$/;
@@ -109,6 +120,65 @@ function rangeHasLinkOrCode(state: EditorState, from: number, to: number): boole
     return blocked;
 }
 
+/** Paste-unfurl is on by default; the flag is baked into __i18n at panel load. */
+function pasteUnfurlEnabled(): boolean {
+    return window.__i18n?.pasteUnfurl ?? true;
+}
+
+/** Random correlation id for one unfurl request (mirrors imageUpload's ids). */
+function newUnfurlId(): string {
+    return `unfurl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/**
+ * Empty-selection paste of a bare URL (paste-unfurl, MAR-178). Inserts
+ * `[url](url)` synchronously as one history step, fires the title fetch, and
+ * returns true to prevent the default plain-text paste. Returns false (plain
+ * paste) when the feature is off, the clipboard isn't a bare URL, or the caret
+ * is somewhere a link mark must not go (code block / inline code / inside an
+ * existing link).
+ */
+function handleEmptySelectionPaste(
+    view: EditorView,
+    state: EditorState,
+    linkType: MarkType,
+    event: ClipboardEvent,
+): boolean {
+    // Feature gate first: when off, do nothing extra and never touch the
+    // network (no `unfurlUrl` is ever posted).
+    if (!pasteUnfurlEnabled()) { return false; }
+
+    // Same narrow detection as the selection case: a single bare-URL token.
+    const clipboard = event.clipboardData?.getData("text/plain") ?? "";
+    const href = detectPastedLinkTarget(clipboard);
+    if (!href) { return false; }
+
+    const { $from } = state.selection;
+    // Never inside a code block, and never where the caret's active marks are
+    // code (inline code) or an existing link (no nested/adjacent link).
+    if ($from.parent.type.spec.code) { return false; }
+    const activeMarks = state.storedMarks ?? $from.marks();
+    if (activeMarks.some((m) => m.type === linkType || m.type.spec.code)) { return false; }
+
+    // Insert the URL text carrying a link mark = `[url](url)`. One dispatch =
+    // one history step. Restoring the pre-insert stored marks keeps the link
+    // from extending to whatever the user types next (mirrors createLinkifyTr).
+    const from = state.selection.from;
+    const tr = state.tr;
+    tr.insertText(href, from);
+    tr.addMark(from, from + href.length, linkType.create({ href, title: null }));
+    tr.setStoredMarks([...activeMarks]);
+    view.dispatch(tr);
+
+    // Fire the fetch and register the pending upgrade. `from` breaks ties if the
+    // live-doc search later finds more than one bare link to the same URL.
+    const id = newUnfurlId();
+    registerPendingUnfurl(id, href, from);
+    notifyUnfurl(id, href);
+
+    return true; // handled: prevent the default plain-text paste
+}
+
 export const pasteLinkPlugin = $prose(() =>
     new Plugin({
         props: {
@@ -118,7 +188,9 @@ export const pasteLinkPlugin = $prose(() =>
                 if (!linkType) { return false; }
 
                 const { selection } = state;
-                if (selection.empty) { return false; }
+                if (selection.empty) {
+                    return handleEmptySelectionPaste(view, state, linkType, event);
+                }
 
                 // Cheapest, most selective gate first: the vast majority of
                 // pastes over a selection are not a URL, so reject on the

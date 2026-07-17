@@ -33,6 +33,7 @@ import {
     handleImageUploadError,
     handleProjectImagesList,
 } from "./imageUpload";
+import { handleUnfurlResult } from "./unfurl";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -258,6 +259,11 @@ export function createMessageHandlers(
         },
         imagePathResolved(msg) {
             dispatchImagePathResolved(msg.id, msg.webviewUri);
+        },
+        unfurlResult(msg) {
+            // Paste-unfurl reply: upgrade the bare `[url](url)` to `[title](url)`
+            // in the live doc (or keep the bare link when title is null).
+            handleUnfurlResult(getEditorView(), msg.id, msg.title);
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);

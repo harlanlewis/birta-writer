@@ -26,6 +26,7 @@ import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtm
 import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { scanHeadings } from "./utils/headingScan";
+import { extractOgTitle } from "./utils/openGraph";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
@@ -53,6 +54,58 @@ export function isSafeExternalUrl(rawUrl: string): boolean {
 // Re-exported for existing consumers/tests; the implementation moved to
 // src/webviewHtml.ts with the rest of the HTML bootstrap (MAR-168).
 export { escapeHtmlAttr };
+
+/**
+ * Paste-unfurl fetch bounds (MAR-178). The webview shows the bare link the
+ * instant it's pasted, so the title fetch is pure enhancement — it must be
+ * strictly time- and size-bounded and never able to hang the extension host.
+ *
+ * - TIMEOUT aborts a slow/unresponsive host; the webview also has its own
+ *   backstop timeout so a dropped reply still resolves to "keep the bare link".
+ * - MAX_BYTES caps how much of the response body we read: a page's title lives
+ *   in <head> near the top, so a small budget finds it while a huge or
+ *   streaming body can never balloon the parse.
+ */
+const UNFURL_FETCH_TIMEOUT_MS = 5000;
+const UNFURL_MAX_BYTES = 512 * 1024;
+
+/**
+ * Read at most `maxBytes` of a fetch Response body as UTF-8 text, then stop.
+ * Streaming the body and bailing early bounds the parse cost regardless of the
+ * page's real size (a title lives in <head>, near the top). Falls back to a
+ * plain `.text()` when the body isn't a readable stream (e.g. a stubbed
+ * Response in a unit test), slicing the result to the same budget.
+ */
+async function readCappedText(res: Response, maxBytes: number): Promise<string> {
+    const reader = res.body?.getReader?.();
+    if (!reader) {
+        return (await res.text()).slice(0, maxBytes);
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+        while (total < maxBytes) {
+            const { done, value } = await reader.read();
+            if (done) { break; }
+            if (value) {
+                chunks.push(value);
+                total += value.length;
+            }
+        }
+    } finally {
+        // Stop the transfer once we have enough (or on any read error).
+        try { await reader.cancel(); } catch { /* already closed */ }
+    }
+    const merged = new Uint8Array(Math.min(total, maxBytes));
+    let offset = 0;
+    for (const chunk of chunks) {
+        if (offset >= merged.length) { break; }
+        const take = Math.min(chunk.length, merged.length - offset);
+        merged.set(chunk.subarray(0, take), offset);
+        offset += take;
+    }
+    return new TextDecoder("utf-8").decode(merged);
+}
 
 export class MarkdownEditorProvider
     implements vscode.CustomTextEditorProvider {
@@ -680,6 +733,18 @@ export class MarkdownEditorProvider
                     case "resolveImagePath":
                         if (message.id && message.relPath) {
                             this._handleResolveImagePath(document, panel, uriKey, message.id, message.relPath);
+                        }
+                        break;
+                    case "unfurlUrl":
+                        // Paste-unfurl: the webview already inserted `[url](url)`;
+                        // fetch the page title (extension-side, past the webview's
+                        // CSP/CORS) and reply so it can upgrade to `[title](url)`.
+                        // _handleUnfurl always replies (with a null title on any
+                        // failure); the .catch is a backstop for a post to a
+                        // disposed panel.
+                        if (message.id && message.url) {
+                            this._handleUnfurl(panel, message.id, message.url)
+                                .catch((err) => reportError("unfurlUrl", err));
                         }
                         break;
                     case "requestFmSuggestions":
@@ -1365,6 +1430,75 @@ export class MarkdownEditorProvider
             const errMsg = e instanceof Error ? e.message : String(e);
             postToWebview(panel.webview, { type: 'imageUploadError', id, error: errMsg });
             vscode.window.showErrorMessage(vscode.l10n.t('Failed to save image: {0}', errMsg));
+        }
+    }
+
+    /**
+     * Paste-unfurl (MAR-178): fetch the page title for a pasted URL and reply so
+     * the webview can upgrade its optimistically-inserted `[url](url)` to
+     * `[title](url)`. ALWAYS replies — a null title (the failure/offline case) is
+     * a valid answer meaning "keep the bare link" — so the webview never waits on
+     * a lost message. The fetch itself is confined to `_fetchUnfurlTitle`, which
+     * swallows and logs its own errors; this method only routes the reply.
+     */
+    private async _handleUnfurl(
+        panel: vscode.WebviewPanel,
+        id: string,
+        url: string,
+    ): Promise<void> {
+        const title = await this._fetchUnfurlTitle(url);
+        postToWebview(panel.webview, { type: "unfurlResult", id, url, title });
+    }
+
+    /**
+     * Fetch `url` and return its deterministically-parsed title, or null on ANY
+     * failure (non-http(s) scheme, bad URL, non-200, network error, timeout, no
+     * title in the HTML). Never throws: paste-unfurl is best-effort, so every
+     * failure degrades silently to the bare link and logs via the console-only
+     * error sink (never a toast).
+     *
+     * This is the extension's ONLY outbound network request. It is gated by
+     * `birta.pasteUnfurl.enabled` upstream (the webview never posts `unfurlUrl`
+     * when the setting is off), restricted to http(s), time-bounded by an
+     * AbortController, and size-bounded by reading at most UNFURL_MAX_BYTES.
+     */
+    private async _fetchUnfurlTitle(url: string): Promise<string | null> {
+        // http(s) only: never fetch file:, data:, vscode:, or other schemes a
+        // pasted string could carry.
+        let parsed: URL;
+        try {
+            parsed = new URL(url);
+        } catch {
+            return null;
+        }
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+            return null;
+        }
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), UNFURL_FETCH_TIMEOUT_MS);
+        try {
+            const res = await globalThis.fetch(url, {
+                signal: controller.signal,
+                redirect: "follow",
+                // Ask for HTML and identify ourselves; some hosts serve a leaner
+                // page (or refuse) without these. Kept minimal — no cookies.
+                headers: {
+                    accept: "text/html,application/xhtml+xml",
+                    "user-agent": "Birta-Writer/paste-unfurl",
+                },
+            });
+            if (!res.ok) {
+                return null;
+            }
+            const html = await readCappedText(res, UNFURL_MAX_BYTES);
+            return extractOgTitle(html);
+        } catch (e) {
+            // Offline, DNS failure, abort-on-timeout, malformed response, etc.
+            reportError("unfurlUrl", e);
+            return null;
+        } finally {
+            clearTimeout(timer);
         }
     }
 

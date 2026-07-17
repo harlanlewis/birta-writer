@@ -203,6 +203,12 @@ export type ToExtensionMessage =
     // as openFile, no side effects)
     | { type: "resolveLinkTarget"; id: string; path: string; wiki?: true }
     | { type: "resolveImagePath"; id: string; relPath: string }
+    // Bare URL pasted onto an EMPTY selection: the webview has already inserted
+    // `[url](url)` optimistically and asks the extension (the only side not
+    // blocked by the webview CSP/CORS) to fetch the page's Open Graph / <title>
+    // so the link text can be upgraded to the real title. `id` correlates the
+    // `unfurlResult` reply; `url` is the fetched target (http(s) only).
+    | { type: "unfurlUrl"; id: string; url: string }
     | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }
@@ -302,6 +308,12 @@ export type ToWebviewMessage =
     // absolute when outside the workspace, null for a smart-mode miss.
     | { type: "linkTargetResolved"; id: string; resolved: string | null }
     | { type: "imagePathResolved"; id: string; webviewUri: string }
+    // Reply to `unfurlUrl`: the deterministically-parsed page title, or null on
+    // any failure (offline, non-200, timeout, no title in the HTML). `id`
+    // correlates the request; `url` echoes the target so the webview can locate
+    // the un-upgraded bare link. A null `title` means the webview keeps the
+    // bare `[url](url)` it already inserted — the graceful, offline-safe default.
+    | { type: "unfurlResult"; id: string; url: string; title: string | null }
     | { type: "setTableWrap"; wrap: TableWrapMode }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }

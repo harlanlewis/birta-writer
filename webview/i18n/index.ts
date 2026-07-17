@@ -10,6 +10,8 @@ declare global {
             codeBlockAutoConvert?: boolean;
             /** Smart link resolution + wikilink autocomplete (birta.smartLinks). */
             smartLinks?: boolean;
+            /** Paste-unfurl: bare-URL paste fetches the page title (birta.pasteUnfurl.enabled). */
+            pasteUnfurl?: boolean;
             /** Inline calc-on-`=` master gate (birta.calc.enabled). */
             calcEnabled?: boolean;
             /** Auto-insert the calc result on `=` instead of suggesting (birta.calc.autoInsert). */

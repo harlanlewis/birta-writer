@@ -126,6 +126,15 @@ export function notifyResolveImagePath(id: string, relPath: string): void {
     vscode.postMessage({ type: "resolveImagePath", id, relPath });
 }
 
+/**
+ * Paste-unfurl (MAR-178): ask the extension to fetch `url`'s page title so the
+ * optimistically-inserted `[url](url)` can be upgraded to `[title](url)`. The
+ * reply arrives as an `unfurlResult` correlated by `id`.
+ */
+export function notifyUnfurl(id: string, url: string): void {
+    vscode.postMessage({ type: "unfurlUrl", id, url });
+}
+
 export function notifyFrontmatterUpdate(frontmatter: string): void {
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
 }

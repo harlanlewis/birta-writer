@@ -1849,6 +1849,12 @@
                     "default": true,
                     "description": "%config.smartLinks.description%"
                 },
+                "birta.pasteUnfurl.enabled": {
+                    "order": 106.5,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.pasteUnfurl.enabled.description%"
+                },
                 "birta.calc.enabled": {
                     "order": 107,
                     "type": "boolean",

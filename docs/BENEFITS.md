@@ -144,6 +144,16 @@ That only holds if the editor does the things you expect from VS Code:
 - **Your images never leave your machine.** Pasted and dropped images are stored
   locally in your workspace, deduplicated by content hash. **Why it matters:** no
   surprise uploads; the document is self-contained.
+- **One network request, and only one — the title of a URL you paste.** The
+  editor is otherwise fully offline. The single exception is paste-unfurl: when
+  you paste a bare URL with nothing selected, the extension fetches *that URL*
+  (and only that URL) to read the page's title, so it can insert `[title](url)`
+  instead of a bare link. It contacts the pasted URL's own host — no third-party
+  service, no analytics — reads only enough of the page to find its title, and
+  falls back to the plain link when the page is offline or untitled. **Why it
+  matters:** the one time the editor talks to the network is legible and
+  self-limited, and it's gated by `birta.pasteUnfurl.enabled` — turn it off and
+  nothing ever leaves your machine.
 
 ---
 

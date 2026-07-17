@@ -197,6 +197,7 @@ export function buildWebviewHtml(
     const debugMode = config.debugMode;
     const codeBlockAutoConvert = config.codeBlockAutoConvert;
     const smartLinks = config.smartLinks;
+    const pasteUnfurl = config.pasteUnfurlEnabled;
     const calcEnabled = config.calcEnabled;
     const calcAutoInsert = config.calcAutoInsert;
     const checklistSinkChecked = config.checklistSinkChecked;
@@ -215,7 +216,7 @@ export function buildWebviewHtml(
     // optional-chained so a stripped-down test context still resolves.
     const productName =
         (context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, calcEnabled, calcAutoInsert, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, pasteUnfurl, calcEnabled, calcAutoInsert, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

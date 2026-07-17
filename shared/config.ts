@@ -69,6 +69,13 @@ export interface BirtaConfig extends ProofreadConfig {
     /** Nested `floatingToolbar.items` read; same merge rule as toolbarPlacements. */
     floatingToolbarItems: Record<string, boolean>;
     smartLinks: boolean;
+    /**
+     * Paste-unfurl master gate (birta.pasteUnfurl.enabled): pasting a bare URL
+     * onto an empty selection fetches the page's Open Graph title and inserts
+     * `[title](url)`. When OFF, a bare-URL paste is a plain paste and NO network
+     * request is ever made.
+     */
+    pasteUnfurlEnabled: boolean;
     /** Inline calc-on-`=` master gate (birta.calc.enabled). */
     calcEnabled: boolean;
     /** Insert the result on `=` instead of suggesting it (birta.calc.autoInsert). */
@@ -132,6 +139,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     floatingToolbarEnabled: "floatingToolbar.enabled",
     floatingToolbarItems: "floatingToolbar.items",
     smartLinks: "smartLinks",
+    pasteUnfurlEnabled: "pasteUnfurl.enabled",
     calcEnabled: "calc.enabled",
     calcAutoInsert: "calc.autoInsert",
     checklistSinkChecked: "checklist.sinkChecked",
@@ -193,6 +201,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     floatingToolbarEnabled: true,
     floatingToolbarItems: {},
     smartLinks: true,
+    // Paste-unfurl ships ON (like smartLinks/calc): pasting a bare URL fetches
+    // the page title. It degrades to the plain link offline, and the gate turns
+    // the outbound request off entirely.
+    pasteUnfurlEnabled: true,
     // Calc: the feature ships on, but advisory (no silent mutation) by default.
     calcEnabled: true,
     calcAutoInsert: false,

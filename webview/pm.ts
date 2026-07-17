@@ -33,7 +33,7 @@ export { markRule, nodeRule } from "@milkdown/prose";
 
 // ─── prose/model: documents, nodes, marks, schema, positions ───
 export { DOMSerializer, Fragment, Schema, Slice } from "@milkdown/prose/model";
-export type { Mark, Node, NodeType, ResolvedPos } from "@milkdown/prose/model";
+export type { Mark, MarkType, Node, NodeType, ResolvedPos } from "@milkdown/prose/model";
 
 // ─── prose/state: editor state, selections, plugins, transactions ───
 export {
