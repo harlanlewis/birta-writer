@@ -1,7 +1,5 @@
 import * as path from "path";
-import * as os from "os";
 import * as vscode from "vscode";
-import { getNonce } from "./utils/getNonce";
 import { computeReplaceRange } from "./utils/textEdit";
 import { saveImageLocally } from "./utils/imageService";
 import { computeLineMap } from "./utils/lineMap";
@@ -10,8 +8,20 @@ import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSugge
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { DiskDriftController } from "./diskDrift";
 import { postToWebview } from "./webviewMessaging";
-import { getBirtaConfiguration, readBirtaConfig, readBirtaSetting, type BirtaConfig } from "./config";
-import { BIRTA_CONFIG_DEFAULTS } from "../shared/config";
+import {
+    getBirtaConfiguration,
+    readBirtaSetting,
+    readFoldingConfig,
+    getFontStacks,
+    getProofreadConfig,
+    getToolbarConfig,
+    getFloatingToolbarConfig,
+    resolveContentWidthConfig,
+} from "./config";
+import { SaveFlushController } from "./saveFlushController";
+import { watchExternalDocumentChanges } from "./externalChanges";
+import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtmlAttr } from "./webviewHtml";
+import { reportError } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { scanHeadings } from "./utils/headingScan";
 import { slugify } from "../shared/slug";
@@ -20,11 +30,9 @@ import { lintBlocks } from "./utils/harperService";
 import type { ToExtensionMessage, ToWebviewMessage, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset, TextCount } from "../shared/messages";
 import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
-import { resolveFontFamily, resolveFontStacks, clampFontSizePercent } from "../shared/fontPresets";
-import { resolveContentWidth, normalizeContentWidthMode, clampMaxWidthCh, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
-import { normalizeBlockHandlesMode, blockHandlesBodyClass } from "../shared/blockHandles";
-import { normalizeMermaidThemeMode } from "../shared/mermaid";
-import { normalizeFoldingControlsMode, foldingBodyClasses, DEFAULT_FOLDING_CONTROLS_MODE, type FoldingControlsMode } from "../shared/foldingControls";
+import { clampFontSizePercent } from "../shared/fontPresets";
+import { normalizeContentWidthMode, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
+import { normalizeBlockHandlesMode } from "../shared/blockHandles";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -42,20 +50,9 @@ export function isSafeExternalUrl(rawUrl: string): boolean {
     }
 }
 
-/**
- * Escape a string for interpolation into a double-quoted HTML attribute value.
- * Required for the content font stack: the built-in serif/sans/mono presets
- * (and user `fontFamily*` overrides) contain `"…"` around multi-word family
- * names, which would otherwise close the `style="…"` attribute and scatter the
- * family names as bogus attributes.
- */
-export function escapeHtmlAttr(value: string): string {
-    return value
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-}
+// Re-exported for existing consumers/tests; the implementation moved to
+// src/webviewHtml.ts with the rest of the HTML bootstrap (MAR-168).
+export { escapeHtmlAttr };
 
 export class MarkdownEditorProvider
     implements vscode.CustomTextEditorProvider {
@@ -77,35 +74,16 @@ export class MarkdownEditorProvider
     // edits (echoes of our own applyEdit) from genuine external changes.
     private readonly _lastSyncedText = new Map<string, string>();
 
-    // Authoritative sync version per document (key: uriKey). Bumped on every
-    // externalUpdate push (external text-editor edit, undo/redo, git, hot-exit
-    // restore). The webview echoes the version it last applied back as
-    // `baseSyncVersion`; a content update whose base doesn't match the current
-    // version was serialized against content we've since replaced, so it is
-    // dropped and the current state is re-pushed.
-    private readonly _syncVersion = new Map<string, number>();
+    // The flush/seq protocol bookkeeping (sync versions, applied-seq high-water
+    // marks, in-flight save flushes) lives in the SaveFlushController — see
+    // src/saveFlushController.ts for the invariants. Constructed in the
+    // constructor so the flush timeout stays injectable for tests.
+    private readonly _flush: SaveFlushController<vscode.TextEdit>;
 
     // Per-document promise chain serializing webview-originated WorkspaceEdits,
     // so a second update can never race the applyEdit (and its change event)
     // of the first.
     private readonly _editQueues = new Map<string, Promise<void>>();
-
-    // In-flight save flushes (onWillSaveTextDocument): correlation id → resolver
-    // called with the webview's `flushResult` reply. A save posts `flushSave`,
-    // parks its waitUntil promise here, and the reply (or a timeout) resolves it.
-    private readonly _pendingFlushes = new Map<
-        string,
-        (content: string, baseSyncVersion: number, seq: number) => void
-    >();
-    private _flushSeq = 0;
-
-    // Highest outbound-content `seq` (key: uriKey) whose content the extension
-    // has committed to the document. A webview `update` is applied only if its
-    // seq exceeds this; a save-flush bumps it. Because the flush's TextEdits
-    // bypass the per-document _editQueue (they're applied by VS Code as part of
-    // the save), this total order is what stops a stale update from reverting a
-    // fresher flush.
-    private readonly _appliedSeq = new Map<string, number>();
 
     // Notify-only detection of external disk edits: raises an advisory toolbar
     // badge when the file changes on disk while the document has unsaved edits.
@@ -349,7 +327,10 @@ export class MarkdownEditorProvider
 
     constructor(
         private readonly context: vscode.ExtensionContext,
-    ) {}
+        flushTimeoutMs: number = 1000,
+    ) {
+        this._flush = new SaveFlushController<vscode.TextEdit>(flushTimeoutMs);
+    }
 
     async resolveCustomTextEditor(
         document: vscode.TextDocument,
@@ -384,9 +365,8 @@ export class MarkdownEditorProvider
             this._imageUriMaps.delete(uriKey);
             this._initializedPanels.delete(uriKey);
             this._lastSyncedText.delete(uriKey);
-            this._syncVersion.delete(uriKey);
             this._editQueues.delete(uriKey);
-            this._appliedSeq.delete(uriKey);
+            this._flush.dispose(uriKey);
             // A disposed webview can't post a blur; clear its focus so the
             // context key can't latch true after the editor is gone (MAR-104).
             this._setWebviewFocus(uriKey, false);
@@ -405,12 +385,13 @@ export class MarkdownEditorProvider
                 ...(vscode.workspace.workspaceFolders?.map(f => f.uri) ?? []),
                 // Allow access to the directory containing the .md file (outside the workspace or untitled)
                 vscode.Uri.joinPath(document.uri, '..'),
-                ...this._getCustomResourceRoots(document.uri),
+                ...getCustomResourceRoots(document.uri),
             ],
         };
-        webviewPanel.webview.html = this._getHtmlForWebview(
+        webviewPanel.webview.html = buildWebviewHtml(
             webviewPanel.webview,
             document,
+            this.context,
         );
 
         // When the panel is activated (e.g. clicking an already-open file from global search), check and send the pending navigation line
@@ -480,7 +461,7 @@ export class MarkdownEditorProvider
                         this._lastSyncedText.set(uriKey, initContent);
                         // Reset the sync version so the webview's baseSyncVersion
                         // starts aligned with the extension.
-                        this._syncVersion.set(uriKey, 0);
+                        this._flush.resetVersion(uriKey);
                         postToWebview(webviewPanel.webview, {
                             type: "init",
                             content: displayContent,
@@ -511,8 +492,7 @@ export class MarkdownEditorProvider
                             // externalUpdate landed after it read the document).
                             // Drop it and re-push the current authoritative state
                             // so the webview re-bases.
-                            const currentVersion = this._syncVersion.get(uriKey) ?? 0;
-                            if (message.baseSyncVersion !== currentVersion) {
+                            if (!this._flush.isCurrentVersion(uriKey, message.baseSyncVersion)) {
                                 this._pushExternalUpdate(document, webviewPanel, uriKey);
                                 break;
                             }
@@ -520,15 +500,11 @@ export class MarkdownEditorProvider
                             const seq = message.seq;
                             void this._enqueueEdit(uriKey, async () => {
                                 // Ordering guard (checked at apply time, in queue
-                                // order): drop an update a save-flush has already
-                                // superseded, so it can never revert fresher content.
-                                if (seq <= (this._appliedSeq.get(uriKey) ?? -1)) { return; }
-                                // Advance the watermark now that we've committed to
-                                // this seq — even if the apply is a no-op — so it stays
-                                // a true monotonic high-water mark, matching the flush
-                                // path. (Later updates always carry a higher seq, so
-                                // this can never drop a legitimate one.)
-                                this._appliedSeq.set(uriKey, seq);
+                                // order, and claimed even when the apply turns out
+                                // to be a no-op — see claimSeq): drop an update a
+                                // save-flush has already superseded, so it can
+                                // never revert fresher content.
+                                if (!this._flush.claimSeq(uriKey, seq)) { return; }
                                 // Identical to the current document (e.g. serializer no-op echo): nothing to do
                                 const applied = await this._applyWebviewEdit(document, newContent);
                                 if (!applied) { return; }
@@ -541,8 +517,7 @@ export class MarkdownEditorProvider
                         // Stale-update rejection (same rule as "update"): a
                         // frontmatter edit serialized against replaced content is
                         // dropped and the current state re-pushed.
-                        const fmVersion = this._syncVersion.get(uriKey) ?? 0;
-                        if (message.baseSyncVersion !== fmVersion) {
+                        if (!this._flush.isCurrentVersion(uriKey, message.baseSyncVersion)) {
                             this._pushExternalUpdate(document, webviewPanel, uriKey);
                             break;
                         }
@@ -580,7 +555,8 @@ export class MarkdownEditorProvider
                     case "openFile": {
                         if (!message.path) break;
                         await this._handleOpenFile(document, uriKey, message.path, message.wiki === true)
-                            .catch(() => { /* open failures surface via VS Code's own UI */ });
+                            // Open failures surface via VS Code's own UI; log for diagnosis.
+                            .catch((err) => reportError("openFile", err));
                         break;
                     }
                     case "resolveLinkTarget": {
@@ -590,7 +566,7 @@ export class MarkdownEditorProvider
                             message.id,
                             message.path,
                             message.wiki === true,
-                        ).catch(() => { /* hint is best-effort */ });
+                        ).catch((err) => reportError("resolveLinkTarget", err)); // hint is best-effort
                         break;
                     }
                     case "switchToTextEditor": {
@@ -669,22 +645,25 @@ export class MarkdownEditorProvider
                                 message.data,
                                 message.mimeType ?? 'image/png',
                                 message.altText ?? '',
-                            ).catch(() => {});
+                            ).catch((err) => reportError("uploadImage", err));
                         }
                         break;
                     case "getProjectImages":
                         if (message.id) {
-                            this._handleGetProjectImages(document, panel, uriKey, message.id).catch(() => {});
+                            this._handleGetProjectImages(document, panel, uriKey, message.id)
+                                .catch((err) => reportError("getProjectImages", err));
                         }
                         break;
                     case "getPathSuggestions":
                         if (message.id && message.query !== undefined) {
-                            this._handleGetPathSuggestions(document, panel, message.id, message.query).catch(() => {});
+                            this._handleGetPathSuggestions(document, panel, message.id, message.query)
+                                .catch((err) => reportError("getPathSuggestions", err));
                         }
                         break;
                     case "getLinkTargetSuggestions":
                         if (message.id && message.query !== undefined) {
-                            this._handleGetLinkTargetSuggestions(document, panel, message.id, message.query).catch(() => {});
+                            this._handleGetLinkTargetSuggestions(document, panel, message.id, message.query)
+                                .catch((err) => reportError("getLinkTargetSuggestions", err));
                         }
                         break;
                     case "resolveImagePath":
@@ -694,13 +673,14 @@ export class MarkdownEditorProvider
                         break;
                     case "requestFmSuggestions":
                         if (message.key !== undefined) {
-                            this._handleRequestFmSuggestions(document, panel, message.key).catch(() => {});
+                            this._handleRequestFmSuggestions(document, panel, message.key)
+                                .catch((err) => reportError("requestFmSuggestions", err));
                         }
                         break;
                     case "tocWidth":
                         void this.context.globalState.update(
                             "tocWidth",
-                            this._getNumberSettingValue(message.width, 220, 150, 600),
+                            clampNumberSetting(message.width, 220, 150, 600),
                         );
                         break;
                     // Persisting triggers onDidChangeConfiguration in extension.ts,
@@ -750,9 +730,7 @@ export class MarkdownEditorProvider
                                     results,
                                 });
                             })
-                            .catch((err) => {
-                                console.error("[birta] harper lint failed", err);
-                            });
+                            .catch((err) => reportError("harper lint", err));
                         break;
                     case "clipboardWrite":
                         // Copy-as-HTML / copy-as-Markdown from the right-click menu.
@@ -762,13 +740,15 @@ export class MarkdownEditorProvider
                             void vscode.env.clipboard.writeText(message.data);
                         }
                         break;
-                    case "flushResult": {
+                    case "flushResult":
                         // Reply to an onWillSaveTextDocument flush: hand the parked
                         // waitUntil resolver the freshest serialized content.
-                        const resolve = this._pendingFlushes.get(message.id);
-                        if (resolve) { resolve(message.content, message.baseSyncVersion, message.seq); }
+                        this._flush.resolveFlush(message.id, {
+                            content: message.content,
+                            baseSyncVersion: message.baseSyncVersion,
+                            seq: message.seq,
+                        });
                         break;
-                    }
                     case "resolveSyncConflict":
                         // The disk-drift badge was clicked: offer the user the
                         // native reload/compare picker. Never edits the document.
@@ -795,38 +775,29 @@ export class MarkdownEditorProvider
 
         // Sync external document changes (text editor edits, undo/redo, git checkout,
         // disk changes picked up by VS Code, hot exit restore) into the WebView.
-        // The TextDocument is the single source of truth now, so listening to
-        // onDidChangeTextDocument replaces the old FileSystemWatcher + self-write
-        // suppression window: our own webview-originated WorkspaceEdits are
-        // recognized by comparing against the _lastSyncedText baseline instead.
-        let externalChangeTimer: ReturnType<typeof setTimeout> | undefined;
-        const changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
-            if (e.document.uri.toString() !== uriKey) { return; }
-            if (e.contentChanges.length === 0) { return; }
-            // Echo of a webview-originated applyEdit: the webview already has this text
-            if (e.document.getText() === this._lastSyncedText.get(uriKey)) { return; }
+        // The TextDocument is the single source of truth, so the listener rides
+        // onDidChangeTextDocument (mechanism A of the external-change seam — the
+        // unify-vs-divide ADR against diskDrift's watcher is in
+        // src/externalChanges.ts). Our own webview-originated WorkspaceEdits are
+        // recognized by comparing against the _lastSyncedText baseline.
+        const changeSubscription = watchExternalDocumentChanges(document, uriKey, {
+            isEcho: (text) => text === this._lastSyncedText.get(uriKey),
             // A genuine external change is now pending. Bump the sync version
-            // SYNCHRONOUSLY — before the 200ms debounce — so a webview `update`
-            // that was already in flight (serialized against the pre-change text,
+            // SYNCHRONOUSLY — before the debounce — so a webview `update` that
+            // was already in flight (serialized against the pre-change text,
             // carrying the old baseSyncVersion) is recognized as stale and
             // rejected rather than silently overwriting the external edit inside
-            // the debounce window. Without this, the version only bumped when the
-            // debounced push fired, leaving a ~200ms hole where a concurrent
-            // external edit (git checkout, format-on-save, external tool) could be
-            // lost. _pushExternalUpdate reads (does not re-bump) this version, so
-            // it stays a monotonic count of distinct external changes.
-            this._syncVersion.set(uriKey, (this._syncVersion.get(uriKey) ?? 0) + 1);
-            // Debounce: coalesce bursts (e.g. typing in a side-by-side text editor)
-            if (externalChangeTimer !== undefined) { clearTimeout(externalChangeTimer); }
-            externalChangeTimer = setTimeout(() => {
-                externalChangeTimer = undefined;
+            // the debounce window. _pushExternalUpdate reads (does not re-bump)
+            // this version, so it stays a monotonic count of distinct external
+            // changes.
+            onChangeObserved: () => this._flush.bumpVersion(uriKey),
+            onChangeSettled: () => {
                 const panel = this._webviewPanels.get(uriKey);
                 if (!panel) { return; }
-                const text = document.getText();
                 // The document settled back to the webview's state within the debounce window
-                if (text === this._lastSyncedText.get(uriKey)) { return; }
+                if (document.getText() === this._lastSyncedText.get(uriKey)) { return; }
                 this._pushExternalUpdate(document, panel, uriKey);
-            }, 200);
+            },
         });
         // Flush pending webview edits into the save. onWillSaveTextDocument
         // fires ONLY for a dirty document — the webview's eager leading-edge sync
@@ -840,13 +811,10 @@ export class MarkdownEditorProvider
         });
         // Dispose the subscriptions when the panel closes
         webviewPanel.onDidDispose(() => {
-            if (externalChangeTimer !== undefined) { clearTimeout(externalChangeTimer); }
             changeSubscription.dispose();
             willSaveSubscription.dispose();
             // Fail any parked flush so a save mid-teardown never hangs.
-            for (const [id, resolve] of this._pendingFlushes) {
-                if (id.startsWith("flush:" + uriKey + ":")) { resolve("", -1, -1); }
-            }
+            this._flush.failFlushes(uriKey);
         });
     }
 
@@ -869,7 +837,7 @@ export class MarkdownEditorProvider
         // listener (and only there), so a concurrent in-flight webview update is
         // rejected as stale before this debounced push runs. Read it here; do not
         // re-bump, or the count would drift ahead of the webview's baseline.
-        const version = this._syncVersion.get(uriKey) ?? 0;
+        const version = this._flush.currentVersion(uriKey);
         const displayContent = this._prepareContentForDisplay(text, document, panel, uriKey);
         const tableWrap = readBirtaSetting("tableWrap");
         postToWebview(panel.webview, {
@@ -921,8 +889,10 @@ export class MarkdownEditorProvider
      * onWillSaveTextDocument participant: ask the webview to serialize the live
      * document NOW and resolve with the TextEdits that make the about-to-be-saved
      * bytes match it. Returns [] fast when there's nothing to flush (no live/ready
-     * panel), and is bounded by a timeout so a wedged webview can never block the
-     * save — the document merely stays dirty and the next sync/save catches up.
+     * panel). The protocol (correlation, stale guards, the injectable safety
+     * timeout — reachable only when the webview can't serialize in time, e.g. a
+     * pathological multi-MB doc, MAR-137) lives in the SaveFlushController; this
+     * method contributes only the markdown-aware edit computation.
      */
     private _flushWebviewEdits(
         document: vscode.TextDocument,
@@ -932,67 +902,32 @@ export class MarkdownEditorProvider
         if (!panel || !this._initializedPanels.has(uriKey)) {
             return Promise.resolve([]);
         }
-        const id = `flush:${uriKey}:${++this._flushSeq}`;
-        return new Promise<vscode.TextEdit[]>((resolve) => {
-            const finish = (edits: vscode.TextEdit[]): void => {
-                clearTimeout(timer);
-                this._pendingFlushes.delete(id);
-                resolve(edits);
-            };
-            // Safety valve, well under VS Code's ~1.75s willSave budget: never
-            // hang a save on a wedged/slow webview. Reachable only when the
-            // webview can't serialize within 1s (a pathological multi-MB doc —
-            // see MAR-137). On expiry the save writes the current document (≤ one
-            // throttle window stale); the reply that lands late still re-baselines
-            // the webview, so the gap self-heals on the next real edit rather than
-            // on this save. The common case replies in a few ms.
-            const timer = setTimeout(() => finish([]), 1000);
-            this._pendingFlushes.set(id, (content, baseSyncVersion, seq) => {
-                this._computeFlushEdits(document, uriKey, content, baseSyncVersion, seq)
-                    .then(finish, () => finish([]));
-            });
-            try {
-                postToWebview(panel.webview, { type: "flushSave", id });
-            } catch {
-                finish([]); // panel disposed between the guard and the post
-            }
-        });
-    }
-
-    /**
-     * Turn a webview flush reply into the TextEdits a save should apply. Guards:
-     * a flush that raced an external change (stale baseSyncVersion) or one a newer
-     * update already applied (stale seq) yields no edits. Bumps `_appliedSeq` so a
-     * still-queued older update no-ops instead of reverting the saved content.
-     */
-    private async _computeFlushEdits(
-        document: vscode.TextDocument,
-        uriKey: string,
-        content: string,
-        baseSyncVersion: number,
-        seq: number,
-    ): Promise<vscode.TextEdit[]> {
-        const currentVersion = this._syncVersion.get(uriKey) ?? 0;
-        if (baseSyncVersion !== currentVersion) { return []; }
-        if (seq <= (this._appliedSeq.get(uriKey) ?? -1)) { return []; }
-        const newContent = this._prepareContentForSave(content, uriKey);
-        const replace = computeReplaceRange(document.getText(), newContent);
-        this._appliedSeq.set(uriKey, seq);
-        if (!replace) { return []; } // document already current — nothing to write
-        // Record the echo baseline BEFORE the save applies these edits, so the
-        // resulting onDidChangeTextDocument is recognized as our own (not an
-        // external change to re-push). (No tab-pin here: a save only fires on an
-        // already-dirty document, which the dirtying update already pinned.)
-        this._lastSyncedText.set(uriKey, newContent);
-        return [
-            vscode.TextEdit.replace(
-                new vscode.Range(
-                    document.positionAt(replace.startOffset),
-                    document.positionAt(replace.endOffset),
-                ),
-                replace.replacement,
-            ),
-        ];
+        return this._flush.flushPendingEdit(
+            uriKey,
+            // Throws when the panel disposed between the guard and the post; the
+            // controller resolves that to "no edits".
+            (id) => postToWebview(panel.webview, { type: "flushSave", id }),
+            async (content) => {
+                const newContent = this._prepareContentForSave(content, uriKey);
+                const replace = computeReplaceRange(document.getText(), newContent);
+                if (!replace) { return []; } // document already current — nothing to write
+                // Record the echo baseline BEFORE the save applies these edits, so
+                // the resulting onDidChangeTextDocument is recognized as our own
+                // (not an external change to re-push). (No tab-pin here: a save
+                // only fires on an already-dirty document, which the dirtying
+                // update already pinned.)
+                this._lastSyncedText.set(uriKey, newContent);
+                return [
+                    vscode.TextEdit.replace(
+                        new vscode.Range(
+                            document.positionAt(replace.startOffset),
+                            document.positionAt(replace.endOffset),
+                        ),
+                        replace.replacement,
+                    ),
+                ];
+            },
+        );
     }
 
     /** Pin the tab on first edit (remove the italic preview state) */
@@ -1213,158 +1148,9 @@ export class MarkdownEditorProvider
         return undefined;
     }
 
-    private _getHtmlForWebview(webview: vscode.Webview, document: vscode.TextDocument): string {
-        const config = readBirtaConfig();
-        const maxHeight = config.codeBlockMaxHeight;
-        const contentWidth = MarkdownEditorProvider.resolveContentWidthConfig();
-        const maxWidthCssValue = contentWidth.cssValue;
-        const tocContentGap = this._getPixelSettingCssValue(config.tocContentGap, BIRTA_CONFIG_DEFAULTS.tocContentGap, 16, 240);
-        // User-dragged TOC panel width, persisted across documents and sessions
-        const tocWidth = this._getNumberSettingValue(this.context.globalState.get<number>("tocWidth"), 220, 150, 600);
-        const tocRight = config.tocPosition === "right";
-        const isAutoWidth = contentWidth.isAuto;
-        const fontPreset = config.fontPreset;
-        const fontStacks = MarkdownEditorProvider.getFontStacks(config);
-        // `null` for the "editor" preset (inherit the VS Code editor font). When
-        // set, this is injected as an INLINE style on <html> below — not into the
-        // <style> block — so that switching to the "editor" preset at runtime,
-        // which does `documentElement.style.removeProperty("--content-font-family")`
-        // (see webview/messageHandlers.ts), actually clears it. removeProperty only
-        // touches inline styles; a value baked into a <style> rule would survive and
-        // leave the content stuck on the old font. The stack must be attribute-
-        // escaped (it contains `"…"` around family names): see escapeHtmlAttr.
-        const resolvedFont = resolveFontFamily(fontPreset, fontStacks);
-        const contentFontStyleAttr = resolvedFont
-            ? ` style="--content-font-family: ${escapeHtmlAttr(resolvedFont)}"`
-            : "";
-        const fontSize = clampFontSizePercent(config.fontSize);
-        const maxContentWidth = clampMaxWidthCh(config.maxContentWidth);
-        const customCssUris = this._getCustomResourceUris(webview, document.uri, config.customCss);
-        const customJsUris = this._getCustomResourceUris(webview, document.uri, config.customJs);
-        const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(
-                this.context.extensionUri,
-                "dist",
-                "webview.js",
-            ),
-        );
-        const styleUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(
-                this.context.extensionUri,
-                "dist",
-                "webview.css",
-            ),
-        );
-        const nonce = getNonce();
-
-        const isMac = process.platform === 'darwin';
-        // English is the sole source language: t() falls back to the key itself,
-        // so the webview renders the English base strings with no translation map.
-        const translations: Record<string, string> = {};
-        const debugMode = config.debugMode;
-        const codeBlockAutoConvert = config.codeBlockAutoConvert;
-        const smartLinks = config.smartLinks;
-        const codeBlockWordWrap = this._getCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
-        const tocAutoHideThreshold = this._getNumberSettingValue(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);
-        const frontmatterExpanded = config.frontmatterExpanded;
-        const blockHandles = normalizeBlockHandlesMode(config.blockHandles);
-        const mermaidTheme = normalizeMermaidThemeMode(config.mermaidTheme);
-        const folding = this._getFoldingConfig(document.uri);
-        const proofread = MarkdownEditorProvider.getProofreadConfig();
-        const toolbar = MarkdownEditorProvider.getToolbarConfig();
-        const floatingToolbar = MarkdownEditorProvider.getFloatingToolbarConfig();
-        const documentUri = document.uri.toString();
-        // The extension's display name, the single source for any UI that must
-        // name the product (e.g. "Open <name> settings"). From package.json;
-        // optional-chained so a stripped-down test context still resolves.
-        const productName =
-            (this.context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-        const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
-        const bodyClasses = [
-            isAutoWidth ? "editor-width-auto" : "",
-            codeBlockWordWrap ? "code-block-word-wrap" : "",
-            tocRight ? "toc-right" : "",
-            blockHandlesBodyClass(blockHandles) ?? "",
-            ...foldingBodyClasses(folding.controls, folding.enabled),
-        ].filter(Boolean).join(" ");
-
-        return `<!DOCTYPE html>
-<html lang="${vscode.env.language}"${contentFontStyleAttr}>
-<head>
-  <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none';
-             style-src ${webview.cspSource} 'unsafe-inline';
-             script-src 'nonce-${nonce}' ${webview.cspSource};
-             img-src ${webview.cspSource} data:;
-             font-src ${webview.cspSource} data:;">
-	  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	  <title>Markdown Editor</title>
-	  <link rel="stylesheet" href="${styleUri}">
-	  ${customCssUris.map(uri => `<link rel="stylesheet" href="${uri}">`).join("\n  ")}
-	  <style>:root { --code-block-max-height: ${maxHeight}px; --editor-max-width: ${maxWidthCssValue}; --toc-width: ${tocWidth}px; --toc-tab-width: 20px; --toc-content-gap: ${tocContentGap}; --content-font-scale: ${fontSize / 100}; }</style>
-	</head>
-	<body class="${bodyClasses}">
-	  <div class="editor-topbar"></div>
-	  <div id="editor"></div>
-	  <script nonce="${nonce}">${i18nScript}</script>
-	  <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
-	  ${customJsUris.map(uri => `<script type="module" nonce="${nonce}" src="${uri}"></script>`).join("\n  ")}
-	</body>
-	</html>`;
-    }
-
-    /**
-     * Resolve the effective content width from the `contentWidth` mode (full /
-     * fixed) and the `maxContentWidth` ch setting. Shared by the initial HTML
-     * injection and the live `onDidChangeConfiguration` broadcast.
-     */
+    /** Delegates to src/config.ts (kept as a static for existing callers). */
     public static resolveContentWidthConfig(): ContentWidthResolution {
-        return resolveContentWidth(
-            normalizeContentWidthMode(readBirtaSetting("contentWidth")),
-            readBirtaSetting("maxContentWidth"),
-        );
-    }
-
-    private _getPixelSettingCssValue(
-        value: number | undefined,
-        fallback: number,
-        min: number,
-        max: number,
-    ): string {
-        if (!Number.isFinite(value)) {
-            return `${fallback}px`;
-        }
-        return `${Math.min(max, Math.max(min, Math.round(value as number)))}px`;
-    }
-
-    private _getNumberSettingValue(
-        value: number | undefined,
-        fallback: number,
-        min: number,
-        max: number,
-    ): number {
-        if (!Number.isFinite(value)) {
-            return fallback;
-        }
-        return Math.min(max, Math.max(min, Math.round(value as number)));
-    }
-
-    /**
-     * The fold-affordance config for one document, derived from the user's
-     * own editor settings (no `birta.*` knob — MAR-110). Read
-     * scoped to the document URI: `editor.*` is resource- and
-     * language-scoped (`[markdown]` overrides, multi-root workspaces), the
-     * codeBlockWordWrap pattern.
-     */
-    private _getFoldingConfig(documentUri: vscode.Uri): { controls: FoldingControlsMode; enabled: boolean } {
-        const editorCfg = vscode.workspace.getConfiguration("editor", documentUri);
-        return {
-            controls: normalizeFoldingControlsMode(
-                editorCfg.get<string>("showFoldingControls", DEFAULT_FOLDING_CONTROLS_MODE),
-            ),
-            enabled: editorCfg.get<boolean>("folding", true) !== false,
-        };
+        return resolveContentWidthConfig();
     }
 
     /**
@@ -1374,7 +1160,7 @@ export class MarkdownEditorProvider
      */
     public broadcastFoldingConfig(): void {
         for (const [uriKey, panel] of this._webviewPanels) {
-            const folding = this._getFoldingConfig(vscode.Uri.parse(uriKey));
+            const folding = readFoldingConfig(vscode.Uri.parse(uriKey));
             postToWebview(panel.webview, {
                 type: "setFoldingControls",
                 controls: folding.controls,
@@ -1383,63 +1169,19 @@ export class MarkdownEditorProvider
         }
     }
 
-    private _getCodeBlockWordWrap(
-        documentUri: vscode.Uri,
-        value: BirtaConfig["codeBlockWordWrap"],
-    ): boolean {
-        if (value === "on") {
-            return true;
-        }
-        if (value === "off") {
-            return false;
-        }
-
-        const editorWordWrap = vscode.workspace
-            .getConfiguration("editor", documentUri)
-            .get<string>("wordWrap", "off");
-        return editorWordWrap !== "off";
-    }
-
-    /** Snapshot of the proofread (style check + spell check) settings. */
+    /** Delegates to src/config.ts (kept as a static for existing callers). */
     public static getProofreadConfig(): ProofreadConfig {
-        const {
-            proofreadingEnabled, styleCheck, fillers, redundancies, cliches,
-            wordiness, aiVocabulary, aiArtifacts, passive, negativeParallelism,
-            longSentences, ruleOfThree, emDash, nonAsciiPunct, styleExceptions,
-            spellCheck, grammarCheck, userWords,
-        } = readBirtaConfig();
-        return {
-            proofreadingEnabled, styleCheck, fillers, redundancies, cliches,
-            wordiness, aiVocabulary, aiArtifacts, passive, negativeParallelism,
-            longSentences, ruleOfThree, emDash, nonAsciiPunct, styleExceptions,
-            spellCheck, grammarCheck, userWords,
-        };
+        return getProofreadConfig();
     }
 
-    /** Snapshot of the per-item toolbar placement settings. */
+    /** Delegates to src/config.ts (kept as a static for existing callers). */
     public static getToolbarConfig(): ToolbarConfig {
-        // VS Code merges contributed defaults into the nested `toolbar.items`
-        // read, so every registered item id is present with its effective value.
-        const config = readBirtaConfig();
-        return {
-            placements: config.toolbarPlacements,
-            order: config.toolbarOrder,
-            visible: config.toolbarVisible,
-        };
+        return getToolbarConfig();
     }
 
-    /**
-     * Snapshot of the floating selection toolbar settings: the master on/off
-     * plus per-item visibility. `items` is the nested read (VS Code merges the
-     * contributed per-item defaults in, so every registered id resolves to its
-     * effective boolean).
-     */
+    /** Delegates to src/config.ts (kept as a static for existing callers). */
     public static getFloatingToolbarConfig(): { enabled: boolean; items: Record<string, boolean> } {
-        const config = readBirtaConfig();
-        return {
-            enabled: config.floatingToolbarEnabled,
-            items: config.floatingToolbarItems,
-        };
+        return getFloatingToolbarConfig();
     }
 
     /** Persist the font-picker choice (toolbar → settings write-back). */
@@ -1447,13 +1189,9 @@ export class MarkdownEditorProvider
         MarkdownEditorProvider.updateSettingRespectingScope("fontPreset", preset);
     }
 
-    /** The effective per-preset font stacks (user overrides over the built-ins). */
-    public static getFontStacks(config: BirtaConfig = readBirtaConfig()): import("../shared/messages").FontStacks {
-        return resolveFontStacks({
-            sans: config.fontFamilySans,
-            serif: config.fontFamilySerif,
-            mono: config.fontFamilyMono,
-        });
+    /** Delegates to src/config.ts (kept as a static for existing callers). */
+    public static getFontStacks(): import("../shared/messages").FontStacks {
+        return getFontStacks();
     }
 
     /** Persist the font-size stepper choice (toolbar → settings write-back). */
@@ -1541,62 +1279,6 @@ export class MarkdownEditorProvider
             [...words, trimmed],
             vscode.ConfigurationTarget.Global,
         );
-    }
-
-    private _getCustomResourceRoots(documentUri: vscode.Uri): vscode.Uri[] {
-        const paths = [
-            ...readBirtaSetting("customCss"),
-            ...readBirtaSetting("customJs"),
-        ];
-        const roots: vscode.Uri[] = [];
-        const seen = new Set<string>();
-        for (const resourcePath of paths) {
-            const uri = this._resolveCustomResourceUri(resourcePath, documentUri);
-            if (!uri) { continue; }
-            const root = vscode.Uri.file(path.dirname(uri.fsPath));
-            const key = root.toString();
-            if (!seen.has(key)) {
-                seen.add(key);
-                roots.push(root);
-            }
-        }
-        return roots;
-    }
-
-    private _getCustomResourceUris(
-        webview: vscode.Webview,
-        documentUri: vscode.Uri,
-        resourcePaths: string[] | undefined,
-    ): string[] {
-        return (resourcePaths ?? [])
-            .map(resourcePath => this._resolveCustomResourceUri(resourcePath, documentUri))
-            .filter((uri): uri is vscode.Uri => Boolean(uri))
-            .map(uri => webview.asWebviewUri(uri).toString());
-    }
-
-    private _resolveCustomResourceUri(resourcePath: string, documentUri: vscode.Uri): vscode.Uri | undefined {
-        const trimmed = resourcePath.trim();
-        if (!trimmed) { return undefined; }
-
-        const workspaceRoot = vscode.workspace.getWorkspaceFolder(documentUri)?.uri.fsPath
-            ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        let resolved = workspaceRoot
-            ? trimmed
-                .replace(/\$\{workspaceFolder\}/g, workspaceRoot)
-                .replace(/\$\{workspaceRoot\}/g, workspaceRoot)
-            : trimmed;
-        if (resolved.startsWith("~/")) {
-            resolved = path.join(os.homedir(), resolved.slice(2));
-        } else if (resolved === "~") {
-            resolved = os.homedir();
-        } else if (!path.isAbsolute(resolved)) {
-            const baseDir = workspaceRoot
-                ?? (documentUri.scheme === "file" ? path.dirname(documentUri.fsPath) : undefined);
-            if (!baseDir) { return undefined; }
-            resolved = path.join(baseDir, resolved);
-        }
-
-        return vscode.Uri.file(resolved);
     }
 
     private _prepareContentForDisplay(
