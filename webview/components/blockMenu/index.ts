@@ -44,6 +44,8 @@ import { slugify } from "../../utils/slug";
 import { getTopbarBottom } from "../../utils/headingUtils";
 import { hideTooltip } from "../../ui/tooltip";
 import { registerEscapeLayer } from "../../ui/escapeLayers";
+import { clampLeft, viewportSize } from "../../ui/anchoredPlacement";
+import { onOutsideClick } from "../../ui/outsideClick";
 import { t } from "../../i18n";
 import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
 import {
@@ -553,12 +555,7 @@ export function openBlockMenu(
     body.setAttribute("role", "listbox");
     menu.appendChild(body);
 
-    const onDocMouseDown = (event: MouseEvent): void => {
-        const target = event.target as Node;
-        if (!menu.contains(target) && !anchor.contains(target)) {
-            close();
-        }
-    };
+    let outsideOff: (() => void) | null = null;
     const rowEls = (): HTMLElement[] =>
         Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item:not([aria-disabled='true'])"));
     // Focus stays in the search input; arrows move a VIRTUAL highlight over
@@ -697,7 +694,8 @@ export function openBlockMenu(
         if (anchor.isConnected) {
             anchor.setAttribute("aria-expanded", "false");
         }
-        document.removeEventListener("mousedown", onDocMouseDown, true);
+        outsideOff?.();
+        outsideOff = null;
         document.removeEventListener("keydown", onKeyDown, true);
         window.removeEventListener("scroll", onScroll, true);
         window.removeEventListener("resize", onResize);
@@ -1058,11 +1056,7 @@ export function openBlockMenu(
         if (naturalHeight === 0) {
             naturalHeight = menu.offsetHeight;
         }
-        let left = rect.left;
-        if (left + mw > window.innerWidth - 8) {
-            left = window.innerWidth - 8 - mw;
-        }
-        left = Math.max(8, left);
+        const left = clampLeft(rect.left, mw, viewportSize());
 
         const spaceBelow = window.innerHeight - 8 - (rect.bottom + 4);
         const spaceAbove = rect.top - 4 - (topbarBottom + 8);
@@ -1085,7 +1079,7 @@ export function openBlockMenu(
     // Synchronous registration is safe: this runs from the marker's `click`,
     // whose mousedown already happened — the next mousedown is genuinely
     // outside. (A deferred add could leak if close() raced the timeout.)
-    document.addEventListener("mousedown", onDocMouseDown, true);
+    outsideOff = onOutsideClick([menu, anchor], close);
     document.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     window.addEventListener("resize", onResize);

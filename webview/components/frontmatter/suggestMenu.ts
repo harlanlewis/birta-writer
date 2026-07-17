@@ -23,6 +23,8 @@
 import { t } from "../../i18n";
 import { notifyRequestFmSuggestions } from "../../messaging";
 import { attachInputUndo } from "../../utils/inputUndo";
+import { computeAnchoredPosition, viewportSize } from "../../ui/anchoredPlacement";
+import { onOutsideClick } from "../../ui/outsideClick";
 
 // key → callback for the fmSuggestions reply. Only one menu is open at a
 // time, so keying by the frontmatter key (mirroring the message shape) is
@@ -108,14 +110,23 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
     menu.appendChild(list);
     document.body.appendChild(menu);
 
-    // Position below the anchor, flipping above when there is more room there.
+    // Position below the anchor, flipping above when there is more room
+    // there. The fit check reserves the menu's max height (240) rather than
+    // the measured one, and an above-placement pins `bottom` instead of
+    // `top`: rows arrive async, so the menu must be able to grow in place
+    // without drifting over its anchor.
     const rect = opts.anchor.getBoundingClientRect();
-    menu.style.left = `${Math.max(0, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    if (spaceBelow >= 240 || spaceBelow >= rect.top) {
-        menu.style.top = `${rect.bottom + 2}px`;
+    const placed = computeAnchoredPosition(
+        rect,
+        { width: menu.offsetWidth, height: menu.offsetHeight },
+        viewportSize(),
+        { gap: 2, fitSlack: 0, fitHeight: 240, minLeft: 0 },
+    );
+    menu.style.left = `${placed.left}px`;
+    if (placed.above) {
+        menu.style.bottom = `${placed.cssBottom}px`;
     } else {
-        menu.style.bottom = `${window.innerHeight - rect.top + 2}px`;
+        menu.style.top = `${placed.top}px`;
     }
 
     // null until the fmSuggestions reply arrives (the menu renders meanwhile)
@@ -124,13 +135,14 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
     let activeIndex = -1;
     let closed = false;
     let query = opts.initialQuery ?? "";
+    let outsideOff: (() => void) | null = null;
 
     function close(): void {
         if (closed) { return; }
         closed = true;
         menu.remove();
         _pendingSuggestions.delete(opts.key);
-        document.removeEventListener("mousedown", outsideMousedown, true);
+        outsideOff?.();
         window.removeEventListener("blur", close);
         if (closeOpenMenu === close) { closeOpenMenu = null; }
         opts.onClose?.();
@@ -191,16 +203,10 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
         updateActive();
     }
 
-    function outsideMousedown(e: MouseEvent): void {
-        const target = e.target as Node;
-        if (menu.contains(target)) { return; }
-        if (opts.keepOpenFor?.contains(target)) { return; }
-        close();
-    }
     // Deferred so the mousedown that opened the menu can finish dispatching.
     setTimeout(() => {
         if (closed) { return; }
-        document.addEventListener("mousedown", outsideMousedown, true);
+        outsideOff = onOutsideClick([menu, opts.keepOpenFor], close);
         window.addEventListener("blur", close);
     }, 0);
 

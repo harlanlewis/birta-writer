@@ -1,4 +1,5 @@
 import { notifyGetPathSuggestions, notifyResolveImagePath } from "@/messaging";
+import { onOutsideClick } from "@/ui/outsideClick";
 import { getFileIcon } from "../pathLink/fileIcons";
 import type { PathSuggestionItem } from "../../../shared/messages";
 
@@ -267,12 +268,6 @@ export function attachImgPathComplete(
         }
     }
 
-    function onDocMousedown(e: MouseEvent): void {
-        if (dropdown && !dropdown.contains(e.target as Node) && e.target !== input) {
-            closeDropdown();
-        }
-    }
-
     function onBlur(): void {
         // Delay closing so the mousedown's applySelection runs first
         setTimeout(() => {
@@ -283,7 +278,12 @@ export function attachImgPathComplete(
     input.addEventListener("input", onInput);
     input.addEventListener("keydown", onKeydown, true);
     input.addEventListener("blur", onBlur);
-    document.addEventListener("mousedown", onDocMousedown, true);
+    // The dropdown is rebuilt per suggestion reply, hence the getter; the
+    // no-dropdown guard mirrors the original handler (nothing to close).
+    const outsideOff = onOutsideClick(
+        () => [dropdown, input],
+        () => { if (dropdown) { closeDropdown(); } },
+    );
 
     // ── cleanup ────────────────────────────────────────────────
 
@@ -294,6 +294,6 @@ export function attachImgPathComplete(
         input.removeEventListener("input", onInput);
         input.removeEventListener("keydown", onKeydown, true);
         input.removeEventListener("blur", onBlur);
-        document.removeEventListener("mousedown", onDocMousedown, true);
+        outsideOff();
     };
 }

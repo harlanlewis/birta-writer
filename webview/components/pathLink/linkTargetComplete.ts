@@ -22,6 +22,8 @@
  * same dropdown anchored at the editor caret instead of under an <input>.
  */
 import { notifyGetLinkTargetSuggestions, notifyResolveLinkTarget } from "@/messaging";
+import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
+import { onOutsideClick } from "@/ui/outsideClick";
 import type { LinkTargetSuggestionItem } from "../../../shared/messages";
 import {
     isLocalPathQuery,
@@ -210,13 +212,19 @@ export function createSuggestMenuFromRows(
 
     // Viewport-bottom clamp: measured after appending (the height depends on
     // the rendered rows). Flip above the anchor when the menu would overflow
-    // the bottom edge and the space above the anchor is larger than below.
+    // the bottom edge and the space above the anchor is larger than below —
+    // the drop point (`top`) and flip line (`flipTop`) form a zero-gap rect.
+    // Horizontal is untouched: the menu is min-width-pinned to its input.
     if (anchor.flipTop !== undefined) {
-        const height = div.getBoundingClientRect().height;
-        const overflowsBottom = anchor.top + height > window.innerHeight;
-        const spaceBelow = window.innerHeight - anchor.top;
-        if (overflowsBottom && anchor.flipTop > spaceBelow) {
-            div.style.top = `${Math.max(0, anchor.flipTop - height)}px`;
+        const rect = div.getBoundingClientRect();
+        const placed = computeAnchoredPosition(
+            { left: anchor.left, right: anchor.left, top: anchor.flipTop, bottom: anchor.top },
+            { width: rect.width, height: rect.height },
+            viewportSize(),
+            { gap: 0, fitSlack: 0 },
+        );
+        if (placed.above) {
+            div.style.top = `${Math.max(0, placed.top)}px`;
         }
     }
 
@@ -373,17 +381,16 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
         closeMenu();
     }
 
-    function onDocMousedown(e: MouseEvent): void {
-        const target = e.target as Node;
-        if (menu && !menu.el.contains(target) && target !== input) {
-            closeMenu();
-        }
-    }
-
     input.addEventListener("input", onInput);
     input.addEventListener("keydown", onKeydown, true);
     input.addEventListener("blur", onBlur);
-    document.addEventListener("mousedown", onDocMousedown, true);
+    // The menu element is recreated per reply, hence the getter. The no-menu
+    // guard keeps a stray outside click from bumping closeGeneration (which
+    // would silently drop a reply still in flight).
+    const outsideOff = onOutsideClick(
+        () => [menu?.el, input],
+        () => { if (menu) { closeMenu(); } },
+    );
 
     return function detach(): void {
         isDestroyed = true;
@@ -392,6 +399,6 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
         input.removeEventListener("input", onInput);
         input.removeEventListener("keydown", onKeydown, true);
         input.removeEventListener("blur", onBlur);
-        document.removeEventListener("mousedown", onDocMousedown, true);
+        outsideOff();
     };
 }
