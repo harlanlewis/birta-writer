@@ -5,8 +5,9 @@
  * Vendored from `@milkdown/transformer@7.21.2`
  * (`node_modules/@milkdown/transformer/src/serializer/state.ts`, plus the
  * unexported `SerializerStackElement` from `stack-element.ts`). Everything is
- * verbatim except three behavioral deltas — RE-DIFF AGAINST THE PACKAGE SOURCE
- * ON EVERY MILKDOWN UPGRADE:
+ * verbatim except FOUR divergences: the three fidelity deltas (a)–(c) below,
+ * plus a fourth mechanical one — the error-class substitution noted at the
+ * end. RE-DIFF AGAINST THE PACKAGE SOURCE ON EVERY MILKDOWN UPGRADE:
  *
  * (a) Links open outermost. The stock `#runNode` sorts a node's marks by
  *     `spec.priority ?? 50`, which puts `strong`/`emphasis` (50) outside
@@ -47,12 +48,15 @@
  * NOT a vendoring delta: the optional whole-document `postSerialize` hook the
  * factory takes (`createFidelitySerializerPlugin`) is an INJECTED seam, not a
  * patch to vendored logic — the state itself is format-agnostic, and the
- * format module supplies the pass (markdown injects the org-cookie unescape,
- * MAR-131; see webview/format/markdown). It runs on the returned closure's
- * output, outside every vendored code path.
+ * format's serializer preset supplies the pass (markdown binds the org-cookie
+ * unescape, MAR-131, inside `pureCommonmark`; see webview/serialization.ts).
+ * It runs on the returned closure's output, outside every vendored code path.
  *
+ * The fourth divergence is mechanical, not a fidelity delta:
  * `serializerMatchError` lives in `@milkdown/exception`, which is not a
- * direct dependency under pnpm's strict layout; a plain `Error` replaces it.
+ * direct dependency under pnpm's strict layout, so a plain `Error` replaces
+ * it — the no-match throw path raises a different error class/message than
+ * upstream. Serialized output is unaffected.
  */
 import type {
     Fragment,
