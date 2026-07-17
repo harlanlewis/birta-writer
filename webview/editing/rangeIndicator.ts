@@ -1,21 +1,28 @@
 /**
- * components/blockMenu/rangeIndicator.ts
+ * editing/rangeIndicator.ts
  *
  * The ONE visual language for "these blocks are included" (MAR-85): a
  * body-mounted translucent veil in the editor's own background color dims
  * the covered block range. Every block-selection state shares it — a text
  * selection spanning blocks, a drag in flight (single block, heading
- * section, or multi-block run), and the future marquee (MAR-82).
+ * section, or multi-block run), and the marquee (MAR-82).
  *
  * Also home to the landing flash (MAR-84): a brief accent tint over a moved
  * run at its destination, answering "where did it go" after auto-scroll.
+ *
+ * Lives in editing/ rather than inside a component because it is the shared
+ * visual feedback of the block operations: the block menu, the drag/marquee
+ * sessions, the fold plugin's selection cover, and editing/moveBlocks all
+ * paint through it — a home in components/blockMenu forced both the editing
+ * layer and the plugin layer to reach into component internals (round-2
+ * findings F1/F2).
  *
  * Everything here is overlay DOM. Deliberately NEVER a class/opacity change
  * on the block elements themselves: mutating ProseMirror-managed DOM wakes
  * its observer and redraws the nodes, destroying the gutter widgets.
  */
-import type { EditorView } from "../../pm";
-import type { Node as ProseNode } from "../../pm";
+import type { EditorView } from "../pm";
+import type { Node as ProseNode } from "../pm";
 
 /** Viewport rect of the top-level blocks in [from, to), or null offscreen. */
 function measureRange(

@@ -8,7 +8,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
-import { commitMarqueeSelection } from "../components/blockMenu/marquee";
+import { commitMarqueeSelection } from "../components/blockMenu";
 import { BlockRangeSelection } from "../plugins/blockRange";
 
 let editors: Editor[] = [];

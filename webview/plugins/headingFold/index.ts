@@ -25,10 +25,12 @@ export {
     type HeadingFoldState,
 } from "../foldState";
 
+// Trimmed to names with consumers OUTSIDE this directory — internal-only
+// helpers (the per-kind body probes, the doc-based section resolver) are
+// imported from ./foldModel directly by the fold layer's own files.
 export {
     allFoldablePositions,
     cachedFoldRanges,
-    calloutHasBody,
     computeFoldRanges,
     findHeadingFoldRange,
     findSectionHeadingPosAt,
@@ -41,10 +43,8 @@ export {
     isContainerNode,
     isHiddenTargetPos,
     isListNode,
-    listItemHasDescendants,
-    sectionHeadingPosAt,
+    selectionCoverRange,
     setHeadingLevelAt,
-    tableHasBody,
 } from "./foldModel";
 
 export {

@@ -48,13 +48,13 @@ import {
     moveBlockAt,
 } from "../components/blockMenu";
 import { moveBlocks } from "../editing/moveBlocks";
-import { selectionCoverRange } from "../components/blockMenu/drag";
 import { BlockRangeSelection } from "./blockRange";
 import {
     foldHiddenRange,
     foldPluginKey,
     foldedSectionEnds,
     isListNode,
+    selectionCoverRange,
     type FoldMeta,
 } from "./headingFold";
 

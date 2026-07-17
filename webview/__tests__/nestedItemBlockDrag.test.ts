@@ -9,9 +9,9 @@ import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin, fingerprintDoc, diffFingerprints, formatFingerprintDiff } from "../plugins/contentGuard";
 import { moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
 import { moveBlocks } from "../editing/moveBlocks";
-import { blockBoundaryPositions } from "../components/blockMenu/drag";
+import { blockBoundaryPositions } from "../components/blockMenu";
 
-vi.mock("../components/blockMenu/rangeIndicator", () => ({ flashRange: vi.fn(), showRangeVeil: vi.fn(), hideRangeVeil: vi.fn() }));
+vi.mock("../editing/rangeIndicator", () => ({ flashRange: vi.fn(), showRangeVeil: vi.fn(), hideRangeVeil: vi.fn() }));
 
 let editors: Editor[] = [];
 let active: Editor | null = null;

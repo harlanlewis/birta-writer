@@ -29,12 +29,12 @@ import type { EditorView } from "../../pm";
 import {
     edgeScrollVelocity,
     hideDropIndicator,
+    moveRangeAt,
     registerDropZoneProvider,
     showDropIndicatorAt,
     startPointerDragSession,
     type DropZoneProvider,
-} from "../blockMenu/drag";
-import { moveRangeAt } from "../blockMenu/index";
+} from "../blockMenu";
 import { isHiddenTargetPos } from "../../editing/blockOps";
 import {
     draggedSectionLevel,

@@ -19,6 +19,7 @@ import {
     type Transaction,
 } from "../../pm";
 import { foldPluginKey } from "../foldState";
+import { BlockRangeSelection } from "../blockRange";
 
 export type HeadingFoldRange = { from: number; to: number };
 
@@ -587,4 +588,64 @@ export function sectionHeadingPosAt(doc: ProseMirrorNode, pos: number): number |
         }
     }
     return headingPos;
+}
+
+/**
+ * The top-level block range covered by the ambient selection, when it spans
+ * MORE THAN ONE top-level block — the Notion multi-drag contract: dragging
+ * the marker of any block inside a multi-block selection drags them all.
+ * Null for empty or single-block selections.
+ *
+ * Lives in the fold model (not the drag component that consumes it) because
+ * the answer is fold-occupancy-aware — a cover including a collapsed heading
+ * must carry its hidden section — and because the fold plugin's selection
+ * cover, the keyboard layer, and the drag/marquee sessions must all read the
+ * SAME cover. Exported for unit testing.
+ */
+export function selectionCoverRange(view: EditorView): { from: number; to: number } | null {
+    const sel = view.state.selection;
+    // An explicit block range IS its own cover — including a single block
+    // (Escape's block selection paints and drags like any covered run).
+    if (sel instanceof BlockRangeSelection) {
+        return expandCoverOverFolds(view.state, { from: sel.from, to: sel.to });
+    }
+    if (sel.empty) {
+        return null;
+    }
+    const doc = view.state.doc;
+    const $from = doc.resolve(sel.from);
+    const $to = doc.resolve(sel.to);
+    const from = $from.depth >= 1 ? $from.before(1) : sel.from;
+    const to = $to.depth >= 1 ? $to.after(1) : sel.to;
+    let blocks = 0;
+    doc.forEach((_node: ProseMirrorNode, offset: number) => {
+        if (offset >= from && offset < to) {
+            blocks++;
+        }
+    });
+    return blocks > 1 ? expandCoverOverFolds(view.state, { from, to }) : null;
+}
+
+/**
+ * A cover that includes a COLLAPSED heading must also carry its hidden
+ * section — the fold decoration hides those sibling blocks, but they are
+ * real content: moving the heading without them would strand invisible
+ * blocks under a new owner (and the fold would swallow whatever happens to
+ * follow the drop). Offsets ascend, so growing `to` mid-walk is safe.
+ */
+function expandCoverOverFolds(
+    state: EditorState,
+    range: { from: number; to: number },
+): { from: number; to: number } {
+    const sectionEnds = foldedSectionEnds(state); // one doc pass, not one per fold
+    if (sectionEnds.size === 0) {
+        return range;
+    }
+    let to = range.to;
+    for (const [pos, end] of sectionEnds) {
+        if (pos >= range.from && pos < to && end > to) {
+            to = end;
+        }
+    }
+    return to === range.to ? range : { from: range.from, to };
 }

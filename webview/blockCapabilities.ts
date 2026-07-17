@@ -33,7 +33,7 @@ import { getHeadingLevel, setHeadingLevelAt } from "./plugins/headingFold";
 import type { GetEditor } from "./editorCommands";
 // Runtime-only cycle (turnInto imports this module's kind probes back for
 // its legacy predicate); both sides touch the other only inside function
-// bodies, matching the headingFold ↔ blockMenu precedent.
+// bodies, matching the contentGuard ↔ headingFold precedent.
 import {
     containerToList,
     retypeContainer,
@@ -43,9 +43,9 @@ import {
     unwrapListTo,
     wrapListIn,
     wrapProseIn,
-} from "./components/blockMenu/turnInto";
-// Runtime-only cycle (contentGuard → headingFold → blockMenu → this module);
-// auditConversion is only called inside convertAt's body.
+} from "./components/blockMenu";
+// Runtime-only cycle (contentGuard → headingFold → this module →
+// contentGuard); auditConversion is only called inside convertAt's body.
 import { auditConversion } from "./plugins/contentGuard";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────

@@ -26,17 +26,15 @@
 import type { EditorView } from "../../pm";
 import type { EditorState } from "../../pm";
 import type { Node as ProseNode } from "../../pm";
-import { closeBlockMenu, moveRangeAt } from "./index";
+import { closeBlockMenu, moveRangeAt } from "./menu";
 import {
     foldedHiddenRanges,
-    foldedSectionEnds,
     hiddenRangeCoversTarget,
     moveBlocks,
 } from "../../editing/blockOps";
-import { BlockRangeSelection } from "../../plugins/blockRange";
-import { isContainerNode, isListNode } from "../../plugins/headingFold";
+import { isContainerNode, isListNode, selectionCoverRange } from "../../plugins/headingFold";
 import { selectInto } from "./turnInto";
-import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
+import { hideRangeVeil, showRangeVeil } from "../../editing/rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";
 import { scrollElementBelowTopbar } from "../../utils/headingUtils";
 import { t } from "../../i18n";
@@ -143,59 +141,10 @@ export function dropTargetFor(
     return best;
 }
 
-/**
- * The top-level block range covered by the ambient selection, when it spans
- * MORE THAN ONE top-level block — the Notion multi-drag contract: dragging
- * the marker of any block inside a multi-block selection drags them all.
- * Null for empty or single-block selections. Exported for unit testing.
- */
-export function selectionCoverRange(view: EditorView): { from: number; to: number } | null {
-    const sel = view.state.selection;
-    // An explicit block range IS its own cover — including a single block
-    // (Escape's block selection paints and drags like any covered run).
-    if (sel instanceof BlockRangeSelection) {
-        return expandCoverOverFolds(view.state, { from: sel.from, to: sel.to });
-    }
-    if (sel.empty) {
-        return null;
-    }
-    const doc = view.state.doc;
-    const $from = doc.resolve(sel.from);
-    const $to = doc.resolve(sel.to);
-    const from = $from.depth >= 1 ? $from.before(1) : sel.from;
-    const to = $to.depth >= 1 ? $to.after(1) : sel.to;
-    let blocks = 0;
-    doc.forEach((_node: ProseNode, offset: number) => {
-        if (offset >= from && offset < to) {
-            blocks++;
-        }
-    });
-    return blocks > 1 ? expandCoverOverFolds(view.state, { from, to }) : null;
-}
-
-/**
- * A cover that includes a COLLAPSED heading must also carry its hidden
- * section — the fold decoration hides those sibling blocks, but they are
- * real content: moving the heading without them would strand invisible
- * blocks under a new owner (and the fold would swallow whatever happens to
- * follow the drop). Offsets ascend, so growing `to` mid-walk is safe.
- */
-function expandCoverOverFolds(
-    state: EditorState,
-    range: { from: number; to: number },
-): { from: number; to: number } {
-    const sectionEnds = foldedSectionEnds(state); // one doc pass, not one per fold
-    if (sectionEnds.size === 0) {
-        return range;
-    }
-    let to = range.to;
-    for (const [pos, end] of sectionEnds) {
-        if (pos >= range.from && pos < to && end > to) {
-            to = end;
-        }
-    }
-    return to === range.to ? range : { from: range.from, to };
-}
+// selectionCoverRange (the multi-drag cover this session adopts) lives in
+// the fold model — the cover is fold-occupancy-aware, and the fold plugin's
+// selection cover, the keyboard layer, and this session must all read the
+// same one. Re-imported above from the plugins/headingFold facade.
 
 /** Pixels of pointer travel before a mousedown becomes a drag. */
 const DRAG_THRESHOLD = 4;

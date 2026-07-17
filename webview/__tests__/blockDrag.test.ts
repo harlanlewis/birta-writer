@@ -21,7 +21,7 @@ import {
     registerDropZoneProvider,
     visibleBoundaryPositions,
     type DropZoneProvider,
-} from "../components/blockMenu/drag";
+} from "../components/blockMenu";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey } from "../plugins/headingFold";
 
@@ -444,7 +444,7 @@ describe("selectionCoverRange (multi-block drag)", () => {
         let betaPos = -1;
         v.state.doc.forEach((n, o) => { if (n.textContent === "Beta") betaPos = o; });
         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 2, betaPos + 3)));
-        const { selectionCoverRange } = await import("../components/blockMenu/drag");
+        const { selectionCoverRange } = await import("../plugins/headingFold");
         const cover = selectionCoverRange(v)!;
         expect(cover.from).toBe(0);
         expect(v.state.doc.resolve(cover.to).nodeAfter?.textContent).toBe("Gamma");
@@ -457,7 +457,7 @@ describe("selectionCoverRange (multi-block drag)", () => {
     it("an empty or single-block selection should yield no cover", async () => {
         const editor = await makeEditor("Alpha\n\nBeta");
         const v = view(editor);
-        const { selectionCoverRange } = await import("../components/blockMenu/drag");
+        const { selectionCoverRange } = await import("../plugins/headingFold");
         expect(selectionCoverRange(v)).toBeNull(); // caret only
         const { TextSelection } = await import("../pm");
         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 4)));

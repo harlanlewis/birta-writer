@@ -18,7 +18,7 @@
  */
 import type { EditorView } from "../../pm";
 import { isListNode } from "../../plugins/headingFold";
-import { openBlockMenu } from "./index";
+import { openBlockMenu } from "./menu";
 
 /** The block position a marker's gutter widget belongs to (the widget sits
  * at blockPos + 1 — gutterBlockPos's rule, read from the marker's parent). */

@@ -32,11 +32,11 @@ import {
 } from "../plugins/contentGuard";
 import { moveBlockTo, moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
 import { convertAt } from "../blockCapabilities";
-import { flashRange } from "../components/blockMenu/rangeIndicator";
+import { flashRange } from "../editing/rangeIndicator";
 
 // The landing flash is a geometry no-op under jsdom; mock it so the veto
 // path's "skip the flash" contract is observable.
-vi.mock("../components/blockMenu/rangeIndicator", () => ({
+vi.mock("../editing/rangeIndicator", () => ({
     flashRange: vi.fn(),
     showRangeVeil: vi.fn(),
     hideRangeVeil: vi.fn(),

@@ -77,7 +77,7 @@ import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState
 import { isHiddenTargetPos } from "../plugins/headingFold";
 import { markerKeyOf, showGuardNotice, tagContentGuard } from "../plugins/contentGuard";
 import { reparseRefusal } from "../plugins/reparseHazard";
-import { flashRange } from "../components/blockMenu/rangeIndicator";
+import { flashRange } from "./rangeIndicator";
 import { t } from "../i18n";
 
 export interface MoveBlocksOptions {

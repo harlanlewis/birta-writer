@@ -37,16 +37,16 @@ import {
     formatFingerprintDiff,
 } from "../plugins/contentGuard";
 import { dissolvedMarkersFor, moveBlocks, moveFits } from "../editing/moveBlocks";
-import { moveRangeAt } from "../components/blockMenu";
 import {
     blockBoundaryPositions,
+    moveRangeAt,
     visibleBoundaryPositions,
-} from "../components/blockMenu/drag";
-import { flashRange } from "../components/blockMenu/rangeIndicator";
+} from "../components/blockMenu";
+import { flashRange } from "../editing/rangeIndicator";
 
 // The landing flash is a geometry no-op under jsdom; mock it so the "skip
 // the flash" contracts are observable.
-vi.mock("../components/blockMenu/rangeIndicator", () => ({
+vi.mock("../editing/rangeIndicator", () => ({
     flashRange: vi.fn(),
     showRangeVeil: vi.fn(),
     hideRangeVeil: vi.fn(),

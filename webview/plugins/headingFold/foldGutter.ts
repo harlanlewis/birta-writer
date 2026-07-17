@@ -29,11 +29,10 @@ import { applyTooltip, hideTooltip } from "../../ui/tooltip";
 import { createFoldEllipsis } from "../../ui/foldEllipsis";
 import { t } from "../../i18n";
 import { isTextBearingParagraph } from "../../blockCapabilities";
-// Runtime-only cycle (blockMenu imports this module's pure helpers back);
-// both sides touch the other only inside event handlers / decoration passes,
-// matching the slashMenu plugin ↔ component precedent.
-import { openBlockMenu } from "../../components/blockMenu";
-import { wireMarkerDrag } from "../../components/blockMenu/drag";
+// Menu opening and marker-drag arming are late-bound handles the block menu
+// component registers at load (plugins/blockHandles.ts) — the plugin layer
+// never imports component modules; the handles resolve at interaction time.
+import { blockHandles } from "../blockHandles";
 import { foldPluginKey, type FoldMeta } from "../foldState";
 import {
     foldEscapeSelection,
@@ -133,10 +132,10 @@ export function wireMarkerButtonProtocol(
         hideTooltip();
         // A keyboard-activated button click reports detail 0 (no mouse click
         // count) — use it to move focus into the menu only for keyboard opens.
-        openBlockMenu(view, pos, marker, event.detail === 0);
+        blockHandles().openBlockMenu(view, pos, marker, event.detail === 0);
     });
     if (opts.draggable) {
-        wireMarkerDrag(view, marker, blockPos);
+        blockHandles().wireMarkerDrag(view, marker, blockPos);
     }
 }
 
