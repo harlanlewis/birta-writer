@@ -24,6 +24,7 @@ import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
 import { setPendingRange } from "@/plugins/pendingRange";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { trackEditorReflow } from "@/ui/editorReflow";
+import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -631,26 +632,17 @@ export function setupLinkPopup(
         // bottom of the flow) into view — a later frame would then read the
         // bumped window.scrollY and place the popup far below its anchor. The
         // caller sets display:flex first, so offsetHeight is measurable now.
-        const popupH = popup.offsetHeight;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const spaceAbove = rect.top;
-
-        let top: number;
-        if (spaceBelow >= popupH + 8 || spaceBelow >= spaceAbove) {
-            top = rect.bottom + window.scrollY + 6;
-        } else {
-            top = rect.top + window.scrollY - popupH - 6;
-        }
-
-        let left = rect.left + window.scrollX;
-        const popupW = popup.offsetWidth;
-        if (left + popupW > window.innerWidth - 8) {
-            left = window.innerWidth - popupW - 8;
-        }
-        if (left < 8) left = 8;
-
-        popup.style.top = `${top}px`;
-        popup.style.left = `${left}px`;
+        // The popup is absolutely positioned in document coords: the anchor's
+        // left carries scrollX into the clamp and scrollY is added to the
+        // flip-decided top (flip/fit are viewport questions, so those use the
+        // raw viewport rect).
+        const placed = computeAnchoredPosition(
+            { left: rect.left + window.scrollX, right: rect.right, top: rect.top, bottom: rect.bottom },
+            { width: popup.offsetWidth, height: popup.offsetHeight },
+            viewportSize(),
+        );
+        popup.style.top = `${placed.top + window.scrollY}px`;
+        popup.style.left = `${placed.left}px`;
     }
 
     /**

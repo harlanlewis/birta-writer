@@ -3,6 +3,7 @@ import type { Node as PMNode } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
 import { t } from "@/i18n";
 import { scrollElementBelowTopbar } from "@/utils/headingUtils";
+import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
 
 // ── Pure helpers (unit-tested) ─────────────────────────────────────────────
 
@@ -147,17 +148,17 @@ function showDefinitionPopup(view: EditorView, label: string, anchor: HTMLElemen
     requestAnimationFrame(() => {
         const rect = anchor.getBoundingClientRect();
         const popupRect = popup.getBoundingClientRect();
-        let left = rect.left + window.scrollX;
-        if (left + popupRect.width > window.innerWidth - 8) {
-            left = window.innerWidth - popupRect.width - 8;
-        }
-        if (left < 8) left = 8;
-        let top = rect.bottom + window.scrollY + 6;
-        if (rect.bottom + popupRect.height + 8 > window.innerHeight) {
-            top = rect.top + window.scrollY - popupRect.height - 6;
-        }
-        popup.style.left = `${left}px`;
-        popup.style.top = `${top}px`;
+        // Document coords (absolute popup): scrollX rides into the clamp,
+        // scrollY onto the flip-decided top. Flip above whenever below
+        // overflows — a hover preview must never cover the reference.
+        const placed = computeAnchoredPosition(
+            { left: rect.left + window.scrollX, right: rect.right, top: rect.top, bottom: rect.bottom },
+            { width: popupRect.width, height: popupRect.height },
+            viewportSize(),
+            { flipPolicy: "overflow" },
+        );
+        popup.style.left = `${placed.left}px`;
+        popup.style.top = `${placed.top + window.scrollY}px`;
         popup.style.visibility = "visible";
     });
 }

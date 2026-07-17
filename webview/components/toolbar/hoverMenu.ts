@@ -6,7 +6,7 @@
  * identically and a new one is correct by construction — the gap-bridge bug that
  * once affected only the Debug menu can't recur, because there's one code path.
  */
-import { placeMenu, MENU_GAP } from "./menuPlacement";
+import { placeMenu, MENU_GAP } from "@/ui/anchoredPlacement";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 
 export interface HoverMenuOptions {

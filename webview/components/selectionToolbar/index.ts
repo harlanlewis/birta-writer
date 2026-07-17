@@ -48,9 +48,29 @@ import {
 import { resolveVisible, type FloatingToolbarItems } from "./registry";
 import { computeToolbarActiveState } from "@/components/toolbar/activeState";
 import { trackEditorReflow } from "@/ui/editorReflow";
+import { clampLeft, viewportSize } from "@/ui/anchoredPlacement";
 import './selectionToolbar.css';
 
 type GetEditor = () => Editor | null;
+
+/**
+ * Space check shared by the toolbar's hover submenus (text format, cell
+ * alignment): default ABOVE the bar, switch below only when the bar sits too
+ * close to the viewport top for the (approximate — the menu is hidden when
+ * this runs) menu height. Deliberately NOT ui/anchoredPlacement: these menus
+ * are CSS-anchored to their button wrapper (`calc(100% + 6px)`), invert the
+ * usual below-first preference, and never clamp horizontally.
+ */
+function placeSubmenuVertical(menu: HTMLElement, btn: HTMLElement, approxH: number): void {
+    const rect = btn.getBoundingClientRect();
+    if (rect.top < approxH + 16) {
+        menu.style.bottom = "auto";
+        menu.style.top = "calc(100% + 6px)";
+    } else {
+        menu.style.top = "auto";
+        menu.style.bottom = "calc(100% + 6px)";
+    }
+}
 
 // One-time position override: set by tableHandles with the mouse coordinates when a row/column is selected via the drag handle
 let pendingPos: { x: number; y: number } | null = null;
@@ -344,16 +364,7 @@ export function setupSelectionToolbar(
             clearTimeout(fmtHideTimer);
             fmtHideTimer = null;
         }
-        // Space check: default above, switch below when there isn't enough room
-        const rect = fmtBtn.getBoundingClientRect();
-        const approxH = formats.length * 30;
-        if (rect.top < approxH + 16) {
-            fmtMenu.style.bottom = "auto";
-            fmtMenu.style.top = "calc(100% + 6px)";
-        } else {
-            fmtMenu.style.top = "auto";
-            fmtMenu.style.bottom = "calc(100% + 6px)";
-        }
+        placeSubmenuVertical(fmtMenu, fmtBtn, formats.length * 30);
         fmtMenu.style.display = "flex";
     });
     fmtWrap.addEventListener("mouseleave", () => {
@@ -542,16 +553,7 @@ export function setupSelectionToolbar(
             clearTimeout(alignHideTimer);
             alignHideTimer = null;
         }
-        // Space check: default above, switch below when there isn't enough room
-        const rect = alignBtn.getBoundingClientRect();
-        const approxH = alignDefs.length * 34;
-        if (rect.top < approxH + 16) {
-            alignMenu.style.bottom = "auto";
-            alignMenu.style.top = "calc(100% + 6px)";
-        } else {
-            alignMenu.style.top = "auto";
-            alignMenu.style.bottom = "calc(100% + 6px)";
-        }
+        placeSubmenuVertical(alignMenu, alignBtn, alignDefs.length * 34);
         alignMenu.style.display = "flex";
     });
     alignWrap.addEventListener("mouseleave", () => {
@@ -773,7 +775,7 @@ export function setupSelectionToolbar(
                 topY = endC.bottom + 8;
             }
         }
-        leftX = Math.max(8, Math.min(leftX, window.innerWidth - tbW - 8));
+        leftX = clampLeft(leftX, tbW, viewportSize());
         toolbar.style.left = `${leftX}px`;
         toolbar.style.top = `${topY}px`;
         toolbar.style.visibility = "visible";

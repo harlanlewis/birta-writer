@@ -25,6 +25,8 @@ import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDis
 import { attachInputUndo } from "@/utils/inputUndo";
 import { createButton } from "@/ui/dom";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
+import { onOutsideClick } from "@/ui/outsideClick";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 import './codeBlock.css';
@@ -353,11 +355,7 @@ function createLangPicker(
         }
     }
 
-    function outsideClickHandler(e: MouseEvent): void {
-        if (!wrapper.contains(e.target as Node) && !dropdown.contains(e.target as Node)) {
-            close();
-        }
-    }
+    let outsideOff: (() => void) | null = null;
     function closeOnScroll(e: Event): void {
         if (dropdown.contains(e.target as Node)) return;
         close();
@@ -381,11 +379,18 @@ function createLangPicker(
         dropdown.style.display = "none";
         dropdown.style.visibility = "";
 
-        const spaceBelow = window.innerHeight - rect.bottom;
-        if (spaceBelow >= dropH + 8 || spaceBelow >= rect.top) {
-            dropdown.style.top = `${rect.bottom + 2}px`;
+        // Below by default, above when that's the larger side; an above
+        // placement pins `bottom` so the list grows upward as it re-filters.
+        const placed = computeAnchoredPosition(
+            rect,
+            { width: dropW, height: dropH },
+            viewportSize(),
+            { gap: 2 },
+        );
+        if (placed.above) {
+            dropdown.style.bottom = `${placed.cssBottom}px`;
         } else {
-            dropdown.style.bottom = `${window.innerHeight - rect.top + 2}px`;
+            dropdown.style.top = `${placed.top}px`;
         }
 
         dropdown.style.display = "block";
@@ -395,7 +400,11 @@ function createLangPicker(
         searchInput.focus();
 
         setTimeout(() => {
-            document.addEventListener("mousedown", outsideClickHandler);
+            // Bubble phase (capture: false), preserved from the original
+            // listener: chrome elsewhere that swallows its own mousedowns
+            // (stopPropagation) has always left this picker open, and a
+            // capture-phase listener would start closing it on those.
+            outsideOff = onOutsideClick([wrapper, dropdown], close, { capture: false });
             window.addEventListener("scroll", closeOnScroll, { capture: true });
         }, 0);
     }
@@ -406,7 +415,8 @@ function createLangPicker(
         isOpen = false;
         dropdown.style.display = "none";
         triggerBtn.classList.remove("lang-picker-btn--open");
-        document.removeEventListener("mousedown", outsideClickHandler);
+        outsideOff?.();
+        outsideOff = null;
         window.removeEventListener("scroll", closeOnScroll, true);
     }
 

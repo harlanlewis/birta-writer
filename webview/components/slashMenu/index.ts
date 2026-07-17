@@ -12,6 +12,7 @@
  * through aria-activedescendant on the editor DOM.
  */
 import { t } from "@/i18n";
+import { clampLeft, computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
 import {
     filterSlashItems,
     SLASH_GROUPS,
@@ -245,21 +246,22 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
             return;
         }
         root.style.top = `${anchor.top}px`;
-        root.style.left = `${Math.max(
-            8,
-            Math.min(
-                anchor.left,
-                window.innerWidth - root.getBoundingClientRect().width - 8,
-            ),
-        )}px`;
+        const width = root.getBoundingClientRect().width;
+        root.style.left = `${clampLeft(anchor.left, width, viewportSize())}px`;
         // Measured after placement (height depends on the rendered rows):
         // flip above the anchor when the menu would overflow the bottom
         // edge and there is more room above (createLinkSuggestMenu rule).
+        // The anchor is a drop point (`top`) plus a separate flip line
+        // (`flipTop`), so it maps to a zero-gap rect between the two.
         const height = root.getBoundingClientRect().height;
-        const overflowsBottom = anchor.top + height > window.innerHeight;
-        const spaceBelow = window.innerHeight - anchor.top;
-        if (overflowsBottom && anchor.flipTop > spaceBelow) {
-            root.style.top = `${Math.max(0, anchor.flipTop - height)}px`;
+        const placed = computeAnchoredPosition(
+            { left: anchor.left, right: anchor.left, top: anchor.flipTop, bottom: anchor.top },
+            { width, height },
+            viewportSize(),
+            { gap: 0, fitSlack: 0 },
+        );
+        if (placed.above) {
+            root.style.top = `${Math.max(0, placed.top)}px`;
         }
     }
 

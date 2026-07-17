@@ -10,6 +10,8 @@
  */
 import type { EditorView } from "@milkdown/prose/view";
 import { closeTopmostLayer, registerEscapeLayer } from "../ui/escapeLayers";
+import { computeAnchoredPosition, viewportSize } from "../ui/anchoredPlacement";
+import { onOutsideClick } from "../ui/outsideClick";
 import "./proofread.css";
 
 /** One button inside a finding section. */
@@ -84,19 +86,19 @@ export function showFindingsPopup(view: EditorView, anchorPos: number, findings:
     document.body.appendChild(popup);
     activePopup = popup;
 
-    // Position below the anchor, clamped to the viewport; flip above on overflow.
+    // Position below the anchor, clamped to the viewport; flip above on
+    // overflow (even into less room — the top clamp keeps it on screen).
     const coords = view.coordsAtPos(anchorPos);
     const rect = popup.getBoundingClientRect();
-    const left = Math.min(coords.left, window.innerWidth - rect.width - 8);
-    const top = coords.bottom + 4 + rect.height > window.innerHeight
-        ? coords.top - rect.height - 4
-        : coords.bottom + 4;
-    popup.style.left = `${Math.max(8, left)}px`;
-    popup.style.top = `${Math.max(8, top)}px`;
+    const placed = computeAnchoredPosition(
+        coords,
+        { width: rect.width, height: rect.height },
+        viewportSize(),
+        { gap: 4, fitSlack: 4, flipPolicy: "overflow" },
+    );
+    popup.style.left = `${placed.left}px`;
+    popup.style.top = `${Math.max(8, placed.top)}px`;
 
-    const onMouseDown = (e: MouseEvent) => {
-        if (!popup.contains(e.target as Node)) { hideLintPopup(); }
-    };
     const onKeyDown = (e: KeyboardEvent) => {
         // Only a bare Escape closes a layer; modifier-Escape (Shift+Esc pops
         // the escape-layer stack, etc.) must fall through untouched — no
@@ -115,12 +117,12 @@ export function showFindingsPopup(view: EditorView, anchorPos: number, findings:
         }
     };
     const escapeLayerOff = registerEscapeLayer(hideLintPopup);
-    document.addEventListener("mousedown", onMouseDown, true);
+    const outsideOff = onOutsideClick([popup], () => hideLintPopup());
     document.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("scroll", hideLintPopup, true);
     cleanup = () => {
         escapeLayerOff();
-        document.removeEventListener("mousedown", onMouseDown, true);
+        outsideOff();
         document.removeEventListener("keydown", onKeyDown, true);
         window.removeEventListener("scroll", hideLintPopup, true);
     };
