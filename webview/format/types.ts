@@ -30,7 +30,7 @@
  *   they are not members. They join this interface when a format actually
  *   offers a different item set (MAR-40).
  *
- * (Naming note: `webview/ui/formatSwitch.ts`'s `LinkFormat` is the
+ * (Naming note: `webview/components/linkPopup/formatSwitch.ts`'s `LinkFormat` is the
  * unrelated markdown-vs-wikilink LINK style toggle.)
  */
 import type { Editor } from "@milkdown/core";
