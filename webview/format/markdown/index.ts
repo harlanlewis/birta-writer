@@ -2,12 +2,13 @@
  * webview/format/markdown/index.ts — the markdown FormatModule (MAR-41).
  *
  * Assembles the markdown format from the modules that already implement it —
- * presets and stringify config from webview/serialization.ts, NodeViews from
- * webview/components/*, the minimal-diff profile and org-cookie post-pass
- * from webview/utils/minimalDiff.ts, and the UI item registries from their
- * component homes. Nothing is reimplemented here: this file is the wiring
- * that lets editor.ts consume "the format" as one injected object (see
- * format/types.ts for the seam's charter).
+ * presets and stringify config from webview/serialization.ts (the presets
+ * carry the serializer's whole-document post-pass, the org-cookie unescape,
+ * baked into `pureCommonmark` — see format/types.ts), NodeViews from
+ * webview/components/*, and the minimal-diff profile from
+ * webview/utils/minimalDiff.ts. Nothing is reimplemented here: this file is
+ * the wiring that lets editor.ts consume "the format" as one injected object
+ * (see format/types.ts for the seam's charter).
  */
 import DOMPurify from "dompurify";
 import { createCalloutView, createNotionCalloutView } from "../../components/callout";
@@ -20,11 +21,8 @@ import {
 import { createImageView } from "../../components/imageView";
 import { createMathInlineView } from "../../components/math";
 import { createTableView } from "../../components/table/tableView";
-import { SLASH_MENU_ITEMS } from "../../components/slashMenu/registry";
-import { TOOLBAR_ITEM_IDS } from "../../components/toolbar/registry";
-import { FLOATING_TOOLBAR_ITEM_IDS } from "../../components/selectionToolbar/registry";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
-import { markdownProfile, unescapeOrgCookies } from "../../utils/minimalDiff";
+import { markdownProfile } from "../../utils/minimalDiff";
 import type { FormatModule } from "../types";
 
 // ── HTML inline NodeView ───────────────────────────────────────────────────
@@ -55,8 +53,8 @@ export function createHtmlView(node: { attrs: Record<string, string> }) {
     };
 }
 
-/** The markdown format: presets, serializer config, NodeViews, UI
- * registries, minimal-diff profile, and serializer post-pass. */
+/** The markdown format: presets, serializer config, NodeViews, and
+ * minimal-diff profile. */
 export const markdownFormat: FormatModule = {
     // Order matters: gfmFidelity's overrides must register after
     // pureCommonmark, exactly as `.use(gfm)` always followed the base preset
@@ -78,12 +76,5 @@ export const markdownFormat: FormatModule = {
             (node, view, getPos) => createImageView(node, view, getPos),
         ],
     ],
-    slashItems: SLASH_MENU_ITEMS,
-    toolbarItems: TOOLBAR_ITEM_IDS,
-    selectionToolbarItems: FLOATING_TOOLBAR_ITEM_IDS,
     formatProfile: markdownProfile,
-    // Also baked into pureCommonmark's serializer plugin (serialization.ts),
-    // so every construction site applies it by construction; declared here as
-    // the format's canonical statement of its post-pass.
-    postSerialize: unescapeOrgCookies,
 };

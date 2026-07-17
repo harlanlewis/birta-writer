@@ -12,11 +12,12 @@ import {
     getBirtaConfiguration,
     readBirtaSetting,
     readFoldingConfig,
-    getFontStacks,
-    getProofreadConfig,
-    getToolbarConfig,
-    getFloatingToolbarConfig,
-    resolveContentWidthConfig,
+    addUserWord,
+    setContentWidth,
+    setFontPreset,
+    setFontSize,
+    setProofreadOption,
+    updateSettingRespectingScope,
 } from "./config";
 import { SaveFlushController } from "./saveFlushController";
 import { watchExternalDocumentChanges } from "./externalChanges";
@@ -27,11 +28,9 @@ import { scanHeadings } from "./utils/headingScan";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
-import type { ToExtensionMessage, ToWebviewMessage, ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset, TextCount } from "../shared/messages";
+import type { ToExtensionMessage, ToWebviewMessage, TextCount } from "../shared/messages";
 import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
-import { clampFontSizePercent } from "../shared/fontPresets";
-import { normalizeContentWidthMode, type ContentWidthMode, type ContentWidthResolution } from "../shared/contentWidth";
 import { normalizeBlockHandlesMode } from "../shared/blockHandles";
 
 /**
@@ -686,40 +685,40 @@ export class MarkdownEditorProvider
                     // Persisting triggers onDidChangeConfiguration in extension.ts,
                     // which re-broadcasts the config to every open editor.
                     case "setProofreadOption":
-                        MarkdownEditorProvider.setProofreadOption(message.key, message.value);
+                        setProofreadOption(message.key, message.value);
                         break;
                     case "setFontPreset":
-                        MarkdownEditorProvider.setFontPreset(message.preset);
+                        setFontPreset(message.preset);
                         break;
                     case "setFontSize":
-                        MarkdownEditorProvider.setFontSize(message.size);
+                        setFontSize(message.size);
                         break;
                     case "setContentWidth":
-                        MarkdownEditorProvider.setContentWidth(message.mode);
+                        setContentWidth(message.mode);
                         break;
                     case "setBlockHandles":
-                        MarkdownEditorProvider.updateSettingRespectingScope(
+                        updateSettingRespectingScope(
                             "blockHandles",
                             normalizeBlockHandlesMode(message.mode),
                         );
                         break;
                     case "setToolbarLayout":
                         if (message.item) {
-                            MarkdownEditorProvider.updateSettingRespectingScope(
+                            updateSettingRespectingScope(
                                 `toolbar.items.${message.item.id}`,
                                 message.item.placement,
                             );
                         }
-                        MarkdownEditorProvider.updateSettingRespectingScope("toolbar.order", message.order);
+                        updateSettingRespectingScope("toolbar.order", message.order);
                         break;
                     case "setToolbarVisible":
-                        MarkdownEditorProvider.updateSettingRespectingScope("toolbar.visible", message.visible);
+                        updateSettingRespectingScope("toolbar.visible", message.visible);
                         break;
                     case "setTocPosition":
-                        MarkdownEditorProvider.updateSettingRespectingScope("tocPosition", message.position);
+                        updateSettingRespectingScope("tocPosition", message.position);
                         break;
                     case "spellAddWord":
-                        MarkdownEditorProvider.addUserWord(message.word);
+                        addUserWord(message.word);
                         break;
                     case "lintBlocks":
                         lintBlocks(message.blocks)
@@ -762,15 +761,20 @@ export class MarkdownEditorProvider
                     case "crash":
                         // The webview's crash boundary reported an uncaught
                         // error / unhandled rejection (MAR-169). Log every
-                        // occurrence; the sink dedupes the user-facing toast to
-                        // one per session. The document itself is safe — the
-                        // TextDocument (and hot exit) live extension-side.
+                        // occurrence; the toast is deduped per DOCUMENT (the
+                        // dedupeKey), not per the constant message — a crash
+                        // in a different editor later in the session is a new
+                        // failure and warns again, while a crash-looping
+                        // webview on one document stays a single toast. The
+                        // document itself is safe — the TextDocument (and hot
+                        // exit) live extension-side.
                         reportErrorWithNotification(
                             `webview ${message.source} (${document.uri.fsPath})`,
                             message.stack ? `${message.message}\n${message.stack}` : message.message,
                             vscode.l10n.t(
                                 "The Birta editor reported an internal error. Your document is safe; see the developer console for details.",
                             ),
+                            `crash:${uriKey}`,
                         );
                         break;
                     case "wordCount":
@@ -1162,11 +1166,6 @@ export class MarkdownEditorProvider
         return undefined;
     }
 
-    /** Delegates to src/config.ts (kept as a static for existing callers). */
-    public static resolveContentWidthConfig(): ContentWidthResolution {
-        return resolveContentWidthConfig();
-    }
-
     /**
      * Live path for `editor.showFoldingControls` / `editor.folding` changes:
      * because the settings are resource-scoped, this re-resolves per open
@@ -1181,118 +1180,6 @@ export class MarkdownEditorProvider
                 enabled: folding.enabled,
             });
         }
-    }
-
-    /** Delegates to src/config.ts (kept as a static for existing callers). */
-    public static getProofreadConfig(): ProofreadConfig {
-        return getProofreadConfig();
-    }
-
-    /** Delegates to src/config.ts (kept as a static for existing callers). */
-    public static getToolbarConfig(): ToolbarConfig {
-        return getToolbarConfig();
-    }
-
-    /** Delegates to src/config.ts (kept as a static for existing callers). */
-    public static getFloatingToolbarConfig(): { enabled: boolean; items: Record<string, boolean> } {
-        return getFloatingToolbarConfig();
-    }
-
-    /** Persist the font-picker choice (toolbar → settings write-back). */
-    public static setFontPreset(preset: FontPreset): void {
-        MarkdownEditorProvider.updateSettingRespectingScope("fontPreset", preset);
-    }
-
-    /** Delegates to src/config.ts (kept as a static for existing callers). */
-    public static getFontStacks(): import("../shared/messages").FontStacks {
-        return getFontStacks();
-    }
-
-    /** Persist the font-size stepper choice (toolbar → settings write-back). */
-    public static setFontSize(size: number): void {
-        MarkdownEditorProvider.updateSettingRespectingScope("fontSize", clampFontSizePercent(size));
-    }
-
-    /** Persist the content-width mode (toolbar → settings write-back). */
-    public static setContentWidth(mode: ContentWidthMode): void {
-        MarkdownEditorProvider.updateSettingRespectingScope("contentWidth", normalizeContentWidthMode(mode));
-    }
-
-    /**
-     * Persist a setting, writing to the scope that currently wins — a Global
-     * write would be silently overridden by an existing workspace value.
-     */
-    public static updateSettingRespectingScope(key: string, value: unknown): void {
-        const cfg = getBirtaConfiguration();
-        const target = cfg.inspect(key)?.workspaceValue !== undefined
-            ? vscode.ConfigurationTarget.Workspace
-            : vscode.ConfigurationTarget.Global;
-        void cfg.update(key, value, target);
-    }
-
-    /**
-     * Every proofread toggle the webview may write, mapped to its setting path.
-     * `proofreading` is the master gate; the three domain masters and the
-     * sub-checks live under their own keys. Unknown keys are ignored (guards
-     * the write).
-     */
-    private static readonly PROOFREAD_SETTING: Record<ProofreadOptionKey, string> = {
-        proofreading: "proofreading.enabled",
-        styleCheck: "styleCheck.enabled",
-        spellCheck: "spellCheck.enabled",
-        grammarCheck: "grammarCheck.enabled",
-        fillers: "styleCheck.fillers",
-        redundancies: "styleCheck.redundancies",
-        cliches: "styleCheck.cliches",
-        wordiness: "styleCheck.wordiness",
-        aiVocabulary: "styleCheck.aiVocabulary",
-        aiArtifacts: "styleCheck.aiArtifacts",
-        passive: "styleCheck.passive",
-        longSentences: "styleCheck.longSentences",
-        negativeParallelism: "styleCheck.negativeParallelism",
-        ruleOfThree: "styleCheck.ruleOfThree",
-        emDash: "styleCheck.emDash",
-        nonAsciiPunct: "styleCheck.nonAsciiPunct",
-    };
-
-    /** Persist one proofread toggle (checks menu → settings write-back). */
-    public static setProofreadOption(key: ProofreadOptionKey, value: boolean): void {
-        const path = MarkdownEditorProvider.PROOFREAD_SETTING[key];
-        if (!path) { return; }
-        MarkdownEditorProvider.updateSettingRespectingScope(path, value);
-    }
-
-    /**
-     * Flip the master proofreading gate (command palette / keyboard shortcut).
-     * This gates the whole feature on/off without touching the per-domain
-     * switches, so turning it back on restores exactly what was enabled before.
-     */
-    public static toggleProofreading(): void {
-        MarkdownEditorProvider.updateSettingRespectingScope(
-            "proofreading.enabled",
-            !readBirtaSetting("proofreadingEnabled"),
-        );
-    }
-
-    /**
-     * Add a word to the personal spelling dictionary. Always writes to the
-     * user's GLOBAL settings, never the workspace: "Add to dictionary" is a
-     * personal, single-click choice, and a workspace write lands in the
-     * project's tracked `.vscode/settings.json` — silently committing the
-     * dictionary to git and sharing it with everyone. A personal word list
-     * applies across projects anyway (a name like "Birta" isn't project jargon;
-     * genuinely shared jargon is a deliberate edit of the workspace setting).
-     */
-    public static addUserWord(word: string): void {
-        const trimmed = word?.trim();
-        if (!trimmed) { return; }
-        const words = readBirtaSetting("userWords");
-        if (words.includes(trimmed)) { return; }
-        void getBirtaConfiguration().update(
-            "spellCheck.userWords",
-            [...words, trimmed],
-            vscode.ConfigurationTarget.Global,
-        );
     }
 
     private _prepareContentForDisplay(

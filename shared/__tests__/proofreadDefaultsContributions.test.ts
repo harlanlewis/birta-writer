@@ -2,7 +2,7 @@
  * Drift guard: the proofread (style/spell check) defaults are declared in
  * TWO places — the `birta.styleCheck.*` / `spellCheck.*` setting
  * defaults in package.json (what the Settings UI shows) and the inline
- * fallbacks in `MarkdownEditorProvider.getProofreadConfig` (what the editor
+ * fallbacks in `src/config.ts getProofreadConfig` (what the editor
  * uses when a read fails). They must agree, or the Settings UI lies.
  *
  * The central vscode mock's `cfg.get(key, fallback)` returns the fallback,
@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
-import { MarkdownEditorProvider } from "../../src/MarkdownEditorProvider";
+import { getProofreadConfig } from "../../src/config";
 import type { ProofreadConfig } from "../messages";
 
 const root = path.resolve(__dirname, "../..");
@@ -44,7 +44,7 @@ const FIELD_TO_SETTING: Record<keyof ProofreadConfig, string> = {
 
 describe("proofread defaults", () => {
     it("code fallbacks should match the contributed setting defaults", () => {
-        const fallbacks = MarkdownEditorProvider.getProofreadConfig();
+        const fallbacks = getProofreadConfig();
         for (const [field, setting] of Object.entries(FIELD_TO_SETTING)) {
             const prop = props[`birta.${setting}`];
             expect(prop, `missing setting birta.${setting}`).toBeDefined();
