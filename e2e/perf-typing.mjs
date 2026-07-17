@@ -8,9 +8,14 @@
  * update. That is the dominant slice of MAR-137's per-keystroke cost, but not
  * all of it — ProseMirror's pre-dispatch input path and rAF-coalesced
  * followers (TOC refresh, the scheduled serialize) fall outside the span
- * (~1/3 of a typing burst's total main-thread block on the 300 KB fixture),
- * so a change that merely MOVES work out of dispatch into a rAF will read as
- * improved here without being so. Confirm surprising wins in a devtools trace.
+ * (~1/3 of a typing burst's total main-thread block on the 300 KB fixture).
+ * The `block` column closes that blind spot (MAR-163): a buffered longtask
+ * observer sums every main-thread task ≥50 ms during the measured burst, so a
+ * change that merely MOVES work out of dispatch into a rAF still shows in
+ * `block` even while the median "improves". Granularity caveat: tasks under
+ * 50 ms are invisible to it, so `block` only carries signal on fixtures whose
+ * per-keystroke tasks already blow the frame budget (large/xlarge) — on the
+ * small fixtures it reads 0 and the dispatch median is the only gate.
  *
  * Usage:
  *   pnpm build && pnpm perf:typing               # all fixtures, table output
@@ -109,9 +114,31 @@ async function compareMode(beforePath, afterPath) {
         if (real && dMs < 0) { verdict = "✓ improved"; improvedAny = true; }
         if (real && dMs > 0) { verdict = "✗ REGRESSED"; regressed = true; }
         const sign = dMs >= 0 ? "+" : "";
+        let blockNote = "";
+        // Companion gate (MAR-163): total longtask block over the burst. Missing
+        // in pre-metric JSONs — skip silently rather than fake a zero baseline.
+        // Coarser thresholds than the median (whole-burst sum, ≥50 ms task
+        // granularity): a real move is ≥25% AND ≥250 ms.
+        if (typeof b.blockMs === "number" && typeof a.blockMs === "number") {
+            const dBlock = a.blockMs - b.blockMs;
+            const dBlockPct = b.blockMs > 0 ? (dBlock / b.blockMs) * 100 : (a.blockMs > 0 ? 100 : 0);
+            const realBlock = Math.abs(dBlockPct) >= 25 && Math.abs(dBlock) >= 250;
+            const bSign = dBlock >= 0 ? "+" : "";
+            blockNote = `  block ${round(b.blockMs)}ms → ${round(a.blockMs)}ms (${bSign}${round(dBlockPct)}%)`;
+            if (realBlock && dBlock > 0) {
+                verdict = "✗ REGRESSED (block)";
+                regressed = true;
+                // The moral hazard the metric exists to catch: dispatch median
+                // "improved" while total main-thread block grew — work moved,
+                // not removed.
+                if (real && dMs < 0) blockNote += "  ⚠ median improved but block regressed — work was moved, not removed";
+            } else if (realBlock && dBlock < 0) {
+                improvedAny = true;
+            }
+        }
         console.log(
             `  ${fixture.padEnd(8)} median ${round(b.median)}ms → ${round(a.median)}ms ` +
-            `(${sign}${round(dMs)}ms, ${sign}${round(dPct)}%)  p95 ${round(b.p95)}ms → ${round(a.p95)}ms  ${verdict}`,
+            `(${sign}${round(dMs)}ms, ${sign}${round(dPct)}%)  p95 ${round(b.p95)}ms → ${round(a.p95)}ms  ${verdict}${blockNote}`,
         );
     }
     if (compared === 0) {
@@ -147,6 +174,30 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
         page.on("requestfailed", (r) => errors.push(`requestfailed: ${r.url()} (${r.failure()?.errorText ?? "?"})`));
         page.on("response", (r) => { if (r.status() >= 400) errors.push(`http ${r.status()}: ${r.url()}`); });
         await page.addInitScript((c) => { window.__perfInit = { content: c, lineMap: [] }; }, content);
+        // Longtask companion (MAR-163): everything the dispatch span misses —
+        // pre-dispatch input path, TOC rAF refresh, scheduled serialize — still
+        // lands in ≥50 ms main-thread tasks on the big fixtures. Installed
+        // before the bundle boots so nothing is missed; reset with the measures
+        // when the measured burst starts.
+        // The block window ends 200 ms after the last keystroke, so work a
+        // change DEFERS past that (a longer trailing debounce) leaves the
+        // window and reads as an improvement — the same hazard one timer
+        // further out. A bounded window can't chase arbitrary deferral; check
+        // a surprising win in a devtools trace.
+        await page.addInitScript(() => {
+            window.__longtasks = [];
+            try {
+                window.__longtaskObs = new PerformanceObserver((list) => {
+                    for (const e of list.getEntries()) window.__longtasks.push(e.duration);
+                });
+                window.__longtaskObs.observe({ type: "longtask", buffered: true });
+            } catch {
+                // Runtime without longtask support: recorded as null so compare
+                // mode skips the block gate instead of treating 0 as a real
+                // baseline. The dispatch median still gates.
+                window.__longtasks = null;
+            }
+        });
         await page.goto(baseUrl, { waitUntil: "commit" });
         await page.waitForFunction(
             () => performance.getEntriesByName("mdw:editor-painted").length > 0,
@@ -162,7 +213,15 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
         // measure recorded so far and type the measured burst.
         await page.keyboard.type(TYPING_TEXT.slice(0, 10), { delay: 30 });
         await page.waitForTimeout(300);
-        await page.evaluate(() => performance.clearMeasures("mdw:tx-apply"));
+        await page.evaluate(() => {
+            performance.clearMeasures("mdw:tx-apply");
+            if (window.__longtasks) {
+                // Flush warmup-era entries still queued in the observer so they
+                // can't be delivered into the measured burst, then drop both.
+                window.__longtaskObs.takeRecords();
+                window.__longtasks.length = 0;
+            }
+        });
 
         let typed = "";
         while (typed.length < keys) typed += TYPING_TEXT;
@@ -170,8 +229,15 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
         // Let the last keystroke's transaction land before reading.
         await page.waitForTimeout(200);
 
-        const durations = await page.evaluate(() =>
-            performance.getEntriesByName("mdw:tx-apply").map((e) => e.duration));
+        const { durations, longtasks } = await page.evaluate(() => ({
+            durations: performance.getEntriesByName("mdw:tx-apply").map((e) => e.duration),
+            // Delivered entries plus a takeRecords() flush — observer dispatch
+            // is queued, not guaranteed ordered before this task, so drain the
+            // queue explicitly rather than trusting the 200 ms settle.
+            longtasks: window.__longtasks
+                ? [...window.__longtasks, ...window.__longtaskObs.takeRecords().map((e) => e.duration)]
+                : null,
+        }));
         if (errors.length) {
             console.error(`\n  aborted on fixture "${fixture}":`);
             for (const e of [...new Set(errors)].slice(0, 6)) console.error(`    ${e}`);
@@ -184,7 +250,11 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
             );
             process.exit(3);
         }
-        return stats(durations);
+        return {
+            ...stats(durations),
+            blockMs: longtasks ? round(longtasks.reduce((s, d) => s + d, 0)) : null,
+            blockTasks: longtasks ? longtasks.length : null,
+        };
     } finally {
         await browser.close();
     }
@@ -213,14 +283,14 @@ async function measureMode(only, keys, jsonOut) {
         const agg = await measureFixture(chromium, baseUrl, TYPING_FIXTURES[name], keys, name);
         const kb = round(TYPING_FIXTURES[name].length / 1024);
         report.fixtures[name] = { ...agg, kb };
-        rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.keystrokes)]);
+        rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.blockMs ?? "n/a"), String(agg.blockTasks ?? "n/a"), String(agg.keystrokes)]);
     }
     server.close();
 
-    const header = ["fixture", "size", "median", "p95", "max", "keystrokes"];
+    const header = ["fixture", "size", "median", "p95", "max", "block", "tasks", "keystrokes"];
     const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)));
     const fmt = (cells) => cells.map((c, i) => String(c).padEnd(widths[i])).join("  ");
-    console.log(`\ntyping perf — per-keystroke dispatch block, ms (mdw:tx-apply)\n`);
+    console.log(`\ntyping perf — per-keystroke dispatch, ms (mdw:tx-apply) + total longtask block over the burst (block)\n`);
     console.log(fmt(header));
     console.log(widths.map((w) => "─".repeat(w)).join("  "));
     for (const r of rows) console.log(fmt(r));

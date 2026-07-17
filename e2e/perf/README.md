@@ -75,12 +75,18 @@ reconciliation + every plugin view's `update`. The runner types real keystrokes
 (Playwright `keyboard.type`) into each fixture and reports the distribution
 (median / p95 / max) after a discarded warmup burst.
 
-**What the span does NOT cover** (~1/3 of a typing burst's total main-thread
-block on `xlarge`, measured via longtask observation): ProseMirror's
-pre-dispatch input path (DOM-observer read, input-rule scan) and rAF-coalesced
-followers (TOC refresh, the scheduled serialize). Corollary: a change that
-merely moves work out of dispatch into a rAF reads as improved here without
-being so — confirm surprising wins in a devtools Performance trace.
+**What the span does NOT cover**: ProseMirror's pre-dispatch input path
+(DOM-observer read, input-rule scan) and rAF-coalesced followers (TOC refresh,
+the scheduled serialize) — on `xlarge` this was over half the burst's real
+main-thread block before the TOC fast path landed. The **`block` column**
+closes that blind spot (MAR-163): a buffered longtask observer sums every
+main-thread task ≥50 ms during the measured burst, and `--compare` gates on it
+(≥25% and ≥250 ms) alongside the dispatch median — so work merely *moved* out
+of dispatch into a rAF now shows as a block regression instead of a fake win,
+and work *removed* from a rAF (invisible to the median) shows as the
+improvement it is. Granularity caveat: tasks under 50 ms don't register, so
+`block` reads 0 on the small fixtures and only carries signal where
+keystrokes already blow the frame budget (`large`/`xlarge`).
 
 ```bash
 pnpm build && pnpm perf:typing            # all typing fixtures
