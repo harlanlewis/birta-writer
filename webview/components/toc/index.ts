@@ -1,5 +1,5 @@
 import './toc.css';
-import type { EditorView } from "@/pm";
+import type { EditorView, Node as PmNode } from "@/pm";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { notifyTocWidth, notifySetTocPosition } from "@/messaging";
@@ -357,24 +357,95 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     }
 
     // ── Extract all heading nodes from the ProseMirror document ────────
-    // Runs once per doc-changing FRAME now (index.ts's rAF coalescer), so its
-    // cost sits near the typing path — it must scale with BLOCKS, not
-    // characters. Returning false at every textblock prunes the walk before it
-    // descends into inline content (the overwhelming majority of nodes in a
-    // prose document): a heading's content is inline, so no heading can ever
-    // hide inside another textblock. This walk is the hot path's whole budget —
-    // refreshContent runs it AT MOST once per frame and skips it outright when
-    // the panel is hidden and can't auto-open, and renderHeadings turns its
-    // result into DOM work only when the outline's structure actually changed.
+    // The doc the cached outline was computed from, and that outline. PM docs
+    // are immutable persistent trees, so `outlineDoc === doc` is an O(1)
+    // "unchanged" test, and diffing against the cached doc is a pointer walk
+    // over shared structure — both orders cheaper than re-walking the blocks.
+    let outlineDoc: PmNode | null = null;
+    let outlineHeadings: HeadingEntry[] = [];
+
+    /**
+     * If every difference between prev and next lies inside ONE textblock that
+     * is not a heading — the shape of ordinary typing — the outline's
+     * structure and text provably did not change; only heading positions after
+     * the edit shifted, all by the same amount. Returns that shift, or null
+     * when the change could have touched the outline (then walk).
+     *
+     * This observes the two REAL docs rather than predicting from steps:
+     * findDiffStart/findDiffEnd bound ALL differences, so outside the returned
+     * range the trees are value-identical — no heading appeared, vanished,
+     * retitled, releveled, or changed depth there — and no block boundary sits
+     * inside the range, so no heading position needs more than the flat delta.
+     */
+    function inlineOnlyShift(prev: PmNode, next: PmNode): { endA: number; delta: number } | null {
+        const start = prev.content.findDiffStart(next.content);
+        if (start == null) {
+            return { endA: 0, delta: 0 }; // value-identical (e.g. marks-only object churn)
+        }
+        const diff = prev.content.findDiffEnd(next.content);
+        if (!diff) {
+            return { endA: 0, delta: 0 };
+        }
+        let { a: endA, b: endB } = diff;
+        // Repeated content ("aa" → "aaa") makes the end scan overrun the start;
+        // clamp to a consistent placement (readDOMChange's normalization). Any
+        // placement inside the repeated run resolves to the same parent, so the
+        // textblock test below is placement-independent.
+        if (endA < start) { endB += start - endA; endA = start; }
+        if (endB < start) { endA += start - endB; endB = start; }
+        const inOneBodyTextblock = (doc: PmNode, from: number, to: number): boolean => {
+            const $from = doc.resolve(from);
+            return $from.sameParent(doc.resolve(to))
+                && $from.parent.isTextblock
+                && $from.parent.type.name !== "heading";
+        };
+        return inOneBodyTextblock(prev, start, endA) && inOneBodyTextblock(next, start, endB)
+            ? { endA, delta: endB - endA }
+            : null;
+    }
+
+    // Runs once per doc-changing FRAME (index.ts's rAF coalescer), so its cost
+    // sits near the typing path. Two tiers keep it there:
+    //  1. The observed-diff fast path above: ordinary body-text typing reuses
+    //     the cached outline with positions shifted by the diff delta —
+    //     O(headings), no doc walk at all (MAR-137's lane-1 mitigation; the
+    //     walk was the biggest standalone longtask slice while typing at
+    //     300 KB). Heading edits and structural changes fail the predicate and
+    //     take the walk, so the outline is never stale.
+    //  2. The walk itself scales with BLOCKS, not characters: returning false
+    //     at every textblock prunes descent into inline content, because a
+    //     heading's content is inline and can never hide inside another
+    //     textblock.
+    // refreshContent runs this AT MOST once per frame and skips it outright
+    // when the panel is hidden and can't auto-open, and renderHeadings turns
+    // the result into DOM work only when the outline's structure changed.
     function getHeadings(): HeadingEntry[] {
         const view = getEditorView();
         if (!view) {
             return [];
         }
+        const doc = view.state.doc;
+        if (outlineDoc === doc) {
+            return outlineHeadings;
+        }
+        if (outlineDoc) {
+            const shift = inlineOnlyShift(outlineDoc, doc);
+            if (shift) {
+                if (shift.delta !== 0) {
+                    // New objects, not mutation: rendered rows and the drag
+                    // model may still hold the previous entries.
+                    outlineHeadings = outlineHeadings.map((h) =>
+                        h.pos > shift.endA ? { ...h, pos: h.pos + shift.delta } : h,
+                    );
+                }
+                outlineDoc = doc;
+                return outlineHeadings;
+            }
+        }
         const headings: HeadingEntry[] = [];
-        view.state.doc.nodesBetween(
+        doc.nodesBetween(
             0,
-            view.state.doc.content.size,
+            doc.content.size,
             (node, pos) => {
                 if (!node.isTextblock) {
                     return true; // a container — keep descending
@@ -386,13 +457,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                             level: node.attrs["level"] as number,
                             text,
                             pos,
-                            atDocRoot: view.state.doc.resolve(pos).depth === 0,
+                            atDocRoot: doc.resolve(pos).depth === 0,
                         });
                     }
                 }
                 return false; // never walk a textblock's inline content
             },
         );
+        outlineDoc = doc;
+        outlineHeadings = headings;
         return headings;
     }
 

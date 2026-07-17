@@ -6,6 +6,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { initToc } from "../components/toc";
 import type { EventManager } from "../eventManager";
 import { mockVscodeApi } from "./setup";
+import { Schema, EditorState } from "../pm";
+import type { EditorView } from "../pm";
 
 const fakeEventManager = { onWindow: vi.fn() } as unknown as EventManager;
 
@@ -352,5 +354,136 @@ describe("TOC drag-to-resize", () => {
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         // The reveal tab sits at the docked corner regardless of panel width
         expect(tab.style.left).toBe("7px");
+    });
+});
+
+describe("outline refresh cost (observed-diff fast path)", () => {
+    // The outline walk is O(document blocks) and refreshContent runs once per
+    // doc-changing frame, so ordinary body-text typing must NOT pay it: the
+    // cached outline is reused with positions shifted by the diff delta. The
+    // user-observable stake is each row's data-headingPos — the click-nav and
+    // drag anchor — which must track the document exactly; the cost stake is
+    // counted directly (nodesBetween is the walk's only doc traversal).
+    const schema = new Schema({
+        nodes: {
+            doc: { content: "block+" },
+            paragraph: { group: "block", content: "inline*" },
+            heading: {
+                group: "block",
+                content: "inline*",
+                attrs: { level: { default: 1 } },
+            },
+            text: { group: "inline" },
+        },
+    });
+
+    const p = (text: string) => schema.node("paragraph", null, text ? [schema.text(text)] : []);
+    const h = (level: number, text: string) => schema.node("heading", { level }, [schema.text(text)]);
+
+    function makeView(doc: ReturnType<typeof schema.node>): EditorView & { state: EditorState } {
+        // `dom` satisfies the init-time active-heading scan (findActiveHeading
+        // queries it); empty is fine — active-state tracking isn't under test.
+        return {
+            state: EditorState.create({ doc, schema }),
+            dom: document.createElement("div"),
+        } as unknown as EditorView & { state: EditorState };
+    }
+
+    function rowPositions(): number[] {
+        return [...document.querySelectorAll<HTMLElement>(".toc-item")].map((el) =>
+            Number(el.dataset["headingPos"]),
+        );
+    }
+
+    function rowTexts(): string[] {
+        return [...document.querySelectorAll<HTMLElement>(".toc-item")].map((el) => el.textContent ?? "");
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+            cb(0);
+            return 0;
+        });
+        document.body.className = "";
+        document.body.innerHTML = "";
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    /** Open panel over a doc: intro para, "Alpha" h1, body para, "Beta" h2, tail para. */
+    function setup() {
+        const doc = schema.node("doc", null, [p("intro"), h(1, "Alpha"), p("body"), h(2, "Beta"), p("tail")]);
+        const view = makeView(doc);
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        toc.toggle(); // user-open: panel visible, walk runs, outline rendered
+        return { view, toc };
+    }
+
+    it("typing in a body paragraph should shift later heading anchors without re-walking the document", () => {
+        const { view, toc } = setup();
+        const before = rowPositions();
+        expect(before).toHaveLength(2);
+
+        // Type 3 chars into the FIRST paragraph — every heading sits after it.
+        const tr = view.state.tr.insertText("xyz", 2);
+        view.state = view.state.apply(tr);
+        const walk = vi.spyOn(view.state.doc, "nodesBetween");
+        toc.refreshContent();
+
+        expect(walk).not.toHaveBeenCalled();
+        expect(rowPositions()).toEqual(before.map((pos) => pos + 3));
+    });
+
+    it("typing after the last heading should leave all anchors unchanged without a walk", () => {
+        const { view, toc } = setup();
+        const before = rowPositions();
+
+        const tail = view.state.doc.content.size - 2; // inside the last paragraph
+        view.state = view.state.apply(view.state.tr.insertText("x", tail));
+        const walk = vi.spyOn(view.state.doc, "nodesBetween");
+        toc.refreshContent();
+
+        expect(walk).not.toHaveBeenCalled();
+        expect(rowPositions()).toEqual(before);
+    });
+
+    it("typing inside a heading should re-walk and update the rendered title", () => {
+        const { view, toc } = setup();
+        const alphaPos = rowPositions()[0]!;
+
+        view.state = view.state.apply(view.state.tr.insertText("!", alphaPos + 1 + "Alpha".length));
+        toc.refreshContent();
+
+        expect(rowTexts()).toEqual(["Alpha!", "Beta"]);
+    });
+
+    it("converting a paragraph to a heading should re-walk and add its row", () => {
+        const { view, toc } = setup();
+        const before = rowPositions();
+
+        // "body" paragraph sits right after the Alpha heading.
+        const bodyPos = before[0]! + h(1, "Alpha").nodeSize;
+        view.state = view.state.apply(
+            view.state.tr.setBlockType(bodyPos + 1, bodyPos + 1, schema.nodes["heading"]!, { level: 3 }),
+        );
+        toc.refreshContent();
+
+        expect(rowTexts()).toEqual(["Alpha", "body", "Beta"]);
+    });
+
+    it("deleting a heading should re-walk and drop its row", () => {
+        const { view, toc } = setup();
+        const [alphaPos] = rowPositions();
+
+        view.state = view.state.apply(
+            view.state.tr.delete(alphaPos!, alphaPos! + h(1, "Alpha").nodeSize),
+        );
+        toc.refreshContent();
+
+        expect(rowTexts()).toEqual(["Beta"]);
     });
 });
