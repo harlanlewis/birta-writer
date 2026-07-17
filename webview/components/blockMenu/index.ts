@@ -30,11 +30,12 @@ import {
     foldAllCommand,
     foldedSectionEnd,
     foldedSectionEnds,
-    getHeadingLevel,
     headingFoldPluginKey,
+    tagContentGuard,
     unfoldAllCommand,
     type HeadingFoldMeta,
-} from "../../plugins/headingFold";
+} from "../../editing/blockOps";
+import { getHeadingLevel } from "../../plugins/headingFold";
 import { attrsFromMarker, markerWithFold } from "../../plugins/callouts";
 import { BlockRangeSelection } from "../../plugins/blockRange";
 import { type GetEditor } from "../../editorCommands";
@@ -55,8 +56,7 @@ import {
     IconTrash2,
 } from "../../ui/icons";
 import { blockMarkdownAt, selectInto } from "./turnInto";
-import { moveBlocks, moveFits } from "../../editing/moveBlocks";
-import { tagContentGuard } from "../../plugins/contentGuard";
+import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
     canConvert,
     conversionKindAt,

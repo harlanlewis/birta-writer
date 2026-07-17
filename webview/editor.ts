@@ -9,28 +9,18 @@ import {
 import { prism, prismConfig } from "@milkdown/plugin-prism";
 import type { EditorView } from "@milkdown/prose/view";
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import DOMPurify from "dompurify";
-import { createCalloutView, createNotionCalloutView } from "./components/callout";
-import { createCodeBlockView } from "./components/codeBlock";
-import { createDirectiveView } from "./components/directive";
-import {
-    createFootnoteDefinitionView,
-    createFootnoteReferenceView,
-} from "./components/footnote";
-import { createImageView } from "./components/imageView";
-import { createMathInlineView } from "./components/math";
-import { createTableView } from "./components/table/tableView";
 import { getMarkdown } from "@milkdown/utils";
-import { refractor, ensureGrammars } from "./highlighter";
-import { applyExternalSync } from "./externalSync";
-import { instrumentTransactions, mark, measure } from "./perf";
-import { configureSerialization, gfmFidelity, pureCommonmark } from "./serialization";
-import { createSyncScheduler } from "./syncScheduler";
 import {
     applyMinimalChanges,
     computeRoundTripProtection,
     type RoundTripProtection,
-} from "./utils/minimalDiff";
+} from "@birta/minimal-diff";
+import { markdownFormat } from "./format/markdown";
+import type { FormatModule } from "./format/types";
+import { refractor, ensureGrammars } from "./highlighter";
+import { applyExternalSync } from "./externalSync";
+import { instrumentTransactions, mark, measure } from "./perf";
+import { createSyncScheduler } from "./syncScheduler";
 import {
     caretScrollMarginPlugin,
     cellClickFixPlugin,
@@ -75,34 +65,17 @@ import {
 } from "./plugins";
 
 export { registerSelectionChangeHandler, setLogTableSel } from "./plugins";
+// Moved to the markdown FormatModule (MAR-41); re-exported for existing
+// consumers (tests) that import it from here.
+export { createHtmlView } from "./format/markdown";
 
-// ── HTML inline NodeView ───────────────────────────────────────────────────
-// Milkdown's html node (atom, inline) displays the raw tag as textContent by
-// default. This NodeView renders real HTML after DOMPurify sanitization for a
-// read-only preview. HTML comments would be sanitized away entirely — making
-// them invisible and impossible to reason about in the editor — so they are
-// rendered as a dimmed chip showing the raw comment text instead.
-export function createHtmlView(node: { attrs: Record<string, string> }) {
-    const dom = document.createElement("span");
-    dom.dataset["type"] = "html";
-    const raw = node.attrs["value"] ?? "";
-    if (/^<!--[\s\S]*?-->$/.test(raw.trim())) {
-        dom.className = "html-inline html-comment";
-        dom.textContent = raw.trim();
-        dom.title = "HTML comment — preserved in the file, hidden in rendered output";
-    } else {
-        dom.className = "html-inline";
-        dom.innerHTML = DOMPurify.sanitize(raw, {
-            USE_PROFILES: { html: true },
-            ADD_ATTR: ["align", "width", "height"],
-        });
-    }
-    return {
-        dom,
-        ignoreMutation: () => true,
-        stopEvent: () => false,
-    };
-}
+// ── The active format ───────────────────────────────────────────────────────
+// Everything format-specific the editor consumes — parsing presets, stringify
+// config, NodeViews, the minimal-diff profile — comes through this one
+// object (the MAR-41 seam; see format/types.ts). A top-level const is the
+// whole injection story for now: the seam is the point, runtime format
+// switching arrives with format #2 (MAR-40).
+const format: FormatModule = markdownFormat;
 
 let _editor: Editor | null = null;
 
@@ -141,7 +114,11 @@ function getProtection(): RoundTripProtection | null {
     if (snap && snap.editor === _editor) {
         try {
             const serialized = snap.editor.action((ctx) => ctx.get(serializerCtx)(snap.doc));
-            _protection = computeRoundTripProtection(snap.baseline, serialized);
+            _protection = computeRoundTripProtection(
+                snap.baseline,
+                serialized,
+                format.formatProfile,
+            );
         } catch {
             // Editor torn down before the deferred compute ran — no live save
             // path to protect, so leave protection unset.
@@ -237,7 +214,12 @@ let _onDocChange: (() => void) | null = null;
 function syncNow(): void {
     if (!_editor) { return; }
     const markdown = _editor.action(getMarkdown());
-    const toSave = applyMinimalChanges(_savedMarkdown, markdown, getProtection());
+    const toSave = applyMinimalChanges(
+        _savedMarkdown,
+        markdown,
+        format.formatProfile,
+        getProtection(),
+    );
     if (toSave === _savedMarkdown) { return; } // no substantive change — no save
     _savedMarkdown = toSave;
     _onUpdate?.(toSave);
@@ -286,7 +268,12 @@ export function flushPendingEdit(): string {
     _scheduler.reset();
     if (_editor) {
         const markdown = _editor.action(getMarkdown());
-        _savedMarkdown = applyMinimalChanges(_savedMarkdown, markdown, getProtection());
+        _savedMarkdown = applyMinimalChanges(
+            _savedMarkdown,
+            markdown,
+            format.formatProfile,
+            getProtection(),
+        );
     }
     return _savedMarkdown;
 }
@@ -384,6 +371,7 @@ function _applyExternalNow(newMarkdown: string): boolean {
     _protection = computeRoundTripProtection(
         newMarkdown,
         _editor.action(getMarkdown()),
+        format.formatProfile,
     );
     return true;
 }
@@ -440,34 +428,30 @@ export async function createEditor(
     }
 
     mark("create-start");
-    _editor = await Editor.make()
+    // ── Format-agnostic chrome, pre-preset ──────────────────────────────────
+    // Keymap plugins that must register BEFORE the format's presets so they
+    // win over the preset defaults. They are chrome, not format: each one
+    // no-ops when the schema lacks its target node, so they are safe (if
+    // idle) under any format. The judgment call: block-specific keymaps and
+    // commands (table, callout, footnote, hr) — and the fold/callout plugins
+    // below — stay chrome for now rather than moving into the format module;
+    // they migrate only when a second format actually needs to vary them.
+    let builder = Editor.make()
         .config((ctx) => {
             ctx.set(rootCtx, container);
             ctx.set(defaultValueCtx, initialMarkdown);
-            // Stringify options that keep serializer output close to the
-            // original file formatting (bullets, rules, table widths)
-            configureSerialization(ctx);
+            // Format-supplied stringify options that keep serializer output
+            // close to the original file formatting (bullets, rules, table
+            // widths).
+            format.configureSerialization(ctx);
             _savedMarkdown = initialMarkdown;
             // Configure prism: use our refractor instance with the languages we registered
             ctx.set(prismConfig.key, {
                 configureRefractor: () => refractor,
             });
-            // Register the code_block NodeView (top language picker + copy button)
-            ctx.set(nodeViewCtx, [
-                ["code_block", createCodeBlockView],
-                ["callout", createCalloutView],
-                ["notion_callout", createNotionCalloutView],
-                ["container_directive", createDirectiveView],
-                ["footnote_reference", createFootnoteReferenceView],
-                ["footnote_definition", createFootnoteDefinitionView],
-                ["math_inline", createMathInlineView],
-                ["table", createTableView],
-                ["html", (node: { attrs: Record<string, string> }) => createHtmlView(node)],
-                [
-                    "image",
-                    (node, view, getPos) => createImageView(node, view, getPos),
-                ],
-            ]);
+            // Format-supplied NodeViews (code-block chrome, callouts,
+            // directives, footnotes, math, tables, inline HTML, images).
+            ctx.set(nodeViewCtx, [...format.nodeViews]);
         })
         // Registered BEFORE the commonmark/base keymap so table Tab/Enter/Delete
         // win over the defaults (e.g. base Backspace only clears cell contents).
@@ -486,12 +470,16 @@ export async function createEditor(
         // dispatch its unfold (it never consumes the key) before the default
         // Enter / Mod-Enter handlers act, so the new block lands visibly.
         .use(foldRevealKeymapPlugin)
-        .use(insertParagraphKeymapPlugin)
-        .use(pureCommonmark)
-        // gfm plus its mandatory after-gfm overrides (null table-cell alignment
-        // default; boolean list `spread`, MAR-124). Bundled in serialization.ts
-        // so tests can't wire gfm without them and diverge (MAR-143).
-        .use(gfmFidelity)
+        .use(insertParagraphKeymapPlugin);
+    // ── The format ──────────────────────────────────────────────────────────
+    // The presets that define the format's schema, parser, and serializer
+    // (markdown: pureCommonmark then gfmFidelity — order per their charters
+    // in serialization.ts, MAR-143).
+    for (const preset of format.presets) {
+        builder = builder.use(preset);
+    }
+    // ── Format-agnostic chrome, post-preset ─────────────────────────────────
+    _editor = await builder
         // Synchronous doc-change reporting: drives BOTH the outbound save
         // pipeline and pure views (the TOC) — see plugins/docChange. Milkdown's
         // plugin-listener is deliberately not registered: its unconditional

@@ -12,6 +12,14 @@
  *   pnpm build --metafile && pnpm perf:bundle
  *   node e2e/perf-bundle.mjs --json bundle-after.json
  *   node e2e/perf-bundle.mjs --compare bundle-before.json bundle-after.json
+ *   node e2e/perf-bundle.mjs --check            # CI gate vs the committed baseline
+ *   node e2e/perf-bundle.mjs --write-baseline   # accept an intentional increase
+ *
+ * `--check` is the CI eager-bytes gate: it fails on ANY eager-total growth over
+ * the committed baseline (e2e/perf/bundle-baseline.json). It can be exact
+ * because esbuild output is deterministic for a given lockfile — two clean
+ * production builds produce byte-identical bundles. An intentional increase is
+ * accepted by re-running `--write-baseline` and committing the updated file.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { join, dirname, basename } from "node:path";
@@ -19,6 +27,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = dirname(fileURLToPath(new URL(".", import.meta.url)));
 const metaPath = join(repoRoot, "dist", "webview.meta.json");
+const baselinePath = join(repoRoot, "e2e", "perf", "bundle-baseline.json");
 const kb = (b) => Math.round((b / 1024) * 10) / 10;
 
 async function computeEager() {
@@ -109,6 +118,63 @@ async function main() {
         const grow = (after.eagerTotal - before.eagerTotal) / before.eagerTotal;
         console.log(`\nverdict: ${grow > 0.01 ? "EAGER BYTES GREW >1% — do not commit" : "ok"}\n`);
         process.exit(grow > 0.01 ? 1 : 0);
+    }
+
+    if (argv.includes("--write-baseline")) {
+        const r = await computeEager();
+        await writeFile(
+            baselinePath,
+            JSON.stringify(
+                {
+                    note: "Committed eager-bytes baseline for the CI perf-bundle gate (`pnpm perf:bundle --check`). Deterministic for a given lockfile. To accept an intentional eager-bytes increase: `node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --write-baseline`, then commit this file (and say why in the commit).",
+                    ...r,
+                },
+                null,
+                2,
+            ) + "\n",
+        );
+        console.log(`wrote ${baselinePath} (eager total ${kb(r.eagerTotal)} KB)`);
+        return;
+    }
+
+    if (argv.includes("--check")) {
+        let baseline;
+        try {
+            baseline = JSON.parse(await readFile(baselinePath, "utf8"));
+        } catch {
+            // A missing/corrupt baseline must FAIL the gate, never silently pass.
+            console.error(
+                `eager-bytes baseline missing or unreadable: ${baselinePath}\n` +
+                    "Regenerate it with: node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --write-baseline",
+            );
+            process.exit(2);
+        }
+        const r = await computeEager();
+        const d = r.eagerTotal - baseline.eagerTotal;
+        console.log("\neager bundle vs committed baseline (e2e/perf/bundle-baseline.json)\n");
+        console.log(`  eager JS     ${kb(baseline.eagerJs)}KB → ${kb(r.eagerJs)}KB`);
+        console.log(`  eager CSS    ${kb(baseline.eagerCss)}KB → ${kb(r.eagerCss)}KB`);
+        console.log(`  eager total  ${kb(baseline.eagerTotal)}KB → ${kb(r.eagerTotal)}KB  (${d >= 0 ? "+" : ""}${d} bytes)`);
+        if (d > 0) {
+            console.error(
+                `\nEAGER BYTES GREW by ${d} bytes (+${kb(d)} KB) over the committed baseline.\n` +
+                    "The launch bundle must stay lean (CLAUDE.md, 'Launch performance'): anything not\n" +
+                    "needed for first paint should load lazily via dynamic import().\n" +
+                    "If this increase is intentional and justified, accept it with:\n" +
+                    "  node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --write-baseline\n" +
+                    "then commit e2e/perf/bundle-baseline.json and explain the increase in the commit body.\n",
+            );
+            process.exit(1);
+        }
+        if (d < 0) {
+            console.log(
+                "\nok — eager bytes SHRANK; consider ratcheting the baseline down with\n" +
+                    "`node e2e/perf-bundle.mjs --write-baseline` in this commit.\n",
+            );
+        } else {
+            console.log("\nok — eager bytes unchanged.\n");
+        }
+        return;
     }
 
     const r = await computeEager();

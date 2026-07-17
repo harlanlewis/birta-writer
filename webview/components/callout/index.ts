@@ -5,7 +5,7 @@
  *
  * Invariants:
  *   - Folding is VISUAL ONLY. Fold state is OWNED by the fold plugin
- *     (plugins/headingFold.ts, MAR-110): the chevron lives in the block's
+ *     (plugins/headingFold, MAR-110): the chevron lives in the block's
  *     gutter, the `collapsed` class arrives as a node decoration, and this
  *     view only renders the `…` ellipsis and dispatches the shared fold
  *     meta. The document (and the `[!type]-` marker) is never touched by
