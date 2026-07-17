@@ -157,6 +157,153 @@ After installing the extension, open any `.md` / `.markdown` file in VS Code —
 
 ***
 
+## Architecture
+
+For contributors. The key-file map and working conventions live in [`CLAUDE.md`](CLAUDE.md); this section is the shape of the system. Every boundary drawn here is enforced by a convention test where one is named — these diagrams describe rules the suite pins, not intentions.
+
+### The two processes
+
+The extension runs as two bundles that only ever talk through one typed message protocol. Neither side sends a raw message: the webview funnels through `messaging.ts` (the single `acquireVsCodeApi()` call), the extension through `webviewMessaging.ts`, and both directions are discriminated unions defined once in `shared/` — a directory that is deliberately free of both `vscode` imports and DOM types so it can compile into either target.
+
+```mermaid
+flowchart LR
+    subgraph ext["Extension host — Node (dist/extension.js)"]
+        E["extension.ts"] --> P["MarkdownEditorProvider<br/>(message routing, webview lifecycle)"]
+        P --> SFC["saveFlushController<br/>seq/version guard, flush timeout"]
+        P --> XC["externalChanges + diskDrift"]
+        P --> WH["webviewHtml (CSP)"]
+        P --> CFG["config.ts<br/>all birta.* reads + writes"]
+        P --> SINK["errorSink"]
+        P --> WM["webviewMessaging<br/>typed send funnel"]
+    end
+    subgraph sh["shared/ — dual-target, no vscode, no DOM"]
+        MSG["messages.ts<br/>ToWebviewMessage / ToExtensionMessage"]
+        SCFG["config.ts — keys + defaults"]
+    end
+    subgraph wv["Webview — browser (dist/webview.js)"]
+        IDX["index.ts"] --> ED["editor.ts<br/>composition root"]
+        IDX --> CR["crashReporter"]
+        M["messaging.ts<br/>single acquireVsCodeApi()"]
+        MH["messageHandlers.ts<br/>typed handler registry"]
+    end
+    WM ==>|"ToWebviewMessage"| MH
+    M ==>|"ToExtensionMessage"| P
+    MSG -.->|defines both| WM
+    MSG -.->|defines both| M
+    SCFG -.-> CFG
+```
+
+Guards: `typedWebviewSends.test.ts` (no raw `postMessage` outside the funnel), `configDefaultsContributions.test.ts` (every `birta.*` key's default pinned against `package.json`).
+
+### The save pipeline — why editing one line never rewrites another
+
+This is the product's existential property (see *Why this fork*). The edit lives in the webview; the `TextDocument` is what VS Code saves; the pipeline between them serializes the **whole** document but writes only the lines that really changed.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant DC as docChange plugin
+    participant SS as syncScheduler
+    participant SER as fidelity serializer<br/>+ minimal-diff merge
+    participant P as Provider<br/>(seq guard)
+    participant TD as TextDocument
+    participant D as Disk
+
+    U->>DC: keystroke (transaction, reported synchronously)
+    DC->>SS: request()
+    Note over SS: leading edge dirties the document within a frame —<br/>trailing debounce + max-wait bound crash-safety staleness
+    SS->>SER: syncNow()
+    Note over SER: serialize whole doc → repair with round-trip<br/>protection → LCS-merge into the saved bytes<br/>(untouched lines keep their exact bytes)
+    SER->>P: update (monotonic seq)
+    P->>TD: apply edit — stale seq is dropped, never reverts a newer save
+    U->>P: Cmd+S
+    P->>SER: flushSave via onWillSaveTextDocument waitUntil (≤1s, degrades safely)
+    SER-->>P: freshest serialized bytes
+    P->>TD: final edits
+    TD->>D: write
+```
+
+Two properties are pinned hard: a save can never persist content older than the editor state, and the first edit after a save dirties the document within one IPC hop (`CLAUDE.md` → *Autosave* has the full invariants; `savePipeline.test.ts` and the integration suite enforce them, and `e2e/syncLatency` pins the scheduler's latencies).
+
+Round-trip **protection** is the second half of fidelity: at load, the document is compared against its own zero-edit serialization; every construct the parser can't reproduce byte-for-byte (setext headings, escaping churn, reference-link styles…) is recorded and repaired back to its saved bytes on every later save — until the user actually edits that construct, at which point the edit wins.
+
+### Webview layering
+
+Dependency direction is the rule that keeps the webview refactorable. `ui/` is a leaf; components reach plugin state only through published facades; plugins import no components (the one inversion they need — block-menu wiring on fold gutters — is late-bound through a registry the plugin layer owns).
+
+```mermaid
+flowchart TB
+    ED["editor.ts — composition root"]
+    subgraph FMT["format/ — the FormatModule seam"]
+        MD["markdown module:<br/>presets · serialization config · NodeViews · diff profile"]
+    end
+    subgraph CHROME["format-agnostic chrome"]
+        CMP["components/<br/>blockMenu (facade) · toc · toolbar · findBar · …"]
+        EDG["editing/<br/>moveBlocks · blockOps · rangeIndicator"]
+        PL["plugins/<br/>headingFold/ (facade) · contentGuard · reparseHazard ·<br/>fingerprints · docChange · blockHandles registry"]
+        UI["ui/ — leaf primitives<br/>anchoredPlacement · outsideClick · escapeLayers · tooltip · icons"]
+    end
+    PM["pm.ts — the ONLY raw-ProseMirror import surface<br/>(+ getView/getState)"]
+    ENG["packages/minimal-diff<br/>format-agnostic LCS merge + round-trip protection"]
+
+    ED --> MD
+    ED --> PL
+    MD -->|NodeView factories| CMP
+    MD -->|FormatProfile| ENG
+    CMP -->|facades + blockOps only| PL
+    CMP --> EDG
+    CMP --> UI
+    PL --> UI
+    CMP -. "registers menu/drag/marquee hooks<br/>(late binding, no import)" .-> PL
+    CHROME --> PM
+    FMT --> PM
+```
+
+Guards: `pmFunnel.test.ts` (no `@milkdown/prose` import outside `pm.ts`), `blockMenuFacade.test.ts` (no deep imports into blockMenu; no component imports under the fold hub).
+
+### The format and diff seams
+
+The same injection shape appears at two levels: the editor consumes a `FormatModule`, and the minimal-diff engine consumes a `FormatProfile`. Markdown is format #1; a second format supplies both objects and the unchanged chrome honors them (the multiformat track, MAR-40, tracks what's still deliberately deferred).
+
+```mermaid
+flowchart LR
+    subgraph FM["FormatModule (webview/format/types.ts)"]
+        PR["presets<br/>schema · parser · serializer<br/>(incl. the whole-doc post-pass)"]
+        NV["nodeViews"]
+        CS["configureSerialization"]
+        FP["formatProfile"]
+    end
+    ED["editor.ts"] -->|consumes| FM
+    FP --> ENGINE["@birta/minimal-diff engine"]
+    subgraph ENGINE_D["FormatProfile contract"]
+        K["keyLines — contextual line identity"]
+        G["glueChangesConstruct — blank line is structure"]
+        B["blankSplitsBlock — blank line splits a block"]
+    end
+    ENGINE --- ENGINE_D
+    ENGINE --> OUT["untouched lines byte-identical ·<br/>unreproducible constructs repaired"]
+```
+
+The serializer itself is a vendored, patched copy of Milkdown's `SerializerState` (`plugins/fidelitySerializer.ts`); its four divergences from upstream are enumerated in its header, and `fidelitySerializerDrift.test.ts` pins the upstream sources' hashes so a Milkdown bump can't silently diverge from the patched copy.
+
+### External changes — two mechanisms, on purpose
+
+Two structurally different questions get two signal sources; the division is an ADR in `src/externalChanges.ts`, not an accident. VS Code never applies a disk write to a *dirty* document, so neither mechanism can cover the other's case.
+
+```mermaid
+flowchart LR
+    W["git / another editor / an AI tool<br/>writes the file"] --> FS[("disk")]
+    FS -->|"clean document:<br/>VS Code reloads the TextDocument"| A["onDidChangeTextDocument<br/>(200ms debounce)"]
+    A --> SYNC["externalUpdate → webview<br/>cursor-preserving in-place diff"]
+    FS -->|"dirty document:<br/>no reload happens"| B["FileSystemWatcher<br/>(120ms debounce)"]
+    B --> BADGE["disk-drift badge:<br/>reload from disk / compare — never silently merged"]
+```
+
+The webview marks inbound syncs with a transaction meta (`EXTERNAL_SYNC_META`) so per-transaction consumers can recognize them, while the save pipeline suppresses the echo with a span over the dispatch — the two mechanisms answer different questions, and the comment at the flag's declaration in `editor.ts` records why they can't be unified (the attempt is documented; it failed its own pinning test).
+
+***
+
 ## Requirements
 
 - VS Code **1.80.0** or later
