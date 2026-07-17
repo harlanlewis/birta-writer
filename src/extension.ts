@@ -6,7 +6,16 @@ import { normalizeMermaidThemeMode } from "../shared/mermaid";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { WordCountStatusBar } from "./wordCountStatus";
-import { getBirtaConfiguration, readBirtaSetting } from "./config";
+import {
+    getBirtaConfiguration,
+    readBirtaSetting,
+    getProofreadConfig,
+    getToolbarConfig,
+    getFontStacks,
+    resolveContentWidthConfig,
+    toggleProofreading,
+    updateSettingRespectingScope,
+} from "./config";
 
 /**
  * "Block Handles" in the command palette: a QuickPick of the three resting
@@ -54,7 +63,7 @@ export async function promptBlockHandlesMode(): Promise<void> {
         quickPick.show();
     });
     if (picked && picked.mode !== current) {
-        MarkdownEditorProvider.updateSettingRespectingScope("blockHandles", picked.mode);
+        updateSettingRespectingScope("blockHandles", picked.mode);
     }
 }
 
@@ -253,7 +262,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "birta.toggleProofreading",
-            () => MarkdownEditorProvider.toggleProofreading(),
+            () => toggleProofreading(),
         ),
     );
 
@@ -277,7 +286,7 @@ export function activate(context: vscode.ExtensionContext) {
             proofreadBroadcastTimer = undefined;
             MarkdownEditorProvider.current?.postToAll({
                 type: "proofreadConfig",
-                config: MarkdownEditorProvider.getProofreadConfig(),
+                config: getProofreadConfig(),
             });
         }, 80);
     };
@@ -315,7 +324,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (e.affectsConfiguration("birta.toolbar")) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "toolbarConfig",
-                    config: MarkdownEditorProvider.getToolbarConfig(),
+                    config: getToolbarConfig(),
                 });
             }
             if (e.affectsConfiguration("birta.fontPreset")
@@ -323,7 +332,7 @@ export function activate(context: vscode.ExtensionContext) {
                 || e.affectsConfiguration("birta.fontFamilySerif")
                 || e.affectsConfiguration("birta.fontFamilyMono")) {
                 const preset = readBirtaSetting("fontPreset");
-                const stacks = MarkdownEditorProvider.getFontStacks();
+                const stacks = getFontStacks();
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setFontFamily",
                     fontFamily: resolveFontFamily(preset, stacks),
@@ -357,7 +366,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
             if (e.affectsConfiguration("birta.contentWidth")
                 || e.affectsConfiguration("birta.maxContentWidth")) {
-                const cw = MarkdownEditorProvider.resolveContentWidthConfig();
+                const cw = resolveContentWidthConfig();
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setContentWidth",
                     cssValue: cw.cssValue,

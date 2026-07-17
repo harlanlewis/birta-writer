@@ -34,8 +34,9 @@ type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
  * with markdown's whole-document post-pass, the org-cookie unescape
  * (MAR-131). Bound here, inside the preset, so every construction site —
  * production editor.ts and every test factory — serializes with the pass by
- * construction (the MAR-143 argument). The same function is declared as
- * `postSerialize` on the markdown FormatModule (webview/format/markdown).
+ * construction (the MAR-143 argument). This binding is the SINGLE source of
+ * truth for the pass: the FormatModule deliberately declares no separate
+ * post-pass member (see the charter in webview/format/types.ts).
  */
 const fidelitySerializerPlugin = createFidelitySerializerPlugin(unescapeOrgCookies);
 

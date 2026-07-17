@@ -1,17 +1,17 @@
 /**
  * Structural consistency of the markdown FormatModule (MAR-41): the module
  * is assembled by hand from independently maintained pieces (presets,
- * NodeViews, registries, the minimal-diff profile, the serializer
- * post-pass), so this suite pins the cross-references that nothing else
- * checks — a NodeView naming a node the presets don't define would silently
- * render nothing, and a post-pass declared on the module but not wired into
- * the presets' serializer would silently diverge from production output.
+ * NodeViews, the minimal-diff profile), so this suite pins the
+ * cross-references that nothing else checks — a NodeView naming a node the
+ * presets don't define would silently render nothing, and a presets'
+ * serializer missing its whole-document post-pass (baked into
+ * `pureCommonmark`, see webview/serialization.ts) would silently diverge
+ * from the bytes production writes.
  */
 import { describe, it, expect } from "vitest";
 import { schemaCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { markdownFormat } from "../format/markdown";
-import { unescapeOrgCookies } from "../utils/minimalDiff";
 import { makeCorpusEditor } from "./helpers/moveFuzz";
 
 describe("markdown FormatModule", () => {
@@ -27,26 +27,23 @@ describe("markdown FormatModule", () => {
         await editor.destroy();
     });
 
-    it("the presets' serializer should apply the module's declared postSerialize pass", async () => {
+    it("the presets' serializer should apply the org-cookie post-pass", async () => {
         // An org-mode priority cookie: the serializer escapes the `[` in
-        // prose, and only the injected post-pass (unescapeOrgCookies)
-        // restores it. If the module declared the pass but the preset's
-        // fidelity serializer were not instantiated with it, the output
-        // would keep the escape.
+        // prose, and only the whole-document post-pass (unescapeOrgCookies,
+        // MAR-131) restores it. The pass has no member on the FormatModule —
+        // the presets are its single source of truth (bound via
+        // `createFidelitySerializerPlugin` inside `pureCommonmark`,
+        // webview/serialization.ts) — so this behavioral round trip is what
+        // pins that the module's presets actually carry it.
         const editor = await makeCorpusEditor("TODO [#A] write the seam", [], markdownFormat);
         const out = editor.action(getMarkdown());
         expect(out).toContain("[#A]");
         expect(out).not.toContain("\\[#A]");
-        // And the declared pass is exactly the one production bakes in.
-        expect(markdownFormat.postSerialize).toBe(unescapeOrgCookies);
         await editor.destroy();
     });
 
-    it("its UI registries and profile should be populated re-exports, not empty stubs", () => {
+    it("its presets and profile should be populated, not empty stubs", () => {
         expect(markdownFormat.presets.length).toBeGreaterThan(0);
-        expect(markdownFormat.slashItems.length).toBeGreaterThan(0);
-        expect(markdownFormat.toolbarItems.length).toBeGreaterThan(0);
-        expect(markdownFormat.selectionToolbarItems.length).toBeGreaterThan(0);
         // The profile must key exactly one line per input line — the engine
         // contract (@birta/minimal-diff FormatProfile).
         const keys = markdownFormat.formatProfile.keyLines(["# a", "", "b"]);

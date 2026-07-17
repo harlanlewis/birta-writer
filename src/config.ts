@@ -20,11 +20,12 @@ import {
     BIRTA_SETTING_KEYS,
     type BirtaConfig,
 } from "../shared/config";
-import type { ProofreadConfig, ToolbarConfig, FontStacks } from "../shared/messages";
-import { resolveFontStacks } from "../shared/fontPresets";
+import type { ProofreadConfig, ProofreadOptionKey, ToolbarConfig, FontPreset, FontStacks } from "../shared/messages";
+import { resolveFontStacks, clampFontSizePercent } from "../shared/fontPresets";
 import {
     resolveContentWidth,
     normalizeContentWidthMode,
+    type ContentWidthMode,
     type ContentWidthResolution,
 } from "../shared/contentWidth";
 import {
@@ -149,4 +150,101 @@ export function readFoldingConfig(
         ),
         enabled: editorCfg.get<boolean>("folding", true) !== false,
     };
+}
+
+// ─── Settings write-back (webview/toolbar → settings) ───────────────────────
+// The write half of the config seam, next to the read half so the extension's
+// entire `birta.*` surface lives in this one file (moved off the provider,
+// where these sat as unrelated statics — 2026-07-17 round-2 critique).
+
+/**
+ * Persist a setting, writing to the scope that currently wins — a Global
+ * write would be silently overridden by an existing workspace value.
+ */
+export function updateSettingRespectingScope(key: string, value: unknown): void {
+    const cfg = getBirtaConfiguration();
+    const target = cfg.inspect(key)?.workspaceValue !== undefined
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+    void cfg.update(key, value, target);
+}
+
+/**
+ * Every proofread toggle the webview may write, mapped to its setting path.
+ * `proofreading` is the master gate; the three domain masters and the
+ * sub-checks live under their own keys. Unknown keys are ignored (guards
+ * the write).
+ */
+const PROOFREAD_SETTING: Record<ProofreadOptionKey, string> = {
+    proofreading: "proofreading.enabled",
+    styleCheck: "styleCheck.enabled",
+    spellCheck: "spellCheck.enabled",
+    grammarCheck: "grammarCheck.enabled",
+    fillers: "styleCheck.fillers",
+    redundancies: "styleCheck.redundancies",
+    cliches: "styleCheck.cliches",
+    wordiness: "styleCheck.wordiness",
+    aiVocabulary: "styleCheck.aiVocabulary",
+    aiArtifacts: "styleCheck.aiArtifacts",
+    passive: "styleCheck.passive",
+    longSentences: "styleCheck.longSentences",
+    negativeParallelism: "styleCheck.negativeParallelism",
+    ruleOfThree: "styleCheck.ruleOfThree",
+    emDash: "styleCheck.emDash",
+    nonAsciiPunct: "styleCheck.nonAsciiPunct",
+};
+
+/** Persist one proofread toggle (checks menu → settings write-back). */
+export function setProofreadOption(key: ProofreadOptionKey, value: boolean): void {
+    const path = PROOFREAD_SETTING[key];
+    if (!path) { return; }
+    updateSettingRespectingScope(path, value);
+}
+
+/**
+ * Flip the master proofreading gate (command palette / keyboard shortcut).
+ * This gates the whole feature on/off without touching the per-domain
+ * switches, so turning it back on restores exactly what was enabled before.
+ */
+export function toggleProofreading(): void {
+    updateSettingRespectingScope(
+        "proofreading.enabled",
+        !readBirtaSetting("proofreadingEnabled"),
+    );
+}
+
+/**
+ * Add a word to the personal spelling dictionary. Always writes to the
+ * user's GLOBAL settings, never the workspace: "Add to dictionary" is a
+ * personal, single-click choice, and a workspace write lands in the
+ * project's tracked `.vscode/settings.json` — silently committing the
+ * dictionary to git and sharing it with everyone. A personal word list
+ * applies across projects anyway (a name like "Birta" isn't project jargon;
+ * genuinely shared jargon is a deliberate edit of the workspace setting).
+ */
+export function addUserWord(word: string): void {
+    const trimmed = word?.trim();
+    if (!trimmed) { return; }
+    const words = readBirtaSetting("userWords");
+    if (words.includes(trimmed)) { return; }
+    void getBirtaConfiguration().update(
+        "spellCheck.userWords",
+        [...words, trimmed],
+        vscode.ConfigurationTarget.Global,
+    );
+}
+
+/** Persist the font-picker choice (toolbar → settings write-back). */
+export function setFontPreset(preset: FontPreset): void {
+    updateSettingRespectingScope("fontPreset", preset);
+}
+
+/** Persist the font-size stepper choice (toolbar → settings write-back). */
+export function setFontSize(size: number): void {
+    updateSettingRespectingScope("fontSize", clampFontSizePercent(size));
+}
+
+/** Persist the content-width mode (toolbar → settings write-back). */
+export function setContentWidth(mode: ContentWidthMode): void {
+    updateSettingRespectingScope("contentWidth", normalizeContentWidthMode(mode));
 }

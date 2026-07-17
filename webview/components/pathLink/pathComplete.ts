@@ -1,5 +1,6 @@
 import { notifyGetPathSuggestions } from "@/messaging";
 import { getFileIcon } from "./fileIcons";
+import { onOutsideClick } from "@/ui/outsideClick";
 import type { EditorView } from "@/pm";
 
 // Path-prefix detection that triggers completion
@@ -256,12 +257,14 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         }, 200);
     });
 
-    // Click elsewhere to close the dropdown
-    document.addEventListener("mousedown", (e) => {
-        if (dropdown && !dropdown.contains(e.target as Node)) {
-            closeDropdown();
-        }
-    }, true);
+    // Click elsewhere to close the dropdown. The dropdown is rebuilt per
+    // suggestion reply, hence the getter; the no-dropdown guard mirrors the
+    // original handler (nothing to close). Attached for the editor's
+    // lifetime, like the keydown/keyup listeners above — never detached.
+    onOutsideClick(
+        () => [dropdown],
+        () => { if (dropdown) { closeDropdown(); } },
+    );
 
     // Close on blur
     window.addEventListener("blur", () => {

@@ -14,15 +14,28 @@
  * touching the chrome.
  *
  * Members exist only where the composition ACTUALLY varies by format — no
- * speculative hooks. (Naming note: `webview/ui/formatSwitch.ts`'s
- * `LinkFormat` is the unrelated markdown-vs-wikilink LINK style toggle.)
+ * speculative hooks. Two consequences worth naming:
+ *
+ * - The presets fully define the serializer, INCLUDING any whole-document
+ *   post-pass over its output. `createFidelitySerializerPlugin(postSerialize?)`
+ *   (webview/plugins/fidelitySerializer.ts) is the injection point a format's
+ *   preset uses; markdown binds the org-cookie unescape inside
+ *   `pureCommonmark` (webview/serialization.ts). There is deliberately no
+ *   separate post-pass member here — the preset is the single source of
+ *   truth, so every construction site (production and tests) gets the pass
+ *   by construction.
+ * - The UI item registries (slash menu, main toolbar, selection toolbar) are
+ *   consumed by their components directly from their registry homes
+ *   (components/slashMenu/registry.ts etc.); no format varies them today, so
+ *   they are not members. They join this interface when a format actually
+ *   offers a different item set (MAR-40).
+ *
+ * (Naming note: `webview/components/linkPopup/formatSwitch.ts`'s `LinkFormat` is the
+ * unrelated markdown-vs-wikilink LINK style toggle.)
  */
 import type { Editor } from "@milkdown/core";
 import type { NodeViewConstructor } from "../pm";
 import type { FormatProfile } from "@birta/minimal-diff";
-import type { SlashMenuItem } from "../components/slashMenu/registry";
-import type { ToolbarItemId } from "../components/toolbar/registry";
-import type { FloatingToolbarItemId } from "../components/selectionToolbar/registry";
 
 /** The ctx object Milkdown passes to `Editor.config()` callbacks. */
 export type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
@@ -62,18 +75,6 @@ export interface FormatModule {
      */
     readonly nodeViews: ReadonlyArray<FormatNodeView>;
 
-    /** The slash-menu item registry this format offers (re-exported from
-     * components/slashMenu/registry.ts — the registry stays where it is). */
-    readonly slashItems: ReadonlyArray<SlashMenuItem>;
-
-    /** The main-toolbar item ids this format offers (re-exported from
-     * components/toolbar/registry.ts). */
-    readonly toolbarItems: ReadonlyArray<ToolbarItemId>;
-
-    /** The floating selection-toolbar item ids this format offers
-     * (re-exported from components/selectionToolbar/registry.ts). */
-    readonly selectionToolbarItems: ReadonlyArray<FloatingToolbarItemId>;
-
     /**
      * The `@birta/minimal-diff` profile for this format — the line
      * classifier/normalizers the save pipeline's minimal-diff merge and
@@ -81,13 +82,4 @@ export interface FormatModule {
      * getProtection).
      */
     readonly formatProfile: FormatProfile;
-
-    /**
-     * Whole-document post-pass over the serializer's output — the one point
-     * where the complete serialized string exists, for repairs that need
-     * document-wide context. The format's serializer plugin applies it (see
-     * `createFidelitySerializerPlugin`); markdown supplies the org-cookie
-     * unescape (MAR-131). Omit when the format needs none.
-     */
-    readonly postSerialize?: (serialized: string) => string;
 }

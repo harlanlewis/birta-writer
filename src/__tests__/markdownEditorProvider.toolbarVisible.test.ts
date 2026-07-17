@@ -9,6 +9,7 @@ import * as vscode from "vscode";
 import { makeFakeTextDocument, resetTextDocumentMocks } from "../../__mocks__/vscode";
 
 import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
+import { getToolbarConfig } from "../config";
 
 const makeContext = () =>
     ({
@@ -109,12 +110,12 @@ describe("MarkdownEditorProvider toolbar visibility", () => {
     it("getToolbarConfig should default visible to true and pass a stored false through", () => {
         // Arrange / Act / Assert — default
         mockConfiguration();
-        expect(MarkdownEditorProvider.getToolbarConfig().visible).toBe(true);
+        expect(getToolbarConfig().visible).toBe(true);
 
         // Arrange / Act / Assert — user hid the toolbar
         mockConfiguration({
             get: (key, defaultValue) => (key === "toolbar.visible" ? false : defaultValue),
         });
-        expect(MarkdownEditorProvider.getToolbarConfig().visible).toBe(false);
+        expect(getToolbarConfig().visible).toBe(false);
     });
 });

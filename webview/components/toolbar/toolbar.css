@@ -112,7 +112,8 @@
    overshoots the seam into the menu (which paints above it, z-index 200) so a
    sub-pixel rounding never leaves a dead line. Live only while the menu is open
    (the .tb-menu-open class), and only below the button — the top-docked toolbar
-   always opens its menus downward (menuPlacement never flips these up). */
+   always opens its menus downward (ui/anchoredPlacement's placeMenu never flips
+   these up). */
 .tb-fmt-wrap.tb-menu-open::after {
     content: "";
     position: absolute;
@@ -360,7 +361,7 @@
 
 /* ─── Checks menu (spelling / grammar / style + per-check toggles) ─── */
 .tb-checks-menu {
-    /* Side + vertical direction are set at open time by placeMenu (menuPlacement.ts),
+    /* Side + vertical direction are set at open time by placeMenu (ui/anchoredPlacement.ts),
        which measures the button and flips to fit the viewport — so no left/right
        here. Only intrinsic sizing lives in CSS. */
     min-width: 184px;
