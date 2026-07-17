@@ -21,7 +21,7 @@ import {
 import { SaveFlushController } from "./saveFlushController";
 import { watchExternalDocumentChanges } from "./externalChanges";
 import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtmlAttr } from "./webviewHtml";
-import { reportError } from "./errorSink";
+import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { scanHeadings } from "./utils/headingScan";
 import { slugify } from "../shared/slug";
@@ -758,6 +758,20 @@ export class MarkdownEditorProvider
                         // Gate document-mutating keybindings on real webview
                         // focus (MAR-104).
                         this._setWebviewFocus(uriKey, message.focused);
+                        break;
+                    case "crash":
+                        // The webview's crash boundary reported an uncaught
+                        // error / unhandled rejection (MAR-169). Log every
+                        // occurrence; the sink dedupes the user-facing toast to
+                        // one per session. The document itself is safe — the
+                        // TextDocument (and hot exit) live extension-side.
+                        reportErrorWithNotification(
+                            `webview ${message.source} (${document.uri.fsPath})`,
+                            message.stack ? `${message.message}\n${message.stack}` : message.message,
+                            vscode.l10n.t(
+                                "The Birta editor reported an internal error. Your document is safe; see the developer console for details.",
+                            ),
+                        );
                         break;
                     case "wordCount":
                         // Cache per document so re-activating a retained webview
