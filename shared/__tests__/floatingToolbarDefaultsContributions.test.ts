@@ -9,6 +9,10 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+// Deliberate cross-project import: this node-env drift test asserts the
+// package.json contribution defaults against the webview registry, which is
+// verified DOM-free. The only place the extension test project reads webview
+// source.
 import { FLOATING_TOOLBAR_ITEM_IDS } from "../../webview/components/selectionToolbar/registry";
 
 const root = path.resolve(__dirname, "../..");

@@ -10,6 +10,7 @@
 import * as path from "path";
 import { pathToFileURL } from "url";
 import * as vscode from "vscode";
+import { readBirtaSetting } from "../config";
 import type { HarperLint, LintBlock, LintBlockResult } from "../../shared/messages";
 import { INLINE_PLACEHOLDER, isTechSpan } from "../../shared/proofreadFilter";
 
@@ -51,9 +52,8 @@ function getLinter(): Promise<HarperLinter> {
 }
 
 function userWords(): Set<string> {
-    const words = vscode.workspace
-        .getConfiguration("birta")
-        .get<string[]>("spellCheck.userWords", []);
+    // Through the config seam (src/config.ts) like every other birta.* read.
+    const words = readBirtaSetting("userWords");
     return new Set(words.map((w) => w.toLowerCase()));
 }
 

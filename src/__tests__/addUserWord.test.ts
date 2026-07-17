@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as vscode from "vscode";
-import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
+import { addUserWord } from "../config";
 
 const KEY = "spellCheck.userWords";
 
@@ -33,7 +33,7 @@ describe("addUserWord", () => {
         const { update } = stubConfig([]);
 
         // Act
-        MarkdownEditorProvider.addUserWord("Birta");
+        addUserWord("Birta");
 
         // Assert — appended to userWords at Global scope (never Workspace, so it
         // can't land in the repo's .vscode/settings.json)
@@ -49,7 +49,7 @@ describe("addUserWord", () => {
     it("should append to the existing list rather than replace it", () => {
         const { update } = stubConfig(["Foo"]);
 
-        MarkdownEditorProvider.addUserWord("Bar");
+        addUserWord("Bar");
 
         expect(update).toHaveBeenCalledWith(
             KEY,
@@ -61,7 +61,7 @@ describe("addUserWord", () => {
     it("should no-op for a word already in the dictionary", () => {
         const { update } = stubConfig(["Birta"]);
 
-        MarkdownEditorProvider.addUserWord("Birta");
+        addUserWord("Birta");
 
         expect(update).not.toHaveBeenCalled();
     });
@@ -69,7 +69,7 @@ describe("addUserWord", () => {
     it("should ignore blank input", () => {
         const { update } = stubConfig([]);
 
-        MarkdownEditorProvider.addUserWord("   ");
+        addUserWord("   ");
 
         expect(update).not.toHaveBeenCalled();
     });
