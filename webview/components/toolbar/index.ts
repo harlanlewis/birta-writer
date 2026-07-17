@@ -37,6 +37,7 @@ import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, no
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { createButton } from "@/ui/dom";
+import { onOutsideClick } from "@/ui/outsideClick";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
 import { openLinkEditor } from "../linkPopup";
@@ -621,14 +622,12 @@ function showImageInsertPanel(
         if (document.body.contains(panel)) {
             document.body.removeChild(panel);
         }
-        document.removeEventListener("mousedown", outsideClick);
+        outsideOff?.();
+        outsideOff = null;
     }
 
-    function outsideClick(e: MouseEvent): void {
-        if (!panel.contains(e.target as Node)) {
-            cleanup();
-        }
-    }
+    /** Outside-click detach handle (null until the deferred attach below). */
+    let outsideOff: (() => void) | null = null;
 
     // Tab switching
     tabProject.addEventListener("mousedown", (e) => {
@@ -682,8 +681,11 @@ function showImageInsertPanel(
         tabUpload.style.display = "none";
     }
 
+    // Deferred one tick so the opening click can't instantly dismiss the
+    // dialog. Bubble phase (`capture: false`), matching the hand-rolled
+    // original.
     setTimeout(() => {
-        document.addEventListener("mousedown", outsideClick);
+        outsideOff = onOutsideClick([panel], cleanup, { capture: false });
     }, 0);
 }
 

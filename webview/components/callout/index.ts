@@ -25,6 +25,7 @@ import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { onOutsideClick } from "@/ui/outsideClick";
 import {
     CALLOUT_KINDS,
     attrsFromMarker,
@@ -224,6 +225,8 @@ export function createCalloutView(
     let menu: HTMLElement | null = null;
     /** Escape-layer unregister handle (null while the menu is closed). */
     let escapeLayerOff: (() => void) | null = null;
+    /** Outside-click detach handle (null while the menu is closed). */
+    let outsideOff: (() => void) | null = null;
     const closeMenu = (refocus = false): void => {
         if (!menu) return;
         escapeLayerOff?.();
@@ -231,13 +234,9 @@ export function createCalloutView(
         menu.remove();
         menu = null;
         kindButton.setAttribute("aria-expanded", "false");
-        document.removeEventListener("mousedown", onOutside, true);
+        outsideOff?.();
+        outsideOff = null;
         if (refocus) kindButton.focus();
-    };
-    const onOutside = (e: MouseEvent): void => {
-        if (menu && !menu.contains(e.target as Node) && e.target !== kindButton) {
-            closeMenu();
-        }
     };
     const menuItems = (): HTMLButtonElement[] =>
         menu ? Array.from(menu.querySelectorAll("button")) : [];
@@ -286,7 +285,12 @@ export function createCalloutView(
         // Escape layer: the focused menu's own keydown wins first; this
         // covers an editor-focused Escape while the menu is open.
         escapeLayerOff = registerEscapeLayer(() => closeMenu());
-        document.addEventListener("mousedown", onOutside, true);
+        // The kindButton exclusion is by target IDENTITY (not contains),
+        // matching the original handler: a mousedown on the button element
+        // itself defers to its click toggle instead of dismissing here.
+        outsideOff = onOutsideClick([menu], (e) => {
+            if (e.target !== kindButton) closeMenu();
+        });
         kindButton.setAttribute("aria-expanded", "true");
         (menu.querySelector(".active") as HTMLButtonElement | null ?? menuItems()[0])?.focus();
     };

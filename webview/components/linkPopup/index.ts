@@ -20,6 +20,7 @@ import {
     requestLinkTargetResolve,
 } from "@/components/pathLink/linkTargetComplete";
 import { createLinkFormatSwitch, wikiAllowedFor } from "@/ui/formatSwitch";
+import { onOutsideClick } from "@/ui/outsideClick";
 import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
 import { setPendingRange } from "@/plugins/pendingRange";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
@@ -1129,21 +1130,27 @@ export function setupLinkPopup(
 
     // ── Click outside the popup to close it ──────────────────────
 
-    document.addEventListener("mousedown", (e) => {
-        const target = e.target as Element | null;
-        if (popup.contains(target as Node)) return;
-        // A mousedown on a link anchor is a click-to-pin (or a re-point to a
-        // different link): let the capture-phase click handler re-anchor the
-        // popup instead of dismissing it here. When an editor is open, that same
-        // click handler applies-and-closes instead of re-pointing (see the
-        // isEditMode branch there), so an outside-click on a link is never a
-        // dead-end.
-        if (target?.closest?.("a")) return;
-        // mousedown lands before the input's blur would — save first so the
-        // click-away never eats an edit.
-        applyEdit();
-        hidePopup();
-    });
+    // Bubble phase (`capture: false`), matching the hand-rolled original: an
+    // outside surface that stops its own mousedown propagation keeps the
+    // popup open. Attached for the editor's lifetime, never detached.
+    onOutsideClick(
+        [popup],
+        (e) => {
+            const target = e.target as Element | null;
+            // A mousedown on a link anchor is a click-to-pin (or a re-point to a
+            // different link): let the capture-phase click handler re-anchor the
+            // popup instead of dismissing it here. When an editor is open, that same
+            // click handler applies-and-closes instead of re-pointing (see the
+            // isEditMode branch there), so an outside-click on a link is never a
+            // dead-end.
+            if (target?.closest?.("a")) return;
+            // mousedown lands before the input's blur would — save first so the
+            // click-away never eats an edit.
+            applyEdit();
+            hidePopup();
+        },
+        { capture: false },
+    );
 
     // Fallback: Escape closes an open (esp. pinned) popup when focus is
     // neither in the edit inputs (they handle Escape themselves and refocus

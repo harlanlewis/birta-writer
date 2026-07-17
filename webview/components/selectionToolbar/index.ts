@@ -700,7 +700,14 @@ export function setupSelectionToolbar(
     deleteColBtn.style.display = "none";
     toolbar.appendChild(deleteColBtn);
 
-    // ── Click outside the toolbar to close it (clicks inside the editor don't close, so shift+click extending a selection won't hide the toolbar)
+    // ── Click outside the toolbar to close it ──────────────────────────
+    // Deliberately NOT ui/outsideClick: this surface's "inside" region is not
+    // its own DOM but the whole editor — a click anywhere in `.milkdown`
+    // moves or extends the selection (shift+click included) and the toolbar
+    // must follow it, not dismiss. Dismissal here means "outside the toolbar
+    // AND outside the editor", gated on the toolbar being visible; forcing
+    // that through the shared contains-only helper would bury the
+    // editor-is-inside semantics in its callback.
     document.addEventListener("mousedown", (e) => {
         const target = e.target as Element;
         const inEditor = !!target.closest?.(".milkdown");
