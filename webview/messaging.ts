@@ -199,6 +199,19 @@ export function notifyResolveSyncConflict(): void {
     vscode.postMessage({ type: "resolveSyncConflict" });
 }
 
+/**
+ * Report an uncaught error / unhandled rejection to the extension so it can
+ * log it and (once) notify the user (MAR-169). Called only by the crash
+ * boundary in crashReporter.ts, which owns the rate limiting.
+ */
+export function notifyCrash(
+    message: string,
+    stack: string | undefined,
+    source: "error" | "unhandledrejection",
+): void {
+    vscode.postMessage({ type: "crash", message, ...(stack ? { stack } : {}), source });
+}
+
 export function onMessage(handler: (msg: IncomingMessage) => void): void {
     window.addEventListener("message", (event: MessageEvent) => {
         handler(event.data as IncomingMessage);

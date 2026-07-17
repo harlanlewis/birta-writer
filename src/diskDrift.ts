@@ -27,6 +27,9 @@
  */
 import * as path from "path";
 import * as vscode from "vscode";
+// Mechanism B of the external-change seam: the debounce constant and the
+// unify-vs-divide rationale live in src/externalChanges.ts (MAR-152 ADR).
+import { DISK_DRIFT_DEBOUNCE_MS } from "./externalChanges";
 
 export interface DiskDriftHooks {
     /**
@@ -35,9 +38,6 @@ export interface DiskDriftHooks {
      */
     onDriftChange(uriKey: string, drifted: boolean): void;
 }
-
-/** Coalesce write bursts (external tools often rewrite a file several times). */
-const WATCH_DEBOUNCE_MS = 120;
 
 export class DiskDriftController {
     /** Documents whose unsaved edits have drifted from a newer file on disk. */
@@ -70,7 +70,7 @@ export class DiskDriftController {
             timer = setTimeout(() => {
                 timer = undefined;
                 void this._evaluate(document, uriKey);
-            }, WATCH_DEBOUNCE_MS);
+            }, DISK_DRIFT_DEBOUNCE_MS);
         };
 
         const subscriptions = [

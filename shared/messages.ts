@@ -190,7 +190,6 @@ export type ToExtensionMessage =
     // heading, never a line number, and bare names resolve by filename
     // across the workspace instead of as document-relative paths.
     | { type: "openFile"; path: string; wiki?: true }
-    | { type: "debug"; message: string }
     | { type: "switchToTextEditor"; line?: number }
     // `query` optionally narrows the native Settings UI filter (e.g. to the
     // font settings); it must stay within this extension's namespace.
@@ -261,7 +260,13 @@ export type ToExtensionMessage =
     // keybindings fire only while the editor is truly focused — not merely
     // because its tab is the active custom editor with focus parked in the
     // Explorer (MAR-104).
-    | { type: "focusState"; focused: boolean };
+    | { type: "focusState"; focused: boolean }
+    // An uncaught webview error (window.onerror) or unhandled promise
+    // rejection, reported by the crash boundary in webview/crashReporter.ts
+    // (MAR-169). Rate-limited webview-side; the extension logs it and shows a
+    // single deduped notification. Decoration only — never part of the content
+    // sync protocol.
+    | { type: "crash"; message: string; stack?: string; source: "error" | "unhandledrejection" };
 
 /**
  * Extension → WebView messages.

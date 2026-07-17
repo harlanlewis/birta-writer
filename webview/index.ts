@@ -20,6 +20,12 @@
 
 import "./perfBoot"; // MUST stay first: stamps mdw:eval-start before any other module evaluates.
 import "./style.css";
+import { installCrashReporter } from "./crashReporter";
+
+// Crash boundary (MAR-169): install before any component initializes, so an
+// uncaught error / unhandled rejection anywhere below reaches the extension
+// as a structured crash report instead of dying silently in the iframe.
+installCrashReporter();
 import {
     createEditor,
     getEditorView,
