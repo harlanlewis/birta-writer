@@ -68,9 +68,20 @@ export function createSeparator(className: string, tag: 'div' | 'span' = 'div'):
 
 /**
  * The house inline-editing semantics for an always-present input: Enter and
- * blur apply the edit, Escape reverts it, and there is no confirm button.
- * (The link popup, callout titles, and the image caption/title all behave
- * this way — see "save on blur" in samples/content-inventory.md.)
+ * blur apply the edit, Escape reverts it, and there is no confirm button
+ * (see "save on blur" in samples/content-inventory.md).
+ *
+ * Consumers: the image caption and title inputs (components/imageView). The
+ * two other save-on-blur surfaces follow the same UX but deliberately
+ * hand-roll variants this helper cannot express:
+ * - the link popup (components/linkPopup) commits on blur only when focus
+ *   leaves the whole popup (moves between its two fields are not a save
+ *   point), and its Escape closes the popup discarding uncommitted typing
+ *   rather than reverting the input in place;
+ * - the callout title (components/callout) edits a contenteditable span, not
+ *   an <input>, relies on blur-THEN-commit ordering so the NodeView's render
+ *   re-syncs the normalized (trimmed) title once focus has left, and lets
+ *   Enter/Escape bubble less aggressively (no stopPropagation).
  *
  * `commit` must be a no-op when the value is unchanged: Enter/Escape blur the
  * input, which fires the blur commit a second time. Only Enter/Escape are

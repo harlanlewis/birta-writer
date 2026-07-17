@@ -332,12 +332,12 @@ body.code-block-word-wrap .milkdown .editor .code-block-wrapper.code-block-wrapp
    "no custom colors" rule: the point is theme-independence, and the paired
    Mermaid `theme` palette is chosen from the same decision so they never clash. */
 :root {
-    --mermaid-canvas: #ffffff;
+    --mermaid-canvas: #ffffff; /* color-literal-ok: fixed non-theme diagram canvas (see comment above) */
     /* Ink for text drawn directly *on* the canvas (the loading placeholder). Must
        track the canvas, not the theme: on the forced-white canvas a dark-theme
        foreground would be light-on-white and invisible. #333 matches Mermaid's
        own default-theme text. */
-    --mermaid-canvas-fg: #333333;
+    --mermaid-canvas-fg: #333333; /* color-literal-ok: ink on the forced-white canvas (see comment above) */
 }
 body.mermaid-canvas-dark {
     --mermaid-canvas: var(--vscode-textCodeBlock-background);
@@ -503,7 +503,7 @@ body.mermaid-canvas-dark {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.88);
+    background: rgba(0, 0, 0, 0.88); /* color-literal-ok: always-dark lightbox scrim (photo-viewer chrome, theme-independent by design) */
     display: flex;
     flex-direction: column;
     animation: lb-open 0.18s ease;
@@ -519,9 +519,9 @@ body.mermaid-canvas-dark {
     align-items: center;
     gap: 4px;
     padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.4);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    color: #e0e0e0;
+    background: rgba(0, 0, 0, 0.4); /* color-literal-ok: header bar on the always-dark lightbox scrim */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1); /* color-literal-ok: hairline on the always-dark lightbox scrim */
+    color: #e0e0e0; /* color-literal-ok: light-on-dark text for the always-dark lightbox chrome */
     flex-shrink: 0;
 }
 
@@ -563,14 +563,14 @@ body.mermaid-canvas-dark {
 }
 
 .mermaid-lightbox-header .mermaid-zoom-btn {
-    color: #e0e0e0;
+    color: #e0e0e0; /* color-literal-ok: light-on-dark button for the always-dark lightbox chrome */
     min-width: 38px;
     opacity: 0.8;
 }
 
 .mermaid-lightbox-header .mermaid-zoom-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12); /* color-literal-ok: hover wash on the always-dark lightbox chrome */
+    border-color: rgba(255, 255, 255, 0.2); /* color-literal-ok: hover border on the always-dark lightbox chrome */
     opacity: 1;
 }
 

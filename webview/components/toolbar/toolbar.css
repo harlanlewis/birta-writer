@@ -788,8 +788,8 @@ body.has-sync-conflict .toolbar-toggle-tab {
     padding: 0;
     font-size: 12px;
     line-height: 1;
-    background: rgba(0, 0, 0, 0.5);
-    color: #fff;
+    background: rgba(0, 0, 0, 0.5); /* color-literal-ok: dark chip over an arbitrary thumbnail image, theme-independent by design */
+    color: #fff; /* color-literal-ok: white-on-dark glyph for the dark thumbnail chip */
     border: none;
     border-radius: 3px;
     cursor: pointer;
@@ -814,7 +814,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(0, 0, 0, 0.75); /* color-literal-ok: always-dark lightbox scrim (photo-viewer chrome, theme-independent by design) */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -835,8 +835,8 @@ body.has-sync-conflict .toolbar-toggle-tab {
     width: 32px;
     height: 32px;
     padding: 0;
-    background: rgba(0, 0, 0, 0.5);
-    color: #fff;
+    background: rgba(0, 0, 0, 0.5); /* color-literal-ok: close button on the always-dark lightbox scrim */
+    color: #fff; /* color-literal-ok: white-on-dark close glyph for the always-dark lightbox scrim */
     border: none;
     border-radius: 50%;
     cursor: pointer;
@@ -847,7 +847,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     transition: background 0.12s;
 }
 .img-lightbox-close:hover {
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.8); /* color-literal-ok: hover state on the always-dark lightbox scrim */
 }
 
 /* ─── Settings gear dropdown (right-aligned so it never clips off-screen) ─── */
