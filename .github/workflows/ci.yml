@@ -61,6 +61,35 @@ jobs:
           test -f dist/extension.js || (echo "dist/extension.js missing" && exit 1)
           test -f dist/webview.js   || (echo "dist/webview.js missing" && exit 1)
 
+  # Deliberate exception to the "e2e/perf is local-only" rule below: the
+  # eager-bytes gate involves no browser and no timing — it walks the esbuild
+  # metafile, which is deterministic for a given lockfile (two clean production
+  # builds are byte-identical), so it can never be flaky in CI. It fails on any
+  # eager-total growth over the committed e2e/perf/bundle-baseline.json; the
+  # failure message says how to accept an intentional increase.
+  perf-bundle:
+    name: Eager-Bytes Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (production, with metafile)
+        run: node esbuild.mjs --production --metafile
+
+      - name: Check eager bytes against the committed baseline
+        run: pnpm perf:bundle --check
+
 # The e2e suite (real bundle in headless Chromium) is a LOCAL pre-push gate,
 # run with `pnpm test:e2e`, not a CI job. Its layout-geometry and input-timing
 # assertions are calibrated to a real desktop browser and are flaky in GitHub's
