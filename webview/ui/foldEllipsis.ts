@@ -5,6 +5,7 @@
  * (headings), and NodeView chrome for NodeView-backed hosts (the callout
  * title bar). Clicking it expands; the hidden-block count lives in the
  * tooltip and aria-label, never inline (quiet-by-default, VS Code's idiom).
+ * Consumers: the heading fold gutter, callout, table, and code block chrome.
  */
 import { applyTooltip, hideTooltip } from "./tooltip";
 import { t } from "../i18n";

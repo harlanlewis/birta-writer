@@ -19,7 +19,7 @@ import {
     attachLinkTargetComplete,
     requestLinkTargetResolve,
 } from "@/components/pathLink/linkTargetComplete";
-import { createLinkFormatSwitch, wikiAllowedFor } from "@/ui/formatSwitch";
+import { createLinkFormatSwitch, wikiAllowedFor } from "./formatSwitch";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
 import { setPendingRange } from "@/plugins/pendingRange";
