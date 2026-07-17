@@ -30,6 +30,7 @@ import {
     codeBlockSelectAllPlugin,
     docChangePlugin,
     setDocChangeListener,
+    embedPlugin,
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,
     foldRevealKeymapPlugin,
@@ -568,6 +569,17 @@ export async function createEditor(
     // composed plugins actually fires.
     if (window.__i18n?.calcEnabled ?? true) {
         builder = builder.use(calcSuggestPlugin).use(calcAutoInsertPlugin);
+    }
+
+    // URL embeds (MAR-56): render a bare provider link (YouTube) as an inline
+    // facade card via a view-only decoration — the source stays a plain link and
+    // round-trips byte-identically. Composed ONLY when enabled, so a disabled
+    // feature composes nothing (design principle: "A disabled feature costs
+    // nothing"); the plugin's own decoration function is gated too. __i18n is
+    // baked into the HTML before this script runs, so the flag reads
+    // synchronously here (like calc/smartLinks).
+    if (window.__i18n?.embedsEnabled ?? true) {
+        builder = builder.use(embedPlugin);
     }
 
     _editor = await builder

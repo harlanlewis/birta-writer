@@ -78,6 +78,14 @@ export interface BirtaConfig extends ProofreadConfig {
     pasteUnfurlEnabled: boolean;
     /** Inline calc-on-`=` master gate (birta.calc.enabled). */
     calcEnabled: boolean;
+    /**
+     * URL-embed master gate (birta.embeds.enabled): a bare provider link
+     * (YouTube) on its own line renders as an inline facade card — a static
+     * thumbnail that loads the player only on click. Render-only: the on-disk
+     * markdown stays the plain bare link. When OFF, no card renders, no thumbnail
+     * is fetched, and the webview CSP grants no embed hosts.
+     */
+    embedsEnabled: boolean;
     /** Insert the result on `=` instead of suggesting it (birta.calc.autoInsert). */
     calcAutoInsert: boolean;
     /**
@@ -142,6 +150,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
     calcEnabled: "calc.enabled",
     calcAutoInsert: "calc.autoInsert",
+    embedsEnabled: "embeds.enabled",
     checklistSinkChecked: "checklist.sinkChecked",
     imageLocalPath: "imageLocalPath",
 };
@@ -208,6 +217,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Calc: the feature ships on, but advisory (no silent mutation) by default.
     calcEnabled: true,
     calcAutoInsert: false,
+    // URL embeds ship ON (like calc/smartLinks): a bare YouTube link renders as
+    // an inline facade card. Render-only, so the file is unchanged; the gate
+    // turns off both the card and its thumbnail network load.
+    embedsEnabled: true,
     // Self-sinking checklists ship OFF: reordering on a checkbox click is a
     // surprising motion until asked for, so the default is a plain in-place flip.
     checklistSinkChecked: false,

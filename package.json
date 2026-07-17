@@ -1867,6 +1867,12 @@
                     "default": false,
                     "description": "%config.calc.autoInsert.description%"
                 },
+                "birta.embeds.enabled": {
+                    "order": 108.5,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.embeds.enabled.description%"
+                },
                 "birta.checklist.sinkChecked": {
                     "order": 109,
                     "type": "boolean",

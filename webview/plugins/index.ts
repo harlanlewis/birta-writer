@@ -32,6 +32,7 @@ export {
 export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
 export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
+export { computeEmbedDecorations, embedPlugin } from "./embed";
 export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export {
