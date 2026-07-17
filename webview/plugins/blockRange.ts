@@ -15,9 +15,9 @@
  * contiguous case — no product has coherent drop semantics for
  * non-contiguous, so neither do we.
  */
-import type { Node as ProseNode, ResolvedPos } from "@milkdown/prose/model";
-import type { Mappable } from "@milkdown/prose/transform";
-import { Selection } from "@milkdown/prose/state";
+import type { Node as ProseNode, ResolvedPos } from "../pm";
+import type { Mappable } from "../pm";
+import { Selection } from "../pm";
 
 /** Snap `pos` to the start boundary of the top-level block containing it. */
 function snapStart(doc: ProseNode, pos: number): number {

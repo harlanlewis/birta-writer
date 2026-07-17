@@ -10,14 +10,14 @@
  * layer (persistence, gutter DOM, decorations, commands, the plugin itself)
  * can build on it without cycling.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as ProseMirrorNode } from "@milkdown/prose/model";
+import type { EditorView } from "../../pm";
+import type { Node as ProseMirrorNode } from "../../pm";
 import {
     Selection,
     TextSelection,
     type EditorState,
     type Transaction,
-} from "@milkdown/prose/state";
+} from "../../pm";
 import { foldPluginKey } from "../foldState";
 
 export type HeadingFoldRange = { from: number; to: number };

@@ -11,7 +11,7 @@ import {
     defaultValueCtx,
     editorViewCtx,
 } from "@milkdown/core";
-import { TextSelection } from "@milkdown/prose/state";
+import { TextSelection } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { runEditorCommand } from "../editorCommands";

@@ -16,7 +16,7 @@
  * completion is out of scope), and the whole plugin sits behind the
  * smartLinks setting (baked into window.__i18n at load).
  */
-import { PluginKey } from "@milkdown/prose/state";
+import { PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { LinkTargetSuggestionItem } from "../../shared/messages";
 import {

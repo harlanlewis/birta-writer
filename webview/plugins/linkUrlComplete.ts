@@ -18,7 +18,7 @@
  * External targets (http/https/mailto/#anchor) never trigger suggestions —
  * the shared isLocalPathQuery guard from shared/linkTargetSuggest.ts.
  */
-import { PluginKey } from "@milkdown/prose/state";
+import { PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { LinkTargetSuggestionItem } from "../../shared/messages";
 import {

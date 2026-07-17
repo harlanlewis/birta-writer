@@ -14,10 +14,10 @@ import {
     nodeViewCtx,
 } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { TableMap } from "@milkdown/prose/tables";
-import { TextSelection } from "@milkdown/prose/state";
-import type { Node as PMNode } from "@milkdown/prose/model";
-import type { EditorView } from "@milkdown/prose/view";
+import { TableMap } from "../pm";
+import { TextSelection } from "../pm";
+import type { Node as PMNode } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     applyMinimalChanges,

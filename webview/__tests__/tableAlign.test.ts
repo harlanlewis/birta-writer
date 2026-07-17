@@ -8,9 +8,9 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { TextSelection, NodeSelection } from "@milkdown/prose/state";
-import { CellSelection, cellAround } from "@milkdown/prose/tables";
-import type { EditorView } from "@milkdown/prose/view";
+import { TextSelection, NodeSelection } from "../pm";
+import { CellSelection, cellAround } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { runEditorCommand } from "../editorCommands";
 

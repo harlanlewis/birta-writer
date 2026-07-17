@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { setHeadingLevelAt } from "../plugins/headingFold";
@@ -316,7 +316,7 @@ describe("heading gutter level menu", () => {
 
     it("a selection-only transaction should return the identical plugin state", async () => {
         const { headingFoldPluginKey } = await import("../plugins/headingFold");
-        const { TextSelection } = await import("@milkdown/prose/state");
+        const { TextSelection } = await import("../pm");
         const editor = await makeEditor("## Title\n\nBody");
         const v = view(editor);
         const before = headingFoldPluginKey.getState(v.state);

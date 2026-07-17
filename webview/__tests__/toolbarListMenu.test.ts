@@ -7,8 +7,8 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { Selection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { Selection } from "../pm";
+import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";

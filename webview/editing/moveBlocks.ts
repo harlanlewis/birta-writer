@@ -66,9 +66,9 @@
  * v1 scope: ONE contiguous source range. Non-contiguous multi-range moves
  * (a future marquee/Cmd-click extension) are explicitly out of scope.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
-import { TextSelection, type EditorState } from "@milkdown/prose/state";
+import type { EditorView } from "../pm";
+import { Fragment, type Node as ProseNode } from "../pm";
+import { TextSelection, type EditorState } from "../pm";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState";
 // Runtime-only cycle (moveBlocks → headingFold → blockMenu → moveBlocks):

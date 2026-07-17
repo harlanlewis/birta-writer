@@ -6,10 +6,10 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, schemaCtx } from "@milkdown/core";
-import { TextSelection } from "@milkdown/prose/state";
-import { liftListItem } from "@milkdown/prose/schema-list";
-import type { EditorView } from "@milkdown/prose/view";
-import type { NodeType } from "@milkdown/prose/model";
+import { TextSelection } from "../pm";
+import { liftListItem } from "../pm";
+import type { EditorView } from "../pm";
+import type { NodeType } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { sinkItemKeepingChildren } from "../plugins/tabKeymap";

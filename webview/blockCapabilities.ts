@@ -27,8 +27,8 @@
  * components/blockMenu/turnInto.ts; `convertAt` dispatches to them on the
  * shape pair, so the mechanism is derived along with the legality.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "./pm";
+import type { Node as ProseNode } from "./pm";
 import { getHeadingLevel, setHeadingLevelAt } from "./plugins/headingFold";
 import type { GetEditor } from "./editorCommands";
 // Runtime-only cycle (turnInto imports this module's kind probes back for

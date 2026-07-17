@@ -1,5 +1,5 @@
-import { history, redo, undo } from "@milkdown/prose/history";
-import { keymap } from "@milkdown/prose/keymap";
+import { history, redo, undo } from "../pm";
+import { keymap } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 // Register the ProseMirror history plugin (undo/redo support)

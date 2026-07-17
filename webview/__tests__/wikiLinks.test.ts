@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { parseWikiRaw, wikiDisplayText } from "../plugins/wikiLinks";
 
@@ -172,7 +172,7 @@ describe("wiki_link round-trip byte-identity", () => {
 });
 
 // ─── Input rule: typing [[…]] converts on the closing bracket ───────────────
-import { TextSelection } from "@milkdown/prose/state";
+import { TextSelection } from "../pm";
 
 describe("typing [[target]] should create a wiki_link atom", () => {
     /** Simulate typing through the input-rule runner (linkInputRule.test.ts pattern). */

@@ -12,7 +12,7 @@
  * `**`, heading markers, `---` or reference definitions). These map to a
  * top-level block for reveal only; they cannot be replaced.
  */
-import type { Node as PmNode, Mark } from "@milkdown/prose/model";
+import type { Node as PmNode, Mark } from "../../pm";
 
 // ── Query compilation ────────────────────────────────────
 

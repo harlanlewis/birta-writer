@@ -6,13 +6,13 @@
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { TextSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin } from "../plugins/contentGuard";
-import { undo } from "@milkdown/prose/history";
+import { undo } from "../pm";
 import {
     isBlockSpanning,
     toggleBlockSelection,
@@ -26,7 +26,7 @@ import {
 import { registerEscapeLayer, closeTopmostLayer } from "../ui/escapeLayers";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey } from "../plugins/headingFold";
-import { NodeSelection } from "@milkdown/prose/state";
+import { NodeSelection } from "../pm";
 
 let editors: Editor[] = [];
 

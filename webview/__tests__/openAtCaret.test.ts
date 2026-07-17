@@ -11,8 +11,8 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
-import { NodeSelection, TextSelection } from "@milkdown/prose/state";
+import type { EditorView } from "../pm";
+import { NodeSelection, TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { BlockRangeSelection } from "../plugins/blockRange";

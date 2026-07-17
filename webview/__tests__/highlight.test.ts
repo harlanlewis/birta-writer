@@ -6,8 +6,8 @@
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, commandsCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { EditorView } from "@milkdown/prose/view";
-import { TextSelection } from "@milkdown/prose/state";
+import type { EditorView } from "../pm";
+import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { toggleHighlightCommand } from "../plugins/highlight";
 

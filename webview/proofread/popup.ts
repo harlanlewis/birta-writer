@@ -8,7 +8,7 @@
  * (plugins/proofread.ts) builds with the editor view and document positions in
  * hand, so the popup itself imports neither the engine nor the plugin.
  */
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { closeTopmostLayer, registerEscapeLayer } from "../ui/escapeLayers";
 import { computeAnchoredPosition, viewportSize } from "../ui/anchoredPlacement";
 import { onOutsideClick } from "../ui/outsideClick";

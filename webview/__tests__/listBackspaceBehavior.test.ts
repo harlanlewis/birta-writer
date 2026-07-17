@@ -14,8 +14,8 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { TextSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {

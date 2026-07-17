@@ -1,10 +1,10 @@
-import { editorViewCtx, schemaCtx } from "@milkdown/core";
-import { keymap } from "@milkdown/prose/keymap";
-import { Fragment } from "@milkdown/prose/model";
-import type { Node as ProseNode, NodeType } from "@milkdown/prose/model";
-import { TextSelection } from "@milkdown/prose/state";
-import type { EditorState, Transaction } from "@milkdown/prose/state";
-import { sinkListItem } from "@milkdown/prose/schema-list";
+import { schemaCtx } from "@milkdown/core";
+import { getView, keymap } from "../pm";
+import { Fragment } from "../pm";
+import type { Node as ProseNode, NodeType } from "../pm";
+import { TextSelection } from "../pm";
+import type { EditorState, Transaction } from "../pm";
+import { sinkListItem } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 function isListNode(node: ProseNode | null | undefined): node is ProseNode {
@@ -141,7 +141,7 @@ function getListType(view: any): string | null {
 export const tabKeymapPlugin = $prose((ctx) =>
     keymap({
         Tab: (state, dispatch) => {
-            const view = ctx.get(editorViewCtx);
+            const view = getView(ctx);
             if (!dispatch) { return false; }
 
             // Inside a code block: insert 4 spaces

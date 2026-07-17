@@ -1,6 +1,6 @@
 import "./findBar.css";
-import type { EditorView } from "@milkdown/prose/view";
-import { TextSelection, type Transaction } from "@milkdown/prose/state";
+import type { EditorView } from "@/pm";
+import { TextSelection, type Transaction } from "@/pm";
 import { createButton } from "@/ui/dom";
 import {
     IconChevronUp,

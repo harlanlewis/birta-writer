@@ -9,9 +9,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
-import type { Mark } from "@milkdown/prose/model";
+import { TextSelection } from "../pm";
+import type { EditorView } from "../pm";
+import type { Mark } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { initToolbar } from "../components/toolbar";
 import { setupLinkPopup } from "../components/linkPopup";

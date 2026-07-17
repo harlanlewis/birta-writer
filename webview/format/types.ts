@@ -18,7 +18,7 @@
  * `LinkFormat` is the unrelated markdown-vs-wikilink LINK style toggle.)
  */
 import type { Editor } from "@milkdown/core";
-import type { NodeViewConstructor } from "@milkdown/prose/view";
+import type { NodeViewConstructor } from "../pm";
 import type { FormatProfile } from "@birta/minimal-diff";
 import type { SlashMenuItem } from "../components/slashMenu/registry";
 import type { ToolbarItemId } from "../components/toolbar/registry";

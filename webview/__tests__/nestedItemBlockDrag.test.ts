@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, parserCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "../pm";
+import type { Node as ProseNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";

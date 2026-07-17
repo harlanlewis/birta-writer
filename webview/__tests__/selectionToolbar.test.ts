@@ -21,10 +21,10 @@ import {
     defaultValueCtx,
     editorViewCtx,
 } from "@milkdown/core";
-import { Selection, TextSelection } from "@milkdown/prose/state";
-import { CellSelection } from "@milkdown/prose/tables";
+import { Selection, TextSelection } from "../pm";
+import { CellSelection } from "../pm";
 import { BlockRangeSelection } from "../plugins/blockRange";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {

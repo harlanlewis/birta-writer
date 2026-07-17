@@ -1,10 +1,10 @@
-import type { Node as PMNode } from "@milkdown/prose/model";
-import { TextSelection } from "@milkdown/prose/state";
+import type { Node as PMNode } from "@/pm";
+import { TextSelection } from "@/pm";
 import type {
     Decoration,
     DecorationSource,
     EditorView,
-} from "@milkdown/prose/view";
+} from "@/pm";
 import {
     IconZoomIn,
     IconPencil,

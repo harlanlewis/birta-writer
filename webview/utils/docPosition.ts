@@ -4,8 +4,8 @@
  * selectionToolbar so the toolbar's debug helper can import it without pulling
  * that whole module — and its CSS — into the launch bundle.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import type { ResolvedPos } from "@milkdown/prose/model";
+import type { EditorView } from "../pm";
+import type { ResolvedPos } from "../pm";
 
 /** Strip common markdown markers, for fuzzy comparison against the original content */
 function normalizeForSearch(s: string): string {

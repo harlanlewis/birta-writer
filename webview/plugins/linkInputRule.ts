@@ -15,8 +15,8 @@
  * already skips code blocks ($from.parent.type.spec.code), and the handler
  * additionally bails when the matched range carries an inline code mark.
  */
-import { InputRule } from "@milkdown/prose/inputrules";
-import type { EditorState, Transaction } from "@milkdown/prose/state";
+import { InputRule } from "../pm";
+import type { EditorState, Transaction } from "../pm";
 import { $inputRule } from "@milkdown/utils";
 
 /** Literal inline link syntax ending at the just-typed ")". */

@@ -7,7 +7,7 @@
  * from. Everything here is widget-factory code — positions are derived at
  * INTERACTION time (gutterBlockPos), never captured at build time.
  */
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../../pm";
 import {
     IconAlertCircle,
     IconCheckSquare,

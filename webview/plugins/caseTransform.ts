@@ -28,8 +28,8 @@
  *    transform twice causes no doc churn and no extra undo step.
  *  - Each transform is one transaction, hence one undo step.
  */
-import type { Command } from "@milkdown/prose/state";
-import type { Mark } from "@milkdown/prose/model";
+import type { Command } from "../pm";
+import type { Mark } from "../pm";
 
 /** Per-range text mapper; `boundary()` is called at every word-state gap. */
 interface SegmentMapper {

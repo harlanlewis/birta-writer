@@ -16,7 +16,7 @@
  *   editable; the reference form (full/collapsed/shortcut) round-trips.
  * - `image_ref` (inline, atom): `![alt][ref]` — rendered as an inline chip.
  */
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { Node as ProseNode } from "../pm";
 import { $markSchema, $nodeSchema } from "@milkdown/utils";
 
 /** `[label]: url "title"` — a link reference definition block. */

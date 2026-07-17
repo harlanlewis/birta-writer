@@ -19,7 +19,7 @@
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { Node as ProseNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 
 async function makeEditor(markdown: string): Promise<Editor> {

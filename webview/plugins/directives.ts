@@ -23,7 +23,7 @@
  * paragraph) or were separated by blank lines — without them, serialization
  * would add or drop blank lines.
  */
-import { InputRule } from "@milkdown/prose/inputrules";
+import { InputRule } from "../pm";
 import { $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
 
 export const directiveId = "container_directive";

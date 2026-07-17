@@ -17,9 +17,10 @@
  * false WITHOUT dispatching, and the caller falls back to the full-rebuild
  * (revert) path.
  */
-import { type Editor, editorViewCtx, parserCtx } from "@milkdown/core";
+import { type Editor, parserCtx } from "@milkdown/core";
 import { computeDocDiff } from "@milkdown/plugin-diff";
 import { EXTERNAL_SYNC_META } from "./plugins/docChange";
+import { getView } from "./pm";
 
 /**
  * Applies `newMarkdown` to the editor as a minimal ProseMirror diff.
@@ -32,7 +33,7 @@ import { EXTERNAL_SYNC_META } from "./plugins/docChange";
 export function applyExternalSync(editor: Editor, newMarkdown: string): boolean {
     try {
         return editor.action((ctx) => {
-            const view = ctx.get(editorViewCtx);
+            const view = getView(ctx);
             const parser = ctx.get(parserCtx);
             const newDoc = parser(newMarkdown);
             if (!newDoc) {

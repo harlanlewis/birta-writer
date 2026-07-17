@@ -25,7 +25,7 @@
  * to an uncontributed section so they keep native Cut/Copy/Paste only.
  */
 
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import type { WebviewSection } from "../../shared/editorCommands";
 
 interface ContextObject {

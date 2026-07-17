@@ -18,8 +18,8 @@
  * delete+reinsert (linkInputRule.ts): addMark preserves any inline formatting
  * inside the selection, and leaves a single history step so one undo removes it.
  */
-import { Plugin } from "@milkdown/prose/state";
-import type { EditorState } from "@milkdown/prose/state";
+import { Plugin } from "@/pm";
+import type { EditorState } from "@/pm";
 import { $prose } from "@milkdown/utils";
 import { openLinkEditor } from "@/components/linkPopup";
 

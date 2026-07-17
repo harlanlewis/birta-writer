@@ -1,5 +1,5 @@
-import type { EditorView } from "@milkdown/prose/view";
-import { Plugin, TextSelection } from "@milkdown/prose/state";
+import type { EditorView } from "../pm";
+import { Plugin, TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { IconChevronDown, IconChevronRight } from "../ui/icons";
 import { applyTooltip, hideTooltip } from "../ui/tooltip";

@@ -30,8 +30,8 @@
  *     selection means no change at all.
  *   - One gesture = one undo step (single transaction, single dispatch).
  */
-import type { Node as PMNode, ResolvedPos } from "@milkdown/prose/model";
-import { TextSelection, type Command, type Transaction } from "@milkdown/prose/state";
+import type { Node as PMNode, ResolvedPos } from "../pm";
+import { TextSelection, type Command, type Transaction } from "../pm";
 
 const HARDBREAK = "hardbreak";
 

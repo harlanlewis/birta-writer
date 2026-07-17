@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Schema } from "@milkdown/prose/model";
-import { Decoration, DecorationSet } from "@milkdown/prose/view";
+import { Schema } from "../pm";
+import { Decoration, DecorationSet } from "../pm";
 import { combine, computeDecorations, DEFAULT_CONFIG } from "../plugins/proofread";
 import type { ProofreadConfig } from "../../shared/messages";
 
@@ -49,7 +49,7 @@ const CONFIG: ProofreadConfig = {
     userWords: [],
 };
 
-function decoratedTexts(doc: import("@milkdown/prose/model").Node, config = CONFIG): string[] {
+function decoratedTexts(doc: import("../pm").Node, config = CONFIG): string[] {
     const set = computeDecorations(doc, config);
     return set.find().map((d) => doc.textBetween(d.from, d.to));
 }

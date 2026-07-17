@@ -4,9 +4,9 @@ import {
     orderedListSchema,
 } from "@milkdown/preset-commonmark";
 import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
-import { keymap } from "@milkdown/prose/keymap";
-import { Plugin, TextSelection } from "@milkdown/prose/state";
-import { liftListItem } from "@milkdown/prose/schema-list";
+import { keymap } from "../pm";
+import { Plugin, TextSelection } from "../pm";
+import { liftListItem } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 // ── Parse-time spread coercion (MAR-124) ────────────────────────────────────

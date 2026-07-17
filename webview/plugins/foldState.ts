@@ -6,8 +6,8 @@
  * callout component is itself part of that graph (CALLOUT_ICONS feeds the
  * slash registry), so a direct import would be a load-order cycle.
  */
-import type { DecorationSet } from "@milkdown/prose/view";
-import { PluginKey } from "@milkdown/prose/state";
+import type { DecorationSet } from "../pm";
+import { PluginKey } from "../pm";
 
 export type FoldMeta =
     | { type: "toggle"; pos: number }

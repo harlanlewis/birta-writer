@@ -27,9 +27,9 @@ import {
     insertHrCommand,
 } from "@milkdown/preset-commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
-import { TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
-import { CellSelection, TableMap } from "@milkdown/prose/tables";
+import { TextSelection } from "../pm";
+import type { EditorView } from "../pm";
+import { CellSelection, TableMap } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { editorCommands, runEditorCommand, setEditorCommandHost } from "../editorCommands";
 import { insertCalloutCommand } from "../plugins";
@@ -265,8 +265,8 @@ describe("editorCommands registry — table row/column commands", () => {
             .create();
     }
 
-    function findTable(): { node: import("@milkdown/prose/model").Node | null; pos: number } {
-        let node: import("@milkdown/prose/model").Node | null = null;
+    function findTable(): { node: import("../pm").Node | null; pos: number } {
+        let node: import("../pm").Node | null = null;
         let pos = -1;
         v.state.doc.descendants((n, p) => {
             if (n.type.name === "table" && node === null) { node = n; pos = p; return false; }

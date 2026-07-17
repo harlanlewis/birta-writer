@@ -1,4 +1,4 @@
-import { Plugin } from "@milkdown/prose/state";
+import { Plugin } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { getTopbarBottom } from "../utils/headingUtils";
 

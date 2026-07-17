@@ -1,5 +1,5 @@
-import { keymap } from "@milkdown/prose/keymap";
-import { NodeSelection } from "@milkdown/prose/state";
+import { keymap } from "../pm";
+import { NodeSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 // Code block Backspace: when the cursor is at the start of the paragraph following a code block, select the code block instead of entering it

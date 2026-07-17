@@ -1,12 +1,12 @@
-import { commandsCtx, editorViewCtx } from "@milkdown/core";
+import { commandsCtx } from "@milkdown/core";
 import {
     toggleEmphasisCommand,
     toggleInlineCodeCommand,
     toggleStrongCommand,
 } from "@milkdown/preset-commonmark";
 import { toggleStrikethroughCommand } from "@milkdown/preset-gfm";
-import { keymap } from "@milkdown/prose/keymap";
-import { TextSelection } from "@milkdown/prose/state";
+import { getView, keymap } from "../pm";
+import { TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 // Formatting shortcuts: Mod-b bold, Mod-i italic, Mod-Shift-x strikethrough,
@@ -31,7 +31,7 @@ export const formatKeymapPlugin = $prose((ctx) =>
             return true;
         },
         "Mod-e": () => {
-            const view = ctx.get(editorViewCtx);
+            const view = getView(ctx);
             const { state } = view;
             if (!state.selection.empty) {
                 ctx.get(commandsCtx).call(toggleInlineCodeCommand.key);

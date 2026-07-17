@@ -10,7 +10,7 @@
  * - Find the document position corresponding to a heading
  */
 
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
 

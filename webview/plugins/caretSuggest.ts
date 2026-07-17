@@ -13,8 +13,8 @@
  * split the paragraph). IME composition is never interrupted: updates are
  * skipped while composing and composition keydowns pass through.
  */
-import { Plugin, type PluginKey } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { Plugin, type PluginKey } from "../pm";
+import type { EditorView } from "../pm";
 import type { LinkSuggestMenu, SuggestMenuAnchor } from "../components/pathLink/linkTargetComplete";
 
 /** The construct ending at the caret that suggestions attach to. */

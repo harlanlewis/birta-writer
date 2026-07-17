@@ -26,7 +26,7 @@
  * serialization.ts so round-trip behavior never depends on configuration.
  */
 import type { Node as MdastNode } from "@milkdown/transformer";
-import { nodeRule } from "@milkdown/prose";
+import { nodeRule } from "../pm";
 import { $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
 
 export const wikiLinkId = "wiki_link";

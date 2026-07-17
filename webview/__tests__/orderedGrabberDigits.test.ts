@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin, foldRevealKeymapPlugin } from "../plugins/headingFold";
 

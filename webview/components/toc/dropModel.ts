@@ -22,7 +22,7 @@
  * a literal move (see components/blockMenu/drag), dragging in the outline is
  * a structural edit. Only this provider supplies a delta.
  */
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { Node as ProseNode } from "../../pm";
 import { findHeadingFoldRange } from "../../editing/blockOps";
 import { getHeadingLevel } from "../../plugins/headingFold";
 

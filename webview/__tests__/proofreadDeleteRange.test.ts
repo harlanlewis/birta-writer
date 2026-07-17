@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { Schema } from "@milkdown/prose/model";
-import { EditorState } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { Schema } from "../pm";
+import { EditorState } from "../pm";
+import type { EditorView } from "../pm";
 import { deleteRange } from "../plugins/proofread";
 
 /**
@@ -23,7 +23,7 @@ const schema = new Schema({
 function afterDelete(text: string, from: number, to: number): string {
     const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text)])]);
     let state = EditorState.create({ schema, doc });
-    const view = { get state() { return state; }, dispatch: (tr: import("@milkdown/prose/state").Transaction) => { state = state.apply(tr); } } as unknown as EditorView;
+    const view = { get state() { return state; }, dispatch: (tr: import("../pm").Transaction) => { state = state.apply(tr); } } as unknown as EditorView;
     // Positions map as 1 + offset (paragraph opens at 0).
     deleteRange(view, 1 + from, 1 + to);
     return state.doc.textContent;

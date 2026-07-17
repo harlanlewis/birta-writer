@@ -14,7 +14,7 @@
  * TOC panel, frontmatter panel) delegate to a host wired up by webview/index.ts
  * through `setEditorCommandHost`. Everything else is a pure editor mutation.
  */
-import { commandsCtx, editorViewCtx, serializerCtx } from "@milkdown/core";
+import { commandsCtx, serializerCtx } from "@milkdown/core";
 import {
     createCodeBlockCommand,
     insertHrCommand,
@@ -51,10 +51,10 @@ import {
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { openBlockMenuAtCaret } from "@/components/blockMenu/openAtCaret";
 import { insertInlineMathCommand } from "@/plugins/math";
-import { lift } from "@milkdown/prose/commands";
-import { liftListItem } from "@milkdown/prose/schema-list";
-import { TextSelection, type Command } from "@milkdown/prose/state";
-import { DOMSerializer, Fragment } from "@milkdown/prose/model";
+import { getView, lift } from "@/pm";
+import { liftListItem } from "@/pm";
+import { TextSelection, type Command } from "@/pm";
+import { DOMSerializer, Fragment } from "@/pm";
 import {
     addColumnAfter,
     addColumnBefore,
@@ -66,9 +66,9 @@ import {
     deleteTable,
     CellSelection,
     TableMap,
-} from "@milkdown/prose/tables";
+} from "@/pm";
 import type { Editor } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "@/pm";
 import type { EditorCommandId } from "../shared/editorCommands";
 import type { FontPreset, ProofreadOptionKey } from "../shared/messages";
 import { notifyClipboardWrite } from "@/messaging";
@@ -138,7 +138,7 @@ function runProse(
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
+        const view = getView(ctx);
         fn(view);
     });
 }
@@ -168,7 +168,7 @@ function toggleInlineCode(getEditor: GetEditor): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
+        const view = getView(ctx);
         const { state } = view;
         if (!state.selection.empty) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -222,7 +222,7 @@ function setHeading(getEditor: GetEditor, level: number): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
+        const view = getView(ctx);
         const liType = view.state.schema.nodes["list_item"];
         // liftListItem climbs one list level per call, so nested lists need
         // repeats. Bound the loop by the caret's initial depth (+slack) so it
@@ -248,7 +248,7 @@ function toggleWrap(
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
+        const view = getView(ctx);
         if (isInNode(view, nodeName)) {
             lift(view.state, view.dispatch);
         } else {
@@ -264,7 +264,7 @@ function toggleTaskList(getEditor: GetEditor): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
+        const view = getView(ctx);
         const { state } = view;
         const { $from } = state.selection;
         let isTaskList = false;
@@ -298,7 +298,7 @@ function toggleTaskList(getEditor: GetEditor): void {
 /** Inserts a footnote reference/definition pair and refocuses the editor. */
 function insertFootnote(getEditor: GetEditor): void {
     callCmd(getEditor, insertFootnoteCommand);
-    getEditor()?.action((ctx) => ctx.get(editorViewCtx).focus());
+    getEditor()?.action((ctx) => getView(ctx).focus());
 }
 
 /** Wraps the selection in a callout of the given kind. Always a wrap —
@@ -315,7 +315,7 @@ function insertCallout(getEditor: GetEditor, args?: unknown): void {
             insertCalloutCommand.key as never,
             typeof args === "string" ? args : undefined,
         );
-        ctx.get(editorViewCtx).focus();
+        getView(ctx).focus();
     });
 }
 
@@ -329,7 +329,7 @@ function toggleCallout(getEditor: GetEditor, args?: unknown): void {
     if (!editor) { return; }
     const kind = calloutKind(typeof args === "string" ? args : "note");
     editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
+        const view = getView(ctx);
         const { $from } = view.state.selection;
         for (let depth = $from.depth; depth > 0; depth--) {
             const node = $from.node(depth);
@@ -485,7 +485,7 @@ function copySelection(getEditor: GetEditor, format: "html" | "markdown", args?:
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
+        const view = getView(ctx);
         const { from, to, empty } = view.state.selection;
         let content: Fragment | undefined;
         if (!empty) {

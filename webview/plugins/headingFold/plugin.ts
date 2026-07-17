@@ -9,9 +9,9 @@
  * ./foldModel, persistence in ./foldAnchors, rendering in ./foldDecorations —
  * this module wires them to ProseMirror.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import { DecorationSet } from "@milkdown/prose/view";
-import { Plugin, Selection } from "@milkdown/prose/state";
+import type { EditorView } from "../../pm";
+import { DecorationSet } from "../../pm";
+import { Plugin, Selection } from "../../pm";
 import { $prose } from "@milkdown/utils";
 import { foldingEnabled } from "../../utils/foldingControls";
 // Runtime-only cycle (blockMenu imports this module's pure helpers back);

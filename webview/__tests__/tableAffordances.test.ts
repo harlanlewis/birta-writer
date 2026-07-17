@@ -19,9 +19,9 @@ import {
     editorViewCtx,
     nodeViewCtx,
 } from "@milkdown/core";
-import { CellSelection, TableMap } from "@milkdown/prose/tables";
-import type { Node as PMNode } from "@milkdown/prose/model";
-import type { EditorView } from "@milkdown/prose/view";
+import { CellSelection, TableMap } from "../pm";
+import type { Node as PMNode } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     createTableView,

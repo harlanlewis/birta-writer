@@ -14,7 +14,7 @@
  * click popover is gone: clicking the render places the caret in the source.
  */
 import "./math.css";
-import type { Node as PMNode } from "@milkdown/prose/model";
+import type { Node as PMNode } from "@/pm";
 import { renderKatexInto } from "@/utils/katexLoader";
 import { t } from "@/i18n";
 

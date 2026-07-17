@@ -10,8 +10,8 @@
  * The indicator STYLE is index.ts's concern; this module only answers "what is
  * true right now."
  */
-import type { EditorState } from "@milkdown/prose/state";
-import { NodeSelection } from "@milkdown/prose/state";
+import type { EditorState } from "../../pm";
+import { NodeSelection } from "../../pm";
 
 export type ListKind = "bullet" | "ordered" | "task";
 /** "blockquote" for a plain quote, otherwise the callout kind (note/tip/…). */

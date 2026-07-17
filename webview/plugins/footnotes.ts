@@ -11,9 +11,9 @@
  *     with reference order after any document change (a NodeView only re-renders
  *     its own node, so cross-node renumbering needs a document-level hook).
  */
-import { InputRule } from "@milkdown/prose/inputrules";
-import { TextSelection } from "@milkdown/prose/state";
-import { Plugin } from "@milkdown/prose/state";
+import { InputRule } from "@/pm";
+import { TextSelection } from "@/pm";
+import { Plugin } from "@/pm";
 import { $command, $inputRule, $prose } from "@milkdown/utils";
 import {
     computeDisplayIndex,

@@ -1,5 +1,5 @@
-import { NodeSelection, Plugin, Selection, TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { NodeSelection, Plugin, Selection, TextSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 function findCodeBlockDepth(selection: Selection): number | null {
