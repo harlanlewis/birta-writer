@@ -2,101 +2,124 @@
 
 [GitHub](https://github.com/harlanlewis/birta-writer)
 
-> **Birta Writer** is maintained by [Harlan Lewis](https://www.harlanlewis.com). It began as a personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) (MIT), is now developed independently, and is not affiliated with or endorsed by the upstream project. Birta Writer is source-available under the [Functional Source License (FSL-1.1-ALv2)](LICENSE); the upstream-derived portions remain under the MIT License they were published under (see [NOTICE](NOTICE) and [LICENSE-MIT](LICENSE-MIT)).
->
-> **In plain English:** you can read, run, modify, and share the source for any purpose — including internal and paid work at your company — *except* using it to build a product or service that competes with Birta Writer. Each release automatically converts to the permissive [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) license two years after it ships, so the code is never permanently locked up. This is not OSI-approved "open source," but the source is fully open to inspection and self-hosting. (The [LICENSE](LICENSE) text governs; this summary doesn't.)
+Birta Writer is a VS Code extension that opens `.md` / `.markdown` files as rich text — headings, tables, images, math, diagrams — and saves standard Markdown any tool can read. It is built on [Milkdown](https://milkdown.dev/) (ProseMirror), backed by a native VS Code text document, and designed around one promise: **editing one part of a file never rewrites another**. Untouched lines keep their exact bytes; anything the editor can't render is preserved, never silently dropped.
 
-Birta Writer is a VS Code WYSIWYG Markdown editor extension powered by [Milkdown](https://milkdown.dev/) (ProseMirror). Edit `.md` / `.markdown` files as rich text and save as standard Markdown — fully compatible with any text editor.
+Maintained by [Harlan Lewis](https://www.harlanlewis.com); a hard fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor), now developed independently. Source-available under FSL-1.1-ALv2 — details and the plain-English summary in [License & attribution](#license--attribution).
 
-For what the editor does well and *why it matters* — including its fidelity/safety guarantees and a [compatibility table](#compatibility-with-other-markdown-tools) for other Markdown tools — see [**docs/BENEFITS.md**](docs/BENEFITS.md).
-
-***
-
-## Why this fork
-
-**North star: never leave WYSIWYG.** A user opens a `.md` file in WYSIWYG mode and never *needs* the raw text editor unless they genuinely prefer it. Every change is judged by one question: *does this remove a reason to pop out?* The pop-out itself stays polished and instant — even the most mature competitors ship a one-keystroke escape hatch as a first-class feature. It's a safety net, not a wall.
-
-Investment follows an ordering the evidence made unambiguous — from a survey of this codebase, upstream, competing VS Code WYSIWYG extensions (vscode-markdown-editor, vscode-office, unotes), Milkdown's own tracker, and capability-diffing against Typora, Obsidian Live Preview, and MarkText:
-
-1. **Fidelity and trust first — it's existential.** The #1 trust-killer in every competitor's tracker is round-trip infidelity: "it reformatted my file", "it lost content". One competitor was un-published from the Marketplace over exactly this ([unotes](https://github.com/ryanmcalister/unotes)); upstream has a live corruption report ([git-xing#14](https://github.com/git-xing/md-wysiwyg-editor/issues/14)); MarkText's most-reacted bug is "document is modified just by opening it" ([marktext#2189](https://github.com/marktext/marktext/issues/2189)). One corruption event sends a user back to raw mode permanently. This fork's minimal-diff serializer, round-trip regression corpus, and destructive-diff save guard exist because of this.
-2. **VS Code parity second.** The custom-editor API deliberately provides nothing — no find, no undo integration, no search reveal ("that's all intentionally left up to extensions", [microsoft/vscode#86802](https://github.com/microsoft/vscode/issues/86802)) — so parity users feel daily is hand-built here: find/replace, command palette and context-menu commands, Go-to-Symbol, user-rebindable keybindings, theme fidelity.
-3. **Parser and syntax breadth third.** Math, footnotes, frontmatter, reference links — and anything the schema can't represent must degrade to *visible but safe*, never a silent deletion, so the editor is trustworthy on any file.
-4. **Interaction patterns last.** The polish that makes the editor *preferred* rather than merely tolerated, invested in once the layers beneath it held: slash commands, a full block-interaction system (gutter grabbers on every block, a block menu, drag-to-move, marquee and keyboard block selection) — with smart paste still ahead.
+For the *why it matters* version of what follows — the fidelity/safety guarantees and per-tool details — see [**docs/BENEFITS.md**](docs/BENEFITS.md).
 
 ***
 
 ## Features
 
+### Your file stays yours
+
+- **Byte-faithful round-trips** — the editor serializes your document and merges only the lines that really changed; formatting you chose (table padding, blank-line style, reference-link forms, setext headings) survives edits elsewhere in the file
+- **Nothing is silently lost** — constructs Birta doesn't understand (Obsidian `#tags`, `%%comments%%`, Quarto cells, raw HTML) stay visible and untouched; a move or drop that would corrupt content on save is quietly declined instead of half-applied
+- **A disk-drift badge** warns when a file with unsaved edits changes on disk (git, a terminal, an AI assistant) — reload or compare side by side; the editor never silently overwrites or merges
+- **No network egress** — images save into your workspace, remote loads are blocked, proofreading runs offline; document content has no path off your machine
+
 ### Blocks: grab, move, convert
 
-Every block — paragraphs, headings, list items (at any depth), quotes, callouts, directives, code blocks, tables, images, footnotes, even blocks nested inside callouts and quotes — has a gutter handle showing its slash-menu icon. **Click it for the block menu** (turn into, duplicate, copy as markdown, move, delete; headings get copy-link and whole-section moves), **drag it to move the block** — with an accent drop line, auto-scroll, and one-step undo. A handle click only ever selects the block or opens its menu — it never edits the block's content (task-list checkboxes included). Select many blocks with a **marquee drag in the margins** or from the keyboard (**Escape** selects the current block, **Shift+↑/↓** extend, **Cmd+A** ladders block → document, **Alt+↑/↓** move), then drag any covered handle to move them all. Headings carry their sections, collapsed content always travels with its heading, and Tab/Shift-Tab indent list items one level without dragging their children along.
+Every block — paragraphs, headings, list items (at any depth), quotes, callouts, directives, code blocks, tables, images, footnotes, even blocks nested inside callouts and quotes — has a gutter handle showing its slash-menu icon. **Click it for the block menu** (turn into, duplicate, copy as markdown, move, delete; headings get copy-link and whole-section moves), **drag it to move the block** — with an accent drop line, auto-scroll, and one-step undo. Select many blocks with a **marquee drag in the margins** or from the keyboard (**Escape** selects the current block, **Shift+↑/↓** extend, **Cmd+A** ladders block → document, **Alt+↑/↓** move), then drag any covered handle to move them all. Headings carry their sections, collapsed content always travels with its heading, and Tab/Shift-Tab indent list items one level without dragging their children along.
 
-### Rich Text Editing
+### Writing
 
-- **Headings** (H1–H6), **bold**, *italic*, ~~strikethrough~~, `inline code`, blockquote, horizontal rule
-- **Ordered / Unordered / Task lists** (click checkbox to toggle completion)
-- **Links**: hover to show a popup for editing link text and URL inline, with a **format switch** (standard markdown ⇄ `[[wikilink]]`) that converts a link in place; supports `@/` workspace paths, `#anchor` in-page jumps, `file.md#27` line-number links, and `file.md#some-heading` cross-file heading jumps
-- **Smart link resolution** (`birta.smartLinks`, on by default): local links resolve the way your site generator publishes them — workspace-root paths (`/docs/guide`), ancestor content roots (a Hugo file's `/write/uber` finds `content/write/uber/index.md`), `.md`/`index.md`/`_index.md` suffix inference, and a workspace-wide fallback. External links open through VS Code's own trusted-domains prompt — no extra dialog
-- **Wikilinks**: `[[target]]`, `[[target|alias]]`, `[[target#heading]]` (Obsidian conventions) parse, render, navigate (bare names match by filename across the workspace), and round-trip byte-identically; typing `[[` opens name autocompletion. Anything the grammar doesn't match stays visible plain text
-- **Path autocomplete**: type `@/`, `./`, or `../` inside inline code to get smart path suggestions — browse directories level by level with color-coded file-type icons
+- **All the basics**: headings H1–H6, **bold**, *italic*, ~~strikethrough~~, `inline code`, ==highlight==, blockquotes, horizontal rules, ordered/unordered/task lists (click a checkbox to toggle)
+- **Slash menu**: type `/` at a block start (or after a space) for insertable everything — headings, lists, callouts, tables, code, math, footnotes — filtering as you type
+- **Callouts**: GitHub-style `> [!note]` / `[!tip]` / `[!warning]` … render with icons and accent colors; `[!kind]-` markers start collapsed; Notion-style asides are preserved too
+- **Math**: inline `$…$` and block `$$…$$` rendered with KaTeX (loaded lazily); click to edit the source in place
+- **Footnotes**: insert, edit, and follow `[^1]`-style footnotes; definitions render at the end with back-references
+- **Frontmatter**: YAML frontmatter renders as an editable key/value table at the top of the document (collapsible; `birta.frontmatterExpanded`)
+- **Occurrence editing**: `Cmd+D` cycles through occurrences of the selection, `Cmd+Shift+L` selects them all — the common "change every X" cases without leaving WYSIWYG
+
+### Proofreading — offline
+
+Spelling, grammar, and style checking runs entirely on your machine (the [Harper](https://writewithharper.com) engine via WASM — nothing is sent anywhere). Style checks cover fillers, redundancies, clichés, wordiness, passive voice, long sentences, and AI-writing tells (vocabulary, artifacts, em-dash habits, non-ASCII punctuation) — each rule individually toggleable under `birta.styleCheck.*`. Findings are quiet dotted underlines with suggested fixes in a hover popup; "Add to dictionary" writes to your personal (never workspace) settings. Toggle everything with `Cmd+Alt+Shift+D` or the toolbar checks menu.
+
+### Folding and navigation
+
+- **Fold anything with structure**: heading sections, callouts, list items, tables, code blocks (`Cmd+Alt+[` / `Cmd+Alt+]`, fold-all/unfold-all commands, chevrons in the gutter). Folds persist across reopen, travel with drags — and an edit can never hide content you could see: a fold opens rather than silently swallowing anything
+- **Table of contents**: auto-generated outline that is also a structural editor — **drag a TOC entry to move its whole section**, and drops that change nesting relevel the headings; click to jump
+- **Sticky headings** keep your current section's heading pinned while you scroll; **Go to Symbol** (`Cmd+Shift+O`) jumps by heading; a **word count** for the document (or selection) lives in the status bar
+
+### Links
+
+- **Inline link editing**: hover a link for a popup with text/URL editing and a **format switch** (markdown ⇄ `[[wikilink]]`); supports `@/` workspace paths, `#anchor` jumps, `file.md#27` line links, and cross-file heading links
+- **Smart link resolution** (`birta.smartLinks`): local links resolve the way your site generator publishes them — workspace-root paths, ancestor content roots, `.md`/`index.md`/`_index.md` inference; external links open through VS Code's own trusted-domains prompt
+- **Wikilinks**: `[[target]]`, `[[target|alias]]`, `[[target#heading]]` (Obsidian conventions) parse, render, navigate, and round-trip byte-identically; typing `[[` opens name autocompletion
+- **Path autocomplete**: `@/`, `./`, `../` inside inline code browse the workspace with file-type icons
 
 ### Tables
 
-- Full GFM table support
-- Hover row/column borders to show **+ insert lines** — click to insert a row or column anywhere
-- **Drag handles** on rows/columns: click to select, drag to reorder
-- Insert lines and handles update in real time as the table grows
+Full GFM support: hover a border for **+ insert lines**, click **⠿ handles** to select rows/columns, drag them to reorder, align columns from the table toolbar — all updating live as the table grows. Shift+Enter inserts a line break inside a cell.
 
-### Code Blocks
+### Code and diagrams
 
-- Syntax highlighting for ~66 languages (grammars load lazily, so they cost nothing at launch)
-- Language picker with search filter
-- One-click copy button
-- Drag the bottom handle to resize the code block height
-- Full-screen editor with syntax highlighting; writes back to document on close
-
-### Mermaid Diagrams
-
-- Flowcharts, sequence diagrams, Gantt charts, class diagrams, and more rendered inline
-- Toggle between source code and rendered preview
-- Zoom, pan (drag / trackpad pinch), and full-screen lightbox
+- Syntax highlighting for ~66 languages (grammars load lazily — they cost nothing at launch), a searchable language picker, one-click copy, drag-to-resize height, and a full-screen editor
+- **Mermaid** diagrams render inline with source/preview toggle, zoom, pan, and a full-screen lightbox; the theme follows your editor (`birta.mermaid.theme`)
 
 ### Images
 
-- **Paste** an image from the clipboard, **drag-and-drop** a file, or use the **file picker** to insert images
-- Local storage with MD5 deduplication — images are always saved to your workspace and are **never uploaded off your machine**
-- Click an image to select it; click again to open a lightbox preview
-- Click-to-edit caption (the alt text) and a delete control
+Paste from the clipboard, drag-and-drop, or pick a file — images save into your workspace with MD5 deduplication and are **never uploaded**. Click to select, click again for a lightbox; captions edit in place.
+
+### Find and replace
+
+`Cmd+F` opens find; `Cmd+Alt+F` (or `Ctrl+H` on Windows/Linux) opens replace — with match-case, whole-word, and regex modes, live highlighting, and Replace All. `Enter`/`Shift+Enter` step through matches; find-in-selection scopes the search.
 
 ### Theming
 
-- The editor follows your active VS Code color theme automatically — everything (text, code, callouts, tables, Mermaid diagrams) recolors from the theme's own palette
-- Theme changes apply live, with no reload — including switching workbench theme and OS-driven light/dark switching
-- Nothing to configure: there is no separate per-editor theme, so the rendered document always matches the rest of your editor
-
-### Table of Contents (TOC)
-
-- Auto-generated from document headings
-- Auto-opens when the window is wide enough; toggle manually via the side tab
-- Click an entry to smooth-scroll to the heading
-
-### Toolbars
-
-- **Top toolbar**: heading level, bold, italic, strikethrough, ordered/unordered list, task list, blockquote, code block, table
-- **Floating selection toolbar**: appears on text selection; supports quick formatting
-- **Table toolbar**: appears on row/column selection; supports alignment and delete operations
-
-### In-Editor Search
-
-- **`Cmd+F`** (macOS) / **`Ctrl+F`** (Windows): opens the FindBar to search within the document
-- Matches highlighted in real time using the CSS Custom Highlight API
-- Navigate matches with `Enter` / `Shift+Enter`, dismiss with `Esc`
+The editor follows your active VS Code color theme automatically — text, code, callouts, tables, and Mermaid all recolor from the theme's palette, live, with nothing to configure. Content font and size are independent of theme (`birta.fontPreset`, `birta.fontSize`).
 
 ### Saving
 
-- The editor is backed by a native text document, so saving follows VS Code's built-in **`files.autoSave`** (set it to `afterDelay` to write automatically after editing stops). Unsaved edits show `●` in the tab title, just like any editor
-- Switching between the rendered editor and Raw Markdown with unsaved edits prompts to Save / Don't Save / Cancel (Cancel keeps you where you are); it never opens a duplicate tab
-- External file changes (e.g. `git checkout`, other editors) sync automatically to the editor
+The editor is backed by a native text document: saving is VS Code's own `Cmd+S` / `files.autoSave`, unsaved edits show `●` in the tab, and hot exit protects your work like any editor. Switching to Raw Markdown (`Cmd+Shift+M`) and back is lossless; external file changes (git, other editors) sync in without stealing your cursor. If the editor ever hits an internal error, VS Code shows a notification instead of failing silently — your document and its save path are unaffected.
+
+***
+
+## Getting started
+
+Install the extension and open any `.md` / `.markdown` file — it opens in WYSIWYG mode automatically (`birta.defaultMode` controls this).
+
+The keys worth learning first (macOS shown; Ctrl on Windows/Linux unless noted — all rebindable in VS Code's Keyboard Shortcuts):
+
+| Keys | Action |
+| --- | --- |
+| `/` at a block start | Slash menu (insert anything) |
+| `Cmd+.` | Block menu for the current block |
+| `Esc`, then `Shift+↑/↓` | Select blocks from the keyboard; `Alt+↑/↓` moves them |
+| `Cmd+F` · `Cmd+Alt+F` | Find · Replace (`Ctrl+H` on Windows/Linux) |
+| `Cmd+D` · `Cmd+Shift+L` | Next occurrence · all occurrences |
+| `Cmd+Alt+[` / `Cmd+Alt+]` | Fold / unfold (`Ctrl+Shift+[` / `]` on Windows/Linux) |
+| `Cmd+Shift+O` | Go to heading |
+| `Cmd+K` | Insert / edit link |
+| `Cmd+Alt+1…6` / `Cmd+Alt+0` | Heading level / paragraph |
+| `Cmd+Shift+M` | Toggle WYSIWYG ⇄ Raw Markdown |
+
+The full list lives in the shortcuts help (toolbar ⌄ menu → *Show Keyboard Shortcuts*, or the command palette).
+
+***
+
+## Settings
+
+The settings you're most likely to touch — the full list (including per-item toolbar layout under `birta.toolbar.*` / `birta.floatingToolbar.*` and per-rule proofreading toggles under `birta.styleCheck.*`) is searchable in VS Code's Settings UI under "Birta".
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `birta.defaultMode` | `"preview"` | Open `.md` in WYSIWYG (`preview`) or the text editor (`markdown`) |
+| `birta.proofreading.enabled` | `true` | Master switch for spelling/grammar/style checking |
+| `birta.blockHandles` | `"headings"` | Gutter handles at rest: `headings`, `always`, or `hover` |
+| `birta.fontPreset` | `"editor"` | Content font: follow the VS Code editor font, or `sans` / `serif` / `mono` |
+| `birta.fontSize` | `100` | Content font size as % of the editor font (50–200) |
+| `birta.contentWidth` | `"full"` | Fill the pane, or cap at Max Content Width (`fixed`) |
+| `birta.maxContentWidth` | `100` | Width cap in `ch` when Content Width is `fixed` |
+| `birta.tocPosition` | `"right"` | Which side the table of contents docks on |
+| `birta.frontmatterExpanded` | `true` | Frontmatter table starts expanded or collapsed |
+| `birta.smartLinks` | `true` | Site-generator-style local link resolution |
+| `birta.tableWrap` | `"normal"` | Table cell wrapping: `normal`, `aggressive`, or `none` |
+| `birta.codeBlockMaxHeight` | `600` | Max code block height in pixels |
+| `birta.mermaid.theme` | `"light"` | Mermaid palette: `light`, `dark`, or `auto` (follow VS Code) |
+| `birta.imageLocalPath` | `""` | Workspace-relative folder for pasted/dropped images |
 
 ***
 
@@ -120,46 +143,38 @@ See [**docs/BENEFITS.md**](docs/BENEFITS.md#compatibility-with-other-markdown-to
 
 ***
 
-## Getting Started
+***
 
-After installing the extension, open any `.md` / `.markdown` file in VS Code — it opens in WYSIWYG mode automatically.
+## Why this fork
 
-| Action                   | How                                                            |
-| ------------------------ | -------------------------------------------------------------- |
-| Switch to text editor    | Click the 👁 icon in the title bar, or right-click → Open With |
-| Switch back to WYSIWYG   | Click the 👁 icon in the title bar                             |
-| Insert row/column        | Hover a table row/column border, click **+**                   |
-| Reorder rows/columns     | Hover the **⠿** handle, then drag                              |
-| Select entire row/column | Click the **⠿** handle                                         |
-| Path autocomplete        | Type `@/`, `./`, or `../` inside inline code                   |
-| Search in document       | `Cmd+F` (macOS) / `Ctrl+F` (Windows)                           |
-| Manual save              | `Cmd+S` (macOS) / `Ctrl+S` (Windows)                           |
+**North star: never leave WYSIWYG.** A user opens a `.md` file in WYSIWYG mode and never *needs* the raw text editor unless they genuinely prefer it. Every change is judged by one question: *does this remove a reason to pop out?* The pop-out itself stays polished and instant — even the most mature competitors ship a one-keystroke escape hatch as a first-class feature. It's a safety net, not a wall.
+
+Investment follows an ordering the evidence made unambiguous — from a survey of this codebase, upstream, competing VS Code WYSIWYG extensions (vscode-markdown-editor, vscode-office, unotes), Milkdown's own tracker, and capability-diffing against Typora, Obsidian Live Preview, and MarkText:
+
+1. **Fidelity and trust first — it's existential.** The #1 trust-killer in every competitor's tracker is round-trip infidelity: "it reformatted my file", "it lost content". One competitor was un-published from the Marketplace over exactly this ([unotes](https://github.com/ryanmcalister/unotes)); upstream has a live corruption report ([git-xing#14](https://github.com/git-xing/md-wysiwyg-editor/issues/14)); MarkText's most-reacted bug is "document is modified just by opening it" ([marktext#2189](https://github.com/marktext/marktext/issues/2189)). One corruption event sends a user back to raw mode permanently. This fork's minimal-diff serializer, round-trip regression corpus, and destructive-diff save guard exist because of this.
+2. **VS Code parity second.** The custom-editor API deliberately provides nothing — no find, no undo integration, no search reveal ("that's all intentionally left up to extensions", [microsoft/vscode#86802](https://github.com/microsoft/vscode/issues/86802)) — so parity users feel daily is hand-built here: find/replace, command palette and context-menu commands, Go-to-Symbol, user-rebindable keybindings, theme fidelity.
+3. **Parser and syntax breadth third.** Math, footnotes, frontmatter, reference links — and anything the schema can't represent must degrade to *visible but safe*, never a silent deletion, so the editor is trustworthy on any file.
+4. **Interaction patterns last.** The polish that makes the editor *preferred* rather than merely tolerated, invested in once the layers beneath it held: slash commands, a full block-interaction system (gutter grabbers on every block, a block menu, drag-to-move, marquee and keyboard block selection) — with smart paste still ahead.
 
 ***
 
-## Settings
+## Requirements
 
-| Setting                              | Type    | Default     | Description                                                                               |
-| ------------------------------------ | ------- | ----------- | ----------------------------------------------------------------------------------------- |
-| `birta.defaultMode`        | string  | `"preview"` | Default mode when opening `.md`: `preview` (WYSIWYG) or `markdown` (text editor)          |
-| `birta.codeBlockMaxHeight` | number  | `600`       | Maximum code block height in pixels                                                       |
-| `birta.contentWidth`       | string  | `"full"`    | Content width: `full` (fill the pane) or `fixed` (cap at Max Content Width); also in the toolbar A menu |
-| `birta.maxContentWidth`    | number  | `100`       | Max content width in ch when Content Width is `fixed` (scales with the content font size)              |
-| `birta.fontPreset`         | string  | `"editor"`  | Content font: `editor` (follow the VS Code editor font), `sans`, `serif`, or `mono`; also switchable from the toolbar font picker |
-| `birta.fontFamilySans`     | string  | system sans stack | Font-family stack used by the Sans serif preset                                     |
-| `birta.fontFamilySerif`    | string  | serif stack | Font-family stack used by the Serif preset                                                |
-| `birta.fontFamilyMono`     | string  | mono stack  | Font-family stack used by the Monospace preset                                            |
-| `birta.fontSize`           | number  | `100`       | Content font size as a percentage of the VS Code editor font size (50–200)                |
-| `birta.imageLocalPath`     | string  | `""`        | Relative path (from workspace root) for local image storage                               |
-| `birta.smartLinks`         | boolean | `true`      | Resolve local links the way your site generator does: workspace-root paths, ancestor content roots, `.md`/`index.md` suffixes, and `[[wikilink]]` targets |
-| `birta.tableWrap`          | string  | `"normal"`  | Table cell text wrapping: `normal`, `aggressive`, or `none`                               |
-| `birta.blockHandles`       | string  | `"headings"` | Which block handles stay visible in the left gutter at rest: `headings` (H1–H6 badges, every other block on hover), `always` (every block's handle), or `hover` (none at rest, all on hover); hovering a block always reveals its handle. Also in the toolbar's typography (A) menu |
+- VS Code **1.80.0** or later
+
+***
+
+## Known Limitations
+
+- **Editable HTML** is not yet supported — embedded HTML renders read-only; editing it means switching to the raw text editor
+- **Global search navigation**: clicking a search result for a `.md` file may not scroll to the matched line in WYSIWYG mode when multiple `.md` files are open simultaneously
+- **True multi-caret editing, column (box) selection, and transpose** are deliberately not reimplemented — pop to the raw editor for those (`Cmd+Shift+M`, which round-trips losslessly); in-editor, occurrence cycling and Replace All cover the common cases
 
 ***
 
 ## Architecture
 
-For contributors. The key-file map and working conventions live in [`CLAUDE.md`](CLAUDE.md); this section is the shape of the system, in three views. Every boundary drawn here is enforced by a convention test where one is named — the diagrams describe rules the suite pins, not intentions.
+How the editor is built, in three views — for the curious, and as the receipts behind the fidelity claims above. Every boundary drawn here is enforced by a convention test where one is named: the diagrams describe rules the test suite pins, not intentions. (The exhaustive file map lives in [`CLAUDE.md`](CLAUDE.md).)
 
 ### The system at a glance
 
@@ -257,14 +272,8 @@ Guards: `pmFunnel.test.ts` (no `@milkdown/prose` import outside `pm.ts`), `block
 
 ***
 
-## Requirements
+## License & attribution
 
-- VS Code **1.80.0** or later
+Birta Writer began as a personal fork of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) (MIT), is now developed independently, and is not affiliated with or endorsed by the upstream project. It is source-available under the [Functional Source License (FSL-1.1-ALv2)](LICENSE); the upstream-derived portions remain under the MIT License they were published under (see [NOTICE](NOTICE) and [LICENSE-MIT](LICENSE-MIT)).
 
-***
-
-## Known Limitations
-
-- **Editable inline/block HTML** is not yet supported — embedded HTML renders read-only, and editing it requires switching to the raw text editor
-- **Global search navigation**: clicking a search result for a `.md` file may not scroll to the matched line in WYSIWYG mode when multiple `.md` files are open simultaneously
-- **True multi-caret editing, column (box) selection, and transpose** are deliberately not reimplemented — pop to the raw editor for those (⇧⌘M "Edit Raw Markdown", which round-trips losslessly); in-editor, ⌘D occurrence cycling and regex Replace All cover the common "change every X" cases
+**In plain English:** you can read, run, modify, and share the source for any purpose — including internal and paid work at your company — *except* using it to build a product or service that competes with Birta Writer. Each release automatically converts to the permissive [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) license two years after it ships, so the code is never permanently locked up. This is not OSI-approved "open source," but the source is fully open to inspection and self-hosting. (The [LICENSE](LICENSE) text governs; this summary doesn't.)
