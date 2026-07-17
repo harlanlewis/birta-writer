@@ -27,6 +27,7 @@ import type { ResolvedPos } from "@milkdown/prose/model";
 import type { EditorView } from "@milkdown/prose/view";
 import { $prose } from "@milkdown/utils";
 import type { EditorCommandId } from "../../shared/editorCommands";
+import { EXTERNAL_SYNC_META } from "./docChange";
 import {
     createSlashMenu,
     SLASH_MENU_DOM_ID,
@@ -533,7 +534,7 @@ export const slashMenuPlugin = $prose(() =>
                 // pre-existing `/word` text the user never just typed. It
                 // carries an `external-sync` meta the heading fix-up does not,
                 // so exclude it and let the verdict clear.
-                if (tr.getMeta("addToHistory") === false && !tr.getMeta("external-sync")) {
+                if (tr.getMeta("addToHistory") === false && !tr.getMeta(EXTERNAL_SYNC_META)) {
                     return prev;
                 }
                 return { openEligible: false };

@@ -19,6 +19,7 @@
  */
 import { type Editor, editorViewCtx, parserCtx } from "@milkdown/core";
 import { computeDocDiff } from "@milkdown/plugin-diff";
+import { EXTERNAL_SYNC_META } from "./plugins/docChange";
 
 /**
  * Applies `newMarkdown` to the editor as a minimal ProseMirror diff.
@@ -66,11 +67,12 @@ export function applyExternalSync(editor: Editor, newMarkdown: string): boolean 
             // originate outside the webview (VS Code's own undo/redo, git, a
             // side-by-side text editor), so they must not create phantom
             // entries in the ProseMirror history stack. The addToHistory tag
-            // governs ONLY undo history: suppressing the save-pipeline echo
-            // back to the extension is the caller's job (`_applyingExternal`
-            // in editor.ts), since the doc-change hook that now drives saves
-            // reports every doc change regardless of how it is tagged.
-            tr.setMeta("external-sync", true);
+            // governs ONLY undo history. The meta answers per-TRANSACTION
+            // questions (slashMenu's history gate); suppressing the
+            // save-pipeline echo needs a span over this whole dispatch and is
+            // the caller's job (`_applyingExternal` in editor.ts — see its
+            // declaration for why the meta cannot express that, MAR-152).
+            tr.setMeta(EXTERNAL_SYNC_META, true);
             tr.setMeta("addToHistory", false);
             view.dispatch(tr);
             return true;

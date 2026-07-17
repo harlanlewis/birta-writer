@@ -24,35 +24,33 @@
  * the doc must reach the save pipeline however it is tagged, since the tag
  * governs undo history, not persistence.
  *
- * Subscribers that need to distinguish an inbound external change from a user
- * edit do so at their own layer, and the two layers deliberately use two
- * mechanisms for two different questions (MAR-152):
- *   - "is THIS TRANSACTION part of a sync?" → the `EXTERNAL_SYNC_META`
- *     transaction meta (set by externalSync.ts, read by slashMenu's history
- *     gate);
- *   - "is this doc change CAUSED BY the sync?" → `_applyingExternal` in
- *     editor.ts, a flag spanning the synchronous dispatch. These are not
- *     interchangeable: capturing the meta into plugin state here was tried
- *     (2026-07-17) and failed savePipeline's no-echo pin, because plugins
- *     react to a sync by dispatching NEW transactions reentrantly — those
- *     carry neither the meta nor ProseMirror's `appendedTransaction` stamp,
- *     so no per-transaction provenance can cover the span. The flag's
- *     synchronous-dispatch assumption is itself pinned by that same test: an
- *     async refactor of the sync path would un-suppress the echo and turn
- *     the test red.
+ * The listener is told whether the change was an INBOUND EXTERNAL SYNC (the
+ * `EXTERNAL_SYNC_META` transaction meta set by externalSync.ts) so the save
+ * pipeline can avoid echoing file content back to the file. A view `update`
+ * receives states, not transactions, so the meta cannot be read there —
+ * instead plugin STATE captures it in `apply` (MAR-152; this replaces a
+ * module-level `_applyingExternal` flag in editor.ts whose correctness relied
+ * on dispatch staying synchronous, an assumption nothing enforced). The carry
+ * rule below keeps the capture faithful to a whole dispatch: a transaction
+ * ProseMirror appends to the sync (a selection fixup carries no meta and no
+ * doc change) must not clear the mark before the view hook reads it, while
+ * any DOC-CHANGING transaction without the meta is genuinely new content and
+ * resets it.
  */
 import { Plugin, PluginKey } from "@milkdown/prose/state";
 import { $prose } from "@milkdown/utils";
 
 /** The transaction meta marking an inbound external sync. One definition —
- * set by externalSync.ts, read by per-transaction consumers (slashMenu's
- * history gate). Span-scoped consumers use editor.ts's `_applyingExternal`
- * instead — see the module header for why the two cannot be unified. */
+ * set by externalSync.ts, read here and by slashMenu's history gate. */
 export const EXTERNAL_SYNC_META = "external-sync";
 
-export const docChangeKey = new PluginKey("birta-doc-change");
+interface DocChangeState {
+    external: boolean;
+}
 
-let _listener: (() => void) | null = null;
+export const docChangeKey = new PluginKey<DocChangeState>("birta-doc-change");
+
+let _listener: ((isExternal: boolean) => void) | null = null;
 
 /**
  * Register the doc-change subscriber (null clears it). Module-level rather
@@ -61,18 +59,26 @@ let _listener: (() => void) | null = null;
  * blockMenu's editor context uses. createEditor re-sets it per instance, so a
  * destroyed editor's subscriber never outlives its replacement.
  */
-export function setDocChangeListener(fn: (() => void) | null): void {
+export function setDocChangeListener(fn: ((isExternal: boolean) => void) | null): void {
     _listener = fn;
 }
 
 export const docChangePlugin = $prose(
     () =>
-        new Plugin({
+        new Plugin<DocChangeState>({
             key: docChangeKey,
+            state: {
+                init: () => ({ external: false }),
+                apply: (tr, prev) => ({
+                    external:
+                        tr.getMeta(EXTERNAL_SYNC_META) === true ||
+                        (prev.external && !tr.docChanged),
+                }),
+            },
             view: () => ({
                 update: (view, prevState) => {
                     if (prevState.doc !== view.state.doc) {
-                        _listener?.();
+                        _listener?.(docChangeKey.getState(view.state)?.external === true);
                     }
                 },
             }),
