@@ -1,6 +1,6 @@
 /**
  * Inline-calc plugin tests, driving the REAL Milkdown editor: the advisory
- * caret suggestion (default) and its Return/Tab confirmation, the opt-in
+ * caret suggestion (default) and its Tab confirmation (Return stays a newline), the opt-in
  * auto-insert input rule, and the enabled/auto-insert gating. The pure engine
  * is covered separately in calc.test.ts.
  */
@@ -91,14 +91,27 @@ describe("advisory inline calc", () => {
         expect(v.state.doc.textContent).toBe("x 2+3= 5");
     });
 
-    it("Enter should insert the pre-selected single result", async () => {
+    it("Enter after the menu appears should keep its newline meaning (not insert)", async () => {
         typeText(v, " 6*7=");
         await vi.advanceTimersByTimeAsync(250);
         expect(optionTexts()).toEqual(["42"]);
 
-        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        // Enter must NOT be captured by the pre-highlighted calc row: a
+        // suggestion applies only on explicit consent (Tab), so the first Enter
+        // proceeds to ProseMirror as a real newline. The result is never
+        // inserted, the menu closes so it can't outlive the block, and the
+        // paragraph splits (a new block appears) — proof Enter kept its meaning.
+        const blocksBefore = v.state.doc.childCount;
+        const ev = new KeyboardEvent("keydown", {
+            key: "Enter",
+            bubbles: true,
+            cancelable: true,
+        });
+        v.dom.dispatchEvent(ev);
 
-        expect(v.state.doc.textContent).toBe("x 6*7= 42");
+        expect(v.state.doc.textContent).toBe("x 6*7=");
+        expect(optionTexts()).toEqual([]);
+        expect(v.state.doc.childCount).toBe(blocksBefore + 1);
     });
 
     it("clicking the suggestion row should insert the result", async () => {

@@ -236,4 +236,111 @@ describe("openSectionLinkPicker", () => {
         expect(suggestMenu()).toBeNull();
         expect(linkPopup()).toBeNull();
     });
+
+    it("a heading with an inline atom should resolve back to itself (FID-1: producer and resolver agree)", async () => {
+        // The wikilink atom renders display text ("Display") in the DOM but is
+        // an atom: it contributes NOTHING to the heading's MODEL text. So the
+        // model slug is "cost", while a DOM-sourced slug would be "cost-display".
+        // The picker mints from the model; the resolver must too, or the freshly
+        // inserted `#cost` link resolves to nothing.
+        const made = await makeEditor("# Cost [[metric|Display]]\n\nbody\n");
+        editor = made.editor;
+        caretInText(made.view, "body");
+
+        openSectionLinkPicker(made.view);
+        const rows = menuRows();
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toBe("Cost");
+        rows[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+        // The minted href is the MODEL slug.
+        expect(urlInput().value).toBe("#cost");
+        // The link editor's anchor hint proves the resolver found the SAME
+        // heading from that same model slug. Under the old DOM-based resolver the
+        // heading slugs to "cost-display", so "#cost" resolves to nothing and the
+        // hint stays empty/hidden.
+        const hint = linkPopup()!.querySelector<HTMLElement>(".lp-anchor-hint")!;
+        expect(hint.textContent).toBe("→ Cost");
+        expect(hint.style.display).not.toBe("none");
+    });
+
+    it("a heading whose title slugifies to empty should be omitted (FID-2: unaddressable)", async () => {
+        // "🚀" slugifies to "" (no anchor), so it must not be offered — a bare
+        // "#" href would resolve to nothing. The addressable "Real" heading stays.
+        const made = await makeEditor("# 🚀\n\n## Real\n\nbody\n");
+        editor = made.editor;
+        caretInText(made.view, "body");
+
+        openSectionLinkPicker(made.view);
+        const labels = menuRows().map((r) => r.textContent?.replace(/\s/g, ""));
+        expect(labels).toEqual(["Real"]);
+    });
+
+    it("a document of only unaddressable headings should show the empty-state row (FID-2)", async () => {
+        const made = await makeEditor("# 🚀\n\n## +++\n\nbody\n");
+        editor = made.editor;
+        caretInText(made.view, "body");
+
+        openSectionLinkPicker(made.view);
+        const rows = menuRows();
+        expect(rows).toHaveLength(1);
+        expect(rows[0].textContent).toBe("No headings in this document");
+        // Inert: clicking it opens no link editor.
+        rows[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(linkPopup()).toBeNull();
+    });
+
+    it("Tab should accept the highlighted heading, not fall through to the editor (UI-2)", async () => {
+        const made = await makeEditor("# Alpha\n\nbody\n");
+        editor = made.editor;
+        caretInText(made.view, "body");
+
+        openSectionLinkPicker(made.view);
+        const ev = new KeyboardEvent("keydown", {
+            key: "Tab",
+            bubbles: true,
+            cancelable: true,
+        });
+        made.view.dom.dispatchEvent(ev);
+
+        // Tab is consumed (never reaches ProseMirror's indent) and picks the
+        // pre-highlighted first heading, opening the link editor.
+        expect(ev.defaultPrevented).toBe(true);
+        expect(urlInput().value).toBe("#alpha");
+    });
+
+    it("a stray printable keypress should close the picker without consuming it (FID-3)", async () => {
+        const made = await makeEditor("# Alpha\n\nbody\n");
+        editor = made.editor;
+        caretInText(made.view, "body");
+
+        openSectionLinkPicker(made.view);
+        expect(suggestMenu()).not.toBeNull();
+
+        const ev = new KeyboardEvent("keydown", {
+            key: "a",
+            bubbles: true,
+            cancelable: true,
+        });
+        made.view.dom.dispatchEvent(ev);
+
+        // Closing eliminates the stale-range window; the key is NOT consumed, so
+        // it reaches the editor as normal input.
+        expect(suggestMenu()).toBeNull();
+        expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it("a bare modifier keypress should NOT close the picker (FID-3)", async () => {
+        const made = await makeEditor("# Alpha\n\nbody\n");
+        editor = made.editor;
+        caretInText(made.view, "body");
+
+        openSectionLinkPicker(made.view);
+        made.view.dom.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Shift", bubbles: true, cancelable: true }),
+        );
+
+        // Holding Shift before a chord (e.g. Shift+ArrowDown) must not dismiss.
+        expect(suggestMenu()).not.toBeNull();
+    });
 });

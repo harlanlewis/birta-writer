@@ -33,6 +33,11 @@ import {
 
 type SuggestCallback = (items: LinkTargetSuggestionItem[]) => void;
 
+// Monotonic per-menu counter, so each rendered suggest menu's option ids are
+// globally unique (aria-activedescendant / option-id references never collide
+// across two menus that briefly coexist).
+let suggestMenuSeq = 0;
+
 // Reply callback registry: request id → resolve (ids are unique per request)
 const _pendingSuggestions = new Map<string, SuggestCallback>();
 
@@ -165,6 +170,9 @@ export function createSuggestMenuFromRows(
     if (rows.length === 0) { return null; }
 
     let activeIndex = -1;
+    // Stable per-menu id prefix so each option gets a unique, referenceable id
+    // (the ARIA listbox/option model, mirroring blockMenu/menu.ts's combobox).
+    const menuId = `fm-suggest-${++suggestMenuSeq}`;
 
     const div = document.createElement("div");
     div.className = "fm-suggest-menu link-target-menu";
@@ -178,6 +186,11 @@ export function createSuggestMenuFromRows(
 
     const list = document.createElement("ul");
     list.className = "fm-suggest-list";
+    // Assistive-tech model: the list is a listbox, each row an option, and the
+    // focused option carries aria-selected in lockstep with its visual
+    // highlight (see updateActive). This backs calc, section-link, and the
+    // link/wikilink autocompletes — every consumer of this widget.
+    list.setAttribute("role", "listbox");
     div.appendChild(list);
 
     div.style.top = `${anchor.top}px`;
@@ -190,6 +203,9 @@ export function createSuggestMenuFromRows(
         list.querySelectorAll("li").forEach((li, i) => {
             const isActive = i === activeIndex;
             li.classList.toggle("fm-suggest-item--focused", isActive);
+            // aria-selected tracks the visual highlight so screen readers
+            // announce the focused option as the row moves.
+            li.setAttribute("aria-selected", isActive ? "true" : "false");
             // Optional call: jsdom (unit tests) does not implement scrollIntoView.
             if (isActive) { li.scrollIntoView?.({ block: "nearest" }); }
         });
@@ -198,6 +214,9 @@ export function createSuggestMenuFromRows(
     rows.forEach((text, i) => {
         const li = document.createElement("li");
         li.className = "fm-suggest-item";
+        li.id = `${menuId}-opt-${i}`;
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", "false");
         li.textContent = text;
         if (rowDefs[i].title) { li.title = rowDefs[i].title; }
         li.addEventListener("mousedown", () => onPick(text));

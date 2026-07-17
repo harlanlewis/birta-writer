@@ -114,7 +114,10 @@ describe("evaluateExpression", () => {
     });
 
     it("overflow to Infinity should return null", () => {
-        expect(evaluateExpression("9e999")).toBeNull(); // rejected as letters anyway
+        // A pure-arithmetic expression that overflows the double range: the
+        // engine must reject the Infinity result rather than emit "Infinity".
+        // (Scientific notation like 9e999 is rejected earlier as a letter — see
+        // the dedicated case above — so it is not an honest overflow test.)
         expect(evaluateExpression("10 ^ 999")).toBeNull(); // Infinity → null
     });
 

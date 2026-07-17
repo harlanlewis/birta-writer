@@ -9,9 +9,11 @@
  * How it composes with what already exists, rather than rebuilding any of it:
  *   - Headings come from `collectDocHeadings` — the same doc-model walk the TOC
  *     uses, so the picker and the outline can never disagree.
- *   - Slugs come from `slugifyHeadings` — the SAME code linkPopup's
- *     findHeadingElement resolves `#slug` clicks with, so a link to the second
- *     "Overview" carries the matching `-N` suffix and jumps to the right one.
+ *   - Slugs come from `collectDocHeadings` + `slugifyHeadings` — the SAME
+ *     model-sourced pair linkPopup's resolveAnchorHeading resolves `#slug`
+ *     clicks with, so producer and resolver agree on the slug even for a
+ *     heading carrying an inline atom, and a link to the second "Overview"
+ *     carries the matching `-N` suffix and jumps to the right one.
  *   - The dropdown IS the workspace-file suggest widget (createSuggestMenuFromRows),
  *     so arrow/Enter navigation, hover, and viewport-flip placement come for free.
  *   - After a pick we apply the link, then open the standard link editor
@@ -112,14 +114,27 @@ export function openSectionLinkPicker(view: EditorView): void {
         rowDefs = [{ text: t("No headings in this document") }];
     } else {
         const used = new Set<string>();
-        rowDefs = headings.map((h, i) => {
+        rowDefs = [];
+        headings.forEach((h, i) => {
+            // A heading whose title slugifies to "" is UNADDRESSABLE — an
+            // emoji/punctuation-only title (e.g. "## 🚀") produces no anchor, so
+            // the href would be a bare "#" that resolves to nothing (or the
+            // wrong heading). Don't offer it; a dead link is worse than no row.
+            if (slugs[i] === "") {
+                return;
+            }
             // Indent by heading level (nbsp keeps the leading space from
             // collapsing) so the list reads as the document's outline.
             const indent = "  ".repeat(Math.max(0, h.level - 1));
             const display = uniqueDisplay(indent + h.text, used);
             pickByDisplay.set(display, { slug: slugs[i], title: h.text });
-            return { text: display, title: h.text };
+            rowDefs.push({ text: display, title: h.text });
         });
+        // Every heading was unaddressable (all empty-slug): fall back to the
+        // same inert empty-state row an empty document shows.
+        if (rowDefs.length === 0) {
+            rowDefs = [{ text: t("No headings in this document") }];
+        }
     }
 
     let menu: LinkSuggestMenu | null = null;
@@ -206,9 +221,14 @@ export function openSectionLinkPicker(view: EditorView): void {
             e.stopPropagation();
             e.stopImmediatePropagation();
             menu.moveActive(e.key === "ArrowDown" ? 1 : -1);
-        } else if (e.key === "Enter") {
-            // A row is always pre-highlighted (moveActive(1) below), so Enter
-            // picks it without needing an arrow key first.
+            return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+            // Tab accepts like Enter (matches caretSuggest). A row is always
+            // pre-highlighted (moveActive(1) below), so this picks it. Treating
+            // Tab as accept also stops it falling through to ProseMirror, which
+            // would INDENT the list item the picker was opened inside while
+            // leaving the picker open (UI-2).
             if (menu.pickActive()) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -216,12 +236,32 @@ export function openSectionLinkPicker(view: EditorView): void {
             } else {
                 close();
             }
-        } else if (e.key === "Escape") {
+            return;
+        }
+        if (e.key === "Escape") {
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
             close();
+            return;
         }
+        // A bare modifier press (holding Shift/Ctrl/Alt/Meta before a chord) is
+        // not a stray key — ignore it so the chord it precedes still composes.
+        if (
+            e.key === "Shift" ||
+            e.key === "Control" ||
+            e.key === "Alt" ||
+            e.key === "Meta"
+        ) {
+            return;
+        }
+        // Any OTHER key closes the picker and proceeds to the editor. The fixed
+        // heading list has no type-to-filter, so typing here never did anything
+        // useful; but left open, a stray keystroke could mutate the doc and make
+        // applyPick's snapshotted from/to range stale (FID-3). We do NOT
+        // preventDefault, so the key reaches the editor as normal input — closing
+        // first just eliminates the stale-range window.
+        close();
     }
 
     menu = createSuggestMenuFromRows(rowDefs, anchor, applyPick);

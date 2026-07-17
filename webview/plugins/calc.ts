@@ -4,10 +4,12 @@
  *
  * Typing an arithmetic expression immediately followed by `=` (e.g. `12 * 4 =`,
  * `(3 + 4) / 2 =`) computes the result and offers it. By default the result is
- * ADVISORY: a single-row suggestion the user confirms with Return or Tab, which
- * writes the number into the document as ordinary text. It never silently
- * mutates the line. The opt-in `birta.calc.autoInsert` setting flips this to
- * insert-on-`=` via an input rule instead.
+ * ADVISORY: a single-row suggestion the user confirms with Tab, which writes
+ * the number into the document as ordinary text. Return is deliberately left
+ * free to start a new line — the pre-highlighted row never captures the user's
+ * Enter (see caretSuggest.ts handleKeydown). It never silently mutates the
+ * line. The opt-in `birta.calc.autoInsert` setting flips this to insert-on-`=`
+ * via an input rule instead.
  *
  * The evaluation and the deliberately-narrow caret detection live in
  * webview/utils/calc.ts (a safe hand-written parser — never eval/Function, no
@@ -19,7 +21,7 @@
  *   safety. The controller already refuses code blocks and inline code, so calc
  *   never fires inside them. Its `fetch` is synchronous (compute, call back
  *   immediately — no async, no network), and `autoActivate` pre-selects the lone
- *   result so Return/Tab confirm it without an arrow key first.
+ *   result so Tab confirms it without an arrow key first (Enter stays a newline).
  * - Auto-insert mode is a plain input rule: when the `=` is typed to complete an
  *   expression, it appends `= <result>` right then, keeping what the user typed.
  *
@@ -86,10 +88,10 @@ const calcSuggestSpec: CaretSuggestSpec = {
         applyCalcResult(view, match.start, match.caret, picked);
     },
 
-    // The lone advisory result is pre-selected so Return/Tab confirm it without
-    // an arrow key; here Enter picks rather than splitting the paragraph, a
-    // deliberate divergence from the link/wikilink lists (documented in
-    // caretSuggest.ts's autoActivate).
+    // The lone advisory result is pre-selected so Tab confirms it without an
+    // arrow key. Enter deliberately keeps its newline meaning (the pre-highlight
+    // must not capture the user's first Enter) — see caretSuggest.ts's
+    // autoActivate handling.
     autoActivate: true,
 };
 

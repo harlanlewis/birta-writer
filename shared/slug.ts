@@ -34,9 +34,10 @@ export function slugify(text: string): string {
  *
  * This is the SINGLE source of truth for anchor targets, shared by everything
  * that must agree byte-for-byte: the click-resolver that finds a heading from
- * `#slug` (linkPopup's findHeadingElement) and any producer of `#slug` hrefs
- * (the section-link picker). If the two computed collision suffixes ever
- * diverged, a link to the second `Foo` would resolve to the first.
+ * `#slug` (linkPopup's resolveAnchorHeading, model-sourced) and any producer of
+ * `#slug` hrefs (the section-link picker, also model-sourced). If the two
+ * computed collision suffixes ever diverged, a link to the second `Foo` would
+ * resolve to the first.
  *
  * A title whose base slug is empty (all punctuation/emoji — e.g. "🚀") is
  * unaddressable: it yields "" and does NOT consume a collision counter, exactly

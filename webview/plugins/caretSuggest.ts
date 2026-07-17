@@ -50,11 +50,14 @@ export interface CaretSuggestSpec {
     /** Applies a picked suggestion to the document. */
     pick(view: EditorView, match: CaretMatch, picked: string): void;
     /**
-     * Pre-highlight the first row the moment the menu opens, so Enter/Tab pick
-     * it without an arrow-key first. Used by the inline calc suggestion, where
-     * the menu is a single advisory result the user confirms with Return/Tab —
-     * an autocomplete list (link/wikilink) leaves this off so plain Enter keeps
-     * its normal editing meaning until the user deliberately selects a row.
+     * Pre-highlight the first row the moment the menu opens, so Tab picks it
+     * without an arrow-key first. Used by the inline calc suggestion, where the
+     * menu is a single advisory result the user confirms with Tab; Enter is
+     * deliberately NOT an accept key for an autoActivate menu — it keeps its
+     * newline meaning (see handleKeydown), so a pre-highlighted row can never
+     * capture the user's first Enter. An autocomplete list (link/wikilink)
+     * leaves this off so plain Enter keeps its normal editing meaning until the
+     * user deliberately selects a row (and Tab then accepts that row).
      */
     autoActivate?: boolean;
 }
@@ -199,8 +202,8 @@ class CaretSuggestController {
             },
             (picked) => this.pick(picked),
         );
-        // Advisory single-result menus (calc) pre-select their row so Return/Tab
-        // confirm it directly; moveActive(1) lifts the highlight from -1 to 0.
+        // Advisory single-result menus (calc) pre-select their row so Tab
+        // confirms it directly; moveActive(1) lifts the highlight from -1 to 0.
         if (this.menu && this.spec.autoActivate) { this.menu.moveActive(1); }
     }
 
@@ -240,10 +243,25 @@ class CaretSuggestController {
             return;
         }
 
+        if (e.key === "Enter" && this.spec.autoActivate) {
+            // An autoActivate menu (calc) pre-highlights its lone row, but Enter
+            // must keep its editing meaning — a newline, not a confirm. The repo
+            // principle is that a suggestion applies only on explicit consent, and
+            // a pre-highlighted row would make the FIRST Enter after the menu
+            // appears silently insert the result. So here Enter is NOT captured:
+            // close the menu (it must not outlive the block it anchored in) and
+            // return without preventDefault, letting Enter reach ProseMirror.
+            // Explicit acceptance for autoActivate is Tab, handled below.
+            this.closeMenu();
+            return;
+        }
+
         if (e.key === "Enter" || e.key === "Tab") {
             if (this.menu.pickActive()) {
-                // A highlighted row exists (always so for an autoActivate menu;
-                // for a link/wikilink list only after an arrow key or hover).
+                // A highlighted row exists (always so for an autoActivate menu,
+                // where only Tab reaches here now; for a link/wikilink list only
+                // after an arrow key or hover). Tab accepts it, and for a
+                // non-autoActivate list Enter accepts a user-highlighted row.
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();

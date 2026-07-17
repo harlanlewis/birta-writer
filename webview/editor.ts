@@ -520,7 +520,7 @@ export async function createEditor(
         builder = builder.use(preset);
     }
     // ── Format-agnostic chrome, post-preset ─────────────────────────────────
-    _editor = await builder
+    builder = builder
         // Synchronous doc-change reporting: drives BOTH the outbound save
         // pipeline and pure views (the TOC) — see plugins/docChange. Milkdown's
         // plugin-listener is deliberately not registered: its unconditional
@@ -554,12 +554,23 @@ export async function createEditor(
         // Pasting a URL over a selection links the selection instead of
         // replacing it (handlePaste; no other plugin registers one).
         .use(pasteLinkPlugin)
-        .use(wikiLinkCompletePlugin)
-        // Inline calc-on-`=` (MAR-177): advisory suggestion by default, or an
-        // input rule when birta.calc.autoInsert is on. Both gated on
-        // birta.calc.enabled; each is inert (returns null early) when inactive.
-        .use(calcSuggestPlugin)
-        .use(calcAutoInsertPlugin)
+        .use(wikiLinkCompletePlugin);
+
+    // Inline calc-on-`=` (MAR-177): advisory suggestion by default, or an input
+    // rule when birta.calc.autoInsert is on. Composed ONLY when the feature is
+    // enabled — a disabled feature must cost nothing (design principle: "A
+    // disabled feature costs nothing"). Left composed unconditionally, the
+    // caret-suggest controller would still run its plugin-view update on every
+    // transaction, allocating a 500-char match window per keystroke even though
+    // every match short-circuits to null. __i18n is baked into the HTML before
+    // this script runs, so calcEnabled is readable synchronously here (like
+    // smartLinks). The internal autoInsert flag still decides which of the two
+    // composed plugins actually fires.
+    if (window.__i18n?.calcEnabled ?? true) {
+        builder = builder.use(calcSuggestPlugin).use(calcAutoInsertPlugin);
+    }
+
+    _editor = await builder
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
         .use(blockKeysPlugin)
