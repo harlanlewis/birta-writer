@@ -84,6 +84,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.restorePreviousContent",
+                "title": "%command.restorePreviousContent.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.selectBlockHandles",
                 "title": "%command.selectBlockHandles.title%",
                 "category": "Birta Writer"

@@ -7,6 +7,7 @@ import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransf
 import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
 import { DiskDriftController } from "./diskDrift";
+import { judgeReplacement } from "./destructiveGuard";
 import { postToWebview } from "./webviewMessaging";
 import {
     getBirtaConfiguration,
@@ -99,6 +100,13 @@ export class MarkdownEditorProvider
             }
         },
     });
+
+    // One-slot pre-destruction text per document (MAR-114): armed when a
+    // webview content replacement trips the destructive-change tripwire, read
+    // back by birta.restorePreviousContent. Deliberately NOT cleared on panel
+    // dispose — the slot must survive the user closing a wrecked editor. One
+    // string per tripped document for the extension's lifetime; trips are rare.
+    private readonly _previousContent = new Map<string, string>();
 
     // Image webviewUri → relPath mapping (key: docUri.toString())
     private readonly _imageUriMaps = new Map<string, Map<string, string>>();
@@ -520,7 +528,11 @@ export class MarkdownEditorProvider
                             this._pushExternalUpdate(document, webviewPanel, uriKey);
                             break;
                         }
-                        // The WebView edited the frontmatter panel; replace just the frontmatter block
+                        // The WebView edited the frontmatter panel; replace just the frontmatter block.
+                        // Deliberately NOT armed with the destructive-change tripwire
+                        // (MAR-114): this path can only rewrite the frontmatter block —
+                        // the body is untouched by construction, so the whole-document
+                        // line thresholds don't describe its blast radius.
                         const oldFm = this._frontmatterMap.get(uriKey) ?? "";
                         const newFm = message.frontmatter;
                         if (oldFm === newFm) { break; }
@@ -886,8 +898,10 @@ export class MarkdownEditorProvider
         document: vscode.TextDocument,
         newContent: string,
     ): Promise<boolean> {
-        const replace = computeReplaceRange(document.getText(), newContent);
+        const before = document.getText();
+        const replace = computeReplaceRange(before, newContent);
         if (!replace) { return false; }
+        this._armTripwire(document.uri.toString(), before, newContent, "update");
         // Record the expected text BEFORE applying: onDidChangeTextDocument
         // fires during applyEdit and must recognize this change as our own.
         this._lastSyncedText.set(document.uri.toString(), newContent);
@@ -901,6 +915,107 @@ export class MarkdownEditorProvider
             replace.replacement,
         );
         return vscode.workspace.applyEdit(edit);
+    }
+
+    /**
+     * The destructive-change tripwire (MAR-114): called at both choke points
+     * where webview-produced content replaces the document (the update path
+     * and the save flush). When the replacement removes a large share of the
+     * document's significant lines, keep the prior full text for
+     * `birta.restorePreviousContent` and log a structured dev-console warning
+     * — no notification, no telemetry: layer-4 insurance stays silent.
+     */
+    private _armTripwire(
+        uriKey: string,
+        before: string,
+        after: string,
+        source: "update" | "saveFlush",
+    ): void {
+        const verdict = judgeReplacement(before, after);
+        if (!verdict.tripped) { return; }
+        this._previousContent.set(uriKey, before);
+        console.warn(
+            `[birta] destructive-change tripwire (${source}): ` +
+            `${verdict.removed} of ${verdict.beforeSig} significant lines removed in one update; ` +
+            `previous content kept — "Birta Writer: Restore Previous Content" recovers it`,
+            { uri: uriKey, ...verdict },
+        );
+    }
+
+    /**
+     * "Birta Writer: Restore Previous Content" (MAR-114): swap the active
+     * document's text with the tripwire slot. The swap makes the command its
+     * own inverse — running it again puts the replaced text back. The edit
+     * flows through the normal external-change pipeline (version bump at
+     * observe time), so an open webview re-bases on the restored text and a
+     * save immediately after cannot be clobbered by a stale webview
+     * serialization.
+     */
+    public async restorePreviousContent(): Promise<void> {
+        const uriKey = this._activeDocumentUriKey();
+        const stored = uriKey !== undefined ? this._previousContent.get(uriKey) : undefined;
+        if (uriKey === undefined || stored === undefined) {
+            void vscode.window.showInformationMessage(
+                vscode.l10n.t("No previous content is stored for this editor."),
+            );
+            return;
+        }
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(uriKey));
+        // Through the per-document edit queue: a webview update in flight at
+        // restore time would otherwise splice a range computed against the
+        // pre-restore text into the post-restore document (and the swap would
+        // store that garbled state as the new slot).
+        await this._enqueueEdit(uriKey, async () => {
+            const current = document.getText();
+            if (current === stored) {
+                void vscode.window.showInformationMessage(
+                    vscode.l10n.t("The stored content is identical to the current document."),
+                );
+                return;
+            }
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(
+                document.uri,
+                new vscode.Range(document.positionAt(0), document.positionAt(current.length)),
+                stored,
+            );
+            const applied = await vscode.workspace.applyEdit(edit);
+            if (!applied) {
+                // The user explicitly asked for a recovery; a silent no-op would
+                // read as success, so this failure is one of the few that toasts.
+                reportErrorWithNotification(
+                    "restorePreviousContent",
+                    new Error("applyEdit was rejected"),
+                    vscode.l10n.t("Could not restore the previous content. See the developer console for details."),
+                );
+                return;
+            }
+            this._previousContent.set(uriKey, current);
+            void vscode.window.showInformationMessage(
+                vscode.l10n.t("Previous content restored. Run the command again to swap back."),
+            );
+        });
+    }
+
+    /**
+     * The document the restore command targets: the active Birta editor tab
+     * (never another extension's custom editor), falling back to the last
+     * panel we saw active (out-of-order viewState events can leave the tab
+     * momentarily unreadable), else the active text editor — the slot
+     * outlives its panel, so the command must work from the raw editor too.
+     */
+    private _activeDocumentUriKey(): string | undefined {
+        const activeTab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
+        if (
+            activeTab?.input instanceof vscode.TabInputCustom &&
+            activeTab.input.viewType === MarkdownEditorProvider.viewType
+        ) {
+            return activeTab.input.uri.toString();
+        }
+        for (const [uriKey, panel] of this._webviewPanels) {
+            if (panel === this._activePanel) { return uriKey; }
+        }
+        return vscode.window.activeTextEditor?.document.uri.toString();
     }
 
     /**
@@ -927,8 +1042,10 @@ export class MarkdownEditorProvider
             (id) => postToWebview(panel.webview, { type: "flushSave", id }),
             async (content) => {
                 const newContent = this._prepareContentForSave(content, uriKey);
-                const replace = computeReplaceRange(document.getText(), newContent);
+                const before = document.getText();
+                const replace = computeReplaceRange(before, newContent);
                 if (!replace) { return []; } // document already current — nothing to write
+                this._armTripwire(uriKey, before, newContent, "saveFlush");
                 // Record the echo baseline BEFORE the save applies these edits, so
                 // the resulting onDidChangeTextDocument is recognized as our own
                 // (not an external change to re-push). (No tab-pin here: a save

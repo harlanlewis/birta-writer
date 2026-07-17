@@ -54,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **No network egress for document content** — images are always saved to the local workspace and never uploaded; remote image loads are blocked, opened URL schemes are allowlisted (`javascript:` / `file:` / `command:` are blocked), the HTML sanitizer is hardened, and Mermaid runs in strict mode. The editor has no path to send document content off the machine.
 - **A disk-drift badge** warns when a file open with unsaved edits is changed on disk by another tool — a terminal, git, an AI assistant: reload from disk or compare the two versions side by side. The editor never silently overwrites or merges.
 - **Crashes surface instead of going silent** — if the editor's rendering layer hits an unexpected script error, VS Code now shows an error notification (deduplicated, capped per session) rather than the editor quietly stopping; your document and its native save path are unaffected either way.
+- **Restore Previous Content** — a last-resort recovery command. If a single editor update ever removes a large share of a document's lines (a mass delete, or an editor defect slipping past the other safeguards), the extension quietly keeps the prior text in memory; **Birta Writer: Restore Previous Content** swaps it back — running it again swaps back the other way. The kept text survives closing the editor tab (not a VS Code restart), and nothing is written anywhere or sent off the machine. VS Code undo and hot exit remain the primary recovery paths.
 
 **Platform**
 

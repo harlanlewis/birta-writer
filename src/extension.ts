@@ -6,6 +6,7 @@ import { normalizeMermaidThemeMode } from "../shared/mermaid";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { WordCountStatusBar } from "./wordCountStatus";
+import { reportErrorWithNotification } from "./errorSink";
 import {
     getBirtaConfiguration,
     readBirtaSetting,
@@ -254,6 +255,22 @@ export function activate(context: vscode.ExtensionContext) {
             ),
         );
     }
+
+    // Recover the pre-destruction text kept by the destructive-change
+    // tripwire (MAR-114). The provider owns the slot and the swap semantics.
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "birta.restorePreviousContent",
+            () => MarkdownEditorProvider.current?.restorePreviousContent()
+                // A user-invoked recovery must not fail silently (e.g. the
+                // file was deleted and the document can no longer be opened).
+                .catch((err) => reportErrorWithNotification(
+                    "restorePreviousContent",
+                    err,
+                    vscode.l10n.t("Could not restore the previous content. See the developer console for details."),
+                )),
+        ),
+    );
 
     // Toggle the master proofreading gate (keyboard shortcut / command palette);
     // the config-change listener below broadcasts the new state to every open
