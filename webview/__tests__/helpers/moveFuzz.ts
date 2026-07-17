@@ -12,7 +12,8 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import { getMarkdown } from "@milkdown/utils";
 import type { EditorView } from "@milkdown/prose/view";
 import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
-import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
+import { markdownFormat } from "../../format/markdown";
+import type { FormatModule } from "../../format/types";
 import { moveRangeAt } from "../../components/blockMenu";
 import {
     blockBoundaryPositions,
@@ -29,19 +30,19 @@ export interface CorpusFixture {
 const FIXTURES_DIR = join(__dirname, "..", "fixtures");
 
 /**
- * Every `.md` under __tests__/fixtures/ is a corpus member, including grouped
- * fixtures in subdirectories (e.g. fixtures/logseq/). README.md files are
- * documentation, not fixtures, so they are skipped. Returned names are
- * fixtures-relative (e.g. "logseq/page.md") so subdirectory fixtures are
- * distinguishable in the test output.
+ * Every `*<extension>` under __tests__/fixtures/ is a corpus member,
+ * including grouped fixtures in subdirectories (e.g. fixtures/logseq/).
+ * README.md files are documentation, not fixtures, so they are skipped.
+ * Returned names are fixtures-relative (e.g. "logseq/page.md") so
+ * subdirectory fixtures are distinguishable in the test output.
  */
-function collectFixtures(dir: string, rel = ""): CorpusFixture[] {
+function collectFixtures(dir: string, extension: string, rel = ""): CorpusFixture[] {
     const out: CorpusFixture[] = [];
     for (const entry of readdirSync(dir, { withFileTypes: true }) as Dirent[]) {
         const relName = rel ? `${rel}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
-            out.push(...collectFixtures(join(dir, entry.name), relName));
-        } else if (entry.name.endsWith(".md") && entry.name !== "README.md") {
+            out.push(...collectFixtures(join(dir, entry.name), extension, relName));
+        } else if (entry.name.endsWith(extension) && entry.name !== "README.md") {
             out.push({ name: relName, content: readFileSync(join(dir, entry.name), "utf8") });
         }
     }
@@ -49,20 +50,28 @@ function collectFixtures(dir: string, rel = ""): CorpusFixture[] {
 }
 
 /**
- * Every fixture under __tests__/fixtures/ (recursively) plus the living
- * showcase (samples/content-inventory.md). The extension strips YAML
- * frontmatter before the webview ever sees content
- * (src/utils/contentTransform.ts), so the showcase contributes its body
- * exactly as production delivers it.
+ * Every fixture under __tests__/fixtures/ (recursively) with the given
+ * extension — `.md` (the default) plus the living showcase
+ * (samples/content-inventory.md). The extension strips YAML frontmatter
+ * before the webview ever sees content (src/utils/contentTransform.ts), so
+ * the showcase contributes its body exactly as production delivers it.
+ *
+ * `fixtureExtension` exists for the multiformat track (MAR-40/41): a second
+ * format's corpus gates run the same suites over its own fixture family
+ * (module + extension) — see makeCorpusEditor.
  */
-export function loadCorpusFixtures(): CorpusFixture[] {
-    const fixtures = collectFixtures(FIXTURES_DIR);
-    const raw = readFileSync(
-        join(__dirname, "..", "..", "..", "samples", "content-inventory.md"),
-        "utf8",
-    );
-    const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
-    fixtures.push({ name: "samples/content-inventory.md (body)", content: body });
+export function loadCorpusFixtures(fixtureExtension = ".md"): CorpusFixture[] {
+    const fixtures = collectFixtures(FIXTURES_DIR, fixtureExtension);
+    if (fixtureExtension === ".md") {
+        // The showcase is a markdown document; other formats bring only
+        // their own fixture family.
+        const raw = readFileSync(
+            join(__dirname, "..", "..", "..", "samples", "content-inventory.md"),
+            "utf8",
+        );
+        const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
+        fixtures.push({ name: "samples/content-inventory.md (body)", content: body });
+    }
     return fixtures;
 }
 
@@ -74,21 +83,26 @@ type EditorPlugin = Parameters<Editor["use"]>[0];
  * The REAL editor (real parser, real remark-stringify, the production
  * serialization config) — no mocks. `extras` appends plugins the suite
  * needs beyond the preset (fold state, history, the content guard).
+ * `format` selects the FormatModule whose presets/serialization the editor
+ * is built with (default: markdown, the production module) — the corpus
+ * gates run a second format by passing its module here plus its fixture
+ * extension to loadCorpusFixtures.
  */
 export async function makeCorpusEditor(
     markdown: string,
     extras: readonly EditorPlugin[] = [],
+    format: FormatModule = markdownFormat,
 ): Promise<Editor> {
     const root = document.createElement("div");
     document.body.appendChild(root);
-    let builder = Editor.make()
-        .config((ctx) => {
-            ctx.set(rootCtx, root);
-            ctx.set(defaultValueCtx, markdown);
-            configureSerialization(ctx);
-        })
-        .use(pureCommonmark)
-        .use(gfmFidelity);
+    let builder = Editor.make().config((ctx) => {
+        ctx.set(rootCtx, root);
+        ctx.set(defaultValueCtx, markdown);
+        format.configureSerialization(ctx);
+    });
+    for (const preset of format.presets) {
+        builder = builder.use(preset);
+    }
     for (const plugin of extras) {
         builder = builder.use(plugin);
     }
@@ -105,8 +119,11 @@ export function editorView(editor: Editor): EditorView {
  * (logseqRoundTrip, toolFidelity) so they can't drift from the production
  * serialization recipe the corpus (roundTripCorpus.test.ts) exercises.
  */
-export async function serializeCorpus(markdown: string): Promise<string> {
-    const editor = await makeCorpusEditor(markdown);
+export async function serializeCorpus(
+    markdown: string,
+    format: FormatModule = markdownFormat,
+): Promise<string> {
+    const editor = await makeCorpusEditor(markdown, [], format);
     const out = editor.action(getMarkdown());
     await editor.destroy();
     return out;
