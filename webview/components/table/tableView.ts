@@ -48,7 +48,7 @@ import {
 import { IconPlus } from "@/ui/icons";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
-import { tagContentGuard } from "@/plugins/contentGuard";
+import { tagContentGuard } from "@/editing/blockOps";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
 

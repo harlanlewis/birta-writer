@@ -34,7 +34,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import { Fragment } from "@milkdown/prose/model";
 import type { Node as ProseNode, NodeType } from "@milkdown/prose/model";
 import { TextSelection } from "@milkdown/prose/state";
-import { setHeadingLevelAt } from "../../plugins/headingFold";
+import { setHeadingLevelAt } from "../../editing/blockOps";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import { conversionKindAt, type ConversionKind } from "../../blockCapabilities";
 

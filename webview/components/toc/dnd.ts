@@ -35,7 +35,7 @@ import {
     type DropZoneProvider,
 } from "../blockMenu/drag";
 import { moveRangeAt } from "../blockMenu/index";
-import { isHiddenTargetPos } from "../../plugins/headingFold";
+import { isHiddenTargetPos } from "../../editing/blockOps";
 import {
     draggedSectionLevel,
     tocDropSlots,
