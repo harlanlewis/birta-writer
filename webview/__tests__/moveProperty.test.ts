@@ -52,7 +52,7 @@ import {
 } from "./helpers/moveFuzz";
 
 // The landing flash and range veil are geometry no-ops under jsdom.
-vi.mock("../components/blockMenu/rangeIndicator", () => ({
+vi.mock("../editing/rangeIndicator", () => ({
     flashRange: vi.fn(),
     showRangeVeil: vi.fn(),
     hideRangeVeil: vi.fn(),

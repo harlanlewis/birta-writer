@@ -30,7 +30,7 @@ import {
     contentEffectOf,
     conversionKindAt,
 } from "../blockCapabilities";
-import { canTurnInto } from "../components/blockMenu/turnInto";
+import { canTurnInto } from "../components/blockMenu";
 import { contentGuardPlugin } from "../plugins/contentGuard";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");

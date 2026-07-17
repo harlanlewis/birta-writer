@@ -24,8 +24,9 @@
 import type { EditorView } from "../../pm";
 import type { Node as ProseNode } from "../../pm";
 import { BlockRangeSelection } from "../../plugins/blockRange";
-import { scrollVelocityFor, selectionCoverRange } from "./drag";
-import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
+import { selectionCoverRange } from "../../plugins/headingFold";
+import { scrollVelocityFor } from "./drag";
+import { hideRangeVeil, showRangeVeil } from "../../editing/rangeIndicator";
 
 const MARQUEE_THRESHOLD = 4;
 

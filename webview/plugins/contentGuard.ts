@@ -28,9 +28,8 @@ import type { ContentEffect } from "../blockCapabilities";
 import { t } from "../i18n";
 import { parseCalloutMarker } from "./callouts";
 import { parseOpenFence } from "./directives";
-// Runtime-only cycle (contentGuard → headingFold → blockMenu → contentGuard):
-// these are only called inside filterTransaction bodies, matching the
-// established headingFold ↔ blockMenu precedent.
+// Runtime-only cycle (contentGuard → headingFold → blockCapabilities →
+// contentGuard): these are only called inside filterTransaction bodies.
 import { foldedHiddenRanges, hiddenRangeCoversTarget } from "./headingFold";
 // One-directional: reparseHazard consumes the shared fingerprint oracle from
 // ./fingerprints, never this module, so this import cannot cycle.

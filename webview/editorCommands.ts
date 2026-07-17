@@ -49,7 +49,7 @@ import {
     unfoldAtCaret,
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
-import { openBlockMenuAtCaret } from "@/components/blockMenu/openAtCaret";
+import { openBlockMenuAtCaret } from "@/components/blockMenu";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { getView, lift } from "@/pm";
 import { liftListItem } from "@/pm";

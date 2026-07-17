@@ -16,8 +16,7 @@ import { NodeSelection, TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { BlockRangeSelection } from "../plugins/blockRange";
-import { closeBlockMenu } from "../components/blockMenu";
-import { openBlockMenuAtCaret } from "../components/blockMenu/openAtCaret";
+import { closeBlockMenu, openBlockMenuAtCaret } from "../components/blockMenu";
 
 let editors: Editor[] = [];
 

@@ -14,13 +14,13 @@ import { DecorationSet } from "../../pm";
 import { Plugin, Selection } from "../../pm";
 import { $prose } from "@milkdown/utils";
 import { foldingEnabled } from "../../utils/foldingControls";
-// Runtime-only cycle (blockMenu imports this module's pure helpers back);
-// both sides touch the other only inside event handlers / decoration passes,
-// matching the slashMenu plugin ↔ component precedent.
-import { closeBlockMenu } from "../../components/blockMenu";
-import { selectionCoverRange } from "../../components/blockMenu/drag";
-import { hideRangeVeil, showRangeVeil } from "../../components/blockMenu/rangeIndicator";
-import { wireMarquee } from "../../components/blockMenu/marquee";
+// Menu close and marquee wiring are late-bound handles (the block-menu
+// component registers them at load; see plugins/blockHandles.ts) — the
+// plugin layer never imports component modules. The veil is the editing
+// layer's shared range indicator, and the multi-block cover query lives in
+// the fold model.
+import { blockHandles } from "../blockHandles";
+import { hideRangeVeil, showRangeVeil } from "../../editing/rangeIndicator";
 import { foldPluginKey, type FoldMeta, type FoldPluginState } from "../foldState";
 import {
     allFoldablePositions,
@@ -33,6 +33,7 @@ import {
     isFoldEntryAt,
     isHeadingNode,
     relocationChangedHiddenContent,
+    selectionCoverRange,
     swallowedVisibleContent,
 } from "./foldModel";
 import {
@@ -373,7 +374,7 @@ export const headingFoldPlugin = $prose(() =>
             view.dom.addEventListener("mousemove", handleMouseMove);
             view.dom.addEventListener("mouseleave", clearHoveredGutter);
             view.dom.addEventListener("keydown", handleKeyDown);
-            const disposeMarquee = wireMarquee(view);
+            const disposeMarquee = blockHandles().wireMarquee(view);
 
             return {
                 update(updatedView, prevState) {
@@ -382,7 +383,7 @@ export const headingFoldPlugin = $prose(() =>
                     // close it. Selection-only transactions keep the same doc
                     // node, so this never fires for caret movement.
                     if (updatedView.state.doc !== prevState.doc) {
-                        closeBlockMenu();
+                        blockHandles().closeBlockMenu();
                     }
                     // T2 persistence: write structural anchors into the
                     // webview state bag whenever the fold set changes (or a

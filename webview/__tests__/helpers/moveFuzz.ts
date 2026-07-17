@@ -14,11 +14,11 @@ import type { EditorView } from "../../pm";
 import { Fragment, type Node as ProseNode } from "../../pm";
 import { markdownFormat } from "../../format/markdown";
 import type { FormatModule } from "../../format/types";
-import { moveRangeAt } from "../../components/blockMenu";
 import {
     blockBoundaryPositions,
+    moveRangeAt,
     visibleBoundaryPositions,
-} from "../../components/blockMenu/drag";
+} from "../../components/blockMenu";
 
 // ── Corpus fixtures ─────────────────────────────────────────────────────────
 
