@@ -5,7 +5,7 @@ import { closeTopmostLayer } from "../ui/escapeLayers";
 // Real DOM + fake timers exercise the actual open/close state machine, including
 // the button->menu gap bridge. placeMenu runs inside open(); in jsdom it reads
 // zero geometry and just sets styles without throwing, which is fine here — the
-// geometry itself is covered in menuPlacement.test.ts.
+// geometry itself is covered in anchoredPlacement.test.ts.
 
 function build(): { wrap: HTMLElement; button: HTMLButtonElement; menu: HTMLElement } {
     const wrap = document.createElement("div");
