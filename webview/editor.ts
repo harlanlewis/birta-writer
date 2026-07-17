@@ -173,6 +173,11 @@ let _isComposing = false;
 // Latest external content that arrived DURING composition, applied on
 // compositionend. Only the most recent push matters — older ones are stale.
 let _pendingExternalMarkdown: string | null = null;
+// Lifetime of the composition listeners bound in createEditor. The container
+// is the single stable #editor element, so without an abort every re-init
+// (revert / init / externalUpdate fallback) would stack another handler pair
+// and one composition would run the compositionend block N times (MAR-148).
+let _compositionAbort: AbortController | null = null;
 
 // ── Outbound sync pipeline (view → document) ───────────────────────────────
 // Driven by docChangePlugin, which reports every doc-changing transaction
@@ -403,6 +408,17 @@ export async function createEditor(
     _hasUserInteracted = false;
     _isSettled = false;
     _applyingExternal = false;
+    // Disown the previous editor NOW, not when the new one lands: initEditor
+    // has already destroyed it, so from here until create() completes the old
+    // reference is a torn-down editor whose ctx access throws. Nulling it (and
+    // the protection derived from it) sends every downstream guard — syncNow,
+    // flushPendingEdit, getEditorView, syncExternalContent — down its safe
+    // branch for the whole create window, and a FAILED create simply leaves
+    // this inert state in place instead of resurrecting the stale reference
+    // (MAR-148).
+    _editor = null;
+    _protection = null;
+    _protectionSnapshot = null;
     setupInteractionTracking();
 
     // Reset the outbound sync pipeline for this editor instance.
@@ -414,10 +430,21 @@ export async function createEditor(
     _scheduler.reset();
     _isComposing = false;
     _pendingExternalMarkdown = null;
+    // Re-baseline the saved bytes BEFORE the first await, not inside create()'s
+    // config callback: flushSave answers with _savedMarkdown unconditionally,
+    // so if create fails partway a flush must return THIS document's bytes —
+    // leaving the predecessor's here would let a Cmd+S after a failed re-init
+    // write the previous content back over the file (MAR-148).
+    _savedMarkdown = initialMarkdown;
+
+    // One live listener pair per editor instance (see _compositionAbort).
+    _compositionAbort?.abort();
+    _compositionAbort = new AbortController();
+    const { signal } = _compositionAbort;
 
     container.addEventListener('compositionstart', () => {
         _isComposing = true;
-    });
+    }, { signal });
     container.addEventListener('compositionend', () => {
         _isComposing = false;
         // Apply any inbound external sync that arrived mid-composition first, so
@@ -430,7 +457,7 @@ export async function createEditor(
         }
         // Ship any edit that landed during composition, now that it's committed.
         _scheduler.compositionEnded();
-    });
+    }, { signal });
 
     // Register syntax grammars before create when the document already contains a
     // fenced code block, so the prism plugin highlights it on the first paint. A
@@ -457,7 +484,6 @@ export async function createEditor(
             // close to the original file formatting (bullets, rules, table
             // widths).
             format.configureSerialization(ctx);
-            _savedMarkdown = initialMarkdown;
             // Configure prism: use our refractor instance with the languages we registered
             ctx.set(prismConfig.key, {
                 configureRefractor: () => refractor,
@@ -551,7 +577,7 @@ export async function createEditor(
     // critical path (see _protectionSnapshot above): the zero-edit
     // re-serialization used to learn which regions the round trip cannot
     // reproduce would otherwise block first paint on large files.
-    _protection = null;
+    // (_protection is still null — the reset block cleared it.)
     _protectionSnapshot = {
         baseline: initialMarkdown,
         doc: _editor.action((ctx) => getState(ctx).doc),
