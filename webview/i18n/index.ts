@@ -14,6 +14,8 @@ declare global {
             calcEnabled?: boolean;
             /** Auto-insert the calc result on `=` instead of suggesting (birta.calc.autoInsert). */
             calcAutoInsert?: boolean;
+            /** Self-sinking checklists: checked items drop below unchecked (birta.checklist.sinkChecked). */
+            checklistSinkChecked?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
             /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */

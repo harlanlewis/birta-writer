@@ -199,6 +199,7 @@ export function buildWebviewHtml(
     const smartLinks = config.smartLinks;
     const calcEnabled = config.calcEnabled;
     const calcAutoInsert = config.calcAutoInsert;
+    const checklistSinkChecked = config.checklistSinkChecked;
     const codeBlockWordWrap = resolveCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
     const tocAutoHideThreshold = clampNumberSetting(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);
     const frontmatterExpanded = config.frontmatterExpanded;
@@ -214,7 +215,7 @@ export function buildWebviewHtml(
     // optional-chained so a stripped-down test context still resolves.
     const productName =
         (context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, calcEnabled, calcAutoInsert, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, calcEnabled, calcAutoInsert, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

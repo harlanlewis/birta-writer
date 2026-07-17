@@ -73,6 +73,13 @@ export interface BirtaConfig extends ProofreadConfig {
     calcEnabled: boolean;
     /** Insert the result on `=` instead of suggesting it (birta.calc.autoInsert). */
     calcAutoInsert: boolean;
+    /**
+     * Self-sinking checklists (birta.checklist.sinkChecked): when a task item is
+     * checked it drops below the still-unchecked siblings in its list, and
+     * unchecking floats it back up. Opt-in, default OFF — a plain in-place flip
+     * otherwise.
+     */
+    checklistSinkChecked: boolean;
     imageLocalPath: string;
 }
 
@@ -127,6 +134,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     smartLinks: "smartLinks",
     calcEnabled: "calc.enabled",
     calcAutoInsert: "calc.autoInsert",
+    checklistSinkChecked: "checklist.sinkChecked",
     imageLocalPath: "imageLocalPath",
 };
 
@@ -188,5 +196,8 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Calc: the feature ships on, but advisory (no silent mutation) by default.
     calcEnabled: true,
     calcAutoInsert: false,
+    // Self-sinking checklists ship OFF: reordering on a checkbox click is a
+    // surprising motion until asked for, so the default is a plain in-place flip.
+    checklistSinkChecked: false,
     imageLocalPath: "",
 };

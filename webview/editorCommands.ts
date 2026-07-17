@@ -50,6 +50,7 @@ import {
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { openBlockMenuAtCaret } from "@/components/blockMenu";
+import { uncheckAllTasks } from "@/editing/checklistSink";
 import { openSectionLinkPicker } from "@/components/sectionLink";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { getView, lift } from "@/pm";
@@ -622,6 +623,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     unfold: (getEditor) => runCommand(getEditor, unfoldAtCaret),
     foldAll: (getEditor) => runCommand(getEditor, foldAllCommand),
     unfoldAll: (getEditor) => runCommand(getEditor, unfoldAllCommand),
+    // Clear every checked box in the caret's task list (one undo step), then
+    // refocus — a palette invocation dropped focus on the Quick Open input.
+    uncheckAllTasks: (getEditor) => runProse(getEditor, (view) => {
+        uncheckAllTasks(view);
+        view.focus();
+    }),
 };
 
 /** Dispatches an editor command by id; an unknown id is a safe no-op. */

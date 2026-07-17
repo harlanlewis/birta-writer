@@ -38,6 +38,7 @@
   "config.smartLinks.description": "Resolve local links the way your site generator does: workspace-root paths, ancestor content roots (e.g. Hugo's content/), .md and index.md suffixes, and [[wikilink]] targets. When disabled, links resolve relative to the document only.",
   "config.calc.enabled.description": "Compute an arithmetic expression typed just before an equals sign (for example '12 * 4 =') and offer the result. Supports + - * / % (modulo) ^ (exponent), parentheses, and decimals; only pure arithmetic is evaluated, never anything with letters. By default the result is suggested and you confirm it with Return or Tab; nothing changes until you do.",
   "config.calc.autoInsert.description": "Insert the calc result automatically when you type the equals sign, instead of offering it as a confirmable suggestion. Has no effect unless Calc is enabled.",
+  "config.checklist.sinkChecked.description": "When you check a task-list item, move it below the still-unchecked items in the same list (with a brief highlight); unchecking floats it back up to the bottom of the unchecked group. One undo restores the previous order. Off by default: the checkbox flips in place.",
   "config.tableWrap.description": "Controls how text wraps inside table cells. 'normal' avoids mid-word breaks (may cause narrower columns). 'aggressive' allows breaking long words to keep columns wider. 'none' disables wrapping entirely.",
   "config.tableWrap.none": "Do not wrap text in table cells. Long content will overflow horizontally.",
   "config.tableWrap.normal": "Wrap text at soft line breaks, but avoid breaking words in the middle. (Recommended default)",
@@ -154,5 +155,6 @@
   "command.editor.fold.title": "Fold",
   "command.editor.unfold.title": "Unfold",
   "command.editor.foldAll.title": "Fold All",
-  "command.editor.unfoldAll.title": "Unfold All"
+  "command.editor.unfoldAll.title": "Unfold All",
+  "command.editor.uncheckAllTasks.title": "Uncheck All Tasks"
 }
