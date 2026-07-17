@@ -143,8 +143,6 @@ See [**docs/BENEFITS.md**](docs/BENEFITS.md#compatibility-with-other-markdown-to
 
 ***
 
-***
-
 ## Why this fork
 
 **North star: never leave WYSIWYG.** A user opens a `.md` file in WYSIWYG mode and never *needs* the raw text editor unless they genuinely prefer it. Every change is judged by one question: *does this remove a reason to pop out?* The pop-out itself stays polished and instant — even the most mature competitors ship a one-keystroke escape hatch as a first-class feature. It's a safety net, not a wall.
