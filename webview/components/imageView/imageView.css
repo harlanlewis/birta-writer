@@ -245,7 +245,7 @@
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.8); /* color-literal-ok: always-dark lightbox scrim (photo-viewer chrome, theme-independent by design) */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -267,7 +267,7 @@
     right: 20px;
     background: none;
     border: none;
-    color: #fff;
+    color: #fff; /* color-literal-ok: white-on-dark close button for the always-dark lightbox scrim */
     font-size: 22px;
     cursor: pointer;
     opacity: 0.8;
@@ -278,7 +278,7 @@
 
 .img-editor-lightbox-close:hover {
     opacity: 1;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.1); /* color-literal-ok: hover wash on the always-dark lightbox scrim */
 }
 
 /* ─── Image path autocomplete dropdown ─────────────────── */

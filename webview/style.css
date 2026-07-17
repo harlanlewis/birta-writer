@@ -1305,7 +1305,7 @@ body:not(.editor-width-auto) {
             }
 
             th {
-                background: rgba(128, 128, 128, 0.08);
+                background: rgba(128, 128, 128, 0.08); /* color-literal-ok: theme-neutral mid-gray wash, legible over any theme's table background */
                 font-weight: 600;
             }
         }
