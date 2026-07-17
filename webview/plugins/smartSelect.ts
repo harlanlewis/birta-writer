@@ -41,9 +41,9 @@
  * somewhere sensible. A caret, or a selection with no recognized strictly
  * -contained sub-range (e.g. a lone word), returns false.
  */
-import { keymap } from "@milkdown/prose/keymap";
-import type { Mark } from "@milkdown/prose/model";
-import { TextSelection, type Command, type EditorState } from "@milkdown/prose/state";
+import { keymap } from "../pm";
+import type { Mark } from "../pm";
+import { TextSelection, type Command, type EditorState } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { escalateSelectAll, toggleBlockSelection, unitBoundaries } from "./blockKeys";
 import { BlockRangeSelection } from "./blockRange";

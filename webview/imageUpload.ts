@@ -11,7 +11,7 @@
  */
 
 import type { Editor } from "@milkdown/core";
-import { editorViewCtx } from "@milkdown/core";
+import { getView } from "./pm";
 import {
     notifyUploadImage,
     notifyGetProjectImages,
@@ -104,7 +104,7 @@ export function insertImageNode(currentEditor: Editor | null, src: string, alt: 
         return;
     }
     currentEditor.action((ctx) => {
-        const view = ctx.get(editorViewCtx);
+        const view = getView(ctx);
         const { state } = view;
         const imageType = state.schema.nodes["image"];
         if (!imageType) {

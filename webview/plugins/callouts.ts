@@ -31,8 +31,8 @@
  * by the NodeView (components/callout) and is VISUAL ONLY — the `-`/`+`
  * marker is never rewritten by collapsing/expanding.
  */
-import { InputRule } from "@milkdown/prose/inputrules";
-import { wrapIn } from "@milkdown/prose/commands";
+import { InputRule } from "../pm";
+import { wrapIn } from "../pm";
 import { $command, $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
 import { SETEXT_UNDERLINE_RE } from "./directives";
 

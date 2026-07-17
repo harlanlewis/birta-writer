@@ -8,14 +8,14 @@
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin, headingFoldPluginKey } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin } from "../plugins/contentGuard";
 import { insertCalloutCommand } from "../plugins/callouts";
-import { undo } from "@milkdown/prose/history";
+import { undo } from "../pm";
 import {
     setBlockMenuContext,
     moveRangeAt,
@@ -24,7 +24,7 @@ import {
     headingAnchorSlug,
 } from "../components/blockMenu";
 import { conversionKindAt } from "../blockCapabilities";
-import { TextSelection } from "@milkdown/prose/state";
+import { TextSelection } from "../pm";
 import { mockVscodeApi } from "./setup";
 
 let editors: Editor[] = [];
@@ -978,7 +978,7 @@ describe("menu lifecycle", () => {
         const editor = await makeEditor("Alpha\n\nBeta");
         const v = view(editor);
         openMenuOn(markers()[0]!);
-        const { TextSelection } = await import("@milkdown/prose/state");
+        const { TextSelection } = await import("../pm");
         v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(3))));
         expect(document.querySelector(".block-menu")).not.toBeNull();
     });

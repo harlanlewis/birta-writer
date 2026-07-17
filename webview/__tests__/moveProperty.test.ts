@@ -27,8 +27,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { parserCtx, type Editor } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "../pm";
+import type { Node as ProseNode } from "../pm";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import {

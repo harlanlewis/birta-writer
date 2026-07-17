@@ -34,7 +34,7 @@
  * AGAINST THE PACKAGE SOURCE ON EVERY mdast-util-to-markdown UPGRADE.
  */
 import { headingSchema, hrSchema } from "@milkdown/preset-commonmark";
-import { Fragment } from "@milkdown/prose/model";
+import { Fragment } from "../pm";
 import { $remark } from "@milkdown/utils";
 
 /** Minimal shape of the mdast nodes the parse-time visitor inspects. */

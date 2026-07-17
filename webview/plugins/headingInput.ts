@@ -14,7 +14,7 @@
  * `headingInputReplacedPlugins` (the same replaced-plugins pattern as
  * sourceStyle/tableBreaks); `editor.ts` registers this one instead.
  */
-import { textblockTypeInputRule } from "@milkdown/prose/inputrules";
+import { textblockTypeInputRule } from "../pm";
 import { headingSchema, wrapInHeadingInputRule } from "@milkdown/preset-commonmark";
 import { $inputRule } from "@milkdown/utils";
 

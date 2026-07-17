@@ -12,8 +12,8 @@
  * fence bytes cannot carry escapes — see plugins/directives.ts).
  */
 import "./directive.css";
-import type { Node as PMNode } from "@milkdown/prose/model";
-import type { EditorView } from "@milkdown/prose/view";
+import type { Node as PMNode } from "@/pm";
+import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { attrsFromFences, openFenceWithTitle } from "@/plugins/directives";
 

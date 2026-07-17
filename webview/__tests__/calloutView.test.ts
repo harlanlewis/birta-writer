@@ -18,7 +18,7 @@ import {
     nodeViewCtx,
 } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { createCalloutView, calloutLabel } from "../components/callout";
 import { escapeCalloutTitle, markerWithFold, markerWithTitle, parseCalloutMarker } from "../plugins/callouts";

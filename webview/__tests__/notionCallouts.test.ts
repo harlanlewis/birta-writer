@@ -16,8 +16,8 @@ import {
     nodeViewCtx,
 } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as PMNode } from "@milkdown/prose/model";
+import type { EditorView } from "../pm";
+import type { Node as PMNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { extractIcon, kindForIcon } from "../plugins/notionCallouts";
 import { createNotionCalloutView } from "../components/callout";

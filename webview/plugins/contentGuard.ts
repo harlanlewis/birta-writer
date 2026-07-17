@@ -19,10 +19,10 @@
  * reparseHazard save-survival check — and is re-exported here for its
  * historical consumers.
  */
-import { Plugin, PluginKey, type EditorState, type Transaction } from "@milkdown/prose/state";
-import { Fragment, type Node as ProseNode } from "@milkdown/prose/model";
-import type { EditorView } from "@milkdown/prose/view";
-import { ReplaceAroundStep, ReplaceStep } from "@milkdown/prose/transform";
+import { Plugin, PluginKey, type EditorState, type Transaction } from "../pm";
+import { Fragment, type Node as ProseNode } from "../pm";
+import type { EditorView } from "../pm";
+import { ReplaceAroundStep, ReplaceStep } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { ContentEffect } from "../blockCapabilities";
 import { t } from "../i18n";

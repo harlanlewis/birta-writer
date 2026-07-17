@@ -32,8 +32,8 @@ import {
     registerSelectionChangeHandler,
     setLogTableSel,
 } from "./editor";
-import type { EditorView } from "@milkdown/prose/view";
-import { TextSelection } from "@milkdown/prose/state";
+import type { EditorView } from "./pm";
+import { TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
 import { mark, measure } from "./perf";

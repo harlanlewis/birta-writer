@@ -9,7 +9,7 @@
  *   - text inputs inside the toolbar fall back to native clipboard items only.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { initContextMenu } from "../components/contextMenu";
 
 const DOC_URI = "file:///project/doc.md";

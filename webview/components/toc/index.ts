@@ -1,5 +1,5 @@
 import './toc.css';
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "@/pm";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { notifyTocWidth, notifySetTocPosition } from "@/messaging";

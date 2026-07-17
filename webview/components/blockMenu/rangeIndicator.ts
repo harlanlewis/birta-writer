@@ -14,8 +14,8 @@
  * on the block elements themselves: mutating ProseMirror-managed DOM wakes
  * its observer and redraws the nodes, destroying the gutter widgets.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "../../pm";
+import type { Node as ProseNode } from "../../pm";
 
 /** Viewport rect of the top-level blocks in [from, to), or null offscreen. */
 function measureRange(

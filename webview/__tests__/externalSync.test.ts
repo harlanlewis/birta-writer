@@ -42,8 +42,8 @@ beforeAll(() => {
     }
 });
 import { editorViewCtx, type Editor } from "@milkdown/core";
-import { TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { TextSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { createEditor, syncExternalContent } from "../editor";
 import { applyExternalSync } from "../externalSync";
 import { notifyUpdate } from "../messaging";

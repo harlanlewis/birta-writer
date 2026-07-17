@@ -29,13 +29,13 @@
  * instead inserts an empty paragraph right before the enclosing code block /
  * table at its own depth (rather than being a swallowed dead key).
  */
-import { keymap } from "@milkdown/prose/keymap";
+import { keymap } from "../pm";
 import {
     NodeSelection,
     TextSelection,
     type Command,
     type EditorState,
-} from "@milkdown/prose/state";
+} from "../pm";
 import { $prose } from "@milkdown/utils";
 import { BlockRangeSelection } from "./blockRange";
 

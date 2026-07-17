@@ -18,9 +18,9 @@
  * the real arm.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { Schema } from "@milkdown/prose/model";
-import { EditorState, TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { Schema } from "../pm";
+import { EditorState, TextSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { mockVscodeApi } from "./setup";
 
 const countTextSpy = vi.hoisted(() => vi.fn());

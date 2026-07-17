@@ -12,7 +12,7 @@ import {
     nodeViewCtx,
 } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { createDirectiveView } from "../components/directive";
 import { openFenceWithTitle, sanitizeDirectiveTitle } from "../plugins/directives";

@@ -9,7 +9,7 @@
  */
 
 import type { Editor } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "./pm";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
 import { applyBlockHandles } from "./utils/blockHandles";

@@ -11,7 +11,7 @@
  * is the `mdw:launch` measure (navigation start → first painted editor frame).
  */
 
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "./pm";
 
 const PREFIX = "mdw:";
 

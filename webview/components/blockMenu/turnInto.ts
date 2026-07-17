@@ -30,10 +30,10 @@
  *     source-peek work, MAR-20, is the natural home for that).
  */
 import { serializerCtx } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
-import { Fragment } from "@milkdown/prose/model";
-import type { Node as ProseNode, NodeType } from "@milkdown/prose/model";
-import { TextSelection } from "@milkdown/prose/state";
+import type { EditorView } from "../../pm";
+import { Fragment } from "../../pm";
+import type { Node as ProseNode, NodeType } from "../../pm";
+import { TextSelection } from "../../pm";
 import { setHeadingLevelAt } from "../../editing/blockOps";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import { conversionKindAt, type ConversionKind } from "../../blockCapabilities";

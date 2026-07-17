@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { TextSelection } from "@milkdown/prose/state";
+import { TextSelection } from "../pm";
 import { INLINE_MATH_RULE_REGEX, isRealInlineMath } from "../plugins/math";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";

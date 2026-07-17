@@ -21,8 +21,8 @@
  *     next load (formatted marker lines are deliberately not callouts).
  */
 import "./callout.css";
-import type { Node as PMNode } from "@milkdown/prose/model";
-import type { EditorView } from "@milkdown/prose/view";
+import type { Node as PMNode } from "@/pm";
+import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import {

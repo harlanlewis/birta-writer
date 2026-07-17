@@ -1,6 +1,6 @@
-import type { EditorView } from "@milkdown/prose/view";
-import { Plugin, TextSelection } from "@milkdown/prose/state";
-import { CellSelection, TableMap } from "@milkdown/prose/tables";
+import type { EditorView } from "../pm";
+import { Plugin, TextSelection } from "../pm";
+import { CellSelection, TableMap } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { isLogTableSelEnabled } from "./tableDebug";
 

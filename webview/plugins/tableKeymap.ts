@@ -1,14 +1,14 @@
-import { keymap } from "@milkdown/prose/keymap";
-import type { EditorState, Transaction } from "@milkdown/prose/state";
-import { TextSelection } from "@milkdown/prose/state";
+import { keymap } from "../pm";
+import type { EditorState, Transaction } from "../pm";
+import { TextSelection } from "../pm";
 import {
     addRow,
     goToNextCell,
     isInTable,
     selectedRect,
     TableMap,
-} from "@milkdown/prose/tables";
-import type { Node as PMNode } from "@milkdown/prose/model";
+} from "../pm";
+import type { Node as PMNode } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 /**

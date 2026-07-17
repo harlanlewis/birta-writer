@@ -7,9 +7,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { TextSelection } from "@milkdown/prose/state";
-import { CellSelection, selectedRect, TableMap } from "@milkdown/prose/tables";
-import type { EditorView } from "@milkdown/prose/view";
+import { TextSelection } from "../pm";
+import { CellSelection, selectedRect, TableMap } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { tableKeymapPlugin } from "../plugins/tableKeymap";
 
@@ -40,8 +40,8 @@ describe("table keyboard navigation", () => {
         return editor.action((ctx) => ctx.get(editorViewCtx));
     }
 
-    function findTable(): { node: import("@milkdown/prose/model").Node; pos: number } {
-        let node: import("@milkdown/prose/model").Node | null = null;
+    function findTable(): { node: import("../pm").Node; pos: number } {
+        let node: import("../pm").Node | null = null;
         let pos = -1;
         v.state.doc.descendants((n, p) => {
             if (n.type.name === "table" && node === null) { node = n; pos = p; return false; }

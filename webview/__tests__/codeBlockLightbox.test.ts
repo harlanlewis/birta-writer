@@ -17,8 +17,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { gfmFidelity } from "../serialization";
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as PMNode } from "@milkdown/prose/model";
+import type { EditorView } from "../pm";
+import type { Node as PMNode } from "../pm";
 import { createCodeBlockView } from "../components/codeBlock";
 import { closeTopmostLayer } from "../ui/escapeLayers";
 

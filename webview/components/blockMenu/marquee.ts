@@ -21,8 +21,8 @@
  *   - Escape cancels; the rectangle needs ~4px of travel to appear, so a
  *     stray margin click doesn't flash chrome.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "../../pm";
+import type { Node as ProseNode } from "../../pm";
 import { BlockRangeSelection } from "../../plugins/blockRange";
 import { scrollVelocityFor, selectionCoverRange } from "./drag";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";

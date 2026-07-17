@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { Schema } from "@milkdown/prose/model";
+import { Schema } from "../pm";
 import { computeDecorations, DEFAULT_CONFIG } from "../plugins/proofread";
 import { ignoreStyleSession, isStyleSuppressed } from "../proofread/engine";
 import type { ProofreadConfig } from "../../shared/messages";

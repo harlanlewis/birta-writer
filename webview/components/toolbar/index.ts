@@ -1,6 +1,5 @@
-import { editorViewCtx } from "@milkdown/core";
 import type { Editor } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
+import { getView, type EditorView } from "@/pm";
 import { runEditorCommand, setEditorCommandHost } from "@/editorCommands";
 import {
     IconBold,
@@ -1164,7 +1163,7 @@ export function initToolbar(
             return;
         }
 
-        const view = editor.action((ctx) => ctx.get(editorViewCtx));
+        const view = editor.action((ctx) => getView(ctx));
         const { state } = view;
         const linkType = state.schema.marks["link"];
         if (!linkType) {
@@ -1251,7 +1250,7 @@ export function initToolbar(
                     return;
                 }
                 editor.action((ctx) => {
-                    const view = ctx.get(editorViewCtx);
+                    const view = getView(ctx);
                     const { state } = view;
                     const imageType = state.schema.nodes["image"];
                     if (!imageType) {
@@ -1541,7 +1540,7 @@ export function initToolbar(
                 return;
             }
             const view: EditorView = editor.action((ctx) =>
-                ctx.get(editorViewCtx),
+                getView(ctx),
             );
             if (!view) {
                 return;

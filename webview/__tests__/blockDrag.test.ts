@@ -6,13 +6,13 @@
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";
 import { contentGuardPlugin } from "../plugins/contentGuard";
-import { undo } from "@milkdown/prose/history";
+import { undo } from "../pm";
 import { moveBlockTo, moveRangeAt, setBlockMenuContext } from "../components/blockMenu";
 import { mockVscodeApi } from "./setup";
 import {
@@ -348,7 +348,7 @@ describe("drop-zone providers", () => {
     it("a provider commit on a multi-block drag should keep the run selected (selectRun)", async () => {
         const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
         const v = view(editor);
-        const { TextSelection } = await import("@milkdown/prose/state");
+        const { TextSelection } = await import("../pm");
         let betaPos = -1;
         v.state.doc.forEach((n, o) => { if (n.textContent === "Beta") betaPos = o; });
         // A selection spanning Alpha and Beta: the marker adopts the cover.
@@ -439,7 +439,7 @@ describe("selectionCoverRange (multi-block drag)", () => {
     it("a selection spanning two blocks should cover exactly those blocks", async () => {
         const editor = await makeEditor("Alpha\n\nBeta\n\nGamma");
         const v = view(editor);
-        const { TextSelection } = await import("@milkdown/prose/state");
+        const { TextSelection } = await import("../pm");
         // From inside Alpha to inside Beta.
         let betaPos = -1;
         v.state.doc.forEach((n, o) => { if (n.textContent === "Beta") betaPos = o; });
@@ -459,7 +459,7 @@ describe("selectionCoverRange (multi-block drag)", () => {
         const v = view(editor);
         const { selectionCoverRange } = await import("../components/blockMenu/drag");
         expect(selectionCoverRange(v)).toBeNull(); // caret only
-        const { TextSelection } = await import("@milkdown/prose/state");
+        const { TextSelection } = await import("../pm");
         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 4)));
         expect(selectionCoverRange(v)).toBeNull(); // inside one block
     });

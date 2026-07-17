@@ -22,9 +22,9 @@
  * Body-mounted like the other chrome popups; one menu open at a time; the
  * keyboard model mirrors the toolbar dropdowns (roving arrows, Enter, Escape).
  */
-import type { EditorView } from "@milkdown/prose/view";
-import { Fragment } from "@milkdown/prose/model";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "../../pm";
+import { Fragment } from "../../pm";
+import type { Node as ProseNode } from "../../pm";
 import {
     findHeadingFoldRange,
     foldAllCommand,
@@ -66,7 +66,7 @@ import {
     type ConversionKind,
 } from "../../blockCapabilities";
 import { flashRange } from "./rangeIndicator";
-import { TextSelection, type EditorState } from "@milkdown/prose/state";
+import { TextSelection, type EditorState } from "../../pm";
 
 // ── Editor access ───────────────────────────────────────────────────────────
 // The menu lives behind a ProseMirror widget, which only hands us the view;

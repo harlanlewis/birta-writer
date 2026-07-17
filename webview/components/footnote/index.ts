@@ -1,6 +1,6 @@
 import "./footnote.css";
-import type { Node as PMNode } from "@milkdown/prose/model";
-import type { EditorView } from "@milkdown/prose/view";
+import type { Node as PMNode } from "@/pm";
+import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { scrollElementBelowTopbar } from "@/utils/headingUtils";
 import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";

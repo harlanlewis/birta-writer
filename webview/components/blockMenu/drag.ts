@@ -23,9 +23,9 @@
  * targeting while the pointer is inside them; the commit path stays the one
  * moveBlocks call regardless of zone.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import type { EditorState } from "@milkdown/prose/state";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "../../pm";
+import type { EditorState } from "../../pm";
+import type { Node as ProseNode } from "../../pm";
 import { closeBlockMenu, moveRangeAt } from "./index";
 import {
     foldedHiddenRanges,

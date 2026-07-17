@@ -8,10 +8,10 @@
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { NodeSelection, TextSelection } from "@milkdown/prose/state";
-import { undo } from "@milkdown/prose/history";
-import type { Command } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { NodeSelection, TextSelection } from "../pm";
+import { undo } from "../pm";
+import type { Command } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { historyPlugin } from "../plugins/history";
 import { BlockRangeSelection } from "../plugins/blockRange";

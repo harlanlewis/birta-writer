@@ -32,8 +32,8 @@
  */
 import type { Node as MdastNode } from "@milkdown/transformer";
 import { codeBlockSchema } from "@milkdown/preset-commonmark";
-import { NodeSelection, TextSelection } from "@milkdown/prose/state";
-import { InputRule, textblockTypeInputRule } from "@milkdown/prose/inputrules";
+import { NodeSelection, TextSelection } from "../pm";
+import { InputRule, textblockTypeInputRule } from "../pm";
 import { $command, $inputRule, $nodeSchema, $remark } from "@milkdown/utils";
 import remarkMath from "remark-math";
 import { visit } from "unist-util-visit";

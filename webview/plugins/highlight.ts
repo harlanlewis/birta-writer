@@ -21,8 +21,8 @@
  * typing across it behave natively.
  */
 import type { Node as MdastNode } from "@milkdown/transformer";
-import { markRule } from "@milkdown/prose";
-import { toggleMark } from "@milkdown/prose/commands";
+import { markRule } from "../pm";
+import { toggleMark } from "../pm";
 import { $command, $inputRule, $markSchema, $remark } from "@milkdown/utils";
 
 export const highlightId = "highlight";

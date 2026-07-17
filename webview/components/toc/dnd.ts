@@ -25,7 +25,7 @@
  * rebuild (notifyRerender) or an edge auto-scroll. Zero layout reads while
  * no drag is in flight.
  */
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../../pm";
 import {
     edgeScrollVelocity,
     hideDropIndicator,

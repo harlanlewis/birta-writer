@@ -6,7 +6,7 @@
  * the T1 syntax-default seeding (`[!kind]-` callouts start collapsed).
  * Reads the model only; the plugin decides when to persist and restore.
  */
-import type { EditorState } from "@milkdown/prose/state";
+import type { EditorState } from "../../pm";
 import { slugify } from "../../utils/slug";
 import { getWebviewState, setWebviewState } from "../../messaging";
 import { foldPluginKey } from "../foldState";

@@ -15,8 +15,8 @@ import {
     defaultValueCtx,
     editorViewCtx,
 } from "@milkdown/core";
-import { CellSelection } from "@milkdown/prose/tables";
-import type { EditorView } from "@milkdown/prose/view";
+import { CellSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     setupSelectionToolbar,

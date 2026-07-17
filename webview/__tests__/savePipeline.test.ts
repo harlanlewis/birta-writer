@@ -56,8 +56,8 @@ beforeAll(() => {
     }
 });
 import { editorViewCtx, serializerCtx, type Editor } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "../pm";
+import type { Node as ProseNode } from "../pm";
 import { createEditor, syncExternalContent } from "../editor";
 import { notifyUpdate } from "../messaging";
 

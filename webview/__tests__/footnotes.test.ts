@@ -34,8 +34,8 @@ import {
     commandsCtx,
 } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import type { Node as PMNode } from "@milkdown/prose/model";
-import { TextSelection } from "@milkdown/prose/state";
+import type { Node as PMNode } from "../pm";
+import { TextSelection } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { createEditor } from "../editor";
 import { insertFootnoteCommand } from "../plugins";
@@ -273,7 +273,7 @@ describe("footnote NodeViews (real editor stack)", () => {
     }
 
     /** Simulates typing `char` at the end of the first paragraph. */
-    function typeAtFirstParaEnd(view: import("@milkdown/prose/view").EditorView, char: string): boolean {
+    function typeAtFirstParaEnd(view: import("../pm").EditorView, char: string): boolean {
         const firstPara = view.state.doc.child(0);
         const at = 1 + firstPara.content.size; // inside first paragraph, at its end
         view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));

@@ -2,7 +2,7 @@
  * Pure table-reorder helpers, kept free of DOM and EditorView so they can be
  * unit-tested directly. handles.ts wires the drag interaction to these.
  */
-import type { Node as PMNode } from "@milkdown/prose/model";
+import type { Node as PMNode } from "../../pm";
 
 /**
  * Maps a drop gesture to a destination index in the array AFTER the source

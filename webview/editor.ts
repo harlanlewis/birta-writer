@@ -1,14 +1,13 @@
 import {
     defaultValueCtx,
     Editor,
-    editorViewCtx,
     nodeViewCtx,
     rootCtx,
     serializerCtx,
 } from "@milkdown/core";
 import { prism, prismConfig } from "@milkdown/plugin-prism";
-import type { EditorView } from "@milkdown/prose/view";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import { getState, getView, type EditorView } from "./pm";
+import type { Node as ProseNode } from "./pm";
 import { getMarkdown } from "@milkdown/utils";
 import {
     applyMinimalChanges,
@@ -328,7 +327,7 @@ export function getEditorView(): EditorView | null {
     if (!_editor) {
         return null;
     }
-    return _editor.action((ctx) => ctx.get(editorViewCtx));
+    return _editor.action((ctx) => getView(ctx));
 }
 
 /**
@@ -546,7 +545,7 @@ export async function createEditor(
     // Per-transaction cost marks (mdw:tx-apply) — read by e2e/perf-typing.mjs
     // and available in devtools against any real document. Installed once per
     // editor instance; initEditor destroys before it recreates.
-    instrumentTransactions(_editor.action((ctx) => ctx.get(editorViewCtx)));
+    instrumentTransactions(_editor.action((ctx) => getView(ctx)));
 
     // Snapshot the pristine document and defer its round-trip protection off the
     // critical path (see _protectionSnapshot above): the zero-edit
@@ -555,7 +554,7 @@ export async function createEditor(
     _protection = null;
     _protectionSnapshot = {
         baseline: initialMarkdown,
-        doc: _editor.action((ctx) => ctx.get(editorViewCtx).state.doc),
+        doc: _editor.action((ctx) => getState(ctx).doc),
         editor: _editor,
     };
     scheduleProtection();

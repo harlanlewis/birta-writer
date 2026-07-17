@@ -8,14 +8,14 @@
  * shares the fold invariants: zero steps, no history entry, selection
  * ejected out of newly hidden content.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import { keymap } from "@milkdown/prose/keymap";
+import type { EditorView } from "../../pm";
+import { keymap } from "../../pm";
 import {
     Selection,
     type Command,
     type EditorState,
     type Transaction,
-} from "@milkdown/prose/state";
+} from "../../pm";
 import { $prose } from "@milkdown/utils";
 import { foldPluginKey, type FoldMeta } from "../foldState";
 import {

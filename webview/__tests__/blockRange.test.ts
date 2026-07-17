@@ -6,10 +6,10 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { Selection, TextSelection } from "@milkdown/prose/state";
-import { deleteSelection } from "@milkdown/prose/commands";
-import { undo } from "@milkdown/prose/history";
-import type { EditorView } from "@milkdown/prose/view";
+import { Selection, TextSelection } from "../pm";
+import { deleteSelection } from "../pm";
+import { undo } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { headingFoldPlugin } from "../plugins/headingFold";
 import { historyPlugin } from "../plugins/history";

@@ -7,8 +7,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, commandsCtx } from "@milkdown/core";
 import { toggleStrongCommand, toggleEmphasisCommand } from "@milkdown/preset-commonmark";
-import { Selection, TextSelection, NodeSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { Selection, TextSelection, NodeSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { insertCalloutCommand } from "../plugins/callouts";
 import { mathPlugin } from "../plugins/math";

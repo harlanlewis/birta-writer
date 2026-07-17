@@ -1,7 +1,7 @@
 import { schemaCtx } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
-import { keymap } from "@milkdown/prose/keymap";
-import { NodeSelection, Plugin } from "@milkdown/prose/state";
+import type { EditorView } from "../pm";
+import { keymap } from "../pm";
+import { NodeSelection, Plugin } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 function isHorizontalRuleNode(node: { type: { name: string } } | null | undefined): boolean {

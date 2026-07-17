@@ -8,8 +8,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
-import { TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { TextSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { mathInlineEditPlugin, mathAroundSelection, revealDecorations } from "../plugins/mathInlineEdit";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";

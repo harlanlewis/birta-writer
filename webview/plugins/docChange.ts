@@ -41,7 +41,7 @@
  *     async refactor of the sync path would un-suppress the echo and turn
  *     the test red.
  */
-import { Plugin, PluginKey } from "@milkdown/prose/state";
+import { Plugin, PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 /** The transaction meta marking an inbound external sync. One definition —

@@ -9,9 +9,9 @@
  * no doc change, so it never touches serialization or autosave. The
  * decoration maps through concurrent doc changes and clears on close.
  */
-import { Plugin, PluginKey } from "@milkdown/prose/state";
-import { Decoration, DecorationSet } from "@milkdown/prose/view";
-import type { EditorView } from "@milkdown/prose/view";
+import { Plugin, PluginKey } from "../pm";
+import { Decoration, DecorationSet } from "../pm";
+import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 
 export interface PendingRange {

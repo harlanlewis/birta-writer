@@ -13,9 +13,9 @@
  */
 import { describe, it, expect } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { splitBlock } from "@milkdown/prose/commands";
-import { TextSelection } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { splitBlock } from "../pm";
+import { TextSelection } from "../pm";
+import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { applyMinimalChanges } from "../utils/minimalDiff";

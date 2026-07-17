@@ -8,9 +8,9 @@
  * nodeDOM returns null, as they would for unmapped decoration widgets.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { EditorView } from "@milkdown/prose/view";
-import { Schema, type Node as PmNode, type Mark } from "@milkdown/prose/model";
-import { EditorState, TextSelection, type Transaction } from "@milkdown/prose/state";
+import type { EditorView } from "../pm";
+import { Schema, type Node as PmNode, type Mark } from "../pm";
+import { EditorState, TextSelection, type Transaction } from "../pm";
 import { createEventManager } from "../eventManager";
 import { initFindBar, selectionOrWordQuery } from "../components/findBar";
 import { handleBlockKeydown } from "../plugins/blockKeys";

@@ -41,8 +41,8 @@
  * doc-global hole where one stray hand-typed `:::` line would otherwise
  * disarm refusals for unrelated corruption elsewhere.
  */
-import { Plugin, PluginKey, type EditorState } from "@milkdown/prose/state";
-import type { Node as ProseNode, Schema } from "@milkdown/prose/model";
+import { Plugin, PluginKey, type EditorState } from "../pm";
+import type { Node as ProseNode, Schema } from "../pm";
 import { parserCtx, serializerCtx } from "@milkdown/core";
 import { $prose } from "@milkdown/utils";
 import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "./fingerprints";

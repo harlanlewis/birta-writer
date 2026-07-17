@@ -7,8 +7,8 @@
  * structural fingerprint that lets the plugin position-MAP a cached
  * DecorationSet across edits instead of rebuilding it.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import { Decoration, DecorationSet } from "@milkdown/prose/view";
+import type { EditorView } from "../../pm";
+import { Decoration, DecorationSet } from "../../pm";
 import {
     blockMarkerSpec,
     createBlockGutter,

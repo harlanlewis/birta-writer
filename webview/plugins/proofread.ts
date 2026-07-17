@@ -13,10 +13,10 @@
  * The whole document is rescanned on a debounce after edits. Code blocks,
  * inline code, and tech-like tokens are excluded.
  */
-import type { EditorView } from "@milkdown/prose/view";
-import { Decoration, DecorationSet } from "@milkdown/prose/view";
-import { Plugin, PluginKey, TextSelection } from "@milkdown/prose/state";
-import type { Node as ProseNode } from "@milkdown/prose/model";
+import type { EditorView } from "../pm";
+import { Decoration, DecorationSet } from "../pm";
+import { Plugin, PluginKey, TextSelection } from "../pm";
+import type { Node as ProseNode } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { HarperLint, LintBlock, LintBlockResult, ProofreadConfig } from "../../shared/messages";
 import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";

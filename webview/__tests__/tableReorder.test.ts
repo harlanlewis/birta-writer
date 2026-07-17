@@ -14,7 +14,7 @@ import {
     defaultValueCtx,
     editorViewCtx,
 } from "@milkdown/core";
-import type { Node as PMNode } from "@milkdown/prose/model";
+import type { Node as PMNode } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     resolveDropIndex,

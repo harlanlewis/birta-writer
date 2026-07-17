@@ -1,5 +1,5 @@
 import "./linkPopup.css";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "@/pm";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
 import { getHeadingText, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import {

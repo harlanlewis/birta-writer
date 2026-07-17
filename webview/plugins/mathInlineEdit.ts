@@ -21,11 +21,11 @@
  *  - A formula whose source has been emptied is deleted once the caret leaves
  *    it (matching the old popover's empty-commit behavior).
  */
-import type { Node as PMNode } from "@milkdown/prose/model";
-import type { EditorState } from "@milkdown/prose/state";
-import { Plugin, PluginKey, TextSelection } from "@milkdown/prose/state";
-import { Decoration, DecorationSet } from "@milkdown/prose/view";
-import type { EditorView } from "@milkdown/prose/view";
+import type { Node as PMNode } from "../pm";
+import type { EditorState } from "../pm";
+import { Plugin, PluginKey, TextSelection } from "../pm";
+import { Decoration, DecorationSet } from "../pm";
+import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { mathInlineId } from "./math";
 

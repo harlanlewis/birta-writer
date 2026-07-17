@@ -21,7 +21,7 @@
  * `/tip`-destroys-outer-callout bug (B6, commit e4d01a6) had no text-leaf
  * delta at all — only a marker line and a container count vanished.
  */
-import type { Fragment, Node as ProseNode } from "@milkdown/prose/model";
+import type { Fragment, Node as ProseNode } from "../pm";
 
 // ── Fingerprint ─────────────────────────────────────────────────────────────
 

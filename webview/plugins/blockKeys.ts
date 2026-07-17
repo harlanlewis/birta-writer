@@ -36,10 +36,10 @@
  * ProseMirror's baseKeymap is appended AFTER user plugins by Milkdown core,
  * so these bindings run first and fall through (return false) cleanly.
  */
-import { keydownHandler } from "@milkdown/prose/keymap";
-import type { Node as PMNode } from "@milkdown/prose/model";
-import { Plugin, Selection, TextSelection, type EditorState, type Transaction } from "@milkdown/prose/state";
-import type { EditorView } from "@milkdown/prose/view";
+import { keydownHandler } from "../pm";
+import type { Node as PMNode } from "../pm";
+import { Plugin, Selection, TextSelection, type EditorState, type Transaction } from "../pm";
+import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { closeTopmostLayer } from "../ui/escapeLayers";
 import {

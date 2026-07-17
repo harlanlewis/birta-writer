@@ -1,9 +1,9 @@
-import type { Node as PMNode } from "@milkdown/prose/model";
+import type { Node as PMNode } from "@/pm";
 import type {
     Decoration,
     DecorationSource,
     EditorView,
-} from "@milkdown/prose/view";
+} from "@/pm";
 
 type ViewMutationRecord = MutationRecord | { type: "selection"; target: Node };
 import {

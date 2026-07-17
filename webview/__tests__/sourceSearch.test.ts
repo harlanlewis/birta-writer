@@ -3,7 +3,7 @@
  * real ProseMirror document, and the raw-source fallback's line→block mapping.
  */
 import { describe, it, expect } from "vitest";
-import { Schema, type Node as PmNode } from "@milkdown/prose/model";
+import { Schema, type Node as PmNode } from "../pm";
 import {
     buildQuery,
     expandReplacement,

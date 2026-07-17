@@ -11,7 +11,7 @@
  * runtime, only `coordsAtPos`/`focus` off the view.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import { showFindingsPopup, hideLintPopup } from "../proofread/popup";
 import { closeTopmostLayer } from "../ui/escapeLayers";
 

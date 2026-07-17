@@ -4,7 +4,7 @@ import {
     toggleEmphasisCommand,
     toggleInlineCodeCommand,
 } from "@milkdown/preset-commonmark";
-import type { Node as PMNode, ResolvedPos } from "@milkdown/prose/model";
+import type { Node as PMNode, ResolvedPos } from "@/pm";
 import { toggleStrikethroughCommand } from "@milkdown/preset-gfm";
 import {
     CellSelection,
@@ -12,10 +12,10 @@ import {
     deleteColumn,
     setCellAttr,
     TableMap,
-} from "@milkdown/prose/tables";
+} from "@/pm";
 import type { Editor } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
-import { TextSelection } from "@milkdown/prose/state";
+import type { EditorView } from "@/pm";
+import { TextSelection } from "@/pm";
 import {
     IconBold,
     IconItalic,

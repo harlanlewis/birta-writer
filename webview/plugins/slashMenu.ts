@@ -21,10 +21,10 @@
  * webview/editorCommands.ts — plugins/index.ts is imported BY that module's
  * consumers and a value import back would create a cycle.
  */
-import { Plugin, PluginKey } from "@milkdown/prose/state";
-import type { EditorState, Transaction } from "@milkdown/prose/state";
-import type { ResolvedPos } from "@milkdown/prose/model";
-import type { EditorView } from "@milkdown/prose/view";
+import { Plugin, PluginKey } from "../pm";
+import type { EditorState, Transaction } from "../pm";
+import type { ResolvedPos } from "../pm";
+import type { EditorView } from "../pm";
 import { $prose } from "@milkdown/utils";
 import type { EditorCommandId } from "../../shared/editorCommands";
 import { EXTERNAL_SYNC_META } from "./docChange";

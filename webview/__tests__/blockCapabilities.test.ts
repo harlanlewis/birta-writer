@@ -19,7 +19,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, schemaCtx } from "@milkdown/core";
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../pm";
 import * as fs from "fs";
 import * as path from "path";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";

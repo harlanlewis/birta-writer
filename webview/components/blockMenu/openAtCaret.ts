@@ -16,7 +16,7 @@
  * hide rule — the anchor surfaces on its own without flashing the rest of
  * the gutter back in mid-typing.
  */
-import type { EditorView } from "@milkdown/prose/view";
+import type { EditorView } from "../../pm";
 import { isListNode } from "../../plugins/headingFold";
 import { openBlockMenu } from "./index";
 
