@@ -6,6 +6,7 @@ import { notifyTocWidth, notifySetTocPosition } from "@/messaging";
 import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
 import type { EventManager } from "@/eventManager";
+import { onOutsideClick } from "@/ui/outsideClick";
 import {
     getTopbarBottom,
     scrollElementBelowTopbar,
@@ -278,12 +279,30 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         document.body.classList.toggle("toc-overlay-open", isOpen && tocMode === "overlay");
     }
 
+    /** Outside-click detach handle (null while the overlay dismissal is off). */
+    let outsideOff: (() => void) | null = null;
+
     function syncOutsideClickHandler(): void {
-        document.removeEventListener("mousedown", outsideClickHandler);
+        outsideOff?.();
+        outsideOff = null;
         if (isOpen && tocMode === "overlay") {
+            // Deferred one tick so the opening click can't instantly close the
+            // overlay; the state is re-checked (and any listener a racing sync
+            // already attached is detached first) when the timeout fires.
             setTimeout(() => {
                 if (isOpen && tocMode === "overlay") {
-                    document.addEventListener("mousedown", outsideClickHandler);
+                    outsideOff?.();
+                    // Bubble phase (`capture: false`), matching the
+                    // hand-rolled original.
+                    outsideOff = onOutsideClick([panel], (e) => {
+                        // A gutter-handle drag must be able to travel into an
+                        // overlay TOC: the grab's mousedown lands outside the
+                        // panel but must not close it.
+                        if (e.target instanceof Element && e.target.closest(".heading-fold-marker")) {
+                            return;
+                        }
+                        close();
+                    }, { capture: false });
                 }
             }, 0);
         }
@@ -621,17 +640,6 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             return;
         }
         renderHeadings(headings);
-    }
-
-    function outsideClickHandler(e: MouseEvent): void {
-        // A gutter-handle drag must be able to travel into an overlay TOC:
-        // the grab's mousedown lands outside the panel but must not close it.
-        if (e.target instanceof Element && e.target.closest(".heading-fold-marker")) {
-            return;
-        }
-        if (!panel.contains(e.target as Node)) {
-            close();
-        }
     }
 
     function close(): void {

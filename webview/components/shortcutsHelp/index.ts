@@ -32,6 +32,7 @@ import { t, kbd } from "@/i18n";
 import { createButton } from "@/ui/dom";
 import { IconKeyboard, IconX } from "@/ui/icons";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
+import { onOutsideClick } from "@/ui/outsideClick";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { notifyOpenKeybindings } from "@/messaging";
 import { EDITOR_COMMANDS, type EditorCommandId } from "../../../shared/editorCommands";
@@ -120,13 +121,8 @@ let panel: HTMLDivElement | null = null;
 let visible = false;
 /** Escape-layer unregister handle (null while hidden). */
 let layerOff: (() => void) | null = null;
-
-/** Outside click closes (capture phase, so stopped mousedowns still count). */
-function onDocMousedown(e: MouseEvent): void {
-    if (panel && e.target instanceof Node && !panel.contains(e.target)) {
-        close();
-    }
-}
+/** Outside-click detach handle (null while hidden). */
+let outsideOff: (() => void) | null = null;
 
 function close(): void {
     if (!visible) {
@@ -139,7 +135,8 @@ function close(): void {
     layerOff = null;
     releaseDock("shortcuts-help");
     panel?.classList.remove("shortcuts-help--visible");
-    document.removeEventListener("mousedown", onDocMousedown, true);
+    outsideOff?.();
+    outsideOff = null;
     // Hand focus back to the editor (the find bar's close convention).
     document.querySelector<HTMLElement>(".ProseMirror")?.focus();
 }
@@ -158,7 +155,8 @@ export function openShortcutsHelp(): void {
     visible = true;
     panel.classList.add("shortcuts-help--visible");
     layerOff ??= registerEscapeLayer(close);
-    document.addEventListener("mousedown", onDocMousedown, true);
+    // Outside click closes (capture phase, so stopped mousedowns still count).
+    outsideOff = onOutsideClick([panel], close);
     // Focus lands inside so Esc/Tab work immediately; arrows scroll the list.
     panel.focus();
 }
