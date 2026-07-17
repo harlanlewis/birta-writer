@@ -27,15 +27,14 @@ import type { EditorView } from "@milkdown/prose/view";
 import type { EditorState } from "@milkdown/prose/state";
 import type { Node as ProseNode } from "@milkdown/prose/model";
 import { closeBlockMenu, moveRangeAt } from "./index";
-import { moveBlocks } from "../../editing/moveBlocks";
-import { BlockRangeSelection } from "../../plugins/blockRange";
 import {
     foldedHiddenRanges,
     foldedSectionEnds,
     hiddenRangeCoversTarget,
-    isContainerNode,
-    isListNode,
-} from "../../plugins/headingFold";
+    moveBlocks,
+} from "../../editing/blockOps";
+import { BlockRangeSelection } from "../../plugins/blockRange";
+import { isContainerNode, isListNode } from "../../plugins/headingFold";
 import { selectInto } from "./turnInto";
 import { hideRangeVeil, showRangeVeil } from "./rangeIndicator";
 import { hideTooltip } from "../../ui/tooltip";

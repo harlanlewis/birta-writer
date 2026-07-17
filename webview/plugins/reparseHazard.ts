@@ -45,7 +45,7 @@ import { Plugin, PluginKey, type EditorState } from "@milkdown/prose/state";
 import type { Node as ProseNode, Schema } from "@milkdown/prose/model";
 import { parserCtx, serializerCtx } from "@milkdown/core";
 import { $prose } from "@milkdown/utils";
-import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "./contentGuard";
+import { diffFingerprints, fingerprintDoc, formatFingerprintDiff } from "./fingerprints";
 
 // ── The pipeline registry ───────────────────────────────────────────────────
 

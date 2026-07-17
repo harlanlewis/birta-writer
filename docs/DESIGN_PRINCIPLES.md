@@ -100,7 +100,7 @@ no `+` insert button — insertion belongs to the slash menu and typing.
   / `always` at rest — hover always reveals; `body.handles-rest-*`,
   `shared/blockHandles.ts`). **Any keystroke hides the hover-revealed
   handles until the mouse moves** — the gutter never flickers alongside the
-  caret (`body.handles-quiet`, `webview/plugins/headingFold.ts`); at-rest
+  caret (`body.handles-quiet`, `webview/plugins/headingFold/`); at-rest
   handles are ambient chrome and exempt, whichever mode made them resident.
 - **"Selected" and "moving" are different states with different treatments.**
   A block-range selection paints the **tint** — the editor's own selection

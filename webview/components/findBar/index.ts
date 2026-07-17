@@ -16,7 +16,7 @@ import { attachInputUndo } from "@/utils/inputUndo";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { getTopbarBottom, scrollElementBelowTopbar } from "@/utils/headingUtils";
-import { revealPosition } from "@/plugins/headingFold";
+import { revealPosition } from "@/editing/blockOps";
 import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
 import {

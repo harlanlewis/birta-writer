@@ -3,7 +3,7 @@ import type { EditorView } from "@milkdown/prose/view";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { notifyTocWidth, notifySetTocPosition } from "@/messaging";
-import { revealPosition } from "@/plugins/headingFold";
+import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
 import type { EventManager } from "@/eventManager";
 import {

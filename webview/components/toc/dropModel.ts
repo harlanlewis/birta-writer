@@ -23,7 +23,8 @@
  * a structural edit. Only this provider supplies a delta.
  */
 import type { Node as ProseNode } from "@milkdown/prose/model";
-import { findHeadingFoldRange, getHeadingLevel } from "../../plugins/headingFold";
+import { findHeadingFoldRange } from "../../editing/blockOps";
+import { getHeadingLevel } from "../../plugins/headingFold";
 
 /** Markdown's heading rank bounds — a relevel clamps into this range. */
 export const MIN_HEADING_LEVEL = 1;
