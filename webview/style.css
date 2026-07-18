@@ -2355,6 +2355,34 @@ body.block-marqueeing .milkdown .editor {
     object-fit: cover;
 }
 
+/* "Open on YouTube" — the guaranteed path when in-webview playback is
+   refused (YouTube error 153: no acceptable referrer from a webview origin).
+   Quiet corner chrome that brightens on card hover. */
+.embed-card__external {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 4px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    opacity: 0.55;
+    cursor: pointer;
+}
+.embed-card__frame:hover .embed-card__external,
+.embed-card__external:focus-visible {
+    opacity: 1;
+}
+.embed-card__external svg {
+    width: 14px;
+    height: 14px;
+}
+
 /* Play overlay: a real button, so it takes the shared focus ring. Neutral,
    theme-driven chrome (no YouTube-red literal) — this is a facade, not a brand
    mark. */
