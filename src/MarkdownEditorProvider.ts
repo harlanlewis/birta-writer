@@ -122,6 +122,13 @@ export class MarkdownEditorProvider
     // panel becomes active; cleared when the active panel is disposed.
     private _activePanel: vscode.WebviewPanel | null = null;
 
+    // Bridge for the just-in-time network opt-in (MAR-179): the fresh value
+    // of birta.network.enabled while its async settings write is still in
+    // flight. _fetchUnfurlTitle prefers this over the (possibly stale)
+    // persisted read so the opt-in's own triggering link can unfurl; null
+    // whenever no write is pending.
+    private _networkWriteInFlight: boolean | null = null;
+
     // URIs that have already run keepEditor (pin tab), to avoid running it again
     private readonly _pinnedDocuments = new Set<string>();
 
@@ -802,7 +809,21 @@ export class MarkdownEditorProvider
                         // "Enable" affordance. Persist the master switch through
                         // the scope-respecting write-back, exactly like the
                         // toolbar settings above.
-                        updateSettingRespectingScope("network.enabled", message.enabled);
+                        //
+                        // The accept flow posts `unfurlUrl` for the triggering
+                        // link IMMEDIATELY after this message, and the async
+                        // config write may not have landed when that fetch
+                        // re-reads the setting — without a bridge, the very
+                        // link that prompted the opt-in stays bare. Hold the
+                        // fresh value in memory only while the write is in
+                        // flight; once it resolves (or fails), the persisted
+                        // setting is authoritative again.
+                        this._networkWriteInFlight = message.enabled;
+                        Promise.resolve(
+                            updateSettingRespectingScope("network.enabled", message.enabled),
+                        )
+                            .catch(() => undefined)
+                            .then(() => { this._networkWriteInFlight = null; });
                         break;
                     case "spellAddWord":
                         addUserWord(message.word);
@@ -1482,8 +1503,12 @@ export class MarkdownEditorProvider
     private async _fetchUnfurlTitle(url: string): Promise<string | null> {
         // Master switch AND the per-feature key: offline by default, and the
         // extension-side gate mirrors the webview's upstream gate exactly, so a
-        // stale/rogue message can't fetch while either half says no.
-        if (!readBirtaSetting("networkEnabled") || !readBirtaSetting("pasteUnfurlEnabled")) {
+        // stale/rogue message can't fetch while either half says no. The
+        // in-flight opt-in value bridges the async settings write (see
+        // _networkWriteInFlight) — without it, the just-in-time accept's own
+        // link would race the write and stay bare.
+        const networkOn = this._networkWriteInFlight ?? readBirtaSetting("networkEnabled");
+        if (!networkOn || !readBirtaSetting("pasteUnfurlEnabled")) {
             return null;
         }
         let parsed: URL;

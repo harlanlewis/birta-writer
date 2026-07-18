@@ -363,6 +363,33 @@ describe("MarkdownEditorProvider paste-unfurl", () => {
         expect(fetchSpy).toHaveBeenCalledTimes(6);
     });
 
+    it("the JIT opt-in's own link should unfurl even while the settings write is in flight", async () => {
+        // Arrange: the accept flow posts setNetworkEnabled then unfurlUrl
+        // back-to-back. The config write is async and here NEVER lands (the
+        // mock still reads network.enabled=false) — the in-flight bridge must
+        // carry the fetch, or the very link that prompted the opt-in stays
+        // bare.
+        const { handler, panel } = await setup();
+        (vscode.workspace.getConfiguration as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+            get: vi.fn((key: string, defaultValue?: unknown) =>
+                key === "network.enabled" ? false : defaultValue,
+            ),
+            inspect: vi.fn(() => undefined),
+            update: vi.fn(() => new Promise(() => {})), // write never resolves
+        });
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response("<title>Enabled Now</title>", { status: 200 })),
+        );
+
+        // Act: exactly the message order the webview's accept flow produces.
+        await handler({ type: "setNetworkEnabled", enabled: true });
+        await handler({ type: "unfurlUrl", id: "u17", url: "https://example.com" });
+
+        // Assert: the triggering link got its title despite the stale read.
+        expect((await waitForUnfurlReply(panel)).title).toBe("Enabled Now");
+    });
+
     it("a non-text content-type should post null without parsing", async () => {
         // Arrange: a 200 PDF — nothing to title, don't stream 512 KB of it.
         const { handler, panel } = await setup();
