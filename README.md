@@ -51,7 +51,7 @@ Spelling, grammar, and style checking runs entirely on your machine (the [Harper
 - **Smart link resolution** (`birta.smartLinks`): local links resolve the way your site generator publishes them — workspace-root paths, ancestor content roots, `.md`/`index.md`/`_index.md` inference; external links open through VS Code's own trusted-domains prompt
 - **Wikilinks**: `[[target]]`, `[[target|alias]]`, `[[target#heading]]` (Obsidian conventions) parse, render, navigate, and round-trip byte-identically; typing `[[` opens name autocompletion
 - **Section links**: pick a heading from a live list (`/section`, the selection palette, or Link to Section) and a standard `[text](#slug)` anchor is inserted; typing `#` in the link editor's URL field suggests the document's headings. **Renaming a heading repoints every in-note anchor to it** — same undo step (`birta.autoUpdateAnchors`)
-- **Paste a bare URL** (nothing selected) and, with network features on, it upgrades to a titled `[title](url)` link — the page's own title, fetched extension-side, no third-party service; offline it stays a plain link. A bare **YouTube link** on its own line renders as a player card (render-only — the file keeps the plain link; `birta.embeds.enabled`)
+- **Paste a bare URL** (nothing selected) and, with network features on, the page's own title is fetched extension-side (no third-party service) and *offered* as the link text — accept it and the link becomes `[title](url)`; ignore it and the plain link stays. Nothing is written to your file until you accept, unless you turn on `birta.pasteUnfurl.autoApply`. A bare **YouTube link** on its own line renders as a player card instead — display only, so the file keeps the plain link either way (`birta.embeds.enabled`), and a link that can become a card is never retitled
 - **Path autocomplete**: `@/`, `./`, `../` inside inline code browse the workspace with file-type icons
 
 ### Tables
@@ -121,8 +121,9 @@ The settings you're most likely to touch — the full list (including per-item t
 | `birta.frontmatterExpanded` | `true` | Frontmatter table starts expanded or collapsed |
 | `birta.smartLinks` | `true` | Site-generator-style local link resolution |
 | `birta.network.enabled` | `false` | Master network switch — offline by default; gates paste-unfurl and URL embeds. Off means no outbound request at all |
-| `birta.pasteUnfurl.enabled` | `true` | Paste a bare URL (nothing selected) to fetch the page title and insert `[title](url)`; needs `birta.network.enabled` (offered inline when off), falls back to the plain link offline |
-| `birta.embeds.enabled` | `true` | Bare YouTube links on their own line render as player cards; needs `birta.network.enabled` |
+| `birta.pasteUnfurl.enabled` | `true` | Paste a bare URL (nothing selected) to fetch the page title and offer it as the link text; needs `birta.network.enabled` (offered inline when off), falls back to the plain link offline |
+| `birta.pasteUnfurl.autoApply` | `false` | Apply a fetched title as soon as it arrives instead of offering it — off by default, so a network reply never edits your document unprompted |
+| `birta.embeds.enabled` | `true` | Bare YouTube links on their own line render as player cards — display only, your file is never changed; needs `birta.network.enabled` |
 | `birta.autoUpdateAnchors` | `true` | Renaming a heading repoints every in-note `[text](#slug)` link to it, in the same undo step |
 | `birta.calc.enabled` | `true` | Inline calculator: `12 * 4 =` (or `=5+7`) offers the result as a suggestion (Tab to accept; Return stays a newline) |
 | `birta.calc.autoInsert` | `false` | Insert the calc result immediately on `=` instead of offering a suggestion |

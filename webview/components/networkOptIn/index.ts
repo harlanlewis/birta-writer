@@ -55,8 +55,11 @@ export interface NetworkOptInOptions {
      * Run after the master switch is enabled (setting written + in-session gate
      * flipped). Lets the caller complete the just-triggered action now — e.g.
      * fire the pasted link's unfurl — instead of only applying going forward.
+     * Optional: an embed opt-in has nothing to complete, because the link is
+     * already in the shape the decoration pass recognizes and re-gating renders
+     * the card on the spot.
      */
-    onEnable: () => void;
+    onEnable?: () => void;
 }
 
 // One affordance at a time: a second paste while one is open replaces it, so
@@ -146,15 +149,15 @@ export function offerNetworkOptIn(opts: NetworkOptInOptions): void {
         }
         // Complete the just-triggered action now (e.g. fetch the pasted link's
         // title) rather than only applying to future pastes.
-        opts.onEnable();
+        opts.onEnable?.();
         // Not a dismissal — do NOT set the suppress flag; network is on now, so
         // shouldOfferNetworkOptIn() is already false and nothing more is offered.
         //
-        // Instead of vanishing, the pill becomes a short-lived confirmation:
-        // embed cards compose at editor creation (MAR-183), so a user who
-        // enabled network for a provider link would otherwise see nothing
-        // happen and read the feature as broken. Say what to expect.
-        label.textContent = t("Network on — embed cards appear when a file is (re)opened");
+        // Instead of vanishing, the pill becomes a short-lived confirmation, so
+        // accepting has a visible result even when the triggering action's own
+        // outcome is quiet (a title still being fetched, a card rendering
+        // further down the document).
+        label.textContent = t("Network features are on");
         enableBtn.remove();
         dismissBtn.remove();
         el.classList.add("network-optin--confirmed");

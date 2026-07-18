@@ -573,27 +573,25 @@ export async function createEditor(
 
     // URL embeds (MAR-56): render a bare provider link (YouTube) as an inline
     // facade card via a view-only decoration — the source stays a plain link and
-    // round-trips byte-identically. Composed ONLY when ACTIVE — the master
-    // network switch (MAR-179, offline by default) AND the per-feature key must
-    // both be on — so an offline editor composes nothing (design principle: "A
-    // disabled feature costs nothing"); the plugin's own decoration function is
-    // gated on the same pair. The import is DYNAMIC for the same reason: with
-    // the master switch off (the default), the plugin's bytes never load at
-    // all, keeping the launch bundle lean (CLAUDE.md "Launch performance").
-    // __i18n is baked into the HTML before this script runs, so the flags read
-    // synchronously here (like calc/smartLinks). There is no just-in-time
-    // opt-in for embeds in this pass — see MAR-179 notes (the provider check
-    // would have to run with the plugin uncomposed); the paste-unfurl opt-in
-    // is the shipped affordance.
-    if ((window.__i18n?.network ?? false) && (window.__i18n?.embedsEnabled ?? true)) {
+    // round-trips byte-identically.
+    //
+    // Composed UNCONDITIONALLY, unlike the gates above it. A Milkdown plugin
+    // cannot be composed after creation, so gating composition on the network
+    // switch meant flipping that switch did nothing until the file was reopened
+    // — the feature read as broken. The plugin is inert when gated off: its
+    // decoration function returns DecorationSet.empty on the first read and its
+    // view() schedules no idle pass, so "a disabled feature costs nothing"
+    // still holds for the work, and only the plugin's own bytes (~1.5 KB
+    // against a ~1.2 MB eager baseline) are paid. The card builder and the
+    // thumbnail are still lazy, so nothing reaches the network while off.
+    // Re-gating is live in both directions via regateEmbeds (messageHandlers).
+    try {
         // A failed chunk load degrades to "no embed cards" — it must not
         // reject createEditor and take the whole editor down with it.
-        try {
-            const { embedPlugin } = await import("./plugins/embed");
-            builder = builder.use(embedPlugin);
-        } catch (e) {
-            console.error("[birta] embed plugin failed to load; continuing without embeds", e);
-        }
+        const { embedPlugin } = await import("./plugins/embed");
+        builder = builder.use(embedPlugin);
+    } catch (e) {
+        console.error("[birta] embed plugin failed to load; continuing without embeds", e);
     }
 
     // Auto-update in-note anchor links on heading rename (MAR-180): when a

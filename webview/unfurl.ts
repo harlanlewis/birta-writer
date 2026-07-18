@@ -56,10 +56,54 @@ export function registerPendingUnfurl(id: string, url: string, pos: number): voi
     _pending.set(id, { url, pos, timeoutId });
 }
 
+/** Apply a fetched title without asking (birta.pasteUnfurl.autoApply, off by default). */
+function autoApplyEnabled(): boolean {
+    return window.__i18n?.pasteUnfurlAutoApply ?? false;
+}
+
+/**
+ * The offer UI is loaded lazily and cached, mirroring the embed card builder.
+ * Birta is offline by default, so in the default configuration a title can
+ * never arrive and this chunk (and its CSS) is never fetched — "a disabled
+ * feature costs nothing". Even with network on, it loads once, on the first
+ * title that actually comes back, never at first paint.
+ */
+let _offerModule: Promise<typeof import("./components/unfurlOffer")> | null = null;
+function loadUnfurlOffer(): Promise<typeof import("./components/unfurlOffer")> {
+    return (_offerModule ??= import("./components/unfurlOffer"));
+}
+
+/**
+ * The viewport rect of a doc range, for anchoring the offer — or null when it
+ * can't be measured (detached view / jsdom), in which case the offer still
+ * shows, just unpositioned.
+ */
+function rectForRange(view: EditorView, from: number, to: number): {
+    left: number; right: number; top: number; bottom: number;
+} | null {
+    try {
+        const start = view.coordsAtPos(from);
+        const end = view.coordsAtPos(to, -1);
+        return {
+            left: Math.min(start.left, end.left),
+            right: Math.max(start.right, end.right),
+            top: Math.min(start.top, end.top),
+            bottom: Math.max(start.bottom, end.bottom),
+        };
+    } catch {
+        return null;
+    }
+}
+
 /**
  * Handle an `unfurlResult` reply. A null `title` (offline / no title / failure)
- * means keep the bare link, so we only clean up. A non-null `title` upgrades the
- * matching bare link's TEXT in the live document.
+ * means keep the bare link, so we only clean up.
+ *
+ * A non-null title is OFFERED, not applied: the reply lands seconds after the
+ * paste, and rewriting the user's text — and dirtying the file for autosave —
+ * at a moment they aren't watching is what "nothing changes the file without
+ * consent" forbids (docs/DESIGN_PRINCIPLES.md). `birta.pasteUnfurl.autoApply`
+ * opts back into the silent upgrade, exactly as `birta.calc.autoInsert` does.
  */
 export function handleUnfurlResult(
     view: EditorView | null,
@@ -72,7 +116,31 @@ export function handleUnfurlResult(
     _pending.delete(id);
 
     if (title === null || !view) { return; }
-    upgradeBareLinkToTitle(view, pending.url, pending.pos, title);
+
+    if (autoApplyEnabled()) {
+        upgradeBareLinkToTitle(view, pending.url, pending.pos, title);
+        return;
+    }
+
+    // Offer it. Anchor on the link as it stands NOW — the same live-doc search
+    // the apply path uses, so a document that drifted since the paste still
+    // points the offer at the right place (and skips it if the link is gone).
+    const range = findBareLinkRange(view.state.doc, pending.url, pending.pos);
+    if (!range) { return; }
+    const url = pending.url;
+    const pos = pending.pos;
+    const anchorRect = rectForRange(view, range.from, range.to);
+    void loadUnfurlOffer()
+        .then((mod) => mod.offerUnfurlTitle({
+            title,
+            anchorRect,
+            // Re-resolve on accept rather than closing over `range`: the user
+            // may have kept typing while the offer was up.
+            onAccept: () => upgradeBareLinkToTitle(view, url, pos, title),
+        }))
+        // A failed chunk load degrades to "no offer" — the bare link the paste
+        // inserted is already the correct, offline-safe result.
+        .catch(() => { /* offer unavailable; bare link stands */ });
 }
 
 /**

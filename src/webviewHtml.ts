@@ -202,20 +202,26 @@ export function buildWebviewHtml(
     // the just-in-time opt-in can read it synchronously.
     const networkEnabled = config.networkEnabled;
     const pasteUnfurl = config.pasteUnfurlEnabled;
+    const pasteUnfurlAutoApply = config.pasteUnfurlAutoApply;
     const calcEnabled = config.calcEnabled;
     const calcAutoInsert = config.calcAutoInsert;
     const autoUpdateAnchors = config.autoUpdateAnchors;
     const embedsEnabled = config.embedsEnabled;
     // URL embeds (MAR-56) need two extra CSP grants: the YouTube thumbnail image
     // hosts (img-src) and the privacy-mode player iframe host (a new frame-src,
-    // since default-src 'none' otherwise blocks all iframes). Added ADDITIVELY
-    // and ONLY when embeds are actually active — the FEATURE key AND the master
-    // network switch (MAR-179) — with specific hosts, no wildcards. When the
-    // master is off (the default) or the feature is off, the emitted CSP is
-    // byte-identical to before this feature existed: no host may be reached.
-    const embedsActive = networkEnabled && embedsEnabled;
-    const embedImgHosts = embedsActive ? " https://i.ytimg.com https://img.youtube.com" : "";
-    const embedFrameSrc = embedsActive ? "\n             frame-src https://www.youtube-nocookie.com;" : "";
+    // since default-src 'none' otherwise blocks all iframes). Added ADDITIVELY,
+    // as specific hosts with no wildcards.
+    //
+    // Emitted UNCONDITIONALLY, even though embeds may be gated off. CSP is fixed
+    // at panel load and cannot change without recreating the webview, so gating
+    // these grants meant that enabling embeds in a running editor produced a
+    // card with a broken thumbnail — the grant was missing no matter what the
+    // plugin did. A grant PERMITS a request; it never makes one. With embeds
+    // off, no card is built, no thumbnail element exists, and nothing is
+    // fetched: the offline-by-default guarantee lives in the gated code paths,
+    // not in the absence of a CSP entry.
+    const embedImgHosts = " https://i.ytimg.com https://img.youtube.com";
+    const embedFrameSrc = "\n             frame-src https://www.youtube-nocookie.com;";
     const checklistSinkChecked = config.checklistSinkChecked;
     const codeBlockWordWrap = resolveCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
     const tocAutoHideThreshold = clampNumberSetting(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);
@@ -232,7 +238,7 @@ export function buildWebviewHtml(
     // optional-chained so a stripped-down test context still resolves.
     const productName =
         (context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, calcEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

@@ -218,6 +218,9 @@ export type ToExtensionMessage =
     // The calc suggestion menu's "Always insert result" row: persist
     // birta.calc.autoInsert through the scope-respecting write-back.
     | { type: "setCalcAutoInsert"; enabled: boolean }
+    // The unfurl offer's "Always use fetched titles" row: persist the choice so
+    // future pastes apply the title on arrival instead of offering it.
+    | { type: "setPasteUnfurlAutoApply"; enabled: boolean }
     // The "Move checked tasks to bottom" toggle (toolbar Lists menu / task-list
     // block menu): persist birta.checklist.sinkChecked.
     | { type: "setChecklistSink"; enabled: boolean }
@@ -329,13 +332,14 @@ export type ToWebviewMessage =
     | { type: "setTableWrap"; wrap: TableWrapMode }
     // Live master-network-switch update (settings UI edit or the just-in-time
     // opt-in accepted in ANOTHER webview): flips `window.__i18n.network` so
-    // paste-unfurl gates correctly everywhere without a reload. Embed cards
-    // still compose at editor creation only (reopen to activate them).
+    // every network feature gates correctly everywhere without a reload. The
+    // embed plugin is composed unconditionally and re-gated on this message, so
+    // cards appear and disappear in place — no reopen.
     | { type: "networkStateChanged"; enabled: boolean }
     // Live update for the boolean feature gates that read from __i18n at use
     // time (not at plugin composition): a settings-UI edit, palette toggle
     // command, or another webview's menu switch reaches every open editor.
-    | { type: "featureGateChanged"; gate: "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl"; enabled: boolean }
+    | { type: "featureGateChanged"; gate: "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl" | "pasteUnfurlAutoApply" | "embedsEnabled"; enabled: boolean }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live toolbar layout update (per-item placement settings changed).
