@@ -370,6 +370,9 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
         const slugs = slugifyHeadings(headings.map((h) => h.text));
         const rows = headings
             .map((h, i) => ({ text: `#${slugs[i]}`, title: h.text }))
+            // A heading whose content slugifies to nothing (an emoji/atom-only
+            // title) would offer a bare `#` that resolves nowhere — drop it.
+            .filter((r) => r.text !== "#")
             .filter(
                 (r) =>
                     !needle ||
