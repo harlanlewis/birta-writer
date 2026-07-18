@@ -28,6 +28,10 @@ const LEGACY: { label: string; re: RegExp }[] = [
     { label: 'old display name "WYSIWYG Markdown Editor"', re: /WYSIWYG Markdown Editor/ },
     // Only our own former slug is banned; `git-xing/md-wysiwyg-editor` (upstream) is allowed.
     { label: "old repository slug `harlanlewis/md-wysiwyg-editor`", re: /harlanlewis\/md-wysiwyg-editor/ },
+    // The publisher moved to the Birta Labs org (`birtalabs.birta-writer`).
+    // Only the DOT-qualified extension ids are banned — the slash form
+    // `harlanlewis/birta-writer` is the live GitHub repo slug and stays legal.
+    { label: "pre-org qualified extension id `harlanlewis.<extension>`", re: /harlanlewis\.(birta-writer|md-wysiwyg-editor)/ },
 ];
 
 function scan(files: string[]): string[] {
@@ -53,6 +57,10 @@ describe("rebrand guard", () => {
         expect(LEGACY[1].re.test("WYSIWYG Markdown Editor")).toBe(true);
         expect(LEGACY[2].re.test("github.com/git-xing/md-wysiwyg-editor")).toBe(false);
         expect(LEGACY[2].re.test("github.com/harlanlewis/md-wysiwyg-editor")).toBe(true);
+        expect(LEGACY[3].re.test("github.com/harlanlewis/birta-writer")).toBe(false);
+        expect(LEGACY[3].re.test("birtalabs.birta-writer")).toBe(false);
+        expect(LEGACY[3].re.test("harlanlewis.birta-writer")).toBe(true);
+        expect(LEGACY[3].re.test("harlanlewis.md-wysiwyg-editor")).toBe(true);
     });
 
     it("source under src/, webview/ and shared/ should use only the birta.* namespace and Birta Writer name", () => {

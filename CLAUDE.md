@@ -40,9 +40,9 @@ Whenever a work session changes extension or webview source (`src/`, `webview/`,
 4. `pnpm run package` — local packaging always writes `releases/birta-writer-0.0.0.vsix` (`package.json` is pinned at `0.0.0`; real CalVer versions are stamped only by the CI `Release` job — see [`docs/RELEASING.md`](docs/RELEASING.md)).
 5. Install into VS Code so it's on the new build, and make sure Birta is the **only** copy of this editor installed:
    - `code --install-extension releases/birta-writer-0.0.0.vsix --force`
-   - Remove any pre-rebrand build so VS Code never runs two copies over the same `.md` files: `code --uninstall-extension harlanlewis.md-wysiwyg-editor` (ignore a "not installed" message — it just means the cleanup already happened). Then confirm exactly one remains: `code --list-extensions | grep -iE 'birta|wysiwyg'` should print only `harlanlewis.birta-writer`.
+   - Remove any pre-org or pre-rebrand build so VS Code never runs two copies over the same `.md` files: `code --uninstall-extension harlanlewis.birta-writer` and `code --uninstall-extension harlanlewis.md-wysiwyg-editor` (ignore "not installed" messages — they just mean the cleanup already happened). Then confirm exactly one remains: `code --list-extensions | grep -iE 'birta|wysiwyg'` should print only `birtalabs.birta-writer`.
 
-   Both `--force`-installing `harlanlewis.birta-writer` and uninstalling the old `harlanlewis.md-wysiwyg-editor` id leave the user's `settings.json` untouched, so their Birta config (`birta.*` keys) carries across every reinstall — never edit or delete their settings as part of an install. `--force` allows reinstalling the same version. The VS Code `code` CLI is often not on `PATH` on this machine even though VS Code is installed — fall back to the app-bundle binary `"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension … --force` (and `… --uninstall-extension …`). Only if VS Code truly isn't installed, skip it and say so rather than failing the handoff.
+   Both `--force`-installing `birtalabs.birta-writer` and uninstalling the old ids (`harlanlewis.birta-writer`, `harlanlewis.md-wysiwyg-editor`) leave the user's `settings.json` untouched, so their Birta config (`birta.*` keys) carries across every reinstall — never edit or delete their settings as part of an install. `--force` allows reinstalling the same version. The VS Code `code` CLI is often not on `PATH` on this machine even though VS Code is installed — fall back to the app-bundle binary `"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension … --force` (and `… --uninstall-extension …`). Only if VS Code truly isn't installed, skip it and say so rather than failing the handoff.
 6. End your reply by telling the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
 Do this by default, without being asked, before handing control back. Don't touch `package.json`'s version to mark a build — it stays `0.0.0`; the window reload is what confirms the new build is live.
@@ -55,7 +55,7 @@ Do this by default, without being asked, before handing control back. Don't touc
 2. `pnpm run package` — writes `releases/birta-writer-0.0.0.vsix` (local builds are always `0.0.0`; see the handoff note above).
 3. Install into VS Code (`--force` allows reinstalling the same version), and clear out any legacy build so only one copy runs:
    - `code --install-extension releases/birta-writer-0.0.0.vsix --force`
-   - `code --uninstall-extension harlanlewis.md-wysiwyg-editor` (ignore "not installed"). Neither step touches the user's `settings.json`, so their `birta.*` config persists.
+   - `code --uninstall-extension harlanlewis.birta-writer` and `code --uninstall-extension harlanlewis.md-wysiwyg-editor` (ignore "not installed"). None of these steps touch the user's `settings.json`, so their `birta.*` config persists.
 4. Tell the user to reload: Cmd+Shift+P → "Developer: Reload Window".
 
 For iterative debugging, F5 (Extension Development Host) is still faster — no packaging step.
