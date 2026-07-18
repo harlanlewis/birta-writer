@@ -27,6 +27,7 @@ import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { scanHeadings } from "./utils/headingScan";
 import { extractOgTitle } from "./utils/openGraph";
+import { isPubliclyRoutableUrl } from "./utils/urlGuard";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
@@ -68,6 +69,8 @@ export { escapeHtmlAttr };
  */
 const UNFURL_FETCH_TIMEOUT_MS = 5000;
 const UNFURL_MAX_BYTES = 512 * 1024;
+/** Manual-redirect hop budget; each hop re-passes the scheme + SSRF checks. */
+const UNFURL_MAX_REDIRECTS = 5;
 
 /**
  * Read at most `maxBytes` of a fetch Response body as UTF-8 text, then stop.
@@ -1465,52 +1468,80 @@ export class MarkdownEditorProvider
      * error sink (never a toast).
      *
      * This is the extension's ONLY outbound network request. It is gated by
-     * `birta.network.enabled` (the master switch) AND `birta.pasteUnfurl.enabled`
-     * upstream (the webview never posts `unfurlUrl` when either is off),
-     * restricted to http(s), time-bounded by an AbortController, and size-bounded
-     * by reading at most UNFURL_MAX_BYTES.
+     * `birta.network.enabled` (the master switch) AND `birta.pasteUnfurl.enabled`,
+     * restricted to http(s) on every redirect hop, SSRF-guarded (urlGuard: no
+     * localhost/private/link-local/metadata hosts, re-checked per hop),
+     * time-bounded by an AbortController, and size-bounded by reading at most
+     * UNFURL_MAX_BYTES.
      *
-     * Defense in depth (MAR-179): re-check the master switch here too, so a
-     * stale or rogue webview message can never trigger a fetch while the editor
-     * is meant to be offline. The webview gate is the primary control; this is
-     * the belt-and-braces backstop on the one code path that reaches the wire.
+     * Defense in depth (MAR-179): the webview's own gates are the primary
+     * control (it never posts `unfurlUrl` when either setting is off); BOTH
+     * settings are re-checked here so a stale or rogue webview message can
+     * never trigger a fetch the configuration forbids.
      */
     private async _fetchUnfurlTitle(url: string): Promise<string | null> {
-        // Master switch: offline by default. When off, refuse to fetch — reply
-        // null (the "keep the bare link" answer) without ever touching the wire.
-        if (!readBirtaSetting("networkEnabled")) {
+        // Master switch AND the per-feature key: offline by default, and the
+        // extension-side gate mirrors the webview's upstream gate exactly, so a
+        // stale/rogue message can't fetch while either half says no.
+        if (!readBirtaSetting("networkEnabled") || !readBirtaSetting("pasteUnfurlEnabled")) {
             return null;
         }
-        // http(s) only: never fetch file:, data:, vscode:, or other schemes a
-        // pasted string could carry.
         let parsed: URL;
         try {
             parsed = new URL(url);
         } catch {
             return null;
         }
-        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-            return null;
-        }
 
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), UNFURL_FETCH_TIMEOUT_MS);
         try {
-            const res = await globalThis.fetch(url, {
-                signal: controller.signal,
-                redirect: "follow",
-                // Ask for HTML and identify ourselves; some hosts serve a leaner
-                // page (or refuse) without these. Kept minimal — no cookies.
-                headers: {
-                    accept: "text/html,application/xhtml+xml",
-                    "user-agent": "Birta-Writer/paste-unfurl",
-                },
-            });
-            if (!res.ok) {
-                return null;
+            // Redirects are followed MANUALLY so every hop — not just the
+            // pasted URL — passes the same two checks:
+            //  - http(s) only: never file:, data:, vscode:, or any other
+            //    scheme a pasted string or a redirect could carry;
+            //  - publicly routable host only (urlGuard): a pasted or
+            //    redirected-to URL must not steer the extension host at
+            //    localhost, RFC1918 space, or cloud metadata (SSRF — the
+            //    fetched title lands in the document, so a probe would leak).
+            // The single AbortController spans the whole chain, so the total
+            // time stays bounded by UNFURL_FETCH_TIMEOUT_MS.
+            for (let hop = 0; hop <= UNFURL_MAX_REDIRECTS; hop++) {
+                if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                    return null;
+                }
+                if (!(await isPubliclyRoutableUrl(parsed))) {
+                    return null;
+                }
+                const res = await globalThis.fetch(parsed.href, {
+                    signal: controller.signal,
+                    redirect: "manual",
+                    // Ask for HTML and identify ourselves; some hosts serve a
+                    // leaner page (or refuse) without these. No cookies.
+                    headers: {
+                        accept: "text/html,application/xhtml+xml",
+                        "user-agent": "Birta-Writer/paste-unfurl",
+                    },
+                });
+                if (res.status >= 300 && res.status < 400) {
+                    const location = res.headers.get("location");
+                    if (!location) { return null; }
+                    parsed = new URL(location, parsed); // relative Location: ok
+                    continue;
+                }
+                if (!res.ok) {
+                    return null;
+                }
+                // Only parse text-ish responses; a PDF or image 200 has no
+                // <title> and isn't worth streaming 512 KB of.
+                const contentType = res.headers.get("content-type");
+                if (contentType && !/^text\/|xhtml/i.test(contentType)) {
+                    return null;
+                }
+                const html = await readCappedText(res, UNFURL_MAX_BYTES);
+                return extractOgTitle(html);
             }
-            const html = await readCappedText(res, UNFURL_MAX_BYTES);
-            return extractOgTitle(html);
+            return null; // redirect chain too long
         } catch (e) {
             // Offline, DNS failure, abort-on-timeout, malformed response, etc.
             reportError("unfurlUrl", e);

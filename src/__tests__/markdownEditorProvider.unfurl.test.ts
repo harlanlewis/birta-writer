@@ -21,6 +21,7 @@ import {
     resetTextDocumentMocks,
 } from "../../__mocks__/vscode";
 import { _resetErrorSinkForTests } from "../errorSink";
+import { _setDnsLookupForTests } from "../utils/urlGuard";
 import { MarkdownEditorProvider } from "../MarkdownEditorProvider";
 
 const makeContext = () =>
@@ -113,12 +114,16 @@ describe("MarkdownEditorProvider paste-unfurl", () => {
         // Master network switch ON for the feature-on tests; the off case
         // overrides this. Set before setup() so resolve/ready read it too.
         mockNetworkEnabled(true);
+        // Fake DNS: unit tests never resolve real hostnames. Default answer is
+        // a public address; SSRF tests override per-case.
+        _setDnsLookupForTests(async () => [{ address: "93.184.216.34" }]);
         // Silence + observe the console-only error sink.
         errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     });
 
     afterEach(() => {
         vi.unstubAllGlobals();
+        _setDnsLookupForTests(undefined);
         errorSpy.mockRestore();
     });
 
@@ -245,5 +250,133 @@ describe("MarkdownEditorProvider paste-unfurl", () => {
         // Assert: the provider refuses to touch the wire and still replies null.
         expect((await waitForUnfurlReply(panel)).title).toBeNull();
         expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("with birta.pasteUnfurl.enabled OFF it should post null WITHOUT calling fetch", async () => {
+        // Arrange: master ON but the per-feature key OFF — the extension gate
+        // must mirror the webview's, not just the master switch.
+        const { handler, panel } = await setup();
+        (vscode.workspace.getConfiguration as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+            get: vi.fn((key: string, defaultValue?: unknown) => {
+                if (key === "network.enabled") { return true; }
+                if (key === "pasteUnfurl.enabled") { return false; }
+                return defaultValue;
+            }),
+            inspect: vi.fn(() => undefined),
+        });
+        const fetchSpy = vi.fn();
+        vi.stubGlobal("fetch", fetchSpy);
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u8", url: "https://example.com" });
+
+        // Assert
+        expect((await waitForUnfurlReply(panel)).title).toBeNull();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("a URL resolving to a private address should post null WITHOUT calling fetch (SSRF)", async () => {
+        // Arrange: DNS says the pasted hostname lives at 10.0.0.5 — an internal
+        // service. The guard must refuse before any bytes leave the machine.
+        const { handler, panel } = await setup();
+        _setDnsLookupForTests(async () => [{ address: "10.0.0.5" }]);
+        const fetchSpy = vi.fn();
+        vi.stubGlobal("fetch", fetchSpy);
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u9", url: "https://intranet.corp.example" });
+
+        // Assert
+        expect((await waitForUnfurlReply(panel)).title).toBeNull();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("a localhost / private-IP-literal URL should post null WITHOUT calling fetch (SSRF)", async () => {
+        // Arrange
+        const { handler, panel } = await setup();
+        const fetchSpy = vi.fn();
+        vi.stubGlobal("fetch", fetchSpy);
+
+        // Act: loopback name, RFC1918 literal, and the cloud metadata endpoint.
+        await handler({ type: "unfurlUrl", id: "u10", url: "http://localhost:8080/admin" });
+        await handler({ type: "unfurlUrl", id: "u11", url: "http://192.168.1.1/" });
+        await handler({ type: "unfurlUrl", id: "u12", url: "http://169.254.169.254/latest/meta-data/" });
+
+        // Assert
+        expect((await waitForUnfurlReply(panel)).title).toBeNull();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("a redirect to a private address should be refused mid-chain (SSRF)", async () => {
+        // Arrange: the pasted URL is public, but its 302 Location points at the
+        // cloud metadata endpoint. The per-hop re-check must stop the chain —
+        // exactly one fetch (the public hop), no second request.
+        const { handler, panel } = await setup();
+        const fetchSpy = vi.fn(async () =>
+            new Response(null, { status: 302, headers: { location: "http://169.254.169.254/latest/" } }),
+        );
+        vi.stubGlobal("fetch", fetchSpy);
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u13", url: "https://example.com/redirect" });
+
+        // Assert
+        expect((await waitForUnfurlReply(panel)).title).toBeNull();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("a public-to-public redirect should be followed and titled", async () => {
+        // Arrange: one hop to a sibling public URL, then a titled page.
+        const { handler, panel } = await setup();
+        const fetchSpy = vi
+            .fn()
+            .mockResolvedValueOnce(
+                new Response(null, { status: 301, headers: { location: "https://example.com/final" } }),
+            )
+            .mockResolvedValueOnce(
+                new Response("<title>Landed</title>", { status: 200 }),
+            );
+        vi.stubGlobal("fetch", fetchSpy);
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u14", url: "https://example.com/start" });
+
+        // Assert
+        expect((await waitForUnfurlReply(panel)).title).toBe("Landed");
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(fetchSpy.mock.calls[1][0]).toBe("https://example.com/final");
+    });
+
+    it("a redirect chain longer than the hop budget should post null", async () => {
+        // Arrange: an endless 302 loop; the loop must terminate at the budget.
+        const { handler, panel } = await setup();
+        const fetchSpy = vi.fn(async () =>
+            new Response(null, { status: 302, headers: { location: "https://example.com/again" } }),
+        );
+        vi.stubGlobal("fetch", fetchSpy);
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u15", url: "https://example.com/loop" });
+
+        // Assert: 1 initial hop + 5 redirect budget = 6 fetches, then give up.
+        expect((await waitForUnfurlReply(panel)).title).toBeNull();
+        expect(fetchSpy).toHaveBeenCalledTimes(6);
+    });
+
+    it("a non-text content-type should post null without parsing", async () => {
+        // Arrange: a 200 PDF — nothing to title, don't stream 512 KB of it.
+        const { handler, panel } = await setup();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () =>
+                new Response("%PDF-1.7", { status: 200, headers: { "content-type": "application/pdf" } }),
+            ),
+        );
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u16", url: "https://example.com/doc.pdf" });
+
+        // Assert
+        expect((await waitForUnfurlReply(panel)).title).toBeNull();
     });
 });
