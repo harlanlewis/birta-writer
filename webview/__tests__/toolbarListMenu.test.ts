@@ -60,21 +60,41 @@ afterEach(async () => {
 });
 
 describe("toolbar Lists dropdown", () => {
-    it("should render one dropdown with Bullet / Ordered / Task rows", () => {
+    it("should render one dropdown with Bullet / Ordered / Task rows and the sink switch", () => {
         // Arrange + Act
         const { topbar } = buildToolbar(() => null);
 
-        // Assert: a single list slot, three labelled rows, each with an icon
+        // Assert: a single list slot; three insert rows, then the
+        // "Move checked to bottom" settings switch below a divider.
         const rows = listRows(topbar);
         expect(rows.map((r) => r.querySelector(".tb-list-item-label")?.textContent)).toEqual([
             "Bullet List",
             "Ordered List",
             "Task List",
+            "Move checked to bottom",
         ]);
         rows.forEach((r) => expect(r.querySelector(".tb-list-item-icon svg")).not.toBeNull());
+        expect(topbar.querySelector(".tb-list-menu .tb-menu-sep")).not.toBeNull();
+        // The switch reflects the (default off) setting.
+        expect(rows[3]?.getAttribute("aria-checked")).toBe("false");
         // The three old standalone list buttons are gone.
         expect(topbar.querySelectorAll('[data-item-id="bulletList"]').length).toBe(0);
         expect(topbar.querySelectorAll('[data-item-id="listMenu"]').length).toBe(1);
+    });
+
+    it("clicking the sink switch should flip its checked state and the in-session gate", () => {
+        // Arrange
+        window.__i18n = { translations: {}, isMac: false, checklistSinkChecked: false };
+        const { topbar } = buildToolbar(() => null);
+        const sinkRow = listRows(topbar)[3]!;
+
+        // Act
+        sinkRow.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+
+        // Assert
+        expect(sinkRow.getAttribute("aria-checked")).toBe("true");
+        expect(window.__i18n?.checklistSinkChecked).toBe(true);
+        delete window.__i18n;
     });
 
     it("clicking a row should run its list command against the editor", async () => {
