@@ -118,7 +118,7 @@ The settings you're most likely to touch — the full list (including per-item t
 | `birta.smartLinks` | `true` | Site-generator-style local link resolution |
 | `birta.network.enabled` | `false` | Master network switch — offline by default; gates paste-unfurl and URL embeds. Off means no outbound request at all |
 | `birta.pasteUnfurl.enabled` | `true` | Paste a bare URL (nothing selected) to fetch the page title and insert `[title](url)`; needs `birta.network.enabled` (offered inline when off), falls back to the plain link offline |
-| `birta.calc.enabled` | `true` | Inline calc-on-`=`: typing `12 * 4 =` offers the result as a suggestion (Return/Tab to accept) |
+| `birta.calc.enabled` | `true` | Inline calc-on-`=`: typing `12 * 4 =` offers the result as a suggestion (Tab to accept; Return stays a newline) |
 | `birta.calc.autoInsert` | `false` | Insert the calc result immediately on `=` instead of offering a suggestion |
 | `birta.checklist.sinkChecked` | `false` | Checked task items sink below their unchecked siblings (and float back up when unchecked) |
 | `birta.tableWrap` | `"normal"` | Table cell wrapping: `normal`, `aggressive`, or `none` |

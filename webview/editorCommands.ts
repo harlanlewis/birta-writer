@@ -550,7 +550,9 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     // state when it opens, so the microtask gap cannot dangle a stale position.
     insertSectionLink: (getEditor) =>
         runProse(getEditor, (view) => {
-            void import("@/components/sectionLink").then((m) => m.openSectionLinkPicker(view));
+            import("@/components/sectionLink")
+                .then((m) => m.openSectionLinkPicker(view))
+                .catch((e) => console.error("[birta] section-link picker failed to load", e));
         }),
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),

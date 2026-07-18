@@ -1,9 +1,9 @@
 {
   "note": "Committed eager-bytes baseline for the CI perf-bundle gate (`pnpm perf:bundle --check`). Deterministic for a given lockfile. To accept an intentional eager-bytes increase: `node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --write-baseline`, then commit this file (and say why in the commit).",
-  "eagerJs": 1089209,
+  "eagerJs": 1089375,
   "eagerCss": 101822,
-  "eagerTotal": 1191031,
+  "eagerTotal": 1191197,
   "eagerChunkCount": 8,
-  "totalJs": 3969268,
+  "totalJs": 3969434,
   "totalCss": 1563670
 }

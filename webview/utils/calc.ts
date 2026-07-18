@@ -298,9 +298,10 @@ export function detectCalcExpression(textBefore: string): CalcMatch | null {
     const value = evaluateExpression(expr);
     if (value === null) { return null; }
     const result = formatCalcResult(value);
-    // Results too large for plain digits stringify with an exponent
-    // (`1e+21`) — a letter, in a feature whose contract is "pure digits in,
-    // pure digits out". Offer nothing instead.
+    // Results that stringify with an exponent — too large (`1e+21`) or too
+    // small (`1 / 1000000000` → `1e-9`) for plain digits — carry a letter, in
+    // a feature whose contract is "pure digits in, pure digits out". Offer
+    // nothing instead.
     if (result.includes("e")) { return null; }
     // Span from the expression's first character (after any leading run
     // whitespace) through the caret (the end of textBefore).

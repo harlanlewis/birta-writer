@@ -59,16 +59,67 @@ export function isPrivateIp(ip: string): boolean {
         return false;
     }
     if (isIP(ip) === 6) {
-        const lower = ip.toLowerCase();
-        // v4-mapped/translated (`::ffff:1.2.3.4`) — judge the embedded v4.
-        const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-        if (mapped) { return isPrivateIp(mapped[1]); }
-        if (lower === "::" || lower === "::1") { return true; }         // unspecified, loopback
-        if (/^f[cd]/.test(lower)) { return true; }                      // unique-local fc00::/7
-        if (/^fe[89ab]/.test(lower)) { return true; }                   // link-local fe80::/10
+        // Classify from the eight 16-bit words, NOT textual prefixes: the same
+        // address has many spellings (`::ffff:127.0.0.1`, `::ffff:7f00:1`,
+        // `0:0:0:0:0:ffff:7f00:1`), and WHATWG URL normalization hands this
+        // function the compressed-hex canonical form — a dotted-quad regex here
+        // is dead code and a guard BYPASS (`http://[::ffff:127.0.0.1]/` reached
+        // the wire as `::ffff:7f00:1`).
+        const w = v6Words(ip);
+        if (!w) { return true; } // fail closed on anything unparseable
+        const [w0, w1] = w;
+        if (w.every((x) => x === 0)) { return true; }                            // :: unspecified
+        if (w.slice(0, 7).every((x) => x === 0) && w[7] === 1) { return true; }  // ::1 loopback
+        if ((w0 & 0xfe00) === 0xfc00) { return true; }                           // unique-local fc00::/7
+        if ((w0 & 0xffc0) === 0xfe80) { return true; }                           // link-local fe80::/10
+        // v4-mapped ::ffff:0:0/96 and NAT64 64:ff9b::/96 — judge the embedded
+        // v4: on a dual-stack (or NAT64) host these sockets reach the v4 net.
+        if (w.slice(0, 5).every((x) => x === 0) && w[5] === 0xffff) {
+            return isPrivateIp(v4FromWords(w[6], w[7]));
+        }
+        if (w0 === 0x64 && w1 === 0xff9b) {
+            return isPrivateIp(v4FromWords(w[6], w[7]));
+        }
         return false;
     }
     return true; // not a recognizable IP literal → fail closed
+}
+
+/** Dotted-quad string from the low two 16-bit words of an IPv6 address. */
+function v4FromWords(hi: number, lo: number): string {
+    return `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`;
+}
+
+/**
+ * The eight 16-bit words of an IPv6 literal (any textual form — compressed,
+ * full, or with an embedded dotted-quad tail), or null when it doesn't parse.
+ * Callers have already established `isIP(ip) === 6`.
+ */
+function v6Words(ip: string): number[] | null {
+    let s = ip.toLowerCase();
+    let tailWords: number[] = [];
+    if (s.includes(".")) {
+        // Embedded dotted-quad tail (`::ffff:1.2.3.4`) → two trailing words.
+        const lastColon = s.lastIndexOf(":");
+        const v4 = v4Octets(s.slice(lastColon + 1));
+        if (!v4) { return null; }
+        tailWords = [(v4[0] << 8) | v4[1], (v4[2] << 8) | v4[3]];
+        s = s.slice(0, lastColon);
+        if (s.endsWith(":")) { s += ":"; } // preserve a `::` that abutted the v4
+    }
+    const halves = s.split("::");
+    if (halves.length > 2) { return null; }
+    const parse = (part: string): number[] =>
+        part === "" ? [] : part.split(":").map((g) => parseInt(g, 16));
+    const head = parse(halves[0]);
+    const tail = halves.length === 2 ? parse(halves[1]) : [];
+    const given = head.length + tail.length + tailWords.length;
+    const fill = halves.length === 2 ? 8 - given : 0;
+    if (halves.length === 2 ? fill < 1 : given !== 8) { return null; }
+    const words = [...head, ...Array<number>(fill).fill(0), ...tail, ...tailWords];
+    return words.length === 8 && words.every((x) => Number.isInteger(x) && x >= 0 && x <= 0xffff)
+        ? words
+        : null;
 }
 
 /** Local-only hostnames refused without a DNS round trip. */

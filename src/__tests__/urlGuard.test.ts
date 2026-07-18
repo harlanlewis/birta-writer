@@ -43,6 +43,22 @@ describe("isPrivateIp", () => {
         expect(isPrivateIp("2606:4700::6810:84e5")).toBe(false);
     });
 
+    it("v4-mapped addresses in COMPRESSED-HEX form should be private (the form URL normalization emits)", () => {
+        // `new URL("http://[::ffff:127.0.0.1]/").hostname` is `[::ffff:7f00:1]`
+        // — a dotted-quad-only matcher never sees the dotted form on the real
+        // path, which is exactly the bypass this pins.
+        expect(isPrivateIp("::ffff:7f00:1")).toBe(true);      // 127.0.0.1
+        expect(isPrivateIp("::ffff:a9fe:a9fe")).toBe(true);   // 169.254.169.254
+        expect(isPrivateIp("::ffff:c0a8:1")).toBe(true);      // 192.168.0.1
+        expect(isPrivateIp("::ffff:808:808")).toBe(false);    // 8.8.8.8
+        expect(isPrivateIp("0:0:0:0:0:ffff:7f00:1")).toBe(true); // uncompressed spelling
+    });
+
+    it("NAT64 (64:ff9b::/96) addresses should be judged by their embedded v4", () => {
+        expect(isPrivateIp("64:ff9b::a9fe:a9fe")).toBe(true);  // metadata via NAT64
+        expect(isPrivateIp("64:ff9b::808:808")).toBe(false);   // 8.8.8.8 via NAT64
+    });
+
     it("unparseable input should fail closed (treated as private)", () => {
         expect(isPrivateIp("not-an-ip")).toBe(true);
         expect(isPrivateIp("")).toBe(true);
@@ -78,6 +94,23 @@ describe("isPubliclyRoutableUrl", () => {
         expect(await isPubliclyRoutableUrl(new URL("http://192.168.1.1/"))).toBe(false);
         expect(await isPubliclyRoutableUrl(new URL("http://8.8.8.8/"))).toBe(true);
         expect(await isPubliclyRoutableUrl(new URL("http://[::1]/"))).toBe(false);
+    });
+
+    it("a v4-mapped IPv6 URL should be refused THROUGH URL normalization (the real path)", async () => {
+        _setDnsLookupForTests(async () => {
+            throw new Error("DNS must not be consulted for IP literals");
+        });
+        // URL serializes these to compressed hex before the guard ever sees them.
+        expect(await isPubliclyRoutableUrl(new URL("http://[::ffff:127.0.0.1]/"))).toBe(false);
+        expect(await isPubliclyRoutableUrl(new URL("http://[::ffff:169.254.169.254]/"))).toBe(false);
+        expect(await isPubliclyRoutableUrl(new URL("http://[::ffff:192.168.0.1]/"))).toBe(false);
+        expect(await isPubliclyRoutableUrl(new URL("http://[64:ff9b::7f00:1]/"))).toBe(false);
+        expect(await isPubliclyRoutableUrl(new URL("http://[2606:4700::6810:84e5]/"))).toBe(true);
+    });
+
+    it("a hostname resolving to a v4-mapped private address should be refused", async () => {
+        _setDnsLookupForTests(async () => [{ address: "::ffff:10.0.0.5" }]);
+        expect(await isPubliclyRoutableUrl(new URL("https://sneaky.example"))).toBe(false);
     });
 
     it("a hostname with any private DNS answer should be refused", async () => {
