@@ -207,4 +207,59 @@ describe("detectCalcExpression", () => {
         expect(detectCalcExpression("=")).toBeNull();
         expect(detectCalcExpression("  =")).toBeNull();
     });
+
+    it("a date should not be evaluated as chained subtraction", () => {
+        expect(detectCalcExpression("2026-07-17 =")).toBeNull();
+        expect(detectCalcExpression("released 2026-07-17 =")).toBeNull();
+        expect(detectCalcExpression("7/17/2026 =")).toBeNull();
+    });
+
+    it("a phone-style dashed number should not be detected", () => {
+        expect(detectCalcExpression("555-867-5309 =")).toBeNull();
+    });
+
+    it("two-operand no-space arithmetic should still be detected", () => {
+        expect(detectCalcExpression("5-3 =")?.result).toBe("2");
+        expect(detectCalcExpression("7/8 =")?.result).toBe("0.875");
+    });
+
+    it("an operator whose left operand is prose should not be detected", () => {
+        // `x - 4` is algebra with an out-of-grammar operand, not `-4`.
+        expect(detectCalcExpression("x - 4 =")).toBeNull();
+        expect(detectCalcExpression("x -4 =")).toBeNull();
+    });
+
+    it("a line-start unary minus should still be detected", () => {
+        expect(detectCalcExpression("- 4 =")?.result).toBe("-4");
+    });
+
+    it("a comma-grouped number should not have its fragment evaluated", () => {
+        // The run after the comma is `000 + 2`; offering `2` would be wrong.
+        expect(detectCalcExpression("1,000 + 2 =")).toBeNull();
+    });
+
+    it("a number fragment glued to an identifier should not be detected", () => {
+        expect(detectCalcExpression("a1+2=")).toBeNull();
+    });
+
+    it("prose separated by a space should still be detected", () => {
+        expect(detectCalcExpression("meeting at 3 + 4 =")?.result).toBe("7");
+        expect(detectCalcExpression("The answer is 12 * 4 =")?.result).toBe("48");
+    });
+
+    it("a currency glyph glued to the expression should still be detected", () => {
+        expect(detectCalcExpression("€5+5 =")?.result).toBe("10");
+    });
+
+    it("a result too large for plain digits should not be offered", () => {
+        // 9^25 stringifies as 7.17…e+23 — a letter, so nothing is offered.
+        expect(detectCalcExpression("9 ^ 25 =")).toBeNull();
+    });
+});
+
+describe("formatCalcResult precision", () => {
+    it("integers beyond 12 significant digits should print exactly", () => {
+        expect(formatCalcResult(9999999999999)).toBe("9999999999999");
+        expect(formatCalcResult(1234567890123)).toBe("1234567890123");
+    });
 });

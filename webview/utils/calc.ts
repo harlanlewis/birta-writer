@@ -214,6 +214,12 @@ export function evaluateExpression(input: string): number | null {
  * `String` drop trailing zeros. Normalizes `-0` to `0`.
  */
 export function formatCalcResult(value: number): string {
+    // Safe integers print exactly — `toPrecision(12)` exists to hide float
+    // artifacts in fractional results, but applied to a 13-digit integer it
+    // MANUFACTURES one (`9999999999999` → `10000000000000`).
+    if (Number.isSafeInteger(value)) {
+        return String(Object.is(value, -0) ? 0 : value);
+    }
     const rounded = Number(value.toPrecision(12));
     return String(Object.is(rounded, -0) ? 0 : rounded);
 }
@@ -234,6 +240,13 @@ const TRAILING_EQUALS = /=[ \t]*$/;
 const TRAILING_EXPR = /[0-9.+\-*/%^() \t]*$/;
 /** At least one operator: a bare number is not offered (`the value 42 =`). */
 const HAS_OPERATOR = /[+\-*/%^]/;
+/**
+ * Three or more digit groups joined by the same `-` or `/` with no spaces —
+ * a date (`2026-07-17`), phone number (`555-867-5309`), or dashed identifier,
+ * not arithmetic. Two joined groups stay arithmetic (`5-3`, `7/8`), matching
+ * how people actually type quick math without spaces.
+ */
+const SEPARATOR_CHAIN = /^\d+([-/])\d+(?:\1\d+)+$/;
 
 /**
  * Detects an arithmetic expression that ends, at the caret, in `=` (optionally
@@ -259,11 +272,39 @@ export function detectCalcExpression(textBefore: string): CalcMatch | null {
     const run = TRAILING_EXPR.exec(beforeEquals)?.[0] ?? "";
     const expr = run.trim();
     if (!expr || !HAS_OPERATOR.test(expr)) { return null; }
+    const runStart = eq.index - run.length;
+    // Left-boundary discipline. The run is the MAXIMAL trailing span of
+    // arithmetic characters, so whatever precedes it is not arithmetic — but
+    // the run can still be a fragment of a larger token, and evaluating a
+    // fragment produces a silently WRONG answer, the worst possible outcome:
+    // - `1,000 + 2 =`: the run is `000 + 2` (the comma breaks it) — offering
+    //   `2` would be a lie. When the run touches a word-ish character
+    //   (letter/digit/comma/underscore) with no space between, reject.
+    //   `€5+5 =` still works: currency glyphs aren't token glue.
+    // - `x - 4 =`: the run is ` - 4` — its leading operator has a left operand
+    //   (the variable) outside the grammar, so `-4` answers a question the
+    //   user didn't ask. A run that starts with an operator is only unary
+    //   when nothing precedes it on the line (`- 4 =` at line start).
+    // `is 3 + 4 =` keeps working: a space separates the prose from a run that
+    // opens with its own number.
+    if (runStart > 0) {
+        const glued = run[0] !== " " && run[0] !== "\t";
+        if (glued && /[\p{L}\p{N},_]/u.test(beforeEquals[runStart - 1])) { return null; }
+        if (/^[+\-*/%^]/.test(expr)) { return null; }
+    }
+    // Dates and dashed identifiers (`2026-07-17 =`) tokenize as chained
+    // subtraction/division and would "compute". Refuse the shape outright.
+    if (SEPARATOR_CHAIN.test(expr)) { return null; }
     const value = evaluateExpression(expr);
     if (value === null) { return null; }
+    const result = formatCalcResult(value);
+    // Results too large for plain digits stringify with an exponent
+    // (`1e+21`) — a letter, in a feature whose contract is "pure digits in,
+    // pure digits out". Offer nothing instead.
+    if (result.includes("e")) { return null; }
     // Span from the expression's first character (after any leading run
     // whitespace) through the caret (the end of textBefore).
     const leadingWs = run.length - run.replace(/^[ \t]+/, "").length;
-    const start = eq.index - run.length + leadingWs;
-    return { length: textBefore.length - start, expr, result: formatCalcResult(value) };
+    const start = runStart + leadingWs;
+    return { length: textBefore.length - start, expr, result };
 }
