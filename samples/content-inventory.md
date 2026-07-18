@@ -53,7 +53,23 @@ The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~st
 
 Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
 
-#### Highlight
+### Inline calculator
+
+Type an arithmetic expression ending in `=` and the answer appears as a suggestion — confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu to have every future `=` answered instantly (`birta.calc.autoInsert`). The result inserts as plain text, so nothing calc-specific ever persists in the file. Put the caret at the end of any line below and press `=` to try it:
+
+12 \* 4= 48
+
+(3 + 4) / 2
+
+10 % 3
+
+2 ^ 10
+
+-2 ^ 2
+
+1,000,000 / 3 — the comma-grouped number is *refused* (evaluating the fragment after the comma would give a wrong answer), and `total = 2 + x` never triggers (letters aren't arithmetic). A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the `=` is the ask and the suggestion is yours to decline.
+
+### Highlight
 
 `==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict — each of these stays plain text, byte-preserved:
 
@@ -102,6 +118,8 @@ With `birta.smartLinks` (default on) local links resolve the way a
 site generator publishes them — every link below opens a real file in this
 repo when clicked:
 
+
+
 - Workspace-root path, extension inferred: [the README](/README)
 - Nested root path: [the perf harness](/e2e/perf/README)
 - Document-relative, `..` and suffix inference: [changelog](../CHANGELOG)
@@ -145,6 +163,8 @@ https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
 
 Only known providers embed — **YouTube is the only provider today** (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
+
+<https://github.com/harlanlewis/birta-writer/>
 
 https://vimeo.com/76979871
 
@@ -374,35 +394,6 @@ Plain fenced block (no language):
 no highlighting here
 ```
 
-### Math
-
-Inline math renders in place and is **edited in place**: arrow into
-$E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character
-editing, exactly like inline code; leave it and KaTeX re-renders. Currency
-like $5 and $10 stays as plain text.
-
-Block math:
-
-$$
-\int_0^1 x^2 \, dx = \frac{1}{3}
-$$
-
-### Inline calculator
-
-Type an arithmetic expression ending in `=` and the answer appears as a suggestion — confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu to have every future `=` answered instantly (`birta.calc.autoInsert`). The result inserts as plain text, so nothing calc-specific ever persists in the file. Put the caret at the end of any line below and press `=` to try it:
-
-12 * 4
-
-(3 + 4) / 2
-
-10 % 3
-
-2 ^ 10
-
--2 ^ 2
-
-1,000,000 / 3 — the comma-grouped number is *refused* (evaluating the fragment after the comma would give a wrong answer), and `total = 2 + x` never triggers (letters aren't arithmetic). A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the `=` is the ask and the suggestion is yours to decline.
-
 ### Diagrams (Mermaid)
 
 Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid` block.
@@ -419,6 +410,19 @@ graph TD
 ---
 
 ---
+
+### Math
+
+Inline math renders in place and is **edited in place**: arrow into
+$E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character
+editing, exactly like inline code; leave it and KaTeX re-renders. Currency
+like $5 and $10 stays as plain text.
+
+Block math:
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
 
 ## Frontmatter
 
