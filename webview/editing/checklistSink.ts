@@ -36,6 +36,24 @@ import type { EditorView } from "../pm";
 import type { Node as ProseNode } from "../pm";
 import { appendMove } from "./moveBlocks";
 import { flashRange } from "./rangeIndicator";
+import { notifySetChecklistSink } from "../messaging";
+
+/** The in-session sink gate (birta.checklist.sinkChecked, baked at load). */
+export function isChecklistSinkEnabled(): boolean {
+    return window.__i18n?.checklistSinkChecked ?? false;
+}
+
+/**
+ * Flip the sink behavior from a UI toggle (toolbar Lists menu, task-list
+ * block menu): the in-session gate applies immediately in this webview; the
+ * write-back persists it (other open webviews pick it up on reopen).
+ */
+export function setChecklistSinkEnabled(on: boolean): void {
+    if (window.__i18n) {
+        window.__i18n.checklistSinkChecked = on;
+    }
+    notifySetChecklistSink(on);
+}
 
 /**
  * The boundary position a task item at `itemPos` should move to when its

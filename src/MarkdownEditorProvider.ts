@@ -831,6 +831,12 @@ export class MarkdownEditorProvider
                         // open webviews pick the value up on reopen.
                         updateSettingRespectingScope("calc.autoInsert", message.enabled);
                         break;
+                    case "setChecklistSink":
+                        // The "Move checked to bottom" toggle (toolbar Lists
+                        // menu / task-list block menu). Same local-gate model
+                        // as calc.autoInsert.
+                        updateSettingRespectingScope("checklist.sinkChecked", message.enabled);
+                        break;
                     case "spellAddWord":
                         addUserWord(message.word);
                         break;

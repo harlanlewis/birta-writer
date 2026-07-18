@@ -218,6 +218,9 @@ export type ToExtensionMessage =
     // The calc suggestion menu's "Always insert result" row: persist
     // birta.calc.autoInsert through the scope-respecting write-back.
     | { type: "setCalcAutoInsert"; enabled: boolean }
+    // The "Move checked to bottom" toggle (toolbar Lists menu / task-list
+    // block menu): persist birta.checklist.sinkChecked.
+    | { type: "setChecklistSink"; enabled: boolean }
     | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }

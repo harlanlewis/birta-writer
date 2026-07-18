@@ -44,6 +44,8 @@ export const IconX = svg(`<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="
 export const IconCopy = svg(`<rect width="13" height="13" x="9" y="9" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>`);
 export const IconWrapText = svg(`<line x1="2" y1="5" x2="22" y2="5"/><line x1="2" y1="10" x2="18" y2="10"/><path d="M18 10a4 4 0 0 1 0 8h-5"/><polyline points="15 15 12 18 15 21"/><line x1="2" y1="18" x2="9" y2="18"/>`);
 export const IconChevronDown  = svg(`<polyline points="6 9 12 15 18 9"/>`);
+/** Arrow down to a line — "move checked to bottom" (checklist sink). */
+export const IconArrowDownToLine = svg(`<path d="M12 3v12"/><polyline points="6 9 12 15 18 9"/><line x1="4" y1="21" x2="20" y2="21"/>`);
 export const IconChevronUp    = svg(`<polyline points="18 15 12 9 6 15"/>`);
 export const IconChevronLeft  = svg(`<polyline points="15 18 9 12 15 6"/>`);
 export const IconChevronRight = svg(`<polyline points="9 18 15 12 9 6"/>`);

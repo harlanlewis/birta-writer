@@ -18,6 +18,7 @@ import {
     IconMinus,
     IconList,
     IconListOrdered,
+    IconArrowDownToLine,
     IconCheckSquare,
     IconCheck,
     IconX,
@@ -36,6 +37,7 @@ import { sampleDocPosition } from "@/utils/docPosition";
 import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
+import { isChecklistSinkEnabled, setChecklistSinkEnabled } from "@/editing/checklistSink";
 import { createButton } from "@/ui/dom";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { attachImgPathComplete } from '../imageView/imgPathComplete';
@@ -1345,6 +1347,37 @@ export function initToolbar(
                 },
             });
         }
+
+        // ── Task-list behavior switch, below a divider (MAR-175) ──
+        // "Move checked to bottom" flips birta.checklist.sinkChecked in place:
+        // a settings toggle, not an insert, so it re-renders its own checked
+        // state and leaves the menu open (the user sees the flip land).
+        listMenu.appendChild(makeSep());
+        const sinkRow = document.createElement("button");
+        sinkRow.type = "button";
+        sinkRow.className = "tb-fmt-item tb-list-item";
+        sinkRow.setAttribute("role", "menuitemcheckbox");
+        sinkRow.title = t("Checking a task moves it below the unchecked items (birta.checklist.sinkChecked)");
+        const sinkIcon = document.createElement("span");
+        sinkIcon.className = "tb-list-item-icon";
+        sinkIcon.innerHTML = IconArrowDownToLine;
+        const sinkLabel = document.createElement("span");
+        sinkLabel.className = "tb-list-item-label";
+        sinkLabel.textContent = t("Move checked to bottom");
+        sinkRow.append(sinkIcon, sinkLabel);
+        const renderSinkState = (): void => {
+            const on = isChecklistSinkEnabled();
+            sinkRow.classList.toggle("tb-list-item--on", on);
+            sinkRow.setAttribute("aria-checked", on ? "true" : "false");
+        };
+        renderSinkState();
+        sinkRow.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setChecklistSinkEnabled(!isChecklistSinkEnabled());
+            renderSinkState();
+        });
+        listMenu.appendChild(sinkRow);
 
         const { close: closeListMenu } = wireHoverMenu(listWrap, listBtn, listMenu);
 

@@ -152,6 +152,11 @@ export function notifySetCalcAutoInsert(enabled: boolean): void {
     vscode.postMessage({ type: "setCalcAutoInsert", enabled });
 }
 
+/** The "Move checked to bottom" toggle → persist birta.checklist.sinkChecked. */
+export function notifySetChecklistSink(enabled: boolean): void {
+    vscode.postMessage({ type: "setChecklistSink", enabled });
+}
+
 export function notifyFrontmatterUpdate(frontmatter: string): void {
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
 }
