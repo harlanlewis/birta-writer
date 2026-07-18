@@ -325,6 +325,14 @@ click-away, Escape cancels.
 
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
 
+## URL embeds
+
+A bare YouTube link on its own line renders as an inline player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The card is **render-only**: the stored source stays the plain link below, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+Embeds are network features and are **off by default** — with `birta.network.enabled` off the line above is an ordinary link; turn the master switch on (or accept the inline prompt) to see the card.
+
 ---
 
 ---
@@ -505,9 +513,9 @@ The master switch above governs every category below; each also has its own
 > [!WARNING]
 > If and when support lands for these common content types, move up into the body of this document with a real example.
 
-### Videos / embeds
+### Raw `<video>` / `<iframe>` tags
 
-No `<video>` / `<iframe>` handling; such tags fall through to the read-only sanitized HTML preview (and iframes are stripped).
+Raw `<video>` / `<iframe>` HTML tags aren't rendered as players — they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **YouTube link** on its own line does render as a player card, though — see **URL embeds** above.
 
 ### Wikilink embeds
 
