@@ -16,6 +16,7 @@ import { undo } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { historyPlugin } from "../plugins/history";
 import { anchorSyncPlugin, headingRangeTouched } from "../plugins/anchorSync";
+import { EXTERNAL_SYNC_META } from "../plugins/docChange";
 
 let editors: Editor[] = [];
 
@@ -190,6 +191,38 @@ describe("anchorSync — rename detection and link rewrite", () => {
         // The link is left EXACTLY as typed (dangling), never rewritten.
         expect(linkHrefs(view)).toEqual(["#doomed"]);
         expect(serialize(editor)).toContain("[toDoomed](#doomed)");
+    });
+
+    it("an external-sync rename should NOT trigger a link rewrite (on-disk truth wins)", async () => {
+        // A heading rename arriving FROM the file (git checkout, side-by-side
+        // text editor) is tagged EXTERNAL_SYNC_META. The file legitimately
+        // holds `#title` links alongside the new heading text; "fixing" them
+        // would diverge the editor from the file and persist an uncommanded
+        // rewrite on the next keystroke.
+        const { editor, view } = await makeEditor("# Title\n\n[go](#title)\n");
+        let range: { from: number; to: number } | null = null;
+        view.state.doc.descendants((node: ProseNode, pos: number, parent) => {
+            if (range) return false;
+            if (node.isText && node.text === "Title" && parent?.type.name === "heading") {
+                range = { from: pos, to: pos + node.nodeSize };
+                return false;
+            }
+            return true;
+        });
+        if (!range) throw new Error("heading not found");
+        const tr = view.state.tr.replaceWith(
+            (range as { from: number; to: number }).from,
+            (range as { from: number; to: number }).to,
+            view.state.schema.text("Renamed"),
+        );
+        tr.setMeta(EXTERNAL_SYNC_META, true);
+        tr.setMeta("addToHistory", false);
+        view.dispatch(tr);
+
+        const out = serialize(editor);
+        expect(out).toContain("# Renamed");
+        // The link keeps the file's bytes — stale, exactly as on disk.
+        expect(out).toContain("[go](#title)");
     });
 
     it("when the feature is disabled the plugin should append nothing", async () => {

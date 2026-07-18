@@ -45,6 +45,7 @@ import { Mapping, Plugin, PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { collectDocHeadings } from "../utils/headingUtils";
 import { computeSlugRenames } from "../utils/slug";
+import { EXTERNAL_SYNC_META } from "./docChange";
 
 /** Auto-update ships ON; the flag is baked into __i18n at panel load (like
  *  calc/embeds). When off, the appendTransaction bails before any scan. */
@@ -216,6 +217,17 @@ export const anchorSyncPlugin = $prose(
             appendTransaction: (transactions, oldState, newState) => {
                 // Feature gate first: a disabled feature costs nothing.
                 if (!autoUpdateEnabled()) {
+                    return null;
+                }
+                // NEVER react to inbound external sync (git checkout, a
+                // side-by-side text editor, VS Code undo of a save). Those
+                // transactions carry the on-disk truth; "auto-fixing" links
+                // the file legitimately holds would silently diverge the
+                // editor from the file and persist an uncommanded rewrite on
+                // the next keystroke — a phase-0 fidelity violation. This
+                // feature exists to keep up with renames the USER makes in
+                // this editor, nothing else.
+                if (transactions.some((tr) => tr.getMeta(EXTERNAL_SYNC_META))) {
                     return null;
                 }
                 // TIER 1: selection-only churn can't rename a heading.
