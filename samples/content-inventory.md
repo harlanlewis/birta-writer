@@ -55,9 +55,9 @@ Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example
 
 ### Inline calculator
 
-The `=` is the ask, and it works at **either end** of the expression:
+Start or end a math equation with `=` to automatically compute it. For example, `5+7^4-1=` or `=32+7`
 
-- **`=` after** — `5+7 =` offers `12`; accepting gives `5+7 = 12`. Put the caret at the end of any line below and press `=` to try it:
+Put the caret at the end of any line below and press `=` to try it:
 
 12 * 4
 
@@ -69,7 +69,7 @@ The `=` is the ask, and it works at **either end** of the expression:
 
 -2 ^ 2
 
-- **`=` before** — type `=5+7` on an empty line and the same answer is offered; accepting puts it in front: `12=5+7` (the result-first form).
+
 
 The answer appears as a suggestion — confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
 
