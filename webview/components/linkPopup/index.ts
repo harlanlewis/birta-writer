@@ -1,5 +1,5 @@
 import "./linkPopup.css";
-import type { EditorView } from "@/pm";
+import type { EditorView, Slice } from "@/pm";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
 import { collectDocHeadings, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import {
@@ -430,6 +430,13 @@ export function setupLinkPopup(
     // The last values applied to the document — blur/Enter apply only real
     // changes, never a no-op transaction per focus move.
     let lastApplied: { text: string; href: string; format: string } | null = null;
+    // Live text preview: the link's pristine bytes before the first preview
+    // transaction, so Escape (or any abandoning close) restores them exactly —
+    // marks included. Non-null only while an uncommitted preview is in the
+    // doc. Preview transactions carry addToHistory:false; the COMMIT reverts
+    // silently first and then applies original→final as one normal
+    // transaction, so undo sees exactly one step.
+    let previewOriginal: { from: number; to: number; slice: Slice } | null = null;
     // Stale-reply guard + debounce for the resolved-target hint.
     let resolveGeneration = 0;
     let resolveDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -723,6 +730,11 @@ export function setupLinkPopup(
     }
 
     function hidePopup(): void {
+        // An abandoning close (Escape, hover-out) with a live preview still in
+        // the doc restores the original bytes. Committing paths (Enter,
+        // blur, outside-click) run applyEdit first, which already consumed
+        // the preview — this is a no-op there.
+        revertPreview();
         // Every close path unregisters the Escape layer (idempotent).
         escapeLayerOff?.();
         escapeLayerOff = null;
@@ -972,7 +984,53 @@ export function setupLinkPopup(
      * Keeps `currentLink` coherent (bounds, values) so the editing session
      * can continue — blur saves without closing the panel.
      */
+    /**
+     * Live preview while typing in the text field: the on-page link text
+     * follows the input, as an addToHistory:false transaction over the
+     * pristine snapshot. Only for an EXISTING markdown link (an insert has
+     * nothing on the page yet; a wiki atom re-renders wholesale on commit).
+     */
+    function previewText(): void {
+        const view = getView();
+        if (!view || !currentLink || currentLink.readOnly || currentLink.wiki) { return; }
+        if (insertMode || currentLink.from === currentLink.to) { return; }
+        const newText = inputText.value;
+        // An empty field would leave a zero-width link — hold the preview and
+        // let the commit rules decide (they treat empty text as "keep").
+        if (!newText) { return; }
+        const { state } = view;
+        const linkType = state.schema.marks["link"];
+        if (!linkType) { return; }
+        const { from, to } = currentLink;
+        previewOriginal ??= { from, to, slice: state.doc.slice(from, to) };
+        if (newText === state.doc.textBetween(from, to)) { return; }
+        const tr = state.tr.replaceWith(from, to, state.schema.text(newText));
+        tr.addMark(from, from + newText.length, linkType.create({ href: currentLink.href, title: null }));
+        tr.setMeta("addToHistory", false);
+        view.dispatch(tr);
+        currentLink = { ...currentLink, to: from + newText.length };
+        // lastApplied is deliberately untouched: the commit must still see
+        // "changed" and write the real history step.
+    }
+
+    /** Restore the pristine pre-preview bytes (marks included), silently. */
+    function revertPreview(): void {
+        if (!previewOriginal) { return; }
+        const view = getView();
+        const snapshot = previewOriginal;
+        previewOriginal = null;
+        if (!view || !currentLink) { return; }
+        const tr = view.state.tr.replace(snapshot.from, currentLink.to, snapshot.slice);
+        tr.setMeta("addToHistory", false);
+        view.dispatch(tr);
+        currentLink = { ...currentLink, to: snapshot.to };
+    }
+
     function applyEdit(): void {
+        // A live preview is scaffolding, not the edit: silently restore the
+        // original first so the single history-visible transaction below is
+        // original→final (one undo step, exactly as before previews existed).
+        revertPreview();
         const view = getView();
         if (!view || !currentLink || currentLink.readOnly) { return; }
 
@@ -1123,6 +1181,10 @@ export function setupLinkPopup(
             updateResolvedHint(inputUrl.value, formatSwitch.get() === "wikilink");
         }, 200);
     });
+
+    // Live preview: the on-page link text follows the field while typing;
+    // Escape (any abandoning close) restores the original, commit keeps it.
+    inputText.addEventListener("input", () => previewText());
 
     [inputText, inputUrl].forEach((inp) => {
         // Local undo/redo: VS Code intercepts Cmd+Z before native inputs see it
