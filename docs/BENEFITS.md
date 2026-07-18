@@ -151,6 +151,7 @@ That only holds if the editor does the things you expect from VS Code:
   narrow and legible: **paste-unfurl** contacts *only* the host of a bare URL you
   paste (with nothing selected) to read that page's title so it can insert
   `[title](url)` instead of a bare link — no third-party service, no analytics,
+  it refuses local and private-network addresses (and re-checks every redirect),
   and it falls back to the plain link when the page is offline or untitled; and
   **URL embeds** load *only* a YouTube thumbnail for a bare YouTube link on its
   own line, with the player (privacy-mode `youtube-nocookie.com`) created only if
