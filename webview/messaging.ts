@@ -126,6 +126,27 @@ export function notifyResolveImagePath(id: string, relPath: string): void {
     vscode.postMessage({ type: "resolveImagePath", id, relPath });
 }
 
+/**
+ * Paste-unfurl (MAR-178): ask the extension to fetch `url`'s page title so the
+ * optimistically-inserted `[url](url)` can be upgraded to `[title](url)`. The
+ * reply arrives as an `unfurlResult` correlated by `id`.
+ */
+export function notifyUnfurl(id: string, url: string): void {
+    vscode.postMessage({ type: "unfurlUrl", id, url });
+}
+
+/**
+ * Just-in-time opt-in (MAR-179): the user accepted the "Enable" affordance
+ * offered when they did something that would use the network while the master
+ * switch (`birta.network.enabled`) was off. The extension persists the setting
+ * through the config write-back seam. Mirrors the other toolbar write-backs
+ * (setContentWidth, setTocPosition): the webview posts the intent, the
+ * extension owns the settings write.
+ */
+export function notifySetNetworkEnabled(enabled: boolean): void {
+    vscode.postMessage({ type: "setNetworkEnabled", enabled });
+}
+
 export function notifyFrontmatterUpdate(frontmatter: string): void {
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
 }

@@ -10,6 +10,26 @@ declare global {
             codeBlockAutoConvert?: boolean;
             /** Smart link resolution + wikilink autocomplete (birta.smartLinks). */
             smartLinks?: boolean;
+            /**
+             * Master network switch (birta.network.enabled), offline by default
+             * (MAR-179). Gates EVERY network feature: nothing contacts the
+             * network unless this is true. Mutated to true in-session when the
+             * user accepts a just-in-time opt-in, so the feature works for the
+             * rest of the session without a reload.
+             */
+            network?: boolean;
+            /** Paste-unfurl: bare-URL paste fetches the page title (birta.pasteUnfurl.enabled). Also gated by `network`. */
+            pasteUnfurl?: boolean;
+            /** Inline calc-on-`=` master gate (birta.calc.enabled). */
+            calcEnabled?: boolean;
+            /** Auto-insert the calc result on `=` instead of suggesting (birta.calc.autoInsert). */
+            calcAutoInsert?: boolean;
+            /** URL embeds: render a bare YouTube link as an inline facade card (birta.embeds.enabled). */
+            embedsEnabled?: boolean;
+            /** Auto-update in-note `#slug` anchor links on heading rename (birta.autoUpdateAnchors). */
+            autoUpdateAnchors?: boolean;
+            /** Self-sinking checklists: checked items drop below unchecked (birta.checklist.sinkChecked). */
+            checklistSinkChecked?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
             /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */

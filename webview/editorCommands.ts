@@ -50,6 +50,7 @@ import {
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { openBlockMenuAtCaret } from "@/components/blockMenu";
+import { uncheckAllTasks } from "@/editing/checklistSink";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { getView, lift } from "@/pm";
 import { liftListItem } from "@/pm";
@@ -541,6 +542,18 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertHorizontalRule: (getEditor) => callCmd(getEditor, insertHrCommand),
     insertTable: (getEditor) => callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
     insertLink: () => host.openLinkPrompt?.(),
+    // Capture the selection/caret and open the heading picker; picking inserts
+    // `[text](#slug)` via the shared link editor (see components/sectionLink).
+    // Lazy: the picker is invocation-only UI, so its bytes stay out of the
+    // launch bundle; the cached dynamic import costs one chunk fetch on first
+    // use (same pattern as katexLoader). The picker reads the view's CURRENT
+    // state when it opens, so the microtask gap cannot dangle a stale position.
+    insertSectionLink: (getEditor) =>
+        runProse(getEditor, (view) => {
+            import("@/components/sectionLink")
+                .then((m) => m.openSectionLinkPicker(view))
+                .catch((e) => console.error("[birta] section-link picker failed to load", e));
+        }),
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),
     insertFootnote: (getEditor) => insertFootnote(getEditor),
@@ -618,6 +631,12 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     unfold: (getEditor) => runCommand(getEditor, unfoldAtCaret),
     foldAll: (getEditor) => runCommand(getEditor, foldAllCommand),
     unfoldAll: (getEditor) => runCommand(getEditor, unfoldAllCommand),
+    // Clear every checked box in the caret's task list (one undo step), then
+    // refocus — a palette invocation dropped focus on the Quick Open input.
+    uncheckAllTasks: (getEditor) => runProse(getEditor, (view) => {
+        uncheckAllTasks(view);
+        view.focus();
+    }),
 };
 
 /** Dispatches an editor command by id; an unknown id is a safe no-op. */

@@ -36,6 +36,13 @@
   "config.debugMode.description": "Show debug overlays (e.g. table insert trigger zones). Intended for development use.",
   "config.imageLocalPath.description": "Local folder for saving images (relative or absolute path). Leave empty to auto-detect (images/, imgs/, assets/images/, assets/). Images are always stored locally and are never uploaded off your machine.",
   "config.smartLinks.description": "Resolve local links the way your site generator does: workspace-root paths, ancestor content roots (e.g. Hugo's content/), .md and index.md suffixes, and [[wikilink]] targets. When disabled, links resolve relative to the document only.",
+  "config.network.enabled.description": "Master network switch. Birta is offline by default: with this off, no feature ever contacts the network — paste-unfurl and URL embeds are both suppressed and nothing leaves your machine. Turn it on to allow those features (each still has its own switch, and each is on by default, so enabling this gives the full experience). Both features also offer to turn this on for you the moment you do something that would use them, so you don't have to find this setting first.",
+  "config.pasteUnfurl.enabled.description": "When you paste a bare URL with nothing selected, fetch the linked page's title and insert it as [title](url) instead of a bare link. The title is read from the page's Open Graph metadata (a plain HTML request to the pasted URL's own host, no third-party service); if the page is offline or has no title it silently leaves the plain link in place. Requires the master network switch (birta.network.enabled) — with that off the paste inserts a plain link and offers to enable it. On by default, so the master switch is the only thing you need to turn on.",
+  "config.calc.enabled.description": "Compute an arithmetic expression typed just before an equals sign (for example '12 * 4 =') and offer the result. Supports + - * / % (modulo) ^ (exponent), parentheses, and decimals; only pure arithmetic is evaluated, never anything with letters. By default the result is suggested and you confirm it with Tab, leaving Return free to start a new line; nothing changes until you do.",
+  "config.calc.autoInsert.description": "Insert the calc result automatically when you type the equals sign, instead of offering it as a confirmable suggestion. Because any operator-bearing run before the equals sign is treated as math, a hyphenated range (for example '3-4 =') or a slashed fraction ('1/2 =') will be evaluated too, not just deliberate arithmetic. Has no effect unless Calc is enabled.",
+  "config.embeds.enabled.description": "Show a bare YouTube link that sits alone on its own line as an inline player card. The card is a static thumbnail loaded from YouTube; the actual player (an embedded, privacy-mode iframe) is created only when you click play, and nothing plays until you do. This is render-only: the file on disk keeps the plain link exactly as you wrote it, and a titled link ([label](url)) or a URL inside a sentence is never turned into a card. Requires the master network switch (birta.network.enabled) — with that off, no card is shown and no thumbnail is ever requested from YouTube. On by default, so the master switch is the only thing you need to turn on.",
+  "config.autoUpdateAnchors.description": "When you rename a heading, automatically update every same-document section link ([text](#slug)) that points at it so it keeps working, all in one undo step. Only in-note anchor links are touched, and only their target slug changes — the link text is left alone and the file round-trips as normal Markdown. Moving a heading without changing its text rewrites nothing; a link to a heading you delete is left as-is (and shown as not found) rather than repointed. On by default; turn it off to leave anchor links exactly as typed.",
+  "config.checklist.sinkChecked.description": "When you check a task-list item, move it below the still-unchecked items in the same list (with a brief highlight); unchecking floats it back up to the bottom of the unchecked group. One undo restores the previous order. Off by default: the checkbox flips in place.",
   "config.tableWrap.description": "Controls how text wraps inside table cells. 'normal' avoids mid-word breaks (may cause narrower columns). 'aggressive' allows breaking long words to keep columns wider. 'none' disables wrapping entirely.",
   "config.tableWrap.none": "Do not wrap text in table cells. Long content will overflow horizontally.",
   "config.tableWrap.normal": "Wrap text at soft line breaks, but avoid breaking words in the middle. (Recommended default)",
@@ -91,6 +98,7 @@
   "command.editor.insertHorizontalRule.title": "Horizontal Rule",
   "command.editor.insertTable.title": "Insert Table",
   "command.editor.insertLink.title": "Insert/Edit Link",
+  "command.editor.insertSectionLink.title": "Link to Section",
   "command.editor.insertImage.title": "Insert Image",
   "command.editor.insertMath.title": "Insert Math",
   "command.editor.insertFootnote.title": "Insert Footnote",
@@ -151,5 +159,6 @@
   "command.editor.fold.title": "Fold",
   "command.editor.unfold.title": "Unfold",
   "command.editor.foldAll.title": "Fold All",
-  "command.editor.unfoldAll.title": "Unfold All"
+  "command.editor.unfoldAll.title": "Unfold All",
+  "command.editor.uncheckAllTasks.title": "Uncheck All Tasks"
 }

@@ -727,3 +727,41 @@ describe("mid-edit safety", () => {
         expect(out).toContain("[beta](b.md)");
     });
 });
+
+// ─── Dangling-anchor affordance (MAR-180 complement A) ───────────────────────
+
+describe("dangling anchor hint", () => {
+    // One resolvable anchor and one that points at no heading in the document.
+    const DOC = "# Real Heading\n\nSee [good](#real-heading) and [bad](#gone) here.\n";
+    let editor: Editor;
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container } = await makeEditor(DOC));
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    it("an anchor resolving to a heading shows the '→ title' hint, not the miss state", async () => {
+        await hover(container.querySelector('a[href="#real-heading"]')!);
+        const hint = getPopup().querySelector<HTMLElement>(".lp-anchor-hint")!;
+        expect(hint.textContent).toBe("→ Real Heading");
+        expect(hint.style.display).not.toBe("none");
+        expect(hint.classList.contains("lp-anchor-hint--miss")).toBe(false);
+    });
+
+    it("an anchor resolving to no heading shows a quiet 'not found' state instead of hiding", async () => {
+        await hover(container.querySelector('a[href="#gone"]')!);
+        const hint = getPopup().querySelector<HTMLElement>(".lp-anchor-hint")!;
+        // Not the old silent no-op: the hint is visible and flagged as a miss.
+        expect(hint.style.display).not.toBe("none");
+        expect(hint.textContent).toBe("Heading not found");
+        expect(hint.classList.contains("lp-anchor-hint--miss")).toBe(true);
+    });
+});

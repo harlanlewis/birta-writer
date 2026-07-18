@@ -68,7 +68,7 @@
  */
 import type { EditorView } from "../pm";
 import { Fragment, type Node as ProseNode } from "../pm";
-import { TextSelection, type EditorState } from "../pm";
+import { TextSelection, type EditorState, type Selection, type Transaction } from "../pm";
 import { BlockRangeSelection } from "../plugins/blockRange";
 import { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState";
 // Runtime-only cycle (moveBlocks → headingFold → blockMenu → moveBlocks):
@@ -290,20 +290,40 @@ export function moveFits(
     return resolveMove(state, source, targetPos, 0).reason === null;
 }
 
+/** What `appendMove` reports back so a caller can flash/select the landing. */
+export interface AppendedMove {
+    /** Post-move start position of the inserted run (valid on `tr.doc`). */
+    insertAt: number;
+    /** Size of the moved fragment, so callers can flash or select its extent. */
+    contentSize: number;
+}
+
 /**
- * Move the contiguous block run `source` so it starts at boundary
- * `targetPos`, as a single guarded transaction (one undo step). Returns
- * false — with the document untouched — for no-op targets (inside/adjacent
- * to the source, the "put it back" gesture), for contract violations
- * (loudly, see the module header), and on a content-guard veto.
+ * Append the move's steps (delete + insert), the fold move-meta, and the
+ * content-guard tag onto an EXISTING transaction, WITHOUT dispatching. This is
+ * the tr-building core `moveBlocks` was split into (MAR-175): returning the
+ * steps on a caller-owned `tr` is what lets the self-sinking checklist fold a
+ * checkbox flip AND the relocation into ONE transaction (one undo step), while
+ * `moveBlocks` passes a fresh `state.tr` and gets exactly the historical
+ * single-move transaction — so every existing caller and test is unchanged.
+ *
+ * Selection is deliberately NOT set here (see `applyMoveSelection`): a plain
+ * block move restores a caret at the moved block, but a checkbox click must let
+ * ProseMirror map the existing selection through the move untouched rather than
+ * yank the caret to the relocated item.
+ *
+ * Returns null — leaving `tr` for the caller to discard — for the put-it-back
+ * no-op, a contract refusal (loud, see the module header), the post-delete
+ * insert backstop, and a save-survival hazard. These are the SAME verdicts the
+ * old inline body produced; `moveBlocks` maps null → `false`.
  */
-export function moveBlocks(
-    view: EditorView,
+export function appendMove(
+    tr: Transaction,
+    state: EditorState,
     source: { from: number; to: number },
     targetPos: number,
-    opts?: MoveBlocksOptions,
-): boolean {
-    const relevelDelta = opts?.relevelDelta ?? 0;
+    relevelDelta = 0,
+): AppendedMove | null {
     // Put-it-back gesture — a quiet no-op, never an error. The exception is a
     // drop AT the source's own start that also relevels: the run does not
     // move, but its headings' ranks change, so it is a real edit (the TOC's
@@ -311,19 +331,17 @@ export function moveBlocks(
     // deeper inside the range stays a no-op: a run cannot land within itself.
     const inPlaceRelevel = targetPos === source.from && relevelDelta !== 0;
     if (!inPlaceRelevel && targetPos >= source.from && targetPos <= source.to) {
-        return false;
+        return null;
     }
-    const { doc } = view.state;
-    // The pre-move selection, captured before the transaction so a single
-    // move can restore the caret at its offset WITHIN the moved block (below).
-    const preMoveSel = view.state.selection;
+    const { doc } = state;
 
     // ── 2/3/4. Structural legality — decided by resolveMove, the shared
     // verdict the UI also consults (so a live-looking row and the primitive
     // can never disagree about what is possible).
-    const resolution = resolveMove(view.state, source, targetPos, relevelDelta);
+    const resolution = resolveMove(state, source, targetPos, relevelDelta);
     if (resolution.reason !== null) {
-        return refuse(resolution.reason);
+        refuse(resolution.reason);
+        return null;
     }
     const { content, coveredFrom, coveredTo } = resolution;
 
@@ -334,11 +352,13 @@ export function moveBlocks(
     // can exempt exactly them and still veto the buggy-unwrap shape.
     const dissolvedMarkers = dissolvedMarkersFor(doc, { from: coveredFrom, to: coveredTo });
 
-    // ── The move: delete + insert in one transaction ──
+    // ── The move: delete + insert on the caller's transaction ──
     // deleteRange (not delete): removing a list's last item must dissolve
     // the emptied list instead of leaving a schema-invalid empty node — the
-    // single allowed normalization.
-    const tr = view.state.tr.deleteRange(source.from, source.to);
+    // single allowed normalization. The delete is appended, and the target is
+    // mapped through `tr.mapping`, so any steps the caller already staged (the
+    // checklist's checkbox flip is position-preserving) are accounted for.
+    tr.deleteRange(source.from, source.to);
     const sizeAfterDelete = tr.doc.content.size;
     const insertAt = tr.mapping.map(targetPos);
     tr.insert(insertAt, content);
@@ -346,8 +366,9 @@ export function moveBlocks(
         // Backstop for the pre-checked fit (B2): tr.insert silently no-ops
         // when the slice can't fit (replaceStep returns null — no throw).
         // Dispatching would commit the DELETE half alone: a failed move must
-        // be a no-op, never a deletion.
-        return refuse("insert no-opped after the delete — refusing the half-committed move");
+        // be a no-op, never a deletion. The caller discards this tr on null.
+        refuse("insert no-opped after the delete — refusing the half-committed move");
+        return null;
     }
 
     // ── Save-survival refusal (MAR-120 B/F, refuse lane) ──
@@ -360,7 +381,7 @@ export function moveBlocks(
     if (hazard) {
         console.warn(`[moveBlocks] move refused: ${hazard}`);
         showGuardNotice(t("Move blocked — the result would not survive saving and reopening."));
-        return false;
+        return null;
     }
 
     // ── 5. Side-state rides along ──
@@ -373,13 +394,39 @@ export function moveBlocks(
         insertAt,
     } satisfies HeadingFoldMeta);
 
+    // ── 1. Content-guard tag ──
+    // Content-guard contract (MAR-108): a move conserves content exactly
+    // (modulo dissolving a parent it emptied). Tagged here rather than at
+    // dispatch so a combined checklist transaction carries the tag too — its
+    // checkbox flip is an attr change (fingerprint-invisible), so the move
+    // fingerprint the guard checks is unchanged.
+    tagContentGuard(
+        tr,
+        dissolvedMarkers.length > 0
+            ? { kind: "move", dissolvedMarkers }
+            : { kind: "move" },
+    );
+    return { insertAt, contentSize: content.size };
+}
+
+/**
+ * Restore the selection after a plain block move (`moveBlocks` only — the
+ * checklist path leaves the mapped selection alone). Multi-block drops keep the
+ * whole run selected (the Tiptap post-drop convention) so it stays grabbable
+ * for another drag; single moves get a plain caret.
+ */
+function applyMoveSelection(
+    tr: Transaction,
+    moved: AppendedMove,
+    preMoveSel: Selection,
+    source: { from: number; to: number },
+    opts?: MoveBlocksOptions,
+): void {
+    const { insertAt, contentSize } = moved;
     // The selection rides the moved content — redo then restores it (and the
-    // scroll) at the destination instead of jumping to a stale spot. Multi-
-    // block drops keep the whole run selected (the Tiptap post-drop
-    // convention) so it stays grabbable for another drag; single moves get a
-    // plain caret.
+    // scroll) at the destination instead of jumping to a stale spot.
     if (opts?.selectRun) {
-        const runEnd = insertAt + content.size;
+        const runEnd = insertAt + contentSize;
         // Top-level runs stay selected as a real block range (leaf blocks
         // included); item-level ranges (inside a list) would snap outward
         // to the whole list, so they keep the text-span fallback.
@@ -409,16 +456,36 @@ export function moveBlocks(
             TextSelection.near(tr.doc.resolve(Math.min(insertAt + rel, tr.doc.content.size))),
         );
     }
+}
+
+/**
+ * Move the contiguous block run `source` so it starts at boundary
+ * `targetPos`, as a single guarded transaction (one undo step). Returns
+ * false — with the document untouched — for no-op targets (inside/adjacent
+ * to the source, the "put it back" gesture), for contract violations
+ * (loudly, see the module header), and on a content-guard veto.
+ *
+ * A thin wrapper over `appendMove` (MAR-175): build a fresh transaction, append
+ * the move, restore the selection, then dispatch and flash. The tr-building
+ * logic lives in `appendMove` so the self-sinking checklist can share it.
+ */
+export function moveBlocks(
+    view: EditorView,
+    source: { from: number; to: number },
+    targetPos: number,
+    opts?: MoveBlocksOptions,
+): boolean {
+    // The pre-move selection, captured before the transaction so a single
+    // move can restore the caret at its offset WITHIN the moved block.
+    const preMoveSel = view.state.selection;
+    const tr = view.state.tr;
+    const moved = appendMove(tr, view.state, source, targetPos, opts?.relevelDelta ?? 0);
+    if (!moved) {
+        return false;
+    }
+    applyMoveSelection(tr, moved, preMoveSel, source, opts);
 
     // ── 1. Atomic + veto-aware dispatch ──
-    // Content-guard contract (MAR-108): a move conserves content exactly
-    // (modulo dissolving a parent it emptied).
-    tagContentGuard(
-        tr,
-        dissolvedMarkers.length > 0
-            ? { kind: "move", dissolvedMarkers }
-            : { kind: "move" },
-    );
     const docBefore = view.state.doc;
     view.dispatch(tr);
     if (view.state.doc === docBefore) {
@@ -437,7 +504,7 @@ export function moveBlocks(
     // what the move transaction already carries.
     view.focus();
     // Landing flash at the destination — positions are valid in the new doc.
-    flashRange(view, insertAt, insertAt + content.size);
+    flashRange(view, moved.insertAt, moved.insertAt + moved.contentSize);
     return true;
 }
 

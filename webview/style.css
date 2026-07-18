@@ -2284,3 +2284,76 @@ body.block-marqueeing .milkdown .editor {
     border-radius: 2px;
     pointer-events: none;
 }
+
+/* ── URL embeds (MAR-56) ──────────────────────────────────────────────────────
+   A bare provider link (YouTube) renders as an inline facade card via a view-only
+   decoration — the source markdown stays a plain link. `.embed-host` is the node
+   decoration on the embedded paragraph: it hides the raw <a> text so only the
+   card shows; the reveal-on-caret plugin drops this decoration (and the card
+   widget) while the caret is in the paragraph, so the link is always editable.
+   All chrome uses --vscode-* tokens; the accent is var(--vscode-focusBorder)
+   with no literal fallback. */
+.embed-host > a {
+    display: none;
+}
+
+.embed-card-host {
+    display: block;
+    margin: 0.75em 0;
+}
+
+.embed-card {
+    max-width: 100%;
+}
+
+.embed-card__frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 6px;
+    background: var(--vscode-editorWidget-background);
+}
+
+.embed-card__thumb,
+.embed-card__iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.embed-card__thumb {
+    object-fit: cover;
+}
+
+/* Play overlay: a real button, so it takes the shared focus ring. Neutral,
+   theme-driven chrome (no YouTube-red literal) — this is a facade, not a brand
+   mark. */
+.embed-card__play {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 68px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    transition: background 0.1s ease;
+}
+
+.embed-card__play:hover {
+    background: var(--vscode-focusBorder);
+}
+
+.embed-card__play svg {
+    width: 28px;
+    height: 28px;
+}

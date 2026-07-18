@@ -161,12 +161,12 @@ export function readFoldingConfig(
  * Persist a setting, writing to the scope that currently wins — a Global
  * write would be silently overridden by an existing workspace value.
  */
-export function updateSettingRespectingScope(key: string, value: unknown): void {
+export function updateSettingRespectingScope(key: string, value: unknown): Thenable<void> {
     const cfg = getBirtaConfiguration();
     const target = cfg.inspect(key)?.workspaceValue !== undefined
         ? vscode.ConfigurationTarget.Workspace
         : vscode.ConfigurationTarget.Global;
-    void cfg.update(key, value, target);
+    return cfg.update(key, value, target);
 }
 
 /**

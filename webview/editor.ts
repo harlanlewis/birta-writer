@@ -21,6 +21,9 @@ import { applyExternalSync } from "./externalSync";
 import { instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import {
+    anchorSyncPlugin,
+    calcAutoInsertPlugin,
+    calcSuggestPlugin,
     caretScrollMarginPlugin,
     cellClickFixPlugin,
     codeBlockBackspacePlugin,
@@ -518,7 +521,7 @@ export async function createEditor(
         builder = builder.use(preset);
     }
     // ── Format-agnostic chrome, post-preset ─────────────────────────────────
-    _editor = await builder
+    builder = builder
         // Synchronous doc-change reporting: drives BOTH the outbound save
         // pipeline and pure views (the TOC) — see plugins/docChange. Milkdown's
         // plugin-listener is deliberately not registered: its unconditional
@@ -552,7 +555,60 @@ export async function createEditor(
         // Pasting a URL over a selection links the selection instead of
         // replacing it (handlePaste; no other plugin registers one).
         .use(pasteLinkPlugin)
-        .use(wikiLinkCompletePlugin)
+        .use(wikiLinkCompletePlugin);
+
+    // Inline calc-on-`=` (MAR-177): advisory suggestion by default, or an input
+    // rule when birta.calc.autoInsert is on. Composed ONLY when the feature is
+    // enabled — a disabled feature must cost nothing (design principle: "A
+    // disabled feature costs nothing"). Left composed unconditionally, the
+    // caret-suggest controller would still run its plugin-view update on every
+    // transaction, allocating a 500-char match window per keystroke even though
+    // every match short-circuits to null. __i18n is baked into the HTML before
+    // this script runs, so calcEnabled is readable synchronously here (like
+    // smartLinks). The internal autoInsert flag still decides which of the two
+    // composed plugins actually fires.
+    if (window.__i18n?.calcEnabled ?? true) {
+        builder = builder.use(calcSuggestPlugin).use(calcAutoInsertPlugin);
+    }
+
+    // URL embeds (MAR-56): render a bare provider link (YouTube) as an inline
+    // facade card via a view-only decoration — the source stays a plain link and
+    // round-trips byte-identically. Composed ONLY when ACTIVE — the master
+    // network switch (MAR-179, offline by default) AND the per-feature key must
+    // both be on — so an offline editor composes nothing (design principle: "A
+    // disabled feature costs nothing"); the plugin's own decoration function is
+    // gated on the same pair. The import is DYNAMIC for the same reason: with
+    // the master switch off (the default), the plugin's bytes never load at
+    // all, keeping the launch bundle lean (CLAUDE.md "Launch performance").
+    // __i18n is baked into the HTML before this script runs, so the flags read
+    // synchronously here (like calc/smartLinks). There is no just-in-time
+    // opt-in for embeds in this pass — see MAR-179 notes (the provider check
+    // would have to run with the plugin uncomposed); the paste-unfurl opt-in
+    // is the shipped affordance.
+    if ((window.__i18n?.network ?? false) && (window.__i18n?.embedsEnabled ?? true)) {
+        // A failed chunk load degrades to "no embed cards" — it must not
+        // reject createEditor and take the whole editor down with it.
+        try {
+            const { embedPlugin } = await import("./plugins/embed");
+            builder = builder.use(embedPlugin);
+        } catch (e) {
+            console.error("[birta] embed plugin failed to load; continuing without embeds", e);
+        }
+    }
+
+    // Auto-update in-note anchor links on heading rename (MAR-180): when a
+    // heading is renamed its slug changes, and every `[…](#old-slug)` pointing
+    // at it is rewritten to the new slug in the SAME undo step. Composed ONLY
+    // when enabled so a cautious user (birta.autoUpdateAnchors = false) pays
+    // nothing — no appendTransaction registered, so not even the perf guard
+    // runs (the plugin also self-gates for defense in depth). __i18n is baked
+    // into the HTML before this script runs, so the flag reads synchronously
+    // here (like calc/embeds).
+    if (window.__i18n?.autoUpdateAnchors ?? true) {
+        builder = builder.use(anchorSyncPlugin);
+    }
+
+    _editor = await builder
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
         .use(blockKeysPlugin)

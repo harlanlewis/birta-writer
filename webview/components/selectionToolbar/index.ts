@@ -25,6 +25,7 @@ import {
     IconEraser,
     IconMath,
     IconLink,
+    IconHash,
     IconChevronDown,
     IconChevronUp,
     IconCopy,
@@ -441,6 +442,16 @@ export function setupSelectionToolbar(
     });
     toolbar.appendChild(linkBtn);
 
+    // Link to section: opens the heading picker, then inserts `[text](#slug)`
+    // to the chosen heading (MAR-176). Sits with the link button — the headline
+    // use case is "select text → link it to a section" — and routes through the
+    // shared command registry, so it behaves identically wherever it's invoked.
+    const sectionLinkBtn = sBtn(IconHash, t("Link to Section"), () =>
+        runEditorCommand("insertSectionLink", getEditor),
+    );
+    sectionLinkBtn.classList.add("sel-tb-section-link-btn");
+    toolbar.appendChild(sectionLinkBtn);
+
     // ── Insert group: clear formatting ──
     const insertSep = sSep();
     toolbar.appendChild(insertSep);
@@ -738,6 +749,7 @@ export function setupSelectionToolbar(
         highlightBtn.style.display = "none";
         linkSep.style.display = "none";
         linkBtn.style.display = "none";
+        sectionLinkBtn.style.display = "none";
         insertSep.style.display = "none";
         clearFmtBtn.style.display = "none";
         mathBtn.style.display = "none";
@@ -857,6 +869,7 @@ export function setupSelectionToolbar(
             // ops are not offered in cell mode either.
             linkSep.style.display = "none";
             linkBtn.style.display = "none";
+            sectionLinkBtn.style.display = "none";
             insertSep.style.display = "none";
             clearFmtBtn.style.display = "none";
             mathBtn.style.display = "none";
@@ -947,6 +960,7 @@ export function setupSelectionToolbar(
         const showCode = visible.has("inlineCode");
         const showHighlight = visible.has("highlight");
         const showLink = visible.has("link");
+        const showSectionLink = visible.has("sectionLink");
         const showClear = visible.has("clearFormatting");
         const showMath = visible.has("math");
         fmtWrap.style.display = showFormat ? "" : "none";
@@ -956,20 +970,23 @@ export function setupSelectionToolbar(
         codeBtn.style.display = showCode ? "" : "none";
         highlightBtn.style.display = showHighlight ? "" : "none";
         linkBtn.style.display = showLink ? "" : "none";
+        sectionLinkBtn.style.display = showSectionLink ? "" : "none";
         clearFmtBtn.style.display = showClear ? "" : "none";
         mathBtn.style.display = showMath ? "" : "none";
 
         // A separator only appears between two non-empty groups, so hiding items
         // by config never leaves a leading, trailing, or doubled separator.
         // Inline math now groups with the marks (it moved beside inline code).
+        // Link + Link-to-section share the one link group (and its separator).
         const hasMarks = showBold || showItalic || showStrike || showCode || showMath || showHighlight;
+        const hasLinks = showLink || showSectionLink;
         const hasInsert = showClear;
-        textFmtSep.style.display = showFormat && (hasMarks || showLink || hasInsert) ? "" : "none";
-        linkSep.style.display = showLink && (showFormat || hasMarks) ? "" : "none";
-        insertSep.style.display = hasInsert && (showFormat || hasMarks || showLink) ? "" : "none";
+        textFmtSep.style.display = showFormat && (hasMarks || hasLinks || hasInsert) ? "" : "none";
+        linkSep.style.display = hasLinks && (showFormat || hasMarks) ? "" : "none";
+        insertSep.style.display = hasInsert && (showFormat || hasMarks || hasLinks) ? "" : "none";
 
         // Nothing to show (every inline item opted out) → don't flash an empty bar.
-        if (!showFormat && !hasMarks && !showLink && !hasInsert) {
+        if (!showFormat && !hasMarks && !hasLinks && !hasInsert) {
             hideToolbar();
             return;
         }

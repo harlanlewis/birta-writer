@@ -41,6 +41,7 @@ import type { ToWebviewMessage } from "../shared/messages";
 import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
 import { isTaskCheckboxClick } from "./utils/taskCheckbox";
+import { applyTaskToggle } from "./editing/checklistSink";
 
 import { setupLinkPopup, closeLinkEditor } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
@@ -576,12 +577,12 @@ eventManager.onDocument(
             ) {
                 const nodePos = $pos.before(d);
                 const checked = node.attrs.checked as boolean;
-                view.dispatch(
-                    state.tr.setNodeMarkup(nodePos, null, {
-                        ...node.attrs,
-                        checked: !checked,
-                    }),
-                );
+                // Self-sinking checklists (birta.checklist.sinkChecked, baked at
+                // load): when ON, the flip AND the relocation land as one undo
+                // step; when OFF, applyTaskToggle does exactly the plain
+                // in-place flip this site did before (zero extra work).
+                const sink = window.__i18n?.checklistSinkChecked ?? false;
+                applyTaskToggle(view, nodePos, !checked, sink);
                 return;
             }
         }

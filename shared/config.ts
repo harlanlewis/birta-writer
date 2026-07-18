@@ -69,6 +69,58 @@ export interface BirtaConfig extends ProofreadConfig {
     /** Nested `floatingToolbar.items` read; same merge rule as toolbarPlacements. */
     floatingToolbarItems: Record<string, boolean>;
     smartLinks: boolean;
+    /**
+     * Master network switch (birta.network.enabled) — offline by default
+     * (MAR-179). Birta's positioning is "nothing leaves your machine", so this
+     * is the single knob that is OFF by default and gates EVERY feature that
+     * contacts the network (paste-unfurl, URL embeds). Nothing reaches the
+     * network unless this is on; when it is, each feature is additionally
+     * gated by its own per-feature key (both default ON), so turning the
+     * master on gives the full experience and a user can still disable one
+     * feature. The per-feature affordances offer a just-in-time opt-in the
+     * moment the user does the thing that would use the network.
+     */
+    networkEnabled: boolean;
+    /**
+     * Paste-unfurl feature gate (birta.pasteUnfurl.enabled): pasting a bare URL
+     * onto an empty selection fetches the page's Open Graph title and inserts
+     * `[title](url)`. Gated by `networkEnabled && pasteUnfurlEnabled` — the
+     * fetch fires only when BOTH are on. When the master is off, a bare-URL
+     * paste inserts a plain link (no fetch, no `unfurlUrl` message) and offers a
+     * just-in-time "Enable" affordance instead. Default ON, so the master is the
+     * only thing off by default.
+     */
+    pasteUnfurlEnabled: boolean;
+    /** Inline calc-on-`=` master gate (birta.calc.enabled). */
+    calcEnabled: boolean;
+    /**
+     * URL-embed feature gate (birta.embeds.enabled): a bare provider link
+     * (YouTube) on its own line renders as an inline facade card — a static
+     * thumbnail that loads the player only on click. Render-only: the on-disk
+     * markdown stays the plain bare link. Gated by `networkEnabled &&
+     * embedsEnabled` — the card renders / thumbnail loads / CSP grants hosts
+     * only when BOTH are on. When the master is off, no card renders, no
+     * thumbnail is fetched, and the webview CSP grants no embed hosts. Default
+     * ON, so the master is the only thing off by default.
+     */
+    embedsEnabled: boolean;
+    /** Insert the result on `=` instead of suggesting it (birta.calc.autoInsert). */
+    calcAutoInsert: boolean;
+    /**
+     * Auto-update in-note anchor links on heading rename
+     * (birta.autoUpdateAnchors): when a heading is renamed, every same-document
+     * `[…](#old-slug)` link pointing at it is rewritten to the new slug in the
+     * same undo step. On by default; turn it off to leave anchor links exactly
+     * as typed when a heading's text changes.
+     */
+    autoUpdateAnchors: boolean;
+    /**
+     * Self-sinking checklists (birta.checklist.sinkChecked): when a task item is
+     * checked it drops below the still-unchecked siblings in its list, and
+     * unchecking floats it back up. Opt-in, default OFF — a plain in-place flip
+     * otherwise.
+     */
+    checklistSinkChecked: boolean;
     imageLocalPath: string;
 }
 
@@ -121,6 +173,13 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     floatingToolbarEnabled: "floatingToolbar.enabled",
     floatingToolbarItems: "floatingToolbar.items",
     smartLinks: "smartLinks",
+    networkEnabled: "network.enabled",
+    pasteUnfurlEnabled: "pasteUnfurl.enabled",
+    calcEnabled: "calc.enabled",
+    calcAutoInsert: "calc.autoInsert",
+    autoUpdateAnchors: "autoUpdateAnchors",
+    embedsEnabled: "embeds.enabled",
+    checklistSinkChecked: "checklist.sinkChecked",
     imageLocalPath: "imageLocalPath",
 };
 
@@ -179,5 +238,32 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     floatingToolbarEnabled: true,
     floatingToolbarItems: {},
     smartLinks: true,
+    // Master network switch ships OFF (MAR-179): Birta is offline by default,
+    // so NO network feature runs until the user turns this on. This is the one
+    // setting whose default is off; the per-feature keys below stay ON so
+    // flipping the master on gives the full experience. Turning it on is
+    // offered just-in-time, the moment the user does something that would use
+    // the network (see webview/components/networkOptIn).
+    networkEnabled: false,
+    // Paste-unfurl the FEATURE ships ON, but it's gated behind the master
+    // switch: with the master off, a bare-URL paste inserts a plain link and
+    // offers the opt-in; only `networkEnabled && pasteUnfurlEnabled` fetches the
+    // page title. Leaving this on keeps the master the single off-by-default.
+    pasteUnfurlEnabled: true,
+    // Calc: the feature ships on, but advisory (no silent mutation) by default.
+    calcEnabled: true,
+    calcAutoInsert: false,
+    // Auto-update anchor links on heading rename ships ON — the maintainer
+    // wants it automatic ("magical"); the gate is the escape hatch for anyone
+    // who prefers links left exactly as typed.
+    autoUpdateAnchors: true,
+    // URL embeds the FEATURE ships ON, but gated behind the master switch: a
+    // bare YouTube link renders as an inline facade card only when
+    // `networkEnabled && embedsEnabled`. Render-only, so the file is unchanged;
+    // with the master off there is no card and no thumbnail network load.
+    embedsEnabled: true,
+    // Self-sinking checklists ship OFF: reordering on a checkbox click is a
+    // surprising motion until asked for, so the default is a plain in-place flip.
+    checklistSinkChecked: false,
     imageLocalPath: "",
 };

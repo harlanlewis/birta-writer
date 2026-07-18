@@ -1,0 +1,78 @@
+/*
+ * networkOptIn.css — the just-in-time "Enable network features" affordance
+ * (MAR-179). A small, quiet anchored popup offered when the user does
+ * something that would use the network while the master switch is off.
+ *
+ * Advisory, reversible, and quiet per docs/DESIGN_PRINCIPLES.md: it never
+ * steals focus, never blocks typing, and dismisses on a click of × / Escape /
+ * outside. All color comes from --vscode-* tokens (accents use --focusBorder
+ * with no literal fallback), matching the link popup and the content-guard
+ * notice it borrows its shape from.
+ */
+.network-optin {
+    position: absolute;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 44ch;
+    padding: 4px 6px 4px 10px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 6px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
+    font-size: 12px;
+    line-height: 1.4;
+    /* Fade in so it settles quietly rather than snapping into view. */
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+}
+
+.network-optin--visible {
+    opacity: 1;
+}
+
+.network-optin__label {
+    white-space: nowrap;
+}
+
+/* The "Enable" action: a text button that reads as the accent affordance. */
+.network-optin__enable {
+    flex: 0 0 auto;
+    padding: 2px 8px;
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font: inherit;
+    cursor: pointer;
+}
+
+.network-optin__enable:hover {
+    background: var(--vscode-focusBorder);
+    color: var(--vscode-editor-background);
+}
+
+/* The dismiss (×): icon-only, so it carries an aria-label in the DOM. */
+.network-optin__dismiss {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.network-optin__dismiss:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-foreground);
+}

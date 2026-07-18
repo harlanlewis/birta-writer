@@ -144,6 +144,23 @@ That only holds if the editor does the things you expect from VS Code:
 - **Your images never leave your machine.** Pasted and dropped images are stored
   locally in your workspace, deduplicated by content hash. **Why it matters:** no
   surprise uploads; the document is self-contained.
+- **Offline by default — nothing leaves your machine unless you turn it on.**
+  Every feature that could touch the network sits behind a single master switch,
+  `birta.network.enabled`, which ships **off**. With it off the editor makes no
+  outbound request at all. Turn it on and exactly two features become live, each
+  narrow and legible: **paste-unfurl** contacts *only* the host of a bare URL you
+  paste (with nothing selected) to read that page's title so it can insert
+  `[title](url)` instead of a bare link — no third-party service, no analytics,
+  it refuses local and private-network addresses (and re-checks every redirect),
+  and it falls back to the plain link when the page is offline or untitled; and
+  **URL embeds** load *only* a YouTube thumbnail for a bare YouTube link on its
+  own line, with the player (privacy-mode `youtube-nocookie.com`) created only if
+  you click play. You don't have to hunt for the setting first: the moment you do
+  something that would use the network, a quiet, dismissable "Enable" prompt
+  appears right where you're working, and you decide in place. **Why it matters:**
+  the private default is the *default*, not a setting you have to remember to
+  find; the two exceptions are opt-in, self-limited, and each still has its own
+  switch (`birta.pasteUnfurl.enabled`, `birta.embeds.enabled`).
 
 ---
 

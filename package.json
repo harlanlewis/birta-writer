@@ -204,6 +204,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.insertSectionLink",
+                "title": "%command.editor.insertSectionLink.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.insertImage",
                 "title": "%command.editor.insertImage.title%",
                 "category": "Birta Writer"
@@ -507,6 +512,11 @@
                 "command": "birta.editor.unfoldAll",
                 "title": "%command.editor.unfoldAll.title%",
                 "category": "Birta Writer"
+            },
+            {
+                "command": "birta.editor.uncheckAllTasks",
+                "title": "%command.editor.uncheckAllTasks.title%",
+                "category": "Birta Writer"
             }
         ],
         "keybindings": [
@@ -797,6 +807,10 @@
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
+                    "command": "birta.editor.insertSectionLink",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
                     "command": "birta.editor.insertImage",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 },
@@ -1038,6 +1052,10 @@
                 },
                 {
                     "command": "birta.editor.unfoldAll",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.uncheckAllTasks",
                     "when": "activeCustomEditorId == 'birta.editor'"
                 }
             ],
@@ -1787,6 +1805,12 @@
                     "default": true,
                     "description": "Floating palette: show the Insert/Edit Link button."
                 },
+                "birta.floatingToolbar.items.sectionLink": {
+                    "order": 60.5,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Link to Section button (anchor link to a heading)."
+                },
                 "birta.floatingToolbar.items.clearFormatting": {
                     "order": 61,
                     "type": "boolean",
@@ -1824,6 +1848,48 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.smartLinks.description%"
+                },
+                "birta.network.enabled": {
+                    "order": 105,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.network.enabled.description%"
+                },
+                "birta.pasteUnfurl.enabled": {
+                    "order": 106.5,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.pasteUnfurl.enabled.description%"
+                },
+                "birta.calc.enabled": {
+                    "order": 107,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.calc.enabled.description%"
+                },
+                "birta.calc.autoInsert": {
+                    "order": 108,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.calc.autoInsert.description%"
+                },
+                "birta.embeds.enabled": {
+                    "order": 108.5,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.embeds.enabled.description%"
+                },
+                "birta.autoUpdateAnchors": {
+                    "order": 108.7,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.autoUpdateAnchors.description%"
+                },
+                "birta.checklist.sinkChecked": {
+                    "order": 109,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.checklist.sinkChecked.description%"
                 }
             }
         }

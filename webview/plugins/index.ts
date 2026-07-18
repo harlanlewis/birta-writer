@@ -1,3 +1,5 @@
+export { anchorSyncPlugin, headingRangeTouched } from "./anchorSync";
+export { calcAutoInsertPlugin, calcSuggestPlugin } from "./calc";
 export { insertCalloutCommand } from "./callouts";
 export { toggleHighlightCommand } from "./highlight";
 export { caretScrollMarginPlugin } from "./caretScrollMargin";
@@ -31,6 +33,9 @@ export {
 export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
 export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
+// NOTE: plugins/embed is deliberately NOT re-exported here. The barrel is in
+// the eager graph, and the embed plugin must stay lazy (dynamic import in
+// editor.ts, gated on the network master switch). Import it directly.
 export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export {

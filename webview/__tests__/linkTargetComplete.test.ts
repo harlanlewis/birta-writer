@@ -177,6 +177,25 @@ describe("link target autocompletion — options", () => {
 
         expect(optionTexts()).toEqual(["../anthropic/index.md"]);
     });
+
+    it("rendered options should carry the ARIA listbox/option model (UI-1)", async () => {
+        await type(input, "write");
+        reply();
+
+        const list = menuEl()!.querySelector("ul")!;
+        expect(list.getAttribute("role")).toBe("listbox");
+
+        const options = Array.from(menuEl()!.querySelectorAll("li"));
+        expect(options.length).toBeGreaterThan(0);
+        for (const li of options) {
+            expect(li.getAttribute("role")).toBe("option");
+            expect(li.id).toBeTruthy();
+            expect(li.getAttribute("aria-selected")).toBe("false");
+        }
+        // Option ids are unique within the menu.
+        const ids = options.map((li) => li.id);
+        expect(new Set(ids).size).toBe(ids.length);
+    });
 });
 
 describe("link target autocompletion — keyboard and closing", () => {
@@ -218,6 +237,19 @@ describe("link target autocompletion — keyboard and closing", () => {
         press(input, "Enter");
 
         expect(input.value).toBe("../anthropic/index.md");
+    });
+
+    it("ArrowDown should set aria-selected on exactly the highlighted option (UI-1)", async () => {
+        await type(input, "index");
+        reply();
+
+        press(input, "ArrowDown"); // highlight the first option
+
+        const options = Array.from(menuEl()!.querySelectorAll("li"));
+        const selected = options.filter((li) => li.getAttribute("aria-selected") === "true");
+        expect(selected).toHaveLength(1);
+        // aria-selected moves in lockstep with the visual highlight class.
+        expect(selected[0].classList.contains("fm-suggest-item--focused")).toBe(true);
     });
 
     it("Enter with no highlight should close the menu and pass through", async () => {

@@ -167,6 +167,27 @@ describe("caret wikilink autocompletion", () => {
         expect(optionTexts()).not.toContain("pic");
     });
 
+    it("Tab accepts an arrow-highlighted row (ARCH-1: shared Tab-accept path from a non-autoActivate consumer)", async () => {
+        typeText(v, " [[ub");
+        await vi.advanceTimersByTimeAsync(250);
+        reply();
+        expect(optionTexts()).toContain("uber");
+
+        // A link/wikilink list has NO pre-highlight (unlike the calc menu), so
+        // arrow to the first row, then Tab accepts it. This pins the shared
+        // caret-suggest Tab-accept branch from a non-autoActivate consumer — the
+        // UI-3 change reworks Enter for autoActivate menus only, and this row-
+        // highlighted Tab-accept must keep working unchanged.
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+        let raw: string | null = null;
+        v.state.doc.descendants((node) => {
+            if (node.type.name === "wiki_link") raw = node.attrs["raw"] as string;
+        });
+        expect(raw).toBe("uber");
+    });
+
     it("is disabled when smartLinks is off", async () => {
         window.__i18n = { translations: {}, isMac: false, smartLinks: false };
         typeText(v, " [[ub");

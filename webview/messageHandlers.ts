@@ -33,6 +33,7 @@ import {
     handleImageUploadError,
     handleProjectImagesList,
 } from "./imageUpload";
+import { handleUnfurlResult } from "./unfurl";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -259,8 +260,21 @@ export function createMessageHandlers(
         imagePathResolved(msg) {
             dispatchImagePathResolved(msg.id, msg.webviewUri);
         },
+        unfurlResult(msg) {
+            // Paste-unfurl reply: upgrade the bare `[url](url)` to `[title](url)`
+            // in the live doc (or keep the bare link when title is null).
+            handleUnfurlResult(getEditorView(), msg.id, msg.title);
+        },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
+        },
+        networkStateChanged(msg) {
+            // Live update of the in-session master-switch gate (the same one
+            // the local opt-in affordance flips): paste-unfurl in THIS webview
+            // now matches the persisted setting without a reload.
+            if (window.__i18n) {
+                window.__i18n.network = msg.enabled;
+            }
         },
         setBlockHandles(msg) {
             applyBlockHandles(msg.mode);

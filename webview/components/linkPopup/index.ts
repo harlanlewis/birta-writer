@@ -1,7 +1,7 @@
 import "./linkPopup.css";
 import type { EditorView } from "@/pm";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
-import { getHeadingText, scrollElementBelowTopbar } from "@/utils/headingUtils";
+import { collectDocHeadings, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import {
     IconCopy,
     IconExternalLink,
@@ -13,7 +13,7 @@ import {
 } from "@/ui/icons";
 import { t } from "@/i18n";
 import { applyTooltip } from "@/ui/tooltip";
-import { slugify } from "@/utils/slug";
+import { slugify, slugifyHeadings } from "@/utils/slug";
 import { attachInputUndo } from "@/utils/inputUndo";
 import {
     attachLinkTargetComplete,
@@ -240,28 +240,39 @@ function findLinkAt(view: EditorView, anchor: Element): LinkInfo | null {
 }
 
 /**
- * Find a heading element within the container by slug.
- * Prefer getElementById (when headingIds are assigned); on failure, fall back
- * to scanning all h1–h6 and matching by slug + duplicate count.
- * ProseMirror reconcile may strip the id attribute, so the fallback guarantees
- * the target is always found.
+ * Resolve an anchor slug `id` to its heading — from the DOC MODEL, never the
+ * rendered DOM. This is what makes the section-link producer and this resolver
+ * agree: the picker mints `#slug` via collectDocHeadings → slugifyHeadings (over
+ * the model's `node.textContent`), so the resolver must slug the SAME text. A
+ * heading carrying an inline atom (e.g. `## Cost $x^2$`) has clean model text
+ * "Cost" but KaTeX-rendered garble in the DOM — a DOM-sourced slug would never
+ * match the minted one, and the link would resolve to nothing.
+ *
+ * Returns the authoritative model title (headings[i].text) plus the heading's
+ * live DOM element (via view.nodeDOM(pos), the inverse of findHeadingPos) for
+ * scrolling. The element may be null (jsdom can't measure/mount every node) even
+ * when the title resolves, so the hover title still works without a DOM hit.
+ * Returns null when no heading slugifies to `id` — a dangling anchor.
+ *
+ * Deliberately NOT getElementById(id): a raw id lookup can hit non-heading
+ * chrome that happens to share the id (a heading "TOC" slugifies to `toc`, which
+ * a `#toc` panel element would wrongly satisfy), and it would reintroduce the
+ * DOM-text slug mismatch above. Model resolution subsumes both.
  */
-function findHeadingElement(id: string, container: HTMLElement): HTMLElement | null {
-    const direct = document.getElementById(id);
-    if (direct) return direct;
-
-    // Fallback: re-scan by slug (ProseMirror may have stripped the id attribute).
-    // getHeadingText strips the gutter chrome — raw textContent would include
-    // the "##" marker glyphs and corrupt every slug.
-    const headings = container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6");
-    const counts = new Map<string, number>();
-    for (const h of Array.from(headings)) {
-        const base = slugify(getHeadingText(h));
-        if (!base) continue;
-        const count = counts.get(base) ?? 0;
-        const slug = count === 0 ? base : `${base}-${count}`;
-        counts.set(base, count + 1);
-        if (slug === id) return h;
+function resolveAnchorHeading(
+    view: EditorView | null,
+    id: string,
+): { title: string; element: HTMLElement | null } | null {
+    if (!view) return null;
+    const headings = collectDocHeadings(view.state.doc);
+    const slugs = slugifyHeadings(headings.map((h) => h.text));
+    for (let i = 0; i < headings.length; i++) {
+        if (slugs[i] !== id) continue;
+        const dom = view.nodeDOM(headings[i].pos);
+        return {
+            title: headings[i].text,
+            element: dom instanceof HTMLElement ? dom : null,
+        };
     }
     return null;
 }
@@ -276,12 +287,13 @@ export function setupLinkPopup(
     const openHint = isMac ? t("⌘ Click to open") : t("Ctrl+Click to open");
 
     function resolveAnchorTitle(id: string): string | null {
-        const el = findHeadingElement(id, container);
-        return el ? (el.textContent?.trim() ?? null) : null;
+        // Model-sourced title: agrees with the minted slug even for headings
+        // whose rendered DOM text differs from their model text (inline atoms).
+        return resolveAnchorHeading(getView(), id)?.title ?? null;
     }
 
     function scrollToAnchor(id: string): void {
-        const target = findHeadingElement(id, container);
+        const target = resolveAnchorHeading(getView(), id)?.element;
         if (!target) return;
         scrollElementBelowTopbar(target);
     }
@@ -529,11 +541,24 @@ export function setupLinkPopup(
         if (kind === "anchor") {
             const id = link.href.slice(1);
             const title = resolveAnchorTitle(id);
-            anchorHint.textContent = title ? `→ ${title}` : "";
-            anchorHint.style.display = title ? "" : "none";
+            if (title) {
+                anchorHint.textContent = `→ ${title}`;
+                anchorHint.classList.remove("lp-anchor-hint--miss");
+            } else {
+                // Dangling same-document anchor: the slug resolves to no heading
+                // (the target was deleted, or a rename outside this editor moved
+                // it beyond auto-update's reach). A silent absence reads as "this
+                // link is fine", so surface a quiet "not found" instead of the
+                // former no-op — the design principle "a silent absence needs a
+                // signal", matching the file link's "not found in workspace".
+                anchorHint.textContent = t("Heading not found");
+                anchorHint.classList.add("lp-anchor-hint--miss");
+            }
+            anchorHint.style.display = "";
             btnOpenTooltip.setText(t("Jump to section"));
         } else {
             anchorHint.style.display = "none";
+            anchorHint.classList.remove("lp-anchor-hint--miss");
             btnOpenTooltip.setText(openHint);
         }
 

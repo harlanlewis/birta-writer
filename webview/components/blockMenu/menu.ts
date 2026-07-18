@@ -49,6 +49,7 @@ import { onOutsideClick } from "../../ui/outsideClick";
 import { t } from "../../i18n";
 import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
 import {
+    IconCheckSquare,
     IconChevronDown,
     IconChevronRight,
     IconChevronUp,
@@ -57,6 +58,7 @@ import {
     IconLink,
     IconTrash2,
 } from "../../ui/icons";
+import { uncheckAllTasks } from "../../editing/checklistSink";
 import { blockMarkdownAt, selectInto } from "./turnInto";
 import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
@@ -938,6 +940,36 @@ export function openBlockMenu(
                 view.dispatch(tr);
                 view.focus();
             },
+        });
+    }
+    if (isItem && anchorNode?.attrs["checked"] != null) {
+        // Reset a task list for reuse (MAR-175): clear every checked box in the
+        // whole checklist, nested sublists included, in one undo step. The row
+        // is disabled when nothing is checked so it is never a dead action.
+        // The action clears the OUTERMOST list containing the caret
+        // (uncheckAllTasks), so the disabled check scans that same outermost
+        // tree — scoping the two differently would enable a row that clears
+        // nothing, or disable one that could.
+        let listNode = view.state.doc.nodeAt(conversionPos);
+        const $list = view.state.doc.resolve(conversionPos);
+        for (let depth = 1; depth <= $list.depth; depth++) {
+            const name = $list.node(depth).type.name;
+            if (name === "bullet_list" || name === "ordered_list") {
+                listNode = $list.node(depth);
+                break;
+            }
+        }
+        let hasChecked = false;
+        listNode?.descendants((n) => {
+            if (n.type.name === "list_item" && n.attrs["checked"] === true) {
+                hasChecked = true;
+            }
+            return !hasChecked;
+        });
+        action(t("Uncheck All Tasks"), ["uncheck", "clear", "reset", "tasks", "checklist", "todo"], {
+            icon: IconCheckSquare,
+            disabled: !hasChecked,
+            action: () => uncheckAllTasks(view),
         });
     }
     action(movesSection ? t("Move Section Up") : t("Move Up"), ["move", "up", "reorder"], {

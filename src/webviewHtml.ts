@@ -197,6 +197,26 @@ export function buildWebviewHtml(
     const debugMode = config.debugMode;
     const codeBlockAutoConvert = config.codeBlockAutoConvert;
     const smartLinks = config.smartLinks;
+    // Master network switch (MAR-179): offline by default. Baked into __i18n so
+    // the webview can gate every network feature on `network && <feature>` and
+    // the just-in-time opt-in can read it synchronously.
+    const networkEnabled = config.networkEnabled;
+    const pasteUnfurl = config.pasteUnfurlEnabled;
+    const calcEnabled = config.calcEnabled;
+    const calcAutoInsert = config.calcAutoInsert;
+    const autoUpdateAnchors = config.autoUpdateAnchors;
+    const embedsEnabled = config.embedsEnabled;
+    // URL embeds (MAR-56) need two extra CSP grants: the YouTube thumbnail image
+    // hosts (img-src) and the privacy-mode player iframe host (a new frame-src,
+    // since default-src 'none' otherwise blocks all iframes). Added ADDITIVELY
+    // and ONLY when embeds are actually active — the FEATURE key AND the master
+    // network switch (MAR-179) — with specific hosts, no wildcards. When the
+    // master is off (the default) or the feature is off, the emitted CSP is
+    // byte-identical to before this feature existed: no host may be reached.
+    const embedsActive = networkEnabled && embedsEnabled;
+    const embedImgHosts = embedsActive ? " https://i.ytimg.com https://img.youtube.com" : "";
+    const embedFrameSrc = embedsActive ? "\n             frame-src https://www.youtube-nocookie.com;" : "";
+    const checklistSinkChecked = config.checklistSinkChecked;
     const codeBlockWordWrap = resolveCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
     const tocAutoHideThreshold = clampNumberSetting(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);
     const frontmatterExpanded = config.frontmatterExpanded;
@@ -212,7 +232,7 @@ export function buildWebviewHtml(
     // optional-chained so a stripped-down test context still resolves.
     const productName =
         (context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, calcEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",
@@ -229,7 +249,7 @@ export function buildWebviewHtml(
     content="default-src 'none';
              style-src ${webview.cspSource} 'unsafe-inline';
              script-src 'nonce-${nonce}' ${webview.cspSource};
-             img-src ${webview.cspSource} data:;
+             img-src ${webview.cspSource} data:${embedImgHosts};${embedFrameSrc}
              font-src ${webview.cspSource} data:;">
 	  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 	  <title>Markdown Editor</title>

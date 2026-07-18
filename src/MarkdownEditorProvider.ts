@@ -26,6 +26,8 @@ import { buildWebviewHtml, getCustomResourceRoots, clampNumberSetting, escapeHtm
 import { reportError, reportErrorWithNotification } from "./errorSink";
 import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/linkResolver";
 import { scanHeadings } from "./utils/headingScan";
+import { extractOgTitle } from "./utils/openGraph";
+import { isPubliclyRoutableUrl } from "./utils/urlGuard";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
@@ -54,6 +56,60 @@ export function isSafeExternalUrl(rawUrl: string): boolean {
 // src/webviewHtml.ts with the rest of the HTML bootstrap (MAR-168).
 export { escapeHtmlAttr };
 
+/**
+ * Paste-unfurl fetch bounds (MAR-178). The webview shows the bare link the
+ * instant it's pasted, so the title fetch is pure enhancement — it must be
+ * strictly time- and size-bounded and never able to hang the extension host.
+ *
+ * - TIMEOUT aborts a slow/unresponsive host; the webview also has its own
+ *   backstop timeout so a dropped reply still resolves to "keep the bare link".
+ * - MAX_BYTES caps how much of the response body we read: a page's title lives
+ *   in <head> near the top, so a small budget finds it while a huge or
+ *   streaming body can never balloon the parse.
+ */
+const UNFURL_FETCH_TIMEOUT_MS = 5000;
+const UNFURL_MAX_BYTES = 512 * 1024;
+/** Manual-redirect hop budget; each hop re-passes the scheme + SSRF checks. */
+const UNFURL_MAX_REDIRECTS = 5;
+
+/**
+ * Read at most `maxBytes` of a fetch Response body as UTF-8 text, then stop.
+ * Streaming the body and bailing early bounds the parse cost regardless of the
+ * page's real size (a title lives in <head>, near the top). Falls back to a
+ * plain `.text()` when the body isn't a readable stream (e.g. a stubbed
+ * Response in a unit test), slicing the result to the same budget.
+ */
+async function readCappedText(res: Response, maxBytes: number): Promise<string> {
+    const reader = res.body?.getReader?.();
+    if (!reader) {
+        return (await res.text()).slice(0, maxBytes);
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+        while (total < maxBytes) {
+            const { done, value } = await reader.read();
+            if (done) { break; }
+            if (value) {
+                chunks.push(value);
+                total += value.length;
+            }
+        }
+    } finally {
+        // Stop the transfer once we have enough (or on any read error).
+        try { await reader.cancel(); } catch { /* already closed */ }
+    }
+    const merged = new Uint8Array(Math.min(total, maxBytes));
+    let offset = 0;
+    for (const chunk of chunks) {
+        if (offset >= merged.length) { break; }
+        const take = Math.min(chunk.length, merged.length - offset);
+        merged.set(chunk.subarray(0, take), offset);
+        offset += take;
+    }
+    return new TextDecoder("utf-8").decode(merged);
+}
+
 export class MarkdownEditorProvider
     implements vscode.CustomTextEditorProvider {
     public static readonly viewType = "birta.editor";
@@ -65,6 +121,13 @@ export class MarkdownEditorProvider
     // right-click commands (MAR-9) target it. Set on resolve and whenever a
     // panel becomes active; cleared when the active panel is disposed.
     private _activePanel: vscode.WebviewPanel | null = null;
+
+    // Bridge for the just-in-time network opt-in (MAR-179): the fresh value
+    // of birta.network.enabled while its async settings write is still in
+    // flight. _fetchUnfurlTitle prefers this over the (possibly stale)
+    // persisted read so the opt-in's own triggering link can unfurl; null
+    // whenever no write is pending.
+    private _networkWriteInFlight: boolean | null = null;
 
     // URIs that have already run keepEditor (pin tab), to avoid running it again
     private readonly _pinnedDocuments = new Set<string>();
@@ -682,6 +745,18 @@ export class MarkdownEditorProvider
                             this._handleResolveImagePath(document, panel, uriKey, message.id, message.relPath);
                         }
                         break;
+                    case "unfurlUrl":
+                        // Paste-unfurl: the webview already inserted `[url](url)`;
+                        // fetch the page title (extension-side, past the webview's
+                        // CSP/CORS) and reply so it can upgrade to `[title](url)`.
+                        // _handleUnfurl always replies (with a null title on any
+                        // failure); the .catch is a backstop for a post to a
+                        // disposed panel.
+                        if (message.id && message.url) {
+                            this._handleUnfurl(panel, message.id, message.url)
+                                .catch((err) => reportError("unfurlUrl", err));
+                        }
+                        break;
                     case "requestFmSuggestions":
                         if (message.key !== undefined) {
                             this._handleRequestFmSuggestions(document, panel, message.key)
@@ -728,6 +803,27 @@ export class MarkdownEditorProvider
                         break;
                     case "setTocPosition":
                         updateSettingRespectingScope("tocPosition", message.position);
+                        break;
+                    case "setNetworkEnabled":
+                        // Just-in-time opt-in (MAR-179): the user accepted an
+                        // "Enable" affordance. Persist the master switch through
+                        // the scope-respecting write-back, exactly like the
+                        // toolbar settings above.
+                        //
+                        // The accept flow posts `unfurlUrl` for the triggering
+                        // link IMMEDIATELY after this message, and the async
+                        // config write may not have landed when that fetch
+                        // re-reads the setting — without a bridge, the very
+                        // link that prompted the opt-in stays bare. Hold the
+                        // fresh value in memory only while the write is in
+                        // flight; once it resolves (or fails), the persisted
+                        // setting is authoritative again.
+                        this._networkWriteInFlight = message.enabled;
+                        Promise.resolve(
+                            updateSettingRespectingScope("network.enabled", message.enabled),
+                        )
+                            .catch(() => undefined)
+                            .then(() => { this._networkWriteInFlight = null; });
                         break;
                     case "spellAddWord":
                         addUserWord(message.word);
@@ -1365,6 +1461,118 @@ export class MarkdownEditorProvider
             const errMsg = e instanceof Error ? e.message : String(e);
             postToWebview(panel.webview, { type: 'imageUploadError', id, error: errMsg });
             vscode.window.showErrorMessage(vscode.l10n.t('Failed to save image: {0}', errMsg));
+        }
+    }
+
+    /**
+     * Paste-unfurl (MAR-178): fetch the page title for a pasted URL and reply so
+     * the webview can upgrade its optimistically-inserted `[url](url)` to
+     * `[title](url)`. ALWAYS replies — a null title (the failure/offline case) is
+     * a valid answer meaning "keep the bare link" — so the webview never waits on
+     * a lost message. The fetch itself is confined to `_fetchUnfurlTitle`, which
+     * swallows and logs its own errors; this method only routes the reply.
+     */
+    private async _handleUnfurl(
+        panel: vscode.WebviewPanel,
+        id: string,
+        url: string,
+    ): Promise<void> {
+        const title = await this._fetchUnfurlTitle(url);
+        postToWebview(panel.webview, { type: "unfurlResult", id, url, title });
+    }
+
+    /**
+     * Fetch `url` and return its deterministically-parsed title, or null on ANY
+     * failure (non-http(s) scheme, bad URL, non-200, network error, timeout, no
+     * title in the HTML). Never throws: paste-unfurl is best-effort, so every
+     * failure degrades silently to the bare link and logs via the console-only
+     * error sink (never a toast).
+     *
+     * This is the extension's ONLY outbound network request. It is gated by
+     * `birta.network.enabled` (the master switch) AND `birta.pasteUnfurl.enabled`,
+     * restricted to http(s) on every redirect hop, SSRF-guarded (urlGuard: no
+     * localhost/private/link-local/metadata hosts, re-checked per hop),
+     * time-bounded by an AbortController, and size-bounded by reading at most
+     * UNFURL_MAX_BYTES.
+     *
+     * Defense in depth (MAR-179): the webview's own gates are the primary
+     * control (it never posts `unfurlUrl` when either setting is off); BOTH
+     * settings are re-checked here so a stale or rogue webview message can
+     * never trigger a fetch the configuration forbids.
+     */
+    private async _fetchUnfurlTitle(url: string): Promise<string | null> {
+        // Master switch AND the per-feature key: offline by default, and the
+        // extension-side gate mirrors the webview's upstream gate exactly, so a
+        // stale/rogue message can't fetch while either half says no. The
+        // in-flight opt-in value bridges the async settings write (see
+        // _networkWriteInFlight) — without it, the just-in-time accept's own
+        // link would race the write and stay bare.
+        const networkOn = this._networkWriteInFlight ?? readBirtaSetting("networkEnabled");
+        if (!networkOn || !readBirtaSetting("pasteUnfurlEnabled")) {
+            return null;
+        }
+        let parsed: URL;
+        try {
+            parsed = new URL(url);
+        } catch {
+            return null;
+        }
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), UNFURL_FETCH_TIMEOUT_MS);
+        try {
+            // Redirects are followed MANUALLY so every hop — not just the
+            // pasted URL — passes the same two checks:
+            //  - http(s) only: never file:, data:, vscode:, or any other
+            //    scheme a pasted string or a redirect could carry;
+            //  - publicly routable host only (urlGuard): a pasted or
+            //    redirected-to URL must not steer the extension host at
+            //    localhost, RFC1918 space, or cloud metadata (SSRF — the
+            //    fetched title lands in the document, so a probe would leak).
+            // The single AbortController spans the whole chain, so the total
+            // time stays bounded by UNFURL_FETCH_TIMEOUT_MS.
+            for (let hop = 0; hop <= UNFURL_MAX_REDIRECTS; hop++) {
+                if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                    return null;
+                }
+                if (!(await isPubliclyRoutableUrl(parsed))) {
+                    return null;
+                }
+                const res = await globalThis.fetch(parsed.href, {
+                    signal: controller.signal,
+                    redirect: "manual",
+                    // Ask for HTML and identify ourselves; some hosts serve a
+                    // leaner page (or refuse) without these. No cookies.
+                    headers: {
+                        accept: "text/html,application/xhtml+xml",
+                        "user-agent": "Birta-Writer/paste-unfurl",
+                    },
+                });
+                if (res.status >= 300 && res.status < 400) {
+                    const location = res.headers.get("location");
+                    if (!location) { return null; }
+                    parsed = new URL(location, parsed); // relative Location: ok
+                    continue;
+                }
+                if (!res.ok) {
+                    return null;
+                }
+                // Only parse text-ish responses; a PDF or image 200 has no
+                // <title> and isn't worth streaming 512 KB of.
+                const contentType = res.headers.get("content-type");
+                if (contentType && !/^text\/|xhtml/i.test(contentType)) {
+                    return null;
+                }
+                const html = await readCappedText(res, UNFURL_MAX_BYTES);
+                return extractOgTitle(html);
+            }
+            return null; // redirect chain too long
+        } catch (e) {
+            // Offline, DNS failure, abort-on-timeout, malformed response, etc.
+            reportError("unfurlUrl", e);
+            return null;
+        } finally {
+            clearTimeout(timer);
         }
     }
 

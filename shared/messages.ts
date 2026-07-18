@@ -203,6 +203,18 @@ export type ToExtensionMessage =
     // as openFile, no side effects)
     | { type: "resolveLinkTarget"; id: string; path: string; wiki?: true }
     | { type: "resolveImagePath"; id: string; relPath: string }
+    // Bare URL pasted onto an EMPTY selection: the webview has already inserted
+    // `[url](url)` optimistically and asks the extension (the only side not
+    // blocked by the webview CSP/CORS) to fetch the page's Open Graph / <title>
+    // so the link text can be upgraded to the real title. `id` correlates the
+    // `unfurlResult` reply; `url` is the fetched target (http(s) only).
+    | { type: "unfurlUrl"; id: string; url: string }
+    // Just-in-time opt-in (MAR-179): the user accepted the "Enable" affordance
+    // that appears when they do something requiring the network while the master
+    // switch is off. The extension persists `birta.network.enabled = enabled`
+    // through the config write-back seam (scope-respecting update). The webview
+    // also flips its in-session gate locally so the feature works immediately.
+    | { type: "setNetworkEnabled"; enabled: boolean }
     | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }
@@ -302,7 +314,18 @@ export type ToWebviewMessage =
     // absolute when outside the workspace, null for a smart-mode miss.
     | { type: "linkTargetResolved"; id: string; resolved: string | null }
     | { type: "imagePathResolved"; id: string; webviewUri: string }
+    // Reply to `unfurlUrl`: the deterministically-parsed page title, or null on
+    // any failure (offline, non-200, timeout, no title in the HTML). `id`
+    // correlates the request; `url` echoes the target so the webview can locate
+    // the un-upgraded bare link. A null `title` means the webview keeps the
+    // bare `[url](url)` it already inserted — the graceful, offline-safe default.
+    | { type: "unfurlResult"; id: string; url: string; title: string | null }
     | { type: "setTableWrap"; wrap: TableWrapMode }
+    // Live master-network-switch update (settings UI edit or the just-in-time
+    // opt-in accepted in ANOTHER webview): flips `window.__i18n.network` so
+    // paste-unfurl gates correctly everywhere without a reload. Embed cards
+    // still compose at editor creation only (reopen to activate them).
+    | { type: "networkStateChanged"; enabled: boolean }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live toolbar layout update (per-item placement settings changed).
