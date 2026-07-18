@@ -134,6 +134,16 @@ cell:
 
 ---
 
+### URL embeds
+
+A bare YouTube link on its own line renders as an inline player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The card is **render-only**: the stored source stays the plain link below, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+Embeds are network features and are **off by default** — with `birta.network.enabled` off the line above is an ordinary link; turn the master switch on (or accept the inline prompt) to see the card.
+
+---
+
 ---
 
 ---
@@ -324,14 +334,6 @@ delete, and the editable title on its own row. Edits apply on Enter or
 click-away, Escape cancels.
 
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
-
-## URL embeds
-
-A bare YouTube link on its own line renders as an inline player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The card is **render-only**: the stored source stays the plain link below, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
-
-https://www.youtube.com/watch?v=dQw4w9WgXcQ
-
-Embeds are network features and are **off by default** — with `birta.network.enabled` off the line above is an ordinary link; turn the master switch on (or accept the inline prompt) to see the card.
 
 ---
 
