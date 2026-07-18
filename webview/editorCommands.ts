@@ -51,7 +51,6 @@ import {
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { openBlockMenuAtCaret } from "@/components/blockMenu";
 import { uncheckAllTasks } from "@/editing/checklistSink";
-import { openSectionLinkPicker } from "@/components/sectionLink";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { getView, lift } from "@/pm";
 import { liftListItem } from "@/pm";
@@ -545,7 +544,14 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertLink: () => host.openLinkPrompt?.(),
     // Capture the selection/caret and open the heading picker; picking inserts
     // `[text](#slug)` via the shared link editor (see components/sectionLink).
-    insertSectionLink: (getEditor) => runProse(getEditor, (view) => openSectionLinkPicker(view)),
+    // Lazy: the picker is invocation-only UI, so its bytes stay out of the
+    // launch bundle; the cached dynamic import costs one chunk fetch on first
+    // use (same pattern as katexLoader). The picker reads the view's CURRENT
+    // state when it opens, so the microtask gap cannot dangle a stale position.
+    insertSectionLink: (getEditor) =>
+        runProse(getEditor, (view) => {
+            void import("@/components/sectionLink").then((m) => m.openSectionLinkPicker(view));
+        }),
     insertImage: () => host.openImagePanel?.(),
     insertMath: (getEditor) => callCmd(getEditor, insertInlineMathCommand),
     insertFootnote: (getEditor) => insertFootnote(getEditor),

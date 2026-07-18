@@ -31,7 +31,6 @@ import {
     codeBlockSelectAllPlugin,
     docChangePlugin,
     setDocChangeListener,
-    embedPlugin,
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,
     foldRevealKeymapPlugin,
@@ -578,12 +577,16 @@ export async function createEditor(
     // network switch (MAR-179, offline by default) AND the per-feature key must
     // both be on — so an offline editor composes nothing (design principle: "A
     // disabled feature costs nothing"); the plugin's own decoration function is
-    // gated on the same pair. __i18n is baked into the HTML before this script
-    // runs, so the flags read synchronously here (like calc/smartLinks). There
-    // is no just-in-time opt-in for embeds in this pass — see MAR-179 notes
-    // (the provider check would have to run with the plugin uncomposed); the
-    // paste-unfurl opt-in is the shipped affordance.
+    // gated on the same pair. The import is DYNAMIC for the same reason: with
+    // the master switch off (the default), the plugin's bytes never load at
+    // all, keeping the launch bundle lean (CLAUDE.md "Launch performance").
+    // __i18n is baked into the HTML before this script runs, so the flags read
+    // synchronously here (like calc/smartLinks). There is no just-in-time
+    // opt-in for embeds in this pass — see MAR-179 notes (the provider check
+    // would have to run with the plugin uncomposed); the paste-unfurl opt-in
+    // is the shipped affordance.
     if ((window.__i18n?.network ?? false) && (window.__i18n?.embedsEnabled ?? true)) {
+        const { embedPlugin } = await import("./plugins/embed");
         builder = builder.use(embedPlugin);
     }
 
