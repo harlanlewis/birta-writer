@@ -36,6 +36,8 @@ import { $inputRule, $prose } from "@milkdown/utils";
 import { createSuggestMenuFromRows } from "../components/pathLink/linkTargetComplete";
 import { caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
 import { detectCalcExpression, evaluateExpression, formatCalcResult } from "../utils/calc";
+import { notifySetCalcAutoInsert } from "../messaging";
+import { t } from "../i18n";
 
 /** calc is on by default; both flags are baked into __i18n at panel load. */
 function calcEnabled(): boolean {
@@ -46,16 +48,25 @@ function calcAutoInsert(): boolean {
     return window.__i18n?.calcAutoInsert ?? false;
 }
 
+/** The settings row's label — a function so i18n resolves at menu build. */
+function alwaysInsertLabel(): string {
+    return t("Always insert result");
+}
+
 // ── Advisory mode (caret suggestion) ─────────────────────────────────────────
 
 const calcSuggestKey = new PluginKey("MD_CALC_SUGGEST");
 
 const calcSuggestSpec: CaretSuggestSpec = {
-    match(textBefore) {
-        // Off, or the user opted into auto-insert: no advisory menu at all.
-        if (!calcEnabled() || calcAutoInsert()) { return null; }
-        const det = detectCalcExpression(textBefore);
+    match(textBefore, ctx) {
+        if (!calcEnabled()) { return null; }
+        const det = detectCalcExpression(textBefore, { boundaryUnknown: ctx?.truncated ?? false });
         if (!det) { return null; }
+        // Auto-insert mode owns the TRAILING form via its input rule (the
+        // final `=` marks the expression finished). The LEADING form (`=5+7`)
+        // has no finishing keystroke — the user may still be typing digits —
+        // so it stays advisory even in auto-insert mode.
+        if (calcAutoInsert() && /=[ \t]*$/.test(textBefore)) { return null; }
         // query carries the pure expression; the result is recomputed where
         // needed (deterministic, so no need to thread it through the controller).
         return { length: det.length, query: det.expr };
@@ -74,17 +85,40 @@ const calcSuggestSpec: CaretSuggestSpec = {
         const results = items as string[];
         if (results.length === 0) { return null; }
         const result = results[0];
-        // One row: the answer. The row text IS the pick value (inserted
-        // verbatim), so it shows just the number; the full equation is the
-        // hover title for context.
+        // Row 1: the answer — the row text IS the pick value (inserted
+        // verbatim), so it shows just the number with the confirm key as a
+        // right-aligned hint; the full equation is the hover title.
+        // Row 2: a settings action — flip birta.calc.autoInsert so every
+        // future `=` inserts without this menu. Only reachable here (the
+        // menu never shows once auto-insert is on), so no "off" state needed.
         return createSuggestMenuFromRows(
-            [{ text: result, title: `${match.query} = ${result}` }],
+            [
+                { text: result, title: `${match.query} = ${result}`, hint: "Tab" },
+                {
+                    text: alwaysInsertLabel(),
+                    title: t("Insert the answer the moment you type = (birta.calc.autoInsert)"),
+                    action: true,
+                },
+            ],
             anchor,
             onPick,
         );
     },
 
     pick(view, match, picked) {
+        if (picked === alwaysInsertLabel()) {
+            // Settings row: turn auto-insert on (local gate now, persisted
+            // via the write-back), and complete the CURRENT ask too — the
+            // user was mid-equation; leaving it unanswered would read as a
+            // broken pick.
+            if (window.__i18n) { window.__i18n.calcAutoInsert = true; }
+            notifySetCalcAutoInsert(true);
+            const value = evaluateExpression(match.query);
+            if (value !== null) {
+                applyCalcResult(view, match.start, match.caret, formatCalcResult(value));
+            }
+            return;
+        }
         applyCalcResult(view, match.start, match.caret, picked);
     },
 
@@ -96,14 +130,17 @@ const calcSuggestSpec: CaretSuggestSpec = {
 };
 
 /**
- * Replaces the matched `<expr> =` span with `<expr> = <result>`: keeps the
- * expression the user typed and their spacing, normalizes the run right after
- * `=` to a single space, and appends the result. Plain text only — nothing
- * calc-specific persists in the document.
+ * Answer the matched span, form-aware (the region's own shape says which):
+ * - trailing `<expr> =` → `<expr> = <result>` (spacing after `=` normalized);
+ * - leading `=<expr>` → `<result>=<expr>` — the region starts with `=`, and
+ *   the result lands verbatim before it (`=5+7` → `12=5+7`).
+ * Plain text only — nothing calc-specific persists in the document.
  */
 function applyCalcResult(view: EditorView, start: number, caret: number, result: string): void {
     const region = view.state.doc.textBetween(start, caret);
-    const replacement = region.replace(/=[ \t]*$/, `= ${result}`);
+    const replacement = region.startsWith("=")
+        ? `${result}${region}`
+        : region.replace(/=[ \t]*$/, `= ${result}`);
     view.dispatch(view.state.tr.insertText(replacement, start, caret).scrollIntoView());
 }
 
@@ -137,10 +174,25 @@ const CALC_AUTOINSERT_REGEX = /[0-9.+\-*/%^() \t]*=$/;
 export const calcAutoInsertPlugin = $inputRule(() =>
     new InputRule(CALC_AUTOINSERT_REGEX, (state, match, start, end) => {
         if (!calcEnabled() || !calcAutoInsert()) { return null; }
-        if (state.doc.resolve(start).parent.type.spec.code) { return null; }
-        // detectCalcExpression wants the text as it looks WITH the `=`; match[0]
-        // already ends in `=` (the just-typed char is included in the match).
-        const det = detectCalcExpression(match[0]);
+        const $end = state.doc.resolve(end);
+        if ($end.parent.type.spec.code) { return null; }
+        // NEVER detect against match[0]: it is the already-stripped arithmetic
+        // run, so its position 0 is always the run start and the left-boundary
+        // guards can never fire — `1,000 + 2=` would evaluate the fragment
+        // `000 + 2` and auto-insert a WRONG `= 2`. Rebuild the REAL context
+        // (the last ≤500 chars of the block, plus the just-typed `=` that is
+        // not in the doc yet) so the guards see the comma/letter before the
+        // run, and flag the window edge when the block is longer than that.
+        const textBefore =
+            $end.parent.textBetween(
+                Math.max(0, $end.parentOffset - 500),
+                $end.parentOffset,
+                undefined,
+                "￼",
+            ) + "=";
+        const det = detectCalcExpression(textBefore, {
+            boundaryUnknown: $end.parentOffset > 500,
+        });
         if (!det) { return null; }
         return state.tr.insertText(`= ${det.result}`, end);
     }),

@@ -112,6 +112,9 @@ export function offerNetworkOptIn(opts: NetworkOptInOptions): void {
     enableBtn.type = "button";
     enableBtn.className = "network-optin__enable";
     enableBtn.textContent = t("Enable");
+    // Scope transparency (MAR-184): the write lands in user settings unless a
+    // workspace value already exists, so say what accepting actually does.
+    enableBtn.title = t("Turns on network features (birta.network.enabled) — applies in all your workspaces");
 
     const dismissBtn = document.createElement("button");
     dismissBtn.type = "button";
@@ -146,7 +149,19 @@ export function offerNetworkOptIn(opts: NetworkOptInOptions): void {
         opts.onEnable();
         // Not a dismissal — do NOT set the suppress flag; network is on now, so
         // shouldOfferNetworkOptIn() is already false and nothing more is offered.
-        closeCurrent();
+        //
+        // Instead of vanishing, the pill becomes a short-lived confirmation:
+        // embed cards compose at editor creation (MAR-183), so a user who
+        // enabled network for a provider link would otherwise see nothing
+        // happen and read the feature as broken. Say what to expect.
+        label.textContent = t("Network on — embed cards appear when a file is (re)opened");
+        enableBtn.remove();
+        dismissBtn.remove();
+        el.classList.add("network-optin--confirmed");
+        setTimeout(() => {
+            // Only fade the confirmation if a newer affordance hasn't replaced it.
+            if (current?.el === el) { closeCurrent(); }
+        }, 6000);
     }
 
     // Pointer handlers use mousedown + preventDefault so the click never moves

@@ -241,6 +241,71 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
+    // Master network switch from the palette (MAR-184): the same setting the
+    // just-in-time pill writes, discoverable without hunting Settings. The
+    // config-change listener below broadcasts the flip to open webviews
+    // (paste-unfurl updates live; embed cards compose on reopen — MAR-183).
+    context.subscriptions.push(
+        vscode.commands.registerCommand("birta.toggleNetwork", () => {
+            const next = !readBirtaSetting("networkEnabled");
+            getBirtaConfiguration().update(
+                "network.enabled",
+                next,
+                vscode.ConfigurationTarget.Global,
+            );
+            vscode.window.setStatusBarMessage(
+                next
+                    ? "Birta: network features on — embed cards appear when a file is (re)opened"
+                    : "Birta: network features off",
+                5000,
+            );
+        }),
+    );
+
+    // Palette toggles for the boolean feature gates. Each flips the persisted
+    // setting (Global; the config-change listener broadcasts the fresh value
+    // to every open webview) and states the new behavior in the status bar.
+    const registerGateToggle = (
+        command: string,
+        settingKey: string,
+        readKey: Parameters<typeof readBirtaSetting>[0],
+        onMessage: string,
+        offMessage: string,
+    ): void => {
+        context.subscriptions.push(
+            vscode.commands.registerCommand(command, () => {
+                const next = !readBirtaSetting(readKey);
+                getBirtaConfiguration().update(
+                    settingKey,
+                    next,
+                    vscode.ConfigurationTarget.Global,
+                );
+                vscode.window.setStatusBarMessage(next ? onMessage : offMessage, 5000);
+            }),
+        );
+    };
+    registerGateToggle(
+        "birta.toggleCalcAutoInsert",
+        "calc.autoInsert",
+        "calcAutoInsert",
+        "Birta: calc auto-insert on — typing = inserts the result immediately",
+        "Birta: calc auto-insert off — results are offered as suggestions (Tab accepts)",
+    );
+    registerGateToggle(
+        "birta.togglePasteUnfurl",
+        "pasteUnfurl.enabled",
+        "pasteUnfurlEnabled",
+        "Birta: paste-unfurl on — pasted URLs fetch their page title (needs network features on)",
+        "Birta: paste-unfurl off — pasted URLs stay plain links",
+    );
+    registerGateToggle(
+        "birta.toggleChecklistSink",
+        "checklist.sinkChecked",
+        "checklistSinkChecked",
+        "Birta: checked tasks move to the bottom of their list",
+        "Birta: checked tasks stay in place",
+    );
+
     // TEST-ONLY hook: registered ONLY outside Production (i.e. the
     // @vscode/test-electron Development/Test host), so the shipped extension never
     // exposes it at all — zero production surface. Drives the active editor's real
@@ -330,6 +395,30 @@ export function activate(context: vscode.ExtensionContext) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "setTableWrap",
                     wrap: readBirtaSetting("tableWrap"),
+                });
+            }
+            // Read-at-use-time feature gates: broadcast the fresh value so
+            // every open webview follows a settings edit, palette toggle, or
+            // another webview's menu switch without a reload.
+            if (e.affectsConfiguration("birta.calc.autoInsert")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "featureGateChanged",
+                    gate: "calcAutoInsert",
+                    enabled: readBirtaSetting("calcAutoInsert"),
+                });
+            }
+            if (e.affectsConfiguration("birta.checklist.sinkChecked")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "featureGateChanged",
+                    gate: "checklistSinkChecked",
+                    enabled: readBirtaSetting("checklistSinkChecked"),
+                });
+            }
+            if (e.affectsConfiguration("birta.pasteUnfurl.enabled")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "featureGateChanged",
+                    gate: "pasteUnfurl",
+                    enabled: readBirtaSetting("pasteUnfurlEnabled"),
                 });
             }
             if (e.affectsConfiguration("birta.network.enabled")) {

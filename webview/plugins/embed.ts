@@ -91,13 +91,13 @@ function bareLinkHref(node: ProseNode): string | null {
  * off the render frame; a failed import or offline thumbnail simply leaves the
  * host empty — the raw link is still reachable by clicking into the paragraph.
  */
-function embedWidget(match: EmbedMatch): () => HTMLElement {
+function embedWidget(match: EmbedMatch, sourceUrl: string): () => HTMLElement {
     return () => {
         const host = document.createElement("div");
         host.className = "embed-card-host";
         host.setAttribute("contenteditable", "false");
         loadEmbedCard()
-            .then((mod) => host.replaceChildren(mod.renderEmbedCard(match)))
+            .then((mod) => host.replaceChildren(mod.renderEmbedCard(match, sourceUrl)))
             .catch(() => { /* card unavailable; raw link stays reachable */ });
         return host;
     };
@@ -136,7 +136,7 @@ export function computeEmbedDecorations(state: EditorState): DecorationSet {
             Decoration.node(from, to, { class: "embed-host" }),
         );
         decorations.push(
-            Decoration.widget(from + 1, embedWidget(match), {
+            Decoration.widget(from + 1, embedWidget(match, href), {
                 side: -1,
                 // The position is part of the key: two bare links to the SAME
                 // video are two distinct widgets, and same-key widgets would

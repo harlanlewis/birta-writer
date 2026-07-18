@@ -215,6 +215,12 @@ export type ToExtensionMessage =
     // through the config write-back seam (scope-respecting update). The webview
     // also flips its in-session gate locally so the feature works immediately.
     | { type: "setNetworkEnabled"; enabled: boolean }
+    // The calc suggestion menu's "Always insert result" row: persist
+    // birta.calc.autoInsert through the scope-respecting write-back.
+    | { type: "setCalcAutoInsert"; enabled: boolean }
+    // The "Move checked tasks to bottom" toggle (toolbar Lists menu / task-list
+    // block menu): persist birta.checklist.sinkChecked.
+    | { type: "setChecklistSink"; enabled: boolean }
     | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }
@@ -326,6 +332,10 @@ export type ToWebviewMessage =
     // paste-unfurl gates correctly everywhere without a reload. Embed cards
     // still compose at editor creation only (reopen to activate them).
     | { type: "networkStateChanged"; enabled: boolean }
+    // Live update for the boolean feature gates that read from __i18n at use
+    // time (not at plugin composition): a settings-UI edit, palette toggle
+    // command, or another webview's menu switch reaches every open editor.
+    | { type: "featureGateChanged"; gate: "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl"; enabled: boolean }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live toolbar layout update (per-item placement settings changed).

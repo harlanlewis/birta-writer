@@ -53,7 +53,29 @@ The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~st
 
 Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
 
-#### Highlight
+### Inline calculator
+
+The `=` is the ask, and it works at **either end** of the expression:
+
+- **`=` after** — `5+7 =` offers `12`; accepting gives `5+7 = 12`. Put the caret at the end of any line below and press `=` to try it:
+
+12 * 4
+
+(3 + 4) / 2
+
+10 % 3
+
+2 ^ 10
+
+-2 ^ 2
+
+- **`=` before** — type `=5+7` on an empty line and the same answer is offered; accepting puts it in front: `12=5+7` (the result-first form).
+
+The answer appears as a suggestion — confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
+
+What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) — same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
+
+### Highlight
 
 `==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict — each of these stays plain text, byte-preserved:
 
@@ -102,6 +124,8 @@ With `birta.smartLinks` (default on) local links resolve the way a
 site generator publishes them — every link below opens a real file in this
 repo when clicked:
 
+
+
 - Workspace-root path, extension inferred: [the README](/README)
 - Nested root path: [the perf harness](/e2e/perf/README)
 - Document-relative, `..` and suffix inference: [changelog](../CHANGELOG)
@@ -131,6 +155,28 @@ cell:
 | form | rendered |
 |---|---|
 | escaped alias | [[CHANGELOG\|aliased]] |
+
+---
+
+### URL embeds
+
+A bare YouTube link on its own line renders as an inline player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The card is **render-only**: the stored source stays the plain link below, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
+
+
+
+https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+
+
+Only known providers embed — **YouTube is the only provider today** (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
+
+<https://github.com/harlanlewis/birta-writer/>
+
+https://vimeo.com/76979871
+
+[watch this](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+
+Embeds are network features and are **off by default** — with `birta.network.enabled` off the lines above are ordinary links; turn the master switch on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) and reopen the file to see the cards.
 
 ---
 
@@ -325,14 +371,6 @@ click-away, Escape cancels.
 
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
 
-## URL embeds
-
-A bare YouTube link on its own line renders as an inline player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The card is **render-only**: the stored source stays the plain link below, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
-
-https://www.youtube.com/watch?v=dQw4w9WgXcQ
-
-Embeds are network features and are **off by default** — with `birta.network.enabled` off the line above is an ordinary link; turn the master switch on (or accept the inline prompt) to see the card.
-
 ---
 
 ---
@@ -362,19 +400,6 @@ Plain fenced block (no language):
 no highlighting here
 ```
 
-### Math
-
-Inline math renders in place and is **edited in place**: arrow into
-$E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character
-editing, exactly like inline code; leave it and KaTeX re-renders. Currency
-like $5 and $10 stays as plain text.
-
-Block math:
-
-$$
-\int_0^1 x^2 \, dx = \frac{1}{3}
-$$
-
 ### Diagrams (Mermaid)
 
 Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid` block.
@@ -391,6 +416,19 @@ graph TD
 ---
 
 ---
+
+### Math
+
+Inline math renders in place and is **edited in place**: arrow into
+$E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character
+editing, exactly like inline code; leave it and KaTeX re-renders. Currency
+like $5 and $10 stays as plain text.
+
+Block math:
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
 
 ## Frontmatter
 

@@ -208,14 +208,12 @@ describe("detectCalcExpression", () => {
         expect(detectCalcExpression("  =")).toBeNull();
     });
 
-    it("a date should not be evaluated as chained subtraction", () => {
-        expect(detectCalcExpression("2026-07-17 =")).toBeNull();
-        expect(detectCalcExpression("released 2026-07-17 =")).toBeNull();
-        expect(detectCalcExpression("7/17/2026 =")).toBeNull();
-    });
-
-    it("a phone-style dashed number should not be detected", () => {
-        expect(detectCalcExpression("555-867-5309 =")).toBeNull();
+    it("a date-like shape SHOULD compute as chained arithmetic (maintainer ruling)", () => {
+        // `2026-07-17 =` is valid math: the `=` is the ask, and the default
+        // advisory mode means the answer is only ever a suggestion. The user
+        // path to "not math" is to not type `=` or not accept.
+        expect(detectCalcExpression("2026-07-17 =")?.result).toBe("2002");
+        expect(detectCalcExpression("555-867-5309 =")?.result).toBe("-5621");
     });
 
     it("two-operand no-space arithmetic should still be detected", () => {
@@ -254,6 +252,61 @@ describe("detectCalcExpression", () => {
     it("a result too large for plain digits should not be offered", () => {
         // 9^25 stringifies as 7.17…e+23 — a letter, so nothing is offered.
         expect(detectCalcExpression("9 ^ 25 =")).toBeNull();
+    });
+});
+
+describe("detectCalcExpression — leading form (=expr)", () => {
+    it("=5+7 at line start should offer 12 spanning from the =", () => {
+        const det = detectCalcExpression("=5+7");
+        expect(det?.result).toBe("12");
+        expect(det?.expr).toBe("5+7");
+        expect(det?.length).toBe(4); // "=5+7"
+    });
+
+    it("a leading = after whitespace should be detected", () => {
+        const det = detectCalcExpression("note =5+7");
+        expect(det?.result).toBe("12");
+        expect(det?.length).toBe(4);
+    });
+
+    it("a prose assignment (a=5+7) should not be detected", () => {
+        expect(detectCalcExpression("a=5+7")).toBeNull();
+        expect(detectCalcExpression("total=2+2")).toBeNull();
+    });
+
+    it("a highlight-style double equals should not be detected", () => {
+        expect(detectCalcExpression("==5+7")).toBeNull();
+    });
+
+    it("an incomplete or operator-free leading expression should not be detected", () => {
+        expect(detectCalcExpression("=5+")).toBeNull();
+        expect(detectCalcExpression("=42")).toBeNull();
+        expect(detectCalcExpression("=")).toBeNull();
+    });
+
+    it("spaces after the = should be tolerated", () => {
+        expect(detectCalcExpression("= 5 + 7")?.result).toBe("12");
+    });
+});
+
+describe("detectCalcExpression — truncated-window boundaries (boundaryUnknown)", () => {
+    it("a trailing run starting at position 0 should be refused when the window may be cut", () => {
+        // The char before the run is invisible — it could be the comma of
+        // `1,000…`, making this a fragment and the answer wrong.
+        expect(detectCalcExpression("000 + 2 =", { boundaryUnknown: true })).toBeNull();
+        // At a TRUE line start (no truncation) the same text computes.
+        expect(detectCalcExpression("000 + 2 =")?.result).toBe("2");
+    });
+
+    it("a leading = anchored at position 0 should be refused when the window may be cut", () => {
+        // The invisible preceding char could be a letter (`a=5+7` — prose).
+        expect(detectCalcExpression("=5+7", { boundaryUnknown: true })).toBeNull();
+        expect(detectCalcExpression("=5+7")?.result).toBe("12");
+    });
+
+    it("a whitespace boundary INSIDE the window stays trusted even when cut", () => {
+        expect(detectCalcExpression("x =5+7", { boundaryUnknown: true })?.result).toBe("12");
+        expect(detectCalcExpression("is 3 + 4 =", { boundaryUnknown: true })?.result).toBe("7");
     });
 });
 

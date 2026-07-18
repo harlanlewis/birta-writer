@@ -226,7 +226,11 @@ export function formatCalcResult(value: number): string {
 
 /** A detected calc construct ending at the caret. */
 export interface CalcMatch {
-    /** Length in characters from the expression's first char through the caret. */
+    /**
+     * Length in characters of the matched span through the caret — from the
+     * expression's first char (trailing form, `5+7 =`) or from the `=`
+     * (leading form, `=5+7`).
+     */
     length: number;
     /** The pure arithmetic expression (trimmed), e.g. `12 * 4`. */
     expr: string;
@@ -238,15 +242,15 @@ export interface CalcMatch {
 const TRAILING_EQUALS = /=[ \t]*$/;
 /** The maximal run of arithmetic characters immediately before that `=`. */
 const TRAILING_EXPR = /[0-9.+\-*/%^() \t]*$/;
+/**
+ * The LEADING form: `=<expr>` ending at the caret, with the `=` at line start
+ * or after whitespace — `a=5+7` is a prose assignment (no boundary) and
+ * `==x` never matches (the char class excludes `=`, and the second `=` has no
+ * boundary before it).
+ */
+const LEADING_FORM = /(^|[ \t])=([0-9.+\-*/%^() \t]+)$/;
 /** At least one operator: a bare number is not offered (`the value 42 =`). */
 const HAS_OPERATOR = /[+\-*/%^]/;
-/**
- * Three or more digit groups joined by the same `-` or `/` with no spaces —
- * a date (`2026-07-17`), phone number (`555-867-5309`), or dashed identifier,
- * not arithmetic. Two joined groups stay arithmetic (`5-3`, `7/8`), matching
- * how people actually type quick math without spaces.
- */
-const SEPARATOR_CHAIN = /^\d+([-/])\d+(?:\1\d+)+$/;
 
 /**
  * Detects an arithmetic expression that ends, at the caret, in `=` (optionally
@@ -265,14 +269,34 @@ const SEPARATOR_CHAIN = /^\d+([-/])\d+(?:\1\d+)+$/;
  * - The expression must contain at least one operator, so echoing a bare
  *   number back (`the answer is 42 =` → `42`) never triggers.
  */
-export function detectCalcExpression(textBefore: string): CalcMatch | null {
+export function detectCalcExpression(
+    textBefore: string,
+    opts?: {
+        /**
+         * True when `textBefore` may be CUT SHORT of the real line start (the
+         * caret-suggest window is the last ≤500 chars; ProseMirror input
+         * rules cap similarly). Position 0 is then an arbitrary cut point,
+         * not a line boundary — any match that needs to TRUST position 0
+         * (a leading `=` anchored there; a trailing run starting there,
+         * whose token-split guard can't see the preceding char) is refused,
+         * because the invisible context could make the visible run a
+         * fragment — and a fragment computes a WRONG answer.
+         */
+        boundaryUnknown?: boolean;
+    },
+): CalcMatch | null {
     const eq = TRAILING_EQUALS.exec(textBefore);
-    if (!eq) { return null; }
+    if (!eq) { return detectLeadingForm(textBefore, opts?.boundaryUnknown ?? false); }
     const beforeEquals = textBefore.slice(0, eq.index);
     const run = TRAILING_EXPR.exec(beforeEquals)?.[0] ?? "";
     const expr = run.trim();
     if (!expr || !HAS_OPERATOR.test(expr)) { return null; }
     const runStart = eq.index - run.length;
+    // A run starting at position 0 of a possibly-truncated window: the char
+    // before it is invisible, so the token-split guard below cannot rule out
+    // that this run is the TAIL of a larger token (`1,000…` with the comma cut
+    // off). Refuse rather than risk computing a fragment.
+    if (runStart === 0 && opts?.boundaryUnknown) { return null; }
     // Left-boundary discipline. The run is the MAXIMAL trailing span of
     // arithmetic characters, so whatever precedes it is not arithmetic — but
     // the run can still be a fragment of a larger token, and evaluating a
@@ -292,9 +316,14 @@ export function detectCalcExpression(textBefore: string): CalcMatch | null {
         if (glued && /[\p{L}\p{N},_]/u.test(beforeEquals[runStart - 1])) { return null; }
         if (/^[+\-*/%^]/.test(expr)) { return null; }
     }
-    // Dates and dashed identifiers (`2026-07-17 =`) tokenize as chained
-    // subtraction/division and would "compute". Refuse the shape outright.
-    if (SEPARATOR_CHAIN.test(expr)) { return null; }
+    // Date-like shapes (`2026-07-17 =`) DO compute, as chained subtraction —
+    // a deliberate maintainer ruling: any digits-and-operators run before `=`
+    // is arithmetic. The `=` itself is the user's ask, and in the default
+    // advisory mode the answer is only a suggestion — the path to "not math"
+    // is to not type `=` (or not accept). The guards above exist solely for
+    // runs that would compute a DIFFERENT question than the visible one
+    // (split tokens, out-of-grammar operands), never for unwanted-but-honest
+    // answers.
     const value = evaluateExpression(expr);
     if (value === null) { return null; }
     const result = formatCalcResult(value);
@@ -307,5 +336,29 @@ export function detectCalcExpression(textBefore: string): CalcMatch | null {
     // whitespace) through the caret (the end of textBefore).
     const leadingWs = run.length - run.replace(/^[ \t]+/, "").length;
     const start = runStart + leadingWs;
+    return { length: textBefore.length - start, expr, result };
+}
+
+/**
+ * The result-first form: `=5+7` at the caret offers `12`, accepted as
+ * `12=5+7` — the result lands BEFORE the `=` (see applyCalcResult's caller).
+ * The `=` must sit at line start or after whitespace, so prose assignments
+ * (`a=5+7`) and `==`-delimited highlights never trigger.
+ */
+function detectLeadingForm(textBefore: string, boundaryUnknown: boolean): CalcMatch | null {
+    const lead = LEADING_FORM.exec(textBefore);
+    if (!lead) { return null; }
+    // `^` matched at position 0 of a possibly-truncated window: the true
+    // preceding char is invisible and could be a letter (`a=5+7` — a prose
+    // assignment the boundary rule exists to reject). A real whitespace
+    // boundary (lead[1] non-empty) is inside the window and stays trusted.
+    if (boundaryUnknown && lead.index === 0 && lead[1] === "") { return null; }
+    const expr = lead[2].trim();
+    if (!expr || !HAS_OPERATOR.test(expr)) { return null; }
+    const value = evaluateExpression(expr);
+    if (value === null) { return null; }
+    const result = formatCalcResult(value);
+    if (result.includes("e")) { return null; }
+    const start = lead.index + lead[1].length; // the `=` itself
     return { length: textBefore.length - start, expr, result };
 }

@@ -22,6 +22,9 @@
  * same dropdown anchored at the editor caret instead of under an <input>.
  */
 import { notifyGetLinkTargetSuggestions, notifyResolveLinkTarget } from "@/messaging";
+import { getEditorView } from "@/editor";
+import { collectDocHeadings } from "@/utils/headingUtils";
+import { slugifyHeadings } from "@/utils/slug";
 import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
 import { onOutsideClick } from "@/ui/outsideClick";
 import type { LinkTargetSuggestionItem } from "../../../shared/messages";
@@ -162,7 +165,14 @@ export function createLinkSuggestMenu(
  * meaning until an arrow key or hover selects a row.
  */
 export function createSuggestMenuFromRows(
-    rowDefs: ReadonlyArray<{ text: string; title?: string }>,
+    rowDefs: ReadonlyArray<{
+        text: string;
+        title?: string;
+        /** Right-aligned dimmed hint (e.g. the confirm key, "Tab"). */
+        hint?: string;
+        /** Styled as a secondary action row (top border, dimmer text). */
+        action?: boolean;
+    }>,
     anchor: SuggestMenuAnchor,
     onPick: (text: string) => void,
 ): LinkSuggestMenu | null {
@@ -214,10 +224,24 @@ export function createSuggestMenuFromRows(
     rows.forEach((text, i) => {
         const li = document.createElement("li");
         li.className = "fm-suggest-item";
+        if (rowDefs[i].action) { li.classList.add("fm-suggest-item--action"); }
         li.id = `${menuId}-opt-${i}`;
         li.setAttribute("role", "option");
         li.setAttribute("aria-selected", "false");
-        li.textContent = text;
+        if (rowDefs[i].hint) {
+            // Label + right-aligned hint spans; textContent-only rows stay
+            // plain so existing consumers (and their tests) are unaffected.
+            const label = document.createElement("span");
+            label.className = "fm-suggest-item__label";
+            label.textContent = text;
+            const hint = document.createElement("span");
+            hint.className = "fm-suggest-item__hint";
+            hint.setAttribute("aria-hidden", "true");
+            hint.textContent = rowDefs[i].hint ?? "";
+            li.append(label, hint);
+        } else {
+            li.textContent = text;
+        }
         if (rowDefs[i].title) { li.title = rowDefs[i].title; }
         li.addEventListener("mousedown", () => onPick(text));
         li.addEventListener("mouseover", () => {
@@ -331,8 +355,46 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
         );
     }
 
+    /**
+     * A `#…` query suggests SAME-DOCUMENT heading anchors — the missing path
+     * to an internal section link from the URL field. Headings and slugs come
+     * from the same model-sourced pair the section-link picker and the anchor
+     * resolver use (collectDocHeadings + slugifyHeadings), so a picked
+     * `#slug` always resolves. Local and synchronous — no extension roundtrip.
+     */
+    function showHeadingAnchors(query: string): void {
+        const view = getEditorView();
+        if (!view) { closeMenu(); return; }
+        const needle = query.slice(1).toLowerCase();
+        const headings = collectDocHeadings(view.state.doc);
+        const slugs = slugifyHeadings(headings.map((h) => h.text));
+        const rows = headings
+            .map((h, i) => ({ text: `#${slugs[i]}`, title: h.text }))
+            // A heading whose content slugifies to nothing (an emoji/atom-only
+            // title) would offer a bare `#` that resolves nowhere — drop it.
+            .filter((r) => r.text !== "#")
+            .filter(
+                (r) =>
+                    !needle ||
+                    r.text.toLowerCase().includes(needle) ||
+                    r.title.toLowerCase().includes(needle),
+            );
+        if (rows.length === 0) { closeMenu(); return; }
+        removeMenu();
+        const rect = input.getBoundingClientRect();
+        menu = createSuggestMenuFromRows(
+            rows,
+            { left: rect.left, top: rect.bottom + 2, flipTop: rect.top - 2, minWidth: rect.width },
+            applySelection,
+        );
+    }
+
     function triggerSuggest(): void {
         const query = input.value.trim();
+        if (query.startsWith("#")) {
+            showHeadingAnchors(query);
+            return;
+        }
         if (!isLocalPathQuery(query)) {
             closeMenu();
             return;

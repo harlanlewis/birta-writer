@@ -5,11 +5,17 @@
     align-items: center;
     gap: 6px;
     align-self: flex-start;
+    /* One row, always: the label never wraps mid-phrase ("Local link /
+       format:") and the select yields width instead. */
+    width: 100%;
+    min-width: 0;
 }
 
 .lfs-label {
     font-size: 12px;
     color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    flex: none;
 
     &::after {
         content: ":";

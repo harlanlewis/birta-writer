@@ -11,6 +11,13 @@
     display: flex;
     flex-direction: column;
     width: 280px;
+    /* Real URLs and titles are long: the compact 280px suits the hover chip,
+       but the EDITOR needs room — widen whenever the edit body is expanded,
+       clamped to the viewport. */
+    &:has(.lp-body.expanded) {
+        width: 400px;
+        max-width: calc(100vw - 24px);
+    }
     /* Shared palette chip (style.css): inverted dark chip in light themes,
        normal themed chip in dark. Ink-carrying text/glyphs below use
        --palette-ink; inputs keep their own input tokens (a light field reads

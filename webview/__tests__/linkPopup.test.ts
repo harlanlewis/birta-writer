@@ -765,3 +765,96 @@ describe("dangling anchor hint", () => {
         expect(hint.classList.contains("lp-anchor-hint--miss")).toBe(true);
     });
 });
+
+describe("live link-text preview", () => {
+    const ORIGINAL = "A [label](https://example.com/x) here.\n";
+    let editor: Editor;
+    let container: HTMLElement;
+    let view: EditorView;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container, view } = await makeEditor(ORIGINAL));
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    function clickEdit(): void {
+        document.querySelector<HTMLElement>(".lp-btn-edit")!
+            .dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }
+
+    /** Types `value` into the text field the way a user does (input events). */
+    function typeText(value: string): void {
+        const input = document.querySelector<HTMLInputElement>(".lp-text-input")!;
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    it("typing in the text field should update the on-page link text live", async () => {
+        await hover(container.querySelector("a")!);
+        clickEdit();
+
+        typeText("labels");
+        typeText("new label");
+
+        expect(view.state.doc.textContent).toContain("new label");
+        expect(editor.action(getMarkdown())).toContain("[new label](https://example.com/x)");
+    });
+
+    it("Escape should restore the original bytes exactly (preview abandoned)", async () => {
+        await hover(container.querySelector("a")!);
+        clickEdit();
+        typeText("half-typed edi");
+
+        const input = document.querySelector<HTMLInputElement>(".lp-text-input")!;
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+        expect(editor.action(getMarkdown())).toBe(ORIGINAL);
+    });
+
+    it("Enter should commit the previewed text", async () => {
+        await hover(container.querySelector("a")!);
+        clickEdit();
+        typeText("committed");
+
+        const input = document.querySelector<HTMLInputElement>(".lp-text-input")!;
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+        expect(editor.action(getMarkdown())).toContain("[committed](https://example.com/x)");
+    });
+
+    it("INSERT mode over a selection should preview text edits live too (the reported gap)", async () => {
+        // ⌘K over selected text: the covered range is real page text, so
+        // typing in the field must preview exactly like editing a link.
+        // Locate "label"'s doc range from the model, not string arithmetic.
+        let from = -1;
+        view.state.doc.descendants((node, pos) => {
+            if (from < 0 && node.isText && node.text?.includes("label")) {
+                from = pos + node.text.indexOf("label");
+            }
+        });
+        expect(from).toBeGreaterThan(0);
+        openLinkEditor({
+            view,
+            anchorRect: { left: 0, right: 0, top: 0, bottom: 0 },
+            from,
+            to: from + "label".length,
+            text: "label",
+            href: "",
+        });
+
+        typeText("previewed");
+        expect(view.state.doc.textContent).toContain("previewed");
+
+        // Escape abandons: the selection's original text returns exactly.
+        const input = document.querySelector<HTMLInputElement>(".lp-text-input")!;
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        expect(editor.action(getMarkdown())).toBe(ORIGINAL);
+    });
+});

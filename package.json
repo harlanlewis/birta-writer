@@ -84,6 +84,26 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.toggleNetwork",
+                "title": "%command.toggleNetwork.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.toggleCalcAutoInsert",
+                "title": "%command.toggleCalcAutoInsert.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.togglePasteUnfurl",
+                "title": "%command.togglePasteUnfurl.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.toggleChecklistSink",
+                "title": "%command.toggleChecklistSink.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.restorePreviousContent",
                 "title": "%command.restorePreviousContent.title%",
                 "category": "Birta Writer"

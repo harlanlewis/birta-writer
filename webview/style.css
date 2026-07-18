@@ -1658,7 +1658,9 @@ body.toolbar-hidden::before {
    under the same frontmatter key (filter input on top, create row at the end) */
 .fm-suggest-menu {
     position: fixed;
-    z-index: 1000;
+    /* Above every anchoring surface (the link editor is z 9999): the URL
+       autocomplete drops over the popup that hosts its input, never under. */
+    z-index: 10003;
     min-width: 180px;
     max-width: 320px;
     background: var(--vscode-editorSuggestWidget-background, var(--vscode-dropdown-background, var(--vscode-editor-background)));
@@ -1711,6 +1713,28 @@ body.toolbar-hidden::before {
 
     &.fm-suggest-create {
         font-style: italic;
+        color: var(--vscode-descriptionForeground);
+    }
+
+    /* Label + right-aligned confirm-key hint (e.g. the calc row's "Tab") */
+    &:has(.fm-suggest-item__hint) {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+    }
+    .fm-suggest-item__hint {
+        color: var(--vscode-descriptionForeground);
+        font-size: 10px;
+        border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+        border-radius: 3px;
+        padding: 0 4px;
+        flex: none;
+    }
+
+    /* Secondary action row (settings toggle): separated and dimmer */
+    &.fm-suggest-item--action {
+        border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
         color: var(--vscode-descriptionForeground);
     }
 }
@@ -2303,7 +2327,10 @@ body.block-marqueeing .milkdown .editor {
 }
 
 .embed-card {
-    max-width: 100%;
+    /* An inline card, not a hero: cap the width well below the content
+       column (a full-width 16:9 frame dominates the page). 560px matches
+       YouTube's own default embed size; narrow columns still shrink it. */
+    max-width: min(560px, 100%);
 }
 
 .embed-card__frame {
@@ -2326,6 +2353,34 @@ body.block-marqueeing .milkdown .editor {
 
 .embed-card__thumb {
     object-fit: cover;
+}
+
+/* "Open on YouTube" — the guaranteed path when in-webview playback is
+   refused (YouTube error 153: no acceptable referrer from a webview origin).
+   Quiet corner chrome that brightens on card hover. */
+.embed-card__external {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 4px;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    opacity: 0.55;
+    cursor: pointer;
+}
+.embed-card__frame:hover .embed-card__external,
+.embed-card__external:focus-visible {
+    opacity: 1;
+}
+.embed-card__external svg {
+    width: 14px;
+    height: 14px;
 }
 
 /* Play overlay: a real button, so it takes the shared focus ring. Neutral,

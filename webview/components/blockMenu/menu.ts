@@ -49,6 +49,7 @@ import { onOutsideClick } from "../../ui/outsideClick";
 import { t } from "../../i18n";
 import { filterSlashItems, SLASH_MENU_ITEMS } from "../slashMenu/registry";
 import {
+    IconArrowDownToLine,
     IconCheckSquare,
     IconChevronDown,
     IconChevronRight,
@@ -58,7 +59,11 @@ import {
     IconLink,
     IconTrash2,
 } from "../../ui/icons";
-import { uncheckAllTasks } from "../../editing/checklistSink";
+import {
+    isChecklistSinkEnabled,
+    setChecklistSinkEnabled,
+    uncheckAllTasks,
+} from "../../editing/checklistSink";
 import { blockMarkdownAt, selectInto } from "./turnInto";
 import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
@@ -970,6 +975,16 @@ export function openBlockMenu(
             icon: IconCheckSquare,
             disabled: !hasChecked,
             action: () => uncheckAllTasks(view),
+        });
+        // Discoverable home for birta.checklist.sinkChecked (MAR-175): a
+        // settings toggle, not a doc edit (mutates: false — never moves the
+        // caret), with menuitemcheckbox state showing the current value.
+        action(t("Move Checked Tasks to Bottom"), ["sink", "move", "checked", "bottom", "sort", "tasks"], {
+            icon: IconArrowDownToLine,
+            check: true,
+            active: isChecklistSinkEnabled(),
+            mutates: false,
+            action: () => setChecklistSinkEnabled(!isChecklistSinkEnabled()),
         });
     }
     action(movesSection ? t("Move Section Up") : t("Move Up"), ["move", "up", "reorder"], {

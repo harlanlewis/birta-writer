@@ -70,6 +70,21 @@ describe("renderEmbedCard — the click-to-load facade", () => {
         const iframe = card.querySelector<HTMLIFrameElement>("iframe");
         expect(iframe).not.toBeNull();
         expect(iframe!.src).toContain("https://www.youtube-nocookie.com/embed/" + ID);
+        // Error-153 mitigation: send what referrer the environment allows.
+        expect(iframe!.getAttribute("referrerpolicy")).toBe("strict-origin-when-cross-origin");
+    });
+
+    it("the Open-on-YouTube button should route the SOURCE url through the extension", async () => {
+        const { mockVscodeApi } = await import("./setup");
+        mockVscodeApi.postMessage.mockClear();
+        const source = `https://youtu.be/${ID}?t=42`;
+        const card = renderEmbedCard({ kind: "youtube", id: ID }, source);
+
+        card.querySelector<HTMLButtonElement>(".embed-card__external")!.click();
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openUrl", url: source });
+        // No iframe was built — external open is not playback.
+        expect(card.querySelector("iframe")).toBeNull();
     });
 });
 

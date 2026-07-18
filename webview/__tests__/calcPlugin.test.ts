@@ -49,10 +49,12 @@ function typeViaInput(v: EditorView, text: string): boolean {
     );
 }
 
+/** Row labels only — the confirm-key hint span and the trailing settings
+ *  action row ("Always insert result") are chrome, not results. */
 function optionTexts(): string[] {
     return Array.from(
-        document.querySelectorAll(".fm-suggest-menu .fm-suggest-item"),
-    ).map((li) => li.textContent ?? "");
+        document.querySelectorAll(".fm-suggest-menu .fm-suggest-item:not(.fm-suggest-item--action)"),
+    ).map((li) => li.querySelector(".fm-suggest-item__label")?.textContent ?? li.textContent ?? "");
 }
 
 describe("advisory inline calc", () => {
@@ -124,6 +126,49 @@ describe("advisory inline calc", () => {
         expect(v.state.doc.textContent).toBe("x (3+4)/2= 3.5");
     });
 
+    it("the leading form =5+7 should offer 12 and Tab should produce 12=5+7", async () => {
+        typeText(v, " =5+7");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["12"]);
+
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+        expect(v.state.doc.textContent).toBe("x 12=5+7");
+    });
+
+    it("the result row should carry a Tab confirm hint", async () => {
+        typeText(v, " 2+3=");
+        await vi.advanceTimersByTimeAsync(250);
+
+        const hint = document.querySelector(
+            ".fm-suggest-menu .fm-suggest-item .fm-suggest-item__hint",
+        );
+        expect(hint?.textContent).toBe("Tab");
+    });
+
+    it("the 'Always insert result' action row should enable auto-insert AND answer the current ask", async () => {
+        // Production always bakes __i18n into the HTML before any script runs;
+        // the settings row flips its calcAutoInsert field in place.
+        window.__i18n = { translations: {}, isMac: false, calcAutoInsert: false };
+        typeText(v, " 2+3=");
+        await vi.advanceTimersByTimeAsync(250);
+
+        const actionRow = document.querySelector(
+            ".fm-suggest-menu .fm-suggest-item--action",
+        )!;
+        expect(actionRow.textContent).toBe("Always insert result");
+        actionRow.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+        // The current expression completed…
+        expect(v.state.doc.textContent).toBe("x 2+3= 5");
+        // …the local gate flipped…
+        expect(window.__i18n?.calcAutoInsert).toBe(true);
+        // …and the advisory menu never shows again (auto-insert owns `=` now).
+        typeText(v, " 6*7=");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(document.querySelector(".fm-suggest-menu")).toBeNull();
+    });
+
     it("Escape should dismiss the suggestion without inserting", async () => {
         typeText(v, " 2+3=");
         await vi.advanceTimersByTimeAsync(250);
@@ -191,11 +236,42 @@ describe("auto-insert inline calc", () => {
         expect(v.state.doc.textContent).toBe("x hello");
     });
 
+    it("a comma-grouped number must NOT auto-insert a fragment answer", () => {
+        // The old handler detected against the pre-stripped run (match[0]),
+        // so the left-boundary guards never fired: `1,000 + 2=` evaluated the
+        // fragment `000 + 2` and inserted a WRONG `= 2`.
+        typeText(v, " 1,000 + 2");
+        const handled = typeViaInput(v, "=");
+
+        expect(handled).toBe(false);
+        expect(v.state.doc.textContent).toBe("x 1,000 + 2");
+    });
+
+    it("an operator with a prose operand must NOT auto-insert", () => {
+        typeText(v, " y - 4");
+        const handled = typeViaInput(v, "=");
+
+        expect(handled).toBe(false);
+        expect(v.state.doc.textContent).toBe("x y - 4");
+    });
+
     it("should not fire when auto-insert is off (advisory mode)", () => {
         window.__i18n = { translations: {}, isMac: false, calcAutoInsert: false };
         typeText(v, " 12*4");
         const handled = typeViaInput(v, "=");
 
         expect(handled).toBe(false);
+    });
+
+    it("the LEADING form should stay advisory even in auto-insert mode", async () => {
+        // `=5+7` has no finishing keystroke (the user may still be typing
+        // digits), so auto-insert never fires for it — the menu offers instead.
+        vi.useFakeTimers();
+        typeText(v, " =5+7");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(v.state.doc.textContent).toBe("x =5+7"); // nothing auto-inserted
+        expect(document.querySelector(".fm-suggest-menu")).not.toBeNull();
+        vi.useRealTimers();
     });
 });

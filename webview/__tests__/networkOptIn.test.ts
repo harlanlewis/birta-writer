@@ -102,8 +102,14 @@ describe("offerNetworkOptIn", () => {
         expect(window.__i18n?.network).toBe(true);
         // The just-triggered action runs now.
         expect(onEnable).toHaveBeenCalledOnce();
-        // The affordance is gone.
-        expect(isNetworkOptInOpen()).toBe(false);
+        // The pill lingers as a buttonless confirmation (embed cards need a
+        // reopen — MAR-183), then fades on its own.
+        expect(isNetworkOptInOpen()).toBe(true);
+        expect(document.querySelector(".network-optin__enable")).toBeNull();
+        expect(document.querySelector(".network-optin--confirmed")).not.toBeNull();
+        expect(
+            document.querySelector(".network-optin__label")?.textContent,
+        ).toContain("opened");
     });
 
     it("Enable should NOT suppress future offers (network is simply on now)", () => {

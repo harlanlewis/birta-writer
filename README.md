@@ -17,7 +17,7 @@ For the *why it matters* version of what follows — the fidelity/safety guarant
 - **Byte-faithful round-trips** — the editor serializes your document and merges only the lines that really changed; formatting you chose (table padding, blank-line style, reference-link forms, setext headings) survives edits elsewhere in the file
 - **Nothing is silently lost** — constructs Birta doesn't understand (Obsidian `#tags`, `%%comments%%`, Quarto cells, raw HTML) stay visible and untouched; a move or drop that would corrupt content on save is quietly declined instead of half-applied
 - **A disk-drift badge** warns when a file with unsaved edits changes on disk (git, a terminal, an AI assistant) — reload or compare side by side; the editor never silently overwrites or merges
-- **No network egress** — images save into your workspace, remote loads are blocked, proofreading runs offline; document content has no path off your machine
+- **Offline by default** — images save into your workspace, remote loads are blocked, proofreading runs offline; document content has no path off your machine. The only two features that can touch the network — paste-unfurl and URL embeds — sit behind a master switch (`birta.network.enabled`) that ships **off**; with it off the editor makes no outbound request at all
 
 ### Blocks: grab, move, convert
 
@@ -32,6 +32,8 @@ Every block — paragraphs, headings, list items (at any depth), quotes, callout
 - **Footnotes**: insert, edit, and follow `[^1]`-style footnotes; definitions render at the end with back-references
 - **Frontmatter**: YAML frontmatter renders as an editable key/value table at the top of the document (collapsible; `birta.frontmatterExpanded`)
 - **Occurrence editing**: `Cmd+D` cycles through occurrences of the selection, `Cmd+Shift+L` selects them all — the common "change every X" cases without leaving WYSIWYG
+- **Inline calculator**: type arithmetic with `=` at either end (`12 * 4 =` or `=5+7`) and the answer is offered as a suggestion — Tab accepts, or opt into insert-on-`=` (`birta.calc.autoInsert`, also a menu row and palette command). Deterministic parser, plain-text result, never anything with letters
+- **Working checklists**: turn on **Move checked tasks to bottom** (toolbar Lists menu, task-list block menu, palette, or `birta.checklist.sinkChecked`) and checked items sink below the unchecked ones; **Uncheck All Tasks** resets a whole checklist in one undo step
 
 ### Proofreading — offline
 
@@ -48,6 +50,8 @@ Spelling, grammar, and style checking runs entirely on your machine (the [Harper
 - **Inline link editing**: hover a link for a popup with text/URL editing and a **format switch** (markdown ⇄ `[[wikilink]]`); supports `@/` workspace paths, `#anchor` jumps, `file.md#27` line links, and cross-file heading links
 - **Smart link resolution** (`birta.smartLinks`): local links resolve the way your site generator publishes them — workspace-root paths, ancestor content roots, `.md`/`index.md`/`_index.md` inference; external links open through VS Code's own trusted-domains prompt
 - **Wikilinks**: `[[target]]`, `[[target|alias]]`, `[[target#heading]]` (Obsidian conventions) parse, render, navigate, and round-trip byte-identically; typing `[[` opens name autocompletion
+- **Section links**: pick a heading from a live list (`/section`, the selection palette, or Link to Section) and a standard `[text](#slug)` anchor is inserted; typing `#` in the link editor's URL field suggests the document's headings. **Renaming a heading repoints every in-note anchor to it** — same undo step (`birta.autoUpdateAnchors`)
+- **Paste a bare URL** (nothing selected) and, with network features on, it upgrades to a titled `[title](url)` link — the page's own title, fetched extension-side, no third-party service; offline it stays a plain link. A bare **YouTube link** on its own line renders as a player card (render-only — the file keeps the plain link; `birta.embeds.enabled`)
 - **Path autocomplete**: `@/`, `./`, `../` inside inline code browse the workspace with file-type icons
 
 ### Tables
@@ -118,7 +122,9 @@ The settings you're most likely to touch — the full list (including per-item t
 | `birta.smartLinks` | `true` | Site-generator-style local link resolution |
 | `birta.network.enabled` | `false` | Master network switch — offline by default; gates paste-unfurl and URL embeds. Off means no outbound request at all |
 | `birta.pasteUnfurl.enabled` | `true` | Paste a bare URL (nothing selected) to fetch the page title and insert `[title](url)`; needs `birta.network.enabled` (offered inline when off), falls back to the plain link offline |
-| `birta.calc.enabled` | `true` | Inline calc-on-`=`: typing `12 * 4 =` offers the result as a suggestion (Tab to accept; Return stays a newline) |
+| `birta.embeds.enabled` | `true` | Bare YouTube links on their own line render as player cards; needs `birta.network.enabled` |
+| `birta.autoUpdateAnchors` | `true` | Renaming a heading repoints every in-note `[text](#slug)` link to it, in the same undo step |
+| `birta.calc.enabled` | `true` | Inline calculator: `12 * 4 =` (or `=5+7`) offers the result as a suggestion (Tab to accept; Return stays a newline) |
 | `birta.calc.autoInsert` | `false` | Insert the calc result immediately on `=` instead of offering a suggestion |
 | `birta.checklist.sinkChecked` | `false` | Checked task items sink below their unchecked siblings (and float back up when unchecked) |
 | `birta.tableWrap` | `"normal"` | Table cell wrapping: `normal`, `aggressive`, or `none` |
