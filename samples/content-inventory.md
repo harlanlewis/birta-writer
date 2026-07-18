@@ -55,9 +55,11 @@ Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example
 
 ### Inline calculator
 
-Type an arithmetic expression ending in `=` and the answer appears as a suggestion — confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu to have every future `=` answered instantly (`birta.calc.autoInsert`). The result inserts as plain text, so nothing calc-specific ever persists in the file. Put the caret at the end of any line below and press `=` to try it:
+The `=` is the ask, and it works at **either end** of the expression:
 
-12 \* 4= 48
+- **`=` after** — `5+7 =` offers `12`; accepting gives `5+7 = 12`. Put the caret at the end of any line below and press `=` to try it:
+
+12 * 4
 
 (3 + 4) / 2
 
@@ -67,7 +69,11 @@ Type an arithmetic expression ending in `=` and the answer appears as a suggesti
 
 -2 ^ 2
 
-1,000,000 / 3 — the comma-grouped number is *refused* (evaluating the fragment after the comma would give a wrong answer), and `total = 2 + x` never triggers (letters aren't arithmetic). A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the `=` is the ask and the suggestion is yours to decline.
+- **`=` before** — type `=5+7` on an empty line and the same answer is offered; accepting puts it in front: `12=5+7` (the result-first form).
+
+The answer appears as a suggestion — confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
+
+What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) — same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
 
 ### Highlight
 
