@@ -2325,7 +2325,10 @@ body.block-marqueeing .milkdown .editor {
 }
 
 .embed-card {
-    max-width: 100%;
+    /* An inline card, not a hero: cap the width well below the content
+       column (a full-width 16:9 frame dominates the page). 560px matches
+       YouTube's own default embed size; narrow columns still shrink it. */
+    max-width: min(560px, 100%);
 }
 
 .embed-card__frame {
