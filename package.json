@@ -3,7 +3,7 @@
     "displayName": "Birta Writer",
     "description": "Birta Writer: a WYSIWYG Markdown editor for VS Code with live table editing",
     "version": "0.0.0",
-    "publisher": "harlanlewis",
+    "publisher": "birtalabs",
     "author": {
         "name": "Harlan Lewis",
         "url": "https://www.harlanlewis.com"

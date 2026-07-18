@@ -15,7 +15,7 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 
-const EXT_ID = "harlanlewis.birta-writer";
+const EXT_ID = "birtalabs.birta-writer";
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 function workspaceUri(): vscode.Uri {
