@@ -255,6 +255,40 @@ describe("detectCalcExpression", () => {
     });
 });
 
+describe("detectCalcExpression — leading form (=expr)", () => {
+    it("=5+7 at line start should offer 12 spanning from the =", () => {
+        const det = detectCalcExpression("=5+7");
+        expect(det?.result).toBe("12");
+        expect(det?.expr).toBe("5+7");
+        expect(det?.length).toBe(4); // "=5+7"
+    });
+
+    it("a leading = after whitespace should be detected", () => {
+        const det = detectCalcExpression("note =5+7");
+        expect(det?.result).toBe("12");
+        expect(det?.length).toBe(4);
+    });
+
+    it("a prose assignment (a=5+7) should not be detected", () => {
+        expect(detectCalcExpression("a=5+7")).toBeNull();
+        expect(detectCalcExpression("total=2+2")).toBeNull();
+    });
+
+    it("a highlight-style double equals should not be detected", () => {
+        expect(detectCalcExpression("==5+7")).toBeNull();
+    });
+
+    it("an incomplete or operator-free leading expression should not be detected", () => {
+        expect(detectCalcExpression("=5+")).toBeNull();
+        expect(detectCalcExpression("=42")).toBeNull();
+        expect(detectCalcExpression("=")).toBeNull();
+    });
+
+    it("spaces after the = should be tolerated", () => {
+        expect(detectCalcExpression("= 5 + 7")?.result).toBe("12");
+    });
+});
+
 describe("formatCalcResult precision", () => {
     it("integers beyond 12 significant digits should print exactly", () => {
         expect(formatCalcResult(9999999999999)).toBe("9999999999999");

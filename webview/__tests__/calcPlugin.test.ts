@@ -126,6 +126,16 @@ describe("advisory inline calc", () => {
         expect(v.state.doc.textContent).toBe("x (3+4)/2= 3.5");
     });
 
+    it("the leading form =5+7 should offer 12 and Tab should produce 12=5+7", async () => {
+        typeText(v, " =5+7");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["12"]);
+
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+        expect(v.state.doc.textContent).toBe("x 12=5+7");
+    });
+
     it("the result row should carry a Tab confirm hint", async () => {
         typeText(v, " 2+3=");
         await vi.advanceTimersByTimeAsync(250);
@@ -232,5 +242,17 @@ describe("auto-insert inline calc", () => {
         const handled = typeViaInput(v, "=");
 
         expect(handled).toBe(false);
+    });
+
+    it("the LEADING form should stay advisory even in auto-insert mode", async () => {
+        // `=5+7` has no finishing keystroke (the user may still be typing
+        // digits), so auto-insert never fires for it — the menu offers instead.
+        vi.useFakeTimers();
+        typeText(v, " =5+7");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(v.state.doc.textContent).toBe("x =5+7"); // nothing auto-inserted
+        expect(document.querySelector(".fm-suggest-menu")).not.toBeNull();
+        vi.useRealTimers();
     });
 });

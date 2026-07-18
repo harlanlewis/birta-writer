@@ -226,7 +226,11 @@ export function formatCalcResult(value: number): string {
 
 /** A detected calc construct ending at the caret. */
 export interface CalcMatch {
-    /** Length in characters from the expression's first char through the caret. */
+    /**
+     * Length in characters of the matched span through the caret — from the
+     * expression's first char (trailing form, `5+7 =`) or from the `=`
+     * (leading form, `=5+7`).
+     */
     length: number;
     /** The pure arithmetic expression (trimmed), e.g. `12 * 4`. */
     expr: string;
@@ -238,6 +242,13 @@ export interface CalcMatch {
 const TRAILING_EQUALS = /=[ \t]*$/;
 /** The maximal run of arithmetic characters immediately before that `=`. */
 const TRAILING_EXPR = /[0-9.+\-*/%^() \t]*$/;
+/**
+ * The LEADING form: `=<expr>` ending at the caret, with the `=` at line start
+ * or after whitespace — `a=5+7` is a prose assignment (no boundary) and
+ * `==x` never matches (the char class excludes `=`, and the second `=` has no
+ * boundary before it).
+ */
+const LEADING_FORM = /(^|[ \t])=([0-9.+\-*/%^() \t]+)$/;
 /** At least one operator: a bare number is not offered (`the value 42 =`). */
 const HAS_OPERATOR = /[+\-*/%^]/;
 
@@ -260,7 +271,7 @@ const HAS_OPERATOR = /[+\-*/%^]/;
  */
 export function detectCalcExpression(textBefore: string): CalcMatch | null {
     const eq = TRAILING_EQUALS.exec(textBefore);
-    if (!eq) { return null; }
+    if (!eq) { return detectLeadingForm(textBefore); }
     const beforeEquals = textBefore.slice(0, eq.index);
     const run = TRAILING_EXPR.exec(beforeEquals)?.[0] ?? "";
     const expr = run.trim();
@@ -305,5 +316,24 @@ export function detectCalcExpression(textBefore: string): CalcMatch | null {
     // whitespace) through the caret (the end of textBefore).
     const leadingWs = run.length - run.replace(/^[ \t]+/, "").length;
     const start = runStart + leadingWs;
+    return { length: textBefore.length - start, expr, result };
+}
+
+/**
+ * The result-first form: `=5+7` at the caret offers `12`, accepted as
+ * `12=5+7` — the result lands BEFORE the `=` (see applyCalcResult's caller).
+ * The `=` must sit at line start or after whitespace, so prose assignments
+ * (`a=5+7`) and `==`-delimited highlights never trigger.
+ */
+function detectLeadingForm(textBefore: string): CalcMatch | null {
+    const lead = LEADING_FORM.exec(textBefore);
+    if (!lead) { return null; }
+    const expr = lead[2].trim();
+    if (!expr || !HAS_OPERATOR.test(expr)) { return null; }
+    const value = evaluateExpression(expr);
+    if (value === null) { return null; }
+    const result = formatCalcResult(value);
+    if (result.includes("e")) { return null; }
+    const start = lead.index + lead[1].length; // the `=` itself
     return { length: textBefore.length - start, expr, result };
 }

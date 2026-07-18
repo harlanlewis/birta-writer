@@ -59,10 +59,14 @@ const calcSuggestKey = new PluginKey("MD_CALC_SUGGEST");
 
 const calcSuggestSpec: CaretSuggestSpec = {
     match(textBefore) {
-        // Off, or the user opted into auto-insert: no advisory menu at all.
-        if (!calcEnabled() || calcAutoInsert()) { return null; }
+        if (!calcEnabled()) { return null; }
         const det = detectCalcExpression(textBefore);
         if (!det) { return null; }
+        // Auto-insert mode owns the TRAILING form via its input rule (the
+        // final `=` marks the expression finished). The LEADING form (`=5+7`)
+        // has no finishing keystroke — the user may still be typing digits —
+        // so it stays advisory even in auto-insert mode.
+        if (calcAutoInsert() && /=[ \t]*$/.test(textBefore)) { return null; }
         // query carries the pure expression; the result is recomputed where
         // needed (deterministic, so no need to thread it through the controller).
         return { length: det.length, query: det.expr };
@@ -126,14 +130,17 @@ const calcSuggestSpec: CaretSuggestSpec = {
 };
 
 /**
- * Replaces the matched `<expr> =` span with `<expr> = <result>`: keeps the
- * expression the user typed and their spacing, normalizes the run right after
- * `=` to a single space, and appends the result. Plain text only — nothing
- * calc-specific persists in the document.
+ * Answer the matched span, form-aware (the region's own shape says which):
+ * - trailing `<expr> =` → `<expr> = <result>` (spacing after `=` normalized);
+ * - leading `=<expr>` → `<result>=<expr>` — the region starts with `=`, and
+ *   the result lands verbatim before it (`=5+7` → `12=5+7`).
+ * Plain text only — nothing calc-specific persists in the document.
  */
 function applyCalcResult(view: EditorView, start: number, caret: number, result: string): void {
     const region = view.state.doc.textBetween(start, caret);
-    const replacement = region.replace(/=[ \t]*$/, `= ${result}`);
+    const replacement = region.startsWith("=")
+        ? `${result}${region}`
+        : region.replace(/=[ \t]*$/, `= ${result}`);
     view.dispatch(view.state.tr.insertText(replacement, start, caret).scrollIntoView());
 }
 
