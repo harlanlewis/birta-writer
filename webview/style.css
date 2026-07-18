@@ -1713,6 +1713,28 @@ body.toolbar-hidden::before {
         font-style: italic;
         color: var(--vscode-descriptionForeground);
     }
+
+    /* Label + right-aligned confirm-key hint (e.g. the calc row's "Tab") */
+    &:has(.fm-suggest-item__hint) {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+    }
+    .fm-suggest-item__hint {
+        color: var(--vscode-descriptionForeground);
+        font-size: 10px;
+        border: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border));
+        border-radius: 3px;
+        padding: 0 4px;
+        flex: none;
+    }
+
+    /* Secondary action row (settings toggle): separated and dimmer */
+    &.fm-suggest-item--action {
+        border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border));
+        color: var(--vscode-descriptionForeground);
+    }
 }
 
 /* Link URL autocompletion dropdown (link popup / insert-link prompt): shares

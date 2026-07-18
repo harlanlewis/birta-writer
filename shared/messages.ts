@@ -215,6 +215,9 @@ export type ToExtensionMessage =
     // through the config write-back seam (scope-respecting update). The webview
     // also flips its in-session gate locally so the feature works immediately.
     | { type: "setNetworkEnabled"; enabled: boolean }
+    // The calc suggestion menu's "Always insert result" row: persist
+    // birta.calc.autoInsert through the scope-respecting write-back.
+    | { type: "setCalcAutoInsert"; enabled: boolean }
     | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }

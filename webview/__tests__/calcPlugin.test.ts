@@ -49,10 +49,12 @@ function typeViaInput(v: EditorView, text: string): boolean {
     );
 }
 
+/** Row labels only — the confirm-key hint span and the trailing settings
+ *  action row ("Always insert result") are chrome, not results. */
 function optionTexts(): string[] {
     return Array.from(
-        document.querySelectorAll(".fm-suggest-menu .fm-suggest-item"),
-    ).map((li) => li.textContent ?? "");
+        document.querySelectorAll(".fm-suggest-menu .fm-suggest-item:not(.fm-suggest-item--action)"),
+    ).map((li) => li.querySelector(".fm-suggest-item__label")?.textContent ?? li.textContent ?? "");
 }
 
 describe("advisory inline calc", () => {
@@ -122,6 +124,39 @@ describe("advisory inline calc", () => {
         row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 
         expect(v.state.doc.textContent).toBe("x (3+4)/2= 3.5");
+    });
+
+    it("the result row should carry a Tab confirm hint", async () => {
+        typeText(v, " 2+3=");
+        await vi.advanceTimersByTimeAsync(250);
+
+        const hint = document.querySelector(
+            ".fm-suggest-menu .fm-suggest-item .fm-suggest-item__hint",
+        );
+        expect(hint?.textContent).toBe("Tab");
+    });
+
+    it("the 'Always insert result' action row should enable auto-insert AND answer the current ask", async () => {
+        // Production always bakes __i18n into the HTML before any script runs;
+        // the settings row flips its calcAutoInsert field in place.
+        window.__i18n = { translations: {}, isMac: false, calcAutoInsert: false };
+        typeText(v, " 2+3=");
+        await vi.advanceTimersByTimeAsync(250);
+
+        const actionRow = document.querySelector(
+            ".fm-suggest-menu .fm-suggest-item--action",
+        )!;
+        expect(actionRow.textContent).toBe("Always insert result");
+        actionRow.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+        // The current expression completed…
+        expect(v.state.doc.textContent).toBe("x 2+3= 5");
+        // …the local gate flipped…
+        expect(window.__i18n?.calcAutoInsert).toBe(true);
+        // …and the advisory menu never shows again (auto-insert owns `=` now).
+        typeText(v, " 6*7=");
+        await vi.advanceTimersByTimeAsync(250);
+        expect(document.querySelector(".fm-suggest-menu")).toBeNull();
     });
 
     it("Escape should dismiss the suggestion without inserting", async () => {

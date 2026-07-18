@@ -825,6 +825,12 @@ export class MarkdownEditorProvider
                             .catch(() => undefined)
                             .then(() => { this._networkWriteInFlight = null; });
                         break;
+                    case "setCalcAutoInsert":
+                        // The calc menu's "Always insert result" row. The
+                        // accepting webview flips its own __i18n gate; other
+                        // open webviews pick the value up on reopen.
+                        updateSettingRespectingScope("calc.autoInsert", message.enabled);
+                        break;
                     case "spellAddWord":
                         addUserWord(message.word);
                         break;

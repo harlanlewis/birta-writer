@@ -162,7 +162,14 @@ export function createLinkSuggestMenu(
  * meaning until an arrow key or hover selects a row.
  */
 export function createSuggestMenuFromRows(
-    rowDefs: ReadonlyArray<{ text: string; title?: string }>,
+    rowDefs: ReadonlyArray<{
+        text: string;
+        title?: string;
+        /** Right-aligned dimmed hint (e.g. the confirm key, "Tab"). */
+        hint?: string;
+        /** Styled as a secondary action row (top border, dimmer text). */
+        action?: boolean;
+    }>,
     anchor: SuggestMenuAnchor,
     onPick: (text: string) => void,
 ): LinkSuggestMenu | null {
@@ -214,10 +221,24 @@ export function createSuggestMenuFromRows(
     rows.forEach((text, i) => {
         const li = document.createElement("li");
         li.className = "fm-suggest-item";
+        if (rowDefs[i].action) { li.classList.add("fm-suggest-item--action"); }
         li.id = `${menuId}-opt-${i}`;
         li.setAttribute("role", "option");
         li.setAttribute("aria-selected", "false");
-        li.textContent = text;
+        if (rowDefs[i].hint) {
+            // Label + right-aligned hint spans; textContent-only rows stay
+            // plain so existing consumers (and their tests) are unaffected.
+            const label = document.createElement("span");
+            label.className = "fm-suggest-item__label";
+            label.textContent = text;
+            const hint = document.createElement("span");
+            hint.className = "fm-suggest-item__hint";
+            hint.setAttribute("aria-hidden", "true");
+            hint.textContent = rowDefs[i].hint ?? "";
+            li.append(label, hint);
+        } else {
+            li.textContent = text;
+        }
         if (rowDefs[i].title) { li.title = rowDefs[i].title; }
         li.addEventListener("mousedown", () => onPick(text));
         li.addEventListener("mouseover", () => {

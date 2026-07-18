@@ -36,6 +36,8 @@ import { $inputRule, $prose } from "@milkdown/utils";
 import { createSuggestMenuFromRows } from "../components/pathLink/linkTargetComplete";
 import { caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
 import { detectCalcExpression, evaluateExpression, formatCalcResult } from "../utils/calc";
+import { notifySetCalcAutoInsert } from "../messaging";
+import { t } from "../i18n";
 
 /** calc is on by default; both flags are baked into __i18n at panel load. */
 function calcEnabled(): boolean {
@@ -44,6 +46,11 @@ function calcEnabled(): boolean {
 /** Auto-insert is opt-in (advisory by default). */
 function calcAutoInsert(): boolean {
     return window.__i18n?.calcAutoInsert ?? false;
+}
+
+/** The settings row's label — a function so i18n resolves at menu build. */
+function alwaysInsertLabel(): string {
+    return t("Always insert result");
 }
 
 // ── Advisory mode (caret suggestion) ─────────────────────────────────────────
@@ -74,17 +81,40 @@ const calcSuggestSpec: CaretSuggestSpec = {
         const results = items as string[];
         if (results.length === 0) { return null; }
         const result = results[0];
-        // One row: the answer. The row text IS the pick value (inserted
-        // verbatim), so it shows just the number; the full equation is the
-        // hover title for context.
+        // Row 1: the answer — the row text IS the pick value (inserted
+        // verbatim), so it shows just the number with the confirm key as a
+        // right-aligned hint; the full equation is the hover title.
+        // Row 2: a settings action — flip birta.calc.autoInsert so every
+        // future `=` inserts without this menu. Only reachable here (the
+        // menu never shows once auto-insert is on), so no "off" state needed.
         return createSuggestMenuFromRows(
-            [{ text: result, title: `${match.query} = ${result}` }],
+            [
+                { text: result, title: `${match.query} = ${result}`, hint: "Tab" },
+                {
+                    text: alwaysInsertLabel(),
+                    title: t("Insert the answer the moment you type = (birta.calc.autoInsert)"),
+                    action: true,
+                },
+            ],
             anchor,
             onPick,
         );
     },
 
     pick(view, match, picked) {
+        if (picked === alwaysInsertLabel()) {
+            // Settings row: turn auto-insert on (local gate now, persisted
+            // via the write-back), and complete the CURRENT ask too — the
+            // user was mid-equation; leaving it unanswered would read as a
+            // broken pick.
+            if (window.__i18n) { window.__i18n.calcAutoInsert = true; }
+            notifySetCalcAutoInsert(true);
+            const value = evaluateExpression(match.query);
+            if (value !== null) {
+                applyCalcResult(view, match.start, match.caret, formatCalcResult(value));
+            }
+            return;
+        }
         applyCalcResult(view, match.start, match.caret, picked);
     },
 

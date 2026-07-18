@@ -147,6 +147,11 @@ export function notifySetNetworkEnabled(enabled: boolean): void {
     vscode.postMessage({ type: "setNetworkEnabled", enabled });
 }
 
+/** The calc menu's "Always insert result" row → persist birta.calc.autoInsert. */
+export function notifySetCalcAutoInsert(enabled: boolean): void {
+    vscode.postMessage({ type: "setCalcAutoInsert", enabled });
+}
+
 export function notifyFrontmatterUpdate(frontmatter: string): void {
     vscode.postMessage({ type: "frontmatterUpdate", frontmatter, baseSyncVersion });
 }
