@@ -269,14 +269,34 @@ const HAS_OPERATOR = /[+\-*/%^]/;
  * - The expression must contain at least one operator, so echoing a bare
  *   number back (`the answer is 42 =` → `42`) never triggers.
  */
-export function detectCalcExpression(textBefore: string): CalcMatch | null {
+export function detectCalcExpression(
+    textBefore: string,
+    opts?: {
+        /**
+         * True when `textBefore` may be CUT SHORT of the real line start (the
+         * caret-suggest window is the last ≤500 chars; ProseMirror input
+         * rules cap similarly). Position 0 is then an arbitrary cut point,
+         * not a line boundary — any match that needs to TRUST position 0
+         * (a leading `=` anchored there; a trailing run starting there,
+         * whose token-split guard can't see the preceding char) is refused,
+         * because the invisible context could make the visible run a
+         * fragment — and a fragment computes a WRONG answer.
+         */
+        boundaryUnknown?: boolean;
+    },
+): CalcMatch | null {
     const eq = TRAILING_EQUALS.exec(textBefore);
-    if (!eq) { return detectLeadingForm(textBefore); }
+    if (!eq) { return detectLeadingForm(textBefore, opts?.boundaryUnknown ?? false); }
     const beforeEquals = textBefore.slice(0, eq.index);
     const run = TRAILING_EXPR.exec(beforeEquals)?.[0] ?? "";
     const expr = run.trim();
     if (!expr || !HAS_OPERATOR.test(expr)) { return null; }
     const runStart = eq.index - run.length;
+    // A run starting at position 0 of a possibly-truncated window: the char
+    // before it is invisible, so the token-split guard below cannot rule out
+    // that this run is the TAIL of a larger token (`1,000…` with the comma cut
+    // off). Refuse rather than risk computing a fragment.
+    if (runStart === 0 && opts?.boundaryUnknown) { return null; }
     // Left-boundary discipline. The run is the MAXIMAL trailing span of
     // arithmetic characters, so whatever precedes it is not arithmetic — but
     // the run can still be a fragment of a larger token, and evaluating a
@@ -325,9 +345,14 @@ export function detectCalcExpression(textBefore: string): CalcMatch | null {
  * The `=` must sit at line start or after whitespace, so prose assignments
  * (`a=5+7`) and `==`-delimited highlights never trigger.
  */
-function detectLeadingForm(textBefore: string): CalcMatch | null {
+function detectLeadingForm(textBefore: string, boundaryUnknown: boolean): CalcMatch | null {
     const lead = LEADING_FORM.exec(textBefore);
     if (!lead) { return null; }
+    // `^` matched at position 0 of a possibly-truncated window: the true
+    // preceding char is invisible and could be a letter (`a=5+7` — a prose
+    // assignment the boundary rule exists to reject). A real whitespace
+    // boundary (lead[1] non-empty) is inside the window and stays trusted.
+    if (boundaryUnknown && lead.index === 0 && lead[1] === "") { return null; }
     const expr = lead[2].trim();
     if (!expr || !HAS_OPERATOR.test(expr)) { return null; }
     const value = evaluateExpression(expr);

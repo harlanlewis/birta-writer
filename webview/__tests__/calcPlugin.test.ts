@@ -236,6 +236,25 @@ describe("auto-insert inline calc", () => {
         expect(v.state.doc.textContent).toBe("x hello");
     });
 
+    it("a comma-grouped number must NOT auto-insert a fragment answer", () => {
+        // The old handler detected against the pre-stripped run (match[0]),
+        // so the left-boundary guards never fired: `1,000 + 2=` evaluated the
+        // fragment `000 + 2` and inserted a WRONG `= 2`.
+        typeText(v, " 1,000 + 2");
+        const handled = typeViaInput(v, "=");
+
+        expect(handled).toBe(false);
+        expect(v.state.doc.textContent).toBe("x 1,000 + 2");
+    });
+
+    it("an operator with a prose operand must NOT auto-insert", () => {
+        typeText(v, " y - 4");
+        const handled = typeViaInput(v, "=");
+
+        expect(handled).toBe(false);
+        expect(v.state.doc.textContent).toBe("x y - 4");
+    });
+
     it("should not fire when auto-insert is off (advisory mode)", () => {
         window.__i18n = { translations: {}, isMac: false, calcAutoInsert: false };
         typeText(v, " 12*4");

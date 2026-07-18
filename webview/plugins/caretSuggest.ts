@@ -34,8 +34,14 @@ export interface CaretSuggestSpec {
      * Parses the construct ending at the end of `textBefore` (the last ≤500
      * chars before the caret, atoms as ￼). Returns the matched length +
      * parts, or null when the caret is not in this plugin's construct.
+     * `ctx.truncated` is true when the window was cut short of the real
+     * block start — position 0 is then NOT a line boundary; specs whose
+     * grammar depends on line-start context (calc) must not trust it.
      */
-    match(textBefore: string): { length: number; query: string; label?: string } | null;
+    match(
+        textBefore: string,
+        ctx?: { truncated: boolean },
+    ): { length: number; query: string; label?: string } | null;
     /** Whether `query` should trigger a suggestion request at all. */
     shouldSuggest(query: string): boolean;
     /** Requests suggestions for `query`; `cb` may be called once, later. */
@@ -142,7 +148,7 @@ class CaretSuggestController {
             undefined,
             "\uFFFC",
         );
-        const m = this.spec.match(textBefore);
+        const m = this.spec.match(textBefore, { truncated: $from.parentOffset > 500 });
         if (!m || textBefore.slice(-m.length).includes("\uFFFC")) { return null; }
         return {
             start: selection.from - m.length,

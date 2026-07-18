@@ -58,9 +58,9 @@ function alwaysInsertLabel(): string {
 const calcSuggestKey = new PluginKey("MD_CALC_SUGGEST");
 
 const calcSuggestSpec: CaretSuggestSpec = {
-    match(textBefore) {
+    match(textBefore, ctx) {
         if (!calcEnabled()) { return null; }
-        const det = detectCalcExpression(textBefore);
+        const det = detectCalcExpression(textBefore, { boundaryUnknown: ctx?.truncated ?? false });
         if (!det) { return null; }
         // Auto-insert mode owns the TRAILING form via its input rule (the
         // final `=` marks the expression finished). The LEADING form (`=5+7`)
@@ -174,10 +174,25 @@ const CALC_AUTOINSERT_REGEX = /[0-9.+\-*/%^() \t]*=$/;
 export const calcAutoInsertPlugin = $inputRule(() =>
     new InputRule(CALC_AUTOINSERT_REGEX, (state, match, start, end) => {
         if (!calcEnabled() || !calcAutoInsert()) { return null; }
-        if (state.doc.resolve(start).parent.type.spec.code) { return null; }
-        // detectCalcExpression wants the text as it looks WITH the `=`; match[0]
-        // already ends in `=` (the just-typed char is included in the match).
-        const det = detectCalcExpression(match[0]);
+        const $end = state.doc.resolve(end);
+        if ($end.parent.type.spec.code) { return null; }
+        // NEVER detect against match[0]: it is the already-stripped arithmetic
+        // run, so its position 0 is always the run start and the left-boundary
+        // guards can never fire — `1,000 + 2=` would evaluate the fragment
+        // `000 + 2` and auto-insert a WRONG `= 2`. Rebuild the REAL context
+        // (the last ≤500 chars of the block, plus the just-typed `=` that is
+        // not in the doc yet) so the guards see the comma/letter before the
+        // run, and flag the window edge when the block is longer than that.
+        const textBefore =
+            $end.parent.textBetween(
+                Math.max(0, $end.parentOffset - 500),
+                $end.parentOffset,
+                undefined,
+                "￼",
+            ) + "=";
+        const det = detectCalcExpression(textBefore, {
+            boundaryUnknown: $end.parentOffset > 500,
+        });
         if (!det) { return null; }
         return state.tr.insertText(`= ${det.result}`, end);
     }),

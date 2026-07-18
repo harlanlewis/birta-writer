@@ -289,6 +289,27 @@ describe("detectCalcExpression — leading form (=expr)", () => {
     });
 });
 
+describe("detectCalcExpression — truncated-window boundaries (boundaryUnknown)", () => {
+    it("a trailing run starting at position 0 should be refused when the window may be cut", () => {
+        // The char before the run is invisible — it could be the comma of
+        // `1,000…`, making this a fragment and the answer wrong.
+        expect(detectCalcExpression("000 + 2 =", { boundaryUnknown: true })).toBeNull();
+        // At a TRUE line start (no truncation) the same text computes.
+        expect(detectCalcExpression("000 + 2 =")?.result).toBe("2");
+    });
+
+    it("a leading = anchored at position 0 should be refused when the window may be cut", () => {
+        // The invisible preceding char could be a letter (`a=5+7` — prose).
+        expect(detectCalcExpression("=5+7", { boundaryUnknown: true })).toBeNull();
+        expect(detectCalcExpression("=5+7")?.result).toBe("12");
+    });
+
+    it("a whitespace boundary INSIDE the window stays trusted even when cut", () => {
+        expect(detectCalcExpression("x =5+7", { boundaryUnknown: true })?.result).toBe("12");
+        expect(detectCalcExpression("is 3 + 4 =", { boundaryUnknown: true })?.result).toBe("7");
+    });
+});
+
 describe("formatCalcResult precision", () => {
     it("integers beyond 12 significant digits should print exactly", () => {
         expect(formatCalcResult(9999999999999)).toBe("9999999999999");
