@@ -144,14 +144,6 @@ https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
 
 
-Every recognized YouTube URL shape gets the same card — the short host, Shorts, and the privacy host all below:
-
-https://youtu.be/dQw4w9WgXcQ
-
-https://www.youtube.com/shorts/dQw4w9WgXcQ
-
-https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ
-
 Only known providers embed — **YouTube is the only provider today** (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
 
 https://vimeo.com/76979871
