@@ -10,7 +10,15 @@ declare global {
             codeBlockAutoConvert?: boolean;
             /** Smart link resolution + wikilink autocomplete (birta.smartLinks). */
             smartLinks?: boolean;
-            /** Paste-unfurl: bare-URL paste fetches the page title (birta.pasteUnfurl.enabled). */
+            /**
+             * Master network switch (birta.network.enabled), offline by default
+             * (MAR-179). Gates EVERY network feature: nothing contacts the
+             * network unless this is true. Mutated to true in-session when the
+             * user accepts a just-in-time opt-in, so the feature works for the
+             * rest of the session without a reload.
+             */
+            network?: boolean;
+            /** Paste-unfurl: bare-URL paste fetches the page title (birta.pasteUnfurl.enabled). Also gated by `network`. */
             pasteUnfurl?: boolean;
             /** Inline calc-on-`=` master gate (birta.calc.enabled). */
             calcEnabled?: boolean;

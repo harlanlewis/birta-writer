@@ -794,6 +794,13 @@ export class MarkdownEditorProvider
                     case "setTocPosition":
                         updateSettingRespectingScope("tocPosition", message.position);
                         break;
+                    case "setNetworkEnabled":
+                        // Just-in-time opt-in (MAR-179): the user accepted an
+                        // "Enable" affordance. Persist the master switch through
+                        // the scope-respecting write-back, exactly like the
+                        // toolbar settings above.
+                        updateSettingRespectingScope("network.enabled", message.enabled);
+                        break;
                     case "spellAddWord":
                         addUserWord(message.word);
                         break;
@@ -1458,11 +1465,22 @@ export class MarkdownEditorProvider
      * error sink (never a toast).
      *
      * This is the extension's ONLY outbound network request. It is gated by
-     * `birta.pasteUnfurl.enabled` upstream (the webview never posts `unfurlUrl`
-     * when the setting is off), restricted to http(s), time-bounded by an
-     * AbortController, and size-bounded by reading at most UNFURL_MAX_BYTES.
+     * `birta.network.enabled` (the master switch) AND `birta.pasteUnfurl.enabled`
+     * upstream (the webview never posts `unfurlUrl` when either is off),
+     * restricted to http(s), time-bounded by an AbortController, and size-bounded
+     * by reading at most UNFURL_MAX_BYTES.
+     *
+     * Defense in depth (MAR-179): re-check the master switch here too, so a
+     * stale or rogue webview message can never trigger a fetch while the editor
+     * is meant to be offline. The webview gate is the primary control; this is
+     * the belt-and-braces backstop on the one code path that reaches the wire.
      */
     private async _fetchUnfurlTitle(url: string): Promise<string | null> {
+        // Master switch: offline by default. When off, refuse to fetch — reply
+        // null (the "keep the bare link" answer) without ever touching the wire.
+        if (!readBirtaSetting("networkEnabled")) {
+            return null;
+        }
         // http(s) only: never fetch file:, data:, vscode:, or other schemes a
         // pasted string could carry.
         let parsed: URL;

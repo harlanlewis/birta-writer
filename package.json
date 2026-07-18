@@ -1849,6 +1849,12 @@
                     "default": true,
                     "description": "%config.smartLinks.description%"
                 },
+                "birta.network.enabled": {
+                    "order": 105,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.network.enabled.description%"
+                },
                 "birta.pasteUnfurl.enabled": {
                     "order": 106.5,
                     "type": "boolean",

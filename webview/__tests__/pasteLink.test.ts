@@ -6,6 +6,7 @@ import { configureSerialization, gfmFidelity, pureCommonmark } from "../serializ
 import { detectPastedLinkTarget, pasteLinkPlugin } from "@/plugins/pasteLink";
 import * as unfurl from "@/unfurl";
 import { findBareLinkRange } from "@/unfurl";
+import { __resetNetworkOptInForTests, isNetworkOptInOpen } from "@/components/networkOptIn";
 import { mockVscodeApi } from "./setup";
 
 describe("detectPastedLinkTarget", () => {
@@ -184,13 +185,19 @@ describe("paste-unfurl empty-selection paste", () => {
     beforeEach(async () => {
         vi.clearAllMocks();
         document.body.innerHTML = "";
-        delete window.__i18n; // default: pasteUnfurl enabled
+        __resetNetworkOptInForTests();
+        // Master network switch ON so the online unfurl path runs by default;
+        // the feature key defaults on. The offline-affordance path is exercised
+        // by the network-off tests below, which flip `network` to false.
+        window.__i18n = { translations: {}, isMac: false, network: true, pasteUnfurl: true };
         // Don't arm the real 15s backstop timer during these unit tests.
         vi.spyOn(unfurl, "registerPendingUnfurl").mockImplementation(() => {});
     });
 
     afterEach(async () => {
         await editor.destroy();
+        __resetNetworkOptInForTests();
+        delete window.__i18n;
         vi.restoreAllMocks();
     });
 
@@ -261,6 +268,47 @@ describe("paste-unfurl empty-selection paste", () => {
         expect(handled).toBe(false);
         expect(hasLinkMark(v, "https://example.com")).toBe(false);
         expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+    });
+
+    // ── Offline by default (MAR-179): master network switch OFF ──────────────
+
+    it("with network OFF it should insert a plain link but NOT fetch (no unfurlUrl posted)", async () => {
+        // Feature on, master off — the default-offline case.
+        window.__i18n = { translations: {}, isMac: false, network: false, pasteUnfurl: true };
+        await setupAtEnd("hello \n");
+        const url = "https://example.com";
+
+        const handled = firePaste(v, url);
+
+        // The link is still inserted (a bare URL becomes clickable either way)…
+        expect(handled).toBe(true);
+        expect(hasLinkMark(v, url)).toBe(true);
+        // …but NO network request is made: the master switch gates the fetch.
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+        expect(unfurl.registerPendingUnfurl).not.toHaveBeenCalled();
+    });
+
+    it("with network OFF it should offer the just-in-time enable affordance", async () => {
+        window.__i18n = { translations: {}, isMac: false, network: false, pasteUnfurl: true };
+        await setupAtEnd("hello \n");
+
+        expect(isNetworkOptInOpen()).toBe(false);
+        firePaste(v, "https://example.com");
+
+        expect(isNetworkOptInOpen()).toBe(true);
+    });
+
+    it("with network ON it should fetch and NOT offer the affordance", async () => {
+        // beforeEach already sets network: true.
+        await setupAtEnd("hello \n");
+
+        firePaste(v, "https://example.com");
+
+        const posted = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0] as { type: string })
+            .filter((m) => m.type === "unfurlUrl");
+        expect(posted.length).toBe(1);
+        expect(isNetworkOptInOpen()).toBe(false);
     });
 
     /** Build an editor from markdown without moving the caret to the end. */

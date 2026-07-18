@@ -209,6 +209,12 @@ export type ToExtensionMessage =
     // so the link text can be upgraded to the real title. `id` correlates the
     // `unfurlResult` reply; `url` is the fetched target (http(s) only).
     | { type: "unfurlUrl"; id: string; url: string }
+    // Just-in-time opt-in (MAR-179): the user accepted the "Enable" affordance
+    // that appears when they do something requiring the network while the master
+    // switch is off. The extension persists `birta.network.enabled = enabled`
+    // through the config write-back seam (scope-respecting update). The webview
+    // also flips its in-session gate locally so the feature works immediately.
+    | { type: "setNetworkEnabled"; enabled: boolean }
     | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
     | { type: "tocWidth"; width: number }

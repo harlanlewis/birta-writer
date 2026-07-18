@@ -40,9 +40,17 @@ import { recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
 /** Upper bound on how long after first paint the first embed pass may wait. */
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
 
-/** Embeds ship ON; the flag is baked into __i18n at panel load (like calc). */
+/**
+ * Whether embeds are ACTIVE: the master network switch (MAR-179, offline by
+ * default) AND the per-feature key must both be on. The flags are baked into
+ * __i18n at panel load (like calc). When the master is off — the default — this
+ * is false, so computeEmbedDecorations returns empty and the idle arm never
+ * schedules: no card, no thumbnail, no CSP hosts (webviewHtml.ts gates those on
+ * the same pair). The FEATURE key defaults on, so the master is the single
+ * off-by-default gate.
+ */
 function embedsEnabled(): boolean {
-    return window.__i18n?.embedsEnabled ?? true;
+    return (window.__i18n?.network ?? false) && (window.__i18n?.embedsEnabled ?? true);
 }
 
 /**

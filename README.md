@@ -116,7 +116,8 @@ The settings you're most likely to touch — the full list (including per-item t
 | `birta.tocPosition` | `"right"` | Which side the table of contents docks on |
 | `birta.frontmatterExpanded` | `true` | Frontmatter table starts expanded or collapsed |
 | `birta.smartLinks` | `true` | Site-generator-style local link resolution |
-| `birta.pasteUnfurl.enabled` | `true` | Paste a bare URL (nothing selected) to fetch the page title and insert `[title](url)`; falls back to the plain link offline |
+| `birta.network.enabled` | `false` | Master network switch — offline by default; gates paste-unfurl and URL embeds. Off means no outbound request at all |
+| `birta.pasteUnfurl.enabled` | `true` | Paste a bare URL (nothing selected) to fetch the page title and insert `[title](url)`; needs `birta.network.enabled` (offered inline when off), falls back to the plain link offline |
 | `birta.tableWrap` | `"normal"` | Table cell wrapping: `normal`, `aggressive`, or `none` |
 | `birta.codeBlockMaxHeight` | `600` | Max code block height in pixels |
 | `birta.mermaid.theme` | `"light"` | Mermaid palette: `light`, `dark`, or `auto` (follow VS Code) |

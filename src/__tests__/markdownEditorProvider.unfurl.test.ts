@@ -8,6 +8,11 @@
  *   - a non-http(s) URL → posts null WITHOUT calling fetch,
  * and that every reply goes out through the mocked webview.postMessage (the
  * postToWebview funnel).
+ *
+ * Offline by default (MAR-179): the fetch is gated on the master switch
+ * `birta.network.enabled`. These tests enable it (the feature-on case); a
+ * dedicated test flips it off and asserts the provider no-ops WITHOUT fetching
+ * — the extension-side defense in depth against a stale/rogue webview message.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as vscode from "vscode";
@@ -43,6 +48,20 @@ const makePanel = () => ({
 
 const makeCancellation = () =>
     ({ isCancellationRequested: false }) as vscode.CancellationToken;
+
+/**
+ * Point the `birta` config mock's master network switch at `enabled`, leaving
+ * every other key on its passed default. `readBirtaSetting("networkEnabled")`
+ * reads `network.enabled`; the fetch is gated on it.
+ */
+function mockNetworkEnabled(enabled: boolean): void {
+    (vscode.workspace.getConfiguration as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        get: vi.fn((key: string, defaultValue?: unknown) =>
+            key === "network.enabled" ? enabled : defaultValue,
+        ),
+        inspect: vi.fn(() => undefined),
+    });
+}
 
 async function setup() {
     const provider = new MarkdownEditorProvider(makeContext());
@@ -91,6 +110,9 @@ describe("MarkdownEditorProvider paste-unfurl", () => {
         vi.clearAllMocks();
         resetTextDocumentMocks();
         _resetErrorSinkForTests();
+        // Master network switch ON for the feature-on tests; the off case
+        // overrides this. Set before setup() so resolve/ready read it too.
+        mockNetworkEnabled(true);
         // Silence + observe the console-only error sink.
         errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     });
@@ -205,6 +227,22 @@ describe("MarkdownEditorProvider paste-unfurl", () => {
         await handler({ type: "unfurlUrl", id: "u6", url: "file:///etc/passwd" });
 
         // Assert
+        expect((await waitForUnfurlReply(panel)).title).toBeNull();
+        expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("with the master network switch OFF it should post null WITHOUT calling fetch (defense in depth)", async () => {
+        // Arrange: a valid http(s) URL that WOULD fetch if the master were on —
+        // but a stale/rogue webview posted it while the editor is offline.
+        const { handler, panel } = await setup();
+        mockNetworkEnabled(false);
+        const fetchSpy = vi.fn();
+        vi.stubGlobal("fetch", fetchSpy);
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u7", url: "https://example.com" });
+
+        // Assert: the provider refuses to touch the wire and still replies null.
         expect((await waitForUnfurlReply(panel)).title).toBeNull();
         expect(fetchSpy).not.toHaveBeenCalled();
     });

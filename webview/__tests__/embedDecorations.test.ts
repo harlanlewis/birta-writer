@@ -14,7 +14,7 @@
  *  - Decorations never touch state.doc: serialization with the plugin active is
  *    byte-identical to the source (the round-trip proof).
  */
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { getMarkdown } from "@milkdown/utils";
 import { TextSelection } from "../pm";
 import type { DecorationSet } from "../pm";
@@ -23,6 +23,13 @@ import { computeEmbedDecorations, embedPlugin } from "../plugins/embed";
 import { renderEmbedCard } from "../utils/embedCard";
 
 const ID = "dQw4w9WgXcQ";
+
+beforeEach(() => {
+    // Embeds are gated on the master network switch (MAR-179, offline by
+    // default) AND the feature key. Turn the master ON for the trigger-condition
+    // tests; the network-off case flips it back explicitly.
+    window.__i18n = { translations: {}, network: true } as unknown as typeof window.__i18n;
+});
 
 afterEach(() => {
     delete window.__i18n;
@@ -114,7 +121,19 @@ describe("computeEmbedDecorations — trigger conditions", () => {
     });
 
     it("disabled (embedsEnabled=false) should render nothing", async () => {
-        window.__i18n = { translations: {}, embedsEnabled: false } as unknown as typeof window.__i18n;
+        window.__i18n = { translations: {}, network: true, embedsEnabled: false } as unknown as typeof window.__i18n;
+        const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        const view = editorView(editor);
+        caretTo(view, 1);
+        const set = computeEmbedDecorations(view.state);
+        expect(decoCounts(set)).toEqual({ nodes: 0, widgets: 0 });
+        await editor.destroy();
+    });
+
+    it("offline by default (network=false) should render nothing even with the feature on", async () => {
+        // The master network switch gates embeds: with it off (the default),
+        // no card renders even though embedsEnabled defaults on (MAR-179).
+        window.__i18n = { translations: {}, network: false, embedsEnabled: true } as unknown as typeof window.__i18n;
         const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
         const view = editorView(editor);
         caretTo(view, 1);

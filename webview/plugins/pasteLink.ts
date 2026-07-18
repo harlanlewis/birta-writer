@@ -25,14 +25,24 @@
  * extension can). handlePaste is sync and cannot await the fetch, so the reply
  * arrives later as `unfurlResult` and upgrades the link TEXT to the title
  * (webview/unfurl.ts). It degrades gracefully: offline / no title / the feature
- * off → the bare link simply stays. Gated by `birta.pasteUnfurl.enabled`.
+ * off → the bare link simply stays.
+ *
+ * Offline by default (MAR-179): the title fetch fires only when the master
+ * network switch AND the feature key are both on (`network && pasteUnfurl`).
+ * With the master off (the default) a bare-URL paste still inserts the plain
+ * `[url](url)` link — but makes NO network request — and offers a quiet,
+ * dismissable just-in-time "Enable" affordance anchored at the link. Accepting
+ * it turns the master on and unfurls that very link. With the FEATURE key off,
+ * a bare-URL paste is an ordinary plain-text paste (no link, no affordance).
  */
 import { Plugin } from "@/pm";
 import type { EditorState, EditorView, MarkType } from "@/pm";
 import { $prose } from "@milkdown/utils";
 import { openLinkEditor } from "@/components/linkPopup";
+import { offerNetworkOptIn } from "@/components/networkOptIn";
 import { notifyUnfurl } from "@/messaging";
 import { registerPendingUnfurl } from "@/unfurl";
+import { t } from "@/i18n";
 
 /** Scheme URL (https://…, ftp://…, and the authority-less mailto:). */
 const SCHEME_URL_REGEX = /^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/|mailto:)\S+$/;
@@ -120,7 +130,17 @@ function rangeHasLinkOrCode(state: EditorState, from: number, to: number): boole
     return blocked;
 }
 
-/** Paste-unfurl is on by default; the flag is baked into __i18n at panel load. */
+/**
+ * Master network switch (MAR-179): offline by default. Nothing contacts the
+ * network unless this is on. Baked into __i18n at panel load and flipped
+ * in-session when the user accepts the opt-in affordance (so the read stays
+ * live without a reload).
+ */
+function networkEnabled(): boolean {
+    return window.__i18n?.network ?? false;
+}
+
+/** Paste-unfurl FEATURE flag (on by default); the master gate is separate. */
 function pasteUnfurlEnabled(): boolean {
     return window.__i18n?.pasteUnfurl ?? true;
 }
@@ -131,12 +151,48 @@ function newUnfurlId(): string {
 }
 
 /**
- * Empty-selection paste of a bare URL (paste-unfurl, MAR-178). Inserts
- * `[url](url)` synchronously as one history step, fires the title fetch, and
- * returns true to prevent the default plain-text paste. Returns false (plain
- * paste) when the feature is off, the clipboard isn't a bare URL, or the caret
- * is somewhere a link mark must not go (code block / inline code / inside an
- * existing link).
+ * Fire the title fetch for a just-inserted bare link at `from` and register the
+ * pending upgrade. `from` breaks ties if the live-doc search later finds more
+ * than one bare link to the same URL. Shared by the online path and the opt-in
+ * affordance's onEnable (so accepting the offer unfurls the very link that
+ * prompted it).
+ */
+function requestUnfurl(href: string, from: number): void {
+    const id = newUnfurlId();
+    registerPendingUnfurl(id, href, from);
+    notifyUnfurl(id, href);
+}
+
+/**
+ * The viewport rect spanning [from, to) for anchoring the opt-in affordance, or
+ * null when it can't be measured (jsdom / detached view) — the affordance still
+ * works, it just skips positioning.
+ */
+function rectForRange(view: EditorView, from: number, to: number): {
+    left: number; right: number; top: number; bottom: number;
+} | null {
+    try {
+        const start = view.coordsAtPos(from);
+        const end = view.coordsAtPos(to, -1);
+        return {
+            left: Math.min(start.left, end.left),
+            right: Math.max(start.right, end.right),
+            top: Math.min(start.top, end.top),
+            bottom: Math.max(start.bottom, end.bottom),
+        };
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Empty-selection paste of a bare URL (paste-unfurl, MAR-178; offline-by-default
+ * MAR-179). Inserts `[url](url)` synchronously as one history step, then either
+ * fires the title fetch (master switch on) or offers the just-in-time "Enable"
+ * affordance (master off). Returns true to prevent the default plain-text paste.
+ * Returns false (plain paste) when the FEATURE is off, the clipboard isn't a
+ * bare URL, or the caret is somewhere a link mark must not go (code block /
+ * inline code / inside an existing link).
  */
 function handleEmptySelectionPaste(
     view: EditorView,
@@ -144,8 +200,10 @@ function handleEmptySelectionPaste(
     linkType: MarkType,
     event: ClipboardEvent,
 ): boolean {
-    // Feature gate first: when off, do nothing extra and never touch the
-    // network (no `unfurlUrl` is ever posted).
+    // Feature gate first: when the FEATURE itself is off, a bare-URL paste is
+    // an ordinary plain-text paste — no link, no affordance, no network. (The
+    // MASTER network switch is checked below: with the feature on but the
+    // master off, we still insert the link and offer the opt-in.)
     if (!pasteUnfurlEnabled()) { return false; }
 
     // Same narrow detection as the selection case: a single bare-URL token.
@@ -163,6 +221,8 @@ function handleEmptySelectionPaste(
     // Insert the URL text carrying a link mark = `[url](url)`. One dispatch =
     // one history step. Restoring the pre-insert stored marks keeps the link
     // from extending to whatever the user types next (mirrors createLinkifyTr).
+    // This happens whether or not the network is enabled: a bare URL becomes a
+    // clickable link either way — the master switch only gates the FETCH.
     const from = state.selection.from;
     const tr = state.tr;
     tr.insertText(href, from);
@@ -170,11 +230,22 @@ function handleEmptySelectionPaste(
     tr.setStoredMarks([...activeMarks]);
     view.dispatch(tr);
 
-    // Fire the fetch and register the pending upgrade. `from` breaks ties if the
-    // live-doc search later finds more than one bare link to the same URL.
-    const id = newUnfurlId();
-    registerPendingUnfurl(id, href, from);
-    notifyUnfurl(id, href);
+    if (networkEnabled()) {
+        // Full experience: fetch the page title and upgrade the link text.
+        requestUnfurl(href, from);
+    } else {
+        // Offline by default: make NO network request. Offer a quiet opt-in
+        // anchored at the just-pasted link; accepting it enables the master
+        // switch and unfurls this very link. `offerNetworkOptIn` is a no-op if
+        // the user already dismissed one this session ("don't nag"). The rect
+        // may be null (unmeasurable view) — the affordance still shows, just
+        // unpositioned.
+        offerNetworkOptIn({
+            label: t("Fetch link title?"),
+            anchorRect: rectForRange(view, from, from + href.length),
+            onEnable: () => requestUnfurl(href, from),
+        });
+    }
 
     return true; // handled: prevent the default plain-text paste
 }
