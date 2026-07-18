@@ -208,14 +208,12 @@ describe("detectCalcExpression", () => {
         expect(detectCalcExpression("  =")).toBeNull();
     });
 
-    it("a date should not be evaluated as chained subtraction", () => {
-        expect(detectCalcExpression("2026-07-17 =")).toBeNull();
-        expect(detectCalcExpression("released 2026-07-17 =")).toBeNull();
-        expect(detectCalcExpression("7/17/2026 =")).toBeNull();
-    });
-
-    it("a phone-style dashed number should not be detected", () => {
-        expect(detectCalcExpression("555-867-5309 =")).toBeNull();
+    it("a date-like shape SHOULD compute as chained arithmetic (maintainer ruling)", () => {
+        // `2026-07-17 =` is valid math: the `=` is the ask, and the default
+        // advisory mode means the answer is only ever a suggestion. The user
+        // path to "not math" is to not type `=` or not accept.
+        expect(detectCalcExpression("2026-07-17 =")?.result).toBe("2002");
+        expect(detectCalcExpression("555-867-5309 =")?.result).toBe("-5621");
     });
 
     it("two-operand no-space arithmetic should still be detected", () => {

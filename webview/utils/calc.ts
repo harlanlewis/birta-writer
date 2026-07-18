@@ -240,13 +240,6 @@ const TRAILING_EQUALS = /=[ \t]*$/;
 const TRAILING_EXPR = /[0-9.+\-*/%^() \t]*$/;
 /** At least one operator: a bare number is not offered (`the value 42 =`). */
 const HAS_OPERATOR = /[+\-*/%^]/;
-/**
- * Three or more digit groups joined by the same `-` or `/` with no spaces —
- * a date (`2026-07-17`), phone number (`555-867-5309`), or dashed identifier,
- * not arithmetic. Two joined groups stay arithmetic (`5-3`, `7/8`), matching
- * how people actually type quick math without spaces.
- */
-const SEPARATOR_CHAIN = /^\d+([-/])\d+(?:\1\d+)+$/;
 
 /**
  * Detects an arithmetic expression that ends, at the caret, in `=` (optionally
@@ -292,9 +285,14 @@ export function detectCalcExpression(textBefore: string): CalcMatch | null {
         if (glued && /[\p{L}\p{N},_]/u.test(beforeEquals[runStart - 1])) { return null; }
         if (/^[+\-*/%^]/.test(expr)) { return null; }
     }
-    // Dates and dashed identifiers (`2026-07-17 =`) tokenize as chained
-    // subtraction/division and would "compute". Refuse the shape outright.
-    if (SEPARATOR_CHAIN.test(expr)) { return null; }
+    // Date-like shapes (`2026-07-17 =`) DO compute, as chained subtraction —
+    // a deliberate maintainer ruling: any digits-and-operators run before `=`
+    // is arithmetic. The `=` itself is the user's ask, and in the default
+    // advisory mode the answer is only a suggestion — the path to "not math"
+    // is to not type `=` (or not accept). The guards above exist solely for
+    // runs that would compute a DIFFERENT question than the visible one
+    // (split tokens, out-of-grammar operands), never for unwanted-but-honest
+    // answers.
     const value = evaluateExpression(expr);
     if (value === null) { return null; }
     const result = formatCalcResult(value);
