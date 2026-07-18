@@ -989,6 +989,18 @@ export function setupLinkPopup(
      * follows the input, as an addToHistory:false transaction over the
      * pristine snapshot. Only for an EXISTING markdown link (an insert has
      * nothing on the page yet; a wiki atom re-renders wholesale on commit).
+     *
+     * Preview transactions DO flow down the save pipeline (docChange reports
+     * every doc change; nothing upstream of the scheduler may filter) — that
+     * is intentional, not leakage: the preview is the state the user
+     * perceives, and CLAUDE.md's sync invariant #2 says perceived state must
+     * be save-capturable. Abandon and commit are symmetric through the same
+     * pipeline (revertPreview also syncs, with a higher seq that supersedes
+     * any in-flight preview update), so the persisted end state is always
+     * the original (Escape) or the committed edit — a mid-preview autosave
+     * is transient and self-healing. The one residual: hot exit DURING a
+     * live preview persists the preview text, which is defensible for the
+     * same reason (it was the visible state at the moment of exit).
      */
     function previewText(): void {
         const view = getView();
