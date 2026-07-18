@@ -390,6 +390,51 @@ describe("MarkdownEditorProvider paste-unfurl", () => {
         expect((await waitForUnfurlReply(panel)).title).toBe("Enabled Now");
     });
 
+    it("a title buried past 512 KB of head preamble should still be found (the YouTube shape)", async () => {
+        // youtube.com puts <title> at byte ~660 K; the old 512 KB cap read a
+        // titleless preamble and silently kept the bare link.
+        const { handler, panel } = await setup();
+        const preamble = "<head>" + "<link rel=\"preload\" href=\"x\">".padEnd(1024, " ").repeat(640);
+        const page = preamble + "<title>Deep Title</title></head><body></body>";
+        vi.stubGlobal("fetch", vi.fn(async () => new Response(page, { status: 200 })));
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u18", url: "https://example.com/heavy" });
+
+        // Assert
+        expect((await waitForUnfurlReply(panel)).title).toBe("Deep Title");
+    });
+
+    it("the body stream should stop pulling once </head> has been read", async () => {
+        // Arrange: a chunked stream — head closes in chunk 2 of 5; the body
+        // chunks must never be pulled.
+        const { handler, panel } = await setup();
+        const enc = new TextEncoder();
+        let pulls = 0;
+        const stream = new ReadableStream<Uint8Array>({
+            pull(controller) {
+                pulls++;
+                if (pulls === 1) { controller.enqueue(enc.encode("<head><title>Early</title>")); }
+                else if (pulls === 2) { controller.enqueue(enc.encode("</head><body>")); }
+                else if (pulls <= 5) { controller.enqueue(enc.encode("x".repeat(65536))); }
+                else { controller.close(); }
+            },
+        });
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response(stream, { status: 200, headers: { "content-type": "text/html" } })),
+        );
+
+        // Act
+        await handler({ type: "unfurlUrl", id: "u19", url: "https://example.com/streamy" });
+
+        // Assert: title parsed, and reading stopped at the head boundary —
+        // ≤3, not exactly 2, because ReadableStream speculatively pulls one
+        // chunk ahead of the reader; a full read would have taken all 6.
+        expect((await waitForUnfurlReply(panel)).title).toBe("Early");
+        expect(pulls).toBeLessThanOrEqual(3);
+    });
+
     it("a non-text content-type should post null without parsing", async () => {
         // Arrange: a 200 PDF — nothing to title, don't stream 512 KB of it.
         const { handler, panel } = await setup();

@@ -68,7 +68,14 @@ export { escapeHtmlAttr };
  *   streaming body can never balloon the parse.
  */
 const UNFURL_FETCH_TIMEOUT_MS = 5000;
-const UNFURL_MAX_BYTES = 512 * 1024;
+/**
+ * 1 MB, not the intuitive 64–512 KB: real pages front-load enormous <head>
+ * payloads before their title — youtube.com's watch page puts <title> at byte
+ * ~660 K, so a 512 KB cap silently "unfurled to nothing" (the user-visible
+ * symptom: Enable appeared to do nothing for the very link that prompted it).
+ * The </head> early-stop below keeps typical pages far under the cap.
+ */
+const UNFURL_MAX_BYTES = 1024 * 1024;
 /** Manual-redirect hop budget; each hop re-passes the scheme + SSRF checks. */
 const UNFURL_MAX_REDIRECTS = 5;
 
@@ -86,6 +93,14 @@ async function readCappedText(res: Response, maxBytes: number): Promise<string> 
     }
     const chunks: Uint8Array[] = [];
     let total = 0;
+    // Early stop: titles live in <head>, so once the closing tag streams past
+    // there is nothing left worth reading — typical pages finish in a few KB
+    // even though the cap allows a megabyte. The marker is searched in a small
+    // trailing window of the previous chunk joined to the new one, so a tag
+    // split across a chunk boundary is still seen.
+    const HEAD_END = "</head>";
+    const decoder = new TextDecoder("utf-8");
+    let tailText = "";
     try {
         while (total < maxBytes) {
             const { done, value } = await reader.read();
@@ -93,6 +108,9 @@ async function readCappedText(res: Response, maxBytes: number): Promise<string> 
             if (value) {
                 chunks.push(value);
                 total += value.length;
+                const text = tailText + decoder.decode(value, { stream: true });
+                if (text.includes(HEAD_END)) { break; }
+                tailText = text.slice(-HEAD_END.length);
             }
         }
     } finally {
