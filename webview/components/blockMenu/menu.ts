@@ -979,7 +979,7 @@ export function openBlockMenu(
         // Discoverable home for birta.checklist.sinkChecked (MAR-175): a
         // settings toggle, not a doc edit (mutates: false — never moves the
         // caret), with menuitemcheckbox state showing the current value.
-        action(t("Move Checked to Bottom"), ["sink", "move", "checked", "bottom", "sort", "tasks"], {
+        action(t("Move Checked Tasks to Bottom"), ["sink", "move", "checked", "bottom", "sort", "tasks"], {
             icon: IconArrowDownToLine,
             check: true,
             active: isChecklistSinkEnabled(),

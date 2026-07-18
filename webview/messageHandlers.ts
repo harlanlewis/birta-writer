@@ -276,6 +276,14 @@ export function createMessageHandlers(
                 window.__i18n.network = msg.enabled;
             }
         },
+        featureGateChanged(msg) {
+            // Read-at-use-time gates: flipping the __i18n field is the whole
+            // update (calc's advisory/auto split, the checklist sink, the
+            // unfurl feature key all read it per event, not per composition).
+            if (window.__i18n) {
+                window.__i18n[msg.gate] = msg.enabled;
+            }
+        },
         setBlockHandles(msg) {
             applyBlockHandles(msg.mode);
             topbarTb?.setBlockHandles(msg.mode);

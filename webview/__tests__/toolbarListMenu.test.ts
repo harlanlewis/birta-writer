@@ -65,13 +65,13 @@ describe("toolbar Lists dropdown", () => {
         const { topbar } = buildToolbar(() => null);
 
         // Assert: a single list slot; three insert rows, then the
-        // "Move checked to bottom" settings switch below a divider.
+        // "Move checked tasks to bottom" settings switch below a divider.
         const rows = listRows(topbar);
         expect(rows.map((r) => r.querySelector(".tb-list-item-label")?.textContent)).toEqual([
             "Bullet List",
             "Ordered List",
             "Task List",
-            "Move checked to bottom",
+            "Move checked tasks to bottom",
         ]);
         rows.forEach((r) => expect(r.querySelector(".tb-list-item-icon svg")).not.toBeNull());
         expect(topbar.querySelector(".tb-list-menu .tb-menu-sep")).not.toBeNull();

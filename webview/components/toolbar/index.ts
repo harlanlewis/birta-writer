@@ -1349,7 +1349,7 @@ export function initToolbar(
         }
 
         // ── Task-list behavior switch, below a divider (MAR-175) ──
-        // "Move checked to bottom" flips birta.checklist.sinkChecked in place:
+        // "Move checked tasks to bottom" flips birta.checklist.sinkChecked in place:
         // a settings toggle, not an insert, so it re-renders its own checked
         // state and leaves the menu open (the user sees the flip land).
         listMenu.appendChild(makeSep());
@@ -1363,7 +1363,7 @@ export function initToolbar(
         sinkIcon.innerHTML = IconArrowDownToLine;
         const sinkLabel = document.createElement("span");
         sinkLabel.className = "tb-list-item-label";
-        sinkLabel.textContent = t("Move checked to bottom");
+        sinkLabel.textContent = t("Move checked tasks to bottom");
         sinkRow.append(sinkIcon, sinkLabel);
         const renderSinkState = (): void => {
             const on = isChecklistSinkEnabled();
