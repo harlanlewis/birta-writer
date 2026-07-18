@@ -1873,6 +1873,12 @@
                     "default": true,
                     "description": "%config.embeds.enabled.description%"
                 },
+                "birta.autoUpdateAnchors": {
+                    "order": 108.7,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.autoUpdateAnchors.description%"
+                },
                 "birta.checklist.sinkChecked": {
                     "order": 109,
                     "type": "boolean",

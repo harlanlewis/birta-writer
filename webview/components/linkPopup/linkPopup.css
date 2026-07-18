@@ -73,6 +73,12 @@
     line-height: 1.4;
 }
 
+/* Dangling anchor: the slug resolves to no heading in this document. Italic,
+   matching the file link's "not found in workspace" miss state (.lp-resolved--miss). */
+.lp-anchor-hint--miss {
+    font-style: italic;
+}
+
 /* ─── Resolved-target hint (→ where the link opens) ─── */
 .lp-resolved {
     padding: 0 10px 7px 32px;

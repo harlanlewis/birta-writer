@@ -56,3 +56,63 @@ export function slugifyHeadings(titles: readonly string[]): string[] {
         return n === 0 ? base : `${base}-${n}`;
     });
 }
+
+/**
+ * Compute the `oldSlug → newSlug` renames produced by editing a document's
+ * headings, given the OLD and NEW heading titles IN DOCUMENT ORDER plus a
+ * pairing that says which new heading each old heading became. Powers the
+ * auto-update of in-note `#slug` anchor links when a heading is renamed
+ * (MAR-180): the caller (anchorSync) supplies `oldToNew` by mapping each old
+ * heading's document position through the transaction, then this derives the
+ * exact slug substitutions to apply to link hrefs.
+ *
+ * `oldToNew[i]` is the index into `newTitles` that old heading `i` became, or
+ * `-1` when it has no counterpart (deleted, or moved so it can't be paired —
+ * either way its inbound links must be LEFT dangling, never rewritten to
+ * garbage). A pairing rather than a positional zip is essential: a rename can
+ * add or remove a heading, so the two lists need not line up index-for-index.
+ *
+ * Both sides are run through the FULL `slugifyHeadings` so GitHub's document-
+ * order `-N` disambiguation is reflected on each side independently. That is
+ * what makes the duplicate-shift case correct without any special-casing:
+ * renaming the first of two `Foo` headings (slugs `foo`, `foo-1`) turns the
+ * survivor's slug into `foo`, so BOTH pairs differ — `foo → bar` (the edited
+ * one) AND `foo-1 → foo` (the sibling that inherited the base slug) — and both
+ * are captured because every paired heading is diffed, not just the one whose
+ * title changed. A newly-created collision is handled by the same mechanism:
+ * if an edit makes a second `Foo`, the survivor keeps `foo` and the newcomer
+ * becomes `foo-1`, so only the heading that actually changed slug is recorded.
+ *
+ * A pair is recorded only when BOTH slugs are non-empty and they differ:
+ * - equal slugs mean the anchor target is unchanged (e.g. a heading was MOVED
+ *   but its text — and so its slug — did not change), so nothing to rewrite;
+ * - an empty slug is an unaddressable heading (all punctuation/emoji, e.g.
+ *   "🚀"); it has no `#slug` to be the source or destination of a link, so it
+ *   can neither be renamed-from nor renamed-to.
+ *
+ * The result maps each ORIGINAL slug to its single new slug; the caller applies
+ * it to each link's current href exactly once (never chaining `foo → bar` into
+ * a subsequent `bar → …`), since it reads the pre-edit href and looks it up
+ * one time.
+ */
+export function computeSlugRenames(
+    oldTitles: readonly string[],
+    newTitles: readonly string[],
+    oldToNew: readonly number[],
+): Map<string, string> {
+    const oldSlugs = slugifyHeadings(oldTitles);
+    const newSlugs = slugifyHeadings(newTitles);
+    const renames = new Map<string, string>();
+    for (let i = 0; i < oldSlugs.length; i++) {
+        const j = oldToNew[i];
+        if (j === undefined || j < 0) {
+            continue; // unpaired (deleted / moved) — leave its links dangling
+        }
+        const from = oldSlugs[i];
+        const to = newSlugs[j];
+        if (from && to && from !== to) {
+            renames.set(from, to);
+        }
+    }
+    return renames;
+}

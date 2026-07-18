@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { slugify, slugifyHeadings } from "../../webview/utils/slug";
+import { slugify, slugifyHeadings, computeSlugRenames } from "../../webview/utils/slug";
 
 describe("slugify", () => {
     it("English text should be lowercased", () => {
@@ -108,5 +108,46 @@ describe("slugifyHeadings", () => {
 
     it("an empty input array should return an empty array", () => {
         expect(slugifyHeadings([])).toEqual([]);
+    });
+});
+
+describe("computeSlugRenames", () => {
+    it("a unique heading rename should record only its old→new slug", () => {
+        const renames = computeSlugRenames(["Intro", "Setup"], ["Introduction", "Setup"], [0, 1]);
+        expect([...renames]).toEqual([["intro", "introduction"]]);
+    });
+
+    it("an unchanged heading (same text) should record nothing", () => {
+        const renames = computeSlugRenames(["Alpha", "Beta"], ["Alpha", "Beta"], [0, 1]);
+        expect(renames.size).toBe(0);
+    });
+
+    it("renaming the FIRST of two duplicates should record BOTH the edit and the -N shift", () => {
+        // old slugs [foo, foo-1]; new slugs [bar, foo] — the survivor inherits
+        // the base slug, so foo-1 → foo must be recorded alongside foo → bar.
+        const renames = computeSlugRenames(["Foo", "Foo"], ["Bar", "Foo"], [0, 1]);
+        expect(renames.get("foo")).toBe("bar");
+        expect(renames.get("foo-1")).toBe("foo");
+        expect(renames.size).toBe(2);
+    });
+
+    it("renaming a heading to COLLIDE with an existing one should mint the -N slug deterministically", () => {
+        // old slugs [foo, baz]; new slugs [foo, foo-1] — the newcomer collides
+        // and takes foo-1, so only baz → foo-1 is recorded (foo is unchanged).
+        const renames = computeSlugRenames(["Foo", "Baz"], ["Foo", "Foo"], [0, 1]);
+        expect([...renames]).toEqual([["baz", "foo-1"]]);
+    });
+
+    it("an unpaired old heading (-1: deleted/moved) should record nothing for it", () => {
+        // The first heading was deleted (no counterpart); its links must be left
+        // dangling, never rewritten. The surviving pair is unchanged.
+        const renames = computeSlugRenames(["Gone", "Keep"], ["Keep"], [-1, 0]);
+        expect(renames.size).toBe(0);
+    });
+
+    it("a rename from/to an unaddressable (empty-slug) heading should record nothing", () => {
+        // "🚀" slugifies to "" — it has no #slug to be a rename source or target.
+        expect(computeSlugRenames(["🚀"], ["Rocket"], [0]).size).toBe(0);
+        expect(computeSlugRenames(["Rocket"], ["🚀"], [0]).size).toBe(0);
     });
 });

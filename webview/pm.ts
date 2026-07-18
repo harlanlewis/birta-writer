@@ -56,7 +56,10 @@ export type {
 } from "@milkdown/prose/view";
 
 // ─── prose/transform: steps and position mapping ───
-export { ReplaceAroundStep, ReplaceStep } from "@milkdown/prose/transform";
+// `Mapping` accumulates the position maps of one or more transactions and can
+// be inverted — anchorSync uses it to pair a heading's OLD position with its
+// NEW one (and to reject moved/deleted headings via an inverse round-trip).
+export { Mapping, ReplaceAroundStep, ReplaceStep } from "@milkdown/prose/transform";
 export type { Mappable } from "@milkdown/prose/transform";
 
 // ─── prose/commands: generic editing commands ───

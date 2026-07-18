@@ -21,6 +21,7 @@ import { applyExternalSync } from "./externalSync";
 import { instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import {
+    anchorSyncPlugin,
     calcAutoInsertPlugin,
     calcSuggestPlugin,
     caretScrollMarginPlugin,
@@ -580,6 +581,18 @@ export async function createEditor(
     // synchronously here (like calc/smartLinks).
     if (window.__i18n?.embedsEnabled ?? true) {
         builder = builder.use(embedPlugin);
+    }
+
+    // Auto-update in-note anchor links on heading rename (MAR-180): when a
+    // heading is renamed its slug changes, and every `[…](#old-slug)` pointing
+    // at it is rewritten to the new slug in the SAME undo step. Composed ONLY
+    // when enabled so a cautious user (birta.autoUpdateAnchors = false) pays
+    // nothing — no appendTransaction registered, so not even the perf guard
+    // runs (the plugin also self-gates for defense in depth). __i18n is baked
+    // into the HTML before this script runs, so the flag reads synchronously
+    // here (like calc/embeds).
+    if (window.__i18n?.autoUpdateAnchors ?? true) {
+        builder = builder.use(anchorSyncPlugin);
     }
 
     _editor = await builder

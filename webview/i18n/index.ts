@@ -18,6 +18,8 @@ declare global {
             calcAutoInsert?: boolean;
             /** URL embeds: render a bare YouTube link as an inline facade card (birta.embeds.enabled). */
             embedsEnabled?: boolean;
+            /** Auto-update in-note `#slug` anchor links on heading rename (birta.autoUpdateAnchors). */
+            autoUpdateAnchors?: boolean;
             /** Self-sinking checklists: checked items drop below unchecked (birta.checklist.sinkChecked). */
             checklistSinkChecked?: boolean;
             codeBlockWordWrap?: boolean;

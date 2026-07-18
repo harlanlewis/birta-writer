@@ -89,6 +89,14 @@ export interface BirtaConfig extends ProofreadConfig {
     /** Insert the result on `=` instead of suggesting it (birta.calc.autoInsert). */
     calcAutoInsert: boolean;
     /**
+     * Auto-update in-note anchor links on heading rename
+     * (birta.autoUpdateAnchors): when a heading is renamed, every same-document
+     * `[…](#old-slug)` link pointing at it is rewritten to the new slug in the
+     * same undo step. On by default; turn it off to leave anchor links exactly
+     * as typed when a heading's text changes.
+     */
+    autoUpdateAnchors: boolean;
+    /**
      * Self-sinking checklists (birta.checklist.sinkChecked): when a task item is
      * checked it drops below the still-unchecked siblings in its list, and
      * unchecking floats it back up. Opt-in, default OFF — a plain in-place flip
@@ -150,6 +158,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
     calcEnabled: "calc.enabled",
     calcAutoInsert: "calc.autoInsert",
+    autoUpdateAnchors: "autoUpdateAnchors",
     embedsEnabled: "embeds.enabled",
     checklistSinkChecked: "checklist.sinkChecked",
     imageLocalPath: "imageLocalPath",
@@ -217,6 +226,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Calc: the feature ships on, but advisory (no silent mutation) by default.
     calcEnabled: true,
     calcAutoInsert: false,
+    // Auto-update anchor links on heading rename ships ON — the maintainer
+    // wants it automatic ("magical"); the gate is the escape hatch for anyone
+    // who prefers links left exactly as typed.
+    autoUpdateAnchors: true,
     // URL embeds ship ON (like calc/smartLinks): a bare YouTube link renders as
     // an inline facade card. Render-only, so the file is unchanged; the gate
     // turns off both the card and its thumbnail network load.

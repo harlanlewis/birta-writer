@@ -200,6 +200,7 @@ export function buildWebviewHtml(
     const pasteUnfurl = config.pasteUnfurlEnabled;
     const calcEnabled = config.calcEnabled;
     const calcAutoInsert = config.calcAutoInsert;
+    const autoUpdateAnchors = config.autoUpdateAnchors;
     const embedsEnabled = config.embedsEnabled;
     // URL embeds (MAR-56) need two extra CSP grants: the YouTube thumbnail image
     // hosts (img-src) and the privacy-mode player iframe host (a new frame-src,
@@ -224,7 +225,7 @@ export function buildWebviewHtml(
     // optional-chained so a stripped-down test context still resolves.
     const productName =
         (context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, pasteUnfurl, calcEnabled, calcAutoInsert, embedsEnabled, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, pasteUnfurl, calcEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

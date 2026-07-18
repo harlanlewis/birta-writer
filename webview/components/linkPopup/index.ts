@@ -541,11 +541,24 @@ export function setupLinkPopup(
         if (kind === "anchor") {
             const id = link.href.slice(1);
             const title = resolveAnchorTitle(id);
-            anchorHint.textContent = title ? `→ ${title}` : "";
-            anchorHint.style.display = title ? "" : "none";
+            if (title) {
+                anchorHint.textContent = `→ ${title}`;
+                anchorHint.classList.remove("lp-anchor-hint--miss");
+            } else {
+                // Dangling same-document anchor: the slug resolves to no heading
+                // (the target was deleted, or a rename outside this editor moved
+                // it beyond auto-update's reach). A silent absence reads as "this
+                // link is fine", so surface a quiet "not found" instead of the
+                // former no-op — the design principle "a silent absence needs a
+                // signal", matching the file link's "not found in workspace".
+                anchorHint.textContent = t("Heading not found");
+                anchorHint.classList.add("lp-anchor-hint--miss");
+            }
+            anchorHint.style.display = "";
             btnOpenTooltip.setText(t("Jump to section"));
         } else {
             anchorHint.style.display = "none";
+            anchorHint.classList.remove("lp-anchor-hint--miss");
             btnOpenTooltip.setText(openHint);
         }
 
