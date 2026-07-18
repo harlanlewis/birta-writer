@@ -83,6 +83,23 @@ describe("computeEmbedDecorations — trigger conditions", () => {
         await editor.destroy();
     });
 
+    it("two bare links to the SAME video should get DISTINCT widget keys", async () => {
+        // Same-key widgets are treated as one by ProseMirror's redraw
+        // reconciliation, which can skip or misplace DOM for the second card.
+        const editor = await makeCorpusEditor(
+            `# Title\n\nhttps://youtu.be/${ID}\n\nhttps://www.youtube.com/watch?v=${ID}\n`,
+        );
+        const view = editorView(editor);
+        caretTo(view, 1);
+        const widgets = computeEmbedDecorations(view.state)
+            .find()
+            .filter((d) => d.from === d.to);
+        expect(widgets).toHaveLength(2);
+        const keys = widgets.map((d) => (d.spec as { key: string }).key);
+        expect(new Set(keys).size).toBe(2);
+        await editor.destroy();
+    });
+
     it("the paragraph the caret is in should reveal the raw link (no decorations)", async () => {
         const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
         const view = editorView(editor);

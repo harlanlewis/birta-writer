@@ -268,6 +268,14 @@ export function createMessageHandlers(
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);
         },
+        networkStateChanged(msg) {
+            // Live update of the in-session master-switch gate (the same one
+            // the local opt-in affordance flips): paste-unfurl in THIS webview
+            // now matches the persisted setting without a reload.
+            if (window.__i18n) {
+                window.__i18n.network = msg.enabled;
+            }
+        },
         setBlockHandles(msg) {
             applyBlockHandles(msg.mode);
             topbarTb?.setBlockHandles(msg.mode);

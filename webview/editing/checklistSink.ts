@@ -168,19 +168,23 @@ export function applyTaskToggle(
 }
 
 /**
- * Uncheck every checked task item in the list containing the selection, in ONE
- * transaction (one undo step) — the "clear a checklist for reuse" command. No
- * reordering is needed: once nothing is checked, there is nothing to sink. A
- * caret outside any list is a no-op (returns false). Nested sublists inside the
- * caret's list are cleared too, so a whole nested checklist resets at once.
+ * Uncheck every checked task item in the checklist containing the selection, in
+ * ONE transaction (one undo step) — the "clear a checklist for reuse" command.
+ * No reordering is needed: once nothing is checked, there is nothing to sink. A
+ * caret outside any list is a no-op (returns false).
+ *
+ * Scope is the OUTERMOST ancestor list: "Uncheck All" means the whole
+ * checklist, so invoking it from a nested sub-item clears the entire tree, not
+ * just the sublist the caret happens to sit in. (Two checklists separated by a
+ * paragraph are separate trees — only the caret's own tree is cleared.)
  */
 export function uncheckAllTasks(view: EditorView): boolean {
     const { state } = view;
     const { $from } = state.selection;
 
-    // Nearest ancestor list of the caret; no list → nothing to clear.
+    // Outermost ancestor list of the caret; no list → nothing to clear.
     let listDepth = -1;
-    for (let depth = $from.depth; depth >= 1; depth--) {
+    for (let depth = 1; depth <= $from.depth; depth++) {
         const name = $from.node(depth).type.name;
         if (name === "bullet_list" || name === "ordered_list") {
             listDepth = depth;

@@ -138,7 +138,11 @@ export function computeEmbedDecorations(state: EditorState): DecorationSet {
         decorations.push(
             Decoration.widget(from + 1, embedWidget(match), {
                 side: -1,
-                key: `embed:${match.kind}:${match.id}`,
+                // The position is part of the key: two bare links to the SAME
+                // video are two distinct widgets, and same-key widgets would
+                // make ProseMirror treat them as one during redraw
+                // reconciliation (skipped/misplaced DOM).
+                key: `embed:${match.kind}:${match.id}:${from}`,
             }),
         );
     });

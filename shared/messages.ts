@@ -321,6 +321,11 @@ export type ToWebviewMessage =
     // bare `[url](url)` it already inserted — the graceful, offline-safe default.
     | { type: "unfurlResult"; id: string; url: string; title: string | null }
     | { type: "setTableWrap"; wrap: TableWrapMode }
+    // Live master-network-switch update (settings UI edit or the just-in-time
+    // opt-in accepted in ANOTHER webview): flips `window.__i18n.network` so
+    // paste-unfurl gates correctly everywhere without a reload. Embed cards
+    // still compose at editor creation only (reopen to activate them).
+    | { type: "networkStateChanged"; enabled: boolean }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live toolbar layout update (per-item placement settings changed).

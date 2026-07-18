@@ -236,6 +236,34 @@ describe("checklistSink — uncheck all", () => {
         expect(uncheckAllTasks(v)).toBe(false);
         expect(markdown(editor)).toBe(before);
     });
+
+    it("from a NESTED sub-item it should clear the whole checklist, not just the sublist", async () => {
+        // "Uncheck All" means the checklist — the outermost tree — regardless
+        // of which level the caret happens to sit in.
+        const editor = await makeEditor(
+            "- [x] parent\n\n  - [x] child1\n  - [ ] child2\n\n- [x] sibling",
+        );
+        const v = view(editor);
+        caretInto(v, "child1", "paragraph");
+        expect(uncheckAllTasks(v)).toBe(true);
+        const out = markdown(editor);
+        expect(out).toContain("- [ ] parent");
+        expect(out).toContain("- [ ] child1");
+        expect(out).toContain("- [ ] sibling");
+        expect(out).not.toContain("[x]");
+    });
+
+    it("a separate checklist elsewhere in the document should be untouched", async () => {
+        const editor = await makeEditor(
+            "- [x] here\n\nbetween\n\n- [x] elsewhere",
+        );
+        const v = view(editor);
+        caretInto(v, "here", "paragraph");
+        expect(uncheckAllTasks(v)).toBe(true);
+        const out = markdown(editor);
+        expect(out).toContain("- [ ] here");
+        expect(out).toContain("- [x] elsewhere");
+    });
 });
 
 // ── The list-spread normalizer must not split the undo or loosen the list ───

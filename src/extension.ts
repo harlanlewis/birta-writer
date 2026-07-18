@@ -332,6 +332,19 @@ export function activate(context: vscode.ExtensionContext) {
                     wrap: readBirtaSetting("tableWrap"),
                 });
             }
+            if (e.affectsConfiguration("birta.network.enabled")) {
+                // Master network switch flipped — settings UI, or the
+                // just-in-time opt-in accepted in one webview (its write-back
+                // lands here too). Broadcast so every OPEN webview's
+                // paste-unfurl gate updates live; without this the setting
+                // persists but running editors stay on their baked-at-load
+                // value until reopened. (Embed cards compose at editor
+                // creation and still need a reopen — see editor.ts.)
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "networkStateChanged",
+                    enabled: readBirtaSetting("networkEnabled"),
+                });
+            }
             if (e.affectsConfiguration("birta.proofreading")
                 || e.affectsConfiguration("birta.styleCheck")
                 || e.affectsConfiguration("birta.spellCheck")

@@ -42,7 +42,14 @@ function youtubeHostKind(hostname: string): "long" | "short" | null {
     if (host === "youtu.be") {
         return "short";
     }
-    if (host === "youtube.com" || host === "m.youtube.com" || host === "music.youtube.com") {
+    if (
+        host === "youtube.com" ||
+        host === "m.youtube.com" ||
+        host === "music.youtube.com" ||
+        // The privacy-enhanced host the player itself uses; a pasted
+        // youtube-nocookie link should get a card like any other YouTube link.
+        host === "youtube-nocookie.com"
+    ) {
         return "long";
     }
     return null;

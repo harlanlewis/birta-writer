@@ -944,11 +944,21 @@ export function openBlockMenu(
     }
     if (isItem && anchorNode?.attrs["checked"] != null) {
         // Reset a task list for reuse (MAR-175): clear every checked box in the
-        // item's list, nested sublists included, in one undo step. The row is
-        // disabled when nothing is checked so it is never a dead action. The
-        // action reads the caret's list; the default `mutates` pre-places the
-        // caret into this item first (selectInto), scoping it to THIS list.
-        const listNode = view.state.doc.nodeAt(conversionPos);
+        // whole checklist, nested sublists included, in one undo step. The row
+        // is disabled when nothing is checked so it is never a dead action.
+        // The action clears the OUTERMOST list containing the caret
+        // (uncheckAllTasks), so the disabled check scans that same outermost
+        // tree — scoping the two differently would enable a row that clears
+        // nothing, or disable one that could.
+        let listNode = view.state.doc.nodeAt(conversionPos);
+        const $list = view.state.doc.resolve(conversionPos);
+        for (let depth = 1; depth <= $list.depth; depth++) {
+            const name = $list.node(depth).type.name;
+            if (name === "bullet_list" || name === "ordered_list") {
+                listNode = $list.node(depth);
+                break;
+            }
+        }
         let hasChecked = false;
         listNode?.descendants((n) => {
             if (n.type.name === "list_item" && n.attrs["checked"] === true) {

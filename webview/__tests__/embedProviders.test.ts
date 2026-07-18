@@ -28,6 +28,8 @@ describe("youtubeId — recognized URL forms", () => {
         // Extra query params around the id must not matter.
         [`https://www.youtube.com/watch?list=PLxyz&v=${ID}&index=2`, ID],
         [`https://youtu.be/${ID}?si=abc123`, ID],
+        // Privacy-enhanced host — the same one the player itself uses.
+        [`https://www.youtube-nocookie.com/embed/${ID}`, ID],
     ];
     for (const [url, expected] of cases) {
         it(`${url} should extract ${expected}`, () => {
