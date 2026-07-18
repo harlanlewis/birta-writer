@@ -385,7 +385,7 @@ export function setupLinkPopup(
     const inputUrl = document.createElement("input");
     inputUrl.type = "text";
     inputUrl.className = "lp-input lp-url-input";
-    inputUrl.placeholder = t("URL https://...");
+    inputUrl.placeholder = t("URL, path, or #heading");
 
     // Format choice: standard markdown by default; an existing link opens on
     // its own format. Switching converts the link in place on apply.
@@ -993,7 +993,10 @@ export function setupLinkPopup(
     function previewText(): void {
         const view = getView();
         if (!view || !currentLink || currentLink.readOnly || currentLink.wiki) { return; }
-        if (insertMode || currentLink.from === currentLink.to) { return; }
+        // Caret inserts have nothing on the page to preview; a SELECTION does
+        // (⌘K over selected text — the field is prefilled with it), so
+        // insert-mode previews too whenever a real range is covered.
+        if (currentLink.from === currentLink.to) { return; }
         const newText = inputText.value;
         // An empty field would leave a zero-width link — hold the preview and
         // let the commit rules decide (they treat empty text as "keep").
@@ -1005,7 +1008,11 @@ export function setupLinkPopup(
         previewOriginal ??= { from, to, slice: state.doc.slice(from, to) };
         if (newText === state.doc.textBetween(from, to)) { return; }
         const tr = state.tr.replaceWith(from, to, state.schema.text(newText));
-        tr.addMark(from, from + newText.length, linkType.create({ href: currentLink.href, title: null }));
+        // Keep the existing link paint during preview; a not-yet-linked
+        // selection (insert mode) has no href to re-add — plain text preview.
+        if (currentLink.href) {
+            tr.addMark(from, from + newText.length, linkType.create({ href: currentLink.href, title: null }));
+        }
         tr.setMeta("addToHistory", false);
         view.dispatch(tr);
         currentLink = { ...currentLink, to: from + newText.length };
