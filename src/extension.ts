@@ -241,6 +241,27 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
+    // Master network switch from the palette (MAR-184): the same setting the
+    // just-in-time pill writes, discoverable without hunting Settings. The
+    // config-change listener below broadcasts the flip to open webviews
+    // (paste-unfurl updates live; embed cards compose on reopen — MAR-183).
+    context.subscriptions.push(
+        vscode.commands.registerCommand("birta.toggleNetwork", () => {
+            const next = !readBirtaSetting("networkEnabled");
+            getBirtaConfiguration().update(
+                "network.enabled",
+                next,
+                vscode.ConfigurationTarget.Global,
+            );
+            vscode.window.setStatusBarMessage(
+                next
+                    ? "Birta: network features on — embed cards appear when a file is (re)opened"
+                    : "Birta: network features off",
+                5000,
+            );
+        }),
+    );
+
     // TEST-ONLY hook: registered ONLY outside Production (i.e. the
     // @vscode/test-electron Development/Test host), so the shipped extension never
     // exposes it at all — zero production surface. Drives the active editor's real

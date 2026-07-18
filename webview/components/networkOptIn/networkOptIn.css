@@ -37,6 +37,13 @@
     white-space: nowrap;
 }
 
+/* Post-accept confirmation: the pill stays briefly to say what happens next
+   (embed cards compose at editor creation — MAR-183), reading as a quiet
+   status line, not an actionable prompt. */
+.network-optin--confirmed .network-optin__label {
+    color: var(--vscode-descriptionForeground);
+}
+
 /* The "Enable" action: a text button that reads as the accent affordance. */
 .network-optin__enable {
     flex: 0 0 auto;

@@ -84,6 +84,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.toggleNetwork",
+                "title": "%command.toggleNetwork.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.restorePreviousContent",
                 "title": "%command.restorePreviousContent.title%",
                 "category": "Birta Writer"
