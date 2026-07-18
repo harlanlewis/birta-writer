@@ -91,17 +91,31 @@ export interface BirtaConfig extends ProofreadConfig {
      * only thing off by default.
      */
     pasteUnfurlEnabled: boolean;
+    /**
+     * Apply a fetched title without asking (birta.pasteUnfurl.autoApply).
+     *
+     * Default OFF, which is the consent rule from docs/DESIGN_PRINCIPLES.md —
+     * "nothing changes the file without consent". A fetched title is offered as
+     * a suggestion at the link (Tab accepts) and the document is untouched until
+     * the user takes it. Turning this on restores the silent upgrade: the title
+     * replaces the link text on arrival, seconds after the paste. Mirrors the
+     * calc advisory/`calc.autoInsert` split exactly.
+     */
+    pasteUnfurlAutoApply: boolean;
     /** Inline calc-on-`=` master gate (birta.calc.enabled). */
     calcEnabled: boolean;
     /**
      * URL-embed feature gate (birta.embeds.enabled): a bare provider link
      * (YouTube) on its own line renders as an inline facade card — a static
      * thumbnail that loads the player only on click. Render-only: the on-disk
-     * markdown stays the plain bare link. Gated by `networkEnabled &&
-     * embedsEnabled` — the card renders / thumbnail loads / CSP grants hosts
-     * only when BOTH are on. When the master is off, no card renders, no
-     * thumbnail is fetched, and the webview CSP grants no embed hosts. Default
-     * ON, so the master is the only thing off by default.
+     * markdown stays the plain bare link, so this NEVER changes the file.
+     * Gated by `networkEnabled && embedsEnabled` — the card renders and the
+     * thumbnail loads only when BOTH are on. Default ON, so the master is the
+     * only thing off by default.
+     *
+     * A provider URL is owned by this feature, not paste-unfurl: with embeds on,
+     * pasting one inserts the bare link and fetches no title, because unfurl
+     * would rewrite the link text and the card only renders while text === href.
      */
     embedsEnabled: boolean;
     /** Insert the result on `=` instead of suggesting it (birta.calc.autoInsert). */
@@ -175,6 +189,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     smartLinks: "smartLinks",
     networkEnabled: "network.enabled",
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
+    pasteUnfurlAutoApply: "pasteUnfurl.autoApply",
     calcEnabled: "calc.enabled",
     calcAutoInsert: "calc.autoInsert",
     autoUpdateAnchors: "autoUpdateAnchors",
@@ -250,6 +265,12 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // offers the opt-in; only `networkEnabled && pasteUnfurlEnabled` fetches the
     // page title. Leaving this on keeps the master the single off-by-default.
     pasteUnfurlEnabled: true,
+    // …and, like calc, it is ADVISORY by default: the fetched title is offered
+    // at the link and the document is untouched until accepted. A network reply
+    // silently rewriting text seconds after the paste — and dirtying the file
+    // for autosave — is exactly what "nothing changes the file without consent"
+    // forbids. Turn this on to get the old silent upgrade back.
+    pasteUnfurlAutoApply: false,
     // Calc: the feature ships on, but advisory (no silent mutation) by default.
     calcEnabled: true,
     calcAutoInsert: false,

@@ -318,6 +318,123 @@ describe("paste-unfurl empty-selection paste", () => {
     }
 });
 
+// ── One owner per URL: embeds win a provider link, unfurl takes the rest ─────
+// Paste-unfurl rewrites a bare link's TEXT to the fetched title, and the embed
+// trigger requires text === href. So an unfurled provider link can never render
+// a card: the two features cancel. Provider URLs are therefore owned by embeds —
+// the paste inserts the bare link and does NOT fetch, leaving the exact shape
+// computeEmbedDecorations recognizes.
+
+describe("provider URLs are owned by embeds, not paste-unfurl", () => {
+    let editor: Editor;
+    let v: EditorView;
+
+    const YT = "https://youtu.be/dQw4w9WgXcQ";
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        __resetNetworkOptInForTests();
+        // Everything on: the case where both features would otherwise fire.
+        window.__i18n = {
+            translations: {}, isMac: false,
+            network: true, pasteUnfurl: true, embedsEnabled: true,
+        };
+        vi.spyOn(unfurl, "registerPendingUnfurl").mockImplementation(() => {});
+    });
+
+    afterEach(async () => {
+        await editor.destroy();
+        __resetNetworkOptInForTests();
+        delete window.__i18n;
+        vi.restoreAllMocks();
+    });
+
+    async function setupAtEnd(markdown: string): Promise<void> {
+        editor = await makeEditor(markdown);
+        v = view(editor);
+        const end = v.state.doc.content.size - 1;
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, end)));
+    }
+
+    it("a pasted provider URL should insert the link but NOT request an unfurl", async () => {
+        await setupAtEnd("hello \n");
+
+        const handled = firePaste(v, YT);
+
+        expect(handled).toBe(true);
+        expect(hasLinkMark(v, YT)).toBe(true);
+        // The whole point: no title fetch, so the link keeps text === href.
+        const posted = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0] as { type: string })
+            .filter((m) => m.type === "unfurlUrl");
+        expect(posted.length).toBe(0);
+        expect(unfurl.registerPendingUnfurl).not.toHaveBeenCalled();
+    });
+
+    it("a pasted provider URL should keep link text === href (the embed trigger)", async () => {
+        // This is the exact contract the two features used to break: embed.ts
+        // renders a card only for a link whose text equals its href, and an
+        // unfurl rewrites that text to the page title. Asserting the shape here
+        // pins the composition; that the shape renders a card is covered by
+        // embedDecorations.test.ts.
+        await setupAtEnd("");
+
+        firePaste(v, YT);
+
+        let linkText: string | null = null;
+        v.state.doc.descendants((node) => {
+            if (node.isText && node.marks.some((m) => m.type.name === "link" && m.attrs["href"] === YT)) {
+                linkText = node.text ?? null;
+            }
+        });
+        expect(linkText).toBe(YT);
+    });
+
+    it("a non-provider URL should still be unfurled (regression guard)", async () => {
+        await setupAtEnd("hello \n");
+
+        firePaste(v, "https://example.com/blog/post");
+
+        const posted = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0] as { type: string })
+            .filter((m) => m.type === "unfurlUrl");
+        expect(posted.length).toBe(1);
+    });
+
+    it("with embeds gated off a provider URL should fall through to unfurl", async () => {
+        window.__i18n = {
+            translations: {}, isMac: false,
+            network: true, pasteUnfurl: true, embedsEnabled: false,
+        };
+        await setupAtEnd("hello \n");
+
+        firePaste(v, YT);
+
+        // No card is possible, so the title is the better outcome.
+        const posted = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0] as { type: string })
+            .filter((m) => m.type === "unfurlUrl");
+        expect(posted.length).toBe(1);
+    });
+
+    it("with network OFF a provider URL should still offer the opt-in", async () => {
+        window.__i18n = {
+            translations: {}, isMac: false,
+            network: false, pasteUnfurl: true, embedsEnabled: true,
+        };
+        await setupAtEnd("hello \n");
+
+        expect(isNetworkOptInOpen()).toBe(false);
+        const handled = firePaste(v, YT);
+
+        expect(handled).toBe(true);
+        expect(hasLinkMark(v, YT)).toBe(true);
+        expect(isNetworkOptInOpen()).toBe(true);
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+    });
+});
+
 describe("findBareLinkRange", () => {
     let editor: Editor;
 

@@ -849,6 +849,12 @@ export class MarkdownEditorProvider
                         // open webviews pick the value up on reopen.
                         updateSettingRespectingScope("calc.autoInsert", message.enabled);
                         break;
+                    case "setPasteUnfurlAutoApply":
+                        // The unfurl offer's "Always use fetched titles" row.
+                        // The config-change listener broadcasts the new value,
+                        // so every open webview picks it up live.
+                        updateSettingRespectingScope("pasteUnfurl.autoApply", message.enabled);
+                        break;
                     case "setChecklistSink":
                         // The "Move checked tasks to bottom" toggle (toolbar Lists
                         // menu / task-list block menu). Same local-gate model

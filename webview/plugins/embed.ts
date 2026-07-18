@@ -31,7 +31,7 @@
  * function returns DecorationSet.empty on the first read: no scan, no import, no
  * idle pass (the plugin is also composed conditionally in editor.ts).
  */
-import type { EditorState, Node as ProseNode } from "../pm";
+import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { Decoration, DecorationSet, Plugin, PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
@@ -96,6 +96,18 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): () => HTMLElement {
         const host = document.createElement("div");
         host.className = "embed-card-host";
         host.setAttribute("contenteditable", "false");
+        // Hardening, not a bug fix: keep the editor caret where it is so a
+        // click on the card is the card's alone. Measured 2026-07-18 (e2e,
+        // headless Chromium): WITHOUT this the card already survives a click
+        // and play still works, because the browser will not put a caret inside
+        // a contenteditable="false" widget, so reveal-on-caret never fires. The
+        // guard makes that independent of the host's caret placement rather
+        // than reliant on it, and matches every other clickable widget in the
+        // tree (ui/foldEllipsis.ts, headingFold/foldGutter.ts, imageView).
+        host.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        });
         loadEmbedCard()
             .then((mod) => host.replaceChildren(mod.renderEmbedCard(match, sourceUrl)))
             .catch(() => { /* card unavailable; raw link stays reachable */ });
@@ -205,3 +217,21 @@ export const embedPlugin = $prose(() =>
         },
     }),
 );
+
+/**
+ * Recompute the embed decorations right now, for a gate that just changed.
+ *
+ * The gates live in `window.__i18n`, which no transaction observes: flipping
+ * one leaves the decoration set exactly as it was. Without this, enabling did
+ * nothing until the file was reopened, and disabling lingered until the user's
+ * next click — one switch behaving two different ways, neither predictable.
+ * The existing "arm" meta both opens the gate and forces a rebuild, so a single
+ * dispatch covers turning embeds on AND off.
+ *
+ * Safe to call when the plugin isn't composed (failed chunk load): the meta is
+ * simply ignored by every other plugin.
+ */
+export function regateEmbeds(view: EditorView): void {
+    if (view.isDestroyed) { return; }
+    view.dispatch(view.state.tr.setMeta(embedPluginKey, { type: "arm" } satisfies EmbedMeta));
+}

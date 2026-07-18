@@ -34,6 +34,7 @@ import {
     handleProjectImagesList,
 } from "./imageUpload";
 import { handleUnfurlResult } from "./unfurl";
+import { regateEmbeds } from "./plugins/embed";
 
 // ── Global table wrap mode ─────────────────────────────────
 let currentTableWrap: TableWrapMode = "normal";
@@ -124,6 +125,16 @@ export function createMessageHandlers(
     const { state, actions, topbarTb } = deps;
     const { getEditor, setEditor, getLineMap, setLineMap, getMarkdownSource, setMarkdownSource } = state;
     const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition } = actions;
+
+    /**
+     * Rebuild the embed decorations after a gate flip. A no-op before the editor
+     * exists (a gate can change while the panel is still initializing) — the
+     * first decoration pass reads the current gates anyway.
+     */
+    const regateEmbedsIfPossible = (): void => {
+        const view = getEditorView();
+        if (view) { regateEmbeds(view); }
+    };
 
     return {
         async init(msg, container) {
@@ -275,6 +286,9 @@ export function createMessageHandlers(
             if (window.__i18n) {
                 window.__i18n.network = msg.enabled;
             }
+            // Embeds read the gate from a decoration pass, which only reruns on
+            // a transaction — so the flag alone changes nothing on screen.
+            regateEmbedsIfPossible();
         },
         featureGateChanged(msg) {
             // Read-at-use-time gates: flipping the __i18n field is the whole
@@ -282,6 +296,9 @@ export function createMessageHandlers(
             // unfurl feature key all read it per event, not per composition).
             if (window.__i18n) {
                 window.__i18n[msg.gate] = msg.enabled;
+            }
+            if (msg.gate === "embedsEnabled") {
+                regateEmbedsIfPossible();
             }
         },
         setBlockHandles(msg) {

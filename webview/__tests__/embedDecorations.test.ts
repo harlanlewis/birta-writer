@@ -19,7 +19,7 @@ import { getMarkdown } from "@milkdown/utils";
 import { TextSelection } from "../pm";
 import type { DecorationSet } from "../pm";
 import { makeCorpusEditor, editorView } from "./helpers/moveFuzz";
-import { computeEmbedDecorations, embedPlugin } from "../plugins/embed";
+import { computeEmbedDecorations, embedPlugin, regateEmbeds } from "../plugins/embed";
 import { renderEmbedCard } from "../utils/embedCard";
 
 const ID = "dQw4w9WgXcQ";
@@ -59,6 +59,42 @@ describe("renderEmbedCard — the click-to-load facade", () => {
         expect(thumb!.loading).toBe("lazy");
         // The whole point of the facade: no player until asked for.
         expect(card.querySelector("iframe")).toBeNull();
+    });
+
+    it("the play button should swallow mousedown so the caret never moves", () => {
+        // Defensive, and pinned so it stays: the card rides a widget decoration
+        // inside the contenteditable root, and its buttons must own their own
+        // clicks rather than depend on the browser declining to put a caret in
+        // a contenteditable="false" subtree. Same contract as every other
+        // clickable widget here (ui/foldEllipsis.ts).
+        const card = renderEmbedCard({ kind: "youtube", id: ID });
+        const play = card.querySelector<HTMLButtonElement>(".embed-card__play")!;
+
+        const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        play.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it("the external-open button should swallow mousedown too", () => {
+        const card = renderEmbedCard({ kind: "youtube", id: ID });
+        const external = card.querySelector<HTMLButtonElement>(".embed-card__external")!;
+
+        const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        external.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+    });
+
+    it("Enter on the focused play button should activate it, not type", () => {
+        const card = renderEmbedCard({ kind: "youtube", id: ID });
+        const play = card.querySelector<HTMLButtonElement>(".embed-card__play")!;
+
+        const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+        play.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(card.querySelector("iframe")).not.toBeNull();
     });
 
     it("should build the nocookie player iframe only when play is clicked", () => {
@@ -171,6 +207,51 @@ describe("computeEmbedDecorations — trigger conditions", () => {
         caretTo(view, 1);
         const set = computeEmbedDecorations(view.state);
         expect(decoCounts(set)).toEqual({ nodes: 0, widgets: 0 });
+        await editor.destroy();
+    });
+});
+
+describe("regateEmbeds — a gate flip takes effect without a doc edit", () => {
+    /** The plugin's live decoration set, as the editor view would render it. */
+    function pluginDecoCount(view: ReturnType<typeof editorView>): number {
+        let total = 0;
+        view.someProp("decorations", (f) => {
+            const set = f.call(view.state.plugins.find((p) => p.props.decorations) ?? {}, view.state);
+            total += set && "find" in set ? (set as DecorationSet).find().length : 0;
+            return false;
+        });
+        return total;
+    }
+
+    it("turning embeds ON should render cards in place, with no reopen", async () => {
+        // Gated OFF at creation: the plugin composes anyway (it is inert), which
+        // is what makes a later flip possible at all.
+        window.__i18n = { translations: {}, network: false } as unknown as typeof window.__i18n;
+        const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`, [embedPlugin]);
+        const view = editorView(editor);
+        caretTo(view, 1);
+        expect(pluginDecoCount(view)).toBe(0);
+
+        // What the networkStateChanged handler does: flip the flag, then regate.
+        window.__i18n!.network = true;
+        regateEmbeds(view);
+
+        expect(pluginDecoCount(view)).toBeGreaterThan(0);
+        await editor.destroy();
+    });
+
+    it("turning embeds OFF should drop the cards immediately, not on the next click", async () => {
+        window.__i18n = { translations: {}, network: true } as unknown as typeof window.__i18n;
+        const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`, [embedPlugin]);
+        const view = editorView(editor);
+        caretTo(view, 1);
+        regateEmbeds(view); // arm the first pass without waiting on idle
+        expect(pluginDecoCount(view)).toBeGreaterThan(0);
+
+        window.__i18n!.network = false;
+        regateEmbeds(view);
+
+        expect(pluginDecoCount(view)).toBe(0);
         await editor.destroy();
     });
 });

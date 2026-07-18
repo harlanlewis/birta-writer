@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- e2e harness: URL embeds with the network master switch ON — the path the
+     notesFeatures suite deliberately cannot reach (it pins the OFF case). This
+     is where the card actually renders, so it is the only place the click
+     behavior and the play swap can be observed at all. The fixture carries one
+     bare provider link on its own line, one titled link to the same video, and
+     a heading to click away to. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-focusBorder: #007fd4; --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-list-activeSelectionBackground: #094771; --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-input-background: #3c3c3c; --vscode-input-foreground: #cccccc;
+    --vscode-textLink-foreground: #3794ff; --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-editor-selectionBackground: #264f78; --vscode-icon-foreground: #cccccc;
+    --vscode-toolbar-hoverBackground: #2a2d2e;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+</style>
+<script>
+  window.__i18n = {
+    translations: {}, isMac: true,
+    toolbar: { placements: {}, order: [] },
+    network: true, embedsEnabled: true,
+    pasteUnfurl: true, pasteUnfurlAutoApply: false,
+  };
+  window.__posted = [];
+  const DOC = [
+    "# Alpha",
+    "",
+    "https://youtu.be/dQw4w9WgXcQ",
+    "",
+    "[a titled link](https://youtu.be/dQw4w9WgXcQ)",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", frontmatter: "", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

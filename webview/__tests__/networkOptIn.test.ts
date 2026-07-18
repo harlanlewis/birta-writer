@@ -102,14 +102,25 @@ describe("offerNetworkOptIn", () => {
         expect(window.__i18n?.network).toBe(true);
         // The just-triggered action runs now.
         expect(onEnable).toHaveBeenCalledOnce();
-        // The pill lingers as a buttonless confirmation (embed cards need a
-        // reopen — MAR-183), then fades on its own.
+        // The pill lingers as a buttonless confirmation, then fades on its own.
+        // It no longer promises a reopen: the embed plugin is composed
+        // unconditionally and re-gated live, so cards appear in place.
         expect(isNetworkOptInOpen()).toBe(true);
         expect(document.querySelector(".network-optin__enable")).toBeNull();
         expect(document.querySelector(".network-optin--confirmed")).not.toBeNull();
-        expect(
-            document.querySelector(".network-optin__label")?.textContent,
-        ).toContain("opened");
+        const confirmation = document.querySelector(".network-optin__label")?.textContent ?? "";
+        expect(confirmation).toContain("on");
+        expect(confirmation).not.toContain("reopen");
+        expect(confirmation).not.toContain("opened");
+    });
+
+    it("onEnable should be optional (an embed opt-in has nothing to complete)", () => {
+        offerNetworkOptIn({ label: "Show video card?", anchorRect: null });
+
+        expect(() => press(".network-optin__enable")).not.toThrow();
+
+        expect(lastSetNetwork()).toEqual({ type: "setNetworkEnabled", enabled: true });
+        expect(window.__i18n?.network).toBe(true);
     });
 
     it("Enable should NOT suppress future offers (network is simply on now)", () => {

@@ -243,8 +243,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Master network switch from the palette (MAR-184): the same setting the
     // just-in-time pill writes, discoverable without hunting Settings. The
-    // config-change listener below broadcasts the flip to open webviews
-    // (paste-unfurl updates live; embed cards compose on reopen — MAR-183).
+    // config-change listener below broadcasts the flip to open webviews, which
+    // re-gate paste-unfurl and rebuild embed decorations in place.
     context.subscriptions.push(
         vscode.commands.registerCommand("birta.toggleNetwork", () => {
             const next = !readBirtaSetting("networkEnabled");
@@ -255,8 +255,8 @@ export function activate(context: vscode.ExtensionContext) {
             );
             vscode.window.setStatusBarMessage(
                 next
-                    ? "Birta: network features on — embed cards appear when a file is (re)opened"
-                    : "Birta: network features off",
+                    ? "Birta: network features on — pasted URLs can fetch titles, provider links show cards"
+                    : "Birta: network features off — nothing leaves your machine",
                 5000,
             );
         }),
@@ -295,8 +295,22 @@ export function activate(context: vscode.ExtensionContext) {
         "birta.togglePasteUnfurl",
         "pasteUnfurl.enabled",
         "pasteUnfurlEnabled",
-        "Birta: paste-unfurl on — pasted URLs fetch their page title (needs network features on)",
+        "Birta: paste-unfurl on — pasted URLs offer their page title (needs network features on)",
         "Birta: paste-unfurl off — pasted URLs stay plain links",
+    );
+    registerGateToggle(
+        "birta.togglePasteUnfurlAutoApply",
+        "pasteUnfurl.autoApply",
+        "pasteUnfurlAutoApply",
+        "Birta: fetched titles apply automatically",
+        "Birta: fetched titles are offered as suggestions — nothing is written until you accept",
+    );
+    registerGateToggle(
+        "birta.toggleEmbeds",
+        "embeds.enabled",
+        "embedsEnabled",
+        "Birta: URL embeds on — provider links show a card (display only; your file is unchanged)",
+        "Birta: URL embeds off — provider links stay plain links",
     );
     registerGateToggle(
         "birta.toggleChecklistSink",
@@ -421,14 +435,31 @@ export function activate(context: vscode.ExtensionContext) {
                     enabled: readBirtaSetting("pasteUnfurlEnabled"),
                 });
             }
+            if (e.affectsConfiguration("birta.pasteUnfurl.autoApply")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "featureGateChanged",
+                    gate: "pasteUnfurlAutoApply",
+                    enabled: readBirtaSetting("pasteUnfurlAutoApply"),
+                });
+            }
+            if (e.affectsConfiguration("birta.embeds.enabled")) {
+                // Without this the embed feature key was the ONE gate with no
+                // live path at all: toggling it did nothing until the file was
+                // reopened. The webview re-runs the decoration pass on receipt.
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "featureGateChanged",
+                    gate: "embedsEnabled",
+                    enabled: readBirtaSetting("embedsEnabled"),
+                });
+            }
             if (e.affectsConfiguration("birta.network.enabled")) {
                 // Master network switch flipped — settings UI, or the
                 // just-in-time opt-in accepted in one webview (its write-back
-                // lands here too). Broadcast so every OPEN webview's
-                // paste-unfurl gate updates live; without this the setting
-                // persists but running editors stay on their baked-at-load
-                // value until reopened. (Embed cards compose at editor
-                // creation and still need a reopen — see editor.ts.)
+                // lands here too). Broadcast so every OPEN webview re-gates:
+                // paste-unfurl reads the new value at its next use, and the
+                // embed decorations are rebuilt in place. Without this the
+                // setting persists but running editors stay on their
+                // baked-at-load value until reopened.
                 MarkdownEditorProvider.current?.postToAll({
                     type: "networkStateChanged",
                     enabled: readBirtaSetting("networkEnabled"),

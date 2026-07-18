@@ -99,6 +99,16 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.togglePasteUnfurlAutoApply",
+                "title": "%command.togglePasteUnfurlAutoApply.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.toggleEmbeds",
+                "title": "%command.toggleEmbeds.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.toggleChecklistSink",
                 "title": "%command.toggleChecklistSink.title%",
                 "category": "Birta Writer"
@@ -1873,13 +1883,25 @@
                     "order": 105,
                     "type": "boolean",
                     "default": false,
-                    "description": "%config.network.enabled.description%"
+                    "markdownDescription": "%config.network.enabled.description%"
                 },
                 "birta.pasteUnfurl.enabled": {
-                    "order": 106.5,
+                    "order": 105.1,
                     "type": "boolean",
                     "default": true,
-                    "description": "%config.pasteUnfurl.enabled.description%"
+                    "markdownDescription": "%config.pasteUnfurl.enabled.description%"
+                },
+                "birta.pasteUnfurl.autoApply": {
+                    "order": 105.2,
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "%config.pasteUnfurl.autoApply.description%"
+                },
+                "birta.embeds.enabled": {
+                    "order": 105.3,
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "%config.embeds.enabled.description%"
                 },
                 "birta.calc.enabled": {
                     "order": 107,
@@ -1892,12 +1914,6 @@
                     "type": "boolean",
                     "default": false,
                     "description": "%config.calc.autoInsert.description%"
-                },
-                "birta.embeds.enabled": {
-                    "order": 108.5,
-                    "type": "boolean",
-                    "default": true,
-                    "description": "%config.embeds.enabled.description%"
                 },
                 "birta.autoUpdateAnchors": {
                     "order": 108.7,

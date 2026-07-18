@@ -42,6 +42,7 @@ import { openLinkEditor } from "@/components/linkPopup";
 import { offerNetworkOptIn } from "@/components/networkOptIn";
 import { notifyUnfurl } from "@/messaging";
 import { registerPendingUnfurl } from "@/unfurl";
+import { recognizeProvider } from "@/utils/embedProviders";
 import { t } from "@/i18n";
 
 /** Scheme URL (https://…, ftp://…, and the authority-less mailto:). */
@@ -145,6 +146,16 @@ function pasteUnfurlEnabled(): boolean {
     return window.__i18n?.pasteUnfurl ?? true;
 }
 
+/**
+ * URL-embed FEATURE flag (on by default). Read WITHOUT the master switch on
+ * purpose: it answers "could this URL ever render as a card?", which decides
+ * who owns the link. With embeds switched off entirely, a provider URL is just
+ * a URL and unfurl should title it like any other.
+ */
+function embedsFeatureEnabled(): boolean {
+    return window.__i18n?.embedsEnabled ?? true;
+}
+
 /** Random correlation id for one unfurl request (mirrors imageUpload's ids). */
 function newUnfurlId(): string {
     return `unfurl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -229,6 +240,26 @@ function handleEmptySelectionPaste(
     tr.addMark(from, from + href.length, linkType.create({ href, title: null }));
     tr.setStoredMarks([...activeMarks]);
     view.dispatch(tr);
+
+    // One owner per URL. A recognized provider link belongs to the EMBED card,
+    // so it must never be unfurled: the embed trigger requires the link text to
+    // equal its href, and unfurl rewrites that text to the fetched title. Doing
+    // both means the card silently never appears — and, worse, appears only when
+    // the fetch FAILS. Ownership keys off the embed FEATURE flag, not the master
+    // switch: with network off the card is what the user gets once they opt in,
+    // so the title is still the wrong thing to fetch.
+    if (embedsFeatureEnabled() && recognizeProvider(href)) {
+        if (!networkEnabled()) {
+            // Offer the master switch for the CARD, not for a title fetch.
+            // Nothing to complete on accept: the link already has the shape the
+            // decoration pass looks for, and re-gating renders the card in place.
+            offerNetworkOptIn({
+                label: t("Show video card?"),
+                anchorRect: rectForRange(view, from, from + href.length),
+            });
+        }
+        return true;
+    }
 
     if (networkEnabled()) {
         // Full experience: fetch the page title and upgrade the link text.

@@ -20,6 +20,8 @@ declare global {
             network?: boolean;
             /** Paste-unfurl: bare-URL paste fetches the page title (birta.pasteUnfurl.enabled). Also gated by `network`. */
             pasteUnfurl?: boolean;
+            /** Apply a fetched title without asking, instead of offering it (birta.pasteUnfurl.autoApply). */
+            pasteUnfurlAutoApply?: boolean;
             /** Inline calc-on-`=` master gate (birta.calc.enabled). */
             calcEnabled?: boolean;
             /** Auto-insert the calc result on `=` instead of suggesting (birta.calc.autoInsert). */

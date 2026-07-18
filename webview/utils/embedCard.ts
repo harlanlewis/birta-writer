@@ -27,6 +27,31 @@ const PLAY_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"
 const EXTERNAL_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
 
 /**
+ * Make a card button safe inside the contenteditable root: mousedown must not
+ * move the editor caret, and Enter / Space on a focused button must activate it
+ * rather than type into the document. Same contract as ui/foldEllipsis.ts,
+ * which solves this for the fold widget.
+ *
+ * The mousedown half is defensive — the caret does not in practice land inside
+ * a contenteditable="false" widget, so the card survives a click without it
+ * (verified in e2e). The keyboard half is load-bearing: a focused button inside
+ * contenteditable would otherwise let Space through as typed input.
+ */
+function guardActivation(button: HTMLElement): void {
+    button.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    });
+    button.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            event.stopPropagation();
+            button.click();
+        }
+    });
+}
+
+/**
  * Swap the facade for the live player. Built only on the user's click — this is
  * the sole place an <iframe> is ever created, and the only autoplay (the user
  * just asked for it).
@@ -79,6 +104,7 @@ export function renderEmbedCard(match: EmbedMatch, sourceUrl?: string): HTMLElem
         event.stopPropagation();
         loadPlayer(frame, match);
     });
+    guardActivation(play);
     frame.appendChild(play);
 
     // Guaranteed external path: in-webview playback is at YouTube's mercy
@@ -97,6 +123,7 @@ export function renderEmbedCard(match: EmbedMatch, sourceUrl?: string): HTMLElem
         event.stopPropagation();
         notifyOpenUrl(sourceUrl ?? `https://www.youtube.com/watch?v=${match.id}`);
     });
+    guardActivation(external);
     frame.appendChild(external);
 
     card.appendChild(frame);

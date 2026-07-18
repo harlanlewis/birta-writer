@@ -152,6 +152,11 @@ export function notifySetCalcAutoInsert(enabled: boolean): void {
     vscode.postMessage({ type: "setCalcAutoInsert", enabled });
 }
 
+/** The unfurl offer's "Always use fetched titles" row → persist birta.pasteUnfurl.autoApply. */
+export function notifySetPasteUnfurlAutoApply(enabled: boolean): void {
+    vscode.postMessage({ type: "setPasteUnfurlAutoApply", enabled });
+}
+
 /** The "Move checked tasks to bottom" toggle → persist birta.checklist.sinkChecked. */
 export function notifySetChecklistSink(enabled: boolean): void {
     vscode.postMessage({ type: "setChecklistSink", enabled });
