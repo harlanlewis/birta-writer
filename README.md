@@ -184,7 +184,7 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 
 ## Architecture
 
-How the editor is built, in three views — for the curious, and as the receipts behind the fidelity claims above. Every boundary drawn here is enforced by a convention test where one is named: the diagrams describe rules the test suite pins, not intentions. (The exhaustive file map lives in [`CLAUDE.md`](CLAUDE.md).)
+How the editor is built, in three views — for the curious, and as the receipts behind the fidelity claims above. Every boundary drawn here is enforced by a convention test where one is named: the diagrams describe rules the test suite pins, not intentions. (The exhaustive file map lives in [`AGENTS.md`](AGENTS.md).)
 
 ### The system at a glance
 
@@ -215,7 +215,7 @@ flowchart LR
     D -->|"dirty doc: watcher<br/>→ drift badge, never merged"| P
 ```
 
-Guards: `typedWebviewSends.test.ts` (no raw `postMessage` outside the funnels), `configDefaultsContributions.test.ts` (every `birta.*` default pinned against `package.json`). The provider's collaborators — `saveFlushController`, `config.ts` (all `birta.*` reads and writes), `externalChanges` + `diskDrift`, `webviewHtml`, `errorSink` — are enumerated in `CLAUDE.md`'s key-file map rather than drawn here.
+Guards: `typedWebviewSends.test.ts` (no raw `postMessage` outside the funnels), `configDefaultsContributions.test.ts` (every `birta.*` default pinned against `package.json`). The provider's collaborators — `saveFlushController`, `config.ts` (all `birta.*` reads and writes), `externalChanges` + `diskDrift`, `webviewHtml`, `errorSink` — are enumerated in `AGENTS.md`'s key-file map rather than drawn here.
 
 ### The save pipeline — why editing one line never rewrites another
 
@@ -244,7 +244,7 @@ sequenceDiagram
     T->>D: write
 ```
 
-Two properties are pinned hard: a save can never persist content older than the editor state, and the first edit after a save dirties the document within one IPC hop (`CLAUDE.md` → *Autosave* has the full invariants; `savePipeline.test.ts` and the integration suite enforce them, and `e2e/syncLatency` pins the scheduler's latencies).
+Two properties are pinned hard: a save can never persist content older than the editor state, and the first edit after a save dirties the document within one IPC hop (`AGENTS.md` → *Autosave* has the full invariants; `savePipeline.test.ts` and the integration suite enforce them, and `e2e/syncLatency` pins the scheduler's latencies).
 
 Round-trip **protection** is the second half of fidelity: at load, the document is compared against its own zero-edit serialization; every construct the parser can't reproduce byte-for-byte (setext headings, escaping churn, reference-link styles…) is recorded and repaired back to its saved bytes on every later save — until the user actually edits that construct, at which point the edit wins.
 

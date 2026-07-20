@@ -64,7 +64,7 @@ export interface NetworkOptInOptions {
 
 // One affordance at a time: a second paste while one is open replaces it, so
 // the surface never stacks. Module singleton, mirroring the editor-view
-// singleton exception in CLAUDE.md ("singletons like the editor view").
+// singleton exception in AGENTS.md ("singletons like the editor view").
 let current: { el: HTMLElement; dispose: () => void } | null = null;
 
 // "Don't nag": once dismissed, stay quiet for the rest of the session. Reset

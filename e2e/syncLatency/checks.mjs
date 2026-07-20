@@ -1,7 +1,7 @@
 /**
  * View→document sync latency checks against the real bundle (MAR-145).
  *
- * CLAUDE.md's sync invariant #2: "An edit is save-capturable the moment the
+ * AGENTS.md's sync invariant #2: "An edit is save-capturable the moment the
  * user perceives it. The first edit after a save dirties the TextDocument
  * within an IPC hop (leading-edge sync)." `onWillSaveTextDocument` only fires
  * for a DIRTY document, so if the first keystroke takes ~200ms to produce an

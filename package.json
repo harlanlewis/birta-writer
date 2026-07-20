@@ -1935,6 +1935,7 @@
         "build": "node esbuild.mjs",
         "watch": "node esbuild.mjs --watch",
         "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/birta-writer/blob/main --baseImagesUrl https://github.com/harlanlewis/birta-writer/raw/main && node scripts/check-vsix.mjs",
+        "install:local": "node scripts/install-local.mjs",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
         "test": "vitest run",
         "fidelity": "vitest run --reporter=verbose toolFidelity roundTripCorpus logseqRoundTrip",

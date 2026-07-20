@@ -5,7 +5,7 @@
  *    webview/ (CSS and inline TS styles).
  * 2. No bare color literals (hex, rgb()/rgba()/hsl()/hsla()/hwb(), named CSS
  *    colors) in webview CSS declaration values at all — theme colors come from
- *    `--vscode-*` variables (CLAUDE.md, "No custom colors").
+ *    `--vscode-*` variables (AGENTS.md, "No custom colors").
  *
  * Rule 2 exemptions (both documented at their definitions below):
  * - An explicit same-line CSS comment annotation "color-literal-ok: <reason>"
@@ -25,7 +25,7 @@
  * palette — pinned/custom theme overrides were removed entirely (auto-only), so
  * a native variable is never absent. A literal fallback is therefore dead code
  * that never renders, and a grep trap: searching for a color turns up values
- * that don't apply. The rule (CLAUDE.md, "No custom colors") is now enforced
+ * that don't apply. The rule (AGENTS.md, "No custom colors") is now enforced
  * here so a fallback can't creep back in.
  *
  * Allowed and NOT flagged:

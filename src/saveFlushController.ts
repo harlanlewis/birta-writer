@@ -3,7 +3,7 @@
  *
  * The webview→document flush/seq protocol, extracted from the provider
  * (MAR-168). This is the bookkeeping that upholds the three save-pipeline
- * invariants (see CLAUDE.md "Autosave"):
+ * invariants (see AGENTS.md "Autosave"):
  *
  * 1. A save never persists content older than the editor state — a save asks
  *    the webview to serialize NOW (`flushPendingEdit`) and applies the reply
