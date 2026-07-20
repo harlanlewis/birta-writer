@@ -25,6 +25,7 @@ import { resolveFontFamily, clampFontSizePercent } from "../shared/fontPresets";
 import { clampMaxWidthCh } from "../shared/contentWidth";
 import { normalizeBlockHandlesMode, blockHandlesBodyClass } from "../shared/blockHandles";
 import { normalizeMermaidThemeMode } from "../shared/mermaid";
+import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { foldingBodyClasses } from "../shared/foldingControls";
 
 /**
@@ -152,8 +153,12 @@ export function buildWebviewHtml(
     const contentWidth = resolveContentWidthConfig();
     const maxWidthCssValue = contentWidth.cssValue;
     const tocContentGap = pixelSettingCssValue(config.tocContentGap, BIRTA_CONFIG_DEFAULTS.tocContentGap, 16, 240);
-    // User-dragged TOC panel width, persisted across documents and sessions
-    const tocWidth = clampNumberSetting(context.globalState.get<number>("tocWidth"), 220, 150, 600);
+    // User-dragged TOC panel width (birta.tocWidth), injected as a CSS var.
+    const tocWidth = clampNumberSetting(config.tocWidth, 220, 150, 600);
+    // ToC show/hide preference (birta.tocVisibility): "auto" defers to the
+    // heading-count heuristic, "shown"/"hidden" force it. Normalized so a
+    // settings.json typo can't reach the webview. Injected into __i18n.
+    const tocVisibility = normalizeTocVisibility(config.tocVisibility);
     const tocRight = config.tocPosition === "right";
     const isAutoWidth = contentWidth.isAuto;
     const fontPreset = config.fontPreset;
@@ -238,7 +243,7 @@ export function buildWebviewHtml(
     // optional-chained so a stripped-down test context still resolves.
     const productName =
         (context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

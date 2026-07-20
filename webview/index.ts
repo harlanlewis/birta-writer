@@ -622,6 +622,8 @@ const handlers = createMessageHandlers({
         // An external edit changes the document, not the panel's own state.
         refreshToc: () => toc.refreshContent(),
         setTocPosition: (position) => toc.setPosition(position),
+        setTocVisibility: (visibility) => toc.applyVisibility(visibility),
+        setTocWidth: (width) => toc.setWidth(width),
     },
     topbarTb,
 });

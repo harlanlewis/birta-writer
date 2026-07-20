@@ -107,6 +107,10 @@ export interface EditorActions {
     refreshToc: () => void;
     /** Flips the table-of-contents panel to the given dock side. */
     setTocPosition: (position: import("../shared/messages").TocPosition) => void;
+    /** Applies a birta.tocVisibility change (no re-persist). */
+    setTocVisibility: (visibility: import("../shared/messages").TocVisibility) => void;
+    /** Applies a birta.tocWidth change (no re-persist). */
+    setTocWidth: (width: number) => void;
 }
 
 /** Message-handler dependencies. */
@@ -124,7 +128,7 @@ export function createMessageHandlers(
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb } = deps;
     const { getEditor, setEditor, getLineMap, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition } = actions;
+    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth } = actions;
 
     /**
      * Rebuild the embed decorations after a gate flip. A no-op before the editor
@@ -359,6 +363,12 @@ export function createMessageHandlers(
         },
         setTocPosition(msg) {
             setTocPosition(msg.position);
+        },
+        setTocVisibility(msg) {
+            setTocVisibility(msg.visibility);
+        },
+        setTocWidth(msg) {
+            setTocWidth(msg.width);
         },
         lintResults(msg) {
             applyLintResults(msg.id, msg.results);

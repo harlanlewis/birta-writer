@@ -2,7 +2,8 @@ import './toc.css';
 import type { EditorView, Node as PmNode } from "@/pm";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
-import { notifyTocWidth, notifySetTocPosition } from "@/messaging";
+import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/messaging";
+import type { TocVisibility } from "../../../shared/messages";
 import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
 import type { EventManager } from "@/eventManager";
@@ -42,6 +43,9 @@ const TAB_EDGE_INSET = 7;
 // first heading row's text (lowercase-dominant, so its optical center sits low).
 const TAB_TOP_INSET = 7;
 const tocAutoHideThreshold = window.__i18n?.tocAutoHideThreshold ?? 3;
+// ToC show/hide preference (birta.tocVisibility, via window.__i18n).
+// "auto" (or absent) → the auto-open-by-heading-count heuristic governs.
+const tocVisibility = window.__i18n?.tocVisibility ?? "auto";
 type TocMode = "docked" | "overlay";
 
 export function initToc(eventManager: EventManager, getEditorView: () => EditorView | null): {
@@ -54,6 +58,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      *  heading walk, and touches the DOM only when the outline really moved. */
     refreshContent: () => void;
     setPosition: (position: "left" | "right") => void;
+    /** Apply a birta.tocVisibility change without re-persisting (keeps every open
+     *  editor in sync with the setting). */
+    applyVisibility: (visibility: TocVisibility) => void;
+    /** Apply a birta.tocWidth change (settings edit echoed to every editor). */
+    setWidth: (width: number) => void;
     /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
     isOpen: () => boolean;
     isRight: () => boolean;
@@ -218,6 +227,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     let isOpen = false;
     let dockedUserCollapsed = false;
     let userToggled = false;
+    // Seed from the birta.tocVisibility setting so show/hide survives a fresh
+    // webview init (reloading the window, or reopening the file). "shown"/"hidden"
+    // is an explicit choice that overrides auto-open; "auto" leaves the heuristic
+    // in charge. `dockedUserCollapsed` is the inverse of "visible" when docked.
+    // (Switching tabs never reset this — the webview is retained hidden,
+    // `retainContextWhenHidden`; this seed is only read on a brand-new webview.)
+    if (tocVisibility === "shown" || tocVisibility === "hidden") {
+        userToggled = true;
+        dockedUserCollapsed = tocVisibility === "hidden";
+    }
     let activeHeadingPos: number | null = null;
     let scrollRafId: number | null = null;
     // The initial auto-open on load should snap into place, not slide/fade in —
@@ -712,19 +731,43 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         syncTocState();
     }
 
-    function toggle(): void {
+    /** Apply an explicit show/hide preference — from a local toggle or a
+     *  cross-tab broadcast. Seeds the persistent decision (so it overrides
+     *  auto-open) and re-syncs the panel. Does NOT persist or notify: the caller
+     *  decides (a local toggle persists; a received broadcast must not echo). */
+    function applyVisiblePreference(visible: boolean): void {
         userToggled = true;
-        if (tocMode === "docked") {
-            dockedUserCollapsed = isOpen;
-            isOpen = !isOpen;
+        // dockedUserCollapsed is the inverse of "visible" when docked, and keeps
+        // the overlay↔docked transitions honoring the last explicit choice.
+        dockedUserCollapsed = !visible;
+        isOpen = visible;
+        syncTocState();
+    }
+
+    function toggle(): void {
+        const next = !isOpen;
+        applyVisiblePreference(next);
+        // Report the explicit choice; the extension writes birta.tocVisibility and
+        // echoes it to every open editor. A toggle only ever picks shown/hidden.
+        notifyTocVisibility(next ? "shown" : "hidden");
+    }
+
+    /** External show/hide update (birta.tocVisibility changed — a toggle in this
+     *  or another editor, or a settings.json edit). Applies without re-persisting.
+     *  "auto" returns to the heading-count heuristic. */
+    function applyVisibility(visibility: TocVisibility): void {
+        if (visibility === "auto") {
+            userToggled = false;
+            isOpen = shouldAutoOpen(getHeadings());
             syncTocState();
-        } else {
-            if (isOpen) {
-                close();
-            } else {
-                openPanel();
-            }
+            return;
         }
+        const visible = visibility === "shown";
+        if (isOpen === visible && userToggled) {
+            return; // already in the requested state — nothing to do
+        }
+        hideFlyoutImmediate(); // a live dock change shouldn't leave a flyout up
+        applyVisiblePreference(visible);
     }
 
 
@@ -779,6 +822,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         panel.style.left = tocRight
             ? `${Math.round(Math.max(8, r.right - FLYOUT_WIDTH))}px`
             : `${Math.round(r.left)}px`;
+        // The docked drawer sets an inline `height` (updatePanelPosition); clear it
+        // so the flyout card sizes to its content via CSS (height:auto capped by
+        // max-height) instead of inheriting the full drawer height and padding its
+        // footer with empty space when the heading list is short.
+        panel.style.height = "";
         // The invisible hover band above the panel spans the whole gap up to the
         // content-area top (the toolbar's bottom), so the flyout stays open while
         // the pointer is anywhere in that column — no hyper-precise mousing down.
@@ -791,9 +839,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         cancelFlyoutCleanup();
         panel.classList.remove("toc-panel--flyout", "toc-panel--flyout-in");
         document.body.classList.remove("toc-flyout-open");
-        panel.style.top = "";
         panel.style.left = "";
         panel.style.removeProperty("--toc-flyout-band-h");
+        // Reassert the docked drawer's inline top+height (positionFlyout cleared
+        // the height so the flyout could auto-size) so a later dock-open is
+        // full-height and correctly positioned again.
+        updatePanelPosition();
     }
     function showFlyout(): void {
         cancelFlyoutHide();
@@ -989,6 +1040,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         refresh,
         refreshContent,
         setPosition,
+        applyVisibility,
+        // A one-shot width change (settings edit echoed here) must also
+        // re-evaluate docked↔overlay, which a new width can flip — the drag path
+        // does this on mouseup, but per-move `setTocWidth` deliberately doesn't.
+        setWidth: (width: number) => { setTocWidth(width); checkResponsiveMode(); },
         isOpen: () => isOpen,
         isRight: () => tocRight,
         dispose: dnd.dispose,

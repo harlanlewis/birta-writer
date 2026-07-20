@@ -3,6 +3,7 @@ import { MarkdownEditorProvider } from "./MarkdownEditorProvider";
 import { resolveFontFamily, clampFontSizePercent } from "../shared/fontPresets";
 import { normalizeBlockHandlesMode, BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../shared/blockHandles";
 import { normalizeMermaidThemeMode } from "../shared/mermaid";
+import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { WordCountStatusBar } from "./wordCountStatus";
@@ -499,6 +500,14 @@ export function activate(context: vscode.ExtensionContext) {
             if (e.affectsConfiguration("birta.tocPosition")) {
                 const position = readBirtaSetting("tocPosition") === "left" ? "left" : "right";
                 MarkdownEditorProvider.current?.postToAll({ type: "setTocPosition", position });
+            }
+            if (e.affectsConfiguration("birta.tocVisibility")) {
+                const visibility = normalizeTocVisibility(readBirtaSetting("tocVisibility"));
+                MarkdownEditorProvider.current?.postToAll({ type: "setTocVisibility", visibility });
+            }
+            if (e.affectsConfiguration("birta.tocWidth")) {
+                const width = readBirtaSetting("tocWidth");
+                MarkdownEditorProvider.current?.postToAll({ type: "setTocWidth", width });
             }
             if (e.affectsConfiguration("birta.blockHandles")) {
                 const mode = normalizeBlockHandlesMode(readBirtaSetting("blockHandles"));
