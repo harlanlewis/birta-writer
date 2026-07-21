@@ -57,12 +57,6 @@ export interface FoldPluginState {
     readonly enabled: boolean;
     readonly decorations: DecorationSet;
     readonly fingerprint: string;
-    /**
-     * MAR-189: init kept the pure-affordance decoration build off the mount
-     * path (nothing folded → nothing to hide → safe to defer). view() builds it
-     * after first paint via a `buildAffordance` meta. Undefined/false once built.
-     */
-    readonly affordanceDeferred?: boolean;
 }
 
 /** Back-compat alias from when only headings folded. */
