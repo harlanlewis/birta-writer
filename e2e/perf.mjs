@@ -325,6 +325,26 @@ function printAbTable(label, pass) {
     }
 }
 
+// The sub-spans that compose launch — shown for the gated fixtures so a neutral
+// total doesn't hide where time moved (a heavier `create` masked by a lighter
+// `eager`, etc.). Diagnostic only; never gates.
+const SUB_SPANS = SPANS.map(([l]) => l).filter((l) => l !== "launch");
+
+function printAbSpans(pass) {
+    for (const name of Object.keys(pass)) {
+        if (!GATED_FIXTURES.has(name)) continue;
+        const { base, head } = pass[name];
+        const parts = [];
+        for (const l of SUB_SPANS) {
+            const b = base.median[l], a = head.median[l];
+            if (b == null && a == null) continue;
+            const d = (a ?? 0) - (b ?? 0);
+            parts.push(`${l} ${round(b ?? 0)}→${round(a ?? 0)} (${d >= 0 ? "+" : ""}${round(d)})`);
+        }
+        if (parts.length) console.log(`    ${name}: ${parts.join("  ·  ")}`);
+    }
+}
+
 async function abMode(baseDirArg, headDirArg, runs, jsonOut, accept) {
     const baseDir = resolve(baseDirArg), headDir = resolve(headDirArg);
     for (const [side, dir] of [["base", baseDir], ["head", headDir]]) {
@@ -350,6 +370,7 @@ async function abMode(baseDirArg, headDirArg, runs, jsonOut, accept) {
 
     const pass1 = await runPass();
     printAbTable("pass 1", pass1);
+    printAbSpans(pass1);
     const v1 = abVerdict(pass1);
 
     // Double-confirm: a gated regression must reproduce in a second full pass
