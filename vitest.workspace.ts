@@ -10,6 +10,9 @@ export default defineWorkspace([
                 "src/__tests__/**/*.test.ts",
                 "shared/__tests__/**/*.test.ts",
                 "packages/*/src/__tests__/**/*.test.ts",
+                // Pure e2e helper logic (the launch-A/B gate's decision math) —
+                // NOT the browser-driving runners, which stay Vitest-excluded.
+                "e2e/**/*.test.mjs",
             ],
         },
     },
