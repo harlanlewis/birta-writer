@@ -102,7 +102,6 @@ export const headingFoldPlugin = $prose(() =>
                         ? DecorationSet.empty
                         : buildHeadingFoldDecorations(state.doc, folded, enabled),
                     fingerprint: structureFingerprint(state.doc, folded, computeFoldRanges(state.doc), enabled),
-                    affordanceDeferred: deferAffordance,
                 };
             },
             apply(tr, value, oldState, newState) {
@@ -116,7 +115,6 @@ export const headingFoldPlugin = $prose(() =>
                     return {
                         ...value,
                         decorations: buildHeadingFoldDecorations(newState.doc, value.folded, value.enabled),
-                        affordanceDeferred: false,
                     };
                 }
                 let folded: ReadonlySet<number> = value.folded;
@@ -312,9 +310,18 @@ export const headingFoldPlugin = $prose(() =>
 
             // MAR-189: materialize the affordance decorations init deferred, in
             // an idle window after first paint (never synchronously in create).
+            // Re-derive the deferred signature from live state rather than a
+            // one-shot init flag: Milkdown runs setup transactions between the
+            // plugin's state.init and this view(), and a plain flag would already
+            // have been dropped by then (the apply paths don't carry it),
+            // leaving the build unscheduled — chevrons that never appear.
             let disposed = false;
             let deferredBuild: { cancel: () => void } | null = null;
-            if (foldPluginKey.getState(view.state)?.affordanceDeferred) {
+            const st = foldPluginKey.getState(view.state);
+            const deferredPending =
+                !!st && st.enabled && st.folded.size === 0 &&
+                st.decorations.find().length === 0 && canDeferAffordance();
+            if (deferredPending) {
                 deferredBuild = requestIdle(() => {
                     if (disposed) { return; }
                     view.dispatch(
