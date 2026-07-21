@@ -51,10 +51,38 @@ node e2e/perf-bundle.mjs --compare bundle-before.json bundle-after.json  # eager
 
 - **improved**: median `launch` down ≥3% AND ≥10 ms on ≥1 fixture, nothing up >3%+10 ms.
 - **regressed**: any fixture up >3% AND >10 ms → do not commit.
-- Eager bytes must never grow >1%; an eager-bytes drop can justify committing a launch-neutral change.
+- Eager bytes are gated by a **budget ceiling** (`pnpm perf:bundle --check`), not a
+  ratchet — see `e2e/perf-bundle.mjs`.
 
 `baseline.json` is a checked-in **historical reference** (not the gate); update it
 only inside an accepted-optimization commit.
+
+## Automated launch gate (`pnpm perf:ab`, CI job `launch-perf`)
+
+The manual A/B above is for the optimization loop. The same comparison runs
+**automatically on every PR** and is a **required, blocking check** — because
+boot time is a first-class metric and a same-session delta is trustworthy where
+an absolute threshold isn't.
+
+```bash
+pnpm perf:ab                       # vs origin/main: builds merge-base + head, compares
+node e2e/perf-ab.mjs --base origin/main --runs 9 --json ab.json
+PERF_ACCEPT="reason" pnpm perf:ab  # accept an intentional launch cost locally
+```
+
+`e2e/perf-ab.mjs` builds the merge-base (in a detached git worktree, with that
+commit's own deps) and the head into `dist-base/` and `dist-head/`, then calls
+`node e2e/perf.mjs --ab dist-base dist-head`, which:
+
+- **interleaves** head/base measurements per pair so slow machine drift cancels;
+- gates only the **strong-signal fixtures** (`medium`, `large`); the small ones
+  are reported but never fail;
+- **double-confirms** — a regression must reproduce on the same fixture across
+  two full passes before the job fails, killing transient CI false reds.
+
+**Escape hatch for an intentional launch cost:** add the `perf-accept` PR label
+or a `Perf-Regression-Accepted: <reason>` commit trailer; the gate reports the
+regression but doesn't block (CI passes it through as `PERF_ACCEPT`).
 
 ## Fixtures
 

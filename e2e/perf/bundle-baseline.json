@@ -1,9 +1,10 @@
 {
-  "note": "Committed eager-bytes baseline for the CI perf-bundle gate (`pnpm perf:bundle --check`). Deterministic for a given lockfile. To accept an intentional eager-bytes increase: `node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --write-baseline`, then commit this file (and say why in the commit).",
-  "eagerJs": 1096718,
+  "note": "Eager-bytes BUDGET for the CI gate (`pnpm perf:bundle --check`): the gate fails only when `eagerTotal` exceeds `eagerBudget` — a deliberate ceiling with headroom, NOT a per-commit ratchet to current bytes. Normal feature growth flows under it silently. Raise the ceiling consciously at a milestone: `node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --set-budget`, then commit this file and say why. The remaining fields are the last measured snapshot (informational), refreshed with `--write-baseline`.",
+  "eagerBudget": 1300000,
+  "eagerJs": 1097264,
   "eagerCss": 104560,
-  "eagerTotal": 1201278,
+  "eagerTotal": 1201824,
   "eagerChunkCount": 10,
-  "totalJs": 3977554,
+  "totalJs": 3978100,
   "totalCss": 1603336
 }
