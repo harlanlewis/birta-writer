@@ -43,6 +43,18 @@ import {
     seedSyntaxFolds,
 } from "./foldAnchors";
 import { buildHeadingFoldDecorations, structureFingerprint } from "./foldDecorations";
+import { requestIdle } from "../../utils/idle";
+
+/**
+ * MAR-189: whether we can defer the affordance decoration build off the mount
+ * path. Requires a real post-paint scheduler (`requestIdleCallback`); without
+ * one — jsdom under the unit tests — we build eagerly, preserving the
+ * synchronous "decorations exist right after create" contract the fold tests
+ * assert against.
+ */
+function canDeferAffordance(): boolean {
+    return typeof (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback === "function";
+}
 
 function isHeadingElement(element: Element | null): element is HTMLElement {
     return element instanceof HTMLElement && element.matches("h1,h2,h3,h4,h5,h6");
@@ -75,15 +87,38 @@ export const headingFoldPlugin = $prose(() =>
                         ? resolveFoldAnchors(state.doc, persisted)
                         : seedSyntaxFolds(state.doc);
                 }
+                // MAR-189: with nothing folded the decorations are PURE
+                // affordance (per-heading chevrons; no content hidden), so keep
+                // their O(blocks) build — the dominant slice of `create` on
+                // heading-heavy docs — off the mount path; view() builds it after
+                // first paint. When folds ARE present the content-hiding
+                // decorations must exist at first paint or folded content would
+                // flash, so build synchronously.
+                const deferAffordance = enabled && folded.size === 0 && canDeferAffordance();
                 return {
                     folded,
                     enabled,
-                    decorations: buildHeadingFoldDecorations(state.doc, folded, enabled),
+                    decorations: deferAffordance
+                        ? DecorationSet.empty
+                        : buildHeadingFoldDecorations(state.doc, folded, enabled),
                     fingerprint: structureFingerprint(state.doc, folded, computeFoldRanges(state.doc), enabled),
+                    affordanceDeferred: deferAffordance,
                 };
             },
             apply(tr, value, oldState, newState) {
                 const meta = tr.getMeta(foldPluginKey) as FoldMeta | undefined;
+
+                // MAR-189: the deferred post-paint affordance build. No fold/doc
+                // state change — just materialize the decorations init skipped.
+                // Handled before the selection-only early-return below (which
+                // would otherwise drop this no-op transaction and never build).
+                if (meta?.type === "buildAffordance") {
+                    return {
+                        ...value,
+                        decorations: buildHeadingFoldDecorations(newState.doc, value.folded, value.enabled),
+                        affordanceDeferred: false,
+                    };
+                }
                 let folded: ReadonlySet<number> = value.folded;
                 let enabled = value.enabled;
 
@@ -275,6 +310,21 @@ export const headingFoldPlugin = $prose(() =>
         view(view) {
             let hoveredGutter: HTMLElement | null = null;
 
+            // MAR-189: materialize the affordance decorations init deferred, in
+            // an idle window after first paint (never synchronously in create).
+            let disposed = false;
+            let deferredBuild: { cancel: () => void } | null = null;
+            if (foldPluginKey.getState(view.state)?.affordanceDeferred) {
+                deferredBuild = requestIdle(() => {
+                    if (disposed) { return; }
+                    view.dispatch(
+                        view.state.tr
+                            .setMeta(foldPluginKey, { type: "buildAffordance" })
+                            .setMeta("addToHistory", false),
+                    );
+                }, 500);
+            }
+
             // Multi-block selection discoverability: while the selection
             // spans several top-level blocks, their markers surface at
             // resting contrast — "drag any of these and they all move".
@@ -405,6 +455,8 @@ export const headingFoldPlugin = $prose(() =>
                     }
                 },
                 destroy() {
+                    disposed = true;
+                    deferredBuild?.cancel();
                     view.dom.removeEventListener("mousemove", handleMouseMove);
                     view.dom.removeEventListener("mouseleave", clearHoveredGutter);
                     view.dom.removeEventListener("keydown", handleKeyDown);

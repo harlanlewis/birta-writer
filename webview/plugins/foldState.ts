@@ -33,7 +33,14 @@ export type FoldMeta =
      * fills the gap. (Mapping flags can't express this: a deletion STARTING
      * at the heading maps its entry cleanly onto the next block.)
      */
-    | { type: "delete"; from: number; to: number };
+    | { type: "delete"; from: number; to: number }
+    /**
+     * MAR-189: build the per-heading affordance decorations the plugin `init`
+     * deferred off the mount path. Dispatched once, after first paint, when the
+     * document opened with nothing folded (so init's decorations were pure
+     * affordance — no content hidden — and safe to defer).
+     */
+    | { type: "buildAffordance" };
 
 /** Back-compat alias from when only headings folded. */
 export type HeadingFoldMeta = FoldMeta;
@@ -50,6 +57,12 @@ export interface FoldPluginState {
     readonly enabled: boolean;
     readonly decorations: DecorationSet;
     readonly fingerprint: string;
+    /**
+     * MAR-189: init kept the pure-affordance decoration build off the mount
+     * path (nothing folded → nothing to hide → safe to defer). view() builds it
+     * after first paint via a `buildAffordance` meta. Undefined/false once built.
+     */
+    readonly affordanceDeferred?: boolean;
 }
 
 /** Back-compat alias from when only headings folded. */
