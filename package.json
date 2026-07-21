@@ -1861,6 +1861,30 @@
                     "maximum": 20,
                     "description": "%config.tocAutoHideThreshold.description%"
                 },
+                "birta.tocVisibility": {
+                    "order": 12,
+                    "type": "string",
+                    "enum": [
+                        "auto",
+                        "shown",
+                        "hidden"
+                    ],
+                    "default": "auto",
+                    "description": "%config.tocVisibility.description%",
+                    "enumDescriptions": [
+                        "%config.tocVisibility.auto%",
+                        "%config.tocVisibility.shown%",
+                        "%config.tocVisibility.hidden%"
+                    ]
+                },
+                "birta.tocWidth": {
+                    "order": 13,
+                    "type": "number",
+                    "default": 220,
+                    "minimum": 150,
+                    "maximum": 600,
+                    "description": "%config.tocWidth.description%"
+                },
                 "birta.debugMode": {
                     "order": 90,
                     "type": "boolean",
@@ -1935,6 +1959,7 @@
         "build": "node esbuild.mjs",
         "watch": "node esbuild.mjs --watch",
         "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/birta-writer/blob/main --baseImagesUrl https://github.com/harlanlewis/birta-writer/raw/main && node scripts/check-vsix.mjs",
+        "install:local": "node scripts/install-local.mjs",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
         "test": "vitest run",
         "fidelity": "vitest run --reporter=verbose toolFidelity roundTripCorpus logseqRoundTrip",

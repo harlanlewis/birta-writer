@@ -60,7 +60,7 @@ const OFFER_TIMEOUT_MS = 12000;
 
 // One offer at a time: a second unfurl landing while one is open replaces it,
 // so the surface never stacks. Module singleton, mirroring the editor-view
-// singleton exception in CLAUDE.md.
+// singleton exception in AGENTS.md.
 let current: { el: HTMLElement; dispose: () => void } | null = null;
 
 /** Tear down the live offer (idempotent). */

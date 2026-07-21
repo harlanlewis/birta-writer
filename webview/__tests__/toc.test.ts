@@ -249,6 +249,120 @@ describe("TOC panel position vs toolbar visibility", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         expect(panel.style.top).toBe("40px");
     });
+
+    it("opening the flyout should clear the docked inline height so the card auto-sizes to its headings", () => {
+        addTopbar({ height: 40, bottom: 40 });
+        const { panel } = initToc(fakeEventManager, () => null);
+        // The docked drawer carries a full-height inline style…
+        expect(panel.style.height).toBe("calc(100vh - 40px)");
+        const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
+        tab.dispatchEvent(new MouseEvent("mouseenter"));
+        // …which the flyout must drop so CSS (height:auto capped by max-height)
+        // governs — otherwise a short heading list leaves an empty footer.
+        expect(panel.classList.contains("toc-panel--flyout")).toBe(true);
+        expect(panel.style.height).toBe("");
+    });
+
+    it("docking open from the flyout should restore the drawer's full inline height", () => {
+        addTopbar({ height: 40, bottom: 40 });
+        const { panel } = initToc(fakeEventManager, () => null);
+        const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
+        tab.dispatchEvent(new MouseEvent("mouseenter"));
+        expect(panel.style.height).toBe("");
+        // A tab click tears down the flyout and docks the panel open, which must
+        // reassert the full-height inline style the flyout cleared.
+        tab.dispatchEvent(new MouseEvent("mousedown", { button: 0, bubbles: true }));
+        expect(panel.classList.contains("toc-panel--flyout")).toBe(false);
+        expect(panel.style.height).toBe("calc(100vh - 40px)");
+    });
+});
+
+describe("TOC show/hide persistence (birta.tocVisibility)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+            cb(0);
+            return 0;
+        });
+        document.body.className = "";
+        document.body.innerHTML = "";
+        // Docked mode needs the viewport to hold the drawer plus a content column
+        // (tocWidth 220 + DOCKED_MIN_CONTENT_WIDTH 720 = 940).
+        Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        delete (window as unknown as { __i18n?: unknown }).__i18n;
+    });
+
+    it("toggling the panel should report the show/hide choice to the extension (which persists the setting)", () => {
+        const { toggle } = initToc(fakeEventManager, () => null);
+        mockVscodeApi.postMessage.mockClear();
+        // From the initial (closed, no headings) state, a toggle opens it.
+        toggle();
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "tocVisibility",
+            visibility: "shown",
+        });
+        toggle();
+        expect(mockVscodeApi.postMessage).toHaveBeenLastCalledWith({
+            type: "tocVisibility",
+            visibility: "hidden",
+        });
+    });
+
+    it("tocVisibility 'shown' should open a docked panel even with no headings (overriding auto-open)", async () => {
+        // The module reads window.__i18n at import time, so set it then re-import.
+        vi.resetModules();
+        (window as unknown as { __i18n?: unknown }).__i18n = { tocVisibility: "shown" };
+        const { initToc: freshInitToc } = await import("../components/toc");
+        const { panel } = freshInitToc(fakeEventManager, () => null);
+        // Auto-open needs headings > threshold; with none it would stay closed.
+        // The explicit setting forces it open, proving the seed overrides.
+        expect(panel.classList.contains("toc-panel--open")).toBe(true);
+    });
+
+    it("tocVisibility 'hidden' should keep a docked panel closed", async () => {
+        vi.resetModules();
+        (window as unknown as { __i18n?: unknown }).__i18n = { tocVisibility: "hidden" };
+        const { initToc: freshInitToc } = await import("../components/toc");
+        const { panel } = freshInitToc(fakeEventManager, () => null);
+        expect(panel.classList.contains("toc-panel--open")).toBe(false);
+    });
+
+    it("an echoed tocVisibility change should update the panel without re-persisting", () => {
+        const { panel, applyVisibility, isOpen } = initToc(fakeEventManager, () => null);
+        // A fresh docked panel with no headings starts closed.
+        expect(isOpen()).toBe(false);
+        mockVscodeApi.postMessage.mockClear();
+        // Another editor toggled the ToC on; the config-change echo lands here.
+        applyVisibility("shown");
+        expect(panel.classList.contains("toc-panel--open")).toBe(true);
+        expect(isOpen()).toBe(true);
+        // An echo must NOT re-report a tocVisibility message (no write loop).
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "tocVisibility" }),
+        );
+    });
+
+    it("an echoed 'auto' should return the panel to the heading-count heuristic", () => {
+        const { panel, applyVisibility } = initToc(fakeEventManager, () => null);
+        applyVisibility("shown");
+        expect(panel.classList.contains("toc-panel--open")).toBe(true);
+        // Back to auto: with no headings the heuristic keeps it closed.
+        applyVisibility("auto");
+        expect(panel.classList.contains("toc-panel--open")).toBe(false);
+    });
+
+    it("an echoed width change should re-evaluate docked/overlay mode", () => {
+        // 1000 ≥ 220 (default width) + 720 → docked; 1000 < 400 + 720 → overlay.
+        Object.defineProperty(window, "innerWidth", { value: 1000, configurable: true });
+        const { setWidth } = initToc(fakeEventManager, () => null);
+        expect(document.body.classList.contains("toc-docked")).toBe(true);
+        setWidth(400);
+        expect(document.body.classList.contains("toc-overlay")).toBe(true);
+    });
 });
 
 describe("TOC drag-to-resize", () => {

@@ -174,6 +174,12 @@ export function notifyTocWidth(width: number): void {
     vscode.postMessage({ type: "tocWidth", width });
 }
 
+export function notifyTocVisibility(
+    visibility: import("../shared/messages").TocVisibility,
+): void {
+    vscode.postMessage({ type: "tocVisibility", visibility });
+}
+
 export function notifySetProofreadOption(
     key: import("../shared/messages").ProofreadOptionKey,
     value: boolean,

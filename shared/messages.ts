@@ -37,6 +37,10 @@ export type TableWrapMode = "none" | "normal" | "aggressive";
 
 /** TOC dock side, matching the `birta.tocPosition` enum. */
 export type TocPosition = "left" | "right";
+// ToC show/hide preference. Type + normalizer live in ./tocVisibility (mirrors
+// the mermaid/blockHandles enum modules); re-exported here for message typing.
+export type { TocVisibility } from "./tocVisibility";
+import type { TocVisibility } from "./tocVisibility";
 
 /** One text block sent for grammar/spell linting (key = block position). */
 export type LintBlock = { key: number; text: string };
@@ -226,7 +230,14 @@ export type ToExtensionMessage =
     | { type: "setChecklistSink"; enabled: boolean }
     | { type: "frontmatterUpdate"; frontmatter: string; baseSyncVersion: number }
     | { type: "requestFmSuggestions"; key: string }
+    // ToC resize/toggle → persisted to the birta.tocWidth / birta.tocVisibility
+    // settings (like every other preference). The extension's config-change
+    // listener echoes the new value back to every open editor (setTocWidth /
+    // setTocVisibility), so retained webviews stay in sync — the same live path
+    // tocPosition uses. (A toggle only ever reports "shown"/"hidden"; "auto" is
+    // the default, set via settings.)
     | { type: "tocWidth"; width: number }
+    | { type: "tocVisibility"; visibility: TocVisibility }
     | { type: "setProofreadOption"; key: ProofreadOptionKey; value: boolean }
     | { type: "spellAddWord"; word: string }
     // Font picker choice from the toolbar; the extension persists it to the
@@ -355,8 +366,12 @@ export type ToWebviewMessage =
     // `--editor-max-width` var and the full-width body class); `mode` drives the
     // typography menu's segmented control. Echoed after `contentWidth` changes.
     | { type: "setContentWidth"; cssValue: string; isAuto: boolean; mode: ContentWidthMode }
-    // Live TOC dock-side update (left/right), echoed after `tocPosition` changes.
+    // Live TOC updates echoed to every open editor after the matching setting
+    // changes (dock side, show/hide, dragged width) — keeps retained webviews in
+    // sync with `birta.tocPosition` / `birta.tocVisibility` / `birta.tocWidth`.
     | { type: "setTocPosition"; position: TocPosition }
+    | { type: "setTocVisibility"; visibility: TocVisibility }
+    | { type: "setTocWidth"; width: number }
     // Live resting block-handle visibility update, after `blockHandles` changes.
     | { type: "setBlockHandles"; mode: BlockHandlesMode }
     // Live Mermaid theme-mode update, after `birta.mermaid.theme` changes.

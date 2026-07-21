@@ -158,7 +158,7 @@ async function main() {
         if (d > 0) {
             console.error(
                 `\nEAGER BYTES GREW by ${d} bytes (+${kb(d)} KB) over the committed baseline.\n` +
-                    "The launch bundle must stay lean (CLAUDE.md, 'Launch performance'): anything not\n" +
+                    "The launch bundle must stay lean (AGENTS.md, 'Launch performance'): anything not\n" +
                     "needed for first paint should load lazily via dynamic import().\n" +
                     "If this increase is intentional and justified, accept it with:\n" +
                     "  node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --write-baseline\n" +

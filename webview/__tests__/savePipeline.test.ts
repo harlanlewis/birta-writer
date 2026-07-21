@@ -254,7 +254,7 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
     });
 
     it("the first edit after a lull should dirty the document within a frame, not a debounce", async () => {
-        // CLAUDE.md sync invariant #2: the first edit after a save must be
+        // AGENTS.md sync invariant #2: the first edit after a save must be
         // save-capturable "the moment the user perceives it" —
         // onWillSaveTextDocument only fires for a DIRTY document, so an edit
         // that takes ~200ms to reach the extension is an edit a fast Cmd+S
@@ -274,7 +274,7 @@ describe("webview save pipeline (edit → doc change → minimal diff → bytes)
     });
 
     it("continuous typing with no pause should keep syncing via the max-wait cap", async () => {
-        // CLAUDE.md sync invariant #3, at the WIRING level: docChangePlugin must
+        // AGENTS.md sync invariant #3, at the WIRING level: docChangePlugin must
         // report EVERY doc-changing transaction, not just the first of a burst.
         // The tests around this one pin only the 1st transaction, and
         // syncScheduler.test.ts pins the max-wait POLICY against a hand-driven

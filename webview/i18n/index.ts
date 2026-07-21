@@ -34,6 +34,8 @@ declare global {
             checklistSinkChecked?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
+            /** ToC show/hide preference (birta.tocVisibility); "auto" (or absent) uses the heading-count heuristic. */
+            tocVisibility?: import("../../shared/messages").TocVisibility;
             /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */
             frontmatterExpanded?: boolean;
             proofread?: ProofreadConfig;

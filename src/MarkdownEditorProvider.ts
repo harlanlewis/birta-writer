@@ -35,6 +35,7 @@ import type { ToExtensionMessage, ToWebviewMessage, TextCount } from "../shared/
 import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { normalizeBlockHandlesMode } from "../shared/blockHandles";
+import { normalizeTocVisibility } from "../shared/tocVisibility";
 
 /**
  * Allowlist of URL schemes permitted to open in the user's default browser.
@@ -782,9 +783,21 @@ export class MarkdownEditorProvider
                         }
                         break;
                     case "tocWidth":
-                        void this.context.globalState.update(
+                        // Persist the dragged width to birta.tocWidth. The
+                        // config-change listener (extension.ts) echoes it back to
+                        // every open editor (setTocWidth) — same path as position.
+                        void updateSettingRespectingScope(
                             "tocWidth",
                             clampNumberSetting(message.width, 220, 150, 600),
+                        );
+                        break;
+                    case "tocVisibility":
+                        // Persist the toggle to birta.tocVisibility. The
+                        // config-change listener echoes the new value to every
+                        // open editor, keeping tabs in sync. Normalized as a guard.
+                        void updateSettingRespectingScope(
+                            "tocVisibility",
+                            normalizeTocVisibility(message.visibility),
                         );
                         break;
                     // Persisting triggers onDidChangeConfiguration in extension.ts,

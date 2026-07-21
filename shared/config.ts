@@ -19,6 +19,7 @@
  */
 
 import type { ProofreadConfig, TableWrapMode, TocPosition, ToolbarPlacements, FontPreset } from "./messages";
+import { type TocVisibility, DEFAULT_TOC_VISIBILITY } from "./tocVisibility";
 import { DEFAULT_FONT_PRESET, DEFAULT_FONT_SIZE_PERCENT, FONT_PRESET_STACKS } from "./fontPresets";
 import { DEFAULT_CONTENT_WIDTH_MODE, DEFAULT_MAX_WIDTH_CH } from "./contentWidth";
 import { DEFAULT_BLOCK_HANDLES_MODE } from "./blockHandles";
@@ -48,6 +49,11 @@ export interface BirtaConfig extends ProofreadConfig {
     tocContentGap: number;
     tocPosition: TocPosition;
     tocAutoHideThreshold: number;
+    /** Dragged panel width in px; clamp with clampNumberSetting (150–600). */
+    tocWidth: number;
+    /** Raw show/hide preference ("auto" defers to tocAutoHideThreshold);
+     *  normalize with normalizeTocVisibility (a settings.json typo → "auto"). */
+    tocVisibility: TocVisibility;
     frontmatterExpanded: boolean;
     customCss: string[];
     customJs: string[];
@@ -173,6 +179,8 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     tocContentGap: "tocContentGap",
     tocPosition: "tocPosition",
     tocAutoHideThreshold: "tocAutoHideThreshold",
+    tocWidth: "tocWidth",
+    tocVisibility: "tocVisibility",
     frontmatterExpanded: "frontmatterExpanded",
     customCss: "customCss",
     customJs: "customJs",
@@ -236,6 +244,8 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     tocContentGap: 100,
     tocPosition: "right",
     tocAutoHideThreshold: 3,
+    tocWidth: 220,
+    tocVisibility: DEFAULT_TOC_VISIBILITY,
     frontmatterExpanded: true,
     customCss: [],
     customJs: [],

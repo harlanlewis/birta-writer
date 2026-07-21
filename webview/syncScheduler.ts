@@ -6,7 +6,7 @@
  * is unit-testable in isolation — the subtle part of the save-integrity pipeline
  * that regressions hide in.
  *
- * Policy (see the "View→document sync invariant" in CLAUDE.md):
+ * Policy (see the "View→document sync invariant" in AGENTS.md):
  *   • Leading edge — the first edit after a quiet period (≥ idleMs since the last
  *     sync) fires ASAP (delay 0, async) so the document dirties before the user
  *     can reach Cmd+S. A leading-edge fire in flight is never pushed out by a

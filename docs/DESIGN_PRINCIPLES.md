@@ -6,7 +6,7 @@ one of these, that's a signal to rethink the affordance, not the principle. This
 is a living document; add to it when a decision turns out to be load-bearing.
 
 Product intent and ordering ("Why this fork") live in `README.md`; agent/build
-conventions live in `CLAUDE.md`. This file is specifically about **how the UI
+conventions live in `AGENTS.md`. This file is specifically about **how the UI
 communicates** and **how much it's allowed to interrupt**.
 
 ---
@@ -65,7 +65,7 @@ Proofreading (and anything like it) advises; it never acts on its own.
   button dims to say "off". Any feature whose "off" state looks like a passing
   "all clear" owes the user a visible cue.
 - **A disabled feature costs nothing.** No scan, no decoration pass, no lazy
-  dependency loaded. (See "Launch performance" in `CLAUDE.md`.)
+  dependency loaded. (See "Launch performance" in `AGENTS.md`.)
 
 ## Analysis never blocks interactivity
 
@@ -83,7 +83,7 @@ first pass in `proofread.ts`; measured by `e2e/perf/`.)
   block's primary control (see "The gutter is the handle" below).
 - **Theme tokens only.** All color comes from `--vscode-*` variables so light
   and dark themes both work; accents use `var(--vscode-focusBorder)` with no
-  literal fallback. No custom hex. (See `CLAUDE.md` → Architecture constraints.)
+  literal fallback. No custom hex. (See `AGENTS.md` → Architecture constraints.)
 
 ## The gutter is the handle
 
