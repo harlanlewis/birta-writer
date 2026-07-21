@@ -19,21 +19,15 @@ import { readFile, stat, writeFile } from "node:fs/promises";
 import { join, dirname, extname, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FIXTURES } from "./perf/fixtures.mjs";
+// The pure gate logic lives in verdict.mjs so it can be unit-tested (this file
+// runs Playwright/process.exit on import and can't be).
+import {
+    SPANS, SUB_SPANS, GATED_FIXTURES,
+    median, round, spans, aggregate, abVerdict, confirmRegressions,
+} from "./perf/verdict.mjs";
 
 const repoRoot = dirname(fileURLToPath(new URL(".", import.meta.url)));
 const suiteDir = join(repoRoot, "e2e", "perf");
-
-// Spans derived from the marks, in display order. Each is [label, startMark, endMark].
-// `launch` is the headline number: navigation start (0) → first painted frame.
-const SPANS = [
-    ["launch", null, "editor-painted"],
-    ["eager", "eval-start", "ready-posted"],
-    ["roundtrip", "ready-posted", "init-received"],
-    ["create", "create-start", "create-end"],
-    ["rtp", "rtp-start", "rtp-end"],
-    ["toc", "toc-start", "toc-end"],
-    ["toolbar", "toolbar-start", "toolbar-end"],
-];
 
 const MIME = {
     ".html": "text/html; charset=utf-8",
@@ -98,22 +92,6 @@ function serveAB(variants) {
     });
 }
 
-const median = (xs) => {
-    const s = [...xs].sort((a, b) => a - b);
-    const m = Math.floor(s.length / 2);
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
-const round = (x) => Math.round(x * 10) / 10;
-
-function spans(marks) {
-    const out = {};
-    for (const [label, start, end] of SPANS) {
-        const a = start ? marks[start] : 0;
-        const b = marks[end];
-        out[label] = a != null && b != null ? b - a : null;
-    }
-    return out;
-}
 
 // ── --compare mode: pure stats, no browser ──────────────────
 async function compareMode(beforePath, afterPath) {
@@ -193,16 +171,6 @@ async function sampleOnce(browser, url, content, fixture = "?", side = "") {
     return spans(marks);
 }
 
-const aggregate = (samples, withMin = true) => {
-    const agg = { median: {}, runs: samples.length };
-    if (withMin) agg.min = {};
-    for (const [label] of SPANS) {
-        const vals = samples.map((s) => s[label]).filter((v) => v != null);
-        agg.median[label] = vals.length ? round(median(vals)) : null;
-        if (withMin) agg.min[label] = vals.length ? round(Math.min(...vals)) : null;
-    }
-    return agg;
-};
 
 async function measureFixture(chromium, baseUrl, content, runs, fixture = "?") {
     const samples = [];
@@ -266,12 +234,6 @@ async function measureMode(only, runs, jsonOut) {
 }
 
 // ── A/B mode: interleaved base-vs-head launch comparison ─────
-// Only these fixtures fail the gate — their launch medians (~274 ms / ~944 ms)
-// dwarf the 10 ms noise floor, so a real move is unambiguous. The small ones
-// are reported for context but never block (their absolutes are proportionally
-// noisier).
-const GATED_FIXTURES = new Set(["medium", "large"]);
-
 // One interleaved fixture: measure head then base back-to-back per iteration so
 // slow machine drift cancels within the pair. First pair discarded as warmup.
 async function measureFixtureAB(chromium, serverBase, content, runs, fixture) {
@@ -296,25 +258,6 @@ async function measureFixtureAB(chromium, serverBase, content, runs, fixture) {
     return { base: aggregate(base, false), head: aggregate(head, false) };
 }
 
-// Per-fixture launch verdict using the same noise floor as --compare: a move
-// counts only at ≥3% AND ≥10 ms. Returns the set of GATED fixtures that regressed.
-function abVerdict(pass) {
-    const rows = [];
-    const regressed = new Set();
-    for (const [name, r] of Object.entries(pass)) {
-        const bl = r.base.median.launch, al = r.head.median.launch;
-        if (bl == null || al == null) { rows.push({ name, empty: true }); continue; }
-        const dMs = al - bl, dPct = (dMs / bl) * 100;
-        const real = Math.abs(dPct) >= 3 && Math.abs(dMs) >= 10;
-        const gated = GATED_FIXTURES.has(name);
-        let mark = "  neutral";
-        if (real && dMs > 0) { mark = gated ? "✗ REGRESSED" : "✗ slower (ungated)"; if (gated) regressed.add(name); }
-        else if (real && dMs < 0) mark = "✓ faster";
-        rows.push({ name, bl, al, dMs, dPct, gated, mark });
-    }
-    return { rows, regressed };
-}
-
 function printAbTable(label, pass) {
     console.log(`\n${label} — base → head launch (median ms)\n`);
     for (const r of abVerdict(pass).rows) {
@@ -325,10 +268,6 @@ function printAbTable(label, pass) {
     }
 }
 
-// The sub-spans that compose launch — shown for the gated fixtures so a neutral
-// total doesn't hide where time moved (a heavier `create` masked by a lighter
-// `eager`, etc.). Diagnostic only; never gates.
-const SUB_SPANS = SPANS.map(([l]) => l).filter((l) => l !== "launch");
 
 function printAbSpans(pass) {
     for (const name of Object.keys(pass)) {
@@ -375,14 +314,14 @@ async function abMode(baseDirArg, headDirArg, runs, jsonOut, accept) {
 
     // Double-confirm: a gated regression must reproduce in a second full pass
     // before we fail — this is what makes a blocking browser-timing gate safe.
-    const confirmed = new Set();
+    let confirmed = new Set();
     let pass2 = null;
     if (v1.regressed.size) {
         console.log(`\n  pass-1 regression (${[...v1.regressed].join(", ")}) — confirming with a second pass…`);
         pass2 = await runPass();
         printAbTable("pass 2", pass2);
         const v2 = abVerdict(pass2);
-        for (const f of v1.regressed) if (v2.regressed.has(f)) confirmed.add(f);
+        confirmed = confirmRegressions(v1.regressed, v2.regressed);
     }
     server.close();
 
