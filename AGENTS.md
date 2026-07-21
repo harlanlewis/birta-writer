@@ -130,8 +130,10 @@ Webview cold-start (open `.md` → editor painted) is a first-class concern — 
 **Measure before and after — don't guess.** The harness (`e2e/perf/`, see its README) drives the real production bundle in headless Chromium and reads the `mdw:` User-Timing marks (`webview/perf.ts`):
 
 - `pnpm perf` — median-of-9 launch spans per fixture (build `node esbuild.mjs --production --metafile` first).
-- `pnpm perf:bundle` — zero-variance eager-bytes metric (the deterministic gate).
-- The launch A/B is **same-session** (`pnpm perf --compare before.json after.json`) with a warmup run discarded — absolute ms drift on a laptop, so a `before.json` captured earlier is untrustworthy; stash the change, rebuild, capture `before`, restore, capture `after`. Treat a delta under ~3% (the noise floor) as neutral and lean on the eager-bytes metric instead.
+- `pnpm perf:bundle` — zero-variance eager-bytes metric. It gates on a **budget ceiling** (`--check`, `e2e/perf/bundle-baseline.json` → `eagerBudget`), not a ratchet: a cheap browser-free backstop that catches *bytes added without asking* (an accidental heavy static import). Raise the ceiling deliberately with `--set-budget`.
+- The launch A/B is **same-session** (`pnpm perf --compare before.json after.json`) with a warmup run discarded — absolute ms drift on a laptop, so a `before.json` captured earlier is untrustworthy; stash the change, rebuild, capture `before`, restore, capture `after`. Treat a delta under ~3% (the noise floor) as neutral.
+
+**CI guards launch time automatically.** On every PR the **required, blocking** `launch-perf` job (`pnpm perf:ab` / `e2e/perf-ab.mjs`) builds the merge-base and head, measures both back-to-back on one runner, and gates on the launch delta — catching *time added without bytes* that the eager-bytes backstop can't see. It gates only the `medium`/`large` fixtures and double-confirms a regression across two passes before failing. An intentional launch cost merges via the `perf-accept` PR label or a `Perf-Regression-Accepted: <reason>` commit trailer.
 
 ## Issue tracking
 
