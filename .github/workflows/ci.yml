@@ -178,6 +178,20 @@ jobs:
               : (r.accepted
                   ? `🟡 **REGRESSED but ACCEPTED** (${confirmed.join(', ')})`
                   : `❌ **LAUNCH REGRESSED** (${confirmed.join(', ')}) — confirmed across two passes`);
+            // Per-span breakdown for the gated fixtures — a neutral total can hide
+            // a heavier `create` masked by a lighter `eager`, so show where time went.
+            const SUB = ['eager', 'roundtrip', 'create', 'toc', 'toolbar'];
+            const spanRows = (name) => {
+              const g = r.pass1[name]; if (!g) return '';
+              const cells = SUB.map((s) => {
+                const b = g.base?.median?.[s], a = g.head?.median?.[s];
+                if (b == null && a == null) return `| ${s} | – | – | – |`;
+                const d = (a ?? 0) - (b ?? 0), sign = d >= 0 ? '+' : '';
+                return `| ${s} | ${round(b)} | ${round(a)} | ${sign}${round(d)} ms |`;
+              }).join('\n');
+              return `\n**${name}**\n\n| span | base ms | head ms | Δ |\n| --- | --- | --- | --- |\n${cells}\n`;
+            };
+            const breakdown = r.gated.map(spanRows).join('\n');
             const body = [
               '<!-- launch-perf-ab -->',
               '### Launch A/B — merge-base vs head',
@@ -189,6 +203,10 @@ jobs:
               '| fixture | base ms | head ms | Δ |',
               '| --- | --- | --- | --- |',
               rows,
+              '',
+              '<details><summary>Per-span breakdown (gated fixtures)</summary>',
+              breakdown,
+              '</details>',
             ].join('\n');
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
