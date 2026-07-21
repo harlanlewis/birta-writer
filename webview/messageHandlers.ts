@@ -24,7 +24,7 @@ import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor"
 import { setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
-import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion, notifyFlushResult } from "./messaging";
+import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks } from "./messaging";
 import { renderFrontmatterPanel } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import { runEditorCommand } from "./editorCommands";
@@ -248,6 +248,17 @@ export function createMessageHandlers(
             document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: msg.text.slice(0, 1) }));
             view.focus();
             view.dispatch(view.state.tr.insertText(msg.text, view.state.selection.to));
+        },
+        __getPerfMarks(msg) {
+            // TEST-ONLY (see the message's declaration): reply with the `mdw:`
+            // marks (prefix stripped) already stamped by webview/perf.ts, so the
+            // integration suite can measure real launch time in a live VS Code
+            // webview and validate the headless harness against reality (MAR-191).
+            const marks: Record<string, number> = {};
+            for (const e of performance.getEntriesByType("mark")) {
+                if (e.name.startsWith("mdw:")) { marks[e.name.slice(4)] = e.startTime; }
+            }
+            notifyPerfMarks(msg.id, marks);
         },
         setDebugMode(msg) {
             setLogTableSel(msg.enabled);

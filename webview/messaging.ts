@@ -47,6 +47,11 @@ export function notifyFlushResult(id: string, content: string): void {
     vscode.postMessage({ type: "flushResult", id, content, baseSyncVersion, seq: ++outSeq });
 }
 
+// TEST-ONLY reply to `__getPerfMarks` (MAR-191): the live webview's `mdw:` marks.
+export function notifyPerfMarks(id: string, marks: Record<string, number>): void {
+    vscode.postMessage({ type: "__perfMarks", id, marks });
+}
+
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }
