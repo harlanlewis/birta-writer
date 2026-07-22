@@ -21,6 +21,7 @@ import { $prose } from "@milkdown/utils";
 import type { HarperLint, LintBlock, LintBlockResult, ProofreadConfig } from "../../shared/messages";
 import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";
 import { compileStyleMatcher, type StyleCategory, type StyleMatcher } from "../utils/styleMatcher";
+import { styleCategoryLabel } from "../utils/styleCategories";
 import {
     AI_ARTIFACTS,
     AI_VOCABULARY,
@@ -226,22 +227,7 @@ function styleHitTitle(category: string): string {
 
 /** Short category chip shown in the popup (and reused for grouping). */
 export function styleTag(category: string): string {
-    switch (category) {
-        case "fillers": return t("Filler");
-        case "redundancies": return t("Redundancy");
-        case "cliches": return t("Cliché");
-        case "wordiness": return t("Wordy");
-        case "aiVocabulary": return t("AI vocabulary");
-        case "aiArtifacts": return t("AI boilerplate");
-        case "passive": return t("Passive voice");
-        case "longSentences": return t("Long sentence");
-        case "negativeParallelism": return t("AI cadence");
-        case "ruleOfThree": return t("Rule of three");
-        case "emDash": return t("Em dash");
-        case "nonAsciiPunct": return t("Punctuation");
-        case "repeated": return t("Repeated word");
-        default: return t("Style");
-    }
+    return t(styleCategoryLabel(category));
 }
 
 /**
@@ -263,7 +249,7 @@ export function styleAdvice(category: string): string {
         case "aiArtifacts": return t("Leftover chatbot phrasing - delete it so the prose sounds like you.");
         case "passive": return t("The doer is hidden or trailing - lead with who acts: \"mistakes were made\" -> \"we made mistakes\".");
         case "longSentences": return t("Past ~30 words the reader loses the thread - break it at a natural pause.");
-        case "negativeParallelism": return t("\"Not X, but Y\" is a stock AI cadence - state Y on its own.");
+        case "negativeParallelism": return t("A stock AI rhythm - cut the negation and state the point plainly.");
         case "ruleOfThree": return t("Three stacked adjectives read as cadence, not content - one precise word does more.");
         case "emDash": return t("An em dash renders inconsistently outside the editor - a spaced hyphen is safe everywhere.");
         case "nonAsciiPunct": return t("Curly quotes and ellipses can garble in code, terminals, and diffs - ASCII stays portable.");
@@ -714,8 +700,27 @@ export const proofreadPlugin = $prose(() => {
                 }, FIRST_PASS_IDLE_TIMEOUT_MS);
             }
 
+            // The review sidebar's Proofreading tab is refreshed SOLELY by this
+            // event (it does not ride the ToC's per-frame doc-change path, whose
+            // O(findings) re-read grows with the document). It must therefore
+            // fire whenever the findings actually change — async Harper results,
+            // style rescans, ignore/learn rebuilds — all of which land as meta
+            // transactions that change `combined` WITHOUT changing the document.
+            // Gating on `doc === lastEmitDoc` keeps plain typing (which only
+            // remaps `combined`) off this path, so there's no per-keystroke work.
+            let lastCombined = proofreadPluginKey.getState(view.state)?.combined ?? null;
+            let lastEmitDoc: ProseNode = view.state.doc;
             return {
-                update: maybeSchedule,
+                update() {
+                    maybeSchedule();
+                    const combined = proofreadPluginKey.getState(view.state)?.combined ?? null;
+                    const doc = view.state.doc;
+                    if (combined !== lastCombined && doc === lastEmitDoc) {
+                        window.dispatchEvent(new CustomEvent(PROOFREAD_FINDINGS_CHANGED));
+                    }
+                    lastCombined = combined;
+                    lastEmitDoc = doc;
+                },
                 destroy() {
                     destroyed = true;
                     currentApplier = null;
@@ -727,6 +732,111 @@ export const proofreadPlugin = $prose(() => {
         },
     });
 });
+
+/**
+ * Window event the review sidebar's Proofreading tab listens for: the live
+ * decoration set changed in a way the doc-change refresh path won't catch
+ * (async Harper results, or an ignore/learn rebuild). See the plugin's `update`
+ * hook for why it never fires on ordinary typing.
+ */
+export const PROOFREAD_FINDINGS_CHANGED = "proofread-findings-changed";
+
+/**
+ * A proofreading finding resolved to what the review list shows — text, chip,
+ * advice — minus the view-bound actions. `kind` is the lint kind ("Spelling",
+ * "Grammar", …) or the style category; it is both the dedupe discriminator and
+ * what routes the Ignore/Learn action, so a spelling and a style hit on the same
+ * span neither collapse into one nor share an action.
+ */
+export interface ProofreadFinding {
+    from: number;
+    to: number;
+    domain: "spelling" | "grammar" | "style";
+    /** Short category chip. */
+    tag: string;
+    /** The flagged text. */
+    text: string;
+    /** One-clause explanation. */
+    message: string;
+    /** Spelling only: offer "Add to dictionary". */
+    canLearn: boolean;
+    /** Lint kind or style category — the dedupe key and action routing. */
+    kind: string;
+}
+
+/** One row for the Proofreading review list: a finding plus its view-bound actions. */
+export interface ProofreadFindingRow extends ProofreadFinding {
+    /** Session-ignore this finding, then rebuild the decoration set. */
+    ignore: () => void;
+    /** Spelling only: add the word to the dictionary, then rebuild. */
+    learn?: () => void;
+}
+
+/**
+ * Resolve a proofreading decoration set into the review list's findings —
+ * document order (narrowest span first at a shared start, as the popup picker
+ * does), duplicates sharing a (from, to, kind) identity collapsed. PURE: no
+ * view or plugin-state access — the flagged text arrives via `getText` — so the
+ * risky ordering / dedup / routing is unit-testable against a hand-built
+ * DecorationSet. `listProofreadFindings` is the thin wrapper that binds the
+ * ignore/learn actions to a live view.
+ */
+export function describeFindings(
+    combined: DecorationSet,
+    getText: (from: number, to: number) => string,
+): ProofreadFinding[] {
+    const hits = combined
+        .find()
+        .filter((h) => { const s = h.spec as DecoSpec; return Boolean(s.lint || s.style); })
+        .sort((a, b) => a.from - b.from || (a.to - a.from) - (b.to - b.from));
+    const findings: ProofreadFinding[] = [];
+    const seen = new Set<string>();
+    for (const h of hits) {
+        const spec = h.spec as DecoSpec;
+        const kind = spec.lint ? spec.lint.kind : spec.style!.category;
+        const key = `${h.from}:${h.to}:${kind}`;
+        if (seen.has(key)) { continue; }
+        seen.add(key);
+        const text = getText(h.from, h.to);
+        if (spec.lint) {
+            const isSpelling = spec.lint.kind === "Spelling";
+            findings.push({
+                from: h.from, to: h.to,
+                domain: isSpelling ? "spelling" : "grammar",
+                tag: isSpelling ? t("Spelling") : t("Grammar"),
+                text, message: spec.lint.message, canLearn: isSpelling, kind,
+            });
+        } else {
+            const style = spec.style!;
+            findings.push({
+                from: h.from, to: h.to, domain: "style",
+                tag: styleTag(style.category), text, message: style.message,
+                canLearn: false, kind,
+            });
+        }
+    }
+    return findings;
+}
+
+/**
+ * Every live proofreading finding (style + Harper spelling/grammar), document
+ * -ordered, resolved to what the review sidebar needs plus the same Ignore/Learn
+ * actions the in-text popup offers. Reads the plugin's `combined` decoration
+ * set; computes nothing new (the pure core is describeFindings).
+ */
+export function listProofreadFindings(view: EditorView): ProofreadFindingRow[] {
+    const state = proofreadPluginKey.getState(view.state);
+    if (!state) { return []; }
+    return describeFindings(state.combined, (from, to) => view.state.doc.textBetween(from, to)).map((f) => ({
+        ...f,
+        ignore: () => {
+            if (f.domain === "style") { ignoreStyleSession(f.kind as StyleCategory, f.text); }
+            else { ignoreLintSession(f.kind, f.text); }
+            refreshProofread(view);
+        },
+        learn: f.canLearn ? () => { learnWord(f.text); refreshProofread(view); } : undefined,
+    }));
+}
 
 /** The active view's lint-result applier (rebound on editor recreation). */
 let currentApplier: ((id: number, results: LintBlockResult[]) => void) | null = null;

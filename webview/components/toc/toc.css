@@ -66,6 +66,13 @@
     transform: translateY(0);
 }
 
+/* Entry frame only: snap to the flyout's start state (no transition) so the
+   reveal never interpolates from the closed drawer's translateX (a sideways
+   sweep). showFlyout removes this the frame before adding --flyout-in. */
+.toc-panel--flyout.toc-panel--flyout-enter {
+    transition: none;
+}
+
 .toc-panel--flyout .toc-list {
     min-height: 0; /* let the flex list shrink within the capped card and scroll */
     /* No floating controls in the flyout (hidden below) — replace the docked
@@ -157,26 +164,72 @@ body.toc-resizing {
     user-select: none;
 }
 
-/* Controls float in the drawer's top trailing corner (absolute, so the list
-   scrolls beneath them). The top/right insets match TAB_EDGE_INSET/TAB_TOP_INSET
-   in index.ts so the hide glyph and the closed reveal glyph coincide exactly. An
-   editor-background fill lets list text scroll cleanly out of sight underneath. */
+/* ─── Review tab strip (Contents / Proofreading / Notes) ─────────────────── */
+/* A fixed header row above the scrolling body, so it stays pinned while the
+   active view scrolls under it ("sticky on scroll"), in the drawer and the
+   flyout alike. Tabs sit at the leading edge; the flip/hide controls ride the
+   trailing edge (margin-left:auto below) so they can't overlap the tabs. */
+.toc-tabs {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 4px 6px;
+    background: var(--vscode-editor-background);
+}
+/* The tabs scroll horizontally within the available width so a narrow panel
+   never clips one; the flip/hide controls beside them stay pinned. Scrollbar
+   hidden — a focused or clicked tab scrolls itself into view. */
+.toc-tabs__list {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    gap: 1px;
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar { display: none; }
+}
+
+.toc-tab {
+    flex: 0 0 auto;
+    padding: 3px 6px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.6;
+    white-space: nowrap;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+
+    &:hover {
+        opacity: 0.85;
+        background: var(--vscode-toolbar-hoverBackground);
+    }
+}
+
+.toc-tab--active,
+.toc-tab--active:hover {
+    opacity: 1;
+    font-weight: 600;
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* Hide the non-active view entirely so it does no layout and (per the shell) no
+   scan/enumeration work. */
+.toc-view--hidden {
+    display: none;
+}
+
+/* Flip/hide sit at the trailing edge of the tab row. */
 .toc-controls {
-    position: absolute;
-    /* Nudged so the glyph optically centers on the first heading row's text;
-       matches TAB_TOP_INSET in index.ts (keeps the closed reveal glyph aligned). */
-    top: 7px;
-    /* Panel's trailing edge for both dock sides: the outer edge when docked
-       right (over the closed reveal tab), the inner edge when docked left. */
-    right: 7px;
-    z-index: 2;
+    flex: 0 0 auto;
+    margin-left: 4px;
     display: flex;
     align-items: center;
     gap: 1px;
-    /* Editor-background fill (rounded, so it reads as a chip over an active row)
-       lets list text scroll cleanly out of sight underneath the controls. */
-    background: var(--vscode-editor-background);
-    border-radius: 5px;
 }
 
 /* Icon-button feel: faint until the panel is hovered, brighter on hover */
@@ -217,26 +270,319 @@ body.toc-resizing {
 .toc-list {
     flex: 1;
     overflow-y: auto;
-    /* The top inset clears the floating controls chip (7px inset + 22px box,
-       .toc-controls) so the first row never starts underneath it; rows still
-       scroll beneath the chip once the list is in motion. The bottom inset
-       keeps the last row clear of the window edge. */
-    padding: 32px 0 24px;
+    /* The tab strip is now the header, so the list starts just below it; the
+       bottom inset keeps the last row clear of the window edge. */
+    padding: 4px 0 24px;
+}
+
+/* ─── Review lists (Proofreading / Notes tabs) ───────────────────────────── */
+.review-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* This explicit `display: flex` overrides the generic `.toc-view--hidden`
+   (same specificity, declared earlier), so the inactive tab's list would leak
+   through — reassert the hide with a higher-specificity rule. */
+.review-list.toc-view--hidden {
+    display: none;
+}
+
+/* The "Sort by" control sits above the scrolling body (fixed). It's secondary
+   chrome — a muted label + a segmented toggle — so it stays quieter than the
+   group headers below (which carry the content hierarchy). */
+.review-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    padding: 7px 10px 8px;
+    font-size: 11px;
+
+    &[hidden] { display: none; }
+}
+
+/* A bordered segmented control: the two options read as one alternative, the
+   active one filled with the accent. */
+.review-segmented {
+    display: inline-flex;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.review-seg {
+    padding: 2px 9px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-size: 11px;
+    line-height: 1.5;
+    cursor: pointer;
+    opacity: 0.65;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+
+    &:hover { opacity: 0.9; }
+    & + & { border-left: 1px solid var(--vscode-panel-border); }
+}
+
+.review-seg--active,
+.review-seg--active:hover {
+    opacity: 1;
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.review-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2px 0 24px;
+}
+
+/* ── By-type grouping ──────────────────────────────────────────────────── */
+/* A full-width type header, so a long category name never truncates the way a
+   per-row chip does. STICKY: it pins to the top of the scroll body so you always
+   know which group you're reading. Clicking it collapses/expands (view-only).
+   Extra top margin sets each group apart. */
+.review-group {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    width: 100%;
+    margin: 14px 4px 1px;
+    padding: 3px 8px;
+    border: none;
+    border-radius: 3px;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    text-align: left;
+
+    &:first-child { margin-top: 2px; }
+    &:hover { background: var(--vscode-list-hoverBackground); }
+}
+
+.review-group__caret {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 0;
+    height: 0;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transform: rotate(90deg);
+    transition: transform 0.1s ease;
+    opacity: 0.65;
+}
+
+.review-group--collapsed .review-group__caret {
+    transform: rotate(0deg);
+}
+
+/* Same size / weight / color as a ToC H1 (.toc-item + .toc-item--h1). */
+.review-group__name {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Per-group "Show K more" / "Show less" toggle. */
+.review-more {
+    display: block;
+    margin: 2px 8px 2px 24px;
+    padding: 2px 4px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-textLink-foreground);
+    font-size: 11.5px;
+    text-align: left;
+    cursor: pointer;
+    opacity: 0.85;
+
+    &:hover { opacity: 1; text-decoration: underline; }
+}
+
+/* In grouped mode the type is the header, so the per-row chip is redundant;
+   drop it and indent the rows to sit under their header. */
+.review-list--grouped .review-item__tag {
+    display: none;
+}
+
+.review-list--grouped .review-item__main {
+    padding-left: 24px;
+}
+
+.review-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 1px 4px;
+    border-radius: 3px;
+
+    &:hover {
+        background: var(--vscode-list-hoverBackground);
+    }
+}
+
+/* The clickable body: tag chip + one-line label, ToC-plain (no card). */
+.review-item__main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: left;
+    cursor: pointer;
+}
+
+.review-item__tag {
+    flex: 0 0 auto;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    /* Keep a long custom marker from crowding out the label. */
+    max-width: 8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.review-item__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The flagged span inside a context-snippet label: subtly highlighted so the
+   row shows WHAT is flagged. The surrounding context reads dimmer by contrast. */
+.review-item__flag {
+    border-radius: 2px;
+    padding: 0 1px;
+    background: var(--vscode-editor-findMatchHighlightBackground);
+    color: var(--vscode-foreground);
+}
+
+/* Actions are revealed on row hover/focus, like the gutter handles. */
+.review-item__actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding-right: 5px;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+}
+
+.review-item:hover .review-item__actions,
+.review-item:focus-within .review-item__actions {
+    opacity: 1;
+}
+
+.review-item__action {
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    font-size: 10.5px;
+    padding: 2px 5px;
+    cursor: pointer;
+
+    &:hover {
+        color: var(--vscode-foreground);
+        background: var(--vscode-toolbar-hoverBackground);
+    }
+}
+
+.review-empty {
+    padding: 12px 12px;
+    font-size: 11.5px;
+    opacity: 0.6;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* The flyout gives the review lists the same symmetric card inset the ToC
+   list gets (no docked clearance needed). */
+.toc-panel--flyout .review-body {
+    padding: 6px 0;
 }
 
 .toc-item {
-    display: block;
+    display: flex;
+    align-items: center;
     padding: 4px 8px;
     font-size: 12px;
     line-height: 1.5;
     cursor: pointer;
     color: var(--vscode-foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     border-radius: 3px;
     margin: 1px 4px;
     user-select: none;
+}
+/* Hidden by an accordion collapse. An explicit rule is needed because the
+   author-level `.toc-item { display: flex }` outranks the UA `[hidden]`. */
+.toc-item[hidden] {
+    display: none;
+}
+.toc-item__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Disclosure caret in the left gutter — the same triangle the review groups use.
+   Reserved on every row (a fixed gutter); the glyph shows only for a foldable
+   heading on hover, and stays while that heading is collapsed. */
+.toc-caret {
+    flex: 0 0 auto;
+    align-self: stretch;
+    position: relative;
+    width: 13px;
+    margin-left: -3px;
+}
+.toc-caret::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    width: 0;
+    height: 0;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transform: translateY(-50%) rotate(90deg);
+    transition: transform 0.1s ease;
+    opacity: 0.6;
+    visibility: hidden;
+}
+/* H1/H2 parents always show their toggle (top-level structure is worth a
+   persistent affordance); H3+ parents reveal it on hover, like the document's
+   own fold gutter. A collapsed heading always shows its toggle so you can undo. */
+.toc-item--parent.toc-item--h1 .toc-caret::before,
+.toc-item--parent.toc-item--h2 .toc-caret::before,
+.toc-item--parent:hover .toc-caret::before,
+.toc-item--collapsed .toc-caret::before {
+    visibility: visible;
+}
+.toc-item--collapsed .toc-caret::before {
+    transform: translateY(-50%) rotate(0deg);
 }
 
 .toc-item:hover {

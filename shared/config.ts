@@ -141,6 +141,21 @@ export interface BirtaConfig extends ProofreadConfig {
      * otherwise.
      */
     checklistSinkChecked: boolean;
+    /**
+     * Extra literal strings the Notes review tab treats as editor-note markers
+     * (birta.notes.customMarkers), on top of the built-in set (`[TK]`, `TODO:`,
+     * `FIXME:`, HTML comments, unchecked checkboxes). Each is matched as a
+     * literal substring; a bare alphanumeric token is auto word-boundaried at
+     * the scan site so `TK` can't light up inside `networks`. Default empty.
+     */
+    notesCustomMarkers: string[];
+    /**
+     * Review sidebar (Proofreading + Notes tabs) organizes rows by type under
+     * collapsible group headers when true (birta.review.groupByType), or as a
+     * flat document-ordered list when false. Default true. Persisted so the
+     * choice survives the webview being disposed on tab switch-away.
+     */
+    reviewGroupByType: boolean;
     imageLocalPath: string;
 }
 
@@ -203,6 +218,8 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     autoUpdateAnchors: "autoUpdateAnchors",
     embedsEnabled: "embeds.enabled",
     checklistSinkChecked: "checklist.sinkChecked",
+    notesCustomMarkers: "notes.customMarkers",
+    reviewGroupByType: "review.groupByType",
     imageLocalPath: "imageLocalPath",
 };
 
@@ -296,5 +313,12 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Self-sinking checklists ship OFF: reordering on a checkbox click is a
     // surprising motion until asked for, so the default is a plain in-place flip.
     checklistSinkChecked: false,
+    // No extra markers by default — the Notes tab ships with the built-in set
+    // ([TK], TODO:, FIXME:, HTML comments, unchecked checkboxes); this is the
+    // personalization hook.
+    notesCustomMarkers: [],
+    // Grouped-by-type is the default: it fixes long category names truncating in
+    // a flat per-row chip, and reads more scannably ("14 em-dash, 3 spelling").
+    reviewGroupByType: true,
     imageLocalPath: "",
 };

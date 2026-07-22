@@ -145,7 +145,10 @@ export function initTocDnd(deps: TocDndDeps): TocDnd {
         if (slots.length === 0) {
             return;
         }
-        const items = Array.from(deps.list.querySelectorAll<HTMLElement>(".toc-item"));
+        // Exclude rows hidden by an accordion collapse — a hidden row has no
+        // geometry, so it must not appear in the drop model. The move still
+        // operates on the document, so a collapsed section drags as a whole.
+        const items = Array.from(deps.list.querySelectorAll<HTMLElement>(".toc-item")).filter((el) => !el.hidden);
         const itemByPos = new Map<string, HTMLElement>();
         for (const el of items) {
             const pos = el.dataset["headingPos"];

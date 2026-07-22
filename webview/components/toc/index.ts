@@ -17,6 +17,12 @@ import {
     collectDocHeadings,
 } from "@/utils/headingUtils";
 import { initTocDnd } from "./dnd";
+import { wireRoving } from "./keyboardNav";
+import { initProofreadingList } from "./proofreadingList";
+import { initNotesList } from "./notesList";
+import { initLinksList } from "./linksList";
+import { PROOFREAD_FINDINGS_CHANGED } from "@/plugins/proofread";
+import { singleTextblockInlineEdit } from "@/utils/textblockEdit";
 
 interface HeadingEntry {
     level: number;
@@ -66,6 +72,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
     isOpen: () => boolean;
     isRight: () => boolean;
+    /** Apply a birta.notes.customMarkers change to the Notes tab (rescan if shown). */
+    setNotesMarkers: (markers: string[]) => void;
+    /** Apply a birta.review.groupByType change to both review tabs (settings echo). */
+    setReviewGroupByType: (grouped: boolean) => void;
+    /** Reveal the sidebar and switch to the Proofreading tab (toolbar menu action). */
+    showProofreadingTab: () => void;
     /** Unregister the panel's drop-zone provider (teardown/tests). */
     dispose: () => void;
 } {
@@ -103,9 +115,147 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     const list = document.createElement("div");
     list.className = "toc-list";
+    list.setAttribute("role", "tree");
 
-    panel.appendChild(controls);
+    // Keyboard navigation for the outline: arrow between visible heading rows,
+    // Enter jumps, Left/Right fold a section, Escape returns to the editor.
+    // (setRowCollapsed is a hoisted declaration; outlineRoving is captured by the
+    // render/fold closures and only used after init.)
+    const outlineRoving = wireRoving({
+        container: list,
+        items: () => [...list.querySelectorAll<HTMLElement>(".toc-item:not([hidden])")],
+        onEscape: () => getEditorView()?.focus(),
+        onHorizontal: (item, dir) => {
+            if (!item.classList.contains("toc-item--parent")) { return false; }
+            const isCollapsed = item.classList.contains("toc-item--collapsed");
+            if (dir === -1 && !isCollapsed) { setRowCollapsed(item, true); return true; }
+            if (dir === 1 && isCollapsed) { setRowCollapsed(item, false); return true; }
+            return false;
+        },
+    });
+
+    // ── Review tabs: Contents / Proofreading / Notes ────────────────────────
+    // The panel is a 3-tab review sidebar; all the drawer chrome (docked/overlay,
+    // flyout, resize, flip/hide) is shared and only the body switches. Contents
+    // is the heading outline (`list`); the other two read their data live and
+    // ONLY while active — an inactive tab scans/enumerates nothing (see
+    // renderActiveView). Flip/hide move into the sticky tab row (right-aligned)
+    // so they can't overlap the tabs.
+    type ReviewTab = "contents" | "proofreading" | "notes" | "links";
+    let activeTab: ReviewTab = "contents";
+    // The Proofreading tab exists only while the master switch is on; when off
+    // it's removed from the strip entirely (not shown with an "off" body).
+    // Seeded from the injected config, kept live via proofread-config-changed.
+    let proofreadingEnabled = window.__i18n?.proofread?.proofreadingEnabled ?? true;
+
+    const tabStrip = document.createElement("div");
+    tabStrip.className = "toc-tabs";
+    tabStrip.setAttribute("role", "tablist");
+    const tabContents = makeTabButton("contents", t("Contents"));
+    const tabProofread = makeTabButton("proofreading", t("Proofreading"));
+    const tabNotes = makeTabButton("notes", t("Notes"));
+    const tabLinks = makeTabButton("links", t("Links"));
+    // The four tabs live in a horizontally-scrollable list so a narrow panel
+    // never clips one; the flip/hide controls stay pinned beside it.
+    const tabsList = document.createElement("div");
+    tabsList.className = "toc-tabs__list";
+    tabsList.append(tabContents, tabProofread, tabNotes, tabLinks);
+    tabStrip.append(tabsList, controls);
+
+    const proofreadView = initProofreadingList(getEditorView);
+    const notesView = initNotesList(getEditorView);
+    const linksView = initLinksList(getEditorView);
+
+    panel.appendChild(tabStrip);
     panel.appendChild(list);
+    panel.appendChild(proofreadView.element);
+    panel.appendChild(notesView.element);
+    panel.appendChild(linksView.element);
+
+    function makeTabButton(tab: ReviewTab, label: string): HTMLButtonElement {
+        const btn = document.createElement("button");
+        btn.className = "toc-tab";
+        btn.textContent = label;
+        btn.setAttribute("role", "tab");
+        btn.dataset["tab"] = tab;
+        // Roving tabindex (updateTabButtons keeps exactly the active tab at 0).
+        btn.tabIndex = -1;
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setActiveTab(tab);
+        });
+        return btn;
+    }
+
+    // Tablist keyboard nav: arrows move + activate (auto-activation), Home/End
+    // jump to the ends, Enter/Space activate the focused tab. Hidden tabs (the
+    // Proofreading tab when the master switch is off) are skipped.
+    tabStrip.addEventListener("keydown", (e) => {
+        const isArrow = e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End";
+        const isActivate = e.key === "Enter" || e.key === " ";
+        if (!isArrow && !isActivate) { return; }
+        const tabs = [tabContents, tabProofread, tabNotes, tabLinks].filter((tab) => !tab.hidden);
+        const cur = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        e.preventDefault();
+        if (isActivate) {
+            const btn = tabs[cur >= 0 ? cur : 0];
+            if (btn) { setActiveTab(btn.dataset["tab"] as ReviewTab); }
+            return;
+        }
+        const next = e.key === "Home" ? 0
+            : e.key === "End" ? tabs.length - 1
+            : ((cur < 0 ? 0 : cur + (e.key === "ArrowRight" ? 1 : -1)) + tabs.length) % tabs.length;
+        const btn = tabs[Math.max(0, Math.min(tabs.length - 1, next))];
+        if (btn) { setActiveTab(btn.dataset["tab"] as ReviewTab); btn.focus(); }
+    });
+
+    /** Reflect the active tab into the tab buttons and which view is shown. */
+    function updateTabButtons(): void {
+        const reflect = (btn: HTMLButtonElement, on: boolean): void => {
+            btn.classList.toggle("toc-tab--active", on);
+            btn.tabIndex = on ? 0 : -1; // roving: only the active tab is tabbable
+            btn.setAttribute("aria-selected", String(on));
+        };
+        reflect(tabContents, activeTab === "contents");
+        reflect(tabProofread, activeTab === "proofreading");
+        reflect(tabNotes, activeTab === "notes");
+        reflect(tabLinks, activeTab === "links");
+        list.classList.toggle("toc-view--hidden", activeTab !== "contents");
+        proofreadView.element.classList.toggle("toc-view--hidden", activeTab !== "proofreading");
+        notesView.element.classList.toggle("toc-view--hidden", activeTab !== "notes");
+        linksView.element.classList.toggle("toc-view--hidden", activeTab !== "links");
+    }
+
+    /** Render whichever tab is active — the only view that does any work. */
+    function renderActiveView(headings?: HeadingEntry[]): void {
+        if (activeTab === "contents") {
+            renderHeadings(headings ?? getHeadings());
+        } else if (activeTab === "proofreading") {
+            proofreadView.refresh(getEditorView());
+        } else if (activeTab === "notes") {
+            notesView.refresh(getEditorView());
+        } else {
+            linksView.refresh(getEditorView());
+        }
+    }
+
+    function setActiveTab(tab: ReviewTab): void {
+        if (tab === activeTab) { return; }
+        activeTab = tab;
+        updateTabButtons();
+        if (isPanelVisible()) { renderActiveView(); }
+    }
+
+    /** Show/hide the Proofreading tab with the master switch. Hiding it while it
+     *  is the active tab falls back to Contents so the body is never stranded. */
+    function applyProofreadingEnabled(enabled: boolean): void {
+        proofreadingEnabled = enabled;
+        tabProofread.hidden = !enabled;
+        if (!enabled && activeTab === "proofreading") {
+            setActiveTab("contents");
+        }
+    }
 
     /** The side-bar glyph whose filled edge marks the current dock side. */
     function sidebarIcon(): string {
@@ -366,7 +516,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // showed a stale outline, and its stale data-headingPos values then
         // armed the NEXT drag against positions the doc had moved past.
         if (isPanelVisible()) {
-            renderHeadings(headings ?? getHeadings());
+            renderActiveView(headings ?? getHeadings());
         }
         if (initialLoad) {
             // Flush the no-transition state, then re-enable transitions with no
@@ -386,42 +536,26 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     /**
      * If every difference between prev and next lies inside ONE textblock that
-     * is not a heading — the shape of ordinary typing — the outline's
-     * structure and text provably did not change; only heading positions after
-     * the edit shifted, all by the same amount. Returns that shift, or null
-     * when the change could have touched the outline (then walk).
+     * is not a heading — the shape of ordinary typing — the outline's structure
+     * and text provably did not change; only heading positions after the edit
+     * shifted, all by the same amount. Returns that shift, or null when the
+     * change could have touched the outline (then walk).
      *
-     * This observes the two REAL docs rather than predicting from steps:
-     * findDiffStart/findDiffEnd bound ALL differences, so outside the returned
-     * range the trees are value-identical — no heading appeared, vanished,
-     * retitled, releveled, or changed depth there — and no block boundary sits
-     * inside the range, so no heading position needs more than the flat delta.
+     * The localization is the shared `singleTextblockInlineEdit` primitive (also
+     * used by the Notes incremental scan); the heading REJECTION is this
+     * consumer's own policy — a heading edit retitles/relevels the outline, so
+     * only body-textblock typing can reuse the cache.
      */
     function inlineOnlyShift(prev: PmNode, next: PmNode): { endA: number; delta: number } | null {
-        const start = prev.content.findDiffStart(next.content);
-        if (start == null) {
+        const edit = singleTextblockInlineEdit(prev, next);
+        if (!edit) { return null; }
+        if (edit.kind === "identical") {
             return { endA: 0, delta: 0 }; // value-identical (e.g. marks-only object churn)
         }
-        const diff = prev.content.findDiffEnd(next.content);
-        if (!diff) {
-            return { endA: 0, delta: 0 };
+        if (edit.prevBlock.type.name === "heading" || edit.nextBlock.type.name === "heading") {
+            return null;
         }
-        let { a: endA, b: endB } = diff;
-        // Repeated content ("aa" → "aaa") makes the end scan overrun the start;
-        // clamp to a consistent placement (readDOMChange's normalization). Any
-        // placement inside the repeated run resolves to the same parent, so the
-        // textblock test below is placement-independent.
-        if (endA < start) { endB += start - endA; endA = start; }
-        if (endB < start) { endA += start - endB; endB = start; }
-        const inOneBodyTextblock = (doc: PmNode, from: number, to: number): boolean => {
-            const $from = doc.resolve(from);
-            return $from.sameParent(doc.resolve(to))
-                && $from.parent.isTextblock
-                && $from.parent.type.name !== "heading";
-        };
-        return inOneBodyTextblock(prev, start, endA) && inOneBodyTextblock(next, start, endB)
-            ? { endA, delta: endB - endA }
-            : null;
+        return { endA: edit.endA, delta: edit.delta };
     }
 
     // Runs once per doc-changing FRAME (index.ts's rAF coalescer), so its cost
@@ -504,6 +638,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // pays a DOM rebuild. null = "nothing rendered yet / force the next
     // render".
     let renderedSignature: string | null = null;
+
+    // Collapsed outline sections, keyed by level+text so the fold PERSISTS across
+    // the structural rebuilds renderHeadings does (adding a heading elsewhere no
+    // longer springs every section open). Session-only, like the group collapse.
+    // Two headings with the same level+text fold together — a rare, acceptable
+    // collision. Keyed with a NUL separator (via fromCharCode, never a literal).
+    const collapsedHeadings = new Set<string>();
+    const HEADING_KEY_SEP = String.fromCharCode(0);
+    const headingKey = (level: number, text: string): string => `${level}${HEADING_KEY_SEP}${text}`;
 
     /**
      * What a rendered row's STRUCTURE is: rank (indent + class), top-level-ness
@@ -595,17 +738,47 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             dnd.notifyRerender();
             return;
         }
-        headings.forEach((entry) => {
+        headings.forEach((entry, i) => {
             // `entry.pos` is this row's anchor AS OF NOW — correct to seed the
             // DOM with, but never to capture: see the signature note above.
             const { level, text } = entry;
             const item = document.createElement("div");
             item.className = `toc-item toc-item--h${level}`;
+            item.setAttribute("role", "treeitem");
             item.dataset["headingPos"] = String(entry.pos);
+            item.dataset["level"] = String(level);
             item.style.paddingLeft = `${(level - 1) * 12 + 8}px`;
-            item.textContent = text || `${t("Heading")} ${level}`;
+            // A row is a "parent" (foldable) when the next heading nests under it.
+            const hasChildren = i + 1 < headings.length && headings[i + 1]!.level > level;
+            item.classList.toggle("toc-item--parent", hasChildren);
+            // Collapse state is keyed by level+text (see collapsedHeadings), so it
+            // survives the structural rebuild this loop runs — reapply it here. The
+            // key rides the dataset so setRowCollapsed (caret + keyboard) can read it.
+            const key = headingKey(level, text);
+            item.dataset["headingKey"] = key;
+            item.classList.toggle("toc-item--collapsed", collapsedHeadings.has(key));
+            if (hasChildren) { item.setAttribute("aria-expanded", String(!collapsedHeadings.has(key))); }
+
+            // A disclosure caret in the left gutter (shown on hover for parents,
+            // and while collapsed) + the heading text.
+            const caret = document.createElement("span");
+            caret.className = "toc-caret";
+            const label = document.createElement("span");
+            label.className = "toc-item__text";
+            label.textContent = text || `${t("Heading")} ${level}`;
+            item.append(caret, label);
+
+            // The caret folds the section in the OUTLINE only (never the document);
+            // it must not navigate or start a drag.
+            caret.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+            caret.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setRowCollapsed(item, !item.classList.contains("toc-item--collapsed"));
+            });
+
             item.classList.toggle("toc-item--active", activeHeadingPos === entry.pos);
-            applyTooltip(item, text, {
+            applyTooltip(label, text, {
                 placement: "above",
                 truncatedOnly: true,
             });
@@ -665,7 +838,44 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             list.appendChild(item);
         });
         setActiveHeadingPos(activeHeadingPos);
+        applyOutlineCollapse();
+        outlineRoving.refresh();
         dnd.notifyRerender();
+    }
+
+    /**
+     * Apply the outline accordion: hide every row nested under a collapsed
+     * heading. Collapse state persists across rebuilds via collapsedHeadings
+     * (reapplied as the `toc-item--collapsed` class per row), and survives the
+     * position-sync that runs while typing. Visibility is derived purely from row
+     * order + level, so nested collapses just work — a row inside an
+     * already-collapsed region stays hidden whatever its own state.
+     */
+    function applyOutlineCollapse(): void {
+        let collapseLevel: number | null = null;
+        list.querySelectorAll<HTMLElement>(".toc-item").forEach((row) => {
+            const level = Number(row.dataset["level"]);
+            if (collapseLevel !== null && level > collapseLevel) {
+                row.hidden = true;
+                return;
+            }
+            row.hidden = false;
+            collapseLevel = row.classList.contains("toc-item--collapsed") ? level : null;
+        });
+    }
+
+    /** Fold/unfold one outline heading — the caret click and the keyboard both
+     *  go through here so the persistent set, the class, the aria state, the
+     *  hidden descendants, and the roving item list all stay in step. */
+    function setRowCollapsed(item: HTMLElement, collapsed: boolean): void {
+        const key = item.dataset["headingKey"] ?? "";
+        if (collapsed) { collapsedHeadings.add(key); } else { collapsedHeadings.delete(key); }
+        item.classList.toggle("toc-item--collapsed", collapsed);
+        if (item.classList.contains("toc-item--parent")) {
+            item.setAttribute("aria-expanded", String(!collapsed));
+        }
+        applyOutlineCollapse();
+        outlineRoving.refresh();
     }
 
     /**
@@ -718,7 +928,19 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         if (!isPanelVisible()) {
             return;
         }
-        renderHeadings(headings);
+        // The Proofreading tab is DECORATION-driven, not doc-driven: on a
+        // keystroke its findings only remap (positions shift; text/tags are
+        // unchanged), and the real changes — async Harper/style results,
+        // ignore/learn — arrive on the proofread-findings-changed event, which
+        // refreshes it. Re-reading the findings here would cost O(findings) —
+        // which grows with the document (a longer doc has more findings) —
+        // every frame, only to re-sync anchors the signature diff then confirms
+        // unchanged. So a doc-change frame renders only the doc-driven views;
+        // Contents and Notes genuinely change per keystroke and still refresh.
+        if (activeTab === "proofreading") {
+            return;
+        }
+        renderActiveView(headings);
     }
 
     function close(): void {
@@ -859,13 +1081,19 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // The flyout shows the ToC itself, so the tab's "Show table of contents"
         // tooltip is redundant (and would overlap the panel) — dismiss it.
         hideTooltip();
-        renderHeadings(getHeadings());
-        panel.classList.add("toc-panel--flyout");
+        renderActiveView();
+        // Enter with transitions SUPPRESSED (--flyout-enter): the closed drawer's
+        // transform is translateX(±100%), and animating straight to the flyout's
+        // translateY(-6px) interpolates diagonally — a sideways sweep in from the
+        // viewport edge. Snap to the flyout's start state first, then release the
+        // transition so only the translateY + opacity animate.
+        panel.classList.add("toc-panel--flyout", "toc-panel--flyout-enter");
         document.body.classList.add("toc-flyout-open");
         positionFlyout();
-        // Commit the initial (down + faded) state, then transition to shown, so
-        // the reveal is a slight slide-DOWN + fade-in (not the drawer's slide).
+        // Commit the initial (down + faded) state with no transition, then release
+        // it and transition to shown, so the reveal is a slight slide-DOWN + fade.
         void panel.offsetWidth;
+        panel.classList.remove("toc-panel--flyout-enter");
         panel.classList.add("toc-panel--flyout-in");
         // Open at the reader's place in the document, never at the top: the
         // list renders before the card's capped geometry exists, so the active
@@ -873,7 +1101,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // is committed (manual scroll math — scrollIntoView would also scroll
         // the window). The enter transition is transform/opacity only, so the
         // geometry is already final here.
-        const active = list.querySelector<HTMLElement>(".toc-item--active");
+        // Only the Contents tab tracks an active row; the review tabs don't.
+        const active = activeTab === "contents"
+            ? list.querySelector<HTMLElement>(".toc-item--active")
+            : null;
         if (active) {
             const listRect = list.getBoundingClientRect();
             const itemRect = active.getBoundingClientRect();
@@ -1017,6 +1248,37 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         scrollRafId = requestAnimationFrame(updateActiveHeadingOnScroll);
     }
 
+    // Show only the initial (Contents) view; the review tabs stay hidden until
+    // picked, so they scan/enumerate nothing until then.
+    updateTabButtons();
+    applyProofreadingEnabled(proofreadingEnabled);
+
+    // The Proofreading tab mirrors the decoration set, and is refreshed SOLELY
+    // by this event — it deliberately does NOT ride the per-frame doc-change
+    // path (refreshContent skips it), because on a keystroke the findings only
+    // remap and re-reading them is O(findings), which grows with the document.
+    // The event fires when the findings actually change (async Harper/style
+    // results, ignore/learn), and only while it's the shown tab, so a hidden tab
+    // costs nothing and typing costs nothing here. (Switching TO the tab renders
+    // it once via renderActiveView.)
+    // Bare window binding (the event isn't in WindowEventMap, so it can't route
+    // through eventManager.onWindow) — captured here so dispose() can remove it.
+    const onProofreadFindingsChanged = (): void => {
+        if (isPanelVisible() && activeTab === "proofreading") {
+            proofreadView.refresh(getEditorView());
+        }
+    };
+    window.addEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
+
+    // The master proofreading switch (birta.proofreading.enabled) governs whether
+    // the Proofreading TAB exists at all — hidden when off. proofread-config-changed
+    // fires on any config change (a toolbar toggle, or a settings echo).
+    const onProofreadConfigChanged = (e: Event): void => {
+        const cfg = (e as CustomEvent).detail as { proofreadingEnabled?: boolean } | undefined;
+        applyProofreadingEnabled(cfg?.proofreadingEnabled ?? true);
+    };
+    window.addEventListener("proofread-config-changed", onProofreadConfigChanged);
+
     requestAnimationFrame(() => {
         tocMode = resolveMode();
         const headings = getHeadings();
@@ -1047,6 +1309,33 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         setWidth: (width: number) => { setTocWidth(width); checkResponsiveMode(); },
         isOpen: () => isOpen,
         isRight: () => tocRight,
-        dispose: dnd.dispose,
+        setNotesMarkers: (markers: string[]) => {
+            notesView.setMarkers(markers);
+            if (isPanelVisible() && activeTab === "notes") {
+                notesView.refresh(getEditorView());
+            }
+        },
+        setReviewGroupByType: (grouped: boolean) => {
+            // All review tabs share the one setting; each reviewList re-renders.
+            proofreadView.setGroupByType(grouped);
+            notesView.setGroupByType(grouped);
+            linksView.setGroupByType(grouped);
+        },
+        showProofreadingTab: () => {
+            // The toolbar menu item only appears while proofreading is on, but
+            // guard anyway (the tab is hidden when off).
+            if (!proofreadingEnabled) { return; }
+            hideFlyoutImmediate();
+            setActiveTab("proofreading");
+            if (!isOpen) {
+                applyVisiblePreference(true); // open + remember the intent
+                notifyTocVisibility("shown");
+            }
+        },
+        dispose: () => {
+            window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
+            window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);
+            dnd.dispose();
+        },
     };
 }

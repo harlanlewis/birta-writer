@@ -32,6 +32,7 @@ import {
 } from "@/ui/icons";
 import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
+import { STYLE_CATEGORIES, STYLE_SECTIONS } from "@/utils/styleCategories";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
 import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
@@ -708,6 +709,7 @@ export function initToolbar(
     }> | null>,
     onOpenFind?: () => void,
     onSwitchToSource?: () => void,
+    onShowProofreading?: () => void,
 ): {
     onSelectionChange: (view: EditorView) => void;
     /** Blank the bar while focus is in a nested editable island (a callout title). */
@@ -1674,6 +1676,9 @@ export function initToolbar(
     // since hoverMenu.rows() only skips a row by its own inline display, not an
     // ancestor's. All refs are assigned when the menu is built.
     let checksMenuEl: HTMLElement | null = null;
+    // Assigned once the checks hover-menu is wired; the "Show issues" item calls
+    // it so picking the action dismisses the menu (the sidebar takes over).
+    let closeChecksMenu: (() => void) | null = null;
     let bodyEl: HTMLElement | null = null;
     let styleChildrenEl: HTMLElement | null = null;
     // The master "Proofreading" gate switch (handled separately from checkRows
@@ -1785,6 +1790,26 @@ export function initToolbar(
         const body = document.createElement("div");
         body.className = "tb-checks-body";
         bodyEl = body;
+
+        // "Show issues" — reveal the review sidebar's Proofreading list. It's the
+        // FIRST thing in the gated body, so it sits directly under the master
+        // Proofreading switch (the 2nd item) and shows only while that switch is
+        // on. It's an action, not a check, so no toggle.
+        if (onShowProofreading) {
+            const showItem = document.createElement("div");
+            showItem.className = "tb-fmt-item tb-checks-action";
+            showItem.setAttribute("role", "menuitem");
+            showItem.tabIndex = -1;
+            showItem.textContent = t("Show issues");
+            showItem.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onShowProofreading();
+                closeChecksMenu?.();
+            });
+            body.appendChild(showItem);
+        }
+
         body.appendChild(makeSep());
 
         // Domain masters
@@ -1798,26 +1823,14 @@ export function initToolbar(
         children.className = "tb-checks-children";
         styleChildrenEl = children;
 
-        const groups: { title: string; opts: [DomainCheckKey, string][] }[] = [
-            { title: t("Phrases"), opts: [
-                ["fillers", t("Fillers")],
-                ["redundancies", t("Redundancies")],
-                ["cliches", t("Cliches")],
-                ["wordiness", t("Wordiness")],
-            ] },
-            { title: t("AI tells"), opts: [
-                ["aiVocabulary", t("AI vocabulary")],
-                ["aiArtifacts", t("AI boilerplate")],
-                ["negativeParallelism", t("Not X, but Y")],
-                ["ruleOfThree", t("Rule of three")],
-            ] },
-            { title: t("Prose"), opts: [
-                ["passive", t("Passive voice")],
-                ["longSentences", t("Long sentences")],
-                ["emDash", t("Em dash")],
-                ["nonAsciiPunct", t("Curly punctuation")],
-            ] },
-        ];
+        // Derived from the shared canonical category list so the menu, the review
+        // sidebar's grouping, and the in-text chips can never drift apart.
+        const groups: { title: string; opts: [DomainCheckKey, string][] }[] = STYLE_SECTIONS.map((section) => ({
+            title: t(section),
+            opts: STYLE_CATEGORIES
+                .filter((d) => d.section === section)
+                .map((d) => [d.category as DomainCheckKey, t(d.label)]),
+        }));
         for (const group of groups) {
             addHeader(children, group.title);
             for (const [key, label] of group.opts) { addRow(children, key, label); }
@@ -1825,12 +1838,12 @@ export function initToolbar(
         body.appendChild(children); // repaintChecks detaches it when Check style is off
         menu.appendChild(body); // repaintChecks detaches it when the gate is off
 
-        wireHoverMenu(wrapEl, checksBtn, menu, {
+        closeChecksMenu = wireHoverMenu(wrapEl, checksBtn, menu, {
             onOpen: () => {
                 const view = getEditorView();
                 if (view) { repaintChecks(getProofreadConfig(view)); }
             },
-        });
+        }).close;
 
         wrapEl.appendChild(menu);
         return wrapEl;
