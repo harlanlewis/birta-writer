@@ -4,10 +4,11 @@ import {
     orderedListSchema,
 } from "@milkdown/preset-commonmark";
 import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
-import { keymap } from "../pm";
-import { Plugin, TextSelection } from "../pm";
+import { canJoin, keymap, Mapping } from "../pm";
+import { Plugin, PluginKey, TextSelection } from "../pm";
 import { liftListItem } from "../pm";
 import { $prose } from "@milkdown/utils";
+import { isListNode, isSameTypeListBoundary } from "../editing/listMerge";
 
 // ── Parse-time spread coercion (MAR-124) ────────────────────────────────────
 //
@@ -315,6 +316,101 @@ export const listEnterPlugin = $prose((ctx) => {
             }
 
             return doLift(state, dispatch);
+        },
+    });
+});
+
+// ── Auto-join of edit-created adjacent lists ────────────────────────────────
+//
+// Two sibling lists of the same type only exist when the SOURCE split them
+// deliberately (a `-`→`*` marker change — markdown merges blank-line-separated
+// same-marker lists at parse time) or when an EDIT made them adjacent:
+// deleting the paragraph between two lists, moving a list next to another,
+// converting the block between them. Left split, the pair reads as two blocks
+// (double flow gap, two gutter handles) and the serializer makes the split
+// PERMANENT by alternating the second list's bullet marker (`bulletOther`).
+//
+// Policy: adjacency the user's own edit created is merged automatically — the
+// user deleted the separator, so one list is the natural reading — while a
+// split already present in the source is the author's syntax and is NEVER
+// auto-merged (the block menu's Merge rows and the caret advisory offer that
+// merge explicitly instead). The old-doc boundary probe below is what tells
+// the two apart. Undo/redo and external file syncs are exempt: both restore
+// document states and must not be "corrected".
+export const listAutoJoinPlugin = $prose(() => {
+    return new Plugin({
+        key: new PluginKey("MD_LIST_AUTO_JOIN"),
+        appendTransaction(transactions, oldState, newState) {
+            if (!transactions.some((tr) => tr.docChanged)) return null;
+            for (const tr of transactions) {
+                // Undo/redo must restore the split it recorded; addToHistory:
+                // false marks state restoration too (external sync rewrites,
+                // unfurl swaps) — none of it is a user edit to interpret.
+                if (tr.getMeta("history$") || tr.getMeta("addToHistory") === false) {
+                    return null;
+                }
+            }
+
+            // The changed range in final-doc coordinates (the
+            // listSpreadNormalizePlugin pattern, including its clamp note).
+            let minFrom = newState.doc.content.size;
+            let maxTo = 0;
+            for (const tr of transactions) {
+                if (!tr.docChanged) continue;
+                for (const step of tr.steps) {
+                    step.getMap().forEach((_os, _oe, newStart, newEnd) => {
+                        if (newStart < minFrom) minFrom = newStart;
+                        if (newEnd > maxTo) maxTo = newEnd;
+                    });
+                }
+            }
+            const docSize = newState.doc.content.size;
+            minFrom = Math.max(0, Math.min(minFrom, docSize));
+            maxTo = Math.min(maxTo, docSize);
+            if (minFrom > maxTo) return null;
+
+            // Candidate boundaries: a list in (or straddling) the changed
+            // range whose NEXT sibling is a list of the same type. The ±1
+            // widening matters for the pure-deletion case, where the changed
+            // range collapses to a point exactly on the boundary — an
+            // edge-exclusive nodesBetween would visit neither list.
+            const boundaries: number[] = [];
+            newState.doc.nodesBetween(
+                Math.max(0, minFrom - 1),
+                Math.min(docSize, maxTo + 1),
+                (node, pos, parent, index) => {
+                    if (node.isTextblock) return false; // lists never nest in textblocks
+                    if (!isListNode(node)) return true;
+                    if (parent?.maybeChild(index + 1)?.type === node.type) {
+                        boundaries.push(pos + node.nodeSize);
+                    }
+                    return true; // descend: nested sublists can be adjacent too
+                },
+            );
+            if (boundaries.length === 0) return null;
+
+            // Fidelity gate: keep only adjacency the edit CREATED. A boundary
+            // that maps back onto a same-type list boundary in the old doc was
+            // already split there — the file's own structure.
+            const mapping = new Mapping();
+            for (const tr of transactions) mapping.appendMapping(tr.mapping);
+            const inverted = mapping.invert();
+            const fresh = [...new Set(boundaries)].filter(
+                (b) => !isSameTypeListBoundary(oldState.doc, inverted.map(b)),
+            );
+            if (fresh.length === 0) return null;
+
+            // Descending order: a join removes tokens at its boundary, which
+            // only shifts positions ABOVE it — lower boundaries stay valid.
+            const tr = newState.tr;
+            let joined = false;
+            for (const b of fresh.sort((x, y) => y - x)) {
+                if (canJoin(tr.doc, b)) {
+                    tr.join(b);
+                    joined = true;
+                }
+            }
+            return joined ? tr : null;
         },
     });
 });

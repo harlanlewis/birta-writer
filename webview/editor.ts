@@ -51,8 +51,10 @@ import {
     pasteLinkPlugin,
     mathInlineEditPlugin,
     wikiLinkCompletePlugin,
+    listAutoJoinPlugin,
     listEnterPlugin,
     listLiftPlugin,
+    listMergeSuggestPlugin,
     listSpreadNormalizePlugin,
     pendingRangePlugin,
     proofreadPlugin,
@@ -556,7 +558,13 @@ export async function createEditor(
         // Pasting a URL over a selection links the selection instead of
         // replacing it (handlePaste; no other plugin registers one).
         .use(pasteLinkPlugin)
-        .use(wikiLinkCompletePlugin);
+        .use(wikiLinkCompletePlugin)
+        // Adjacent-list handling (two halves of one policy): edit-created
+        // adjacency joins automatically; a split the SOURCE already carries
+        // (a `-`→`*` marker change) is only offered — the caret advisory
+        // here, plus the block menu's Merge rows. See editing/listMerge.
+        .use(listAutoJoinPlugin)
+        .use(listMergeSuggestPlugin);
 
     // Inline calc-on-`=` (MAR-177): advisory suggestion by default, or an input
     // rule when birta.calc.autoInsert is on. Composed ONLY when the feature is

@@ -1327,3 +1327,66 @@ describe("combobox/listbox ARIA contract (MAR-94)", () => {
         expect(after).not.toBe(before);
     });
 });
+
+describe("Merge with List Above / Below", () => {
+    // A marker-change source (`-` then `*`) parses as two sibling bullet
+    // lists — the one adjacency the auto-join plugin deliberately leaves
+    // alone, so the menu offers the merge explicitly.
+    const SPLIT = "- foo\n- bar\n\n* bingo\n* wingo";
+
+    function rowLabels(menu: HTMLElement): (string | null)[] {
+        return Array.from(menu.querySelectorAll(".block-menu-item-label")).map(
+            (el) => el.textContent,
+        );
+    }
+
+    it("an item of the LOWER list should offer Merge with List Above only", async () => {
+        const editor = await makeEditor(SPLIT);
+        view(editor);
+        // Markers in document order: foo, bar, bingo, wingo.
+        const menu = openMenuOn(markers()[2]!);
+        const labels = rowLabels(menu);
+        expect(labels).toContain("Merge with List Above");
+        expect(labels).not.toContain("Merge with List Below");
+    });
+
+    it("an item of the UPPER list should offer Merge with List Below only", async () => {
+        const editor = await makeEditor(SPLIT);
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const labels = rowLabels(menu);
+        expect(labels).toContain("Merge with List Below");
+        expect(labels).not.toContain("Merge with List Above");
+    });
+
+    it("a lone list should offer neither merge row", async () => {
+        const editor = await makeEditor("- foo\n- bar");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const labels = rowLabels(menu);
+        expect(labels).not.toContain("Merge with List Above");
+        expect(labels).not.toContain("Merge with List Below");
+    });
+
+    it("picking Merge with List Above should join the lists and drop the marker split", async () => {
+        const editor = await makeEditor(SPLIT);
+        const v = view(editor);
+        const menu = openMenuOn(markers()[2]!);
+
+        pickRow(menu, "Merge with List Above");
+
+        expect(v.state.doc.childCount).toBe(1);
+        expect(markdown(editor)).toBe("- foo\n- bar\n- bingo\n- wingo");
+    });
+
+    it("picking Merge with List Below should join the lists the other way", async () => {
+        const editor = await makeEditor(SPLIT);
+        const v = view(editor);
+        const menu = openMenuOn(markers()[0]!);
+
+        pickRow(menu, "Merge with List Below");
+
+        expect(v.state.doc.childCount).toBe(1);
+        expect(markdown(editor)).toBe("- foo\n- bar\n- bingo\n- wingo");
+    });
+});

@@ -39,11 +39,13 @@ export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
 export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export {
+    listAutoJoinPlugin,
     listEnterPlugin,
     listLiftPlugin,
     listItemSpreadBoolPlugins,
     listSpreadNormalizePlugin,
 } from "./list";
+export { listMergeSuggestPlugin } from "./listMergeSuggest";
 export { pendingRangePlugin, setPendingRange } from "./pendingRange";
 export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";
