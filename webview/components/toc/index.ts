@@ -653,6 +653,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         if (isPanelVisible()) {
             renderActiveView(headings ?? getHeadings());
         }
+        syncTabOverflow(); // presentation (open/side/mode) may have changed the row's width
         if (initialLoad) {
             // Flush the no-transition state, then re-enable transitions with no
             // pending change so nothing animates from this commit.
@@ -1205,6 +1206,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // the height so the flyout could auto-size) so a later dock-open is
         // full-height and correctly positioned again.
         updatePanelPosition();
+        syncTabOverflow(); // back on the docked width — re-measure
     }
     function showFlyout(): void {
         cancelFlyoutHide();
@@ -1228,6 +1230,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         panel.classList.add("toc-panel--flyout", "toc-panel--flyout-enter");
         document.body.classList.add("toc-flyout-open");
         positionFlyout();
+        // The flyout has its OWN width (fixed 260px, controls hidden), so the
+        // list-vs-select decision must be re-measured for it — never inherited
+        // from the docked drawer's geometry.
+        syncTabOverflow();
         // Commit the initial (down + faded) state with no transition, then release
         // it and transition to shown, so the reveal is a slight slide-DOWN + fade.
         void panel.offsetWidth;

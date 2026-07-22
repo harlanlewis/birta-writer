@@ -345,6 +345,33 @@ describe("auto-insert result refresh (editing an existing equation)", () => {
         editor.destroy();
     });
 
+    it("LEADING form: editing the expression refreshes the answer before the =", async () => {
+        const editor = await makeRefreshEditor("12=5+7");
+        const v = view(editor);
+        // "5" is at offset 3; make it 6 → 12=6+7 → refresh → 13=6+7.
+        editChar(v, 3, "6");
+        expect(blockText(v)).toBe("13=6+7");
+        editor.destroy();
+    });
+
+    it("LEADING form: editing the RESULT is the user's override and left alone", async () => {
+        const editor = await makeRefreshEditor("12=5+7");
+        const v = view(editor);
+        editChar(v, 0, "9"); // hand-edit the answer → 92=5+7, untouched
+        expect(blockText(v)).toBe("92=5+7");
+        editor.destroy();
+    });
+
+    it("LEADING form: a prose assignment (letter before the number) never rewrites", async () => {
+        const editor = await makeRefreshEditor("a12=5+7");
+        const v = view(editor);
+        // Edit the 5 → 6: the excised text is "a=6+7", which the leading
+        // boundary rule rejects (prose assignment), so nothing rewrites.
+        editChar(v, 4, "6");
+        expect(blockText(v)).toBe("a12=6+7");
+        editor.destroy();
+    });
+
     it("undo reverts the edit and the refreshed answer together", async () => {
         const editor = await makeRefreshEditor("3+4= 7");
         const v = view(editor);

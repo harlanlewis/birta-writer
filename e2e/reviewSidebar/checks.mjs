@@ -302,6 +302,33 @@ export async function run({ page, check, baseUrl }) {
     await page.locator(".toc-tabs-select").dispatchEvent("mousedown"); // close via toggle
     await page.waitForTimeout(80);
 
+    // In select mode the flip/hide controls still hug the RIGHT edge — the hide
+    // button anchors the closed reveal tab's position and can never drift.
+    const edges = await page.evaluate(() => {
+        const strip = document.querySelector(".toc-tabs").getBoundingClientRect();
+        const controls = document.querySelector(".toc-tabs .toc-controls").getBoundingClientRect();
+        return { stripRight: Math.round(strip.right), controlsRight: Math.round(controls.right) };
+    });
+    check("select mode keeps the flip/hide controls hugging the right edge",
+        Math.abs(edges.stripRight - edges.controlsRight) <= 10, JSON.stringify(edges));
+
+    // ── The FLYOUT measures its own width (controls hidden, fixed 260px): it
+    //    shows the full tab list even while the docked strip is in select mode. ──
+    await page.locator(".toc-hide-btn").dispatchEvent("mousedown"); // close the drawer
+    await page.waitForTimeout(300);
+    await page.locator(".toc-toggle-tab").hover(); // flyout
+    await page.waitForSelector(".toc-panel--flyout-in", { timeout: 3000 });
+    await page.waitForTimeout(120);
+    const flyoutMode = await page.evaluate(() => ({
+        select: document.querySelector(".toc-tabs").classList.contains("toc-tabs--select"),
+        tabsVisible: [...document.querySelectorAll(".toc-tab")].filter((t) => t.offsetParent !== null).length,
+    }));
+    check("the flyout measures its own width — full tab list, not the docked select",
+        !flyoutMode.select && flyoutMode.tabsVisible >= 4, JSON.stringify(flyoutMode));
+    // Restore the docked-open state for any later checks.
+    await page.locator(".toc-toggle-tab").dispatchEvent("mousedown");
+    await page.waitForTimeout(300);
+
     // ── Shortcuts panel: wheel scrolls the PANEL, never chains to the doc ──
     await page.setViewportSize({ width: 1000, height: 480 }); // force panel overflow
     const gear = page.locator('.editor-topbar [aria-label="Settings"]').first();

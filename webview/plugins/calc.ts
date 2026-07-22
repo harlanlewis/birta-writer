@@ -201,40 +201,42 @@ export const calcAutoInsertPlugin = $inputRule(() =>
 // ── Auto-insert mode: refresh a stale answer when its expression is edited ──
 
 /**
- * `expr = result` runs in a block's text: an operator-bearing arithmetic run,
- * its `=`, and the number after it. Broad on purpose — each hit is re-validated
- * through detectCalcExpression (with the run's REAL left context, so the
- * comma/letter guards still apply) before anything is touched.
+ * Equation shapes in a block's text, both insertion forms:
+ *  - TRAILING: `expr = result` (an operator-bearing run, its `=`, the number);
+ *  - LEADING:  `result=expr` (the number the leading form inserted BEFORE its
+ *    `=`; `=5+7` became `12=5+7`).
+ * Broad on purpose — each hit re-validates through detectCalcExpression before
+ * anything is touched. For the leading form the result token is EXCISED first:
+ * `12=5+7` raw would (correctly) fail the leading boundary rule (`a=5+7` is a
+ * prose assignment), but with the result removed the text reproduces exactly
+ * what the original insertion validated.
  */
-const EQUATION_RE = /[0-9.+\-*/%^() \t]*[0-9)][ \t]*=[ \t]*(-?\d[\d,]*(?:\.\d+)?)/g;
+const TRAILING_EQ_RE = /[0-9.+\-*/%^() \t]*[0-9)][ \t]*=[ \t]*(-?\d[\d,]*(?:\.\d+)?)/g;
+const LEADING_EQ_RE = /(-?\d[\d,]*(?:\.\d+)?)[ \t]*=[ \t]*([0-9.+\-*/%^() \t]*[0-9)])/g;
 
-/**
- * With `birta.calc.autoInsert` on, editing the EXPRESSION side of an existing
- * `expr = result` recomputes and rewrites the result — `3+4= 7` edited to
- * `4+4= 7` becomes `4+4= 8` in the same undo step as the edit. Guardrails:
- *
- *  - Auto-insert mode only. Advisory mode never rewrites the document without
- *    a confirmation (the consent rule) — a deliberately "wrong" hand-typed
- *    equation must survive there.
- *  - Only when the edit touches the expression, never when it touches the
- *    result: hand-editing the answer is the user overriding the machine, and
- *    the machine must not fight back.
- *  - Only when the run still validates as real arithmetic (mid-edit states
- *    like `4+= 7` leave the text alone until the expression is whole again).
- */
 export const calcRefreshPlugin = $prose(() => new Plugin({
     key: new PluginKey("MD_CALC_REFRESH"),
     appendTransaction(trs, _oldState, newState) {
         if (!calcEnabled() || !calcAutoInsert()) { return null; }
         if (!trs.some((tr) => tr.docChanged)) { return null; }
 
-        // The changed positions in the NEW doc, coalesced per transaction step.
+        // The changed positions in the NEW doc. Each step's range is mapped
+        // through the transaction's REMAINING steps so multi-step transactions
+        // (a paste with normalizations) still report final-doc coordinates.
         const changed: Array<{ from: number; to: number }> = [];
         for (const tr of trs) {
             if (!tr.docChanged) { continue; }
-            for (const map of tr.mapping.maps) {
-                map.forEach((_a, _b, from, to) => { changed.push({ from, to }); });
-            }
+            tr.mapping.maps.forEach((map, i) => {
+                map.forEach((_a, _b, from, to) => {
+                    let f = from;
+                    let t = to;
+                    for (let j = i + 1; j < tr.mapping.maps.length; j++) {
+                        f = tr.mapping.maps[j]!.map(f);
+                        t = tr.mapping.maps[j]!.map(t);
+                    }
+                    changed.push({ from: f, to: t });
+                });
+            });
         }
         if (changed.length === 0) { return null; }
 
@@ -251,28 +253,63 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
             // Inline atoms mask to a char arithmetic can't contain, keeping
             // offsets 1:1 with positions (the proofread/notes masking contract).
             const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
+            // This hook rides EVERY doc change while auto-insert is on; a block
+            // with no "=" can hold no equation — skip before any regex work.
+            if (!text.includes("=")) { continue; }
 
-            EQUATION_RE.lastIndex = 0;
-            for (let m = EQUATION_RE.exec(text); m; m = EQUATION_RE.exec(text)) {
+            /** Apply one refresh in this block if `resultText` went stale. */
+            const refresh = (
+                exprSpan: [number, number],
+                resSpan: [number, number],
+                resultText: string,
+                validate: () => ReturnType<typeof detectCalcExpression>,
+            ): boolean => {
+                const localFrom = change.from - blockStart;
+                const localTo = change.to - blockStart;
+                // The edit must intersect the EXPRESSION side — result edits
+                // are the user's override and are never fought.
+                if (localTo < exprSpan[0] || localFrom > exprSpan[1]) { return false; }
+                if (localFrom >= resSpan[0] && localFrom < resSpan[1]) { return false; }
+                const det = validate();
+                if (!det || det.result === resultText) { return false; }
+                out = out.insertText(det.result, blockStart + resSpan[0], blockStart + resSpan[1]);
+                return true;
+            };
+
+            let done = false;
+            TRAILING_EQ_RE.lastIndex = 0;
+            for (let m = TRAILING_EQ_RE.exec(text); m && !done; m = TRAILING_EQ_RE.exec(text)) {
                 const runStart = m.index;
                 const eqIdx = m[0].lastIndexOf("=");
                 const resultText = m[1]!;
-                const resultStart = runStart + m[0].length - resultText.length;
-                const resultEnd = runStart + m[0].length;
-                // The edit must intersect the run BEFORE the result token —
-                // expression edits refresh; result edits are the user's.
-                const localFrom = change.from - blockStart;
-                const localTo = change.to - blockStart;
-                if (localTo < runStart || localFrom >= resultStart) { continue; }
-                // Re-validate with the run's real left context so every
-                // detection guard (comma fragments, letters) still applies.
-                const det = detectCalcExpression(text.slice(0, runStart + eqIdx + 1), { boundaryUnknown: false });
-                if (!det) { continue; }
-                if (det.result === resultText) { continue; }
-                out = out.insertText(det.result, blockStart + resultStart, blockStart + resultEnd);
-                touched = true;
-                break; // one refresh per block per pass keeps mapping simple
+                const resStart = runStart + m[0].length - resultText.length;
+                done = refresh(
+                    [runStart, runStart + eqIdx],
+                    [resStart, runStart + m[0].length],
+                    resultText,
+                    // Re-validate with the run's real left context so every
+                    // detection guard (comma fragments, letters) still applies.
+                    () => detectCalcExpression(text.slice(0, runStart + eqIdx + 1), { boundaryUnknown: false }),
+                );
             }
+            LEADING_EQ_RE.lastIndex = 0;
+            for (let m = LEADING_EQ_RE.exec(text); m && !done; m = LEADING_EQ_RE.exec(text)) {
+                const resultText = m[1]!;
+                const exprText = m[2]!;
+                const resStart = m.index;
+                const resEnd = resStart + resultText.length;
+                const exprStart = m.index + m[0].length - exprText.length;
+                const exprEnd = m.index + m[0].length;
+                done = refresh(
+                    [exprStart, exprEnd],
+                    [resStart, resEnd],
+                    resultText,
+                    // Excise the result: the remaining `…=expr` is byte-for-byte
+                    // what the original leading-form insertion validated.
+                    () => detectCalcExpression(text.slice(0, resStart) + text.slice(resEnd, exprEnd), { boundaryUnknown: false }),
+                );
+            }
+            if (done) { touched = true; }
         }
         return touched ? out : null;
     },

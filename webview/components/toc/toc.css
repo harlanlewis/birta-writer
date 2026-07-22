@@ -223,7 +223,10 @@ body.toc-resizing {
 /* Flip/hide sit at the trailing edge of the tab row. */
 .toc-controls {
     flex: 0 0 auto;
-    margin-left: 4px;
+    /* auto, not a fixed gap: in select mode the tab list leaves the flow, and
+       the controls must still hug the right edge (the hide button anchors the
+       closed reveal tab's position — it can never drift). */
+    margin-left: auto;
     display: flex;
     align-items: center;
     gap: 1px;
