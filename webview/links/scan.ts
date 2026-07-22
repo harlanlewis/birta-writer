@@ -24,6 +24,7 @@
  */
 import type { Node as ProseNode } from "../pm";
 import { parseWikiRaw, wikiDisplayText, wikiLinkId } from "../plugins/wikiLinks";
+import { singleTextblockInlineEdit } from "../utils/textblockEdit";
 
 export type LinkKind = "web" | "local" | "doc" | "email";
 
@@ -50,22 +51,13 @@ function kindOf(href: string): LinkKind {
 
 interface Run { from: number; to: number; href: string; text: string; kind: LinkKind }
 
-export function scanLinks(doc: ProseNode): LinkItem[] {
-    // Reference definitions: identifier → url, so a `[text][ref]` can show and
-    // classify by its real destination.
-    const defs = new Map<string, string>();
-    doc.descendants((node) => {
-        if (node.type.name === "link_definition") {
-            defs.set(node.attrs["identifier"] ?? "", node.attrs["url"] ?? "");
-        }
-        return true;
-    });
-
+/** Collector shared by the full walk and the single-block rescan: text-run
+ *  merging + wiki atoms, with reference links resolved through `defs`. */
+function makeCollector(defs: Map<string, string>) {
     const items: LinkItem[] = [];
     let run: Run | null = null;
     const flush = (): void => { if (run) { items.push({ from: run.from, to: run.to, kind: run.kind, text: run.text, href: run.href }); run = null; } };
-
-    doc.descendants((node, pos) => {
+    const visit = (node: ProseNode, pos: number): boolean => {
         if (node.type.name === wikiLinkId) {
             flush();
             const raw = (node.attrs["raw"] ?? "") as string;
@@ -101,10 +93,66 @@ export function scanLinks(doc: ProseNode): LinkItem[] {
         // Any other node (a new block, an inline atom) breaks a link run.
         flush();
         return true;
-    });
-    flush();
+    };
+    return { items, visit, flush };
+}
 
+/** Reference definitions: identifier → url, so a `[text][ref]` can show and
+ *  classify by its real destination. */
+function collectDefs(doc: ProseNode): Map<string, string> {
+    const defs = new Map<string, string>();
+    doc.descendants((node) => {
+        if (node.type.name === "link_definition") {
+            defs.set(node.attrs["identifier"] ?? "", node.attrs["url"] ?? "");
+        }
+        return true;
+    });
+    return defs;
+}
+
+export function scanLinks(doc: ProseNode): LinkItem[] {
+    const { items, visit, flush } = makeCollector(collectDefs(doc));
+    doc.descendants(visit);
+    flush();
     return items.sort((a, b) => a.from - b.from);
+}
+
+/** Every link inside ONE textblock (`base` = block start + 1). Runs never span
+ *  blocks (a block boundary flushes the collector), so a block-local scan is
+ *  exact. Pure; `defs` comes from the caller's cached full scan. */
+export function scanBlockLinks(block: ProseNode, base: number, defs: Map<string, string>): LinkItem[] {
+    const { items, visit, flush } = makeCollector(defs);
+    block.forEach((child, offset) => { visit(child, base + offset); });
+    flush();
+    return items.sort((a, b) => a.from - b.from);
+}
+
+/**
+ * Per-keystroke fast path (mirrors notes/scan.ts): when the change is confined
+ * to one textblock's inline content, re-scan just that block and shift the
+ * trailing anchors — instead of re-walking the whole document. Returns null on
+ * any structural change (block split/merge, a `link_definition` edit — those
+ * are atom/attr changes, which never localize) so the caller falls back to a
+ * full scan. `defs` may be reused across inline edits: definitions live in
+ * block-level atoms an inline edit cannot touch.
+ */
+export function incrementalScanLinks(
+    prevDoc: ProseNode,
+    prevItems: readonly LinkItem[],
+    nextDoc: ProseNode,
+    defs: Map<string, string>,
+): LinkItem[] | null {
+    const edit = singleTextblockInlineEdit(prevDoc, nextDoc);
+    if (!edit) { return null; }
+    if (edit.kind === "identical") { return prevItems as LinkItem[]; }
+    const blockStart = edit.prevBlockPos;
+    const blockEnd = edit.prevBlockPos + edit.prevBlock.nodeSize;
+    const before = prevItems.filter((l) => l.to <= blockStart);
+    const after = prevItems
+        .filter((l) => l.from >= blockEnd)
+        .map((l) => ({ ...l, from: l.from + edit.delta, to: l.to + edit.delta }));
+    const within = scanBlockLinks(edit.nextBlock, edit.nextBlockPos + 1, defs);
+    return [...before, ...within, ...after].sort((a, b) => a.from - b.from);
 }
 
 // ── Doc-identity cache ─────────────────────────────────────────────────────
@@ -114,11 +162,17 @@ export function scanLinks(doc: ProseNode): LinkItem[] {
 // per document version instead of re-walking for each caller.
 let cachedDoc: ProseNode | null = null;
 let cachedItems: LinkItem[] = [];
+let cachedDefs: Map<string, string> = new Map();
 
 export function scanLinksCached(doc: ProseNode): LinkItem[] {
-    if (cachedDoc !== doc) {
+    if (cachedDoc === doc) { return cachedItems; }
+    const incremental = cachedDoc ? incrementalScanLinks(cachedDoc, cachedItems, doc, cachedDefs) : null;
+    if (incremental) {
+        cachedItems = incremental;
+    } else {
+        cachedDefs = collectDefs(doc);
         cachedItems = scanLinks(doc);
-        cachedDoc = doc;
     }
+    cachedDoc = doc;
     return cachedItems;
 }
