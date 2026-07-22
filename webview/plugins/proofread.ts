@@ -754,8 +754,14 @@ export const proofreadPlugin = $prose(() => {
  */
 export const PROOFREAD_FINDINGS_CHANGED = "proofread-findings-changed";
 
-/** One row for the Proofreading review list: a finding plus its actions. */
-export interface ProofreadFindingRow {
+/**
+ * A proofreading finding resolved to what the review list shows — text, chip,
+ * advice — minus the view-bound actions. `kind` is the lint kind ("Spelling",
+ * "Grammar", …) or the style category; it is both the dedupe discriminator and
+ * what routes the Ignore/Learn action, so a spelling and a style hit on the same
+ * span neither collapse into one nor share an action.
+ */
+export interface ProofreadFinding {
     from: number;
     to: number;
     domain: "spelling" | "grammar" | "style";
@@ -767,6 +773,12 @@ export interface ProofreadFindingRow {
     message: string;
     /** Spelling only: offer "Add to dictionary". */
     canLearn: boolean;
+    /** Lint kind or style category — the dedupe key and action routing. */
+    kind: string;
+}
+
+/** One row for the Proofreading review list: a finding plus its view-bound actions. */
+export interface ProofreadFindingRow extends ProofreadFinding {
     /** Session-ignore this finding, then rebuild the decoration set. */
     ignore: () => void;
     /** Spelling only: add the word to the dictionary, then rebuild. */
@@ -774,51 +786,69 @@ export interface ProofreadFindingRow {
 }
 
 /**
+ * Resolve a proofreading decoration set into the review list's findings —
+ * document order (narrowest span first at a shared start, as the popup picker
+ * does), duplicates sharing a (from, to, kind) identity collapsed. PURE: no
+ * view or plugin-state access — the flagged text arrives via `getText` — so the
+ * risky ordering / dedup / routing is unit-testable against a hand-built
+ * DecorationSet. `listProofreadFindings` is the thin wrapper that binds the
+ * ignore/learn actions to a live view.
+ */
+export function describeFindings(
+    combined: DecorationSet,
+    getText: (from: number, to: number) => string,
+): ProofreadFinding[] {
+    const hits = combined
+        .find()
+        .filter((h) => { const s = h.spec as DecoSpec; return Boolean(s.lint || s.style); })
+        .sort((a, b) => a.from - b.from || (a.to - a.from) - (b.to - b.from));
+    const findings: ProofreadFinding[] = [];
+    const seen = new Set<string>();
+    for (const h of hits) {
+        const spec = h.spec as DecoSpec;
+        const kind = spec.lint ? spec.lint.kind : spec.style!.category;
+        const key = `${h.from}:${h.to}:${kind}`;
+        if (seen.has(key)) { continue; }
+        seen.add(key);
+        const text = getText(h.from, h.to);
+        if (spec.lint) {
+            const isSpelling = spec.lint.kind === "Spelling";
+            findings.push({
+                from: h.from, to: h.to,
+                domain: isSpelling ? "spelling" : "grammar",
+                tag: isSpelling ? t("Spelling") : t("Grammar"),
+                text, message: spec.lint.message, canLearn: isSpelling, kind,
+            });
+        } else {
+            const style = spec.style!;
+            findings.push({
+                from: h.from, to: h.to, domain: "style",
+                tag: styleTag(style.category), text, message: style.message,
+                canLearn: false, kind,
+            });
+        }
+    }
+    return findings;
+}
+
+/**
  * Every live proofreading finding (style + Harper spelling/grammar), document
- * -ordered, resolved to what the review sidebar needs — text, chip, advice, and
- * the same Ignore/Learn actions the in-text popup offers. Reads the plugin's
- * `combined` decoration set; computes nothing new. Duplicate (from,to,domain)
- * findings are collapsed, as in the popup.
+ * -ordered, resolved to what the review sidebar needs plus the same Ignore/Learn
+ * actions the in-text popup offers. Reads the plugin's `combined` decoration
+ * set; computes nothing new (the pure core is describeFindings).
  */
 export function listProofreadFindings(view: EditorView): ProofreadFindingRow[] {
     const state = proofreadPluginKey.getState(view.state);
     if (!state) { return []; }
-    const hits = state.combined
-        .find()
-        .filter((h) => { const s = h.spec as DecoSpec; return Boolean(s.lint || s.style); })
-        .sort((a, b) => a.from - b.from || (a.to - a.from) - (b.to - b.from));
-    const rows: ProofreadFindingRow[] = [];
-    const seen = new Set<string>();
-    for (const h of hits) {
-        const spec = h.spec as DecoSpec;
-        const text = view.state.doc.textBetween(h.from, h.to);
-        if (spec.lint) {
-            const lint = spec.lint;
-            const isSpelling = lint.kind === "Spelling";
-            const key = `${h.from}:${h.to}:${lint.kind}`;
-            if (seen.has(key)) { continue; }
-            seen.add(key);
-            rows.push({
-                from: h.from, to: h.to,
-                domain: isSpelling ? "spelling" : "grammar",
-                tag: isSpelling ? t("Spelling") : t("Grammar"),
-                text, message: lint.message, canLearn: isSpelling,
-                ignore: () => { ignoreLintSession(lint.kind, text); refreshProofread(view); },
-                learn: isSpelling ? () => { learnWord(text); refreshProofread(view); } : undefined,
-            });
-        } else if (spec.style) {
-            const style = spec.style;
-            const key = `${h.from}:${h.to}:${style.category}`;
-            if (seen.has(key)) { continue; }
-            seen.add(key);
-            rows.push({
-                from: h.from, to: h.to, domain: "style",
-                tag: styleTag(style.category), text, message: style.message, canLearn: false,
-                ignore: () => { ignoreStyleSession(style.category, text); refreshProofread(view); },
-            });
-        }
-    }
-    return rows;
+    return describeFindings(state.combined, (from, to) => view.state.doc.textBetween(from, to)).map((f) => ({
+        ...f,
+        ignore: () => {
+            if (f.domain === "style") { ignoreStyleSession(f.kind as StyleCategory, f.text); }
+            else { ignoreLintSession(f.kind, f.text); }
+            refreshProofread(view);
+        },
+        learn: f.canLearn ? () => { learnWord(f.text); refreshProofread(view); } : undefined,
+    }));
 }
 
 /** The active view's lint-result applier (rebound on editor recreation). */

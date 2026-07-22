@@ -1097,11 +1097,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // reach it via refreshContent; this event covers what that path can't see —
     // async Harper results and ignore/learn rebuilds — but only while it's the
     // shown tab, so a hidden tab still costs nothing.
-    window.addEventListener(PROOFREAD_FINDINGS_CHANGED, () => {
+    // Bare window binding (the event isn't in WindowEventMap, so it can't route
+    // through eventManager.onWindow) — captured here so dispose() can remove it.
+    const onProofreadFindingsChanged = (): void => {
         if (isPanelVisible() && activeTab === "proofreading") {
             proofreadView.refresh(getEditorView());
         }
-    });
+    };
+    window.addEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
 
     requestAnimationFrame(() => {
         tocMode = resolveMode();
@@ -1139,6 +1142,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
                 notesView.refresh(getEditorView());
             }
         },
-        dispose: dnd.dispose,
+        dispose: () => {
+            window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
+            dnd.dispose();
+        },
     };
 }
