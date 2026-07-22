@@ -42,7 +42,7 @@ describe("review sidebar tabs", () => {
     it("should render three tabs labelled Contents, Proofreading, Notes", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const labels = [...panel.querySelectorAll(".toc-tab")].map((t) => t.textContent);
-        expect(labels).toEqual(["Contents", "Proofreading", "Notes"]);
+        expect(labels).toEqual(["Contents", "Proofreading", "Notes", "Links"]);
     });
 
     it("should start on Contents with the review views hidden", () => {
@@ -52,6 +52,7 @@ describe("review sidebar tabs", () => {
         expect(panel.querySelector(".toc-list")!.classList.contains("toc-view--hidden")).toBe(false);
         expect(panel.querySelector(".review-list--proofread")!.classList.contains("toc-view--hidden")).toBe(true);
         expect(panel.querySelector(".review-list--notes")!.classList.contains("toc-view--hidden")).toBe(true);
+        expect(panel.querySelector(".review-list--links")!.classList.contains("toc-view--hidden")).toBe(true);
     });
 
     it("clicking Proofreading should show only the proofreading view", () => {

@@ -20,6 +20,7 @@ import { initTocDnd } from "./dnd";
 import { wireRoving } from "./keyboardNav";
 import { initProofreadingList } from "./proofreadingList";
 import { initNotesList } from "./notesList";
+import { initLinksList } from "./linksList";
 import { PROOFREAD_FINDINGS_CHANGED } from "@/plugins/proofread";
 import { singleTextblockInlineEdit } from "@/utils/textblockEdit";
 
@@ -140,7 +141,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // ONLY while active — an inactive tab scans/enumerates nothing (see
     // renderActiveView). Flip/hide move into the sticky tab row (right-aligned)
     // so they can't overlap the tabs.
-    type ReviewTab = "contents" | "proofreading" | "notes";
+    type ReviewTab = "contents" | "proofreading" | "notes" | "links";
     let activeTab: ReviewTab = "contents";
     // The Proofreading tab exists only while the master switch is on; when off
     // it's removed from the strip entirely (not shown with an "off" body).
@@ -153,15 +154,23 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const tabContents = makeTabButton("contents", t("Contents"));
     const tabProofread = makeTabButton("proofreading", t("Proofreading"));
     const tabNotes = makeTabButton("notes", t("Notes"));
-    tabStrip.append(tabContents, tabProofread, tabNotes, controls);
+    const tabLinks = makeTabButton("links", t("Links"));
+    // The four tabs live in a horizontally-scrollable list so a narrow panel
+    // never clips one; the flip/hide controls stay pinned beside it.
+    const tabsList = document.createElement("div");
+    tabsList.className = "toc-tabs__list";
+    tabsList.append(tabContents, tabProofread, tabNotes, tabLinks);
+    tabStrip.append(tabsList, controls);
 
     const proofreadView = initProofreadingList(getEditorView);
     const notesView = initNotesList(getEditorView);
+    const linksView = initLinksList(getEditorView);
 
     panel.appendChild(tabStrip);
     panel.appendChild(list);
     panel.appendChild(proofreadView.element);
     panel.appendChild(notesView.element);
+    panel.appendChild(linksView.element);
 
     function makeTabButton(tab: ReviewTab, label: string): HTMLButtonElement {
         const btn = document.createElement("button");
@@ -186,7 +195,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const isArrow = e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End";
         const isActivate = e.key === "Enter" || e.key === " ";
         if (!isArrow && !isActivate) { return; }
-        const tabs = [tabContents, tabProofread, tabNotes].filter((tab) => !tab.hidden);
+        const tabs = [tabContents, tabProofread, tabNotes, tabLinks].filter((tab) => !tab.hidden);
         const cur = tabs.indexOf(document.activeElement as HTMLButtonElement);
         e.preventDefault();
         if (isActivate) {
@@ -211,9 +220,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         reflect(tabContents, activeTab === "contents");
         reflect(tabProofread, activeTab === "proofreading");
         reflect(tabNotes, activeTab === "notes");
+        reflect(tabLinks, activeTab === "links");
         list.classList.toggle("toc-view--hidden", activeTab !== "contents");
         proofreadView.element.classList.toggle("toc-view--hidden", activeTab !== "proofreading");
         notesView.element.classList.toggle("toc-view--hidden", activeTab !== "notes");
+        linksView.element.classList.toggle("toc-view--hidden", activeTab !== "links");
     }
 
     /** Render whichever tab is active — the only view that does any work. */
@@ -222,8 +233,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             renderHeadings(headings ?? getHeadings());
         } else if (activeTab === "proofreading") {
             proofreadView.refresh(getEditorView());
-        } else {
+        } else if (activeTab === "notes") {
             notesView.refresh(getEditorView());
+        } else {
+            linksView.refresh(getEditorView());
         }
     }
 
@@ -1303,9 +1316,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             }
         },
         setReviewGroupByType: (grouped: boolean) => {
-            // Both drawers share the one setting; the reviewList re-renders itself.
+            // All review tabs share the one setting; each reviewList re-renders.
             proofreadView.setGroupByType(grouped);
             notesView.setGroupByType(grouped);
+            linksView.setGroupByType(grouped);
         },
         showProofreadingTab: () => {
             // The toolbar menu item only appears while proofreading is on, but

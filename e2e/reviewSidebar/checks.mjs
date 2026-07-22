@@ -24,14 +24,14 @@ export async function run({ page, check, baseUrl }) {
 
     // ── Tabs render ───────────────────────────────────────────────────────
     const tabLabels = await page.$$eval(".toc-tab", (els) => els.map((e) => e.textContent));
-    check("three tabs render, labelled Contents / Proofreading / Notes",
-        JSON.stringify(tabLabels) === JSON.stringify(["Contents", "Proofreading", "Notes"]),
+    check("four tabs render, labelled Contents / Proofreading / Notes / Links",
+        JSON.stringify(tabLabels) === JSON.stringify(["Contents", "Proofreading", "Notes", "Links"]),
         JSON.stringify(tabLabels));
 
     // Contents is the default tab and lists the headings.
     const headingRows = await page.$$eval(".toc-list .toc-item", (els) => els.map((e) => e.textContent.trim()));
     check("Contents tab lists the document headings",
-        headingRows.length === 4 && headingRows[0] === "Intro",
+        headingRows.length === 5 && headingRows[0] === "Intro",
         JSON.stringify(headingRows));
 
     // The inactive tabs' lists must be fully hidden — a CSS regression once let
@@ -201,6 +201,19 @@ export async function run({ page, check, baseUrl }) {
         check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", true,
             "SKIPPED — Checks button not rendered in this harness");
     }
+
+    // ── Links tab: every link in the doc, grouped by destination kind ─────
+    await page.click(".toc-tab:nth-child(4)"); // Links
+    await page.waitForSelector(".review-list--links:not(.toc-view--hidden)", { timeout: 5000 });
+    await page.waitForTimeout(150);
+    const linkGroups = await page.$$eval(".review-list--links .review-group__name", (els) => els.map((e) => e.textContent));
+    check("Links groups by destination kind (Web / Local / Heading / Wikilink)",
+        linkGroups.includes("Web") && linkGroups.includes("Local") && linkGroups.includes("Wikilink"),
+        JSON.stringify(linkGroups));
+    const linkRows = await page.$$eval(".review-list--links .review-item__label", (els) => els.map((e) => e.textContent));
+    check("Links lists the document's links (inline, autolink, local, wiki)",
+        linkRows.includes("inline link") && linkRows.some((l) => /autolink\.dev/.test(l)) && linkRows.includes("wiki page"),
+        JSON.stringify(linkRows));
 
     check("no page errors or console errors during the run", errors.length === 0,
         errors.slice(0, 5).join(" | "));
