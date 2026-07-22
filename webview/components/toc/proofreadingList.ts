@@ -4,13 +4,13 @@
  * the same Ignore (and Learn, for spelling) actions the in-text popup offers.
  * It reads the proofread plugin's decoration set — no second analysis pass — so
  * it only ever costs work while this tab is the active one (the shell refreshes
- * only the visible view).
+ * only the visible view), and the shared review list skips the DOM rebuild when
+ * the findings are unchanged (see reviewList).
  */
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { getProofreadConfig, listProofreadFindings } from "@/plugins/proofread";
-import { revealRange } from "./navigate";
-import { buildReviewItem, buildReviewEmpty } from "./reviewItem";
+import { initReviewList, type ReviewResult } from "./reviewList";
 
 export interface ReviewListView {
     element: HTMLElement;
@@ -18,40 +18,35 @@ export interface ReviewListView {
     refresh: (view: EditorView | null) => void;
 }
 
-export function initProofreadingList(getView: () => EditorView | null): ReviewListView {
-    const element = document.createElement("div");
-    element.className = "review-list review-list--proofread";
-
-    function refresh(view: EditorView | null): void {
-        element.replaceChildren();
-        if (!view) { return; }
-        const config = getProofreadConfig(view);
-        if (!config.proofreadingEnabled) {
-            // A silent empty here would read as "all clear"; say it's off.
-            element.appendChild(buildReviewEmpty(t("Proofreading is off")));
-            return;
-        }
-        const rows = listProofreadFindings(view);
-        if (rows.length === 0) {
-            element.appendChild(buildReviewEmpty(t("No suggestions")));
-            return;
-        }
-        for (const row of rows) {
-            const actions = [];
-            if (row.canLearn && row.learn) {
-                const learn = row.learn;
-                actions.push({ label: t("Learn"), title: t("Add to dictionary"), run: learn });
-            }
-            actions.push({ label: t("Ignore"), run: row.ignore });
-            element.appendChild(buildReviewItem({
-                tag: row.tag,
-                label: row.text,
-                title: row.message,
-                open: () => { const v = getView(); if (v) { revealRange(v, row.from, row.to); } },
-                actions,
-            }));
-        }
+/** Resolve the tab's current contents: an explicit "off" state, an empty state,
+ *  or the findings as rows. Pure read of the plugin — computes nothing new. */
+function produce(view: EditorView | null): ReviewResult {
+    if (!view) { return null; }
+    if (!getProofreadConfig(view).proofreadingEnabled) {
+        // A silent empty here would read as "all clear"; say it's off.
+        return { empty: t("Proofreading is off") };
     }
+    const findings = listProofreadFindings(view);
+    if (findings.length === 0) { return { empty: t("No suggestions") }; }
+    return {
+        rows: findings.map((f) => ({
+            tag: f.tag,
+            label: f.text,
+            title: f.message,
+            from: f.from,
+            to: f.to,
+            actions: [
+                ...(f.canLearn && f.learn ? [{ label: t("Learn"), title: t("Add to dictionary"), run: f.learn }] : []),
+                { label: t("Ignore"), run: f.ignore },
+            ],
+        })),
+    };
+}
 
-    return { element, refresh };
+export function initProofreadingList(getView: () => EditorView | null): ReviewListView {
+    const list = initReviewList("review-list review-list--proofread", getView);
+    return {
+        element: list.element,
+        refresh: (view) => list.render(produce(view)),
+    };
 }

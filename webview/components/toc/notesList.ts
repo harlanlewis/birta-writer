@@ -4,12 +4,15 @@
  * strings) surfaced by the pure scanner in webview/notes/scan.ts. Each row is
  * navigable; each can be Ignored for the session (matching the Proofreading
  * tab's Ignore semantics). Navigation only, no in-text decoration.
+ *
+ * The scan is kept off the per-keystroke hot path by an incremental cache: an
+ * inline edit re-scans only its block (incrementalScanNotes), and the shared
+ * review list skips the DOM rebuild when the visible notes are unchanged.
  */
-import type { EditorView } from "@/pm";
+import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "@/i18n";
-import { scanNotes, type NoteItem } from "@/notes/scan";
-import { revealRange } from "./navigate";
-import { buildReviewItem, buildReviewEmpty } from "./reviewItem";
+import { scanNotes, incrementalScanNotes, type NoteItem } from "@/notes/scan";
+import { initReviewList, type ReviewResult } from "./reviewList";
 import type { ReviewListView } from "./proofreadingList";
 
 export interface NotesListView extends ReviewListView {
@@ -30,13 +33,13 @@ function noteTag(item: NoteItem): string {
 }
 
 // Field separator for the session ignore key. A NUL (U+0000) keeps the key
-// injective: none of kind/marker/label can hold one, so a custom marker with a
-// space ("draft note") can't collapse two distinct notes into one identity.
-// BUILT AT RUNTIME rather than written as a literal or an escape on purpose:
-// an invisible control byte in the source makes the whole file read as BINARY
-// to git/grep (no line diffs) while rendering as an innocent space in every
-// editor, so the source stays pure printable ASCII and the byte exists only in
-// the running string. (Same injectivity motive as SIG_FIELD in ./index.ts.)
+// injective: none of kind/marker/label can contain it, so a custom marker
+// holding a space ("draft note") can't collapse two distinct notes into one
+// ignore identity. BUILT AT RUNTIME rather than written as a literal or an
+// escape: an invisible control byte in the source makes the whole file read as
+// BINARY to git/grep (no line diffs) while rendering as an innocent space in
+// every editor, so the source stays pure printable ASCII and the byte exists
+// only in the running string. (Same injectivity motive as SIG_FIELD in ./index.ts.)
 const IGNORE_SEP = String.fromCharCode(0);
 
 /** Session-scoped ignore key: matches by identity (kind + marker + label), so
@@ -46,37 +49,52 @@ function ignoreKey(item: NoteItem): string {
 }
 
 export function initNotesList(getView: () => EditorView | null): NotesListView {
-    const element = document.createElement("div");
-    element.className = "review-list review-list--notes";
+    const list = initReviewList("review-list review-list--notes", getView);
 
     let markers: readonly string[] = window.__i18n?.notesCustomMarkers ?? [];
     // Session-only, like the proofread popup's Ignore: cleared on reload.
     const ignored = new Set<string>();
 
-    function refresh(view: EditorView | null): void {
-        element.replaceChildren();
-        if (!view) { return; }
-        const items = scanNotes(view.state.doc, markers).filter((i) => !ignored.has(ignoreKey(i)));
-        if (items.length === 0) {
-            element.appendChild(buildReviewEmpty(t("No notes")));
-            return;
-        }
-        for (const item of items) {
-            element.appendChild(buildReviewItem({
+    // Incremental-scan cache: the doc the cached items were scanned from, and
+    // those items (UNFILTERED — the ignore filter is applied per render).
+    let scannedDoc: ProseNode | null = null;
+    let scannedItems: NoteItem[] = [];
+
+    function scan(doc: ProseNode): NoteItem[] {
+        if (scannedDoc === doc) { return scannedItems; }
+        const items = (scannedDoc && incrementalScanNotes(scannedDoc, scannedItems, doc, markers))
+            || scanNotes(doc, markers);
+        scannedDoc = doc;
+        scannedItems = items;
+        return items;
+    }
+
+    function produce(view: EditorView | null): ReviewResult {
+        if (!view) { return null; }
+        const items = scan(view.state.doc).filter((i) => !ignored.has(ignoreKey(i)));
+        if (items.length === 0) { return { empty: t("No notes") }; }
+        return {
+            rows: items.map((item) => ({
                 tag: noteTag(item),
                 label: item.label || noteTag(item),
-                open: () => { const v = getView(); if (v) { revealRange(v, item.from, item.to); } },
+                from: item.from,
+                to: item.to,
                 actions: [{
                     label: t("Ignore"),
                     run: () => { ignored.add(ignoreKey(item)); refresh(getView()); },
                 }],
-            }));
-        }
+            })),
+        };
+    }
+
+    function refresh(view: EditorView | null): void {
+        list.render(produce(view));
     }
 
     function setMarkers(next: readonly string[]): void {
         markers = next;
+        scannedDoc = null; // force a full rescan with the new marker set
     }
 
-    return { element, refresh, setMarkers };
+    return { element: list.element, refresh, setMarkers };
 }

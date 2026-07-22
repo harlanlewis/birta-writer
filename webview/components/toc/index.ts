@@ -20,6 +20,7 @@ import { initTocDnd } from "./dnd";
 import { initProofreadingList } from "./proofreadingList";
 import { initNotesList } from "./notesList";
 import { PROOFREAD_FINDINGS_CHANGED } from "@/plugins/proofread";
+import { singleTextblockInlineEdit } from "@/utils/textblockEdit";
 
 interface HeadingEntry {
     level: number;
@@ -455,42 +456,26 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     /**
      * If every difference between prev and next lies inside ONE textblock that
-     * is not a heading — the shape of ordinary typing — the outline's
-     * structure and text provably did not change; only heading positions after
-     * the edit shifted, all by the same amount. Returns that shift, or null
-     * when the change could have touched the outline (then walk).
+     * is not a heading — the shape of ordinary typing — the outline's structure
+     * and text provably did not change; only heading positions after the edit
+     * shifted, all by the same amount. Returns that shift, or null when the
+     * change could have touched the outline (then walk).
      *
-     * This observes the two REAL docs rather than predicting from steps:
-     * findDiffStart/findDiffEnd bound ALL differences, so outside the returned
-     * range the trees are value-identical — no heading appeared, vanished,
-     * retitled, releveled, or changed depth there — and no block boundary sits
-     * inside the range, so no heading position needs more than the flat delta.
+     * The localization is the shared `singleTextblockInlineEdit` primitive (also
+     * used by the Notes incremental scan); the heading REJECTION is this
+     * consumer's own policy — a heading edit retitles/relevels the outline, so
+     * only body-textblock typing can reuse the cache.
      */
     function inlineOnlyShift(prev: PmNode, next: PmNode): { endA: number; delta: number } | null {
-        const start = prev.content.findDiffStart(next.content);
-        if (start == null) {
+        const edit = singleTextblockInlineEdit(prev, next);
+        if (!edit) { return null; }
+        if (edit.kind === "identical") {
             return { endA: 0, delta: 0 }; // value-identical (e.g. marks-only object churn)
         }
-        const diff = prev.content.findDiffEnd(next.content);
-        if (!diff) {
-            return { endA: 0, delta: 0 };
+        if (edit.prevBlock.type.name === "heading" || edit.nextBlock.type.name === "heading") {
+            return null;
         }
-        let { a: endA, b: endB } = diff;
-        // Repeated content ("aa" → "aaa") makes the end scan overrun the start;
-        // clamp to a consistent placement (readDOMChange's normalization). Any
-        // placement inside the repeated run resolves to the same parent, so the
-        // textblock test below is placement-independent.
-        if (endA < start) { endB += start - endA; endA = start; }
-        if (endB < start) { endA += start - endB; endB = start; }
-        const inOneBodyTextblock = (doc: PmNode, from: number, to: number): boolean => {
-            const $from = doc.resolve(from);
-            return $from.sameParent(doc.resolve(to))
-                && $from.parent.isTextblock
-                && $from.parent.type.name !== "heading";
-        };
-        return inOneBodyTextblock(prev, start, endA) && inOneBodyTextblock(next, start, endB)
-            ? { endA, delta: endB - endA }
-            : null;
+        return { endA: edit.endA, delta: edit.delta };
     }
 
     // Runs once per doc-changing FRAME (index.ts's rAF coalescer), so its cost

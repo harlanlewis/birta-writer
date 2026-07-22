@@ -3,6 +3,10 @@
  * Deliberately ToC-plain (a tag chip + a one-line label, not a Grammarly card):
  * clicking the row navigates; per-row actions (Ignore, and Learn for spelling)
  * sit at the trailing edge, revealed on hover like the gutter handles.
+ *
+ * The navigation anchor (from/to) lives on the element's dataset, not in the
+ * click closure, so `reviewList` can sync a shifted anchor onto a surviving row
+ * without rebuilding it (mirrors how the Contents outline re-anchors its rows).
  */
 import { applyTooltip } from "@/ui/tooltip";
 
@@ -20,14 +24,19 @@ export interface ReviewRowSpec {
     label: string;
     /** Hover explanation for the label (the finding's advice, say). */
     title?: string;
-    /** Navigate to the row's document range. */
-    open: () => void;
+    /** Document range this row reveals; seeded into the dataset, synced in place. */
+    from: number;
+    to: number;
+    /** Reveal the row's CURRENT anchor (read from the dataset at click time). */
+    navigate: (from: number, to: number) => void;
     actions: ReviewAction[];
 }
 
 export function buildReviewItem(spec: ReviewRowSpec): HTMLElement {
     const item = document.createElement("div");
     item.className = "review-item";
+    item.dataset["from"] = String(spec.from);
+    item.dataset["to"] = String(spec.to);
 
     const main = document.createElement("button");
     main.className = "review-item__main";
@@ -44,7 +53,13 @@ export function buildReviewItem(spec: ReviewRowSpec): HTMLElement {
 
     main.append(tag, label);
     main.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
-    main.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); spec.open(); });
+    main.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Read the anchor from the DOM, never from `spec`: a signature-stable row
+        // outlives the snapshot that built it, so its dataset is the live target.
+        spec.navigate(Number(item.dataset["from"]), Number(item.dataset["to"]));
+    });
     item.appendChild(main);
 
     if (spec.actions.length > 0) {

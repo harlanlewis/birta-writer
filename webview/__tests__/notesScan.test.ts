@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { Schema } from "../pm";
-import { findTextMarkers, scanNotes } from "../notes/scan";
+import { describe, it, expect, vi } from "vitest";
+import { Schema, EditorState } from "../pm";
+import { findTextMarkers, scanNotes, incrementalScanNotes } from "../notes/scan";
 
 /**
  * The Notes scanner (MAR-188). `findTextMarkers` is exercised on plain strings
@@ -169,5 +169,106 @@ describe("scanNotes — document walk", () => {
         expect(items.map((i) => i.kind)).toContain("task");
         expect(items.map((i) => i.kind)).toContain("todo");
         expect(items.map((i) => i.kind)).toContain("fixme");
+    });
+});
+
+// ── incrementalScanNotes: the per-keystroke fast path ──────────────────────
+//
+// The contract is the full scan is ground truth: whatever the fast path returns
+// (when it doesn't bail) must equal scanNotes(next). Each case applies a real
+// transaction, then checks (a) that oracle equality holds and (b) whether the
+// fast path engaged or correctly bailed to a full re-walk.
+
+describe("incrementalScanNotes — oracle equality with a full scan", () => {
+    function docOf(...blocks: import("../pm").Node[]) {
+        return schema.node("doc", null, blocks);
+    }
+    /** Apply an edit and return { prev, next } docs. */
+    function edit(doc: import("../pm").Node, build: (s: EditorState) => import("../pm").Transaction) {
+        const state = EditorState.create({ doc, schema });
+        return { prev: doc, next: state.apply(build(state)).doc };
+    }
+    /** Assert the fast path (when it runs) matches the full scan; return the result. */
+    function check(prev: import("../pm").Node, next: import("../pm").Node, markers: string[] = []) {
+        const full = scanNotes(next, markers);
+        const inc = incrementalScanNotes(prev, scanNotes(prev, markers), next, markers);
+        if (inc !== null) { expect(inc).toEqual(full); }
+        return inc;
+    }
+
+    it("typing in a marker-free paragraph should fast-path and shift a later marker", () => {
+        const doc = docOf(p("plain lead"), p("tail has [TK] here"));
+        const { prev, next } = edit(doc, (s) => s.tr.insertText("XX", 1));
+        const inc = check(prev, next);
+        expect(inc).not.toBeNull(); // fast path engaged (no full walk)
+        expect(inc!.find((i) => i.kind === "placeholder")).toBeTruthy();
+    });
+
+    it("completing a marker inside a block should fast-path and surface the new note", () => {
+        const doc = docOf(p("draft [TK para"));
+        // Close the bracket: "[TK para" → "[TK] para" (insert "]" after "[TK").
+        const { prev, next } = edit(doc, (s) => s.tr.insertText("]", 1 + "draft [TK".length));
+        const inc = check(prev, next);
+        expect(inc).not.toBeNull();
+        expect(inc!.map((i) => i.kind)).toContain("placeholder");
+    });
+
+    it("editing an HTML comment's routing prefix should fast-path to the new kind", () => {
+        const doc = docOf(schema.node("paragraph", null, [schema.node("html", { value: "<!-- note here -->" })]));
+        // Not a text edit of the atom; replace the whole html node's block.
+        const next = docOf(schema.node("paragraph", null, [schema.node("html", { value: "<!-- TODO: note here -->" })]));
+        const full = scanNotes(next);
+        expect(full[0]!.kind).toBe("todo"); // ground truth changed
+        // A whole-atom swap isn't a single inline text edit; the fast path may
+        // bail, but the fallback (full) is still correct.
+        const inc = incrementalScanNotes(doc, scanNotes(doc), next);
+        if (inc !== null) { expect(inc).toEqual(full); }
+    });
+
+    it("typing on a task item's first line should BAIL (its label mirrors that text)", () => {
+        const doc = docOf(schema.node("bullet_list", null, [
+            schema.node("list_item", { checked: false }, [p("buy milk")]),
+        ]));
+        // Insert into the item's paragraph (its label source).
+        const { prev, next } = edit(doc, (s) => s.tr.insertText("!", 1 + 1 + 1 + "buy milk".length));
+        const inc = incrementalScanNotes(prev, scanNotes(prev), next);
+        expect(inc).toBeNull(); // bailed — the full scan re-derives the task label
+        expect(scanNotes(next)[0]!.label).toBe("buy milk!");
+    });
+
+    it("splitting a paragraph should BAIL to a full scan", () => {
+        const doc = docOf(p("one [TK] two"));
+        const { prev, next } = edit(doc, (s) => s.tr.split(1 + "one ".length));
+        expect(incrementalScanNotes(prev, scanNotes(prev), next)).toBeNull();
+    });
+
+    it("typing in a code block should fast-path and stay empty", () => {
+        const doc = docOf(
+            schema.node("code_block", null, [schema.text("const x = 1")]),
+            p("body [TK]"),
+        );
+        const { prev, next } = edit(doc, (s) => s.tr.insertText("2", 1 + "const x = 1".length));
+        const inc = check(prev, next);
+        expect(inc).not.toBeNull();
+        expect(inc!.filter((i) => i.from < 14)).toHaveLength(0); // nothing from the code block
+    });
+
+    it("a custom-marker edit should agree with a full scan", () => {
+        const doc = docOf(p("please DRAFT this"), p("and [TK] that"));
+        const { prev, next } = edit(doc, (s) => s.tr.insertText("really ", 1));
+        const inc = check(prev, next, ["DRAFT"]);
+        expect(inc).not.toBeNull();
+        expect(inc!.map((i) => i.kind).sort()).toEqual(["custom", "placeholder"]);
+    });
+
+    it("the fast path should NOT walk the whole document (only the edited block)", () => {
+        // The perf guarantee: an inline edit re-scans one block, so the full
+        // doc.descendants walk scanNotes(next) would do must never run.
+        const doc = docOf(p("lead"), p("mid [TK] mid"), p("tail [TODO: x]"), p("end"));
+        const { prev, next } = edit(doc, (s) => s.tr.insertText("z", 1));
+        const walk = vi.spyOn(next, "descendants");
+        const inc = incrementalScanNotes(prev, scanNotes(prev), next);
+        expect(inc).not.toBeNull();
+        expect(walk).not.toHaveBeenCalled();
     });
 });
