@@ -830,6 +830,15 @@ export class MarkdownEditorProvider
                             normalizeTocVisibility(message.visibility),
                         );
                         break;
+                    case "reviewGroupByType":
+                        // Persist the review sidebar's By-type/In-order mode to
+                        // birta.review.groupByType; the config-change listener
+                        // echoes reviewConfig to every open editor.
+                        void updateSettingRespectingScope(
+                            "reviewGroupByType",
+                            Boolean(message.grouped),
+                        );
+                        break;
                     // Persisting triggers onDidChangeConfiguration in extension.ts,
                     // which re-broadcasts the config to every open editor.
                     case "setProofreadOption":

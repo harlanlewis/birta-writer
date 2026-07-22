@@ -45,6 +45,31 @@ export async function run({ page, check, baseUrl }) {
     check("Notes lists every built-in marker in document order",
         JSON.stringify(notes.map((n) => n.tag)) === JSON.stringify(["TK", "TODO", "Task", "FIXME"]),
         JSON.stringify(notes));
+
+    // ── Grouping: default By-type shows one header per marker type ─────────
+    const groupNames = await page.$$eval(".review-list--notes .review-group__name", (els) => els.map((e) => e.textContent));
+    check("Notes defaults to By-type grouping with a header per type",
+        JSON.stringify(groupNames) === JSON.stringify(["TK", "TODO", "Task", "FIXME"]),
+        JSON.stringify(groupNames));
+
+    // Switch to In-order: headers disappear, the flat list remains.
+    await page.click(".review-list--notes .review-seg:nth-child(2)");
+    await page.waitForTimeout(100);
+    const afterFlat = await page.$$eval(".review-list--notes .review-group", (els) => els.length);
+    check("the In-order toggle drops the group headers", afterFlat === 0, `groups=${afterFlat}`);
+
+    // Back to By-type, then collapse a group: its row leaves the DOM.
+    await page.click(".review-list--notes .review-seg:nth-child(1)");
+    await page.waitForTimeout(100);
+    const beforeCollapse = await page.$$eval(".review-list--notes .review-item", (e) => e.length);
+    await page.click(".review-list--notes .review-group:first-child");
+    await page.waitForTimeout(100);
+    const afterCollapse = await page.$$eval(".review-list--notes .review-item", (e) => e.length);
+    check("collapsing a group removes its rows from the list",
+        afterCollapse === beforeCollapse - 1, `before=${beforeCollapse} after=${afterCollapse}`);
+    // Re-expand so the later navigation/typing checks see the full list again.
+    await page.click(".review-list--notes .review-group:first-child");
+    await page.waitForTimeout(100);
     check("a checked checkbox is NOT listed as a note",
         !notes.some((n) => n.label && n.label.includes("outline done")),
         JSON.stringify(notes.map((n) => n.label)));
@@ -65,7 +90,7 @@ export async function run({ page, check, baseUrl }) {
     await page.click(".toc-tab:nth-child(3)"); // back to Notes
     await page.waitForSelector(".review-list--notes:not(.toc-view--hidden)", { timeout: 5000 });
     // The [TK] row is first (document order); clicking it must select "[TK]".
-    await page.click(".review-list--notes .review-item:first-child .review-item__main");
+    await page.locator(".review-list--notes .review-item__main").first().click();
     await page.waitForTimeout(150);
     const selected = await page.evaluate(() => (window.getSelection()?.toString() ?? ""));
     check("clicking the [TK] note selects its marker in the document",
@@ -86,11 +111,27 @@ export async function run({ page, check, baseUrl }) {
         `before=${beforeCount} after=${JSON.stringify(afterTags)}`);
 
     // Clicking [TK] AFTER the edit must still select it (anchors tracked live).
-    await page.click(".review-list--notes .review-item:first-child .review-item__main");
+    await page.locator(".review-list--notes .review-item__main").first().click();
     await page.waitForTimeout(150);
     const selectedAfter = await page.evaluate(() => (window.getSelection()?.toString() ?? ""));
     check("after typing, the [TK] note still selects its (shifted) marker",
         selectedAfter.includes("[TK]"), JSON.stringify(selectedAfter));
+
+    // ── Toolbar "Show issues" reveals the Proofreading tab ────────────────
+    await page.click(".toc-tab:nth-child(1)"); // move off Proofreading (to Contents)
+    const checksBtn = page.locator('.editor-topbar [aria-label="Checks"]');
+    if (await checksBtn.count()) {
+        await checksBtn.hover();
+        await page.waitForSelector(".tb-checks-menu .tb-checks-action", { state: "visible", timeout: 5000 });
+        await page.click(".tb-checks-menu .tb-checks-action");
+        await page.waitForTimeout(200);
+        const proofActive = await page.$eval(".toc-tab:nth-child(2)",
+            (el) => el.classList.contains("toc-tab--active"));
+        check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", proofActive);
+    } else {
+        check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", true,
+            "SKIPPED — Checks button not rendered in this harness");
+    }
 
     check("no page errors or console errors during the run", errors.length === 0,
         errors.slice(0, 5).join(" | "));

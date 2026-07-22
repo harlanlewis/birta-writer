@@ -149,6 +149,13 @@ export interface BirtaConfig extends ProofreadConfig {
      * the scan site so `TK` can't light up inside `networks`. Default empty.
      */
     notesCustomMarkers: string[];
+    /**
+     * Review sidebar (Proofreading + Notes tabs) organizes rows by type under
+     * collapsible group headers when true (birta.review.groupByType), or as a
+     * flat document-ordered list when false. Default true. Persisted so the
+     * choice survives the webview being disposed on tab switch-away.
+     */
+    reviewGroupByType: boolean;
     imageLocalPath: string;
 }
 
@@ -212,6 +219,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     embedsEnabled: "embeds.enabled",
     checklistSinkChecked: "checklist.sinkChecked",
     notesCustomMarkers: "notes.customMarkers",
+    reviewGroupByType: "review.groupByType",
     imageLocalPath: "imageLocalPath",
 };
 
@@ -309,5 +317,8 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // ([TK], TODO:, FIXME:, HTML comments, unchecked checkboxes); this is the
     // personalization hook.
     notesCustomMarkers: [],
+    // Grouped-by-type is the default: it fixes long category names truncating in
+    // a flat per-row chip, and reads more scannably ("14 em-dash, 3 spelling").
+    reviewGroupByType: true,
     imageLocalPath: "",
 };

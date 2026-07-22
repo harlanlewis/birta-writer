@@ -34,6 +34,8 @@ declare global {
             checklistSinkChecked?: boolean;
             /** Extra literal markers surfaced in the Notes review tab (birta.notes.customMarkers). */
             notesCustomMarkers?: string[];
+            /** Review sidebar By-type/In-order mode (birta.review.groupByType); default grouped. */
+            reviewGroupByType?: boolean;
             codeBlockWordWrap?: boolean;
             tocAutoHideThreshold?: number;
             /** ToC show/hide preference (birta.tocVisibility); "auto" (or absent) uses the heading-count heuristic. */

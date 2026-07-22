@@ -11,6 +11,7 @@
  */
 import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "@/i18n";
+import { notifyReviewGroupByType } from "@/messaging";
 import { scanNotes, incrementalScanNotes, type NoteItem } from "@/notes/scan";
 import { initReviewList, type ReviewResult } from "./reviewList";
 import type { ReviewListView } from "./proofreadingList";
@@ -49,7 +50,10 @@ function ignoreKey(item: NoteItem): string {
 }
 
 export function initNotesList(getView: () => EditorView | null): NotesListView {
-    const list = initReviewList("review-list review-list--notes", getView);
+    const list = initReviewList("review-list review-list--notes", getView, {
+        initialGroupByType: window.__i18n?.reviewGroupByType ?? true,
+        onToggleGroupByType: notifyReviewGroupByType,
+    });
 
     let markers: readonly string[] = window.__i18n?.notesCustomMarkers ?? [];
     // Session-only, like the proofread popup's Ignore: cleared on reload.
@@ -96,5 +100,5 @@ export function initNotesList(getView: () => EditorView | null): NotesListView {
         scannedDoc = null; // force a full rescan with the new marker set
     }
 
-    return { element: list.element, refresh, setMarkers };
+    return { element: list.element, refresh, setMarkers, setGroupByType: list.setGroupByType };
 }

@@ -308,6 +308,7 @@ const topbarTb = topbar
         async (id: string) => handleGetProjectImages(id),
         () => findBar.open(),
         switchToSource,
+        () => toc.showProofreadingTab(),
     )
     : null;
 mark("toolbar-end");
@@ -625,6 +626,7 @@ const handlers = createMessageHandlers({
         setTocVisibility: (visibility) => toc.applyVisibility(visibility),
         setTocWidth: (width) => toc.setWidth(width),
         setNotesMarkers: (markers) => toc.setNotesMarkers(markers),
+        setReviewGroupByType: (grouped) => toc.setReviewGroupByType(grouped),
     },
     topbarTb,
 });

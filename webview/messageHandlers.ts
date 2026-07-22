@@ -113,6 +113,8 @@ export interface EditorActions {
     setTocWidth: (width: number) => void;
     /** Applies a birta.notes.customMarkers change to the Notes review tab. */
     setNotesMarkers: (markers: string[]) => void;
+    /** Applies a birta.review.groupByType change to both review tabs. */
+    setReviewGroupByType: (grouped: boolean) => void;
 }
 
 /** Message-handler dependencies. */
@@ -130,7 +132,7 @@ export function createMessageHandlers(
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb } = deps;
     const { getEditor, setEditor, getLineMap, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers } = actions;
+    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
 
     /**
      * Rebuild the embed decorations after a gate flip. A no-op before the editor
@@ -350,6 +352,9 @@ export function createMessageHandlers(
         },
         notesConfig(msg) {
             setNotesMarkers(msg.customMarkers);
+        },
+        reviewConfig(msg) {
+            setReviewGroupByType(msg.groupByType);
         },
         toolbarConfig(msg) {
             topbarTb?.applyConfig(msg.config);

@@ -1959,6 +1959,12 @@
                     },
                     "default": [],
                     "description": "%config.notes.customMarkers.description%"
+                },
+                "birta.review.groupByType": {
+                    "order": 111,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.review.groupByType.description%"
                 }
             }
         }

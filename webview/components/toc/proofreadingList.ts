@@ -9,6 +9,7 @@
  */
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
+import { notifyReviewGroupByType } from "@/messaging";
 import { getProofreadConfig, listProofreadFindings } from "@/plugins/proofread";
 import { initReviewList, type ReviewResult } from "./reviewList";
 
@@ -16,6 +17,8 @@ export interface ReviewListView {
     element: HTMLElement;
     /** Rebuild from the current document/decorations. */
     refresh: (view: EditorView | null) => void;
+    /** Apply a birta.review.groupByType change (settings echo). */
+    setGroupByType: (grouped: boolean) => void;
 }
 
 /** Resolve the tab's current contents: an explicit "off" state, an empty state,
@@ -44,9 +47,13 @@ function produce(view: EditorView | null): ReviewResult {
 }
 
 export function initProofreadingList(getView: () => EditorView | null): ReviewListView {
-    const list = initReviewList("review-list review-list--proofread", getView);
+    const list = initReviewList("review-list review-list--proofread", getView, {
+        initialGroupByType: window.__i18n?.reviewGroupByType ?? true,
+        onToggleGroupByType: notifyReviewGroupByType,
+    });
     return {
         element: list.element,
         refresh: (view) => list.render(produce(view)),
+        setGroupByType: list.setGroupByType,
     };
 }

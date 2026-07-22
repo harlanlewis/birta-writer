@@ -264,8 +264,112 @@ body.toc-resizing {
 /* ─── Review lists (Proofreading / Notes tabs) ───────────────────────────── */
 .review-list {
     flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The By-type / In-order toggle sits above the scrolling body (fixed). */
+.review-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 2px;
+    padding: 6px 8px 4px;
+
+    &[hidden] { display: none; }
+}
+
+.review-seg {
+    padding: 2px 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+
+    &:hover { opacity: 0.8; background: var(--vscode-toolbar-hoverBackground); }
+}
+
+.review-seg--active,
+.review-seg--active:hover {
+    opacity: 1;
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.review-body {
+    flex: 1;
     overflow-y: auto;
-    padding: 4px 0 24px;
+    padding: 2px 0 24px;
+}
+
+/* ── By-type grouping ──────────────────────────────────────────────────── */
+/* A full-width type header, so a long category name never truncates the way a
+   per-row chip does. Clicking it collapses/expands the group (view-only). */
+.review-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin: 2px 4px 0;
+    padding: 4px 8px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    text-align: left;
+
+    &:hover { background: var(--vscode-list-hoverBackground); }
+}
+
+.review-group__caret {
+    flex: 0 0 auto;
+    width: 0;
+    height: 0;
+    border-left: 4px solid currentColor;
+    border-top: 3px solid transparent;
+    border-bottom: 3px solid transparent;
+    transform: rotate(90deg);
+    transition: transform 0.1s ease;
+    opacity: 0.7;
+}
+
+.review-group--collapsed .review-group__caret {
+    transform: rotate(0deg);
+}
+
+.review-group__name {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.review-group__count {
+    flex: 0 0 auto;
+    font-size: 10px;
+    opacity: 0.55;
+    font-variant-numeric: tabular-nums;
+}
+
+/* In grouped mode the type is the header, so the per-row chip is redundant;
+   drop it and indent the rows to sit under their header. */
+.review-list--grouped .review-item__tag {
+    display: none;
+}
+
+.review-list--grouped .review-item__main {
+    padding-left: 20px;
 }
 
 .review-item {
@@ -359,8 +463,7 @@ body.toc-resizing {
 
 /* The flyout gives the review lists the same symmetric card inset the ToC
    list gets (no docked clearance needed). */
-.toc-panel--flyout .review-list {
-    min-height: 0;
+.toc-panel--flyout .review-body {
     padding: 6px 0;
 }
 

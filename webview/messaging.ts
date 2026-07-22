@@ -185,6 +185,11 @@ export function notifyTocVisibility(
     vscode.postMessage({ type: "tocVisibility", visibility });
 }
 
+/** Persist the review sidebar's By-type/In-order mode (birta.review.groupByType). */
+export function notifyReviewGroupByType(grouped: boolean): void {
+    vscode.postMessage({ type: "reviewGroupByType", grouped });
+}
+
 export function notifySetProofreadOption(
     key: import("../shared/messages").ProofreadOptionKey,
     value: boolean,

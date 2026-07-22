@@ -120,6 +120,18 @@ describe("Proofreading tab is event-driven, not per-frame (MAR-192 follow-up)", 
         toc.dispose();
     });
 
+    it("showProofreadingTab opens the panel and activates the Proofreading tab", () => {
+        const view = makeView();
+        const toc = initToc(fakeEventManager, () => view);
+        document.body.appendChild(toc.panel);
+        expect(toc.isOpen()).toBe(false); // no headings → auto-closed
+        toc.showProofreadingTab();
+        const tabs = toc.panel.querySelectorAll(".toc-tab");
+        expect(tabs[1]!.classList.contains("toc-tab--active")).toBe(true);
+        expect(toc.isOpen()).toBe(true);
+        toc.dispose();
+    });
+
     it("a doc-change frame still refreshes the doc-driven Contents tab", () => {
         // Guard against over-broadly skipping: Contents must keep tracking edits.
         const view = makeView();

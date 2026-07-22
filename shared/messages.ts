@@ -238,6 +238,9 @@ export type ToExtensionMessage =
     // the default, set via settings.)
     | { type: "tocWidth"; width: number }
     | { type: "tocVisibility"; visibility: TocVisibility }
+    // Review sidebar By-type/In-order mode → persisted to birta.review.groupByType;
+    // the config-change listener echoes reviewConfig back to every open editor.
+    | { type: "reviewGroupByType"; grouped: boolean }
     | { type: "setProofreadOption"; key: ProofreadOptionKey; value: boolean }
     | { type: "spellAddWord"; word: string }
     // Font picker choice from the toolbar; the extension persists it to the
@@ -360,6 +363,8 @@ export type ToWebviewMessage =
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live update of the Notes-tab custom markers (birta.notes.customMarkers changed).
     | { type: "notesConfig"; customMarkers: string[] }
+    // Live update of the review sidebar's By-type/In-order mode (birta.review.groupByType).
+    | { type: "reviewConfig"; groupByType: boolean }
     // Live toolbar layout update (per-item placement settings changed).
     | { type: "toolbarConfig"; config: ToolbarConfig }
     // Live editor content font update. `fontFamily` is the resolved CSS stack,

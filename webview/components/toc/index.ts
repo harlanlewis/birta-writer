@@ -72,6 +72,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     isRight: () => boolean;
     /** Apply a birta.notes.customMarkers change to the Notes tab (rescan if shown). */
     setNotesMarkers: (markers: string[]) => void;
+    /** Apply a birta.review.groupByType change to both review tabs (settings echo). */
+    setReviewGroupByType: (grouped: boolean) => void;
+    /** Reveal the sidebar and switch to the Proofreading tab (toolbar menu action). */
+    showProofreadingTab: () => void;
     /** Unregister the panel's drop-zone provider (teardown/tests). */
     dispose: () => void;
 } {
@@ -1171,6 +1175,22 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             notesView.setMarkers(markers);
             if (isPanelVisible() && activeTab === "notes") {
                 notesView.refresh(getEditorView());
+            }
+        },
+        setReviewGroupByType: (grouped: boolean) => {
+            // Both drawers share the one setting; the reviewList re-renders itself.
+            proofreadView.setGroupByType(grouped);
+            notesView.setGroupByType(grouped);
+        },
+        showProofreadingTab: () => {
+            // The toolbar menu item only appears while proofreading is on, but
+            // guard anyway (the tab is hidden when off).
+            if (!proofreadingEnabled) { return; }
+            hideFlyoutImmediate();
+            setActiveTab("proofreading");
+            if (!isOpen) {
+                applyVisiblePreference(true); // open + remember the intent
+                notifyTocVisibility("shown");
             }
         },
         dispose: () => {

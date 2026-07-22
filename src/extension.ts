@@ -492,6 +492,14 @@ export function activate(context: vscode.ExtensionContext) {
                     customMarkers: readBirtaSetting("notesCustomMarkers"),
                 });
             }
+            if (e.affectsConfiguration("birta.review.groupByType")) {
+                // Review sidebar By-type/In-order mode: echo to every open editor
+                // so the toggle stays in sync across tabs and settings edits.
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "reviewConfig",
+                    groupByType: readBirtaSetting("reviewGroupByType"),
+                });
+            }
             if (e.affectsConfiguration("birta.fontPreset")
                 || e.affectsConfiguration("birta.fontFamilySans")
                 || e.affectsConfiguration("birta.fontFamilySerif")
