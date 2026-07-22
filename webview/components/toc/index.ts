@@ -772,6 +772,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         if (!isPanelVisible()) {
             return;
         }
+        // The Proofreading tab is DECORATION-driven, not doc-driven: on a
+        // keystroke its findings only remap (positions shift; text/tags are
+        // unchanged), and the real changes — async Harper/style results,
+        // ignore/learn — arrive on the proofread-findings-changed event, which
+        // refreshes it. Re-reading the findings here would cost O(findings) —
+        // which grows with the document (a longer doc has more findings) —
+        // every frame, only to re-sync anchors the signature diff then confirms
+        // unchanged. So a doc-change frame renders only the doc-driven views;
+        // Contents and Notes genuinely change per keystroke and still refresh.
+        if (activeTab === "proofreading") {
+            return;
+        }
         renderActiveView(headings);
     }
 
@@ -1078,10 +1090,14 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // picked, so they scan/enumerate nothing until then.
     updateTabButtons();
 
-    // The Proofreading tab mirrors the live decoration set. Doc-change refreshes
-    // reach it via refreshContent; this event covers what that path can't see —
-    // async Harper results and ignore/learn rebuilds — but only while it's the
-    // shown tab, so a hidden tab still costs nothing.
+    // The Proofreading tab mirrors the decoration set, and is refreshed SOLELY
+    // by this event — it deliberately does NOT ride the per-frame doc-change
+    // path (refreshContent skips it), because on a keystroke the findings only
+    // remap and re-reading them is O(findings), which grows with the document.
+    // The event fires when the findings actually change (async Harper/style
+    // results, ignore/learn), and only while it's the shown tab, so a hidden tab
+    // costs nothing and typing costs nothing here. (Switching TO the tab renders
+    // it once via renderActiveView.)
     // Bare window binding (the event isn't in WindowEventMap, so it can't route
     // through eventManager.onWindow) — captured here so dispose() can remove it.
     const onProofreadFindingsChanged = (): void => {

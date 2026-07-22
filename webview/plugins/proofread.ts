@@ -714,13 +714,14 @@ export const proofreadPlugin = $prose(() => {
                 }, FIRST_PASS_IDLE_TIMEOUT_MS);
             }
 
-            // The review sidebar's Proofreading tab mirrors these decorations.
-            // Doc-change refreshes reach it through the ToC's rAF path already;
-            // this event covers the updates that path CAN'T see — async Harper
-            // results and ignore/learn rebuilds, which change the decoration set
-            // without changing the document. Firing only when combined changed
-            // AND the doc did not keeps typing off this path (no per-keystroke
-            // list rebuild).
+            // The review sidebar's Proofreading tab is refreshed SOLELY by this
+            // event (it does not ride the ToC's per-frame doc-change path, whose
+            // O(findings) re-read grows with the document). It must therefore
+            // fire whenever the findings actually change — async Harper results,
+            // style rescans, ignore/learn rebuilds — all of which land as meta
+            // transactions that change `combined` WITHOUT changing the document.
+            // Gating on `doc === lastEmitDoc` keeps plain typing (which only
+            // remaps `combined`) off this path, so there's no per-keystroke work.
             let lastCombined = proofreadPluginKey.getState(view.state)?.combined ?? null;
             let lastEmitDoc: ProseNode = view.state.doc;
             return {
