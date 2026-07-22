@@ -106,6 +106,25 @@ describe("initReviewList — By-type (grouped) mode", () => {
         expect(element.classList.contains("review-list--grouped")).toBe(true);
     });
 
+    it("caps a large group and reveals the rest with Show more / Show less", () => {
+        const { element, render } = mk(true);
+        const rows = Array.from({ length: 10 }, (_, i) =>
+            row({ tag: "EM DASH", label: `d${i}`, from: i * 2 + 1, to: i * 2 + 2 }));
+        render({ rows });
+        expect(items(element)).toHaveLength(6); // capped at GROUP_CAP
+        const more = element.querySelector<HTMLElement>(".review-more")!;
+        expect(more.textContent).toBe("Show 4 more");
+        more.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(items(element)).toHaveLength(10); // fully expanded
+        expect(element.querySelector(".review-more")!.textContent).toBe("Show less");
+    });
+
+    it("shows a 'Sort by:' label in the toolbar", () => {
+        const { element, render } = mk(true);
+        render({ rows: [row({})] });
+        expect(element.querySelector(".review-toolbar__label")?.textContent).toBe("Sort by:");
+    });
+
     it("orders groups by rank (correctness-first), not first appearance", () => {
         const { element, render } = mk(true);
         render({ rows: [

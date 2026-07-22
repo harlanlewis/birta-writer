@@ -4,21 +4,21 @@
  * with hover actions — differing only in what they collect (findings vs note
  * markers) and their empty-state copy. This owns the parts they share:
  *
- *   - a view-mode toggle (By type / In order). "By type" groups rows under a
- *     collapsible type header (full-width, so a long category name like "Long
- *     sentence" never truncates the way a per-row chip does) in document order
- *     within each group; "In order" is the flat document-ordered list. The mode
- *     is a persisted setting (birta.review.groupByType) so it survives the
- *     webview being disposed on tab switch-away.
+ *   - a "Sort by" toggle (By type / In order). "By type" groups rows under a
+ *     collapsible type header, ordered by a per-row rank the adapter sets
+ *     (correctness first for proofreading); "In order" is the flat
+ *     document-ordered list. The mode is a persisted setting
+ *     (birta.review.groupByType).
+ *   - per-group SHOW-MORE: a big group shows the first N rows and a
+ *     "Show K more" toggle, so no single category walls off the rest.
  *   - the scrolling container + empty state;
  *   - a SIGNATURE DIFF so a rebuild happens only when the visible rows actually
  *     change. Ordinary typing shifts every anchor but changes no row's display,
  *     so the common case is an in-place anchor sync (dataset write per surviving
- *     row) with zero DOM teardown — the frugality the Contents outline has.
+ *     row) with zero DOM teardown.
  *
  * An adapter calls `render(result)` each refresh; producing the `result` (the
- * scan / finding read) is the adapter's job, and its own caching keeps THAT
- * cheap (see notesList's incremental scan).
+ * scan / finding read) is the adapter's job.
  */
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
@@ -26,8 +26,7 @@ import { revealRange } from "./navigate";
 import { buildReviewItem, buildReviewEmpty, type ReviewAction } from "./reviewItem";
 
 /** One row model the adapter hands in; identity/display drives the signature,
- *  from/to are the (frequently shifting) navigation anchor, `tag` is the type
- *  (the chip in flat mode, the group key in By-type mode). */
+ *  from/to are the (frequently shifting) navigation anchor, `tag` is the type. */
 export interface ReviewRowModel {
     tag: string;
     label: string;
@@ -58,11 +57,12 @@ export interface ReviewListRenderer {
     setGroupByType: (grouped: boolean) => void;
 }
 
+// How many rows a By-type group shows before the "Show K more" toggle.
+const GROUP_CAP = 6;
+
 // Record/field/subfield separators for the render signature, built at runtime so
-// no invisible control byte lands in this source file (a literal one makes it
-// read as binary to git/grep). Row text can't contain them, so the signature is
-// injective, and a sentinel prefixed with SEP_FIELD can't collide with a rows
-// signature (whose first char is a row's tag / a group name).
+// no invisible control byte lands in this source file. Row text can't contain
+// them, so the signature is injective.
 const SEP_FIELD = String.fromCharCode(31);
 const SEP_ROW = String.fromCharCode(30);
 const SEP_SUB = String.fromCharCode(29);
@@ -95,21 +95,22 @@ export function initReviewList(
     element.className = className;
 
     let groupByType = opts.initialGroupByType;
-    // Session-scoped collapsed group tags (view-only; not persisted, like the
-    // proofread popup's Ignore).
+    // Session-scoped view state (not persisted): which groups are collapsed, and
+    // which are expanded past the GROUP_CAP.
     const collapsed = new Set<string>();
-    // The last produced result, replayed when the mode or a collapse toggles
-    // (those change the DOM without a new scan/finding read).
+    const expanded = new Set<string>();
     let lastResult: ReviewResult = null;
-    // The signature of what's currently in the body; null forces a rebuild.
     let renderedSignature: string | null = null;
 
-    // ── View-mode toggle (persistent chrome, built once) ──────────────────
+    // ── "Sort by" toggle (persistent chrome, built once) ──────────────────
     const toolbar = document.createElement("div");
     toolbar.className = "review-toolbar";
+    const sortLabel = document.createElement("span");
+    sortLabel.className = "review-toolbar__label";
+    sortLabel.textContent = t("Sort by:");
     const segByType = makeSeg(t("By type"), true);
     const segInOrder = makeSeg(t("In order"), false);
-    toolbar.append(segByType, segInOrder);
+    toolbar.append(sortLabel, segByType, segInOrder);
     const bodyEl = document.createElement("div");
     bodyEl.className = "review-body";
     element.append(toolbar, bodyEl);
@@ -148,13 +149,19 @@ export function initReviewList(
         if (view) { revealRange(view, from, to); }
     };
 
-    /** The rows currently ON SCREEN, in DOM order — flat rows, or the rows of
-     *  expanded groups. Kept in lockstep with what renderInto builds so anchor
-     *  sync can align by index. */
+    /** The rows shown for a group given the cap + its expanded state. */
+    function shownRows(group: { tag: string; rows: ReviewRowModel[] }): ReviewRowModel[] {
+        return expanded.has(group.tag) ? group.rows : group.rows.slice(0, GROUP_CAP);
+    }
+
+    /** The rows currently ON SCREEN, in DOM order — flat rows, or the (capped)
+     *  rows of expanded groups. Kept in lockstep with renderInto for anchor sync. */
     function visibleRows(result: ReviewResult): ReviewRowModel[] {
         if (!result || "empty" in result) { return []; }
         if (!groupByType) { return result.rows; }
-        return groupByTag(result.rows).filter((g) => !collapsed.has(g.tag)).flatMap((g) => g.rows);
+        return groupByTag(result.rows)
+            .filter((g) => !collapsed.has(g.tag))
+            .flatMap((g) => shownRows(g));
     }
 
     function signatureOf(result: ReviewResult): string {
@@ -164,9 +171,10 @@ export function initReviewList(
             return "F" + result.rows.map(rowSignature).join(SEP_ROW);
         }
         return "G" + groupByTag(result.rows).map((g) => {
-            const head = g.tag + SEP_FIELD + g.rows.length + SEP_FIELD + (collapsed.has(g.tag) ? "c" : "e");
-            const body = collapsed.has(g.tag) ? "" : SEP_FIELD + g.rows.map(rowSignature).join(SEP_SUB);
-            return head + body;
+            const isCollapsed = collapsed.has(g.tag);
+            const rows = isCollapsed ? [] : shownRows(g);
+            const head = [g.tag, g.rows.length, isCollapsed ? "c" : "e", expanded.has(g.tag) ? "x" : "-"].join(SEP_FIELD);
+            return head + SEP_FIELD + rows.map(rowSignature).join(SEP_SUB);
         }).join(SEP_ROW);
     }
 
@@ -211,6 +219,22 @@ export function initReviewList(
         return header;
     }
 
+    /** The "Show K more" / "Show less" toggle at the tail of a capped group. */
+    function makeShowMore(tag: string, hidden: number): HTMLElement {
+        const btn = document.createElement("button");
+        btn.className = "review-more";
+        btn.tabIndex = -1;
+        btn.textContent = expanded.has(tag) ? t("Show less") : t("Show N more").replace("N", String(hidden));
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (expanded.has(tag)) { expanded.delete(tag); } else { expanded.add(tag); }
+            renderedSignature = null;
+            renderInto(lastResult);
+        });
+        return btn;
+    }
+
     function buildRows(rows: readonly ReviewRowModel[]): HTMLElement[] {
         return rows.map((row) => buildReviewItem({ ...row, navigate }));
     }
@@ -238,7 +262,11 @@ export function initReviewList(
         const nodes: HTMLElement[] = [];
         for (const group of groupByTag(result.rows)) {
             nodes.push(makeGroupHeader(group.tag, group.rows.length));
-            if (!collapsed.has(group.tag)) { nodes.push(...buildRows(group.rows)); }
+            if (collapsed.has(group.tag)) { continue; }
+            nodes.push(...buildRows(shownRows(group)));
+            if (group.rows.length > GROUP_CAP) {
+                nodes.push(makeShowMore(group.tag, group.rows.length - GROUP_CAP));
+            }
         }
         bodyEl.replaceChildren(...nodes);
     }

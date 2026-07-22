@@ -276,14 +276,22 @@ body.toc-resizing {
     display: none;
 }
 
-/* The By-type / In-order toggle sits above the scrolling body (fixed). */
+/* The "Sort by" toggle sits above the scrolling body (fixed). Its type matches
+   the ToC H1 (12px) so it reads as a peer of the group headers below. */
 .review-toolbar {
     flex: 0 0 auto;
     display: flex;
-    gap: 2px;
-    padding: 6px 8px 4px;
+    align-items: baseline;
+    gap: 4px;
+    padding: 8px 8px 6px;
+    font-size: 12px;
 
     &[hidden] { display: none; }
+}
+
+.review-toolbar__label {
+    color: var(--vscode-descriptionForeground);
+    margin-right: 2px;
 }
 
 .review-seg {
@@ -292,8 +300,7 @@ body.toc-resizing {
     border-radius: 4px;
     background: transparent;
     color: var(--vscode-foreground);
-    font-size: 10.5px;
-    letter-spacing: 0.02em;
+    font-size: 12px;
     cursor: pointer;
     opacity: 0.55;
     transition: opacity 0.1s ease, background-color 0.1s ease;
@@ -316,47 +323,53 @@ body.toc-resizing {
 
 /* ── By-type grouping ──────────────────────────────────────────────────── */
 /* A full-width type header, so a long category name never truncates the way a
-   per-row chip does. Clicking it collapses/expands the group (view-only). */
+   per-row chip does. STICKY: it pins to the top of the scroll body so you always
+   know which group you're reading. Clicking it collapses/expands (view-only).
+   Extra top margin sets each group apart. */
 .review-group {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 6px;
     width: 100%;
-    margin: 2px 4px 0;
-    padding: 4px 8px;
+    margin: 14px 4px 1px;
+    padding: 3px 8px;
     border: none;
     border-radius: 3px;
-    background: transparent;
-    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
     cursor: pointer;
     text-align: left;
 
+    &:first-child { margin-top: 2px; }
     &:hover { background: var(--vscode-list-hoverBackground); }
 }
 
 .review-group__caret {
     flex: 0 0 auto;
+    align-self: center;
     width: 0;
     height: 0;
-    border-left: 4px solid currentColor;
-    border-top: 3px solid transparent;
-    border-bottom: 3px solid transparent;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
     transform: rotate(90deg);
     transition: transform 0.1s ease;
-    opacity: 0.7;
+    opacity: 0.65;
 }
 
 .review-group--collapsed .review-group__caret {
     transform: rotate(0deg);
 }
 
+/* Same size / weight / color as a ToC H1 (.toc-item + .toc-item--h1). */
 .review-group__name {
     flex: 0 1 auto;
     min-width: 0;
-    font-size: 9.5px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -364,9 +377,25 @@ body.toc-resizing {
 
 .review-group__count {
     flex: 0 0 auto;
-    font-size: 10px;
-    opacity: 0.55;
+    font-size: 11px;
+    opacity: 0.5;
     font-variant-numeric: tabular-nums;
+}
+
+/* Per-group "Show K more" / "Show less" toggle. */
+.review-more {
+    display: block;
+    margin: 2px 8px 2px 24px;
+    padding: 2px 4px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-textLink-foreground);
+    font-size: 11.5px;
+    text-align: left;
+    cursor: pointer;
+    opacity: 0.85;
+
+    &:hover { opacity: 1; text-decoration: underline; }
 }
 
 /* In grouped mode the type is the header, so the per-row chip is redundant;
@@ -376,7 +405,7 @@ body.toc-resizing {
 }
 
 .review-list--grouped .review-item__main {
-    padding-left: 20px;
+    padding-left: 24px;
 }
 
 .review-item {

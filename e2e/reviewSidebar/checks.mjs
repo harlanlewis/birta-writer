@@ -63,13 +63,13 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(groupNames));
 
     // Switch to In-order: headers disappear, the flat list remains.
-    await page.click(".review-list--notes .review-seg:nth-child(2)");
+    await page.locator(".review-list--notes .review-seg", { hasText: "In order" }).click();
     await page.waitForTimeout(100);
     const afterFlat = await page.$$eval(".review-list--notes .review-group", (els) => els.length);
     check("the In-order toggle drops the group headers", afterFlat === 0, `groups=${afterFlat}`);
 
     // Back to By-type, then collapse a group: its row leaves the DOM.
-    await page.click(".review-list--notes .review-seg:nth-child(1)");
+    await page.locator(".review-list--notes .review-seg", { hasText: "By type" }).click();
     await page.waitForTimeout(100);
     const beforeCollapse = await page.$$eval(".review-list--notes .review-item", (e) => e.length);
     await page.click(".review-list--notes .review-group:first-child");
@@ -104,6 +104,16 @@ export async function run({ page, check, baseUrl }) {
     // The flagged span inside a context label is marked so the row shows WHAT's flagged.
     const flags = await page.$$eval(".review-list--proofread .review-item__flag", (els) => els.map((e) => e.textContent));
     check("the flagged span is emphasized inside context labels", flags.includes("—"), JSON.stringify(flags));
+
+    // A group larger than the cap shows a "Show K more" toggle; clicking it reveals the rest.
+    const emItemsBefore = await page.$$eval(".review-list--proofread .review-item", (e) => e.length);
+    const moreLabels = await page.$$eval(".review-list--proofread .review-more", (els) => els.map((e) => e.textContent));
+    check("a large group caps its rows behind a Show-more toggle",
+        moreLabels.some((l) => /Show \d+ more/.test(l)), JSON.stringify(moreLabels));
+    await page.locator(".review-list--proofread .review-more").first().click();
+    await page.waitForTimeout(100);
+    const emItemsAfter = await page.$$eval(".review-list--proofread .review-item", (e) => e.length);
+    check("Show-more reveals the hidden rows", emItemsAfter > emItemsBefore, `${emItemsBefore} -> ${emItemsAfter}`);
 
     // ── Click a Notes row → it selects the marker in the editor ───────────
     await page.click(".toc-tab:nth-child(3)"); // back to Notes
