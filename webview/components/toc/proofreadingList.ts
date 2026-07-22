@@ -21,6 +21,30 @@ export interface ReviewListView {
     setGroupByType: (grouped: boolean) => void;
 }
 
+/** A short surrounding-context snippet, for findings whose flagged text can't
+ *  identify itself — a lone em dash, a curly quote, a stray comma. Without this,
+ *  the "Em dash" group is 30 identical "—" rows. */
+function contextSnippet(view: EditorView, from: number, to: number): string {
+    const size = view.state.doc.content.size;
+    const a = Math.max(0, from - 28);
+    const b = Math.min(size, to + 28);
+    let raw = view.state.doc.textBetween(a, b, " ", " ").replace(/\s+/g, " ");
+    // Drop a partial word at each cut edge so the snippet starts/ends cleanly.
+    if (a > 0) { raw = raw.replace(/^\S*\s+/, ""); }
+    if (b < size) { raw = raw.replace(/\s+\S*$/, ""); }
+    raw = raw.trim();
+    if (!raw) { return ""; }
+    return (a > 0 ? "…" : "") + raw + (b < size ? "…" : "");
+}
+
+/** The row label: the flagged text when it's a recognizable word/phrase, else a
+ *  surrounding snippet so short/punctuation findings stay distinguishable. */
+function labelFor(view: EditorView, text: string, from: number, to: number): string {
+    const trimmed = text.trim();
+    const informative = trimmed.length >= 2 && /[\p{L}\p{N}]/u.test(trimmed);
+    return informative ? text : (contextSnippet(view, from, to) || text);
+}
+
 /** Resolve the tab's current contents: an explicit "off" state, an empty state,
  *  or the findings as rows. Pure read of the plugin — computes nothing new. */
 function produce(view: EditorView | null): ReviewResult {
@@ -34,7 +58,7 @@ function produce(view: EditorView | null): ReviewResult {
     return {
         rows: findings.map((f) => ({
             tag: f.tag,
-            label: f.text,
+            label: labelFor(view, f.text, f.from, f.to),
             title: f.message,
             from: f.from,
             to: f.to,

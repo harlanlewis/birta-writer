@@ -269,6 +269,13 @@ body.toc-resizing {
     flex-direction: column;
 }
 
+/* This explicit `display: flex` overrides the generic `.toc-view--hidden`
+   (same specificity, declared earlier), so the inactive tab's list would leak
+   through — reassert the hide with a higher-specificity rule. */
+.review-list.toc-view--hidden {
+    display: none;
+}
+
 /* The By-type / In-order toggle sits above the scrolling body (fixed). */
 .review-toolbar {
     flex: 0 0 auto;

@@ -34,6 +34,16 @@ export async function run({ page, check, baseUrl }) {
         headingRows.length === 4 && headingRows[0] === "Intro",
         JSON.stringify(headingRows));
 
+    // The inactive tabs' lists must be fully hidden — a CSS regression once let
+    // .review-list's `display:flex` override .toc-view--hidden, leaking the
+    // Proofreading/Notes lists (and a second toggle) into other tabs.
+    const leak = await page.evaluate(() => {
+        const shown = (sel) => { const el = document.querySelector(sel); return !!el && el.offsetHeight > 0; };
+        return { proof: shown(".review-list--proofread"), notes: shown(".review-list--notes") };
+    });
+    check("inactive review lists are fully hidden on the Contents tab (no leak)",
+        !leak.proof && !leak.notes, JSON.stringify(leak));
+
     // ── Notes tab: markers in document order, checked box excluded ─────────
     await page.click(".toc-tab:nth-child(3)"); // Notes
     await page.waitForSelector(".review-list--notes:not(.toc-view--hidden)", { timeout: 5000 });
@@ -80,10 +90,16 @@ export async function run({ page, check, baseUrl }) {
     // ── Proofreading tab: a live style finding ────────────────────────────
     await page.click(".toc-tab:nth-child(2)"); // Proofreading
     await page.waitForSelector(".review-list--proofread:not(.toc-view--hidden)", { timeout: 5000 });
+    await page.waitForTimeout(300);
     const findings = await page.$$eval(".review-list--proofread .review-item", (els) =>
         els.map((el) => el.querySelector(".review-item__label")?.textContent));
     check("Proofreading lists the live style finding (filler 'really')",
         findings.some((f) => f === "really"),
+        JSON.stringify(findings));
+    // Em-dash findings can't identify themselves as "—"; they must fall back to a
+    // surrounding-context snippet so a group isn't N identical dash rows.
+    check("short/punctuation findings show context, not a bare glyph",
+        findings.length > 0 && !findings.some((f) => f === "—") && findings.some((f) => /—/.test(f) && f.length > 3),
         JSON.stringify(findings));
 
     // ── Click a Notes row → it selects the marker in the editor ───────────
