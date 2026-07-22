@@ -667,17 +667,40 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             dnd.notifyRerender();
             return;
         }
-        headings.forEach((entry) => {
+        headings.forEach((entry, i) => {
             // `entry.pos` is this row's anchor AS OF NOW — correct to seed the
             // DOM with, but never to capture: see the signature note above.
             const { level, text } = entry;
             const item = document.createElement("div");
             item.className = `toc-item toc-item--h${level}`;
             item.dataset["headingPos"] = String(entry.pos);
+            item.dataset["level"] = String(level);
             item.style.paddingLeft = `${(level - 1) * 12 + 8}px`;
-            item.textContent = text || `${t("Heading")} ${level}`;
+            // A row is a "parent" (foldable) when the next heading nests under it.
+            const hasChildren = i + 1 < headings.length && headings[i + 1]!.level > level;
+            item.classList.toggle("toc-item--parent", hasChildren);
+
+            // A disclosure caret in the left gutter (shown on hover for parents,
+            // and while collapsed) + the heading text.
+            const caret = document.createElement("span");
+            caret.className = "toc-caret";
+            const label = document.createElement("span");
+            label.className = "toc-item__text";
+            label.textContent = text || `${t("Heading")} ${level}`;
+            item.append(caret, label);
+
+            // The caret folds the section in the OUTLINE only (never the document);
+            // it must not navigate or start a drag.
+            caret.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+            caret.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                item.classList.toggle("toc-item--collapsed");
+                applyOutlineCollapse();
+            });
+
             item.classList.toggle("toc-item--active", activeHeadingPos === entry.pos);
-            applyTooltip(item, text, {
+            applyTooltip(label, text, {
                 placement: "above",
                 truncatedOnly: true,
             });
@@ -737,7 +760,30 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             list.appendChild(item);
         });
         setActiveHeadingPos(activeHeadingPos);
+        applyOutlineCollapse();
         dnd.notifyRerender();
+    }
+
+    /**
+     * Apply the outline accordion: hide every row nested under a collapsed
+     * heading. Collapse state lives as a `toc-item--collapsed` class ON THE ROW
+     * (not a pos-keyed set), so it survives the position-sync that runs while
+     * typing; it resets only on a structural rebuild, which is the honest moment
+     * for it to. Visibility is derived purely from row order + level, so nested
+     * collapses just work — a row inside an already-collapsed region stays
+     * hidden whatever its own state.
+     */
+    function applyOutlineCollapse(): void {
+        let collapseLevel: number | null = null;
+        list.querySelectorAll<HTMLElement>(".toc-item").forEach((row) => {
+            const level = Number(row.dataset["level"]);
+            if (collapseLevel !== null && level > collapseLevel) {
+                row.hidden = true;
+                return;
+            }
+            row.hidden = false;
+            collapseLevel = row.classList.contains("toc-item--collapsed") ? level : null;
+        });
     }
 
     /**

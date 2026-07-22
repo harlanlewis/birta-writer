@@ -513,18 +513,59 @@ body.toc-resizing {
 }
 
 .toc-item {
-    display: block;
+    display: flex;
+    align-items: center;
     padding: 4px 8px;
     font-size: 12px;
     line-height: 1.5;
     cursor: pointer;
     color: var(--vscode-foreground);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     border-radius: 3px;
     margin: 1px 4px;
     user-select: none;
+}
+/* Hidden by an accordion collapse. An explicit rule is needed because the
+   author-level `.toc-item { display: flex }` outranks the UA `[hidden]`. */
+.toc-item[hidden] {
+    display: none;
+}
+.toc-item__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Disclosure caret in the left gutter — the same triangle the review groups use.
+   Reserved on every row (a fixed gutter); the glyph shows only for a foldable
+   heading on hover, and stays while that heading is collapsed. */
+.toc-caret {
+    flex: 0 0 auto;
+    align-self: stretch;
+    position: relative;
+    width: 13px;
+    margin-left: -3px;
+}
+.toc-caret::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    width: 0;
+    height: 0;
+    border-left: 5px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    transform: translateY(-50%) rotate(90deg);
+    transition: transform 0.1s ease;
+    opacity: 0.6;
+    visibility: hidden;
+}
+.toc-item--parent:hover .toc-caret::before,
+.toc-item--collapsed .toc-caret::before {
+    visibility: visible;
+}
+.toc-item--collapsed .toc-caret::before {
+    transform: translateY(-50%) rotate(0deg);
 }
 
 .toc-item:hover {

@@ -44,6 +44,21 @@ export async function run({ page, check, baseUrl }) {
     check("inactive review lists are fully hidden on the Contents tab (no leak)",
         !leak.proof && !leak.notes, JSON.stringify(leak));
 
+    // ── Outline accordion: a heading with children folds away its subtree ──
+    // Intro (H1) parents the three H2s; collapsing it hides them.
+    const visible = () => page.$$eval(".toc-list .toc-item:not([hidden])", (e) => e.length);
+    const parentCount = await page.$$eval(".toc-list .toc-item--parent", (e) => e.length);
+    check("a heading with nested headings is marked foldable", parentCount >= 1, `parents=${parentCount}`);
+    const shownBefore = await visible();
+    await page.locator(".toc-list .toc-item--parent .toc-caret").first().click();
+    await page.waitForTimeout(100);
+    const shownCollapsed = await visible();
+    check("collapsing an outline heading hides its nested headings",
+        shownCollapsed < shownBefore, `${shownBefore} -> ${shownCollapsed}`);
+    await page.locator(".toc-list .toc-item--parent .toc-caret").first().click();
+    await page.waitForTimeout(100);
+    check("expanding restores them", (await visible()) === shownBefore, `restored`);
+
     // ── Notes tab: markers in document order, checked box excluded ─────────
     await page.click(".toc-tab:nth-child(3)"); // Notes
     await page.waitForSelector(".review-list--notes:not(.toc-view--hidden)", { timeout: 5000 });
