@@ -1880,8 +1880,8 @@
                 "birta.tocWidth": {
                     "order": 13,
                     "type": "number",
-                    "default": 220,
-                    "minimum": 150,
+                    "default": 260,
+                    "minimum": 240,
                     "maximum": 600,
                     "description": "%config.tocWidth.description%"
                 },

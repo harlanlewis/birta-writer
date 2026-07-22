@@ -49,7 +49,7 @@ export interface BirtaConfig extends ProofreadConfig {
     tocContentGap: number;
     tocPosition: TocPosition;
     tocAutoHideThreshold: number;
-    /** Dragged panel width in px; clamp with clampNumberSetting (150–600). */
+    /** Dragged panel width in px; clamp with clampNumberSetting (240–600). */
     tocWidth: number;
     /** Raw show/hide preference ("auto" defers to tocAutoHideThreshold);
      *  normalize with normalizeTocVisibility (a settings.json typo → "auto"). */
@@ -261,7 +261,7 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     tocContentGap: 100,
     tocPosition: "right",
     tocAutoHideThreshold: 3,
-    tocWidth: 220,
+    tocWidth: 260,
     tocVisibility: DEFAULT_TOC_VISIBILITY,
     frontmatterExpanded: true,
     customCss: [],

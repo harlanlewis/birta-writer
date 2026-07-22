@@ -63,7 +63,7 @@ describe("review sidebar tabs", () => {
     it("should render four tabs in the order Contents, Links, Notes, Proofreading", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const labels = [...panel.querySelectorAll(".toc-tab")].map((t) => t.textContent);
-        expect(labels).toEqual(["Contents", "Links", "Notes", "Proofreading"]);
+        expect(labels).toEqual(["Contents", "Links", "Notes", "Proofread"]);
     });
 
     it("should start on Contents with the review views hidden", () => {

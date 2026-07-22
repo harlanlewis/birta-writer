@@ -153,8 +153,8 @@ describe("TOC header controls (side-switch, hide, reveal)", () => {
 });
 
 describe("TOC docked vs overlay responsive mode", () => {
-    // The default width is 220 (jsdom can't resolve the injected --toc-width
-    // custom property, so readInitialWidth falls back to the 220 default), and
+    // The default width is 260 (jsdom can't resolve the injected --toc-width
+    // custom property, so readInitialWidth falls back to the 260 default), and
     // DOCKED_MIN_CONTENT_WIDTH is 720 — so the docked threshold is 940px.
     const originalInnerWidth = window.innerWidth;
 
@@ -287,7 +287,7 @@ describe("TOC show/hide persistence (birta.tocVisibility)", () => {
         document.body.className = "";
         document.body.innerHTML = "";
         // Docked mode needs the viewport to hold the drawer plus a content column
-        // (tocWidth 220 + DOCKED_MIN_CONTENT_WIDTH 720 = 940).
+        // (tocWidth 260 + DOCKED_MIN_CONTENT_WIDTH 720 = 980).
         Object.defineProperty(window, "innerWidth", { value: 1200, configurable: true });
     });
 
@@ -356,7 +356,7 @@ describe("TOC show/hide persistence (birta.tocVisibility)", () => {
     });
 
     it("an echoed width change should re-evaluate docked/overlay mode", () => {
-        // 1000 ≥ 220 (default width) + 720 → docked; 1000 < 400 + 720 → overlay.
+        // 1000 ≥ 260 (default width) + 720 → docked; 1000 < 400 + 720 → overlay.
         Object.defineProperty(window, "innerWidth", { value: 1000, configurable: true });
         const { setWidth } = initToc(fakeEventManager, () => null);
         expect(document.body.classList.contains("toc-docked")).toBe(true);
@@ -406,30 +406,30 @@ describe("TOC drag-to-resize", () => {
 
     it("dragging rightwards on a left-docked panel should widen it and persist the width", () => {
         const { panel } = initToc(fakeEventManager, () => null);
-        drag(getHandle(panel), 220, 300);
-        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("300px");
-        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "tocWidth", width: 300 });
+        drag(getHandle(panel), 260, 340);
+        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("340px");
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "tocWidth", width: 340 });
     });
 
     it("dragging leftwards on a right-docked panel should widen it", () => {
         document.body.classList.add("toc-right");
         const { panel } = initToc(fakeEventManager, () => null);
         drag(getHandle(panel), 800, 720);
-        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("300px");
+        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("340px");
     });
 
     it("dragging far beyond the edges should clamp the width to the min/max bounds", () => {
         const { panel } = initToc(fakeEventManager, () => null);
-        drag(getHandle(panel), 220, 2000);
+        drag(getHandle(panel), 260, 2000);
         expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("600px");
         drag(getHandle(panel), 600, 0);
-        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("150px");
+        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("240px");
     });
 
     it("during a drag the body should get resizing state, cleared on mouseup", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const handle = getHandle(panel);
-        handle.dispatchEvent(mouse("mousedown", 220));
+        handle.dispatchEvent(mouse("mousedown", 260));
         expect(document.body.classList.contains("toc-resizing")).toBe(true);
         expect(document.body.style.cursor).toBe("ew-resize");
         document.dispatchEvent(mouse("mouseup", 220));
@@ -439,14 +439,14 @@ describe("TOC drag-to-resize", () => {
 
     it("mousemove after mouseup should not change the width", () => {
         const { panel } = initToc(fakeEventManager, () => null);
-        drag(getHandle(panel), 220, 300);
+        drag(getHandle(panel), 260, 340);
         document.dispatchEvent(mouse("mousemove", 500));
-        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("300px");
+        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("340px");
     });
 
     it("an unchanged width on mouseup should not post a tocWidth message", () => {
         const { panel } = initToc(fakeEventManager, () => null);
-        drag(getHandle(panel), 220, 220);
+        drag(getHandle(panel), 260, 260);
         expect(mockVscodeApi.postMessage).not.toHaveBeenCalledWith(
             expect.objectContaining({ type: "tocWidth" }),
         );
@@ -455,16 +455,16 @@ describe("TOC drag-to-resize", () => {
     it("double-clicking the handle should reset the width to the default", () => {
         const { panel } = initToc(fakeEventManager, () => null);
         const handle = getHandle(panel);
-        drag(handle, 220, 400);
+        drag(handle, 260, 400);
         handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
-        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("220px");
-        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "tocWidth", width: 220 });
+        expect(document.documentElement.style.getPropertyValue("--toc-width")).toBe("260px");
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "tocWidth", width: 260 });
     });
 
     it("resizing should keep the reveal tab pinned to the outer edge, not tracking the width", () => {
         const { panel, toggle } = initToc(fakeEventManager, () => null);
         toggle();
-        drag(getHandle(panel), 220, 340);
+        drag(getHandle(panel), 260, 340);
         const tab = document.querySelector(".toc-toggle-tab") as HTMLElement;
         // The reveal tab sits at the docked corner regardless of panel width
         expect(tab.style.left).toBe("7px");

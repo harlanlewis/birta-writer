@@ -94,28 +94,18 @@
     font-weight: 600;
 }
 
+/* Type comes from the shared .ui-heading grade (the ToC-H1 rank); only the
+   panel-specific spacing lives here. */
 .shortcuts-help__section-title {
     margin: 16px 0 4px;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--vscode-descriptionForeground);
-
-    /* A single hairline marks the regime change from the fixed grammar to
-       the rebindable, name-only section — the one separator that earns
-       its place. */
-    &:has(+ .shortcuts-help__group) {
-        margin-top: 18px;
-        padding-top: 12px;
-        border-top: 1px solid var(--vscode-editorWidget-border);
-    }
 }
 
-/* ── Shortcut rows: the two-column reference grid ── */
+/* ── Shortcut rows: the two-column reference grid ──
+   Description LEFT (uniform left edge), keys RIGHT-aligned in a fixed-width
+   trailing column (chips wrap within it, between pairs only). */
 .shortcuts-help__row {
     display: grid;
-    grid-template-columns: var(--shortcuts-keycol) 1fr;
+    grid-template-columns: 1fr var(--shortcuts-keycol);
     column-gap: 12px;
     align-items: baseline;
     padding: 3px 0;
@@ -174,44 +164,19 @@
     white-space: nowrap;
 }
 
-/* ── Rebindable commands: name-only groups (never kbd chips) ── */
-.shortcuts-help__group {
-    margin: 0 0 8px;
-}
-
-.shortcuts-help__group-name {
-    margin: 6px 0 2px;
-    font-size: 11px;
-    font-weight: 600;
-}
-
-/* Two-column name list — scans vertically instead of wrapping as prose.
-   A real ul/li for accessible delimitation; the grid supplies the visual
-   layout, so the native list box model is fully reset. */
-.shortcuts-help__group-items {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 12px;
-    row-gap: 1px;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    color: var(--vscode-descriptionForeground);
-}
-
-.shortcuts-help__group-item {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
 .shortcuts-help__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-top: 10px;
-    padding-top: 10px;
+    margin-top: auto;
+    padding: 10px 0 12px;
+    /* Bridge the panel's bottom padding so the sticky footer reaches the
+       scrollport edge and its background covers rows scrolling beneath. */
+    margin-bottom: -12px;
+    background: var(--vscode-editorWidget-background);
     border-top: 1px solid var(--vscode-editorWidget-border);
 
     & .shortcuts-help__note {

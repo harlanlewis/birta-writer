@@ -90,7 +90,7 @@ describe("shortcutsHelp — content", () => {
         vi.clearAllMocks();
     });
 
-    it("open should render the fixed-grammar sections and the rebindable groups", async () => {
+    it("open should render the fixed-grammar sections and NO rebindable inventory", async () => {
         const h = await loadHarness(true);
         h.openShortcutsHelp();
         const text = panel()!.textContent!;
@@ -101,8 +101,11 @@ describe("shortcutsHelp — content", () => {
             "Selection",
             "Blocks",
             "Formatting & history",
-            "Customizable commands",
         ]);
+        // Section titles compose the shared chrome heading grade.
+        for (const el of panel()!.querySelectorAll(".shortcuts-help__section-title")) {
+            expect(el.classList.contains("ui-heading")).toBe(true);
+        }
         // Fixed grammar highlights
         expect(text).toContain("Select more: block text → block → document");
         expect(text).toContain("Move carries a heading's whole section.");
@@ -110,40 +113,15 @@ describe("shortcutsHelp — content", () => {
         expect(text).toContain("Inside a code block or table: exits it instead.");
         expect(text).toContain("Esc first closes the open menu, popup, or find bar.");
         expect(text).toContain("Collapse / expand the selected foldable block");
-        // Rebindable commands appear by NAME, sourced from the registry
-        expect(text).toContain("Open Block Menu");
-        expect(text).toContain("Select All Occurrences");
-        const folding = [...panel()!.querySelectorAll(".shortcuts-help__group")].find(
-            (g) => g.querySelector(".shortcuts-help__group-name")?.textContent === "Folding",
-        );
-        expect(folding).toBeDefined();
-        expect(
-            [...folding!.querySelectorAll(".shortcuts-help__group-item")].map((i) => i.textContent),
-        ).toEqual(["Fold", "Unfold", "Fold All", "Unfold All"]);
-        // Group items carry no kbd chips (names only)
-        const groupKbds = panel()!.querySelectorAll(".shortcuts-help__group kbd");
-        expect(groupKbds.length).toBe(0);
+        // The panel is an inventory of what the shortcuts ARE — the old
+        // names-only "customizable commands" listing (keys unknowable from
+        // here) is deliberately gone; the footer routes to VS Code's
+        // accurate Keyboard Shortcuts UI instead.
+        expect(text).not.toContain("Customizable commands");
+        expect(panel()!.querySelectorAll(".shortcuts-help__group").length).toBe(0);
+        expect(panel()!.querySelector(".shortcuts-help__footer .shortcuts-help__customize")).not.toBeNull();
     });
 
-    it("group items should be real list items with hover-recoverable titles", async () => {
-        const h = await loadHarness(true);
-        h.openShortcutsHelp();
-        const lists = panel()!.querySelectorAll(".shortcuts-help__group-items");
-        expect(lists.length).toBeGreaterThanOrEqual(1);
-        for (const list of lists) {
-            // ul/li semantics: assistive tech announces item count and
-            // boundaries that the visual grid alone does not provide.
-            expect(list.tagName).toBe("UL");
-            const items = [...list.children];
-            expect(items.length).toBeGreaterThanOrEqual(1);
-            for (const item of items) {
-                expect(item.tagName).toBe("LI");
-                expect(item.className).toBe("shortcuts-help__group-item");
-                // Ellipsized names stay recoverable on hover.
-                expect((item as HTMLElement).title).toBe(item.textContent);
-            }
-        }
-    });
 
     it("every row should use the two-column key/description grid structure", async () => {
         const h = await loadHarness(true);
@@ -151,13 +129,14 @@ describe("shortcutsHelp — content", () => {
         const rows = [...panel()!.querySelectorAll(".shortcuts-help__row")];
         expect(rows.length).toBeGreaterThanOrEqual(12);
         for (const row of rows) {
-            // Exactly one key cell then one description cell — the shared
-            // grid template (--shortcuts-keycol | 1fr) is what keeps every
-            // description's left edge at the same x.
+            // Exactly one description cell then one key cell — the shared
+            // grid template (1fr | --shortcuts-keycol) keeps every
+            // description's left edge at the same x and the chips
+            // right-aligned at the trailing edge.
             expect(row.children.length).toBe(2);
-            const [keysCell, descCell] = row.children;
-            expect(keysCell.className).toBe("shortcuts-help__keys");
+            const [descCell, keysCell] = row.children;
             expect(descCell.className).toBe("shortcuts-help__desc");
+            expect(keysCell.className).toBe("shortcuts-help__keys");
             // The key cell holds only pair sub-spans (one per gesture
             // alternative), and every chip lives inside a pair — that
             // atomicity is what keeps wraps between alternatives only.

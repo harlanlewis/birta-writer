@@ -35,8 +35,11 @@ interface HeadingEntry {
     atDocRoot: boolean;
 }
 
-const TOC_DEFAULT_WIDTH = 220;
-const TOC_MIN_WIDTH = 150;
+// 260 default / 240 floor: wide enough that the four tab labels + controls fit
+// on one row at the default, and the floor never crushes rows into ellipsis
+// soup (the old 150px floor did). The tab list wraps as the fallback below 290.
+const TOC_DEFAULT_WIDTH = 260;
+const TOC_MIN_WIDTH = 240;
 const TOC_MAX_WIDTH = 600;
 const DOCKED_MIN_CONTENT_WIDTH = 720;
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
@@ -155,7 +158,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const tabContents = makeTabButton("contents", t("Contents"));
     const tabLinks = makeTabButton("links", t("Links"));
     const tabNotes = makeTabButton("notes", t("Notes"));
-    const tabProofread = makeTabButton("proofreading", t("Proofreading"));
+    const tabProofread = makeTabButton("proofreading", t("Proofread"));
     // A review tab exists only while it has entries. Until the first idle
     // visibility pass (scheduleTabVisibility) they stay hidden, so document
     // open pays for nothing beyond the Contents outline.

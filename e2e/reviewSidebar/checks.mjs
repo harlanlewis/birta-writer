@@ -25,8 +25,8 @@ export async function run({ page, check, baseUrl }) {
 
     // ── Tabs render ───────────────────────────────────────────────────────
     const tabLabels = await page.$$eval(".toc-tab", (els) => els.map((e) => e.textContent));
-    check("four tabs render in the order Contents / Links / Notes / Proofreading",
-        JSON.stringify(tabLabels) === JSON.stringify(["Contents", "Links", "Notes", "Proofreading"]),
+    check("four tabs render in the order Contents / Links / Notes / Proofread",
+        JSON.stringify(tabLabels) === JSON.stringify(["Contents", "Links", "Notes", "Proofread"]),
         JSON.stringify(tabLabels));
 
     // Contents is the default tab and lists the headings.
@@ -225,6 +225,26 @@ export async function run({ page, check, baseUrl }) {
         (el) => getComputedStyle(el).display !== "none" && el.textContent === "https://example.com");
     check("a link row reveals its URL inline on hover", metaHidden && metaShown,
         `hidden-before=${metaHidden} shown-on-hover=${metaShown}`);
+
+    // ── The URL text itself is clickable and follows the link ─────────────
+    await page.evaluate(() => { window.__posted.length = 0; });
+    await inlineRow.hover();
+    await inlineRow.locator(".review-item__meta").click();
+    const metaOpened = await page.evaluate(() =>
+        window.__posted.some((m) => m.type === "openUrl" && /example\.com/.test(m.url)));
+    check("clicking the URL text follows the link (posts openUrl)", metaOpened,
+        JSON.stringify(await page.evaluate(() => window.__posted.map((m) => m.type))));
+
+    // An in-document anchor row's Open follows to the TARGET heading (no host
+    // message — it scrolls the doc to the heading), never posts an open.
+    await page.evaluate(() => { window.__posted.length = 0; });
+    const docRow = page.locator(".review-list--links .review-item", { hasText: "heading" }).first();
+    await docRow.hover();
+    await docRow.locator(".review-item__action", { hasText: "Open" }).click();
+    await page.waitForTimeout(150);
+    const anchorPosted = await page.evaluate(() =>
+        window.__posted.some((m) => m.type === "openUrl" || m.type === "openFile"));
+    check("an in-document anchor's Open resolves in-doc (no host open message)", !anchorPosted);
 
     // ── Open action follows the link (posts the host open message) ────────
     await page.evaluate(() => { window.__posted.length = 0; });

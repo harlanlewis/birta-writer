@@ -34,6 +34,9 @@ export interface ReviewRowModel {
     title?: string;
     /** Secondary detail (a link's URL) shown right of the label on row hover. */
     meta?: string;
+    /** Makes the meta text itself clickable (follow the URL) — distinct from
+     *  the row click, which navigates to the link's place in the document. */
+    onMeta?: () => void;
     from: number;
     to: number;
     actions: ReviewAction[];
@@ -214,7 +217,8 @@ export function initReviewList(
         const caret = document.createElement("span");
         caret.className = "review-group__caret";
         const name = document.createElement("span");
-        name.className = "review-group__name";
+        // ui-heading: the shared chrome heading grade (matches a ToC H1).
+        name.className = "review-group__name ui-heading";
         name.textContent = tag;
         header.append(caret, name);
 

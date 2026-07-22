@@ -27,6 +27,9 @@ export interface ReviewRowSpec {
     /** Secondary detail (a link's URL) shown right of the label on row hover —
      *  inline, not a tooltip, so it can be read while scanning the list. */
     meta?: string;
+    /** Makes the meta text itself clickable — it FOLLOWS the link, while the
+     *  row body navigates to the link's place in the document. */
+    onMeta?: () => void;
     /** Document range this row reveals; seeded into the dataset, synced in place. */
     from: number;
     to: number;
@@ -75,6 +78,15 @@ export function buildReviewItem(spec: ReviewRowSpec): HTMLElement {
         const meta = document.createElement("span");
         meta.className = "review-item__meta";
         meta.textContent = spec.meta;
+        if (spec.onMeta) {
+            const onMeta = spec.onMeta;
+            meta.classList.add("review-item__meta--link");
+            // The URL follows the link; the surrounding row still navigates to
+            // its place in the document — stop both phases so one click never
+            // does both.
+            meta.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+            meta.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onMeta(); });
+        }
         main.appendChild(meta);
     }
     main.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });

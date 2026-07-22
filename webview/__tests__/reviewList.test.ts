@@ -83,6 +83,16 @@ describe("initReviewList — flat (In order) mode", () => {
         expect(element.querySelector(".review-item__meta")).toBeNull();
     });
 
+    it("a clickable meta follows the link and does NOT trigger the row navigation", () => {
+        const { element, render } = mk(false);
+        let followed = 0;
+        render({ rows: [row({ label: "the readme", meta: "https://example.com", onMeta: () => { followed++; } })] });
+        const meta = element.querySelector<HTMLElement>(".review-item__meta")!;
+        expect(meta.classList.contains("review-item__meta--link")).toBe(true);
+        meta.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(followed).toBe(1);
+    });
+
     it("ignores an out-of-range emphasis and renders plain text", () => {
         const { element, render } = mk(false);
         render({ rows: [row({ label: "abc", emphasis: { start: 5, end: 9 } })] });

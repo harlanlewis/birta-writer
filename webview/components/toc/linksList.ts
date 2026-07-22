@@ -12,7 +12,10 @@ import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { notifyOpenFile, notifyOpenUrl, notifyReviewGroupByType } from "@/messaging";
 import { scanLinksCached, type LinkItem, type LinkKind } from "@/links/scan";
+import { collectDocHeadings } from "@/utils/headingUtils";
+import { slugify } from "@/utils/slug";
 import { initReviewList, type ReviewResult } from "./reviewList";
+import { revealRange } from "./navigate";
 import type { ReviewListView } from "./proofreadingList";
 
 export interface LinksListView extends ReviewListView {
@@ -30,37 +33,57 @@ const KIND: Record<LinkKind, { tag: string; rank: number }> = {
     email: { tag: "Email", rank: 3 },
 };
 
-/** Follow the link — the same routing the link popup's open button uses. */
-function openLink(link: LinkItem): void {
+/** Follow an in-document `#fragment` to its heading: match by slug (markdown
+ *  anchors are slugs) or, failing that, by heading text (the wikilink
+ *  `[[#Heading Text]]` form), then reveal it. */
+function followDocAnchor(view: EditorView, href: string): void {
+    const fragment = decodeURIComponent(href.replace(/^#/, "")).trim();
+    if (!fragment) { return; }
+    const want = slugify(fragment);
+    const heading = collectDocHeadings(view.state.doc).find(
+        (h) => slugify(h.text) === want || h.text.trim().toLowerCase() === fragment.toLowerCase(),
+    );
+    if (heading) { revealRange(view, heading.pos + 1, heading.pos + 1); }
+}
+
+/** Follow the link — the same routing the link popup's open button uses; an
+ *  in-document fragment resolves to its heading instead. */
+function openLink(view: EditorView | null, link: LinkItem): void {
+    if (link.kind === "doc") { if (view) { followDocAnchor(view, link.href); } return; }
     if (link.wiki) { notifyOpenFile(link.href, { wiki: true }); return; }
     if (link.kind === "web" || link.kind === "email") { notifyOpenUrl(link.href); return; }
     notifyOpenFile(link.href);
 }
 
-function produce(view: EditorView | null): ReviewResult {
+function produce(view: EditorView | null, getView: () => EditorView | null): ReviewResult {
     if (!view) { return null; }
     const links = scanLinksCached(view.state.doc);
     if (links.length === 0) { return { empty: t("No links") }; }
     return {
-        rows: links.map((link: LinkItem) => ({
-            tag: t(KIND[link.kind].tag),
-            // Prefer the human text; fall back to the target for a bare URL.
-            label: link.text || link.href,
-            // The destination, inline on hover. Skipped when the label IS the
-            // URL (a bare autolink) — repeating it says nothing.
-            meta: link.text && link.text !== link.href ? link.href : undefined,
-            rank: KIND[link.kind].rank,
-            from: link.from,
-            to: link.to,
-            // Open follows the link. An in-document `#fragment` is the one kind
-            // with nowhere to "open" beyond the doc itself — its row click
-            // already navigates — so it carries no action.
-            actions: link.kind === "doc" ? [] : [{
-                label: t("Open"),
-                title: link.href,
-                run: () => openLink(link),
-            }],
-        })),
+        rows: links.map((link: LinkItem) => {
+            const follow = (): void => openLink(getView(), link);
+            return {
+                tag: t(KIND[link.kind].tag),
+                // Prefer the human text; fall back to the target for a bare URL.
+                label: link.text || link.href,
+                // The destination, inline on hover — and itself clickable: the
+                // URL text FOLLOWS the link, the row body navigates to its place
+                // in the document. Skipped when the label IS the URL (a bare
+                // autolink) — repeating it says nothing.
+                meta: link.text && link.text !== link.href ? link.href : undefined,
+                onMeta: follow,
+                rank: KIND[link.kind].rank,
+                from: link.from,
+                to: link.to,
+                // Open follows the link too — for an in-document `#fragment`
+                // that means jumping to the targeted heading.
+                actions: [{
+                    label: t("Open"),
+                    title: link.href,
+                    run: follow,
+                }],
+            };
+        }),
     };
 }
 
@@ -71,7 +94,7 @@ export function initLinksList(getView: () => EditorView | null): LinksListView {
     });
     return {
         element: list.element,
-        refresh: (view) => list.render(produce(view)),
+        refresh: (view) => list.render(produce(view, getView)),
         setGroupByType: list.setGroupByType,
         count: (view) => scanLinksCached(view.state.doc).length,
     };

@@ -176,18 +176,15 @@ body.toc-resizing {
     padding: 4px 6px;
     background: var(--vscode-editor-background);
 }
-/* The tabs scroll horizontally within the available width so a narrow panel
-   never clips one; the flip/hide controls beside them stay pinned. Scrollbar
-   hidden — a focused or clicked tab scrolls itself into view. */
+/* The tabs WRAP onto a second row when the panel is too narrow for one —
+   nothing is ever clipped or scrolled out of reach; the flip/hide controls
+   beside them stay pinned. */
 .toc-tabs__list {
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
+    flex-wrap: wrap;
     gap: 1px;
-    overflow-x: auto;
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar { display: none; }
 }
 
 .toc-tab {
@@ -197,7 +194,7 @@ body.toc-resizing {
     border-radius: 5px;
     background: transparent;
     color: var(--vscode-foreground);
-    font-size: 11px;
+    font-size: 12px;
     cursor: pointer;
     opacity: 0.6;
     white-space: nowrap;
@@ -303,28 +300,27 @@ body.toc-resizing {
     &[hidden] { display: none; }
 }
 
-/* A bordered segmented control: the two options read as one alternative, the
-   active one filled with the accent. */
+/* The sort toggle mirrors the tabs' minimal idiom one size down — no border
+   box (it must read as SECONDARY to the tabs above), active = the same soft
+   pill the active tab wears. */
 .review-segmented {
     display: inline-flex;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 5px;
-    overflow: hidden;
+    gap: 1px;
 }
 
 .review-seg {
-    padding: 2px 9px;
+    padding: 2px 7px;
     border: none;
+    border-radius: 5px;
     background: transparent;
     color: var(--vscode-foreground);
     font-size: 11px;
     line-height: 1.5;
     cursor: pointer;
-    opacity: 0.65;
+    opacity: 0.55;
     transition: opacity 0.1s ease, background-color 0.1s ease;
 
-    &:hover { opacity: 0.9; }
-    & + & { border-left: 1px solid var(--vscode-panel-border); }
+    &:hover { opacity: 0.85; background: var(--vscode-toolbar-hoverBackground); }
 }
 
 .review-seg--active,
@@ -337,6 +333,7 @@ body.toc-resizing {
 .review-body {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 2px 0 24px;
 }
 
@@ -352,18 +349,23 @@ body.toc-resizing {
     display: flex;
     align-items: baseline;
     gap: 6px;
-    width: 100%;
-    margin: 14px 4px 1px;
+    width: calc(100% - 8px);
+    margin: 0 4px 1px;
     padding: 3px 8px;
+    /* The inter-group gap lives INSIDE the sticky box as an opaque top border
+       painted in the panel background — rows scrolling beneath a stuck header
+       are fully covered (a margin gap showed them through). */
     border: none;
+    border-top: 12px solid var(--vscode-editor-background);
     border-radius: 3px;
     background: var(--vscode-editor-background);
+    background-clip: padding-box;
     color: var(--vscode-foreground);
     cursor: pointer;
     text-align: left;
 
-    &:first-child { margin-top: 2px; }
-    &:hover { background: var(--vscode-list-hoverBackground); }
+    &:first-child { border-top-width: 2px; }
+    &:hover { background: var(--vscode-list-hoverBackground); background-clip: padding-box; }
 }
 
 .review-group__caret {
@@ -383,12 +385,11 @@ body.toc-resizing {
     transform: rotate(0deg);
 }
 
-/* Same size / weight / color as a ToC H1 (.toc-item + .toc-item--h1). */
+/* Type comes from the shared .ui-heading grade (composed in reviewList.ts);
+   only truncation behavior lives here. */
 .review-group__name {
     flex: 0 1 auto;
     min-width: 0;
-    font-size: 12px;
-    font-weight: 600;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -501,6 +502,17 @@ body.toc-resizing {
 .review-item:hover .review-item__meta,
 .review-item:focus-within .review-item__meta {
     display: block;
+}
+
+/* A clickable meta (a link's URL): follows the link on click — distinct from
+   the row body, which navigates to the link's place in the document. */
+.review-item__meta--link {
+    cursor: pointer;
+
+    &:hover {
+        color: var(--vscode-textLink-foreground);
+        text-decoration: underline;
+    }
 }
 
 /* Actions are revealed on row hover/focus, like the gutter handles. */
