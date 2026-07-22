@@ -333,6 +333,12 @@ export function activate(context: vscode.ExtensionContext) {
                 (text: string) =>
                     MarkdownEditorProvider.current?.postToActivePanel({ type: "__testInsertText", text }),
             ),
+            // TEST-ONLY (MAR-191): returns the active webview's live `mdw:` launch
+            // marks so the integration suite can measure real VS Code launch time.
+            vscode.commands.registerCommand(
+                "birta._test.getPerfMarks",
+                () => MarkdownEditorProvider.current?.requestPerfMarks() ?? Promise.resolve({}),
+            ),
         );
     }
 

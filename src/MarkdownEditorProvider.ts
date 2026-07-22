@@ -346,6 +346,30 @@ export class MarkdownEditorProvider
         if (this._activePanel) { postToWebview(this._activePanel.webview, msg); }
     }
 
+    /** TEST-ONLY (MAR-191): pending `__getPerfMarks` requests, id → resolver. */
+    private _pendingPerfMarks = new Map<string, (marks: Record<string, number>) => void>();
+
+    /**
+     * TEST-ONLY (MAR-191): ask the active webview for its live `mdw:` launch
+     * marks so the integration suite can measure real VS Code launch time and
+     * validate the headless harness. Resolves with `{}` on timeout so a wedged
+     * webview can never hang the suite.
+     */
+    public requestPerfMarks(timeoutMs = 3000): Promise<Record<string, number>> {
+        const id = `pm-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        return new Promise((resolve) => {
+            const timer = setTimeout(() => {
+                this._pendingPerfMarks.delete(id);
+                resolve({});
+            }, timeoutMs);
+            this._pendingPerfMarks.set(id, (marks) => {
+                clearTimeout(timer);
+                resolve(marks);
+            });
+            this.postToActivePanel({ type: "__getPerfMarks", id });
+        });
+    }
+
     /**
      * Records webview focus for `uriKey` and mirrors "any editor focused" into
      * the `birta.webviewFocused` context key. A Set (not a single boolean)
@@ -536,6 +560,12 @@ export class MarkdownEditorProvider
             async (message: ToExtensionMessage) => {
                 const panel = webviewPanel;
                 switch (message.type) {
+                    case "__perfMarks": {
+                        // TEST-ONLY reply (MAR-191): resolve the pending getPerfMarks request.
+                        this._pendingPerfMarks.get(message.id)?.(message.marks);
+                        this._pendingPerfMarks.delete(message.id);
+                        break;
+                    }
                     case "ready": {
                         // Mark the panel as initialized; only after this will onDidChangeViewState handle pending navigation
                         this._initializedPanels.add(uriKey);

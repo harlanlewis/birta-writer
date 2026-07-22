@@ -64,9 +64,11 @@ jobs:
   # Deliberate exception to the "e2e/perf is local-only" rule below: the
   # eager-bytes gate involves no browser and no timing — it walks the esbuild
   # metafile, which is deterministic for a given lockfile (two clean production
-  # builds are byte-identical), so it can never be flaky in CI. It fails on any
-  # eager-total growth over the committed e2e/perf/bundle-baseline.json; the
-  # failure message says how to accept an intentional increase.
+  # builds are byte-identical), so it can never be flaky in CI. It is a cheap
+  # BACKSTOP to the launch A/B: it fails only when eager bytes exceed the BUDGET
+  # ceiling in e2e/perf/bundle-baseline.json (an accidental heavy static import),
+  # not on normal feature growth. The failure message says how to raise the
+  # ceiling deliberately.
   perf-bundle:
     name: Eager-Bytes Gate
     runs-on: ubuntu-latest
@@ -90,6 +92,129 @@ jobs:
       - name: Check eager bytes against the committed baseline
         run: pnpm perf:bundle --check
 
+  # Same-session launch A/B: builds the PR's merge-base and its head, measures
+  # both back-to-back in headless Chromium, and gates on the LAUNCH-TIME delta.
+  # This is the deliberate, safe way to run a browser-timing check in CI (the
+  # "e2e is local-only" note below is about ABSOLUTE-timing assertions, which are
+  # machine-dependent): comparing two builds on the SAME runner cancels the
+  # machine-load noise, so only the delta — the thing we actually trust — gates.
+  # It also gates only the strong-signal fixtures and double-confirms a
+  # regression across two passes before failing. Boot time is a first-class
+  # metric (AGENTS.md 'Launch performance'), so this is a required, blocking check.
+  launch-perf:
+    name: Launch Perf (A/B)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write # to upsert the result comment
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the merge-base commit + its tree
+
+      # checkout@v4 + fetch-depth:0 can leave tags in a bad state (same caveat
+      # handled in release.yml).
+      - run: git fetch --tags --force origin
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Playwright
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Escape hatch for an intentional, justified launch cost: a `perf-accept`
+      # PR label or a `Perf-Regression-Accepted: <reason>` trailer on any PR
+      # commit makes the gate report the regression but not block.
+      - name: Resolve perf-accept
+        id: accept
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          ACCEPT=""
+          if echo "$LABELS" | grep -q '"perf-accept"'; then ACCEPT="label:perf-accept"; fi
+          # Use the PR's base SHA, not origin/<branch> — actions/checkout does not
+          # reliably create the remote-tracking ref, but the base SHA is a parent
+          # of the checked-out merge commit and always present.
+          TRAILER=$(git log "${{ github.event.pull_request.base.sha }}..HEAD" \
+            --format='%(trailers:key=Perf-Regression-Accepted,valueonly)' | grep -v '^$' | head -1 || true)
+          if [ -n "$TRAILER" ]; then ACCEPT="trailer:$TRAILER"; fi
+          echo "value=$ACCEPT" >> "$GITHUB_OUTPUT"
+
+      - name: Launch A/B vs merge-base
+        env:
+          PERF_ACCEPT: ${{ steps.accept.outputs.value }}
+        run: node e2e/perf-ab.mjs --base "${{ github.event.pull_request.base.sha }}" --runs 9 --json ab.json
+
+      - name: Comment launch A/B result
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let r;
+            try { r = JSON.parse(fs.readFileSync('ab.json', 'utf8')); }
+            catch { return; } // build/abort failed before JSON was written — the job status carries it
+            const round = (x) => (x == null ? '–' : Math.round(x * 10) / 10);
+            const line = (name, p) => {
+              const b = p[name]?.base?.median?.launch, a = p[name]?.head?.median?.launch;
+              if (b == null || a == null) return `| ${name} | – | – | – |`;
+              const d = a - b, pct = (d / b) * 100, s = d >= 0 ? '+' : '';
+              const gated = r.gated.includes(name);
+              return `| ${gated ? '**' + name + '**' : name} | ${round(b)} | ${round(a)} | ${s}${round(d)} ms (${s}${round(pct)}%) |`;
+            };
+            const rows = Object.keys(r.pass1).map((n) => line(n, r.pass1)).join('\n');
+            const confirmed = r.confirmedRegressions ?? [];
+            const status = confirmed.length === 0
+              ? '✅ **NEUTRAL** — no confirmed launch regression'
+              : (r.accepted
+                  ? `🟡 **REGRESSED but ACCEPTED** (${confirmed.join(', ')})`
+                  : `❌ **LAUNCH REGRESSED** (${confirmed.join(', ')}) — confirmed across two passes`);
+            // Per-span breakdown for the gated fixtures — a neutral total can hide
+            // a heavier `create` masked by a lighter `eager`, so show where time went.
+            const SUB = ['eager', 'roundtrip', 'create', 'toc', 'toolbar'];
+            const spanRows = (name) => {
+              const g = r.pass1[name]; if (!g) return '';
+              const cells = SUB.map((s) => {
+                const b = g.base?.median?.[s], a = g.head?.median?.[s];
+                if (b == null && a == null) return `| ${s} | – | – | – |`;
+                const d = (a ?? 0) - (b ?? 0), sign = d >= 0 ? '+' : '';
+                return `| ${s} | ${round(b)} | ${round(a)} | ${sign}${round(d)} ms |`;
+              }).join('\n');
+              return `\n**${name}**\n\n| span | base ms | head ms | Δ |\n| --- | --- | --- | --- |\n${cells}\n`;
+            };
+            const breakdown = r.gated.map(spanRows).join('\n');
+            const body = [
+              '<!-- launch-perf-ab -->',
+              '### Launch A/B — merge-base vs head',
+              '',
+              status,
+              '',
+              `Median launch over ${r.runsPerFixture} interleaved pairs/fixture (**bold** = gated; ≥3% AND ≥10 ms counts as a real move).`,
+              '',
+              '| fixture | base ms | head ms | Δ |',
+              '| --- | --- | --- | --- |',
+              rows,
+              '',
+              '<details><summary>Per-span breakdown (gated fixtures)</summary>',
+              breakdown,
+              '</details>',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const prev = comments.find((c) => c.body?.includes('<!-- launch-perf-ab -->'));
+            if (prev) await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+
 # The e2e suite (real bundle in headless Chromium) is a LOCAL pre-push gate,
 # run with `pnpm test:e2e`, not a CI job. Its layout-geometry and input-timing
 # assertions are calibrated to a real desktop browser and are flaky in GitHub's
@@ -99,3 +224,7 @@ jobs:
 # where a real webview regression would hide. Run it locally before pushing
 # webview changes (the /verify skill drives it); re-add a CI job only once the
 # suite is stabilized against a pinned-font headless environment.
+#
+# The `launch-perf` job above is the exception that proves this rule: it is safe
+# to block on precisely because it never asserts an absolute time — it compares
+# two builds measured back-to-back on one runner and gates on their delta.

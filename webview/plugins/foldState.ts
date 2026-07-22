@@ -33,7 +33,14 @@ export type FoldMeta =
      * fills the gap. (Mapping flags can't express this: a deletion STARTING
      * at the heading maps its entry cleanly onto the next block.)
      */
-    | { type: "delete"; from: number; to: number };
+    | { type: "delete"; from: number; to: number }
+    /**
+     * MAR-189: build the per-heading affordance decorations the plugin `init`
+     * deferred off the mount path. Dispatched once, after first paint, when the
+     * document opened with nothing folded (so init's decorations were pure
+     * affordance — no content hidden — and safe to defer).
+     */
+    | { type: "buildAffordance" };
 
 /** Back-compat alias from when only headings folded. */
 export type HeadingFoldMeta = FoldMeta;

@@ -298,7 +298,12 @@ export type ToExtensionMessage =
     // (MAR-169). Rate-limited webview-side; the extension logs it and shows a
     // single deduped notification. Decoration only — never part of the content
     // sync protocol.
-    | { type: "crash"; message: string; stack?: string; source: "error" | "unhandledrejection" };
+    | { type: "crash"; message: string; stack?: string; source: "error" | "unhandledrejection" }
+    // TEST-ONLY reply to `__getPerfMarks`: the webview's `mdw:` User-Timing marks
+    // (prefix stripped), so the @vscode/test-electron suite can read real launch
+    // timings from a live VS Code webview and validate the headless harness
+    // against reality (MAR-191). `id` correlates the request. Never used in production.
+    | { type: "__perfMarks"; id: string; marks: Record<string, number> };
 
 /**
  * Extension → WebView messages.
@@ -388,6 +393,12 @@ export type ToWebviewMessage =
     // integration suite, to drive the real Milkdown editor ahead of the backing
     // document and exercise the save flush end-to-end. Never used in production.
     | { type: "__testInsertText"; text: string }
+    // TEST-ONLY: asks the webview to reply with its `mdw:` User-Timing marks
+    // (`__perfMarks`). Sent only by the invisible `birta._test.getPerfMarks`
+    // command so the integration suite can measure real launch time in a live VS
+    // Code webview (MAR-191). Read-only — reads marks already stamped by
+    // webview/perf.ts. Never used in production.
+    | { type: "__getPerfMarks"; id: string }
     // A save is imminent (onWillSaveTextDocument): the webview must serialize the
     // live document NOW and reply with `flushResult` so the save writes the
     // freshest content instead of whatever the throttle last shipped. `id`
