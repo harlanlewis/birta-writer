@@ -117,11 +117,12 @@ describe("initReviewList — By-type (grouped) mode", () => {
         expect(element.querySelector(".review-more")!.textContent).toBe("Show less");
     });
 
-    it("shows a 'Sort by' label + a segmented control in the toolbar", () => {
+    it("shows a segmented By type / In order control in the toolbar", () => {
         const { element, render } = mk(true);
         render({ rows: [row({})] });
-        expect(element.querySelector(".review-toolbar__label")?.textContent).toBe("Sort by");
-        expect(element.querySelectorAll(".review-segmented .review-seg")).toHaveLength(2);
+        expect(element.querySelector(".review-toolbar__label")).toBeNull();
+        const segs = [...element.querySelectorAll(".review-segmented .review-seg")].map((s) => s.textContent);
+        expect(segs).toEqual(["By type", "In order"]);
     });
 
     it("orders groups by rank (correctness-first), not first appearance", () => {

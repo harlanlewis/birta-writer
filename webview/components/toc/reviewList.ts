@@ -105,15 +105,12 @@ export function initReviewList(
     // ── "Sort by" toggle (persistent chrome, built once) ──────────────────
     const toolbar = document.createElement("div");
     toolbar.className = "review-toolbar";
-    const sortLabel = document.createElement("span");
-    sortLabel.className = "review-toolbar__label";
-    sortLabel.textContent = t("Sort by");
     const segGroup = document.createElement("div");
     segGroup.className = "review-segmented";
     const segByType = makeSeg(t("By type"), true);
     const segInOrder = makeSeg(t("In order"), false);
     segGroup.append(segByType, segInOrder);
-    toolbar.append(sortLabel, segGroup);
+    toolbar.append(segGroup);
     const bodyEl = document.createElement("div");
     bodyEl.className = "review-body";
     element.append(toolbar, bodyEl);

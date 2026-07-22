@@ -283,15 +283,10 @@ body.toc-resizing {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 8px;
     padding: 7px 10px 8px;
     font-size: 11px;
 
     &[hidden] { display: none; }
-}
-
-.review-toolbar__label {
-    color: var(--vscode-descriptionForeground);
 }
 
 /* A bordered segmented control: the two options read as one alternative, the
