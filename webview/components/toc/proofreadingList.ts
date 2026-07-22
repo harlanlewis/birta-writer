@@ -11,6 +11,7 @@ import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { notifyReviewGroupByType } from "@/messaging";
 import { getProofreadConfig, listProofreadFindings } from "@/plugins/proofread";
+import { styleCategoryRank } from "@/utils/styleCategories";
 import { initReviewList, type ReviewResult } from "./reviewList";
 
 export interface ReviewListView {
@@ -54,22 +55,12 @@ function labelFor(view: EditorView, text: string, from: number, to: number): Lab
     return ctx.label ? ctx : { label: text };
 }
 
-// Style categories in the exact order the toolbar Checks menu lists them
-// (Phrases → AI tells → Prose; `repeated` is part of the master, appended last),
-// so the sidebar groups read top-to-bottom the way the switches do.
-const STYLE_ORDER = [
-    "fillers", "redundancies", "cliches", "wordiness",
-    "aiVocabulary", "aiArtifacts", "negativeParallelism", "ruleOfThree",
-    "passive", "longSentences", "emDash", "nonAsciiPunct", "repeated",
-];
-
 /** Correctness-first group order: spelling, then grammar, then style categories
- *  in the toolbar Checks-menu order. */
+ *  in the shared canonical order (which the toolbar Checks menu also reads). */
 function proofreadRank(f: { domain: "spelling" | "grammar" | "style"; kind: string }): number {
     if (f.domain === "spelling") { return 0; }
     if (f.domain === "grammar") { return 1; }
-    const i = STYLE_ORDER.indexOf(f.kind);
-    return 2 + (i < 0 ? STYLE_ORDER.length : i);
+    return 2 + styleCategoryRank(f.kind);
 }
 
 /** Resolve the tab's current contents: an explicit "off" state, an empty state,

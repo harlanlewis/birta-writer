@@ -32,6 +32,7 @@ import {
 } from "@/ui/icons";
 import { CALLOUT_ICONS } from "../callout";
 import type { CalloutKind } from "@/plugins/callouts";
+import { STYLE_CATEGORIES, STYLE_SECTIONS } from "@/utils/styleCategories";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
 import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
@@ -1822,26 +1823,14 @@ export function initToolbar(
         children.className = "tb-checks-children";
         styleChildrenEl = children;
 
-        const groups: { title: string; opts: [DomainCheckKey, string][] }[] = [
-            { title: t("Phrases"), opts: [
-                ["fillers", t("Fillers")],
-                ["redundancies", t("Redundancies")],
-                ["cliches", t("Cliches")],
-                ["wordiness", t("Wordiness")],
-            ] },
-            { title: t("AI tells"), opts: [
-                ["aiVocabulary", t("AI vocabulary")],
-                ["aiArtifacts", t("AI boilerplate")],
-                ["negativeParallelism", t("Not X, but Y")],
-                ["ruleOfThree", t("Rule of three")],
-            ] },
-            { title: t("Prose"), opts: [
-                ["passive", t("Passive voice")],
-                ["longSentences", t("Long sentences")],
-                ["emDash", t("Em dash")],
-                ["nonAsciiPunct", t("Curly punctuation")],
-            ] },
-        ];
+        // Derived from the shared canonical category list so the menu, the review
+        // sidebar's grouping, and the in-text chips can never drift apart.
+        const groups: { title: string; opts: [DomainCheckKey, string][] }[] = STYLE_SECTIONS.map((section) => ({
+            title: t(section),
+            opts: STYLE_CATEGORIES
+                .filter((d) => d.section === section)
+                .map((d) => [d.category as DomainCheckKey, t(d.label)]),
+        }));
         for (const group of groups) {
             addHeader(children, group.title);
             for (const [key, label] of group.opts) { addRow(children, key, label); }

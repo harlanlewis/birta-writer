@@ -21,6 +21,7 @@ import { $prose } from "@milkdown/utils";
 import type { HarperLint, LintBlock, LintBlockResult, ProofreadConfig } from "../../shared/messages";
 import { INLINE_PLACEHOLDER } from "../../shared/proofreadFilter";
 import { compileStyleMatcher, type StyleCategory, type StyleMatcher } from "../utils/styleMatcher";
+import { styleCategoryLabel } from "../utils/styleCategories";
 import {
     AI_ARTIFACTS,
     AI_VOCABULARY,
@@ -226,22 +227,7 @@ function styleHitTitle(category: string): string {
 
 /** Short category chip shown in the popup (and reused for grouping). */
 export function styleTag(category: string): string {
-    switch (category) {
-        case "fillers": return t("Filler");
-        case "redundancies": return t("Redundancy");
-        case "cliches": return t("Cliché");
-        case "wordiness": return t("Wordy");
-        case "aiVocabulary": return t("AI vocabulary");
-        case "aiArtifacts": return t("AI boilerplate");
-        case "passive": return t("Passive voice");
-        case "longSentences": return t("Long sentence");
-        case "negativeParallelism": return t("AI cadence");
-        case "ruleOfThree": return t("Rule of three");
-        case "emDash": return t("Em dash");
-        case "nonAsciiPunct": return t("Punctuation");
-        case "repeated": return t("Repeated word");
-        default: return t("Style");
-    }
+    return t(styleCategoryLabel(category));
 }
 
 /**
@@ -263,7 +249,7 @@ export function styleAdvice(category: string): string {
         case "aiArtifacts": return t("Leftover chatbot phrasing - delete it so the prose sounds like you.");
         case "passive": return t("The doer is hidden or trailing - lead with who acts: \"mistakes were made\" -> \"we made mistakes\".");
         case "longSentences": return t("Past ~30 words the reader loses the thread - break it at a natural pause.");
-        case "negativeParallelism": return t("\"Not X, but Y\" is a stock AI cadence - state Y on its own.");
+        case "negativeParallelism": return t("A stock AI rhythm - cut the negation and state the point plainly.");
         case "ruleOfThree": return t("Three stacked adjectives read as cadence, not content - one precise word does more.");
         case "emDash": return t("An em dash renders inconsistently outside the editor - a spaced hyphen is safe everywhere.");
         case "nonAsciiPunct": return t("Curly quotes and ellipses can garble in code, terminals, and diffs - ASCII stays portable.");
