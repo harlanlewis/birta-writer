@@ -4,11 +4,18 @@
  * for an arbitrary span. Unfolds any collapsing ancestor, selects the range,
  * and scrolls it below the sticky topbar. Navigation only; mutates the
  * selection, never the document.
+ *
+ * Unlike a ToC heading jump — where the target heading BECOMES the sticky
+ * title, so nothing overlays it — a note/finding sits inside a section, so the
+ * active heading's sticky title floats OVER the content top. Reserve its height
+ * (measureStickyHeadingHeight) on top of the topbar so the target lands below
+ * the sticky, not hidden under it.
  */
 import type { EditorView } from "@/pm";
 import { TextSelection } from "@/pm";
 import { revealPosition } from "@/editing/blockOps";
 import { scrollElementBelowTopbar } from "@/utils/headingUtils";
+import { measureStickyHeadingHeight } from "@/plugins/caretScrollMargin";
 
 export function revealRange(view: EditorView, from: number, to: number): void {
     const size = view.state.doc.content.size;
@@ -30,7 +37,7 @@ export function revealRange(view: EditorView, from: number, to: number): void {
         const el = node.nodeType === Node.TEXT_NODE
             ? (node.parentElement as HTMLElement | null)
             : (node as HTMLElement);
-        if (el) { scrollElementBelowTopbar(el); }
+        if (el) { scrollElementBelowTopbar(el, measureStickyHeadingHeight() + 8); }
     } catch { /* ignore */ }
     view.focus();
 }

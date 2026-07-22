@@ -119,6 +119,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // so they can't overlap the tabs.
     type ReviewTab = "contents" | "proofreading" | "notes";
     let activeTab: ReviewTab = "contents";
+    // The Proofreading tab exists only while the master switch is on; when off
+    // it's removed from the strip entirely (not shown with an "off" body).
+    // Seeded from the injected config, kept live via proofread-config-changed.
+    let proofreadingEnabled = window.__i18n?.proofread?.proofreadingEnabled ?? true;
 
     const tabStrip = document.createElement("div");
     tabStrip.className = "toc-tabs";
@@ -175,6 +179,16 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         activeTab = tab;
         updateTabButtons();
         if (isPanelVisible()) { renderActiveView(); }
+    }
+
+    /** Show/hide the Proofreading tab with the master switch. Hiding it while it
+     *  is the active tab falls back to Contents so the body is never stranded. */
+    function applyProofreadingEnabled(enabled: boolean): void {
+        proofreadingEnabled = enabled;
+        tabProofread.hidden = !enabled;
+        if (!enabled && activeTab === "proofreading") {
+            setActiveTab("contents");
+        }
     }
 
     /** The side-bar glyph whose filled edge marks the current dock side. */
@@ -926,12 +940,18 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // tooltip is redundant (and would overlap the panel) — dismiss it.
         hideTooltip();
         renderActiveView();
-        panel.classList.add("toc-panel--flyout");
+        // Enter with transitions SUPPRESSED (--flyout-enter): the closed drawer's
+        // transform is translateX(±100%), and animating straight to the flyout's
+        // translateY(-6px) interpolates diagonally — a sideways sweep in from the
+        // viewport edge. Snap to the flyout's start state first, then release the
+        // transition so only the translateY + opacity animate.
+        panel.classList.add("toc-panel--flyout", "toc-panel--flyout-enter");
         document.body.classList.add("toc-flyout-open");
         positionFlyout();
-        // Commit the initial (down + faded) state, then transition to shown, so
-        // the reveal is a slight slide-DOWN + fade-in (not the drawer's slide).
+        // Commit the initial (down + faded) state with no transition, then release
+        // it and transition to shown, so the reveal is a slight slide-DOWN + fade.
         void panel.offsetWidth;
+        panel.classList.remove("toc-panel--flyout-enter");
         panel.classList.add("toc-panel--flyout-in");
         // Open at the reader's place in the document, never at the top: the
         // list renders before the card's capped geometry exists, so the active
@@ -1089,6 +1109,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // Show only the initial (Contents) view; the review tabs stay hidden until
     // picked, so they scan/enumerate nothing until then.
     updateTabButtons();
+    applyProofreadingEnabled(proofreadingEnabled);
 
     // The Proofreading tab mirrors the decoration set, and is refreshed SOLELY
     // by this event — it deliberately does NOT ride the per-frame doc-change
@@ -1106,6 +1127,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }
     };
     window.addEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
+
+    // The master proofreading switch (birta.proofreading.enabled) governs whether
+    // the Proofreading TAB exists at all — hidden when off. proofread-config-changed
+    // fires on any config change (a toolbar toggle, or a settings echo).
+    const onProofreadConfigChanged = (e: Event): void => {
+        const cfg = (e as CustomEvent).detail as { proofreadingEnabled?: boolean } | undefined;
+        applyProofreadingEnabled(cfg?.proofreadingEnabled ?? true);
+    };
+    window.addEventListener("proofread-config-changed", onProofreadConfigChanged);
 
     requestAnimationFrame(() => {
         tocMode = resolveMode();
@@ -1145,6 +1175,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         },
         dispose: () => {
             window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
+            window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);
             dnd.dispose();
         },
     };

@@ -66,6 +66,13 @@
     transform: translateY(0);
 }
 
+/* Entry frame only: snap to the flyout's start state (no transition) so the
+   reveal never interpolates from the closed drawer's translateX (a sideways
+   sweep). showFlyout removes this the frame before adding --flyout-in. */
+.toc-panel--flyout.toc-panel--flyout-enter {
+    transition: none;
+}
+
 .toc-panel--flyout .toc-list {
     min-height: 0; /* let the flex list shrink within the capped card and scroll */
     /* No floating controls in the flyout (hidden below) — replace the docked
