@@ -261,6 +261,35 @@ describe("incrementalScanNotes — oracle equality with a full scan", () => {
         expect(inc!.map((i) => i.kind).sort()).toEqual(["custom", "placeholder"]);
     });
 
+    it("DELETING text before a marker should fast-path and shift it back (negative delta)", () => {
+        const doc = docOf(p("wordy lead here"), p("keep [TK] this"));
+        const { prev, next } = edit(doc, (s) => s.tr.delete(1, 1 + "wordy ".length));
+        const inc = check(prev, next);
+        expect(inc).not.toBeNull();
+        const tk = inc!.find((i) => i.kind === "placeholder")!;
+        // [TK] must land exactly where a full scan puts it.
+        expect(next.textBetween(tk.from, tk.to)).toBe("[TK]");
+    });
+
+    it("REPLACING a range inside a block should fast-path and agree with a full scan", () => {
+        const doc = docOf(p("alpha [TK] omega"), p("tail [TODO: x]"));
+        // Replace "alpha " (6 chars) with "hi " (3 chars): net delta -3.
+        const { prev, next } = edit(doc, (s) => s.tr.insertText("hi ", 1, 1 + "alpha ".length));
+        const inc = check(prev, next);
+        expect(inc).not.toBeNull();
+        expect(inc!.map((i) => i.kind)).toEqual(["placeholder", "todo"]);
+    });
+
+    it("an edit a full document behind (tab was inactive) should still agree with a full scan", () => {
+        // The cache can lag many edits when the tab is hidden; incremental must
+        // be correct for ANY prev→next, not just adjacent frames.
+        const doc = docOf(p("one [TK] two three four"));
+        const state = EditorState.create({ doc, schema });
+        const next = state.apply(state.tr.insertText("Z", 3).insertText("Y", 7)).doc;
+        const inc = incrementalScanNotes(doc, scanNotes(doc), next);
+        if (inc !== null) { expect(inc).toEqual(scanNotes(next)); }
+    });
+
     it("the fast path should NOT walk the whole document (only the edited block)", () => {
         // The perf guarantee: an inline edit re-scans one block, so the full
         // doc.descendants walk scanNotes(next) would do must never run.
