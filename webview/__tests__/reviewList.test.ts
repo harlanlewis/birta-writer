@@ -95,8 +95,6 @@ describe("initReviewList — By-type (grouped) mode", () => {
         ] });
         const names = [...groups(element)].map((g) => g.querySelector(".review-group__name")?.textContent);
         expect(names).toEqual(["EM DASH", "SPELLING"]);
-        // The EM DASH group's count is 2.
-        expect(groups(element)[0]!.querySelector(".review-group__count")?.textContent).toBe("2");
         expect(items(element)).toHaveLength(3);
     });
 
@@ -119,10 +117,11 @@ describe("initReviewList — By-type (grouped) mode", () => {
         expect(element.querySelector(".review-more")!.textContent).toBe("Show less");
     });
 
-    it("shows a 'Sort by:' label in the toolbar", () => {
+    it("shows a 'Sort by' label + a segmented control in the toolbar", () => {
         const { element, render } = mk(true);
         render({ rows: [row({})] });
-        expect(element.querySelector(".review-toolbar__label")?.textContent).toBe("Sort by:");
+        expect(element.querySelector(".review-toolbar__label")?.textContent).toBe("Sort by");
+        expect(element.querySelectorAll(".review-segmented .review-seg")).toHaveLength(2);
     });
 
     it("orders groups by rank (correctness-first), not first appearance", () => {

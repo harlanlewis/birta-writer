@@ -27,7 +27,7 @@ function noteTag(item: NoteItem): string {
         case "placeholder": return "TK";
         case "todo": return "TODO";
         case "fixme": return "FIXME";
-        case "comment": return t("Note");
+        case "comment": return t("HTML comment");
         case "custom": return item.marker;
     }
 }

@@ -107,10 +107,13 @@ export function initReviewList(
     toolbar.className = "review-toolbar";
     const sortLabel = document.createElement("span");
     sortLabel.className = "review-toolbar__label";
-    sortLabel.textContent = t("Sort by:");
+    sortLabel.textContent = t("Sort by");
+    const segGroup = document.createElement("div");
+    segGroup.className = "review-segmented";
     const segByType = makeSeg(t("By type"), true);
     const segInOrder = makeSeg(t("In order"), false);
-    toolbar.append(sortLabel, segByType, segInOrder);
+    segGroup.append(segByType, segInOrder);
+    toolbar.append(sortLabel, segGroup);
     const bodyEl = document.createElement("div");
     bodyEl.className = "review-body";
     element.append(toolbar, bodyEl);
@@ -191,7 +194,7 @@ export function initReviewList(
         });
     }
 
-    function makeGroupHeader(tag: string, count: number): HTMLElement {
+    function makeGroupHeader(tag: string): HTMLElement {
         const header = document.createElement("button");
         header.className = "review-group";
         header.tabIndex = -1;
@@ -204,10 +207,7 @@ export function initReviewList(
         const name = document.createElement("span");
         name.className = "review-group__name";
         name.textContent = tag;
-        const num = document.createElement("span");
-        num.className = "review-group__count";
-        num.textContent = String(count);
-        header.append(caret, name, num);
+        header.append(caret, name);
 
         header.addEventListener("mousedown", (e) => {
             e.preventDefault();
@@ -261,7 +261,7 @@ export function initReviewList(
         }
         const nodes: HTMLElement[] = [];
         for (const group of groupByTag(result.rows)) {
-            nodes.push(makeGroupHeader(group.tag, group.rows.length));
+            nodes.push(makeGroupHeader(group.tag));
             if (collapsed.has(group.tag)) { continue; }
             nodes.push(...buildRows(shownRows(group)));
             if (group.rows.length > GROUP_CAP) {

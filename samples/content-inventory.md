@@ -476,7 +476,7 @@ Inline and block HTML render as a sanitized, read-only preview (editing raw HTML
 
 An HTML comment preserved and shown dimmed:
 
-<!-- This is a comment. It survives round-trips. -->
+<!-- This is an HTML comment. It survives round-trips. -->
 
 ---
 

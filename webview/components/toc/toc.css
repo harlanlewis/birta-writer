@@ -276,36 +276,46 @@ body.toc-resizing {
     display: none;
 }
 
-/* The "Sort by" toggle sits above the scrolling body (fixed). Its type matches
-   the ToC H1 (12px) so it reads as a peer of the group headers below. */
+/* The "Sort by" control sits above the scrolling body (fixed). It's secondary
+   chrome — a muted label + a segmented toggle — so it stays quieter than the
+   group headers below (which carry the content hierarchy). */
 .review-toolbar {
     flex: 0 0 auto;
     display: flex;
-    align-items: baseline;
-    gap: 4px;
-    padding: 8px 8px 6px;
-    font-size: 12px;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px 8px;
+    font-size: 11px;
 
     &[hidden] { display: none; }
 }
 
 .review-toolbar__label {
     color: var(--vscode-descriptionForeground);
-    margin-right: 2px;
+}
+
+/* A bordered segmented control: the two options read as one alternative, the
+   active one filled with the accent. */
+.review-segmented {
+    display: inline-flex;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 5px;
+    overflow: hidden;
 }
 
 .review-seg {
-    padding: 2px 8px;
+    padding: 2px 9px;
     border: none;
-    border-radius: 4px;
     background: transparent;
     color: var(--vscode-foreground);
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.5;
     cursor: pointer;
-    opacity: 0.55;
+    opacity: 0.65;
     transition: opacity 0.1s ease, background-color 0.1s ease;
 
-    &:hover { opacity: 0.8; background: var(--vscode-toolbar-hoverBackground); }
+    &:hover { opacity: 0.9; }
+    & + & { border-left: 1px solid var(--vscode-panel-border); }
 }
 
 .review-seg--active,
@@ -373,13 +383,6 @@ body.toc-resizing {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-.review-group__count {
-    flex: 0 0 auto;
-    font-size: 11px;
-    opacity: 0.5;
-    font-variant-numeric: tabular-nums;
 }
 
 /* Per-group "Show K more" / "Show less" toggle. */
@@ -560,6 +563,11 @@ body.toc-resizing {
     opacity: 0.6;
     visibility: hidden;
 }
+/* H1/H2 parents always show their toggle (top-level structure is worth a
+   persistent affordance); H3+ parents reveal it on hover, like the document's
+   own fold gutter. A collapsed heading always shows its toggle so you can undo. */
+.toc-item--parent.toc-item--h1 .toc-caret::before,
+.toc-item--parent.toc-item--h2 .toc-caret::before,
 .toc-item--parent:hover .toc-caret::before,
 .toc-item--collapsed .toc-caret::before {
     visibility: visible;
