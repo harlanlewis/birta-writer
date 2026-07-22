@@ -140,7 +140,7 @@ describe("scanNotes — document walk", () => {
         expect(items[0]!.label).toBe("ask the source");
     });
 
-    it("should list an unchecked task item but not a checked or non-task one", () => {
+    it("should NOT list a task checkbox (it's content, not an editor note)", () => {
         const doc = schema.node("doc", null, [
             schema.node("bullet_list", null, [
                 schema.node("list_item", { checked: false }, [p("buy milk")]),
@@ -148,25 +148,30 @@ describe("scanNotes — document walk", () => {
                 schema.node("list_item", { checked: null }, [p("plain bullet")]),
             ]),
         ]);
+        expect(scanNotes(doc)).toHaveLength(0);
+    });
+
+    it("should still catch a marker typed INSIDE a task line", () => {
+        const doc = schema.node("doc", null, [
+            schema.node("bullet_list", null, [
+                schema.node("list_item", { checked: false }, [p("do TODO: the thing")]),
+            ]),
+        ]);
         const items = scanNotes(doc);
-        const tasks = items.filter((i) => i.kind === "task");
-        expect(tasks).toHaveLength(1);
-        expect(tasks[0]!.label).toBe("buy milk");
+        expect(items).toHaveLength(1);
+        expect(items[0]!.kind).toBe("todo");
     });
 
     it("should return every kind, document-ordered by position", () => {
         const doc = schema.node("doc", null, [
             p("lead [TK] para"),
-            schema.node("bullet_list", null, [
-                schema.node("list_item", { checked: false }, [p("do TODO: the thing")]),
-            ]),
+            p("do TODO: the thing"),
             schema.node("paragraph", null, [schema.node("html", { value: "<!-- FIXME: later -->" })]),
         ]);
         const items = scanNotes(doc);
         const froms = items.map((i) => i.from);
         expect([...froms]).toEqual([...froms].sort((a, b) => a - b));
         expect(items.map((i) => i.kind)).toContain("placeholder");
-        expect(items.map((i) => i.kind)).toContain("task");
         expect(items.map((i) => i.kind)).toContain("todo");
         expect(items.map((i) => i.kind)).toContain("fixme");
     });
@@ -225,15 +230,15 @@ describe("incrementalScanNotes — oracle equality with a full scan", () => {
         if (inc !== null) { expect(inc).toEqual(full); }
     });
 
-    it("typing on a task item's first line should BAIL (its label mirrors that text)", () => {
+    it("typing inside a task line (a marker there) still agrees with a full scan", () => {
         const doc = docOf(schema.node("bullet_list", null, [
-            schema.node("list_item", { checked: false }, [p("buy milk")]),
+            schema.node("list_item", { checked: false }, [p("do TODO: thing")]),
         ]));
-        // Insert into the item's paragraph (its label source).
-        const { prev, next } = edit(doc, (s) => s.tr.insertText("!", 1 + 1 + 1 + "buy milk".length));
-        const inc = incrementalScanNotes(prev, scanNotes(prev), next);
-        expect(inc).toBeNull(); // bailed — the full scan re-derives the task label
-        expect(scanNotes(next)[0]!.label).toBe("buy milk!");
+        // Insert ahead of the marker; the task itself is not a note, but the
+        // TODO: inside it is, and its context label shifts.
+        const { prev, next } = edit(doc, (s) => s.tr.insertText("x", 1 + 1 + 1));
+        const inc = check(prev, next);
+        expect(inc).not.toBeNull(); // no task-label special case to bail for now
     });
 
     it("splitting a paragraph should BAIL to a full scan", () => {

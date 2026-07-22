@@ -24,7 +24,7 @@
 import type { Node as ProseNode } from "../pm";
 import { singleTextblockInlineEdit } from "../utils/textblockEdit";
 
-export type NoteKind = "placeholder" | "todo" | "fixme" | "comment" | "task" | "custom";
+export type NoteKind = "placeholder" | "todo" | "fixme" | "comment" | "custom";
 
 export interface NoteItem {
     /** Document position the row reveals/selects from. */
@@ -143,12 +143,6 @@ function classifyComment(inner: string): { kind: NoteKind; marker: string; label
     return { kind: "comment", marker: "note", label: snippet(inner) };
 }
 
-/** The label for an unchecked task row: the item's first block text. */
-function taskLabel(item: ProseNode): string {
-    const first = item.firstChild;
-    return snippet(first?.textContent ?? item.textContent ?? "");
-}
-
 /**
  * Flatten one block into text where every offset maps 1:1 to a document
  * position: text nodes contribute their characters (inline code masked, so a
@@ -220,12 +214,10 @@ export function scanNotes(doc: ProseNode, customMarkers: readonly string[] = [])
             if (item) { items.push(item); }
             return false;
         }
-        // Unchecked task checkboxes. Descend so a marker inside the item's blocks
-        // (a `[TK]` in a to-do line) is still caught by the textblock branch.
-        if (node.type.name === "list_item" && node.attrs?.["checked"] === false) {
-            items.push({ from: pos + 1, to: pos + 1, kind: "task", marker: "task", label: taskLabel(node) });
-            return true;
-        }
+        // NB: an unchecked task checkbox is deliberately NOT a note — it's
+        // rendered content (a checkbox the reader sees), not the editorial
+        // scaffolding the Notes tab is for. A marker typed INSIDE a to-do line
+        // (a `[TK]` in `- [ ] cite [TK]`) is still caught by descent below.
         // A textblock's whole note contribution comes from scanTextblock; a
         // textblock holds no child BLOCKS and its inline HTML atoms are already
         // handled, so never descend.
@@ -257,16 +249,6 @@ export function incrementalScanNotes(
     const edit = singleTextblockInlineEdit(prevDoc, nextDoc);
     if (!edit) { return null; }
     if (edit.kind === "identical") { return prevItems as NoteItem[]; }
-
-    // An unchecked task item's row label is its FIRST block's text, so an inline
-    // edit there changes a note the block-local rescan can't see. Bail to a full
-    // scan for that narrow case (typing on a checkbox's first line).
-    const container = nextDoc.resolve(edit.nextBlockPos).parent;
-    if (container.type.name === "list_item"
-        && container.attrs?.["checked"] === false
-        && container.firstChild === edit.nextBlock) {
-        return null;
-    }
 
     const blockStart = edit.prevBlockPos;
     const blockEnd = edit.prevBlockPos + edit.prevBlock.nodeSize;

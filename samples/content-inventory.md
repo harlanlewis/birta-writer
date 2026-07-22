@@ -546,6 +546,32 @@ The master switch above governs every category below; each also has its own
 
 ---
 
+## Editor notes
+
+The **Notes** tab in the review sidebar collects the editor-note markers you
+leave for yourself while drafting — the scaffolding that should never survive
+into the finished piece. Every marker below is plain text that round-trips
+byte-for-byte; the sidebar only *lists* them (click to jump), it never decorates
+the prose. Open the Notes tab to see these grouped by type.
+
+- A bare placeholder: [TK] — the classic "to come" mark for a fact you'll fill in later.
+- A placeholder carrying its spec: [TK: cite the 2024 remote-work survey] — the bracketed text becomes the note's label.
+- A colon marker: TODO: tighten this paragraph before publish.
+- A fix marker: FIXME: the figures in this draft are from an old export.
+- The bracketed forms work too — [TODO] and [FIXME: broken cross-reference] — and map to the same kinds.
+- An HTML comment is a note, and a leading keyword routes it: <!-- TODO: verify these against the current style guide -->
+
+A bare comment with no keyword is just a **Note**: <!-- reminder: the intro still needs a hook -->
+
+Add your own tokens with `birta.notes.customMarkers` — a plain word like
+`DRAFT` matches only as a whole word, so it never lights up inside `redrafted`.
+
+---
+
+---
+
+---
+
 ## Not supported
 
 > [!WARNING]

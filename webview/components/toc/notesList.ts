@@ -28,8 +28,18 @@ function noteTag(item: NoteItem): string {
         case "todo": return "TODO";
         case "fixme": return "FIXME";
         case "comment": return t("Note");
-        case "task": return t("Task");
         case "custom": return item.marker;
+    }
+}
+
+/** Group order for By-type: the built-in kinds in a fixed order, custom last. */
+function noteRank(item: NoteItem): number {
+    switch (item.kind) {
+        case "placeholder": return 0;
+        case "todo": return 1;
+        case "fixme": return 2;
+        case "comment": return 3;
+        case "custom": return 4;
     }
 }
 
@@ -81,6 +91,7 @@ export function initNotesList(getView: () => EditorView | null): NotesListView {
             rows: items.map((item) => ({
                 tag: noteTag(item),
                 label: item.label || noteTag(item),
+                rank: noteRank(item),
                 from: item.from,
                 to: item.to,
                 actions: [{

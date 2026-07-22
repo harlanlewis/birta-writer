@@ -53,13 +53,13 @@ export async function run({ page, check, baseUrl }) {
             label: el.querySelector(".review-item__label")?.textContent,
         })));
     check("Notes lists every built-in marker in document order",
-        JSON.stringify(notes.map((n) => n.tag)) === JSON.stringify(["TK", "TODO", "Task", "FIXME"]),
+        JSON.stringify(notes.map((n) => n.tag)) === JSON.stringify(["TK", "TODO", "FIXME"]),
         JSON.stringify(notes));
 
     // ── Grouping: default By-type shows one header per marker type ─────────
     const groupNames = await page.$$eval(".review-list--notes .review-group__name", (els) => els.map((e) => e.textContent));
     check("Notes defaults to By-type grouping with a header per type",
-        JSON.stringify(groupNames) === JSON.stringify(["TK", "TODO", "Task", "FIXME"]),
+        JSON.stringify(groupNames) === JSON.stringify(["TK", "TODO", "FIXME"]),
         JSON.stringify(groupNames));
 
     // Switch to In-order: headers disappear, the flat list remains.
@@ -80,8 +80,8 @@ export async function run({ page, check, baseUrl }) {
     // Re-expand so the later navigation/typing checks see the full list again.
     await page.click(".review-list--notes .review-group:first-child");
     await page.waitForTimeout(100);
-    check("a checked checkbox is NOT listed as a note",
-        !notes.some((n) => n.label && n.label.includes("outline done")),
+    check("task checkboxes are NOT listed as notes (they're content, not scaffolding)",
+        !notes.some((n) => /gather sources|outline done/.test(n.label || "")),
         JSON.stringify(notes.map((n) => n.label)));
     check("a bracketed/colon marker's trailing text becomes the row label",
         notes.some((n) => n.tag === "TODO" && /background section/.test(n.label || "")),
@@ -101,6 +101,9 @@ export async function run({ page, check, baseUrl }) {
     check("short/punctuation findings show context, not a bare glyph",
         findings.length > 0 && !findings.some((f) => f === "—") && findings.some((f) => /—/.test(f) && f.length > 3),
         JSON.stringify(findings));
+    // The flagged span inside a context label is marked so the row shows WHAT's flagged.
+    const flags = await page.$$eval(".review-list--proofread .review-item__flag", (els) => els.map((e) => e.textContent));
+    check("the flagged span is emphasized inside context labels", flags.includes("—"), JSON.stringify(flags));
 
     // ── Click a Notes row → it selects the marker in the editor ───────────
     await page.click(".toc-tab:nth-child(3)"); // back to Notes
@@ -123,7 +126,7 @@ export async function run({ page, check, baseUrl }) {
     const afterTags = await page.$$eval(".review-list--notes .review-item", (els) =>
         els.map((el) => el.querySelector(".review-item__tag")?.textContent));
     check("typing with the Notes tab open keeps the marker list intact",
-        JSON.stringify(afterTags) === JSON.stringify(["TK", "TODO", "Task", "FIXME"]),
+        JSON.stringify(afterTags) === JSON.stringify(["TK", "TODO", "FIXME"]),
         `before=${beforeCount} after=${JSON.stringify(afterTags)}`);
 
     // Clicking [TK] AFTER the edit must still select it (anchors tracked live).

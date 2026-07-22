@@ -67,6 +67,20 @@ describe("initReviewList — flat (In order) mode", () => {
         const main = element.querySelector<HTMLElement>(".review-item__main")!;
         expect(() => main.dispatchEvent(new MouseEvent("click", { bubbles: true }))).not.toThrow();
     });
+
+    it("renders the flagged span within a context label", () => {
+        const { element, render } = mk(false);
+        render({ rows: [row({ label: "ab—cd", emphasis: { start: 2, end: 3 } })] });
+        expect(element.querySelector(".review-item__flag")?.textContent).toBe("—");
+        expect(element.querySelector(".review-item__label")?.textContent).toBe("ab—cd");
+    });
+
+    it("ignores an out-of-range emphasis and renders plain text", () => {
+        const { element, render } = mk(false);
+        render({ rows: [row({ label: "abc", emphasis: { start: 5, end: 9 } })] });
+        expect(element.querySelector(".review-item__flag")).toBeNull();
+        expect(element.querySelector(".review-item__label")?.textContent).toBe("abc");
+    });
 });
 
 describe("initReviewList — By-type (grouped) mode", () => {
@@ -90,6 +104,16 @@ describe("initReviewList — By-type (grouped) mode", () => {
         const { element, render } = mk(true);
         render({ rows: [row({ tag: "TK" })] });
         expect(element.classList.contains("review-list--grouped")).toBe(true);
+    });
+
+    it("orders groups by rank (correctness-first), not first appearance", () => {
+        const { element, render } = mk(true);
+        render({ rows: [
+            row({ tag: "EM DASH", rank: 2, from: 1, to: 2 }),   // appears first, low priority
+            row({ tag: "SPELLING", rank: 0, from: 9, to: 16 }), // appears later, high priority
+        ] });
+        const names = [...groups(element)].map((g) => g.querySelector(".review-group__name")?.textContent);
+        expect(names).toEqual(["SPELLING", "EM DASH"]);
     });
 
     it("clicking a group header collapses it (its rows leave the DOM)", () => {

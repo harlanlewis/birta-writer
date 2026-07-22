@@ -21,28 +21,42 @@ export interface ReviewListView {
     setGroupByType: (grouped: boolean) => void;
 }
 
-/** A short surrounding-context snippet, for findings whose flagged text can't
- *  identify itself — a lone em dash, a curly quote, a stray comma. Without this,
- *  the "Em dash" group is 30 identical "—" rows. */
-function contextSnippet(view: EditorView, from: number, to: number): string {
-    const size = view.state.doc.content.size;
-    const a = Math.max(0, from - 28);
-    const b = Math.min(size, to + 28);
-    let raw = view.state.doc.textBetween(a, b, " ", " ").replace(/\s+/g, " ");
-    // Drop a partial word at each cut edge so the snippet starts/ends cleanly.
-    if (a > 0) { raw = raw.replace(/^\S*\s+/, ""); }
-    if (b < size) { raw = raw.replace(/\s+\S*$/, ""); }
-    raw = raw.trim();
-    if (!raw) { return ""; }
-    return (a > 0 ? "…" : "") + raw + (b < size ? "…" : "");
+type Label = { label: string; emphasis?: { start: number; end: number } };
+
+/** A surrounding-context label with the flagged span marked, built within the
+ *  finding's own block (so offsets stay 1:1). For findings whose flagged text
+ *  can't identify itself — a lone em dash, a curly quote — this shows both where
+ *  the finding is and WHAT is flagged, instead of 30 identical "—" rows. */
+function contextLabel(view: EditorView, from: number, to: number): Label {
+    const $from = view.state.doc.resolve(from);
+    const blockStart = $from.start();
+    const blockEnd = $from.end();
+    const winA = Math.max(blockStart, from - 28);
+    const winB = Math.min(blockEnd, to + 28);
+    let before = view.state.doc.textBetween(winA, from, " ", " ").replace(/\s+/g, " ");
+    const flag = view.state.doc.textBetween(from, to, " ", " ").replace(/\s+/g, " ");
+    let after = view.state.doc.textBetween(to, winB, " ", " ").replace(/\s+/g, " ");
+    // Trim a partial word at each cut edge; add an ellipsis when we cut.
+    before = winA > blockStart ? "…" + before.replace(/^\s*\S*\s+/, "") : before.replace(/^\s+/, "");
+    after = winB < blockEnd ? after.replace(/\s+\S*\s*$/, "") + "…" : after.replace(/\s+$/, "");
+    const label = before + flag + after;
+    if (!flag) { return { label }; }
+    return { label, emphasis: { start: before.length, end: before.length + flag.length } };
 }
 
-/** The row label: the flagged text when it's a recognizable word/phrase, else a
- *  surrounding snippet so short/punctuation findings stay distinguishable. */
-function labelFor(view: EditorView, text: string, from: number, to: number): string {
+/** The row label: the flagged text itself when it's a recognizable word/phrase
+ *  (spelling, a filler), else a context label with the flag marked. */
+function labelFor(view: EditorView, text: string, from: number, to: number): Label {
     const trimmed = text.trim();
     const informative = trimmed.length >= 2 && /[\p{L}\p{N}]/u.test(trimmed);
-    return informative ? text : (contextSnippet(view, from, to) || text);
+    if (informative) { return { label: text }; }
+    const ctx = contextLabel(view, from, to);
+    return ctx.label ? ctx : { label: text };
+}
+
+/** Correctness-first group order: spelling, then grammar, then every style category. */
+function domainRank(domain: "spelling" | "grammar" | "style"): number {
+    return domain === "spelling" ? 0 : domain === "grammar" ? 1 : 2;
 }
 
 /** Resolve the tab's current contents: an explicit "off" state, an empty state,
@@ -56,17 +70,22 @@ function produce(view: EditorView | null): ReviewResult {
     const findings = listProofreadFindings(view);
     if (findings.length === 0) { return { empty: t("No suggestions") }; }
     return {
-        rows: findings.map((f) => ({
-            tag: f.tag,
-            label: labelFor(view, f.text, f.from, f.to),
-            title: f.message,
-            from: f.from,
-            to: f.to,
-            actions: [
-                ...(f.canLearn && f.learn ? [{ label: t("Learn"), title: t("Add to dictionary"), run: f.learn }] : []),
-                { label: t("Ignore"), run: f.ignore },
-            ],
-        })),
+        rows: findings.map((f) => {
+            const { label, emphasis } = labelFor(view, f.text, f.from, f.to);
+            return {
+                tag: f.tag,
+                label,
+                emphasis,
+                title: f.message,
+                rank: domainRank(f.domain),
+                from: f.from,
+                to: f.to,
+                actions: [
+                    ...(f.canLearn && f.learn ? [{ label: t("Learn"), title: t("Add to dictionary"), run: f.learn }] : []),
+                    { label: t("Ignore"), run: f.ignore },
+                ],
+            };
+        }),
     };
 }
 

@@ -430,6 +430,15 @@ body.toc-resizing {
     white-space: nowrap;
 }
 
+/* The flagged span inside a context-snippet label: subtly highlighted so the
+   row shows WHAT is flagged. The surrounding context reads dimmer by contrast. */
+.review-item__flag {
+    border-radius: 2px;
+    padding: 0 1px;
+    background: var(--vscode-editor-findMatchHighlightBackground);
+    color: var(--vscode-foreground);
+}
+
 /* Actions are revealed on row hover/focus, like the gutter handles. */
 .review-item__actions {
     flex: 0 0 auto;

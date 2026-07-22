@@ -30,6 +30,8 @@ export interface ReviewRowSpec {
     /** Reveal the row's CURRENT anchor (read from the dataset at click time). */
     navigate: (from: number, to: number) => void;
     actions: ReviewAction[];
+    /** Optional [start,end) offsets within `label` to mark as the flagged span. */
+    emphasis?: { start: number; end: number };
 }
 
 export function buildReviewItem(spec: ReviewRowSpec): HTMLElement {
@@ -48,7 +50,21 @@ export function buildReviewItem(spec: ReviewRowSpec): HTMLElement {
 
     const label = document.createElement("span");
     label.className = "review-item__label";
-    label.textContent = spec.label;
+    const emph = spec.emphasis;
+    if (emph && emph.start >= 0 && emph.end <= spec.label.length && emph.start < emph.end) {
+        // Mark the flagged span within a context snippet so the row shows WHAT is
+        // flagged, not just where.
+        const flag = document.createElement("span");
+        flag.className = "review-item__flag";
+        flag.textContent = spec.label.slice(emph.start, emph.end);
+        label.append(
+            document.createTextNode(spec.label.slice(0, emph.start)),
+            flag,
+            document.createTextNode(spec.label.slice(emph.end)),
+        );
+    } else {
+        label.textContent = spec.label;
+    }
     if (spec.title) { applyTooltip(label, spec.title, { placement: "above", truncatedOnly: false }); }
 
     main.append(tag, label);

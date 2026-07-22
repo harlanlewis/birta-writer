@@ -35,6 +35,12 @@ export interface ReviewRowModel {
     from: number;
     to: number;
     actions: ReviewAction[];
+    /** By-type group order: groups sort by their rows' min rank (lower = first),
+     *  ties broken by first appearance. Default 0. */
+    rank?: number;
+    /** Optional [start,end) offsets within `label` to emphasize (the flagged
+     *  span, for a context-snippet label). */
+    emphasis?: { start: number; end: number };
 }
 
 /** What a refresh resolves to: rows, an empty-state message, or nothing (no
@@ -67,17 +73,17 @@ function rowSignature(row: ReviewRowModel): string {
     return [row.tag, row.label, row.title ?? "", row.actions.map((a) => a.label).join(",")].join(SEP_FIELD);
 }
 
-/** Rows grouped by tag, groups in first-appearance (document) order, rows in
- *  document order within each group. */
+/** Rows grouped by tag, groups ordered by their min rank (correctness-first, set
+ *  by the adapter) with ties broken by first appearance; rows keep document
+ *  order within each group. */
 function groupByTag(rows: readonly ReviewRowModel[]): Array<{ tag: string; rows: ReviewRowModel[] }> {
-    const order: string[] = [];
-    const map = new Map<string, ReviewRowModel[]>();
-    for (const row of rows) {
+    const map = new Map<string, { tag: string; rows: ReviewRowModel[]; rank: number; index: number }>();
+    rows.forEach((row, i) => {
         let bucket = map.get(row.tag);
-        if (!bucket) { bucket = []; map.set(row.tag, bucket); order.push(row.tag); }
-        bucket.push(row);
-    }
-    return order.map((tag) => ({ tag, rows: map.get(tag)! }));
+        if (!bucket) { bucket = { tag: row.tag, rows: [], rank: row.rank ?? 0, index: i }; map.set(row.tag, bucket); }
+        bucket.rows.push(row);
+    });
+    return [...map.values()].sort((a, b) => a.rank - b.rank || a.index - b.index);
 }
 
 export function initReviewList(
