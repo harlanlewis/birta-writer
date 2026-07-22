@@ -157,26 +157,58 @@ body.toc-resizing {
     user-select: none;
 }
 
-/* Controls float in the drawer's top trailing corner (absolute, so the list
-   scrolls beneath them). The top/right insets match TAB_EDGE_INSET/TAB_TOP_INSET
-   in index.ts so the hide glyph and the closed reveal glyph coincide exactly. An
-   editor-background fill lets list text scroll cleanly out of sight underneath. */
-.toc-controls {
-    position: absolute;
-    /* Nudged so the glyph optically centers on the first heading row's text;
-       matches TAB_TOP_INSET in index.ts (keeps the closed reveal glyph aligned). */
-    top: 7px;
-    /* Panel's trailing edge for both dock sides: the outer edge when docked
-       right (over the closed reveal tab), the inner edge when docked left. */
-    right: 7px;
-    z-index: 2;
+/* ─── Review tab strip (Contents / Proofreading / Notes) ─────────────────── */
+/* A fixed header row above the scrolling body, so it stays pinned while the
+   active view scrolls under it ("sticky on scroll"), in the drawer and the
+   flyout alike. Tabs sit at the leading edge; the flip/hide controls ride the
+   trailing edge (margin-left:auto below) so they can't overlap the tabs. */
+.toc-tabs {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 1px;
-    /* Editor-background fill (rounded, so it reads as a chip over an active row)
-       lets list text scroll cleanly out of sight underneath the controls. */
+    padding: 4px 6px;
     background: var(--vscode-editor-background);
+}
+
+.toc-tab {
+    padding: 3px 7px;
+    border: none;
     border-radius: 5px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-size: 11.5px;
+    cursor: pointer;
+    opacity: 0.6;
+    white-space: nowrap;
+    transition: opacity 0.1s ease, background-color 0.1s ease;
+
+    &:hover {
+        opacity: 0.85;
+        background: var(--vscode-toolbar-hoverBackground);
+    }
+}
+
+.toc-tab--active,
+.toc-tab--active:hover {
+    opacity: 1;
+    font-weight: 600;
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+
+/* Hide the non-active view entirely so it does no layout and (per the shell) no
+   scan/enumeration work. */
+.toc-view--hidden {
+    display: none;
+}
+
+/* Flip/hide sit at the trailing edge of the tab row. */
+.toc-controls {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1px;
 }
 
 /* Icon-button feel: faint until the panel is hovered, brighter on hover */
@@ -217,11 +249,112 @@ body.toc-resizing {
 .toc-list {
     flex: 1;
     overflow-y: auto;
-    /* The top inset clears the floating controls chip (7px inset + 22px box,
-       .toc-controls) so the first row never starts underneath it; rows still
-       scroll beneath the chip once the list is in motion. The bottom inset
-       keeps the last row clear of the window edge. */
-    padding: 32px 0 24px;
+    /* The tab strip is now the header, so the list starts just below it; the
+       bottom inset keeps the last row clear of the window edge. */
+    padding: 4px 0 24px;
+}
+
+/* ─── Review lists (Proofreading / Notes tabs) ───────────────────────────── */
+.review-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0 24px;
+}
+
+.review-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 1px 4px;
+    border-radius: 3px;
+
+    &:hover {
+        background: var(--vscode-list-hoverBackground);
+    }
+}
+
+/* The clickable body: tag chip + one-line label, ToC-plain (no card). */
+.review-item__main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    line-height: 1.5;
+    text-align: left;
+    cursor: pointer;
+}
+
+.review-item__tag {
+    flex: 0 0 auto;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    /* Keep a long custom marker from crowding out the label. */
+    max-width: 8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.review-item__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Actions are revealed on row hover/focus, like the gutter handles. */
+.review-item__actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    padding-right: 5px;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+}
+
+.review-item:hover .review-item__actions,
+.review-item:focus-within .review-item__actions {
+    opacity: 1;
+}
+
+.review-item__action {
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+    font-size: 10.5px;
+    padding: 2px 5px;
+    cursor: pointer;
+
+    &:hover {
+        color: var(--vscode-foreground);
+        background: var(--vscode-toolbar-hoverBackground);
+    }
+}
+
+.review-empty {
+    padding: 12px 12px;
+    font-size: 11.5px;
+    opacity: 0.6;
+    color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+}
+
+/* The flyout gives the review lists the same symmetric card inset the ToC
+   list gets (no docked clearance needed). */
+.toc-panel--flyout .review-list {
+    min-height: 0;
+    padding: 6px 0;
 }
 
 .toc-item {

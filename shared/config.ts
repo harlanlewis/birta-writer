@@ -141,6 +141,14 @@ export interface BirtaConfig extends ProofreadConfig {
      * otherwise.
      */
     checklistSinkChecked: boolean;
+    /**
+     * Extra literal strings the Notes review tab treats as editor-note markers
+     * (birta.notes.customMarkers), on top of the built-in set (`[TK]`, `TODO:`,
+     * `FIXME:`, HTML comments, unchecked checkboxes). Each is matched as a
+     * literal substring; a bare alphanumeric token is auto word-boundaried at
+     * the scan site so `TK` can't light up inside `networks`. Default empty.
+     */
+    notesCustomMarkers: string[];
     imageLocalPath: string;
 }
 
@@ -203,6 +211,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     autoUpdateAnchors: "autoUpdateAnchors",
     embedsEnabled: "embeds.enabled",
     checklistSinkChecked: "checklist.sinkChecked",
+    notesCustomMarkers: "notes.customMarkers",
     imageLocalPath: "imageLocalPath",
 };
 
@@ -296,5 +305,9 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // Self-sinking checklists ship OFF: reordering on a checkbox click is a
     // surprising motion until asked for, so the default is a plain in-place flip.
     checklistSinkChecked: false,
+    // No extra markers by default — the Notes tab ships with the built-in set
+    // ([TK], TODO:, FIXME:, HTML comments, unchecked checkboxes); this is the
+    // personalization hook.
+    notesCustomMarkers: [],
     imageLocalPath: "",
 };

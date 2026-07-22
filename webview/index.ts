@@ -624,6 +624,7 @@ const handlers = createMessageHandlers({
         setTocPosition: (position) => toc.setPosition(position),
         setTocVisibility: (visibility) => toc.applyVisibility(visibility),
         setTocWidth: (width) => toc.setWidth(width),
+        setNotesMarkers: (markers) => toc.setNotesMarkers(markers),
     },
     topbarTb,
 });

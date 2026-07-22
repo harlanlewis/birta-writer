@@ -353,6 +353,8 @@ export type ToWebviewMessage =
     | { type: "featureGateChanged"; gate: "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl" | "pasteUnfurlAutoApply" | "embedsEnabled"; enabled: boolean }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
+    // Live update of the Notes-tab custom markers (birta.notes.customMarkers changed).
+    | { type: "notesConfig"; customMarkers: string[] }
     // Live toolbar layout update (per-item placement settings changed).
     | { type: "toolbarConfig"; config: ToolbarConfig }
     // Live editor content font update. `fontFamily` is the resolved CSS stack,

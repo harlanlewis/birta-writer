@@ -1950,6 +1950,15 @@
                     "type": "boolean",
                     "default": false,
                     "description": "%config.checklist.sinkChecked.description%"
+                },
+                "birta.notes.customMarkers": {
+                    "order": 110,
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "%config.notes.customMarkers.description%"
                 }
             }
         }

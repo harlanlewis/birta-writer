@@ -714,8 +714,26 @@ export const proofreadPlugin = $prose(() => {
                 }, FIRST_PASS_IDLE_TIMEOUT_MS);
             }
 
+            // The review sidebar's Proofreading tab mirrors these decorations.
+            // Doc-change refreshes reach it through the ToC's rAF path already;
+            // this event covers the updates that path CAN'T see — async Harper
+            // results and ignore/learn rebuilds, which change the decoration set
+            // without changing the document. Firing only when combined changed
+            // AND the doc did not keeps typing off this path (no per-keystroke
+            // list rebuild).
+            let lastCombined = proofreadPluginKey.getState(view.state)?.combined ?? null;
+            let lastEmitDoc: ProseNode = view.state.doc;
             return {
-                update: maybeSchedule,
+                update() {
+                    maybeSchedule();
+                    const combined = proofreadPluginKey.getState(view.state)?.combined ?? null;
+                    const doc = view.state.doc;
+                    if (combined !== lastCombined && doc === lastEmitDoc) {
+                        window.dispatchEvent(new CustomEvent(PROOFREAD_FINDINGS_CHANGED));
+                    }
+                    lastCombined = combined;
+                    lastEmitDoc = doc;
+                },
                 destroy() {
                     destroyed = true;
                     currentApplier = null;
@@ -727,6 +745,81 @@ export const proofreadPlugin = $prose(() => {
         },
     });
 });
+
+/**
+ * Window event the review sidebar's Proofreading tab listens for: the live
+ * decoration set changed in a way the doc-change refresh path won't catch
+ * (async Harper results, or an ignore/learn rebuild). See the plugin's `update`
+ * hook for why it never fires on ordinary typing.
+ */
+export const PROOFREAD_FINDINGS_CHANGED = "proofread-findings-changed";
+
+/** One row for the Proofreading review list: a finding plus its actions. */
+export interface ProofreadFindingRow {
+    from: number;
+    to: number;
+    domain: "spelling" | "grammar" | "style";
+    /** Short category chip. */
+    tag: string;
+    /** The flagged text. */
+    text: string;
+    /** One-clause explanation. */
+    message: string;
+    /** Spelling only: offer "Add to dictionary". */
+    canLearn: boolean;
+    /** Session-ignore this finding, then rebuild the decoration set. */
+    ignore: () => void;
+    /** Spelling only: add the word to the dictionary, then rebuild. */
+    learn?: () => void;
+}
+
+/**
+ * Every live proofreading finding (style + Harper spelling/grammar), document
+ * -ordered, resolved to what the review sidebar needs — text, chip, advice, and
+ * the same Ignore/Learn actions the in-text popup offers. Reads the plugin's
+ * `combined` decoration set; computes nothing new. Duplicate (from,to,domain)
+ * findings are collapsed, as in the popup.
+ */
+export function listProofreadFindings(view: EditorView): ProofreadFindingRow[] {
+    const state = proofreadPluginKey.getState(view.state);
+    if (!state) { return []; }
+    const hits = state.combined
+        .find()
+        .filter((h) => { const s = h.spec as DecoSpec; return Boolean(s.lint || s.style); })
+        .sort((a, b) => a.from - b.from || (a.to - a.from) - (b.to - b.from));
+    const rows: ProofreadFindingRow[] = [];
+    const seen = new Set<string>();
+    for (const h of hits) {
+        const spec = h.spec as DecoSpec;
+        const text = view.state.doc.textBetween(h.from, h.to);
+        if (spec.lint) {
+            const lint = spec.lint;
+            const isSpelling = lint.kind === "Spelling";
+            const key = `${h.from}:${h.to}:${lint.kind}`;
+            if (seen.has(key)) { continue; }
+            seen.add(key);
+            rows.push({
+                from: h.from, to: h.to,
+                domain: isSpelling ? "spelling" : "grammar",
+                tag: isSpelling ? t("Spelling") : t("Grammar"),
+                text, message: lint.message, canLearn: isSpelling,
+                ignore: () => { ignoreLintSession(lint.kind, text); refreshProofread(view); },
+                learn: isSpelling ? () => { learnWord(text); refreshProofread(view); } : undefined,
+            });
+        } else if (spec.style) {
+            const style = spec.style;
+            const key = `${h.from}:${h.to}:${style.category}`;
+            if (seen.has(key)) { continue; }
+            seen.add(key);
+            rows.push({
+                from: h.from, to: h.to, domain: "style",
+                tag: styleTag(style.category), text, message: style.message, canLearn: false,
+                ignore: () => { ignoreStyleSession(style.category, text); refreshProofread(view); },
+            });
+        }
+    }
+    return rows;
+}
 
 /** The active view's lint-result applier (rebound on editor recreation). */
 let currentApplier: ((id: number, results: LintBlockResult[]) => void) | null = null;

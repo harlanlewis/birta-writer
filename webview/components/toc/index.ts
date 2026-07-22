@@ -17,6 +17,9 @@ import {
     collectDocHeadings,
 } from "@/utils/headingUtils";
 import { initTocDnd } from "./dnd";
+import { initProofreadingList } from "./proofreadingList";
+import { initNotesList } from "./notesList";
+import { PROOFREAD_FINDINGS_CHANGED } from "@/plugins/proofread";
 
 interface HeadingEntry {
     level: number;
@@ -66,6 +69,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     /** Current open/docked-side state — drives the slash menu's dynamic toggle labels. */
     isOpen: () => boolean;
     isRight: () => boolean;
+    /** Apply a birta.notes.customMarkers change to the Notes tab (rescan if shown). */
+    setNotesMarkers: (markers: string[]) => void;
     /** Unregister the panel's drop-zone provider (teardown/tests). */
     dispose: () => void;
 } {
@@ -104,8 +109,72 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     const list = document.createElement("div");
     list.className = "toc-list";
 
-    panel.appendChild(controls);
+    // ── Review tabs: Contents / Proofreading / Notes ────────────────────────
+    // The panel is a 3-tab review sidebar; all the drawer chrome (docked/overlay,
+    // flyout, resize, flip/hide) is shared and only the body switches. Contents
+    // is the heading outline (`list`); the other two read their data live and
+    // ONLY while active — an inactive tab scans/enumerates nothing (see
+    // renderActiveView). Flip/hide move into the sticky tab row (right-aligned)
+    // so they can't overlap the tabs.
+    type ReviewTab = "contents" | "proofreading" | "notes";
+    let activeTab: ReviewTab = "contents";
+
+    const tabStrip = document.createElement("div");
+    tabStrip.className = "toc-tabs";
+    const tabContents = makeTabButton("contents", t("Contents"));
+    const tabProofread = makeTabButton("proofreading", t("Proofreading"));
+    const tabNotes = makeTabButton("notes", t("Notes"));
+    tabStrip.append(tabContents, tabProofread, tabNotes, controls);
+
+    const proofreadView = initProofreadingList(getEditorView);
+    const notesView = initNotesList(getEditorView);
+
+    panel.appendChild(tabStrip);
     panel.appendChild(list);
+    panel.appendChild(proofreadView.element);
+    panel.appendChild(notesView.element);
+
+    function makeTabButton(tab: ReviewTab, label: string): HTMLButtonElement {
+        const btn = document.createElement("button");
+        btn.className = "toc-tab";
+        btn.textContent = label;
+        // Keep focus in the editor; the tab switch is the whole gesture.
+        btn.tabIndex = -1;
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setActiveTab(tab);
+        });
+        return btn;
+    }
+
+    /** Reflect the active tab into the tab buttons and which view is shown. */
+    function updateTabButtons(): void {
+        tabContents.classList.toggle("toc-tab--active", activeTab === "contents");
+        tabProofread.classList.toggle("toc-tab--active", activeTab === "proofreading");
+        tabNotes.classList.toggle("toc-tab--active", activeTab === "notes");
+        list.classList.toggle("toc-view--hidden", activeTab !== "contents");
+        proofreadView.element.classList.toggle("toc-view--hidden", activeTab !== "proofreading");
+        notesView.element.classList.toggle("toc-view--hidden", activeTab !== "notes");
+    }
+
+    /** Render whichever tab is active — the only view that does any work. */
+    function renderActiveView(headings?: HeadingEntry[]): void {
+        if (activeTab === "contents") {
+            renderHeadings(headings ?? getHeadings());
+        } else if (activeTab === "proofreading") {
+            proofreadView.refresh(getEditorView());
+        } else {
+            notesView.refresh(getEditorView());
+        }
+    }
+
+    function setActiveTab(tab: ReviewTab): void {
+        if (tab === activeTab) { return; }
+        activeTab = tab;
+        updateTabButtons();
+        if (isPanelVisible()) { renderActiveView(); }
+    }
 
     /** The side-bar glyph whose filled edge marks the current dock side. */
     function sidebarIcon(): string {
@@ -366,7 +435,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // showed a stale outline, and its stale data-headingPos values then
         // armed the NEXT drag against positions the doc had moved past.
         if (isPanelVisible()) {
-            renderHeadings(headings ?? getHeadings());
+            renderActiveView(headings ?? getHeadings());
         }
         if (initialLoad) {
             // Flush the no-transition state, then re-enable transitions with no
@@ -718,7 +787,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         if (!isPanelVisible()) {
             return;
         }
-        renderHeadings(headings);
+        renderActiveView(headings);
     }
 
     function close(): void {
@@ -859,7 +928,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // The flyout shows the ToC itself, so the tab's "Show table of contents"
         // tooltip is redundant (and would overlap the panel) — dismiss it.
         hideTooltip();
-        renderHeadings(getHeadings());
+        renderActiveView();
         panel.classList.add("toc-panel--flyout");
         document.body.classList.add("toc-flyout-open");
         positionFlyout();
@@ -873,7 +942,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // is committed (manual scroll math — scrollIntoView would also scroll
         // the window). The enter transition is transform/opacity only, so the
         // geometry is already final here.
-        const active = list.querySelector<HTMLElement>(".toc-item--active");
+        // Only the Contents tab tracks an active row; the review tabs don't.
+        const active = activeTab === "contents"
+            ? list.querySelector<HTMLElement>(".toc-item--active")
+            : null;
         if (active) {
             const listRect = list.getBoundingClientRect();
             const itemRect = active.getBoundingClientRect();
@@ -1017,6 +1089,20 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         scrollRafId = requestAnimationFrame(updateActiveHeadingOnScroll);
     }
 
+    // Show only the initial (Contents) view; the review tabs stay hidden until
+    // picked, so they scan/enumerate nothing until then.
+    updateTabButtons();
+
+    // The Proofreading tab mirrors the live decoration set. Doc-change refreshes
+    // reach it via refreshContent; this event covers what that path can't see —
+    // async Harper results and ignore/learn rebuilds — but only while it's the
+    // shown tab, so a hidden tab still costs nothing.
+    window.addEventListener(PROOFREAD_FINDINGS_CHANGED, () => {
+        if (isPanelVisible() && activeTab === "proofreading") {
+            proofreadView.refresh(getEditorView());
+        }
+    });
+
     requestAnimationFrame(() => {
         tocMode = resolveMode();
         const headings = getHeadings();
@@ -1047,6 +1133,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         setWidth: (width: number) => { setTocWidth(width); checkResponsiveMode(); },
         isOpen: () => isOpen,
         isRight: () => tocRight,
+        setNotesMarkers: (markers: string[]) => {
+            notesView.setMarkers(markers);
+            if (isPanelVisible() && activeTab === "notes") {
+                notesView.refresh(getEditorView());
+            }
+        },
         dispose: dnd.dispose,
     };
 }
