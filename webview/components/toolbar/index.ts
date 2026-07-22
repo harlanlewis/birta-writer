@@ -988,30 +988,15 @@ export function initToolbar(
             fontEntries.push({ preset, item });
         }
 
-        // Jump to the native Settings UI filtered to the font settings, where
-        // the per-preset stacks (fontFamilySans/Serif/Mono) can be customized.
-        // Grouped with the family presets above it (no divider between them).
-        const fontSettingsEntry = document.createElement("div");
-        fontSettingsEntry.className = "tb-fmt-item";
-        fontSettingsEntry.textContent = t("Font settings");
-        fontSettingsEntry.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeFontMenu();
-            notifyOpenSettings("birta.font");
-        });
-
-        // Assemble top→bottom: font size, content width, the family presets,
-        // then Font settings — each group separated by a divider. (Block
-        // handles live in Settings only; see setBlockHandlesActive above.)
+        // Assemble top→bottom: font size, content width, the family presets —
+        // each group separated by a divider. (Block handles and the font-stack
+        // settings live in Settings only — the menu holds the frequent moves.)
         fontMenu.append(
             sizeRow,
             makeSep(),
             widthRow,
             makeSep(),
             ...fontItemEls,
-            makeSep(),
-            fontSettingsEntry,
         );
 
         setFontActive(currentFontPreset);

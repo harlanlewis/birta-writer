@@ -95,13 +95,13 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(groupNames));
 
     // Switch to In-order: headers disappear, the flat list remains.
-    await page.locator(".review-list--notes .review-seg", { hasText: "In order" }).click();
+    await page.locator(".toc-utility .review-seg", { hasText: "In order" }).click();
     await page.waitForTimeout(100);
     const afterFlat = await page.$$eval(".review-list--notes .review-group", (els) => els.length);
     check("the In-order toggle drops the group headers", afterFlat === 0, `groups=${afterFlat}`);
 
     // Back to By-type, then collapse a group: its row leaves the DOM.
-    await page.locator(".review-list--notes .review-seg", { hasText: "By type" }).click();
+    await page.locator(".toc-utility .review-seg", { hasText: "By type" }).click();
     await page.waitForTimeout(100);
     const beforeCollapse = await page.$$eval(".review-list--notes .review-item", (e) => e.length);
     await page.click(".review-list--notes .review-group:first-child");
@@ -270,6 +270,39 @@ export async function run({ page, check, baseUrl }) {
     });
     check("Show-more spans the full row width", !!widths && Math.abs(widths.more - widths.item) < 2,
         JSON.stringify(widths));
+
+    // ── All four tabs share one row at the default width (no wrap) ────────
+    const tabTops = await page.$$eval(".toc-tab", (els) => els.map((e) => e.getBoundingClientRect().top));
+    check("the four tabs sit on ONE row at the default width",
+        new Set(tabTops.map((t) => Math.round(t))).size === 1, JSON.stringify(tabTops));
+
+    // ── Shortcuts panel: wheel scrolls the PANEL, never chains to the doc ──
+    await page.setViewportSize({ width: 1000, height: 480 }); // force panel overflow
+    const gear = page.locator('.editor-topbar [aria-label="Settings"]').first();
+    await gear.hover();
+    await page.waitForTimeout(250);
+    await page.locator(".tb-fmt-item", { hasText: "Keyboard Shortcuts" }).first().dispatchEvent("mousedown");
+    await page.waitForTimeout(250);
+    const shBox = await page.locator(".shortcuts-help").boundingBox();
+    await page.mouse.move(shBox.x + shBox.width / 2, shBox.y + shBox.height / 2);
+    const docYBefore = await page.evaluate(() => window.scrollY);
+    await page.mouse.wheel(0, 4000); // far past the panel's range
+    await page.waitForTimeout(200);
+    const scrollRes = await page.evaluate(() => ({
+        panel: document.querySelector(".shortcuts-help").scrollTop,
+        docMoved: window.scrollY,
+    }));
+    check("wheel over the shortcuts panel scrolls the panel",
+        scrollRes.panel > 0, JSON.stringify(scrollRes));
+    check("an exhausted wheel gesture does NOT chain to the document (overscroll contained)",
+        scrollRes.docMoved === docYBefore, JSON.stringify({ before: docYBefore, after: scrollRes.docMoved }));
+    check("the shortcuts footer keeps only the Edit button (note line removed)",
+        await page.evaluate(() => {
+            const f = document.querySelector(".shortcuts-help__footer");
+            return !!f.querySelector(".shortcuts-help__customize") && !f.querySelector(".shortcuts-help__note");
+        }));
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1000, height: 800 });
 
     check("no page errors or console errors during the run", errors.length === 0,
         errors.slice(0, 5).join(" | "));

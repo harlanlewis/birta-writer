@@ -9,7 +9,6 @@
  */
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
-import { notifyReviewGroupByType } from "@/messaging";
 import { getProofreadConfig, listProofreadFindings } from "@/plugins/proofread";
 import { styleCategoryRank } from "@/utils/styleCategories";
 import { initReviewList, type ReviewResult } from "./reviewList";
@@ -96,7 +95,6 @@ function produce(view: EditorView | null): ReviewResult {
 export function initProofreadingList(getView: () => EditorView | null): ReviewListView {
     const list = initReviewList("review-list review-list--proofread", getView, {
         initialGroupByType: window.__i18n?.reviewGroupByType ?? true,
-        onToggleGroupByType: notifyReviewGroupByType,
     });
     return {
         element: list.element,

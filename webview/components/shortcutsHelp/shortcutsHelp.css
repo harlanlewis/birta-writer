@@ -27,6 +27,9 @@
     max-height: calc(100vh - var(--editor-topbar-height, 40px) - 22px);
     overflow-y: auto;
     overflow-x: hidden;
+    /* A wheel gesture over the panel must never chain to the document once the
+       panel's (often small) scroll range is exhausted. */
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     padding: 0 14px 12px;

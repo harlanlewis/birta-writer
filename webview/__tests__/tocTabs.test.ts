@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { EditorState } from "../pm";
 import { Schema } from "../pm";
 import { initToc } from "../components/toc";
+import { mockVscodeApi } from "./setup";
 import * as proofread from "../plugins/proofread";
 import { PROOFREAD_FINDINGS_CHANGED } from "../plugins/proofread";
 import type { EventManager } from "../eventManager";
@@ -95,10 +96,28 @@ describe("review sidebar tabs", () => {
         expect(panel.querySelector(".toc-list")!.classList.contains("toc-view--hidden")).toBe(true);
     });
 
-    it("the flip/hide controls should live inside the tab strip", () => {
+    it("the utility row holds the shared sort toggle and the flip/hide controls", () => {
         const { panel } = initToc(fakeEventManager, () => null);
-        expect(panel.querySelector(".toc-tabs .toc-controls")).not.toBeNull();
-        expect(panel.querySelector(".toc-tabs .toc-hide-btn")).not.toBeNull();
+        // Tabs-only strip (so four tabs fit one row at the default width)…
+        expect(panel.querySelector(".toc-tabs .toc-controls")).toBeNull();
+        // …with ONE sort toggle + the controls in the utility row below.
+        expect(panel.querySelector(".toc-utility .review-segmented")).not.toBeNull();
+        expect(panel.querySelector(".toc-utility .toc-hide-btn")).not.toBeNull();
+        // The outline has no sort: hidden while Contents is active.
+        expect(panel.querySelector<HTMLElement>(".toc-utility .review-segmented")!.hidden).toBe(true);
+        const tabs = panel.querySelectorAll(".toc-tab");
+        clickTab(tabs[TAB.notes]!);
+        expect(panel.querySelector<HTMLElement>(".toc-utility .review-segmented")!.hidden).toBe(false);
+    });
+
+    it("the shell sort toggle persists the mode and drives every review view", () => {
+        const { panel } = initToc(fakeEventManager, () => null);
+        clickTab(panel.querySelectorAll(".toc-tab")[TAB.notes]!);
+        const segs = panel.querySelectorAll<HTMLElement>(".toc-utility .review-seg");
+        expect([...segs].map((s) => s.textContent)).toEqual(["By type", "In order"]);
+        segs[1]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "reviewGroupByType", grouped: false });
+        expect(segs[1]!.classList.contains("review-seg--active")).toBe(true);
     });
 
     it("setNotesMarkers should apply without throwing when the tab is hidden", () => {

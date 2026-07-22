@@ -136,21 +136,6 @@ describe("toolbar dropdown item picks and the Escape-layer stack", () => {
         pickAndAssertClean(topbar, "fontPreset", '[data-item-id="fontPreset"] .tb-font-item');
     });
 
-    it("the Font settings entry should leave no layer entry", async () => {
-        const editor = await makeEditor("hello");
-        const topbar = buildToolbar(() => editor);
-        // The last .tb-fmt-item in the font menu is the "Font settings" jump
-        // (excluding the family presets and the block-handles radio rows).
-        const rows = Array.from(topbar.querySelectorAll<HTMLElement>(
-            '[data-item-id="fontPreset"] .tb-fmt-menu > .tb-fmt-item:not(.tb-font-item):not(.tb-check-item)',
-        ));
-        expect(rows.length).toBe(1);
-        const btn = trigger(topbar, "fontPreset");
-        btn.dispatchEvent(key("Enter"));
-        rows[0]!.dispatchEvent(key("Enter"));
-        expect(btn.getAttribute("aria-expanded")).toBe("false");
-        expect(closeTopmostLayer()).toBe(false);
-    });
 
     it("a Settings (gear) entry pick should leave no layer entry", async () => {
         const editor = await makeEditor("hello");

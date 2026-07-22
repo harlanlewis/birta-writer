@@ -10,7 +10,7 @@
  */
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
-import { notifyOpenFile, notifyOpenUrl, notifyReviewGroupByType } from "@/messaging";
+import { notifyOpenFile, notifyOpenUrl } from "@/messaging";
 import { scanLinksCached, type LinkItem, type LinkKind } from "@/links/scan";
 import { collectDocHeadings } from "@/utils/headingUtils";
 import { slugify } from "@/utils/slug";
@@ -68,9 +68,9 @@ function produce(view: EditorView | null, getView: () => EditorView | null): Rev
                 label: link.text || link.href,
                 // The destination, inline on hover — and itself clickable: the
                 // URL text FOLLOWS the link, the row body navigates to its place
-                // in the document. Skipped when the label IS the URL (a bare
-                // autolink) — repeating it says nothing.
-                meta: link.text && link.text !== link.href ? link.href : undefined,
+                // in the document. Always present, even when the label IS the
+                // URL — it is the visible follow-the-link affordance.
+                meta: link.href,
                 onMeta: follow,
                 rank: KIND[link.kind].rank,
                 from: link.from,
@@ -90,7 +90,6 @@ function produce(view: EditorView | null, getView: () => EditorView | null): Rev
 export function initLinksList(getView: () => EditorView | null): LinksListView {
     const list = initReviewList("review-list review-list--links", getView, {
         initialGroupByType: window.__i18n?.reviewGroupByType ?? true,
-        onToggleGroupByType: notifyReviewGroupByType,
     });
     return {
         element: list.element,

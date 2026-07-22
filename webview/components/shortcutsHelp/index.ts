@@ -245,9 +245,6 @@ function buildPanel(): HTMLDivElement {
     // one accurate inventory of everything rebindable.
     const footer = document.createElement("div");
     footer.className = "shortcuts-help__footer";
-    const note = document.createElement("span");
-    note.className = "shortcuts-help__note ui-caption";
-    note.textContent = t("Every other command's keys live in VS Code's Keyboard Shortcuts.");
     const btnCustomize = createButton({
         className: "shortcuts-help__customize",
         label: t("Edit Keyboard Shortcuts"),
@@ -256,7 +253,7 @@ function buildPanel(): HTMLDivElement {
             notifyOpenKeybindings();
         },
     });
-    footer.append(note, btnCustomize);
+    footer.appendChild(btnCustomize);
     el.appendChild(footer);
 
     // Esc closes from anywhere inside the panel; with editor focus the

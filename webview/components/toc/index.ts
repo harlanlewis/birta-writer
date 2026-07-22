@@ -2,7 +2,7 @@ import './toc.css';
 import type { EditorView, Node as PmNode } from "@/pm";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
-import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/messaging";
+import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition, notifyReviewGroupByType } from "@/messaging";
 import type { TocVisibility } from "../../../shared/messages";
 import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
@@ -165,18 +165,64 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabLinks.hidden = true;
     tabNotes.hidden = true;
     tabProofread.hidden = true;
-    // The four tabs live in a horizontally-scrollable list so a narrow panel
-    // never clips one; the flip/hide controls stay pinned beside it.
+    // The tab strip holds ONLY the tabs (they wrap if a narrow panel forces
+    // it); the flip/hide controls live in the utility row below, beside the
+    // shared sort toggle — so four tabs fit one row at the default width.
     const tabsList = document.createElement("div");
     tabsList.className = "toc-tabs__list";
     tabsList.append(tabContents, tabLinks, tabNotes, tabProofread);
-    tabStrip.append(tabsList, controls);
+    tabStrip.append(tabsList);
+
+    // ── Utility row: the shared By type / In order toggle + flip/hide ──────
+    // ONE sort control for one global setting (birta.review.groupByType) — it
+    // used to be duplicated inside each review list. Hidden on Contents (the
+    // outline has no sort); the controls keep the row occupied there.
+    let reviewGroupByType = window.__i18n?.reviewGroupByType ?? true;
+    const utilityRow = document.createElement("div");
+    utilityRow.className = "toc-utility";
+    const segGroup = document.createElement("div");
+    segGroup.className = "review-segmented";
+    const segByType = makeSortSeg(t("By type"), true);
+    const segInOrder = makeSortSeg(t("In order"), false);
+    segGroup.append(segByType, segInOrder);
+    utilityRow.append(segGroup, controls);
+
+    function makeSortSeg(label: string, grouped: boolean): HTMLButtonElement {
+        const btn = document.createElement("button");
+        btn.className = "review-seg";
+        btn.textContent = label;
+        btn.tabIndex = -1;
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            applyGroupByType(grouped, true);
+        });
+        return btn;
+    }
+    function updateSortSegs(): void {
+        segByType.classList.toggle("review-seg--active", reviewGroupByType);
+        segInOrder.classList.toggle("review-seg--active", !reviewGroupByType);
+    }
+    /** Set the mode everywhere: the toggle, all three views, and (for a user
+     *  click) the persisted setting. A settings echo passes persist=false. */
+    function applyGroupByType(grouped: boolean, persist: boolean): void {
+        if (grouped !== reviewGroupByType) {
+            reviewGroupByType = grouped;
+            if (persist) { notifyReviewGroupByType(grouped); }
+        }
+        updateSortSegs();
+        proofreadView.setGroupByType(grouped);
+        notesView.setGroupByType(grouped);
+        linksView.setGroupByType(grouped);
+    }
+    updateSortSegs();
 
     const proofreadView = initProofreadingList(getEditorView);
     const notesView = initNotesList(getEditorView);
     const linksView = initLinksList(getEditorView);
 
     panel.appendChild(tabStrip);
+    panel.appendChild(utilityRow);
     panel.appendChild(list);
     panel.appendChild(proofreadView.element);
     panel.appendChild(notesView.element);
@@ -231,6 +277,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         reflect(tabProofread, activeTab === "proofreading");
         reflect(tabNotes, activeTab === "notes");
         reflect(tabLinks, activeTab === "links");
+        // The outline has no sort; the flip/hide controls keep the row present.
+        segGroup.hidden = activeTab === "contents";
         list.classList.toggle("toc-view--hidden", activeTab !== "contents");
         proofreadView.element.classList.toggle("toc-view--hidden", activeTab !== "proofreading");
         notesView.element.classList.toggle("toc-view--hidden", activeTab !== "notes");
@@ -1385,10 +1433,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             }
         },
         setReviewGroupByType: (grouped: boolean) => {
-            // All review tabs share the one setting; each reviewList re-renders.
-            proofreadView.setGroupByType(grouped);
-            notesView.setGroupByType(grouped);
-            linksView.setGroupByType(grouped);
+            // Settings echo: apply everywhere without re-persisting.
+            applyGroupByType(grouped, false);
         },
         showProofreadingTab: () => {
             // The toolbar menu item only appears while proofreading is on, but

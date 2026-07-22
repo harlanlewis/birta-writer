@@ -3,7 +3,7 @@
     position: fixed;
     top: var(--editor-topbar-height, 40px);
     left: 0;
-    width: var(--toc-width, 220px);
+    width: var(--toc-width, 260px);
     height: calc(100vh - var(--editor-topbar-height, 40px));
     /* Editor background (not the sidebar shade), and no borders: the docked
        drawer blends into the editor gutter with no differentiated chrome. The
@@ -287,17 +287,17 @@ body.toc-resizing {
     display: none;
 }
 
-/* The "Sort by" control sits above the scrolling body (fixed). It's secondary
-   chrome — a muted label + a segmented toggle — so it stays quieter than the
-   group headers below (which carry the content hierarchy). */
-.review-toolbar {
+/* Utility row under the tabs: the ONE shared sort toggle (hidden on Contents)
+   at the leading edge, the flip/hide controls at the trailing edge. Secondary
+   chrome — quieter than the tabs above and the group headers below. */
+.toc-utility {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    padding: 7px 10px 8px;
+    justify-content: space-between;
+    padding: 1px 8px 5px;
     font-size: 11px;
-
-    &[hidden] { display: none; }
+    background: var(--vscode-editor-background);
 }
 
 /* The sort toggle mirrors the tabs' minimal idiom one size down — no border
@@ -334,6 +334,8 @@ body.toc-resizing {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Never chain a finished wheel gesture to the document behind the panel. */
+    overscroll-behavior: contain;
     padding: 2px 0 24px;
 }
 
