@@ -589,6 +589,22 @@ describe("outline refresh cost (observed-diff fast path)", () => {
         expect(rowTexts()).toEqual(["Alpha", "body", "Beta"]);
     });
 
+    it("a folded outline section stays folded across a structural rebuild", () => {
+        const { view, toc } = setup();
+        const alpha = () => [...document.querySelectorAll<HTMLElement>(".toc-item")].find((r) => r.textContent === "Alpha")!;
+        // Fold Alpha (H1) via its caret.
+        alpha().querySelector<HTMLElement>(".toc-caret")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        expect(alpha().classList.contains("toc-item--collapsed")).toBe(true);
+        expect(alpha().nextElementSibling).toHaveProperty("hidden", true); // "body" hidden under Alpha
+
+        // A structural change (append a heading) rebuilds every row.
+        view.state = view.state.apply(view.state.tr.insert(view.state.doc.content.size, h(1, "Gamma")));
+        toc.refreshContent();
+
+        expect(rowTexts()).toContain("Gamma");
+        expect(alpha().classList.contains("toc-item--collapsed")).toBe(true); // persisted, not reset
+    });
+
     it("deleting a heading should re-walk and drop its row", () => {
         const { view, toc } = setup();
         const [alphaPos] = rowPositions();

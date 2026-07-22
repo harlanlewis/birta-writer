@@ -17,6 +17,7 @@ import {
     collectDocHeadings,
 } from "@/utils/headingUtils";
 import { initTocDnd } from "./dnd";
+import { wireRoving } from "./keyboardNav";
 import { initProofreadingList } from "./proofreadingList";
 import { initNotesList } from "./notesList";
 import { PROOFREAD_FINDINGS_CHANGED } from "@/plugins/proofread";
@@ -113,6 +114,24 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     const list = document.createElement("div");
     list.className = "toc-list";
+    list.setAttribute("role", "tree");
+
+    // Keyboard navigation for the outline: arrow between visible heading rows,
+    // Enter jumps, Left/Right fold a section, Escape returns to the editor.
+    // (setRowCollapsed is a hoisted declaration; outlineRoving is captured by the
+    // render/fold closures and only used after init.)
+    const outlineRoving = wireRoving({
+        container: list,
+        items: () => [...list.querySelectorAll<HTMLElement>(".toc-item:not([hidden])")],
+        onEscape: () => getEditorView()?.focus(),
+        onHorizontal: (item, dir) => {
+            if (!item.classList.contains("toc-item--parent")) { return false; }
+            const isCollapsed = item.classList.contains("toc-item--collapsed");
+            if (dir === -1 && !isCollapsed) { setRowCollapsed(item, true); return true; }
+            if (dir === 1 && isCollapsed) { setRowCollapsed(item, false); return true; }
+            return false;
+        },
+    });
 
     // ── Review tabs: Contents / Proofreading / Notes ────────────────────────
     // The panel is a 3-tab review sidebar; all the drawer chrome (docked/overlay,
@@ -130,6 +149,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     const tabStrip = document.createElement("div");
     tabStrip.className = "toc-tabs";
+    tabStrip.setAttribute("role", "tablist");
     const tabContents = makeTabButton("contents", t("Contents"));
     const tabProofread = makeTabButton("proofreading", t("Proofreading"));
     const tabNotes = makeTabButton("notes", t("Notes"));
@@ -147,7 +167,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const btn = document.createElement("button");
         btn.className = "toc-tab";
         btn.textContent = label;
-        // Keep focus in the editor; the tab switch is the whole gesture.
+        btn.setAttribute("role", "tab");
+        btn.dataset["tab"] = tab;
+        // Roving tabindex (updateTabButtons keeps exactly the active tab at 0).
         btn.tabIndex = -1;
         btn.addEventListener("mousedown", (e) => {
             e.preventDefault();
@@ -157,11 +179,38 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         return btn;
     }
 
+    // Tablist keyboard nav: arrows move + activate (auto-activation), Home/End
+    // jump to the ends, Enter/Space activate the focused tab. Hidden tabs (the
+    // Proofreading tab when the master switch is off) are skipped.
+    tabStrip.addEventListener("keydown", (e) => {
+        const isArrow = e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End";
+        const isActivate = e.key === "Enter" || e.key === " ";
+        if (!isArrow && !isActivate) { return; }
+        const tabs = [tabContents, tabProofread, tabNotes].filter((tab) => !tab.hidden);
+        const cur = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        e.preventDefault();
+        if (isActivate) {
+            const btn = tabs[cur >= 0 ? cur : 0];
+            if (btn) { setActiveTab(btn.dataset["tab"] as ReviewTab); }
+            return;
+        }
+        const next = e.key === "Home" ? 0
+            : e.key === "End" ? tabs.length - 1
+            : ((cur < 0 ? 0 : cur + (e.key === "ArrowRight" ? 1 : -1)) + tabs.length) % tabs.length;
+        const btn = tabs[Math.max(0, Math.min(tabs.length - 1, next))];
+        if (btn) { setActiveTab(btn.dataset["tab"] as ReviewTab); btn.focus(); }
+    });
+
     /** Reflect the active tab into the tab buttons and which view is shown. */
     function updateTabButtons(): void {
-        tabContents.classList.toggle("toc-tab--active", activeTab === "contents");
-        tabProofread.classList.toggle("toc-tab--active", activeTab === "proofreading");
-        tabNotes.classList.toggle("toc-tab--active", activeTab === "notes");
+        const reflect = (btn: HTMLButtonElement, on: boolean): void => {
+            btn.classList.toggle("toc-tab--active", on);
+            btn.tabIndex = on ? 0 : -1; // roving: only the active tab is tabbable
+            btn.setAttribute("aria-selected", String(on));
+        };
+        reflect(tabContents, activeTab === "contents");
+        reflect(tabProofread, activeTab === "proofreading");
+        reflect(tabNotes, activeTab === "notes");
         list.classList.toggle("toc-view--hidden", activeTab !== "contents");
         proofreadView.element.classList.toggle("toc-view--hidden", activeTab !== "proofreading");
         notesView.element.classList.toggle("toc-view--hidden", activeTab !== "notes");
@@ -577,6 +626,15 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // render".
     let renderedSignature: string | null = null;
 
+    // Collapsed outline sections, keyed by level+text so the fold PERSISTS across
+    // the structural rebuilds renderHeadings does (adding a heading elsewhere no
+    // longer springs every section open). Session-only, like the group collapse.
+    // Two headings with the same level+text fold together — a rare, acceptable
+    // collision. Keyed with a NUL separator (via fromCharCode, never a literal).
+    const collapsedHeadings = new Set<string>();
+    const HEADING_KEY_SEP = String.fromCharCode(0);
+    const headingKey = (level: number, text: string): string => `${level}${HEADING_KEY_SEP}${text}`;
+
     /**
      * What a rendered row's STRUCTURE is: rank (indent + class), top-level-ness
      * (whether the row is a drag handle at all), and text (label + tooltip).
@@ -673,12 +731,20 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             const { level, text } = entry;
             const item = document.createElement("div");
             item.className = `toc-item toc-item--h${level}`;
+            item.setAttribute("role", "treeitem");
             item.dataset["headingPos"] = String(entry.pos);
             item.dataset["level"] = String(level);
             item.style.paddingLeft = `${(level - 1) * 12 + 8}px`;
             // A row is a "parent" (foldable) when the next heading nests under it.
             const hasChildren = i + 1 < headings.length && headings[i + 1]!.level > level;
             item.classList.toggle("toc-item--parent", hasChildren);
+            // Collapse state is keyed by level+text (see collapsedHeadings), so it
+            // survives the structural rebuild this loop runs — reapply it here. The
+            // key rides the dataset so setRowCollapsed (caret + keyboard) can read it.
+            const key = headingKey(level, text);
+            item.dataset["headingKey"] = key;
+            item.classList.toggle("toc-item--collapsed", collapsedHeadings.has(key));
+            if (hasChildren) { item.setAttribute("aria-expanded", String(!collapsedHeadings.has(key))); }
 
             // A disclosure caret in the left gutter (shown on hover for parents,
             // and while collapsed) + the heading text.
@@ -695,8 +761,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             caret.addEventListener("click", (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                item.classList.toggle("toc-item--collapsed");
-                applyOutlineCollapse();
+                setRowCollapsed(item, !item.classList.contains("toc-item--collapsed"));
             });
 
             item.classList.toggle("toc-item--active", activeHeadingPos === entry.pos);
@@ -761,17 +826,17 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         });
         setActiveHeadingPos(activeHeadingPos);
         applyOutlineCollapse();
+        outlineRoving.refresh();
         dnd.notifyRerender();
     }
 
     /**
      * Apply the outline accordion: hide every row nested under a collapsed
-     * heading. Collapse state lives as a `toc-item--collapsed` class ON THE ROW
-     * (not a pos-keyed set), so it survives the position-sync that runs while
-     * typing; it resets only on a structural rebuild, which is the honest moment
-     * for it to. Visibility is derived purely from row order + level, so nested
-     * collapses just work — a row inside an already-collapsed region stays
-     * hidden whatever its own state.
+     * heading. Collapse state persists across rebuilds via collapsedHeadings
+     * (reapplied as the `toc-item--collapsed` class per row), and survives the
+     * position-sync that runs while typing. Visibility is derived purely from row
+     * order + level, so nested collapses just work — a row inside an
+     * already-collapsed region stays hidden whatever its own state.
      */
     function applyOutlineCollapse(): void {
         let collapseLevel: number | null = null;
@@ -784,6 +849,20 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             row.hidden = false;
             collapseLevel = row.classList.contains("toc-item--collapsed") ? level : null;
         });
+    }
+
+    /** Fold/unfold one outline heading — the caret click and the keyboard both
+     *  go through here so the persistent set, the class, the aria state, the
+     *  hidden descendants, and the roving item list all stay in step. */
+    function setRowCollapsed(item: HTMLElement, collapsed: boolean): void {
+        const key = item.dataset["headingKey"] ?? "";
+        if (collapsed) { collapsedHeadings.add(key); } else { collapsedHeadings.delete(key); }
+        item.classList.toggle("toc-item--collapsed", collapsed);
+        if (item.classList.contains("toc-item--parent")) {
+            item.setAttribute("aria-expanded", String(!collapsed));
+        }
+        applyOutlineCollapse();
+        outlineRoving.refresh();
     }
 
     /**

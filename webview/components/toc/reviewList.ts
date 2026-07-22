@@ -23,6 +23,7 @@
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { revealRange } from "./navigate";
+import { wireRoving } from "./keyboardNav";
 import { buildReviewItem, buildReviewEmpty, type ReviewAction } from "./reviewItem";
 
 /** One row model the adapter hands in; identity/display drives the signature,
@@ -113,7 +114,16 @@ export function initReviewList(
     toolbar.append(segGroup);
     const bodyEl = document.createElement("div");
     bodyEl.className = "review-body";
+    bodyEl.setAttribute("role", "listbox");
     element.append(toolbar, bodyEl);
+
+    // Keyboard navigation: arrow through the group headers, rows, and show-more
+    // toggles; Enter activates (all are <button>s); Escape returns to the editor.
+    const roving = wireRoving({
+        container: bodyEl,
+        items: () => [...bodyEl.querySelectorAll<HTMLElement>(".review-group, .review-item__main, .review-more")],
+        onEscape: () => getView()?.focus(),
+    });
 
     function makeSeg(label: string, grouped: boolean): HTMLButtonElement {
         const btn = document.createElement("button");
@@ -236,6 +246,23 @@ export function initReviewList(
         return rows.map((row) => buildReviewItem({ ...row, navigate }));
     }
 
+    /** The DOM nodes for a result — group headers, rows, and show-more toggles. */
+    function buildNodes(result: ReviewResult): HTMLElement[] {
+        if (result === null) { return []; }
+        if ("empty" in result) { return [buildReviewEmpty(result.empty)]; }
+        if (!groupByType) { return buildRows(result.rows); }
+        const nodes: HTMLElement[] = [];
+        for (const group of groupByTag(result.rows)) {
+            nodes.push(makeGroupHeader(group.tag));
+            if (collapsed.has(group.tag)) { continue; }
+            nodes.push(...buildRows(shownRows(group)));
+            if (group.rows.length > GROUP_CAP) {
+                nodes.push(makeShowMore(group.tag, group.rows.length - GROUP_CAP));
+            }
+        }
+        return nodes;
+    }
+
     function renderInto(result: ReviewResult): void {
         lastResult = result;
         const hasRows = !!result && "rows" in result && result.rows.length > 0;
@@ -248,24 +275,8 @@ export function initReviewList(
         }
         renderedSignature = signature;
         element.classList.toggle("review-list--grouped", groupByType && hasRows);
-
-        if (result === null) { bodyEl.replaceChildren(); return; }
-        if ("empty" in result) { bodyEl.replaceChildren(buildReviewEmpty(result.empty)); return; }
-
-        if (!groupByType) {
-            bodyEl.replaceChildren(...buildRows(result.rows));
-            return;
-        }
-        const nodes: HTMLElement[] = [];
-        for (const group of groupByTag(result.rows)) {
-            nodes.push(makeGroupHeader(group.tag));
-            if (collapsed.has(group.tag)) { continue; }
-            nodes.push(...buildRows(shownRows(group)));
-            if (group.rows.length > GROUP_CAP) {
-                nodes.push(makeShowMore(group.tag, group.rows.length - GROUP_CAP));
-            }
-        }
-        bodyEl.replaceChildren(...nodes);
+        bodyEl.replaceChildren(...buildNodes(result));
+        roving.refresh(); // one tabbable item among the freshly built rows
     }
 
     return {

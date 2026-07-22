@@ -59,6 +59,22 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(100);
     check("expanding restores them", (await visible()) === shownBefore, `restored`);
 
+    // ── Keyboard: the outline is arrow-navigable and foldable ─────────────
+    await page.locator(".toc-list .toc-item").first().focus();
+    const kbA = await page.evaluate(() => document.activeElement?.textContent ?? "");
+    await page.keyboard.press("ArrowDown");
+    const kbB = await page.evaluate(() => document.activeElement?.textContent ?? "");
+    check("ArrowDown moves focus down the outline", !!kbB && kbA !== kbB, `${kbA} -> ${kbB}`);
+    await page.locator(".toc-list .toc-item--parent").first().focus();
+    const foldBefore = await visible();
+    await page.keyboard.press("ArrowLeft");
+    await page.waitForTimeout(60);
+    const foldAfter = await visible();
+    check("ArrowLeft folds the focused outline heading", foldAfter < foldBefore, `${foldBefore} -> ${foldAfter}`);
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(60);
+    check("ArrowRight unfolds it again", (await visible()) === foldBefore, `restored`);
+
     // ── Notes tab: markers in document order, checked box excluded ─────────
     await page.click(".toc-tab:nth-child(3)"); // Notes
     await page.waitForSelector(".review-list--notes:not(.toc-view--hidden)", { timeout: 5000 });
@@ -129,6 +145,15 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(100);
     const emItemsAfter = await page.$$eval(".review-list--proofread .review-item", (e) => e.length);
     check("Show-more reveals the hidden rows", emItemsAfter > emItemsBefore, `${emItemsBefore} -> ${emItemsAfter}`);
+
+    // ── Keyboard: review list arrow-nav + Escape returns to the editor ────
+    await page.locator(".review-list--proofread .review-group, .review-list--proofread .review-item__main").first().focus();
+    await page.keyboard.press("ArrowDown");
+    const stayInList = await page.evaluate(() => !!document.activeElement?.closest(".review-list--proofread"));
+    check("review list is arrow-navigable (focus stays within it)", stayInList);
+    await page.keyboard.press("Escape");
+    const backToEditor = await page.evaluate(() => !!document.activeElement?.closest(".milkdown .ProseMirror"));
+    check("Escape returns focus from the review list to the editor", backToEditor);
 
     // ── Click a Notes row → it selects the marker in the editor ───────────
     await page.click(".toc-tab:nth-child(3)"); // back to Notes
