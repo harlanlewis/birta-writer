@@ -24,6 +24,9 @@ export interface ReviewRowSpec {
     label: string;
     /** Hover explanation for the label (the finding's advice, say). */
     title?: string;
+    /** Secondary detail (a link's URL) shown right of the label on row hover —
+     *  inline, not a tooltip, so it can be read while scanning the list. */
+    meta?: string;
     /** Document range this row reveals; seeded into the dataset, synced in place. */
     from: number;
     to: number;
@@ -68,6 +71,12 @@ export function buildReviewItem(spec: ReviewRowSpec): HTMLElement {
     if (spec.title) { applyTooltip(label, spec.title, { placement: "above", truncatedOnly: false }); }
 
     main.append(tag, label);
+    if (spec.meta) {
+        const meta = document.createElement("span");
+        meta.className = "review-item__meta";
+        meta.textContent = spec.meta;
+        main.appendChild(meta);
+    }
     main.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
     main.addEventListener("click", (e) => {
         e.preventDefault();

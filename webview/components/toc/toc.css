@@ -394,12 +394,15 @@ body.toc-resizing {
     white-space: nowrap;
 }
 
-/* Per-group "Show K more" / "Show less" toggle. */
+/* Per-group "Show K more" / "Show less" toggle — a full-width row with the
+   same footprint and hover treatment as the items around it. */
 .review-more {
     display: block;
-    margin: 2px 8px 2px 24px;
-    padding: 2px 4px;
+    width: calc(100% - 8px);
+    margin: 1px 4px;
+    padding: 4px 8px 4px 24px;
     border: none;
+    border-radius: 3px;
     background: transparent;
     color: var(--vscode-textLink-foreground);
     font-size: 11.5px;
@@ -407,7 +410,7 @@ body.toc-resizing {
     cursor: pointer;
     opacity: 0.85;
 
-    &:hover { opacity: 1; text-decoration: underline; }
+    &:hover { opacity: 1; background: var(--vscode-list-hoverBackground); }
 }
 
 /* In grouped mode the type is the header, so the per-row chip is redundant;
@@ -478,6 +481,26 @@ body.toc-resizing {
     padding: 0 1px;
     background: var(--vscode-editor-findMatchHighlightBackground);
     color: var(--vscode-foreground);
+}
+
+/* Secondary detail (a link's URL) inline right of the label, revealed on row
+   hover/focus — NOT a tooltip, so a list can be audited by sweeping down it. */
+.review-item__meta {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 50%;
+    margin-left: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    display: none;
+}
+
+.review-item:hover .review-item__meta,
+.review-item:focus-within .review-item__meta {
+    display: block;
 }
 
 /* Actions are revealed on row hover/focus, like the gutter handles. */

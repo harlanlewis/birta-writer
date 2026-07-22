@@ -32,6 +32,8 @@ export interface ReviewRowModel {
     tag: string;
     label: string;
     title?: string;
+    /** Secondary detail (a link's URL) shown right of the label on row hover. */
+    meta?: string;
     from: number;
     to: number;
     actions: ReviewAction[];
@@ -71,7 +73,7 @@ const SEP_SUB = String.fromCharCode(29);
 /** The part of a row that, if changed, requires a DOM rebuild — everything the
  *  row DISPLAYS. Deliberately excludes from/to (synced in place). */
 function rowSignature(row: ReviewRowModel): string {
-    return [row.tag, row.label, row.title ?? "", row.actions.map((a) => a.label).join(",")].join(SEP_FIELD);
+    return [row.tag, row.label, row.title ?? "", row.meta ?? "", row.actions.map((a) => a.label).join(",")].join(SEP_FIELD);
 }
 
 /** Rows grouped by tag, groups ordered by their min rank (correctness-first, set

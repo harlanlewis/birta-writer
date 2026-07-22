@@ -75,6 +75,14 @@ describe("initReviewList — flat (In order) mode", () => {
         expect(element.querySelector(".review-item__label")?.textContent).toBe("ab—cd");
     });
 
+    it("renders a meta span (a link's URL) beside the label when provided", () => {
+        const { element, render } = mk(false);
+        render({ rows: [row({ label: "the readme", meta: "https://example.com" })] });
+        expect(element.querySelector(".review-item__meta")?.textContent).toBe("https://example.com");
+        render({ rows: [row({ label: "plain" })] });
+        expect(element.querySelector(".review-item__meta")).toBeNull();
+    });
+
     it("ignores an out-of-range emphasis and renders plain text", () => {
         const { element, render } = mk(false);
         render({ rows: [row({ label: "abc", emphasis: { start: 5, end: 9 } })] });

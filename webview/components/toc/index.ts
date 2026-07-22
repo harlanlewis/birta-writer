@@ -21,7 +21,8 @@ import { wireRoving } from "./keyboardNav";
 import { initProofreadingList } from "./proofreadingList";
 import { initNotesList } from "./notesList";
 import { initLinksList } from "./linksList";
-import { PROOFREAD_FINDINGS_CHANGED } from "@/plugins/proofread";
+import { PROOFREAD_FINDINGS_CHANGED, hasProofreadFindings } from "@/plugins/proofread";
+import { requestIdle } from "@/utils/idle";
 import { singleTextblockInlineEdit } from "@/utils/textblockEdit";
 
 interface HeadingEntry {
@@ -152,14 +153,20 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabStrip.className = "toc-tabs";
     tabStrip.setAttribute("role", "tablist");
     const tabContents = makeTabButton("contents", t("Contents"));
-    const tabProofread = makeTabButton("proofreading", t("Proofreading"));
-    const tabNotes = makeTabButton("notes", t("Notes"));
     const tabLinks = makeTabButton("links", t("Links"));
+    const tabNotes = makeTabButton("notes", t("Notes"));
+    const tabProofread = makeTabButton("proofreading", t("Proofreading"));
+    // A review tab exists only while it has entries. Until the first idle
+    // visibility pass (scheduleTabVisibility) they stay hidden, so document
+    // open pays for nothing beyond the Contents outline.
+    tabLinks.hidden = true;
+    tabNotes.hidden = true;
+    tabProofread.hidden = true;
     // The four tabs live in a horizontally-scrollable list so a narrow panel
     // never clips one; the flip/hide controls stay pinned beside it.
     const tabsList = document.createElement("div");
     tabsList.className = "toc-tabs__list";
-    tabsList.append(tabContents, tabProofread, tabNotes, tabLinks);
+    tabsList.append(tabContents, tabLinks, tabNotes, tabProofread);
     tabStrip.append(tabsList, controls);
 
     const proofreadView = initProofreadingList(getEditorView);
@@ -195,7 +202,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const isArrow = e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End";
         const isActivate = e.key === "Enter" || e.key === " ";
         if (!isArrow && !isActivate) { return; }
-        const tabs = [tabContents, tabProofread, tabNotes, tabLinks].filter((tab) => !tab.hidden);
+        const tabs = [tabContents, tabLinks, tabNotes, tabProofread].filter((tab) => !tab.hidden);
         const cur = tabs.indexOf(document.activeElement as HTMLButtonElement);
         e.preventDefault();
         if (isActivate) {
@@ -229,6 +236,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     /** Render whichever tab is active — the only view that does any work. */
     function renderActiveView(headings?: HeadingEntry[]): void {
+        // The panel is being shown/refreshed: settle any deferred tab-visibility
+        // recompute (skipped while the panel was closed).
+        if (tabVisibilityDirty) { scheduleTabVisibility(); }
         if (activeTab === "contents") {
             renderHeadings(headings ?? getHeadings());
         } else if (activeTab === "proofreading") {
@@ -243,18 +253,65 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     function setActiveTab(tab: ReviewTab): void {
         if (tab === activeTab) { return; }
         activeTab = tab;
+        // Visibility depends on the active tab (an emptied tab is kept only
+        // while the user is IN it) — recompute on switch-away.
+        scheduleTabVisibility();
         updateTabButtons();
         if (isPanelVisible()) { renderActiveView(); }
     }
 
-    /** Show/hide the Proofreading tab with the master switch. Hiding it while it
-     *  is the active tab falls back to Contents so the body is never stranded. */
+    /** Master proofreading switch: off hides the tab immediately (and falls back
+     *  to Contents if it was active); on lets the visibility pass decide whether
+     *  findings exist to show it for. */
     function applyProofreadingEnabled(enabled: boolean): void {
         proofreadingEnabled = enabled;
-        tabProofread.hidden = !enabled;
-        if (!enabled && activeTab === "proofreading") {
-            setActiveTab("contents");
+        if (!enabled) {
+            tabProofread.hidden = true;
+            if (activeTab === "proofreading") {
+                setActiveTab("contents");
+            }
         }
+        scheduleTabVisibility();
+    }
+
+    // ── Tab visibility: a review tab exists only while it has entries ──────
+    // The counts come from cached/incremental scans (links: doc-identity cache;
+    // notes: the incremental scan cache; proofreading: an early-exit decoration
+    // enumeration), and the pass runs ON IDLE, coalesced — never on the doc-open
+    // or keystroke path. While the panel is closed the pass is skipped entirely
+    // (dirty flag) and recomputed on the next show, so an unopened sidebar costs
+    // nothing while typing.
+    let tabVisibilityDirty = true;
+    // Coalescing gate is a boolean set BEFORE requestIdle, not the returned
+    // handle: a synchronous idle callback (tests; degenerate fallbacks) would
+    // otherwise run before the handle assignment and leave a stale handle
+    // wedging the scheduler shut. The handle exists only so dispose can cancel.
+    let tabVisibilityScheduled = false;
+    let tabVisibilityIdle: { cancel: () => void } | null = null;
+
+    function scheduleTabVisibility(): void {
+        tabVisibilityDirty = true;
+        if (!isPanelVisible()) { return; }
+        if (tabVisibilityScheduled) { return; }
+        tabVisibilityScheduled = true;
+        tabVisibilityIdle = requestIdle(() => {
+            tabVisibilityScheduled = false;
+            updateTabVisibility();
+        }, 300);
+    }
+
+    function updateTabVisibility(): void {
+        const view = getEditorView();
+        if (!view) { return; } // stays dirty; recomputed once the editor exists
+        tabVisibilityDirty = false;
+        // Never yank the tab the user is IN — an emptied tab hides on switch-away.
+        const show = (btn: HTMLButtonElement, tab: ReviewTab, has: boolean): void => {
+            btn.hidden = !(has || activeTab === tab);
+        };
+        show(tabLinks, "links", linksView.count(view) > 0);
+        show(tabNotes, "notes", notesView.count(view) > 0);
+        show(tabProofread, "proofreading", proofreadingEnabled && hasProofreadFindings(view));
+        if (!proofreadingEnabled) { tabProofread.hidden = true; }
     }
 
     /** The side-bar glyph whose filled edge marks the current dock side. */
@@ -915,6 +972,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      * change, and it takes the full sync.
      */
     function refreshContent(): void {
+        // The doc changed: mark tab visibility stale. Costs a flag write when the
+        // panel is closed; schedules one coalesced idle recompute when open.
+        scheduleTabVisibility();
         if (!isPanelVisible() && !autoOpenPossible()) {
             return; // nothing to render, and nothing left to auto-decide
         }
@@ -1264,6 +1324,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // Bare window binding (the event isn't in WindowEventMap, so it can't route
     // through eventManager.onWindow) — captured here so dispose() can remove it.
     const onProofreadFindingsChanged = (): void => {
+        // Findings appearing/clearing is what shows/hides the Proofreading tab.
+        scheduleTabVisibility();
         if (isPanelVisible() && activeTab === "proofreading") {
             proofreadView.refresh(getEditorView());
         }
@@ -1287,6 +1349,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         syncTocState();
         // Detect the currently visible heading once on init
         updateActiveHeadingOnScroll();
+        // First tab-visibility pass: on idle if the panel is showing, deferred
+        // to first show otherwise — either way, off the open path.
+        scheduleTabVisibility();
     });
 
     eventManager.onWindow("resize", () => {
@@ -1311,6 +1376,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         isRight: () => tocRight,
         setNotesMarkers: (markers: string[]) => {
             notesView.setMarkers(markers);
+            scheduleTabVisibility(); // a new marker set can create/clear notes
             if (isPanelVisible() && activeTab === "notes") {
                 notesView.refresh(getEditorView());
             }
@@ -1325,6 +1391,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             // The toolbar menu item only appears while proofreading is on, but
             // guard anyway (the tab is hidden when off).
             if (!proofreadingEnabled) { return; }
+            // Explicit intent overrides has-entries visibility: show the tab even
+            // before findings arrive (it renders its own empty state).
+            tabProofread.hidden = false;
             hideFlyoutImmediate();
             setActiveTab("proofreading");
             if (!isOpen) {
@@ -1335,6 +1404,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         dispose: () => {
             window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
             window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);
+            tabVisibilityIdle?.cancel();
+            tabVisibilityIdle = null;
             dnd.dispose();
         },
     };

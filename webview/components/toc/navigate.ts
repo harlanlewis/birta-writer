@@ -15,7 +15,7 @@ import type { EditorView } from "@/pm";
 import { TextSelection } from "@/pm";
 import { revealPosition } from "@/editing/blockOps";
 import { scrollElementBelowTopbar } from "@/utils/headingUtils";
-import { measureStickyHeadingHeight } from "@/plugins/caretScrollMargin";
+import { bodyLineHeightPx, measureStickyHeadingHeight } from "@/plugins/caretScrollMargin";
 
 export function revealRange(view: EditorView, from: number, to: number): void {
     const size = view.state.doc.content.size;
@@ -37,7 +37,11 @@ export function revealRange(view: EditorView, from: number, to: number): void {
         const el = node.nodeType === Node.TEXT_NODE
             ? (node.parentElement as HTMLElement | null)
             : (node as HTMLElement);
-        if (el) { scrollElementBelowTopbar(el, measureStickyHeadingHeight() + 8); }
+        // Land the target with ~two lines of lead-in above it (below the sticky
+        // title), so it arrives with context instead of pressed against the
+        // chrome. A ToC heading jump deliberately doesn't do this — there the
+        // target heading becomes the sticky and belongs at the top.
+        if (el) { scrollElementBelowTopbar(el, measureStickyHeadingHeight() + bodyLineHeightPx() * 2 + 8); }
     } catch { /* ignore */ }
     view.focus();
 }

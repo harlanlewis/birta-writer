@@ -3,9 +3,9 @@ import { Schema } from "../pm";
 import { scanLinks } from "../links/scan";
 
 /**
- * The Links scanner: classify by destination, merge contiguous link runs,
- * resolve reference links, and read wikilink nodes. Node/mark names match the
- * real schema (wiki_link, link, link_ref, link_definition).
+ * The Links scanner: classify by DESTINATION (never syntax), merge contiguous
+ * link runs, resolve reference links, and read wikilink nodes. Node/mark names
+ * match the real schema (wiki_link, link, link_ref, link_definition).
  */
 const schema = new Schema({
     nodes: {
@@ -32,7 +32,15 @@ describe("scanLinks", () => {
             p(linked("readme", "/README")),
             p(linked("top", "#intro")),
         ]);
-        expect(scanLinks(doc).map((l) => l.kind)).toEqual(["web", "email", "local", "anchor"]);
+        expect(scanLinks(doc).map((l) => l.kind)).toEqual(["web", "email", "local", "doc"]);
+    });
+
+    it("any URL scheme is an external (web) destination", () => {
+        const doc = schema.node("doc", null, [
+            p(linked("call", "tel:+15551234")),
+            p(linked("vault", "obsidian://open?vault=x")),
+        ]);
+        expect(scanLinks(doc).map((l) => l.kind)).toEqual(["web", "web"]);
     });
 
     it("merges a contiguous same-href run into one link", () => {
@@ -61,12 +69,19 @@ describe("scanLinks", () => {
         expect(link!.href).toBe("https://spec.example");
     });
 
-    it("reads a wikilink node's alias and target", () => {
+    it("a wikilink to a file is a LOCAL destination (syntax never makes a group)", () => {
         const doc = schema.node("doc", null, [p(schema.node("wiki_link", { raw: "README|the readme" }))]);
         const [link] = scanLinks(doc);
-        expect(link!.kind).toBe("wikilink");
+        expect(link!.kind).toBe("local");
         expect(link!.text).toBe("the readme");
         expect(link!.href).toBe("README");
+        expect(link!.wiki).toBe(true); // syntax kept for open-routing only
+    });
+
+    it("a bare [[#heading]] wikilink is an in-document destination", () => {
+        const doc = schema.node("doc", null, [p(schema.node("wiki_link", { raw: "#wikilinks" }))]);
+        const [link] = scanLinks(doc);
+        expect(link!.kind).toBe("doc");
     });
 
     it("returns links in document order", () => {

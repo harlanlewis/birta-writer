@@ -4,11 +4,12 @@
  * parses markers out of a real markdown round-trip (HTML comments as `html`
  * atoms, `- [ ]` as a checked list_item), and never runs the proofread pass.
  *
- * Covers: the three tabs render; Notes lists every built-in marker in document
- * order and hides the checked box; Proofreading lists a live style finding;
- * clicking a Notes row selects its marker in the editor; and typing with the
- * Notes tab open keeps the list correct through the incremental scan — with a
- * page-error/console-error guard over the whole run (MAR-192 hardening).
+ * Covers: the four tabs render in order (Contents/Links/Notes/Proofreading);
+ * Notes lists every built-in marker in document order with no dismiss actions;
+ * Proofreading lists live style findings; Links groups by destination with the
+ * URL inline on hover and a working Open action; keyboard nav; and typing with
+ * the Notes tab open keeps the list correct through the incremental scan — with
+ * a page-error/console-error guard over the whole run (MAR-192 hardening).
  */
 export async function run({ page, check, baseUrl }) {
     const errors = [];
@@ -24,8 +25,8 @@ export async function run({ page, check, baseUrl }) {
 
     // ── Tabs render ───────────────────────────────────────────────────────
     const tabLabels = await page.$$eval(".toc-tab", (els) => els.map((e) => e.textContent));
-    check("four tabs render, labelled Contents / Proofreading / Notes / Links",
-        JSON.stringify(tabLabels) === JSON.stringify(["Contents", "Proofreading", "Notes", "Links"]),
+    check("four tabs render in the order Contents / Links / Notes / Proofreading",
+        JSON.stringify(tabLabels) === JSON.stringify(["Contents", "Links", "Notes", "Proofreading"]),
         JSON.stringify(tabLabels));
 
     // Contents is the default tab and lists the headings.
@@ -119,7 +120,7 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(notes.map((n) => n.label)));
 
     // ── Proofreading tab: a live style finding ────────────────────────────
-    await page.click(".toc-tab:nth-child(2)"); // Proofreading
+    await page.click(".toc-tab:nth-child(4)"); // Proofreading
     await page.waitForSelector(".review-list--proofread:not(.toc-view--hidden)", { timeout: 5000 });
     await page.waitForTimeout(300);
     const findings = await page.$$eval(".review-list--proofread .review-item", (els) =>
@@ -194,7 +195,7 @@ export async function run({ page, check, baseUrl }) {
         await page.waitForSelector(".tb-checks-menu .tb-checks-action", { state: "visible", timeout: 5000 });
         await page.click(".tb-checks-menu .tb-checks-action");
         await page.waitForTimeout(200);
-        const proofActive = await page.$eval(".toc-tab:nth-child(2)",
+        const proofActive = await page.$eval(".toc-tab:nth-child(4)",
             (el) => el.classList.contains("toc-tab--active"));
         check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", proofActive);
     } else {
@@ -203,17 +204,52 @@ export async function run({ page, check, baseUrl }) {
     }
 
     // ── Links tab: every link in the doc, grouped by destination kind ─────
-    await page.click(".toc-tab:nth-child(4)"); // Links
+    await page.click(".toc-tab:nth-child(2)"); // Links
     await page.waitForSelector(".review-list--links:not(.toc-view--hidden)", { timeout: 5000 });
     await page.waitForTimeout(150);
     const linkGroups = await page.$$eval(".review-list--links .review-group__name", (els) => els.map((e) => e.textContent));
-    check("Links groups by destination kind (Web / Local / Heading / Wikilink)",
-        linkGroups.includes("Web") && linkGroups.includes("Local") && linkGroups.includes("Wikilink"),
+    check("Links groups by DESTINATION (Web / Local files / This document; wikilinks fold into Local files)",
+        linkGroups.includes("Web") && linkGroups.includes("Local files") && linkGroups.includes("This document")
+            && !linkGroups.includes("Wikilink"),
         JSON.stringify(linkGroups));
     const linkRows = await page.$$eval(".review-list--links .review-item__label", (els) => els.map((e) => e.textContent));
     check("Links lists the document's links (inline, autolink, local, wiki)",
         linkRows.includes("inline link") && linkRows.some((l) => /autolink\.dev/.test(l)) && linkRows.includes("wiki page"),
         JSON.stringify(linkRows));
+
+    // ── URL meta shows inline on row hover (not a tooltip) ────────────────
+    const inlineRow = page.locator(".review-list--links .review-item", { hasText: "inline link" }).first();
+    const metaHidden = await inlineRow.locator(".review-item__meta").evaluate((el) => getComputedStyle(el).display === "none");
+    await inlineRow.hover();
+    const metaShown = await inlineRow.locator(".review-item__meta").evaluate(
+        (el) => getComputedStyle(el).display !== "none" && el.textContent === "https://example.com");
+    check("a link row reveals its URL inline on hover", metaHidden && metaShown,
+        `hidden-before=${metaHidden} shown-on-hover=${metaShown}`);
+
+    // ── Open action follows the link (posts the host open message) ────────
+    await page.evaluate(() => { window.__posted.length = 0; });
+    await inlineRow.locator(".review-item__action", { hasText: "Open" }).click();
+    const opened = await page.evaluate(() =>
+        window.__posted.some((m) => m.type === "openUrl" || m.type === "openFile" || /open/i.test(m.type)));
+    check("the Open action posts an open message to the host", opened,
+        JSON.stringify(await page.evaluate(() => window.__posted.map((m) => m.type))));
+
+    // ── Notes rows carry NO dismiss action (a note is document content) ───
+    await page.click(".toc-tab:nth-child(3)");
+    await page.waitForTimeout(100);
+    const noteActions = await page.$$eval(".review-list--notes .review-item__action", (els) => els.length);
+    check("notes rows have no per-row actions (edit the doc to clear a note)", noteActions === 0, `actions=${noteActions}`);
+
+    // ── Show-more is a full-width row like its neighbors ──────────────────
+    await page.click(".toc-tab:nth-child(4)"); // Proofreading (has a capped group)
+    await page.waitForTimeout(100);
+    const widths = await page.evaluate(() => {
+        const more = document.querySelector(".review-list--proofread .review-more");
+        const item = document.querySelector(".review-list--proofread .review-item");
+        return more && item ? { more: more.getBoundingClientRect().width, item: item.getBoundingClientRect().width } : null;
+    });
+    check("Show-more spans the full row width", !!widths && Math.abs(widths.more - widths.item) < 2,
+        JSON.stringify(widths));
 
     check("no page errors or console errors during the run", errors.length === 0,
         errors.slice(0, 5).join(" | "));

@@ -11,14 +11,21 @@
  *   - a `wiki_link` atom node — `[[target|alias]]` (parsed from its raw bytes).
  *
  * Contiguous text carrying the same link runs (a `[**bold** tail](url)` is one
- * link, two text nodes) are merged into a single item. Links are grouped in the
- * sidebar by DESTINATION kind — where the link points — not by which syntax
- * wrote it, so a reference link sits with the web/local links it resolves to.
+ * link, two text nodes) are merged into a single item.
+ *
+ * Links are classified by DESTINATION, never by syntax: a wikilink to a file is
+ * a local file exactly like `[x](/README)` is, and `[[#heading]]` is an
+ * in-document link exactly like `[x](#heading)`. The kinds:
+ *
+ *   - `web`   — anything with a URL scheme (https, mailto excluded, tel, …);
+ *   - `local` — a path to a file in the workspace (including wikilinks);
+ *   - `doc`   — a `#fragment` within this document;
+ *   - `email` — mailto.
  */
 import type { Node as ProseNode } from "../pm";
 import { parseWikiRaw, wikiDisplayText, wikiLinkId } from "../plugins/wikiLinks";
 
-export type LinkKind = "web" | "email" | "local" | "anchor" | "wikilink";
+export type LinkKind = "web" | "local" | "doc" | "email";
 
 export interface LinkItem {
     from: number;
@@ -26,15 +33,18 @@ export interface LinkItem {
     kind: LinkKind;
     /** The link's display text (what the reader sees). */
     text: string;
-    /** The link's target — the tooltip, and how "web/local/anchor" is decided. */
+    /** The link's target — shown beside the row, and how kind is decided. */
     href: string;
+    /** True for a wikilink (opens through the host's wiki resolution). */
+    wiki?: boolean;
 }
 
 /** Classify a resolved href by where it points. */
 function kindOf(href: string): LinkKind {
     if (/^mailto:/i.test(href)) { return "email"; }
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(href)) { return "web"; }
-    if (href.startsWith("#")) { return "anchor"; }
+    // Any scheme (https://, tel:, obsidian://, …) is an external destination.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { return "web"; }
+    if (href.startsWith("#")) { return "doc"; }
     return "local";
 }
 
@@ -61,7 +71,10 @@ export function scanLinks(doc: ProseNode): LinkItem[] {
             const raw = (node.attrs["raw"] ?? "") as string;
             const parts = parseWikiRaw(raw);
             const href = parts.target + (parts.heading ? `#${parts.heading}` : "");
-            items.push({ from: pos, to: pos + node.nodeSize, kind: "wikilink", text: wikiDisplayText(raw), href });
+            // Destination-classified: a file target is a local file; a bare
+            // `[[#heading]]` points within this document.
+            const kind: LinkKind = parts.target ? "local" : "doc";
+            items.push({ from: pos, to: pos + node.nodeSize, kind, text: wikiDisplayText(raw), href, wiki: true });
             return false;
         }
         if (node.isText) {
@@ -92,4 +105,20 @@ export function scanLinks(doc: ProseNode): LinkItem[] {
     flush();
 
     return items.sort((a, b) => a.from - b.from);
+}
+
+// ── Doc-identity cache ─────────────────────────────────────────────────────
+// PM docs are immutable, so identical doc ⇒ identical scan. One webview hosts
+// one document, so a module-level slot is the right size. This keeps the
+// idle-time tab-visibility check AND the Links tab's render sharing one scan
+// per document version instead of re-walking for each caller.
+let cachedDoc: ProseNode | null = null;
+let cachedItems: LinkItem[] = [];
+
+export function scanLinksCached(doc: ProseNode): LinkItem[] {
+    if (cachedDoc !== doc) {
+        cachedItems = scanLinks(doc);
+        cachedDoc = doc;
+    }
+    return cachedItems;
 }
