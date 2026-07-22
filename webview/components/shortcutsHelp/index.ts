@@ -144,12 +144,20 @@ function buildPanel(): HTMLDivElement {
     header.append(headerIcon, title, btnClose);
     el.appendChild(header);
 
+    // The scrollable middle: header and footer stay put as fixed flex children
+    // of the panel; only this body scrolls (wheel contained, never chaining to
+    // the document), and its bottom padding keeps the last row clear of the
+    // footer.
+    const body = document.createElement("div");
+    body.className = "shortcuts-help__body";
+    el.appendChild(body);
+
     const addSection = (label: string): void => {
         const h = document.createElement("h3");
         // ui-heading: the shared chrome heading grade (matches a ToC H1).
         h.className = "shortcuts-help__section-title ui-heading";
         h.textContent = label;
-        el.appendChild(h);
+        body.appendChild(h);
     };
     // Each row is a two-column grid: the description on the LEFT (its left
     // edge identical on every row) and the chips right-aligned at the row's
@@ -188,7 +196,7 @@ function buildPanel(): HTMLDivElement {
             descEl.appendChild(noteEl);
         }
         row.append(descEl, keysEl);
-        el.appendChild(row);
+        body.appendChild(row);
     };
 
     // ── The fixed grammar — every chord below is a hardcoded typing-level

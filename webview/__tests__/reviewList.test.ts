@@ -12,9 +12,14 @@ function row(over: Partial<ReviewRowModel>): ReviewRowModel {
     return { tag: "TK", label: "a note", from: 1, to: 5, actions: [], ...over };
 }
 
-/** A list in a given mode (the toggle itself lives in the shell now). */
+/** A list in a given mode; onToggle spies the persistence callback. */
 function mk(grouped: boolean) {
-    return initReviewList("review-list", () => null, { initialGroupByType: grouped });
+    const onToggle = vi.fn();
+    const view = initReviewList("review-list", () => null, {
+        initialGroupByType: grouped,
+        onToggleGroupByType: onToggle,
+    });
+    return { ...view, onToggle };
 }
 
 const items = (el: HTMLElement) => el.querySelectorAll<HTMLElement>(".review-item");
@@ -130,11 +135,14 @@ describe("initReviewList — By-type (grouped) mode", () => {
         expect(element.querySelector(".review-more")!.textContent).toBe("Show less");
     });
 
-    it("carries no sort toggle of its own (the toggle lives in the shell)", () => {
-        const { element, render } = mk(true);
+    it("carries its own By type / In order toggle, which persists on click", () => {
+        const { element, render, onToggle } = mk(true);
         render({ rows: [row({})] });
-        expect(element.querySelector(".review-segmented")).toBeNull();
-        expect(element.querySelector(".review-seg")).toBeNull();
+        const segs = [...element.querySelectorAll<HTMLElement>(".review-segmented .review-seg")];
+        expect(segs.map((s) => s.textContent)).toEqual(["By type", "In order"]);
+        segs[1]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(onToggle).toHaveBeenCalledWith(false);
+        expect(element.querySelectorAll(".review-group")).toHaveLength(0); // flat now
     });
 
     it("orders groups by rank (correctness-first), not first appearance", () => {

@@ -11,6 +11,17 @@
  * the Notes tab open keeps the list correct through the incremental scan — with
  * a page-error/console-error guard over the whole run (MAR-192 hardening).
  */
+async function switchTab(page, name) {
+    const select = page.locator(".toc-tabs--select .toc-tabs-select");
+    if (await select.count()) {
+        await select.dispatchEvent("mousedown");
+        await page.locator(".toc-tabs-menu__item", { hasText: name }).first().dispatchEvent("mousedown");
+    } else {
+        await page.locator(".toc-tab", { hasText: name }).first().click();
+    }
+    await page.waitForTimeout(120);
+}
+
 export async function run({ page, check, baseUrl }) {
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
@@ -77,7 +88,7 @@ export async function run({ page, check, baseUrl }) {
     check("ArrowRight unfolds it again", (await visible()) === foldBefore, `restored`);
 
     // ── Notes tab: markers in document order, checked box excluded ─────────
-    await page.click(".toc-tab:nth-child(3)"); // Notes
+    await switchTab(page, "Notes");
     await page.waitForSelector(".review-list--notes:not(.toc-view--hidden)", { timeout: 5000 });
     const notes = await page.$$eval(".review-list--notes .review-item", (els) =>
         els.map((el) => ({
@@ -95,13 +106,13 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(groupNames));
 
     // Switch to In-order: headers disappear, the flat list remains.
-    await page.locator(".toc-utility .review-seg", { hasText: "In order" }).click();
+    await page.locator(".review-list--notes .review-seg", { hasText: "In order" }).click();
     await page.waitForTimeout(100);
     const afterFlat = await page.$$eval(".review-list--notes .review-group", (els) => els.length);
     check("the In-order toggle drops the group headers", afterFlat === 0, `groups=${afterFlat}`);
 
     // Back to By-type, then collapse a group: its row leaves the DOM.
-    await page.locator(".toc-utility .review-seg", { hasText: "By type" }).click();
+    await page.locator(".review-list--notes .review-seg", { hasText: "By type" }).click();
     await page.waitForTimeout(100);
     const beforeCollapse = await page.$$eval(".review-list--notes .review-item", (e) => e.length);
     await page.click(".review-list--notes .review-group:first-child");
@@ -120,7 +131,7 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(notes.map((n) => n.label)));
 
     // ── Proofreading tab: a live style finding ────────────────────────────
-    await page.click(".toc-tab:nth-child(4)"); // Proofreading
+    await switchTab(page, "Proofread");
     await page.waitForSelector(".review-list--proofread:not(.toc-view--hidden)", { timeout: 5000 });
     await page.waitForTimeout(300);
     const findings = await page.$$eval(".review-list--proofread .review-item", (els) =>
@@ -157,7 +168,7 @@ export async function run({ page, check, baseUrl }) {
     check("Escape returns focus from the review list to the editor", backToEditor);
 
     // ── Click a Notes row → it selects the marker in the editor ───────────
-    await page.click(".toc-tab:nth-child(3)"); // back to Notes
+    await switchTab(page, "Notes");
     await page.waitForSelector(".review-list--notes:not(.toc-view--hidden)", { timeout: 5000 });
     // The [TK] row is first (document order); clicking it must select "[TK]".
     await page.locator(".review-list--notes .review-item__main").first().click();
@@ -188,15 +199,15 @@ export async function run({ page, check, baseUrl }) {
         selectedAfter.includes("[TK]"), JSON.stringify(selectedAfter));
 
     // ── Toolbar "Show issues" reveals the Proofreading tab ────────────────
-    await page.click(".toc-tab:nth-child(1)"); // move off Proofreading (to Contents)
+    await switchTab(page, "Contents"); // move off Proofreading
     const checksBtn = page.locator('.editor-topbar [aria-label="Checks"]');
     if (await checksBtn.count()) {
         await checksBtn.hover();
         await page.waitForSelector(".tb-checks-menu .tb-checks-action", { state: "visible", timeout: 5000 });
         await page.click(".tb-checks-menu .tb-checks-action");
         await page.waitForTimeout(200);
-        const proofActive = await page.$eval(".toc-tab:nth-child(4)",
-            (el) => el.classList.contains("toc-tab--active"));
+        const proofActive = await page.$$eval(".toc-tab",
+            (els) => els.some((el) => el.textContent === "Proofread" && el.classList.contains("toc-tab--active")));
         check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", proofActive);
     } else {
         check("toolbar 'Show issues' switches the sidebar to the Proofreading tab", true,
@@ -204,7 +215,7 @@ export async function run({ page, check, baseUrl }) {
     }
 
     // ── Links tab: every link in the doc, grouped by destination kind ─────
-    await page.click(".toc-tab:nth-child(2)"); // Links
+    await switchTab(page, "Links");
     await page.waitForSelector(".review-list--links:not(.toc-view--hidden)", { timeout: 5000 });
     await page.waitForTimeout(150);
     const linkGroups = await page.$$eval(".review-list--links .review-group__name", (els) => els.map((e) => e.textContent));
@@ -255,13 +266,13 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(await page.evaluate(() => window.__posted.map((m) => m.type))));
 
     // ── Notes rows carry NO dismiss action (a note is document content) ───
-    await page.click(".toc-tab:nth-child(3)");
+    await switchTab(page, "Notes");
     await page.waitForTimeout(100);
     const noteActions = await page.$$eval(".review-list--notes .review-item__action", (els) => els.length);
     check("notes rows have no per-row actions (edit the doc to clear a note)", noteActions === 0, `actions=${noteActions}`);
 
     // ── Show-more is a full-width row like its neighbors ──────────────────
-    await page.click(".toc-tab:nth-child(4)"); // Proofreading (has a capped group)
+    await switchTab(page, "Proofread"); // has a capped group
     await page.waitForTimeout(100);
     const widths = await page.evaluate(() => {
         const more = document.querySelector(".review-list--proofread .review-more");
@@ -271,10 +282,25 @@ export async function run({ page, check, baseUrl }) {
     check("Show-more spans the full row width", !!widths && Math.abs(widths.more - widths.item) < 2,
         JSON.stringify(widths));
 
-    // ── All four tabs share one row at the default width (no wrap) ────────
-    const tabTops = await page.$$eval(".toc-tab", (els) => els.map((e) => e.getBoundingClientRect().top));
-    check("the four tabs sit on ONE row at the default width",
-        new Set(tabTops.map((t) => Math.round(t))).size === 1, JSON.stringify(tabTops));
+    // ── Overflowed tabs collapse to a select (the flip/hide controls stay
+    //    top-right, so four tabs can't share the 260px row — by design the
+    //    strip becomes a dropdown instead of wrapping or clipping). ──
+    const selectMode = await page.evaluate(() => ({
+        collapsed: document.querySelector(".toc-tabs").classList.contains("toc-tabs--select"),
+        label: document.querySelector(".toc-tabs-select span")?.textContent ?? "",
+        controls: !!document.querySelector(".toc-tabs .toc-controls"),
+    }));
+    check("overflowed tabs collapse to a select showing the active tab (controls stay in the strip)",
+        selectMode.collapsed && selectMode.label.length > 0 && selectMode.controls,
+        JSON.stringify(selectMode));
+    await page.locator(".toc-tabs-select").dispatchEvent("mousedown");
+    const menuItems = await page.$$eval(".toc-tabs-menu .toc-tabs-menu__item", (els) => els.map((e) => e.textContent));
+    check("the tab select opens a menu listing every visible tab",
+        menuItems.length === 4 && menuItems.includes("Contents") && menuItems.includes("Proofread"),
+        JSON.stringify(menuItems));
+    await page.keyboard.press("Escape");
+    await page.locator(".toc-tabs-select").dispatchEvent("mousedown"); // close via toggle
+    await page.waitForTimeout(80);
 
     // ── Shortcuts panel: wheel scrolls the PANEL, never chains to the doc ──
     await page.setViewportSize({ width: 1000, height: 480 }); // force panel overflow
@@ -289,13 +315,20 @@ export async function run({ page, check, baseUrl }) {
     await page.mouse.wheel(0, 4000); // far past the panel's range
     await page.waitForTimeout(200);
     const scrollRes = await page.evaluate(() => ({
-        panel: document.querySelector(".shortcuts-help").scrollTop,
+        panel: document.querySelector(".shortcuts-help__body").scrollTop,
         docMoved: window.scrollY,
     }));
     check("wheel over the shortcuts panel scrolls the panel",
         scrollRes.panel > 0, JSON.stringify(scrollRes));
     check("an exhausted wheel gesture does NOT chain to the document (overscroll contained)",
         scrollRes.docMoved === docYBefore, JSON.stringify({ before: docYBefore, after: scrollRes.docMoved }));
+    const overlap = await page.evaluate(() => {
+        const body = document.querySelector(".shortcuts-help__body");
+        const footer = document.querySelector(".shortcuts-help__footer");
+        return { bodyBottom: Math.round(body.getBoundingClientRect().bottom), footerTop: Math.round(footer.getBoundingClientRect().top) };
+    });
+    check("the body scrolls ABOVE the fixed footer (no content under or below it)",
+        overlap.bodyBottom <= overlap.footerTop, JSON.stringify(overlap));
     check("the shortcuts footer keeps only the Edit button (note line removed)",
         await page.evaluate(() => {
             const f = document.querySelector(".shortcuts-help__footer");

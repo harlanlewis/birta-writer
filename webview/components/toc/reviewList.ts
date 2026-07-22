@@ -4,12 +4,11 @@
  * with hover actions — differing only in what they collect (findings vs note
  * markers) and their empty-state copy. This owns the parts they share:
  *
- *   - the two view modes: "By type" groups rows under a collapsible type
- *     header, ordered by a per-row rank the adapter sets (correctness first
- *     for proofreading); "In order" is the flat document-ordered list. The
- *     TOGGLE lives in the shell (one control, one shared birta.review
- *     .groupByType setting for all review tabs); the shell drives the mode
- *     here via setGroupByType.
+ *   - the "By type / In order" toggle. "By type" groups rows under a
+ *     collapsible type header, ordered by a per-row rank the adapter sets
+ *     (correctness first for proofreading); "In order" is the flat
+ *     document-ordered list. The mode is one shared persisted setting
+ *     (birta.review.groupByType) across all review tabs.
  *   - per-group SHOW-MORE: a big group shows the first N rows and a
  *     "Show K more" toggle, so no single category walls off the rest.
  *   - the scrolling container + empty state;
@@ -96,7 +95,7 @@ function groupByTag(rows: readonly ReviewRowModel[]): Array<{ tag: string; rows:
 export function initReviewList(
     className: string,
     getView: () => EditorView | null,
-    opts: { initialGroupByType: boolean },
+    opts: { initialGroupByType: boolean; onToggleGroupByType: (grouped: boolean) => void },
 ): ReviewListRenderer {
     const element = document.createElement("div");
     element.className = className;
@@ -109,10 +108,37 @@ export function initReviewList(
     let lastResult: ReviewResult = null;
     let renderedSignature: string | null = null;
 
+    // ── The sort toggle (persistent chrome, built once) ───────────────────
+    const toolbar = document.createElement("div");
+    toolbar.className = "review-toolbar";
+    const segGroup = document.createElement("div");
+    segGroup.className = "review-segmented";
+    const segByType = makeSeg(t("By type"), true);
+    const segInOrder = makeSeg(t("In order"), false);
+    segGroup.append(segByType, segInOrder);
+    toolbar.append(segGroup);
     const bodyEl = document.createElement("div");
     bodyEl.className = "review-body";
     bodyEl.setAttribute("role", "listbox");
-    element.append(bodyEl);
+    element.append(toolbar, bodyEl);
+
+    function makeSeg(label: string, grouped: boolean): HTMLButtonElement {
+        const btn = document.createElement("button");
+        btn.className = "review-seg";
+        btn.textContent = label;
+        btn.tabIndex = -1;
+        btn.addEventListener("mousedown", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setMode(grouped, true);
+        });
+        return btn;
+    }
+    function updateSegActive(): void {
+        segByType.classList.toggle("review-seg--active", groupByType);
+        segInOrder.classList.toggle("review-seg--active", !groupByType);
+    }
+    updateSegActive();
 
     // Keyboard navigation: arrow through the group headers, rows, and show-more
     // toggles; Enter activates (all are <button>s); Escape returns to the editor.
@@ -122,10 +148,13 @@ export function initReviewList(
         onEscape: () => getView()?.focus(),
     });
 
-    /** Apply a mode change from the shell (the toggle lives there). */
-    function setMode(grouped: boolean): void {
+    /** Switch modes and re-render. `persist` distinguishes a user click (echo
+     *  the setting) from an external settings echo (already persisted). */
+    function setMode(grouped: boolean, persist: boolean): void {
         if (grouped === groupByType) { return; }
         groupByType = grouped;
+        updateSegActive();
+        if (persist) { opts.onToggleGroupByType(grouped); }
         renderedSignature = null; // structure changed: force a rebuild
         renderInto(lastResult);
     }
@@ -243,6 +272,7 @@ export function initReviewList(
     function renderInto(result: ReviewResult): void {
         lastResult = result;
         const hasRows = !!result && "rows" in result && result.rows.length > 0;
+        toolbar.hidden = !hasRows; // the toggle only makes sense with content
 
         const signature = (groupByType ? "G" : "F") + signatureOf(result);
         if (signature === renderedSignature) {
@@ -258,6 +288,6 @@ export function initReviewList(
     return {
         element,
         render: (result) => renderInto(result),
-        setGroupByType: (grouped) => setMode(grouped),
+        setGroupByType: (grouped) => setMode(grouped, false),
     };
 }

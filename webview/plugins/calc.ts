@@ -197,3 +197,83 @@ export const calcAutoInsertPlugin = $inputRule(() =>
         return state.tr.insertText(`= ${det.result}`, end);
     }),
 );
+
+// ── Auto-insert mode: refresh a stale answer when its expression is edited ──
+
+/**
+ * `expr = result` runs in a block's text: an operator-bearing arithmetic run,
+ * its `=`, and the number after it. Broad on purpose — each hit is re-validated
+ * through detectCalcExpression (with the run's REAL left context, so the
+ * comma/letter guards still apply) before anything is touched.
+ */
+const EQUATION_RE = /[0-9.+\-*/%^() \t]*[0-9)][ \t]*=[ \t]*(-?\d[\d,]*(?:\.\d+)?)/g;
+
+/**
+ * With `birta.calc.autoInsert` on, editing the EXPRESSION side of an existing
+ * `expr = result` recomputes and rewrites the result — `3+4= 7` edited to
+ * `4+4= 7` becomes `4+4= 8` in the same undo step as the edit. Guardrails:
+ *
+ *  - Auto-insert mode only. Advisory mode never rewrites the document without
+ *    a confirmation (the consent rule) — a deliberately "wrong" hand-typed
+ *    equation must survive there.
+ *  - Only when the edit touches the expression, never when it touches the
+ *    result: hand-editing the answer is the user overriding the machine, and
+ *    the machine must not fight back.
+ *  - Only when the run still validates as real arithmetic (mid-edit states
+ *    like `4+= 7` leave the text alone until the expression is whole again).
+ */
+export const calcRefreshPlugin = $prose(() => new Plugin({
+    key: new PluginKey("MD_CALC_REFRESH"),
+    appendTransaction(trs, _oldState, newState) {
+        if (!calcEnabled() || !calcAutoInsert()) { return null; }
+        if (!trs.some((tr) => tr.docChanged)) { return null; }
+
+        // The changed positions in the NEW doc, coalesced per transaction step.
+        const changed: Array<{ from: number; to: number }> = [];
+        for (const tr of trs) {
+            if (!tr.docChanged) { continue; }
+            for (const map of tr.mapping.maps) {
+                map.forEach((_a, _b, from, to) => { changed.push({ from, to }); });
+            }
+        }
+        if (changed.length === 0) { return null; }
+
+        let out = newState.tr;
+        let touched = false;
+        const seenBlocks = new Set<number>();
+        for (const change of changed) {
+            const pos = Math.min(change.from, newState.doc.content.size);
+            const $pos = newState.doc.resolve(pos);
+            if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) { continue; }
+            const blockStart = $pos.start();
+            if (seenBlocks.has(blockStart)) { continue; }
+            seenBlocks.add(blockStart);
+            // Inline atoms mask to a char arithmetic can't contain, keeping
+            // offsets 1:1 with positions (the proofread/notes masking contract).
+            const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
+
+            EQUATION_RE.lastIndex = 0;
+            for (let m = EQUATION_RE.exec(text); m; m = EQUATION_RE.exec(text)) {
+                const runStart = m.index;
+                const eqIdx = m[0].lastIndexOf("=");
+                const resultText = m[1]!;
+                const resultStart = runStart + m[0].length - resultText.length;
+                const resultEnd = runStart + m[0].length;
+                // The edit must intersect the run BEFORE the result token —
+                // expression edits refresh; result edits are the user's.
+                const localFrom = change.from - blockStart;
+                const localTo = change.to - blockStart;
+                if (localTo < runStart || localFrom >= resultStart) { continue; }
+                // Re-validate with the run's real left context so every
+                // detection guard (comma fragments, letters) still applies.
+                const det = detectCalcExpression(text.slice(0, runStart + eqIdx + 1), { boundaryUnknown: false });
+                if (!det) { continue; }
+                if (det.result === resultText) { continue; }
+                out = out.insertText(det.result, blockStart + resultStart, blockStart + resultEnd);
+                touched = true;
+                break; // one refresh per block per pass keeps mapping simple
+            }
+        }
+        return touched ? out : null;
+    },
+}));

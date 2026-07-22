@@ -14,6 +14,7 @@
  */
 import type { EditorView, Node as ProseNode } from "@/pm";
 import { t } from "@/i18n";
+import { notifyReviewGroupByType } from "@/messaging";
 import { scanNotes, incrementalScanNotes, type NoteItem } from "@/notes/scan";
 import { initReviewList, type ReviewResult } from "./reviewList";
 import type { ReviewListView } from "./proofreadingList";
@@ -50,6 +51,7 @@ function noteRank(item: NoteItem): number {
 export function initNotesList(getView: () => EditorView | null): NotesListView {
     const list = initReviewList("review-list review-list--notes", getView, {
         initialGroupByType: window.__i18n?.reviewGroupByType ?? true,
+        onToggleGroupByType: notifyReviewGroupByType,
     });
 
     let markers: readonly string[] = window.__i18n?.notesCustomMarkers ?? [];

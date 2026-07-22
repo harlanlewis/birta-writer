@@ -1,15 +1,50 @@
-# What Birta does — and why it matters
+# Birta Writer
 
-Birta Writer has one goal: be the best place to **read and write Markdown
-documents**. Not a knowledge base, not an outliner, not a note graph — a
-document editor that happens to render your Markdown as you write it, and hands
-the file back unchanged except for what you actually edited.
+Birta Writer strives to be your favorite way to read and write Markdown documents.
 
-This page explains *why* the notable capabilities matter. It's the companion to
-the feature catalog in [`README.md`](../README.md) (what the editor does) and
-[`DESIGN_PRINCIPLES.md`](DESIGN_PRINCIPLES.md) (how its UI communicates). It's
-refined over time rather than appended to — when a capability changes, edit the
-entry, don't stack a new one.
+Why I use it:
+
+- Birta Writer is a live visual editor for directly editing richly formatted and structured content.
+- Fast and responsive, with familiar and powerful controls including drag and drop, slash commands, and keyboard shortcuts. 
+- Instant updates reflects changes made outside of your edits, including AI agent edits or cloud sync.
+- Safely open and edit any Markdown-like content with no risk of data loss or unexpected modification due to parser mishandling unfamiliar syntax. Document fidelity is a first-class concern.
+- It sits within VS Code and it's *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor with multi-cursor support, or opening a diff view to compare conflicting changes. Birta Writer is simple by design, but nearly every aspect is customizable through VS Code's settings scopes at app, user, or project level.
+- It has a little bit more magic than you might expect, like an inline calculator to autocomplete math equations with the answer, like `6^2+(8*3/4)= 42`
+
+While superficially a single-document editor, Birta Writer has deceptively-deep system awareness and broad compatibility:
+
+- Display and edit both basic Markdown and extended syntax used by Obsidian, Confluence, Github, Notion exports, and others.
+- Browse and crosslink local documents with Markdown links and wikilinks using relative or absolute paths, or even logseq.
+- Interactive Mermaid diagrams, LaTeX rendering, images, and a full-featured visual table editor.
+- Optionally displays rich link previews or embedded documents and videos.
+
+Birta Writer helps me write better:
+
+- Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, punctuation, and vocabulary.
+- Customizable draft-management tools to help you find `[TK]` notes, `TODOs`, and inline comments.
+
+It's private:
+
+- By default, makes no network requests of any kind. Rich link previews are opt-in.
+- No usage tracking to opt out of, because it doesn't exist.
+
+Birta Writer is not a knowledge base - but it can sure act like one:
+
+- Open an existing Obsidian vault in VS Code and use the file explorer and command palette to view your full repository of knowledge.
+- Markdown files open automatically in Birta Writer. Crosslink them. Click to navigate across pages. View files side by side in a window.
+- Open Github Copilot, Claude Code, or other AI assistant in a VS Code sidebar to chat with and modify your documents live.
+
+Use Birta Writer as a complement when you want a more enjoyable and helpful writing tool, or as a full replacement.
+
+---
+
+## Crosslinks
+
+- [`README.md`](../README.md)
+- [`DESIGN_PRINCIPLES.md`](DESIGN_PRINCIPLES.md)
+- [POSITIONING.md](POSITIONING.md)
+- [RELEASING.md](RELEASING.md)
+- [../CHANGELOG.md](../CHANGELOG.md)
 
 ---
 

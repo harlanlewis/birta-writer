@@ -287,17 +287,92 @@ body.toc-resizing {
     display: none;
 }
 
-/* Utility row under the tabs: the ONE shared sort toggle (hidden on Contents)
-   at the leading edge, the flip/hide controls at the trailing edge. Secondary
-   chrome — quieter than the tabs above and the group headers below. */
-.toc-utility {
+/* The sort row atop each review list — secondary chrome, quieter than the
+   tabs above and the group headers below. */
+.review-toolbar {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 1px 8px 5px;
+    padding: 5px 8px 5px;
     font-size: 11px;
+
+    &[hidden] { display: none; }
+}
+
+/* ── Tab overflow: the strip collapses to a single select button ──────────
+   Applied when the measured tab row wrapped (syncTabOverflow). The full list
+   stays in the DOM (visibility:hidden keeps it measurable on the next sync)
+   while the select shows the active tab and opens a menu of the rest. */
+.toc-tabs {
+    position: relative;
+}
+.toc-tabs-select {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border: none;
+    border-radius: 5px;
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.toc-tabs--select .toc-tabs-select {
+    display: inline-flex;
+}
+.toc-tabs--select .toc-tabs__list {
+    /* Out of the visual flow but still measurable next time we re-sync. */
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+    left: 6px;
+    right: 64px;
+    top: 4px;
+}
+.toc-tabs-select__caret {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
+    opacity: 0.75;
+}
+.toc-tabs-menu {
+    position: absolute;
+    top: calc(100% - 2px);
+    left: 6px;
+    z-index: 30;
+    min-width: 140px;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
     background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+
+    &[hidden] { display: none; }
+}
+.toc-tabs-menu__item {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover { background: var(--vscode-list-hoverBackground); }
+}
+.toc-tabs-menu__item--active {
+    font-weight: 600;
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
 }
 
 /* The sort toggle mirrors the tabs' minimal idiom one size down — no border

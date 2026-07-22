@@ -2,7 +2,7 @@ import './toc.css';
 import type { EditorView, Node as PmNode } from "@/pm";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
-import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition, notifyReviewGroupByType } from "@/messaging";
+import { notifyTocWidth, notifyTocVisibility, notifySetTocPosition } from "@/messaging";
 import type { TocVisibility } from "../../../shared/messages";
 import { revealPosition } from "@/editing/blockOps";
 import { IconPanelLeft, IconPanelRight, IconArrowLeftRight } from "@/ui/icons";
@@ -165,64 +165,90 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabLinks.hidden = true;
     tabNotes.hidden = true;
     tabProofread.hidden = true;
-    // The tab strip holds ONLY the tabs (they wrap if a narrow panel forces
-    // it); the flip/hide controls live in the utility row below, beside the
-    // shared sort toggle — so four tabs fit one row at the default width.
+    // Tabs in their strip with the flip/hide controls at the trailing edge —
+    // the hide button's top-right position is LOAD-BEARING (the closed reveal
+    // tab sits exactly over it; see TAB_EDGE_INSET) and must not move. When the
+    // visible tabs overflow the row, the strip collapses to a SELECT: a single
+    // button showing the active tab that opens a menu of the others.
     const tabsList = document.createElement("div");
     tabsList.className = "toc-tabs__list";
     tabsList.append(tabContents, tabLinks, tabNotes, tabProofread);
-    tabStrip.append(tabsList);
 
-    // ── Utility row: the shared By type / In order toggle + flip/hide ──────
-    // ONE sort control for one global setting (birta.review.groupByType) — it
-    // used to be duplicated inside each review list. Hidden on Contents (the
-    // outline has no sort); the controls keep the row occupied there.
-    let reviewGroupByType = window.__i18n?.reviewGroupByType ?? true;
-    const utilityRow = document.createElement("div");
-    utilityRow.className = "toc-utility";
-    const segGroup = document.createElement("div");
-    segGroup.className = "review-segmented";
-    const segByType = makeSortSeg(t("By type"), true);
-    const segInOrder = makeSortSeg(t("In order"), false);
-    segGroup.append(segByType, segInOrder);
-    utilityRow.append(segGroup, controls);
+    const tabsSelect = document.createElement("button");
+    tabsSelect.className = "toc-tabs-select";
+    tabsSelect.tabIndex = -1;
+    tabsSelect.setAttribute("aria-haspopup", "menu");
+    const tabsSelectLabel = document.createElement("span");
+    const tabsSelectCaret = document.createElement("span");
+    tabsSelectCaret.className = "toc-tabs-select__caret";
+    tabsSelect.append(tabsSelectLabel, tabsSelectCaret);
 
-    function makeSortSeg(label: string, grouped: boolean): HTMLButtonElement {
-        const btn = document.createElement("button");
-        btn.className = "review-seg";
-        btn.textContent = label;
-        btn.tabIndex = -1;
-        btn.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            applyGroupByType(grouped, true);
-        });
-        return btn;
+    const tabsMenu = document.createElement("div");
+    tabsMenu.className = "toc-tabs-menu";
+    tabsMenu.hidden = true;
+    tabsMenu.setAttribute("role", "menu");
+
+    tabStrip.append(tabsList, tabsSelect, tabsMenu, controls);
+
+    const ALL_TABS: Array<[HTMLButtonElement, ReviewTab]> = [
+        [tabContents, "contents"], [tabLinks, "links"], [tabNotes, "notes"], [tabProofread, "proofreading"],
+    ];
+
+    function closeTabsMenu(): void { tabsMenu.hidden = true; }
+    function openTabsMenu(): void {
+        tabsMenu.replaceChildren(...ALL_TABS.filter(([btn]) => !btn.hidden).map(([btn, tab]) => {
+            const item = document.createElement("button");
+            item.className = "toc-tabs-menu__item";
+            item.textContent = btn.textContent;
+            item.tabIndex = -1;
+            item.classList.toggle("toc-tabs-menu__item--active", tab === activeTab);
+            item.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                closeTabsMenu();
+                setActiveTab(tab);
+            });
+            return item;
+        }));
+        tabsMenu.hidden = false;
     }
-    function updateSortSegs(): void {
-        segByType.classList.toggle("review-seg--active", reviewGroupByType);
-        segInOrder.classList.toggle("review-seg--active", !reviewGroupByType);
-    }
-    /** Set the mode everywhere: the toggle, all three views, and (for a user
-     *  click) the persisted setting. A settings echo passes persist=false. */
-    function applyGroupByType(grouped: boolean, persist: boolean): void {
-        if (grouped !== reviewGroupByType) {
-            reviewGroupByType = grouped;
-            if (persist) { notifyReviewGroupByType(grouped); }
+    tabsSelect.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (tabsMenu.hidden) { openTabsMenu(); } else { closeTabsMenu(); }
+    });
+    // Any click elsewhere drops the menu (capture: stopped mousedowns count).
+    document.addEventListener("mousedown", (e) => {
+        if (!tabsMenu.hidden && !tabsMenu.contains(e.target as Node) && e.target !== tabsSelect) {
+            closeTabsMenu();
         }
-        updateSortSegs();
-        proofreadView.setGroupByType(grouped);
-        notesView.setGroupByType(grouped);
-        linksView.setGroupByType(grouped);
+    }, true);
+
+    /**
+     * List mode vs select mode, decided by MEASURING: show the tab list and, if
+     * its items wrapped past one row (the strip is too narrow for the visible
+     * tabs + controls), collapse to the select. Runs on width/visibility/active
+     * changes only — never per keystroke. jsdom (no layout) always measures
+     * unwrapped, so unit tests exercise list mode.
+     */
+    function syncTabOverflow(): void {
+        tabStrip.classList.remove("toc-tabs--select");
+        closeTabsMenu();
+        const visibleTabs = ALL_TABS.filter(([btn]) => !btn.hidden).map(([btn]) => btn);
+        const wrapped = visibleTabs.length > 1
+            && visibleTabs.some((btn) => btn.offsetTop !== visibleTabs[0]!.offsetTop);
+        if (wrapped) {
+            tabStrip.classList.add("toc-tabs--select");
+            const active = ALL_TABS.find(([, tab]) => tab === activeTab)?.[0];
+            tabsSelectLabel.textContent = active?.textContent ?? "";
+        }
     }
-    updateSortSegs();
 
     const proofreadView = initProofreadingList(getEditorView);
     const notesView = initNotesList(getEditorView);
     const linksView = initLinksList(getEditorView);
 
     panel.appendChild(tabStrip);
-    panel.appendChild(utilityRow);
     panel.appendChild(list);
     panel.appendChild(proofreadView.element);
     panel.appendChild(notesView.element);
@@ -277,8 +303,6 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         reflect(tabProofread, activeTab === "proofreading");
         reflect(tabNotes, activeTab === "notes");
         reflect(tabLinks, activeTab === "links");
-        // The outline has no sort; the flip/hide controls keep the row present.
-        segGroup.hidden = activeTab === "contents";
         list.classList.toggle("toc-view--hidden", activeTab !== "contents");
         proofreadView.element.classList.toggle("toc-view--hidden", activeTab !== "proofreading");
         notesView.element.classList.toggle("toc-view--hidden", activeTab !== "notes");
@@ -308,6 +332,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // while the user is IN it) — recompute on switch-away.
         scheduleTabVisibility();
         updateTabButtons();
+        syncTabOverflow(); // select-mode label follows the active tab
         if (isPanelVisible()) { renderActiveView(); }
     }
 
@@ -363,6 +388,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         show(tabNotes, "notes", notesView.count(view) > 0);
         show(tabProofread, "proofreading", proofreadingEnabled && hasProofreadFindings(view));
         if (!proofreadingEnabled) { tabProofread.hidden = true; }
+        syncTabOverflow(); // the visible-tab set changed → remeasure the row
     }
 
     /** The side-bar glyph whose filled edge marks the current dock side. */
@@ -423,6 +449,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         tocWidth = clampWidth(width);
         document.documentElement.style.setProperty("--toc-width", `${tocWidth}px`);
         updateTab();
+        syncTabOverflow(); // the row's available width changed
     }
 
     resizeHandle.addEventListener("mousedown", (e) => {
@@ -1398,6 +1425,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         isOpen = userToggled ? tocMode === "docked" && !dockedUserCollapsed : shouldAutoOpen(headings);
         updatePanelPosition();
         syncTocState();
+        syncTabOverflow();
         // Detect the currently visible heading once on init
         updateActiveHeadingOnScroll();
         // First tab-visibility pass: on idle if the panel is showing, deferred
@@ -1433,8 +1461,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             }
         },
         setReviewGroupByType: (grouped: boolean) => {
-            // Settings echo: apply everywhere without re-persisting.
-            applyGroupByType(grouped, false);
+            // Settings echo: all review tabs share the one setting.
+            proofreadView.setGroupByType(grouped);
+            notesView.setGroupByType(grouped);
+            linksView.setGroupByType(grouped);
         },
         showProofreadingTab: () => {
             // The toolbar menu item only appears while proofreading is on, but

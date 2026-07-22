@@ -10,7 +10,7 @@
  */
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
-import { notifyOpenFile, notifyOpenUrl } from "@/messaging";
+import { notifyOpenFile, notifyOpenUrl, notifyReviewGroupByType } from "@/messaging";
 import { scanLinksCached, type LinkItem, type LinkKind } from "@/links/scan";
 import { collectDocHeadings } from "@/utils/headingUtils";
 import { slugify } from "@/utils/slug";
@@ -90,6 +90,7 @@ function produce(view: EditorView | null, getView: () => EditorView | null): Rev
 export function initLinksList(getView: () => EditorView | null): LinksListView {
     const list = initReviewList("review-list review-list--links", getView, {
         initialGroupByType: window.__i18n?.reviewGroupByType ?? true,
+        onToggleGroupByType: notifyReviewGroupByType,
     });
     return {
         element: list.element,
