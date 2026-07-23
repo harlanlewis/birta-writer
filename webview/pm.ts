@@ -59,7 +59,9 @@ export type {
 // `Mapping` accumulates the position maps of one or more transactions and can
 // be inverted — anchorSync uses it to pair a heading's OLD position with its
 // NEW one (and to reject moved/deleted headings via an inverse round-trip).
-export { Mapping, ReplaceAroundStep, ReplaceStep } from "@milkdown/prose/transform";
+// `canJoin` asks whether the nodes either side of a position can merge into
+// one — the legality probe behind every list-merge surface (editing/listMerge).
+export { canJoin, Mapping, ReplaceAroundStep, ReplaceStep } from "@milkdown/prose/transform";
 export type { Mappable } from "@milkdown/prose/transform";
 
 // ─── prose/commands: generic editing commands ───

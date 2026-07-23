@@ -9,7 +9,7 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import { TextSelection } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { calcSuggestPlugin, calcAutoInsertPlugin } from "../plugins/calc";
+import { calcSuggestPlugin, calcAutoInsertPlugin, calcRefreshPlugin } from "../plugins/calc";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -273,5 +273,110 @@ describe("auto-insert inline calc", () => {
         expect(v.state.doc.textContent).toBe("x =5+7"); // nothing auto-inserted
         expect(document.querySelector(".fm-suggest-menu")).not.toBeNull();
         vi.useRealTimers();
+    });
+});
+
+describe("auto-insert result refresh (editing an existing equation)", () => {
+    async function makeRefreshEditor(markdown: string): Promise<Editor> {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        return Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, markdown);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .use(calcSuggestPlugin)
+            .use(calcAutoInsertPlugin)
+            .use(calcRefreshPlugin)
+            .create();
+    }
+
+    beforeEach(() => {
+        document.body.innerHTML = "";
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: true,
+        };
+    });
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    /** Replace one character of the doc's first paragraph via a transaction. */
+    function editChar(v: EditorView, offset: number, ch: string): void {
+        // +1: paragraph start (block open token).
+        v.dispatch(v.state.tr.insertText(ch, 1 + offset, 1 + offset + 1));
+    }
+    const blockText = (v: EditorView) => v.state.doc.firstChild?.textContent ?? "";
+
+    it("editing the expression refreshes the stale answer", async () => {
+        const editor = await makeRefreshEditor("3+4= 7");
+        const v = view(editor);
+        editChar(v, 0, "4"); // 3+4= 7 → 4+4= 7 → refresh → 4+4= 8
+        expect(blockText(v)).toBe("4+4= 8");
+        editor.destroy();
+    });
+
+    it("editing the RESULT is the user's override and is left alone", async () => {
+        const editor = await makeRefreshEditor("3+4= 7");
+        const v = view(editor);
+        editChar(v, 5, "9"); // user rewrites the answer by hand
+        expect(blockText(v)).toBe("3+4= 9");
+        editor.destroy();
+    });
+
+    it("a mid-edit invalid expression leaves the text untouched until whole", async () => {
+        const editor = await makeRefreshEditor("3+4= 7");
+        const v = view(editor);
+        // Delete the "4": "3+= 7" — not valid arithmetic; nothing rewrites.
+        v.dispatch(v.state.tr.delete(3, 4));
+        expect(blockText(v)).toBe("3+= 7");
+        editor.destroy();
+    });
+
+    it("advisory mode (autoInsert off) never rewrites the document", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("3+4= 7");
+        const v = view(editor);
+        editChar(v, 0, "4");
+        expect(blockText(v)).toBe("4+4= 7"); // stale, but untouched — consent rule
+        editor.destroy();
+    });
+
+    it("LEADING form: editing the expression refreshes the answer before the =", async () => {
+        const editor = await makeRefreshEditor("12=5+7");
+        const v = view(editor);
+        // "5" is at offset 3; make it 6 → 12=6+7 → refresh → 13=6+7.
+        editChar(v, 3, "6");
+        expect(blockText(v)).toBe("13=6+7");
+        editor.destroy();
+    });
+
+    it("LEADING form: editing the RESULT is the user's override and left alone", async () => {
+        const editor = await makeRefreshEditor("12=5+7");
+        const v = view(editor);
+        editChar(v, 0, "9"); // hand-edit the answer → 92=5+7, untouched
+        expect(blockText(v)).toBe("92=5+7");
+        editor.destroy();
+    });
+
+    it("LEADING form: a prose assignment (letter before the number) never rewrites", async () => {
+        const editor = await makeRefreshEditor("a12=5+7");
+        const v = view(editor);
+        // Edit the 5 → 6: the excised text is "a=6+7", which the leading
+        // boundary rule rejects (prose assignment), so nothing rewrites.
+        editChar(v, 4, "6");
+        expect(blockText(v)).toBe("a12=6+7");
+        editor.destroy();
+    });
+
+    it("undo reverts the edit and the refreshed answer together", async () => {
+        const editor = await makeRefreshEditor("3+4= 7");
+        const v = view(editor);
+        editChar(v, 0, "4");
+        expect(blockText(v)).toBe("4+4= 8");
+        editor.destroy();
     });
 });

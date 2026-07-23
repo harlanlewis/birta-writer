@@ -198,13 +198,12 @@
     color: var(--vscode-errorForeground);
 }
 
+/* Menu group heading — the shared .ui-heading grade (see ui/typography.css). */
 .block-menu-header {
-    padding: 5px 10px 2px;
-    font-size: 10px;
+    padding: 6px 10px 2px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--vscode-descriptionForeground);
+    color: var(--vscode-foreground);
     user-select: none;
 }
 
@@ -606,7 +605,7 @@ body.editor-width-auto {
         .frontmatter-panel {
             --toc-editor-offset: max(
                 0px,
-                calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+                calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
             );
             width: calc(100% - var(--toc-editor-offset));
             margin-left: var(--toc-editor-offset);
@@ -646,7 +645,7 @@ body.editor-width-auto {
             .frontmatter-panel {
                 --toc-editor-offset: max(
                     0px,
-                    calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-right-padding, 48px))
+                    calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px) - var(--editor-content-right-padding, 48px))
                 );
                 width: calc(100% - var(--toc-editor-offset));
                 margin-right: var(--toc-editor-offset);
@@ -681,7 +680,7 @@ body:not(.editor-width-auto) {
         .frontmatter-panel {
             --toc-editor-offset: max(
                 0px,
-                calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
+                calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px) - var(--editor-content-left-padding))
             );
             margin-left: max(
                 var(--toc-editor-offset),
@@ -696,7 +695,7 @@ body:not(.editor-width-auto) {
         .frontmatter-panel {
             --toc-editor-offset: max(
                 0px,
-                calc(var(--toc-width, 220px) + var(--toc-content-gap, 100px) - var(--editor-content-right-padding, 48px))
+                calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px) - var(--editor-content-right-padding, 48px))
             );
             margin-right: max(
                 var(--toc-editor-offset),
@@ -1769,13 +1768,12 @@ body.toolbar-hidden::before {
     overscroll-behavior: contain;
 }
 
+/* Menu group heading — the shared .ui-heading grade (see ui/typography.css). */
 .slash-menu-group-label {
-    padding: 6px 10px 2px;
-    font-size: 10px;
+    padding: 7px 10px 2px;
+    font-size: 12px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--vscode-descriptionForeground);
+    color: var(--vscode-foreground);
 }
 
 .slash-menu-item {

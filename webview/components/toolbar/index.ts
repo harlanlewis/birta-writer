@@ -35,7 +35,7 @@ import type { CalloutKind } from "@/plugins/callouts";
 import { STYLE_CATEGORIES, STYLE_SECTIONS } from "@/utils/styleCategories";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
-import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetBlockHandles, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
+import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
 import { isChecklistSinkEnabled, setChecklistSinkEnabled } from "@/editing/checklistSink";
@@ -69,8 +69,7 @@ import {
     clampMaxWidthCh,
     type ContentWidthMode,
 } from "../../../shared/contentWidth";
-import { BLOCK_HANDLES_DISPLAY_ORDER, type BlockHandlesMode } from "../../../shared/blockHandles";
-import { applyBlockHandles, currentBlockHandlesMode } from "../../utils/blockHandles";
+import { type BlockHandlesMode } from "../../../shared/blockHandles";
 import { TOOLBAR_MENU_COMMANDS, settingsMenuTitle } from "../../../shared/editorCommands";
 import { openShortcutsHelp } from "../shortcutsHelp";
 import './toolbar.css';
@@ -869,27 +868,11 @@ export function initToolbar(
         notifySetContentWidth(mode);
     }
 
-    // ── Resting block-handles state ──
-    // Always / Headings / Hover (the `blockHandles` setting), radio rows
-    // under the width control. The body class is the single source of truth
-    // (baked in by the provider, kept current by the setBlockHandles echo),
-    // so there is no cached mode here — the rows re-read it.
-    const handleEntries = new Map<BlockHandlesMode, CheckItem>();
-    function setBlockHandlesActive(mode: BlockHandlesMode): void {
-        for (const [m, item] of handleEntries) {
-            item.setChecked(m === mode);
-        }
-    }
-    function pickBlockHandles(mode: BlockHandlesMode): void {
-        if (mode === currentBlockHandlesMode()) {
-            return;
-        }
-        setBlockHandlesActive(mode);
-        // Apply immediately — the menu stays open, so the gutter updates in
-        // view; the settings round-trip re-broadcasts to every open editor.
-        applyBlockHandles(mode);
-        notifySetBlockHandles(mode);
-    }
+    // Block handles have no menu rows anymore (the trio read as too prominent
+    // for a rarely-changed preference) — the `birta.blockHandles` SETTING and
+    // its settings-echo path remain; setBlockHandles is a deliberate no-op so
+    // the echo contract holds.
+    function setBlockHandlesActive(_mode: BlockHandlesMode): void { /* no menu rows to repaint */ }
 
     function createFontPicker(): HTMLElement {
         const fontWrap = document.createElement("div");
@@ -931,43 +914,6 @@ export function initToolbar(
             });
             widthRow.appendChild(segBtn);
             widthSegments.set(mode, segBtn);
-        }
-
-        // ── Block handles: Always show / Headings and hover / Hover only ──
-        // Which block handles stay visible at rest (hover always reveals).
-        // Radio rows like the font-family presets below — the labels are too
-        // long for segments — under a caption that names the subject. Clicks
-        // keep the menu open so the gutter visibly updates.
-        const handlesCaption = document.createElement("div");
-        handlesCaption.className = "tb-seg-caption";
-        handlesCaption.id = "tb-block-handles-caption";
-        handlesCaption.textContent = t("Show Block Handles");
-        const handlesLabels: Record<BlockHandlesMode, { label: string; title: string }> = {
-            always: { label: t("Always show"), title: t("Every block's handle stays visible") },
-            headings: { label: t("Headings and hover"), title: t("Heading badges stay visible; the rest appear on hover") },
-            hover: { label: t("Hover only"), title: t("Handles appear only on hover") },
-        };
-        // The trio is one labelled group for assistive tech (the caption is
-        // visual-only otherwise). role="group", not "radiogroup": the rows
-        // are menuitemradio, whose ARIA container inside a menu is a group.
-        // wireHoverMenu's roving rows() matches .tb-fmt-item DESCENDANTS of
-        // the menu, so the extra wrapper is transparent to keyboard nav.
-        const handlesGroup = document.createElement("div");
-        handlesGroup.setAttribute("role", "group");
-        handlesGroup.setAttribute("aria-labelledby", handlesCaption.id);
-        for (const mode of BLOCK_HANDLES_DISPLAY_ORDER) {
-            const item = createCheckItem(handlesLabels[mode].label);
-            // Single-select trio, not independent toggles.
-            item.el.setAttribute("role", "menuitemradio");
-            item.el.title = handlesLabels[mode].title;
-            item.el.setAttribute("aria-label", handlesLabels[mode].title);
-            item.el.addEventListener("mousedown", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                pickBlockHandles(mode);
-            });
-            handlesGroup.appendChild(item.el);
-            handleEntries.set(mode, item);
         }
 
         // ── Size stepper: A− <percent> A+ ──
@@ -1042,38 +988,20 @@ export function initToolbar(
             fontEntries.push({ preset, item });
         }
 
-        // Jump to the native Settings UI filtered to the font settings, where
-        // the per-preset stacks (fontFamilySans/Serif/Mono) can be customized.
-        // Grouped with the family presets above it (no divider between them).
-        const fontSettingsEntry = document.createElement("div");
-        fontSettingsEntry.className = "tb-fmt-item";
-        fontSettingsEntry.textContent = t("Font settings");
-        fontSettingsEntry.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeFontMenu();
-            notifyOpenSettings("birta.font");
-        });
-
-        // Assemble top→bottom: font size, content width + block handles
-        // (the two page-layout controls share a group), the family presets,
-        // then Font settings — each group separated by a divider.
+        // Assemble top→bottom: font size, content width, the family presets —
+        // each group separated by a divider. (Block handles and the font-stack
+        // settings live in Settings only — the menu holds the frequent moves.)
         fontMenu.append(
             sizeRow,
             makeSep(),
             widthRow,
-            handlesCaption,
-            handlesGroup,
             makeSep(),
             ...fontItemEls,
-            makeSep(),
-            fontSettingsEntry,
         );
 
         setFontActive(currentFontPreset);
         setFontSizeActive(currentFontSize);
         setContentWidthActive(currentContentWidth);
-        setBlockHandlesActive(currentBlockHandlesMode());
 
         // The item handlers above close over closeFontMenu; they only ever run
         // after this wiring (the menu must be open to click a row).

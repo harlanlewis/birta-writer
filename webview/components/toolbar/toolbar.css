@@ -213,13 +213,12 @@
 /* Caption above a control whose values can't self-describe — currently the
    block-handles radio rows ("Show Block Handles" over Always show/Headings
    and hover/Hover only) — the block menu's section-header voice. */
+/* Menu group heading — the shared .ui-heading grade (see ui/typography.css). */
 .tb-seg-caption {
-    padding: 6px 12px 0;
-    font-size: 10px;
+    padding: 7px 12px 0;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--vscode-descriptionForeground);
+    color: var(--vscode-foreground);
     user-select: none;
 }
 
@@ -473,13 +472,12 @@ body.has-sync-conflict .toolbar-toggle-tab {
     border-left: 1px solid color-mix(in srgb, var(--vscode-editorHoverWidget-border) 55%, transparent);
 }
 
+/* Menu group heading — the shared .ui-heading grade (see ui/typography.css). */
 .tb-fmt-header {
-    padding: 5px 12px 2px;
-    font-size: 10px;
+    padding: 6px 12px 2px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--vscode-descriptionForeground);
+    color: var(--vscode-foreground);
     cursor: default;
 }
 

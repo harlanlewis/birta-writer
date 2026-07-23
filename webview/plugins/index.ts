@@ -1,5 +1,5 @@
 export { anchorSyncPlugin, headingRangeTouched } from "./anchorSync";
-export { calcAutoInsertPlugin, calcSuggestPlugin } from "./calc";
+export { calcAutoInsertPlugin, calcRefreshPlugin, calcSuggestPlugin } from "./calc";
 export { insertCalloutCommand } from "./callouts";
 export { toggleHighlightCommand } from "./highlight";
 export { caretScrollMarginPlugin } from "./caretScrollMargin";
@@ -39,11 +39,13 @@ export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
 export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
 export {
+    listAutoJoinPlugin,
     listEnterPlugin,
     listLiftPlugin,
     listItemSpreadBoolPlugins,
     listSpreadNormalizePlugin,
 } from "./list";
+export { listMergeSuggestPlugin } from "./listMergeSuggest";
 export { pendingRangePlugin, setPendingRange } from "./pendingRange";
 export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";

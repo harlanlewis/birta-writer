@@ -818,7 +818,7 @@ export class MarkdownEditorProvider
                         // every open editor (setTocWidth) — same path as position.
                         void updateSettingRespectingScope(
                             "tocWidth",
-                            clampNumberSetting(message.width, 220, 150, 600),
+                            clampNumberSetting(message.width, 260, 240, 600),
                         );
                         break;
                     case "tocVisibility":

@@ -4,11 +4,11 @@
  * with hover actions — differing only in what they collect (findings vs note
  * markers) and their empty-state copy. This owns the parts they share:
  *
- *   - a "Sort by" toggle (By type / In order). "By type" groups rows under a
+ *   - the "By type / In order" toggle. "By type" groups rows under a
  *     collapsible type header, ordered by a per-row rank the adapter sets
  *     (correctness first for proofreading); "In order" is the flat
- *     document-ordered list. The mode is a persisted setting
- *     (birta.review.groupByType).
+ *     document-ordered list. The mode is one shared persisted setting
+ *     (birta.review.groupByType) across all review tabs.
  *   - per-group SHOW-MORE: a big group shows the first N rows and a
  *     "Show K more" toggle, so no single category walls off the rest.
  *   - the scrolling container + empty state;
@@ -32,6 +32,11 @@ export interface ReviewRowModel {
     tag: string;
     label: string;
     title?: string;
+    /** Secondary detail (a link's URL) shown right of the label on row hover. */
+    meta?: string;
+    /** Makes the meta text itself clickable (follow the URL) — distinct from
+     *  the row click, which navigates to the link's place in the document. */
+    onMeta?: () => void;
     from: number;
     to: number;
     actions: ReviewAction[];
@@ -71,7 +76,7 @@ const SEP_SUB = String.fromCharCode(29);
 /** The part of a row that, if changed, requires a DOM rebuild — everything the
  *  row DISPLAYS. Deliberately excludes from/to (synced in place). */
 function rowSignature(row: ReviewRowModel): string {
-    return [row.tag, row.label, row.title ?? "", row.actions.map((a) => a.label).join(",")].join(SEP_FIELD);
+    return [row.tag, row.label, row.title ?? "", row.meta ?? "", row.actions.map((a) => a.label).join(",")].join(SEP_FIELD);
 }
 
 /** Rows grouped by tag, groups ordered by their min rank (correctness-first, set
@@ -103,7 +108,7 @@ export function initReviewList(
     let lastResult: ReviewResult = null;
     let renderedSignature: string | null = null;
 
-    // ── "Sort by" toggle (persistent chrome, built once) ──────────────────
+    // ── The sort toggle (persistent chrome, built once) ───────────────────
     const toolbar = document.createElement("div");
     toolbar.className = "review-toolbar";
     const segGroup = document.createElement("div");
@@ -116,14 +121,6 @@ export function initReviewList(
     bodyEl.className = "review-body";
     bodyEl.setAttribute("role", "listbox");
     element.append(toolbar, bodyEl);
-
-    // Keyboard navigation: arrow through the group headers, rows, and show-more
-    // toggles; Enter activates (all are <button>s); Escape returns to the editor.
-    const roving = wireRoving({
-        container: bodyEl,
-        items: () => [...bodyEl.querySelectorAll<HTMLElement>(".review-group, .review-item__main, .review-more")],
-        onEscape: () => getView()?.focus(),
-    });
 
     function makeSeg(label: string, grouped: boolean): HTMLButtonElement {
         const btn = document.createElement("button");
@@ -143,8 +140,16 @@ export function initReviewList(
     }
     updateSegActive();
 
-    /** Switch modes and re-render. `persist` distinguishes a user click (echo the
-     *  setting) from an external settings echo (already persisted). */
+    // Keyboard navigation: arrow through the group headers, rows, and show-more
+    // toggles; Enter activates (all are <button>s); Escape returns to the editor.
+    const roving = wireRoving({
+        container: bodyEl,
+        items: () => [...bodyEl.querySelectorAll<HTMLElement>(".review-group, .review-item__main, .review-more")],
+        onEscape: () => getView()?.focus(),
+    });
+
+    /** Switch modes and re-render. `persist` distinguishes a user click (echo
+     *  the setting) from an external settings echo (already persisted). */
     function setMode(grouped: boolean, persist: boolean): void {
         if (grouped === groupByType) { return; }
         groupByType = grouped;
@@ -212,7 +217,8 @@ export function initReviewList(
         const caret = document.createElement("span");
         caret.className = "review-group__caret";
         const name = document.createElement("span");
-        name.className = "review-group__name";
+        // ui-heading: the shared chrome heading grade (matches a ToC H1).
+        name.className = "review-group__name ui-heading";
         name.textContent = tag;
         header.append(caret, name);
 

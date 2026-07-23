@@ -1,0 +1,32 @@
+/* ── Shared chrome typography (ui-*) ─────────────────────────────────────
+ *
+ * The small, reusable type scale for EXTENSION CHROME — menus, panels,
+ * sidebars, popups. Document content styles its own text; chrome composes
+ * these classes instead of re-inventing font-size/weight/color per surface.
+ * (Adopted first by the review sidebar's group headers and the keyboard-
+ * shortcuts panel; migrating the remaining surfaces is tracked in Linear.)
+ *
+ * Grades:
+ *   .ui-heading — a panel/section heading. The ToC-H1 grade: 12px / 600 /
+ *                 foreground. One visual rank for "heading" everywhere.
+ *   .ui-label   — ordinary interactive row text: 12px / 400 / foreground.
+ *   .ui-caption — secondary/supporting text: 11px / 400 / muted.
+ */
+
+.ui-heading {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+.ui-label {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--vscode-foreground);
+}
+
+.ui-caption {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--vscode-descriptionForeground);
+}

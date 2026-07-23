@@ -14,7 +14,7 @@
  * skipped while composing and composition keydowns pass through.
  */
 import { Plugin, type PluginKey } from "../pm";
-import type { EditorView } from "../pm";
+import type { EditorState, EditorView } from "../pm";
 import type { LinkSuggestMenu, SuggestMenuAnchor } from "../components/pathLink/linkTargetComplete";
 
 /** The construct ending at the caret that suggestions attach to. */
@@ -37,11 +37,23 @@ export interface CaretSuggestSpec {
      * `ctx.truncated` is true when the window was cut short of the real
      * block start — position 0 is then NOT a line boundary; specs whose
      * grammar depends on line-start context (calc) must not trust it.
+     * Exactly one of `match` / `matchState` must be provided.
      */
-    match(
+    match?(
         textBefore: string,
         ctx?: { truncated: boolean },
     ): { length: number; query: string; label?: string } | null;
+    /**
+     * STRUCTURAL alternative to `match`, for suggestions whose trigger is
+     * the caret's position in the document tree rather than a text construct
+     * (the list-merge advisory: caret in the first item of a list with a
+     * same-type sibling above). Called with the same cadence as `match` —
+     * every transaction, empty selections only — and its non-null span keeps
+     * the same contract: the menu anchors at `caret`, and Escape suppression
+     * lifts when this returns null (the caret left the context). Runs
+     * per-transaction on the typing path, so it must be allocation-light.
+     */
+    matchState?(state: EditorState): CaretMatch | null;
     /** Whether `query` should trigger a suggestion request at all. */
     shouldSuggest(query: string): boolean;
     /** Requests suggestions for `query`; `cb` may be called once, later. */
@@ -66,7 +78,23 @@ export interface CaretSuggestSpec {
      * user deliberately selects a row (and Tab then accepts that row).
      */
     autoActivate?: boolean;
+    /**
+     * Never open while ANOTHER caret suggestion's menu is up. The
+     * text-construct menus (calc, link, wikilink) are mutually exclusive by
+     * grammar, but a STRUCTURAL suggestion (the list-merge advisory) can
+     * coincide with any of them — typing `2+3=` in the first item of a split
+     * list matches both — and two menus would stack at the same caret, both
+     * claiming Tab. The construct the user is actively typing wins; the
+     * structural offer returns on the next transaction after that menu
+     * closes.
+     */
+    yieldsToOpenMenus?: boolean;
 }
+
+// Controllers whose menu is currently OPEN — the registry `yieldsToOpenMenus`
+// consults. Module-level because the controllers are independent plugin views
+// that otherwise cannot see one another.
+const openControllers = new Set<CaretSuggestController>();
 
 class CaretSuggestController {
     private view: EditorView;
@@ -138,6 +166,9 @@ class CaretSuggestController {
     private matchContext(): CaretMatch | null {
         const { selection } = this.view.state;
         if (!selection.empty) { return null; }
+        if (this.spec.matchState) { return this.spec.matchState(this.view.state); }
+        const specMatch = this.spec.match;
+        if (!specMatch) { return null; }
         const $from = selection.$from;
         if (!$from.parent.isTextblock) { return null; }
         if ($from.parent.type.spec.code) { return null; } // code block
@@ -148,7 +179,7 @@ class CaretSuggestController {
             undefined,
             "\uFFFC",
         );
-        const m = this.spec.match(textBefore, { truncated: $from.parentOffset > 500 });
+        const m = specMatch(textBefore, { truncated: $from.parentOffset > 500 });
         if (!m || textBefore.slice(-m.length).includes("\uFFFC")) { return null; }
         return {
             start: selection.from - m.length,
@@ -163,6 +194,7 @@ class CaretSuggestController {
     private removeMenu(): void {
         this.menu?.destroy();
         this.menu = null;
+        openControllers.delete(this);
     }
 
     private closeMenu(): void {
@@ -195,6 +227,9 @@ class CaretSuggestController {
         // reply can never show outdated options.
         this.removeMenu();
         if (this.view.composing) { return; }
+        // A yielding suggestion stands down while any OTHER menu is open —
+        // two menus would stack at the same caret, both claiming Tab.
+        if (this.spec.yieldsToOpenMenus && openControllers.size > 0) { return; }
         const match = this.matchContext();
         if (!match) { return; }
         const coords = this.caretCoords();
@@ -208,6 +243,7 @@ class CaretSuggestController {
             },
             (picked) => this.pick(picked),
         );
+        if (this.menu) { openControllers.add(this); }
         // Advisory single-result menus (calc) pre-select their row so Tab
         // confirms it directly; moveActive(1) lifts the highlight from -1 to 0.
         if (this.menu && this.spec.autoActivate) { this.menu.moveActive(1); }

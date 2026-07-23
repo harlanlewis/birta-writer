@@ -8,15 +8,16 @@
  * customize/rebind path; this overlay links to it with a button rather than
  * duplicating it.
  *
- * Content policy (the noHardcodedKeybindings.test.ts philosophy):
- *   - Only the FIXED grammar is printed with keys: the typing-level
- *     ProseMirror keymap chords (formatKeymap, history, blockKeys,
- *     smartSelect, insertParagraph, tab/table keymaps) plus Escape/Tab.
- *     These are hardcoded and un-rebindable (see CLAIMED_SHORTCUTS in
- *     webview/keyboardShortcuts.ts), so a printed key can never lie.
- *   - Everything rebindable is listed by NAME only, with one note and an
- *     "Edit Keyboard Shortcuts" button that opens the native Keyboard
- *     Shortcuts UI (the one place effective bindings are always accurate).
+ * Content policy (the noHardcodedKeybindings.test.ts philosophy): this is an
+ * inventory of what the shortcuts ARE. Only the FIXED grammar is printed —
+ * the typing-level ProseMirror keymap chords (formatKeymap, history,
+ * blockKeys, smartSelect, insertParagraph, tab/table keymaps) plus
+ * Escape/Tab. These are hardcoded and un-rebindable (see CLAIMED_SHORTCUTS
+ * in webview/keyboardShortcuts.ts), so a printed key can never lie.
+ * Rebindable commands are deliberately NOT inventoried here — a names-only
+ * list says nothing about actual keys, and printing defaults could lie —
+ * the sticky "Edit Keyboard Shortcuts" footer opens the native Keyboard
+ * Shortcuts UI, the one place effective bindings are always accurate.
  *
  * Launch cost is zero: this module is in the eager import graph
  * (webview/index.ts wires it into the command host), so the overlay DOM is
@@ -35,7 +36,6 @@ import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { claimDock, releaseDock } from "@/ui/dockExclusive";
 import { notifyOpenKeybindings } from "@/messaging";
-import { EDITOR_COMMANDS, type EditorCommandId } from "../../../shared/editorCommands";
 
 /**
  * kbd() output post-processing: kbd() upper-cases the final key segment
@@ -63,58 +63,6 @@ function keys(chord: string): string {
     }
     return out;
 }
-
-/**
- * Rebindable commands shown by NAME only, grouped. Titles come from the
- * command registry so the overlay can never drift from the palette. Commands
- * whose fixed default chord is already printed in the grammar sections
- * (bold, undo, duplicate, …) are deliberately not repeated here.
- */
-const REBINDABLE_GROUPS: readonly { label: string; ids: readonly EditorCommandId[] }[] = [
-    {
-        label: "Find",
-        ids: ["openFind", "openFindReplace", "findNext", "findPrevious", "findSelection", "selectAllOccurrences"],
-    },
-    { label: "Blocks", ids: ["openBlockMenu", "deleteBlock"] },
-    { label: "Folding", ids: ["fold", "unfold", "foldAll", "unfoldAll"] },
-    {
-        label: "Headings & lists",
-        ids: [
-            "setParagraph", "setHeading1", "setHeading2", "setHeading3", "setHeading4",
-            "setHeading5", "setHeading6", "toggleBulletList", "toggleOrderedList",
-            "toggleTaskList", "toggleBlockquote",
-        ],
-    },
-    {
-        label: "Insert",
-        ids: [
-            "insertLink", "insertImage", "insertTable", "insertCodeBlock",
-            "insertMath", "insertFootnote", "insertCallout", "insertHorizontalRule",
-        ],
-    },
-    {
-        label: "Text",
-        ids: [
-            "toggleHighlight", "clearFormatting", "transformToUppercase",
-            "transformToLowercase", "transformToTitleCase", "joinLines",
-        ],
-    },
-    {
-        label: "View",
-        ids: [
-            "toggleToc", "swapTocSide", "toggleToolbar", "customizeToolbar",
-            "editFrontmatter", "editRawMarkdown",
-        ],
-    },
-    {
-        label: "Fonts",
-        ids: [
-            "fontEditor", "fontSans", "fontSerif", "fontMono",
-            "increaseFontSize", "decreaseFontSize",
-        ],
-    },
-    { label: "Proofreading", ids: ["toggleSpellCheck", "toggleGrammarCheck", "toggleStyleCheck"] },
-];
 
 // ── Module state (the overlay is a singleton, built once) ────────────────
 let panel: HTMLDivElement | null = null;
@@ -196,20 +144,28 @@ function buildPanel(): HTMLDivElement {
     header.append(headerIcon, title, btnClose);
     el.appendChild(header);
 
+    // The scrollable middle: header and footer stay put as fixed flex children
+    // of the panel; only this body scrolls (wheel contained, never chaining to
+    // the document), and its bottom padding keeps the last row clear of the
+    // footer.
+    const body = document.createElement("div");
+    body.className = "shortcuts-help__body";
+    el.appendChild(body);
+
     const addSection = (label: string): void => {
         const h = document.createElement("h3");
-        h.className = "shortcuts-help__section-title";
+        // ui-heading: the shared chrome heading grade (matches a ToC H1).
+        h.className = "shortcuts-help__section-title ui-heading";
         h.textContent = label;
-        el.appendChild(h);
+        body.appendChild(h);
     };
-    // Each row is a two-column grid: a fixed-width key column (chips
-    // right-aligned, wrapping within the column) and a description column
-    // whose left edge is identical on every row. Chips are grouped into
-    // PAIRS — one inner array per gesture alternative (e.g. the up/down
-    // chips of one move chord family) — and each pair renders as an
-    // inline-flex sub-span, so line wraps only ever fall BETWEEN
-    // alternatives, never inside one (the 4-chip move set becomes a clean
-    // 2×2 stack instead of an arbitrary 3+1 split).
+    // Each row is a two-column grid: the description on the LEFT (its left
+    // edge identical on every row) and the chips right-aligned at the row's
+    // trailing edge. Chips are grouped into PAIRS — one inner array per
+    // gesture alternative (e.g. the up/down chips of one move chord family)
+    // — and each pair renders as an inline-flex sub-span, so line wraps only
+    // ever fall BETWEEN alternatives, never inside one (the 4-chip move set
+    // becomes a clean 2×2 stack instead of an arbitrary 3+1 split).
     const addRow = (keyPairs: string[][], label: string, note?: string): void => {
         const row = document.createElement("div");
         row.className = "shortcuts-help__row";
@@ -233,14 +189,14 @@ function buildPanel(): HTMLDivElement {
         descEl.appendChild(labelEl);
         if (note) {
             // The note is a quieter second line INSIDE the description cell,
-            // so it never sprawls across the key column.
+            // so it never sprawls into the key column.
             const noteEl = document.createElement("div");
             noteEl.className = "shortcuts-help__note";
             noteEl.textContent = note;
             descEl.appendChild(noteEl);
         }
-        row.append(keysEl, descEl);
-        el.appendChild(row);
+        row.append(descEl, keysEl);
+        body.appendChild(row);
     };
 
     // ── The fixed grammar — every chord below is a hardcoded typing-level
@@ -291,44 +247,12 @@ function buildPanel(): HTMLDivElement {
     // (single-chip) pairs and may wrap apart.
     addRow([[keys("Mod-Shift-z")], [keys("Mod-y")]], t("Redo"));
 
-    // ── Rebindable commands: names only — their keys live in (and may be
-    // changed via) VS Code's Keyboard Shortcuts, so printing a default here
-    // could show a wrong chord. ──
-    addSection(t("Customizable commands"));
-    const titleOf = new Map<string, string>(EDITOR_COMMANDS.map((c) => [c.id, c.title]));
-    // Structure over prose: each group is a small subheading followed by a
-    // two-column name list (NO kbd chips — these are rebindable, so a
-    // printed chord could lie). Scans vertically instead of wrapping inline.
-    for (const group of REBINDABLE_GROUPS) {
-        const div = document.createElement("div");
-        div.className = "shortcuts-help__group";
-        const name = document.createElement("h4");
-        name.className = "shortcuts-help__group-name";
-        name.textContent = t(group.label);
-        // A real list (ul/li) so assistive tech announces item count and
-        // boundaries — the visual grid alone gives adjacent names no
-        // accessible delimitation.
-        const items = document.createElement("ul");
-        items.className = "shortcuts-help__group-items";
-        for (const id of group.ids) {
-            const item = document.createElement("li");
-            item.className = "shortcuts-help__group-item";
-            const itemName = t(titleOf.get(id) ?? id);
-            item.textContent = itemName;
-            // Names ellipsize in the two-column grid; the title makes a
-            // clipped name recoverable on hover.
-            item.title = itemName;
-            items.appendChild(item);
-        }
-        div.append(name, items);
-        el.appendChild(div);
-    }
-
+    // Rebindable commands are deliberately NOT inventoried here: a names-only
+    // list says nothing about actual keys, and printing defaults could lie.
+    // The sticky footer below routes to VS Code's Keyboard Shortcuts — the
+    // one accurate inventory of everything rebindable.
     const footer = document.createElement("div");
     footer.className = "shortcuts-help__footer";
-    const note = document.createElement("span");
-    note.className = "shortcuts-help__note";
-    note.textContent = t("These commands' keys are shown — and customizable — in VS Code's Keyboard Shortcuts.");
     const btnCustomize = createButton({
         className: "shortcuts-help__customize",
         label: t("Edit Keyboard Shortcuts"),
@@ -337,7 +261,7 @@ function buildPanel(): HTMLDivElement {
             notifyOpenKeybindings();
         },
     });
-    footer.append(note, btnCustomize);
+    footer.appendChild(btnCustomize);
     el.appendChild(footer);
 
     // Esc closes from anywhere inside the panel; with editor focus the

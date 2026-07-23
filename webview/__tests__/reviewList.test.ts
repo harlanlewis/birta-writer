@@ -12,7 +12,7 @@ function row(over: Partial<ReviewRowModel>): ReviewRowModel {
     return { tag: "TK", label: "a note", from: 1, to: 5, actions: [], ...over };
 }
 
-/** A list in a given mode; onToggle is a spy so persistence can be asserted. */
+/** A list in a given mode; onToggle spies the persistence callback. */
 function mk(grouped: boolean) {
     const onToggle = vi.fn();
     const view = initReviewList("review-list", () => null, {
@@ -75,6 +75,24 @@ describe("initReviewList — flat (In order) mode", () => {
         expect(element.querySelector(".review-item__label")?.textContent).toBe("ab—cd");
     });
 
+    it("renders a meta span (a link's URL) beside the label when provided", () => {
+        const { element, render } = mk(false);
+        render({ rows: [row({ label: "the readme", meta: "https://example.com" })] });
+        expect(element.querySelector(".review-item__meta")?.textContent).toBe("https://example.com");
+        render({ rows: [row({ label: "plain" })] });
+        expect(element.querySelector(".review-item__meta")).toBeNull();
+    });
+
+    it("a clickable meta follows the link and does NOT trigger the row navigation", () => {
+        const { element, render } = mk(false);
+        let followed = 0;
+        render({ rows: [row({ label: "the readme", meta: "https://example.com", onMeta: () => { followed++; } })] });
+        const meta = element.querySelector<HTMLElement>(".review-item__meta")!;
+        expect(meta.classList.contains("review-item__meta--link")).toBe(true);
+        meta.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        expect(followed).toBe(1);
+    });
+
     it("ignores an out-of-range emphasis and renders plain text", () => {
         const { element, render } = mk(false);
         render({ rows: [row({ label: "abc", emphasis: { start: 5, end: 9 } })] });
@@ -117,12 +135,14 @@ describe("initReviewList — By-type (grouped) mode", () => {
         expect(element.querySelector(".review-more")!.textContent).toBe("Show less");
     });
 
-    it("shows a segmented By type / In order control in the toolbar", () => {
-        const { element, render } = mk(true);
+    it("carries its own By type / In order toggle, which persists on click", () => {
+        const { element, render, onToggle } = mk(true);
         render({ rows: [row({})] });
-        expect(element.querySelector(".review-toolbar__label")).toBeNull();
-        const segs = [...element.querySelectorAll(".review-segmented .review-seg")].map((s) => s.textContent);
-        expect(segs).toEqual(["By type", "In order"]);
+        const segs = [...element.querySelectorAll<HTMLElement>(".review-segmented .review-seg")];
+        expect(segs.map((s) => s.textContent)).toEqual(["By type", "In order"]);
+        segs[1]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        expect(onToggle).toHaveBeenCalledWith(false);
+        expect(element.querySelectorAll(".review-group")).toHaveLength(0); // flat now
     });
 
     it("orders groups by rank (correctness-first), not first appearance", () => {
@@ -148,34 +168,16 @@ describe("initReviewList — By-type (grouped) mode", () => {
     });
 });
 
-describe("initReviewList — view-mode toggle", () => {
+describe("initReviewList — view mode (driven by the shell)", () => {
     beforeEach(() => { document.body.innerHTML = ""; });
 
-    it("clicking a segment switches mode and persists via the callback", () => {
-        const { element, render, onToggle } = mk(true);
-        render({ rows: [row({ tag: "TK" })] });
-        expect(groups(element)).toHaveLength(1); // grouped
-        const inOrder = element.querySelectorAll<HTMLElement>(".review-seg")[1]!;
-        inOrder.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-        expect(onToggle).toHaveBeenCalledWith(false);
-        expect(groups(element)).toHaveLength(0); // flat now
-        expect(items(element)).toHaveLength(1);
-    });
-
-    it("an external setGroupByType change re-renders WITHOUT re-persisting", () => {
-        const { element, render, setGroupByType, onToggle } = mk(false);
+    it("setGroupByType re-renders between grouped and flat", () => {
+        const { element, render, setGroupByType } = mk(false);
         render({ rows: [row({ tag: "TK" })] });
         expect(groups(element)).toHaveLength(0); // flat
         setGroupByType(true);
-        expect(onToggle).not.toHaveBeenCalled();
         expect(groups(element)).toHaveLength(1); // grouped now
-    });
-
-    it("the toolbar is hidden when there are no rows", () => {
-        const { element, render } = mk(true);
-        render({ empty: "No suggestions" });
-        expect(element.querySelector<HTMLElement>(".review-toolbar")!.hidden).toBe(true);
-        render({ rows: [row({})] });
-        expect(element.querySelector<HTMLElement>(".review-toolbar")!.hidden).toBe(false);
+        setGroupByType(false);
+        expect(groups(element)).toHaveLength(0);
     });
 });

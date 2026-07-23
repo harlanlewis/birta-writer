@@ -57,6 +57,7 @@ import {
     IconCopy,
     IconFileText,
     IconLink,
+    IconList,
     IconTrash2,
 } from "../../ui/icons";
 import {
@@ -64,6 +65,7 @@ import {
     setChecklistSinkEnabled,
     uncheckAllTasks,
 } from "../../editing/checklistSink";
+import { mergeableListBoundary, mergeListsAt } from "../../editing/listMerge";
 import { blockMarkdownAt, selectInto } from "./turnInto";
 import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
@@ -986,6 +988,28 @@ export function openBlockMenu(
             mutates: false,
             action: () => setChecklistSinkEnabled(!isChecklistSinkEnabled()),
         });
+    }
+    if (isItem) {
+        // Adjacent same-type sibling lists are the file's own split (a
+        // `-`→`*` marker change — edit-created adjacency auto-joins, see
+        // listAutoJoinPlugin), so merging is offered, never assumed. Rows
+        // exist only when a mergeable neighbor does — an absent neighbor
+        // makes the action never-possible for this block, and the menu's
+        // convention hides those rather than disabling them.
+        const mergeAbove = mergeableListBoundary(view.state.doc, conversionPos, -1);
+        const mergeBelow = mergeableListBoundary(view.state.doc, conversionPos, 1);
+        if (mergeAbove !== null) {
+            action(t("Merge with List Above"), ["merge", "join", "combine", "list", "above"], {
+                icon: IconList,
+                action: () => mergeListsAt(view, mergeAbove),
+            });
+        }
+        if (mergeBelow !== null) {
+            action(t("Merge with List Below"), ["merge", "join", "combine", "list", "below"], {
+                icon: IconList,
+                action: () => mergeListsAt(view, mergeBelow),
+            });
+        }
     }
     action(movesSection ? t("Move Section Up") : t("Move Up"), ["move", "up", "reorder"], {
         icon: IconChevronUp,

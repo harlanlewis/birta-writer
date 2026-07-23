@@ -819,6 +819,20 @@ export function describeFindings(
 }
 
 /**
+ * Whether any proofreading finding is live — the review sidebar's tab-visibility
+ * check. Deliberately cheaper than listProofreadFindings: one decoration-set
+ * enumeration with an early exit, no text reads, no row building.
+ */
+export function hasProofreadFindings(view: EditorView): boolean {
+    const state = proofreadPluginKey.getState(view.state);
+    if (!state) { return false; }
+    return state.combined.find().some((h) => {
+        const s = h.spec as DecoSpec;
+        return Boolean(s.lint || s.style);
+    });
+}
+
+/**
  * Every live proofreading finding (style + Harper spelling/grammar), document
  * -ordered, resolved to what the review sidebar needs plus the same Ignore/Learn
  * actions the in-text popup offers. Reads the plugin's `combined` decoration

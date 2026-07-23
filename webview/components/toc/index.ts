@@ -21,7 +21,8 @@ import { wireRoving } from "./keyboardNav";
 import { initProofreadingList } from "./proofreadingList";
 import { initNotesList } from "./notesList";
 import { initLinksList } from "./linksList";
-import { PROOFREAD_FINDINGS_CHANGED } from "@/plugins/proofread";
+import { PROOFREAD_FINDINGS_CHANGED, hasProofreadFindings } from "@/plugins/proofread";
+import { requestIdle } from "@/utils/idle";
 import { singleTextblockInlineEdit } from "@/utils/textblockEdit";
 
 interface HeadingEntry {
@@ -34,8 +35,11 @@ interface HeadingEntry {
     atDocRoot: boolean;
 }
 
-const TOC_DEFAULT_WIDTH = 220;
-const TOC_MIN_WIDTH = 150;
+// 260 default / 240 floor: wide enough that the four tab labels + controls fit
+// on one row at the default, and the floor never crushes rows into ellipsis
+// soup (the old 150px floor did). The tab list wraps as the fallback below 290.
+const TOC_DEFAULT_WIDTH = 260;
+const TOC_MIN_WIDTH = 240;
 const TOC_MAX_WIDTH = 600;
 const DOCKED_MIN_CONTENT_WIDTH = 720;
 const HEADING_SELECTOR = "h1,h2,h3,h4,h5,h6";
@@ -152,15 +156,93 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabStrip.className = "toc-tabs";
     tabStrip.setAttribute("role", "tablist");
     const tabContents = makeTabButton("contents", t("Contents"));
-    const tabProofread = makeTabButton("proofreading", t("Proofreading"));
-    const tabNotes = makeTabButton("notes", t("Notes"));
     const tabLinks = makeTabButton("links", t("Links"));
-    // The four tabs live in a horizontally-scrollable list so a narrow panel
-    // never clips one; the flip/hide controls stay pinned beside it.
+    const tabNotes = makeTabButton("notes", t("Notes"));
+    const tabProofread = makeTabButton("proofreading", t("Proofread"));
+    // A review tab exists only while it has entries. Until the first idle
+    // visibility pass (scheduleTabVisibility) they stay hidden, so document
+    // open pays for nothing beyond the Contents outline.
+    tabLinks.hidden = true;
+    tabNotes.hidden = true;
+    tabProofread.hidden = true;
+    // Tabs in their strip with the flip/hide controls at the trailing edge —
+    // the hide button's top-right position is LOAD-BEARING (the closed reveal
+    // tab sits exactly over it; see TAB_EDGE_INSET) and must not move. When the
+    // visible tabs overflow the row, the strip collapses to a SELECT: a single
+    // button showing the active tab that opens a menu of the others.
     const tabsList = document.createElement("div");
     tabsList.className = "toc-tabs__list";
-    tabsList.append(tabContents, tabProofread, tabNotes, tabLinks);
-    tabStrip.append(tabsList, controls);
+    tabsList.append(tabContents, tabLinks, tabNotes, tabProofread);
+
+    const tabsSelect = document.createElement("button");
+    tabsSelect.className = "toc-tabs-select";
+    tabsSelect.tabIndex = -1;
+    tabsSelect.setAttribute("aria-haspopup", "menu");
+    const tabsSelectLabel = document.createElement("span");
+    const tabsSelectCaret = document.createElement("span");
+    tabsSelectCaret.className = "toc-tabs-select__caret";
+    tabsSelect.append(tabsSelectLabel, tabsSelectCaret);
+
+    const tabsMenu = document.createElement("div");
+    tabsMenu.className = "toc-tabs-menu";
+    tabsMenu.hidden = true;
+    tabsMenu.setAttribute("role", "menu");
+
+    tabStrip.append(tabsList, tabsSelect, tabsMenu, controls);
+
+    const ALL_TABS: Array<[HTMLButtonElement, ReviewTab]> = [
+        [tabContents, "contents"], [tabLinks, "links"], [tabNotes, "notes"], [tabProofread, "proofreading"],
+    ];
+
+    function closeTabsMenu(): void { tabsMenu.hidden = true; }
+    function openTabsMenu(): void {
+        tabsMenu.replaceChildren(...ALL_TABS.filter(([btn]) => !btn.hidden).map(([btn, tab]) => {
+            const item = document.createElement("button");
+            item.className = "toc-tabs-menu__item";
+            item.textContent = btn.textContent;
+            item.tabIndex = -1;
+            item.classList.toggle("toc-tabs-menu__item--active", tab === activeTab);
+            item.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                closeTabsMenu();
+                setActiveTab(tab);
+            });
+            return item;
+        }));
+        tabsMenu.hidden = false;
+    }
+    tabsSelect.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (tabsMenu.hidden) { openTabsMenu(); } else { closeTabsMenu(); }
+    });
+    // Any click elsewhere drops the menu (capture: stopped mousedowns count).
+    document.addEventListener("mousedown", (e) => {
+        if (!tabsMenu.hidden && !tabsMenu.contains(e.target as Node) && e.target !== tabsSelect) {
+            closeTabsMenu();
+        }
+    }, true);
+
+    /**
+     * List mode vs select mode, decided by MEASURING: show the tab list and, if
+     * its items wrapped past one row (the strip is too narrow for the visible
+     * tabs + controls), collapse to the select. Runs on width/visibility/active
+     * changes only — never per keystroke. jsdom (no layout) always measures
+     * unwrapped, so unit tests exercise list mode.
+     */
+    function syncTabOverflow(): void {
+        tabStrip.classList.remove("toc-tabs--select");
+        closeTabsMenu();
+        const visibleTabs = ALL_TABS.filter(([btn]) => !btn.hidden).map(([btn]) => btn);
+        const wrapped = visibleTabs.length > 1
+            && visibleTabs.some((btn) => btn.offsetTop !== visibleTabs[0]!.offsetTop);
+        if (wrapped) {
+            tabStrip.classList.add("toc-tabs--select");
+            const active = ALL_TABS.find(([, tab]) => tab === activeTab)?.[0];
+            tabsSelectLabel.textContent = active?.textContent ?? "";
+        }
+    }
 
     const proofreadView = initProofreadingList(getEditorView);
     const notesView = initNotesList(getEditorView);
@@ -195,7 +277,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const isArrow = e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End";
         const isActivate = e.key === "Enter" || e.key === " ";
         if (!isArrow && !isActivate) { return; }
-        const tabs = [tabContents, tabProofread, tabNotes, tabLinks].filter((tab) => !tab.hidden);
+        const tabs = [tabContents, tabLinks, tabNotes, tabProofread].filter((tab) => !tab.hidden);
         const cur = tabs.indexOf(document.activeElement as HTMLButtonElement);
         e.preventDefault();
         if (isActivate) {
@@ -229,6 +311,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     /** Render whichever tab is active — the only view that does any work. */
     function renderActiveView(headings?: HeadingEntry[]): void {
+        // The panel is being shown/refreshed: settle any deferred tab-visibility
+        // recompute (skipped while the panel was closed).
+        if (tabVisibilityDirty) { scheduleTabVisibility(); }
         if (activeTab === "contents") {
             renderHeadings(headings ?? getHeadings());
         } else if (activeTab === "proofreading") {
@@ -243,18 +328,67 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     function setActiveTab(tab: ReviewTab): void {
         if (tab === activeTab) { return; }
         activeTab = tab;
+        // Visibility depends on the active tab (an emptied tab is kept only
+        // while the user is IN it) — recompute on switch-away.
+        scheduleTabVisibility();
         updateTabButtons();
+        syncTabOverflow(); // select-mode label follows the active tab
         if (isPanelVisible()) { renderActiveView(); }
     }
 
-    /** Show/hide the Proofreading tab with the master switch. Hiding it while it
-     *  is the active tab falls back to Contents so the body is never stranded. */
+    /** Master proofreading switch: off hides the tab immediately (and falls back
+     *  to Contents if it was active); on lets the visibility pass decide whether
+     *  findings exist to show it for. */
     function applyProofreadingEnabled(enabled: boolean): void {
         proofreadingEnabled = enabled;
-        tabProofread.hidden = !enabled;
-        if (!enabled && activeTab === "proofreading") {
-            setActiveTab("contents");
+        if (!enabled) {
+            tabProofread.hidden = true;
+            if (activeTab === "proofreading") {
+                setActiveTab("contents");
+            }
         }
+        scheduleTabVisibility();
+    }
+
+    // ── Tab visibility: a review tab exists only while it has entries ──────
+    // The counts come from cached/incremental scans (links: doc-identity cache;
+    // notes: the incremental scan cache; proofreading: an early-exit decoration
+    // enumeration), and the pass runs ON IDLE, coalesced — never on the doc-open
+    // or keystroke path. While the panel is closed the pass is skipped entirely
+    // (dirty flag) and recomputed on the next show, so an unopened sidebar costs
+    // nothing while typing.
+    let tabVisibilityDirty = true;
+    // Coalescing gate is a boolean set BEFORE requestIdle, not the returned
+    // handle: a synchronous idle callback (tests; degenerate fallbacks) would
+    // otherwise run before the handle assignment and leave a stale handle
+    // wedging the scheduler shut. The handle exists only so dispose can cancel.
+    let tabVisibilityScheduled = false;
+    let tabVisibilityIdle: { cancel: () => void } | null = null;
+
+    function scheduleTabVisibility(): void {
+        tabVisibilityDirty = true;
+        if (!isPanelVisible()) { return; }
+        if (tabVisibilityScheduled) { return; }
+        tabVisibilityScheduled = true;
+        tabVisibilityIdle = requestIdle(() => {
+            tabVisibilityScheduled = false;
+            updateTabVisibility();
+        }, 300);
+    }
+
+    function updateTabVisibility(): void {
+        const view = getEditorView();
+        if (!view) { return; } // stays dirty; recomputed once the editor exists
+        tabVisibilityDirty = false;
+        // Never yank the tab the user is IN — an emptied tab hides on switch-away.
+        const show = (btn: HTMLButtonElement, tab: ReviewTab, has: boolean): void => {
+            btn.hidden = !(has || activeTab === tab);
+        };
+        show(tabLinks, "links", linksView.count(view) > 0);
+        show(tabNotes, "notes", notesView.count(view) > 0);
+        show(tabProofread, "proofreading", proofreadingEnabled && hasProofreadFindings(view));
+        if (!proofreadingEnabled) { tabProofread.hidden = true; }
+        syncTabOverflow(); // the visible-tab set changed → remeasure the row
     }
 
     /** The side-bar glyph whose filled edge marks the current dock side. */
@@ -315,6 +449,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         tocWidth = clampWidth(width);
         document.documentElement.style.setProperty("--toc-width", `${tocWidth}px`);
         updateTab();
+        syncTabOverflow(); // the row's available width changed
     }
 
     resizeHandle.addEventListener("mousedown", (e) => {
@@ -518,6 +653,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         if (isPanelVisible()) {
             renderActiveView(headings ?? getHeadings());
         }
+        syncTabOverflow(); // presentation (open/side/mode) may have changed the row's width
         if (initialLoad) {
             // Flush the no-transition state, then re-enable transitions with no
             // pending change so nothing animates from this commit.
@@ -915,6 +1051,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
      * change, and it takes the full sync.
      */
     function refreshContent(): void {
+        // The doc changed: mark tab visibility stale. Costs a flag write when the
+        // panel is closed; schedules one coalesced idle recompute when open.
+        scheduleTabVisibility();
         if (!isPanelVisible() && !autoOpenPossible()) {
             return; // nothing to render, and nothing left to auto-decide
         }
@@ -1067,6 +1206,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         // the height so the flyout could auto-size) so a later dock-open is
         // full-height and correctly positioned again.
         updatePanelPosition();
+        syncTabOverflow(); // back on the docked width — re-measure
     }
     function showFlyout(): void {
         cancelFlyoutHide();
@@ -1090,6 +1230,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         panel.classList.add("toc-panel--flyout", "toc-panel--flyout-enter");
         document.body.classList.add("toc-flyout-open");
         positionFlyout();
+        // The flyout has its OWN width (fixed 260px, controls hidden), so the
+        // list-vs-select decision must be re-measured for it — never inherited
+        // from the docked drawer's geometry.
+        syncTabOverflow();
         // Commit the initial (down + faded) state with no transition, then release
         // it and transition to shown, so the reveal is a slight slide-DOWN + fade.
         void panel.offsetWidth;
@@ -1264,6 +1408,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // Bare window binding (the event isn't in WindowEventMap, so it can't route
     // through eventManager.onWindow) — captured here so dispose() can remove it.
     const onProofreadFindingsChanged = (): void => {
+        // Findings appearing/clearing is what shows/hides the Proofreading tab.
+        scheduleTabVisibility();
         if (isPanelVisible() && activeTab === "proofreading") {
             proofreadView.refresh(getEditorView());
         }
@@ -1285,8 +1431,12 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         isOpen = userToggled ? tocMode === "docked" && !dockedUserCollapsed : shouldAutoOpen(headings);
         updatePanelPosition();
         syncTocState();
+        syncTabOverflow();
         // Detect the currently visible heading once on init
         updateActiveHeadingOnScroll();
+        // First tab-visibility pass: on idle if the panel is showing, deferred
+        // to first show otherwise — either way, off the open path.
+        scheduleTabVisibility();
     });
 
     eventManager.onWindow("resize", () => {
@@ -1311,12 +1461,13 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         isRight: () => tocRight,
         setNotesMarkers: (markers: string[]) => {
             notesView.setMarkers(markers);
+            scheduleTabVisibility(); // a new marker set can create/clear notes
             if (isPanelVisible() && activeTab === "notes") {
                 notesView.refresh(getEditorView());
             }
         },
         setReviewGroupByType: (grouped: boolean) => {
-            // All review tabs share the one setting; each reviewList re-renders.
+            // Settings echo: all review tabs share the one setting.
             proofreadView.setGroupByType(grouped);
             notesView.setGroupByType(grouped);
             linksView.setGroupByType(grouped);
@@ -1325,6 +1476,9 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             // The toolbar menu item only appears while proofreading is on, but
             // guard anyway (the tab is hidden when off).
             if (!proofreadingEnabled) { return; }
+            // Explicit intent overrides has-entries visibility: show the tab even
+            // before findings arrive (it renders its own empty state).
+            tabProofread.hidden = false;
             hideFlyoutImmediate();
             setActiveTab("proofreading");
             if (!isOpen) {
@@ -1335,6 +1489,8 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         dispose: () => {
             window.removeEventListener(PROOFREAD_FINDINGS_CHANGED, onProofreadFindingsChanged);
             window.removeEventListener("proofread-config-changed", onProofreadConfigChanged);
+            tabVisibilityIdle?.cancel();
+            tabVisibilityIdle = null;
             dnd.dispose();
         },
     };

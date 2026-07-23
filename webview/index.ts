@@ -20,6 +20,7 @@
 
 import "./perfBoot"; // MUST stay first: stamps mdw:eval-start before any other module evaluates.
 import "./style.css";
+import "./ui/typography.css"; // shared ui-* chrome type scale (menus, panels, sidebars)
 import { installCrashReporter } from "./crashReporter";
 
 // Crash boundary (MAR-169): install before any component initializes, so an

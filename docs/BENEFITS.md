@@ -1,15 +1,101 @@
-# What Birta does — and why it matters
+# Birta Writer
 
-Birta Writer has one goal: be the best place to **read and write Markdown
-documents**. Not a knowledge base, not an outliner, not a note graph — a
-document editor that happens to render your Markdown as you write it, and hands
-the file back unchanged except for what you actually edited.
+Birta Writer strives to be your favorite way to read and write Markdown documents.
 
-This page explains *why* the notable capabilities matter. It's the companion to
-the feature catalog in [`README.md`](../README.md) (what the editor does) and
-[`DESIGN_PRINCIPLES.md`](DESIGN_PRINCIPLES.md) (how its UI communicates). It's
-refined over time rather than appended to — when a capability changes, edit the
-entry, don't stack a new one.
+## Why I use it
+
+- Birta Writer is a live visual editor for directly editing richly formatted and structured content.
+- Fast and responsive, with familiar and powerful controls including drag and drop, slash commands, and keyboard shortcuts. 
+- Instant updates reflects changes made outside of your edits, including AI agent edits or cloud sync.
+- Safely open and edit any Markdown-like content with no risk of data loss or unexpected modification due to parser mishandling unfamiliar syntax. Document fidelity is a first-class concern.
+- It sits within [VS Code](https://code.visualstudio.com) and it's *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor with multi-cursor support, or opening a diff view to compare conflicting changes. Birta Writer is simple by design, but nearly every aspect is customizable through VS Code's settings scopes at app, user, or project level.
+- There's a little more magic than you might expect, like an inline calculator to autocomplete math equations with the answer, like `6^2+(8*3/4)= 42`
+
+- It helps me write better:
+
+  - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, punctuation, and vocabulary.
+  - Customizable draft-management tools to help you find `[TK]` notes, `TODOs`, and inline comments.
+
+- It's private.
+
+  - By default, makes no network requests of any kind. Rich link previews are opt-in.
+  - No usage tracking to opt out of, because it doesn't exist.
+
+While superficially a single-document editor, Birta Writer has deceptively-deep system awareness and broad compatibility:
+
+- Display and edit both basic Markdown and extended syntax used by [Obsidian](https://obsidian.md), [Confluence](https://confluence.atlassian.com/doc/confluence-wiki-markup-251003035.html), [Github](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax), [Notion exports](https://www.notion.com/help/export-your-content), and others.
+- Crosslink local documents with Markdown links, [wikilinks](https://obsidian.md/help/links), or even [Logseq](https://www.markdownguide.org/tools/logseq/) with an inline file browser UI.
+- Interactive [Mermaid](https://mermaid.js.org) diagrams, [LaTeX](https://en.wikipedia.org/wiki/LaTeX) rendering, images, and a full-featured visual table editor with drag-and-drop rows and columns.
+- Optionally display rich link previews or embedded documents and videos.
+
+It's not a wiki, knowledge base, or [PKM](https://en.wikipedia.org/wiki/Personal_knowledge_management) - but it sure can act like one:
+
+- Open an existing Obsidian vault in VS Code and use the file explorer and command palette to view your full repository of knowledge.
+- Markdown files open automatically in Birta Writer. Crosslink them. Click to navigate across pages. View files side by side in a window.
+- Open Github Copilot, Claude Code, or other AI assistant in a VS Code sidebar to chat with and modify your documents live.
+
+Use Birta Writer as a knowledge base complement when you want a more enjoyable and helpful writing tool, or lean on VS Code and fully replace your other systems.
+
+## Why I made it
+
+Almost everything I do on a computer in 2026 reduces to code and context.
+
+I pipe meeting transcripts to research repositories to spreadsheets to confluence documents to tickets to coding agents to pull request descriptions to communication channels to slide decks and back again.
+
+The emergent interface between humans and AI is text, and the dominant flavor is Markdown. 
+
+Markdown is simple, semantic, portable, universal, and I ***really*** want to love my tools for reading and writing it.
+
+I'm tired of:
+
+- Pouring content into proprietary systems, only for my preferences to change or for the platforms to develop in ways that no longer serve me.
+- Copy-pasting across apps, losing all formatting and semantics.
+
+- Restricting my documents to a single tightly-coupled AI agent system or harness.
+
+- Tools I can't trust to keep my private content private (having worked at both security and health care technology companies has strongly shaped my thinking here).
+
+- Popping back and forth between apps depending on the format of my text document. It's just text.
+
+- Choosing between:
+
+  - Beautiful, modern, and thoughtfully designed apps that are extractive and centralized,
+  - or functional, dated, somewhat incoherent tools that are portable and extensible.
+
+### Design principles
+
+1. Data fidelity first. Preserve, rather than "correct", unexpected syntax that the editor can't handle. Bonus: broad interoperability with Obsidian, [FOAM](https://marketplace.visualstudio.com/items?itemName=foam.foam-vscode), Logseq, and the rest are a happy side effect of non-destructive tolerance.
+
+1) Understand and natively support the Markdown that people and tools actually write. CommonMark is a good starting point, but there are *at least* three different widely-adopted formats for callouts. Breadth is a virtue.
+
+1. It's a real editor that feels capable and ergonomic in every sense. Must be fast (to open and use), keyboard-first, capability rich, and get out of your way. You can always choose to switch to the raw text editor, you should rarely *need* to.
+
+1) Fully integrate with VS Code. Embrace its customizability and infinite ecosystem while establishing calm, opinionated defaults.
+2) As Teller put it, *"Sometimes magic is just someone spending more time on something than anyone else might reasonably expect."* Magic is especially powerful when unexpected. 
+
+### Ancient history
+
+My first attempt at a visual Markdown editor was in 2011, with Eric Danielson.
+
+It was a web-based local Markdown editor that synced through the Dropbox API. It was (embarrassingly) called [Marlan](https://github.com/harlanlewis/Marlan). The world is so different now, and there's so much more shared foundation to stand on. 
+
+It's incredibly exciting to think about this same problem from a new vantage of experience and purpose, crafting at speed the same tools I use to sharpen thought.
+
+
+
+---
+
+---
+
+---
+
+## Crosslinks
+
+- [`README.md`](../README.md)
+- [`DESIGN_PRINCIPLES.md`](DESIGN_PRINCIPLES.md)
+- [POSITIONING.md](POSITIONING.md)
+- [RELEASING.md](RELEASING.md)
+- [../CHANGELOG.md](../CHANGELOG.md)
 
 ---
 
