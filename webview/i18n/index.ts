@@ -22,8 +22,10 @@ declare global {
             pasteUnfurl?: boolean;
             /** Apply a fetched title without asking, instead of offering it (birta.pasteUnfurl.autoApply). */
             pasteUnfurlAutoApply?: boolean;
-            /** Inline calc-on-`=` master gate (birta.calc.enabled). */
+            /** Inline (unfenced) calc gate: the `=`/`=>` suggestions in prose (birta.calc.enabled). */
             calcEnabled?: boolean;
+            /** Fenced ```calc block ledger gate (birta.calc.blocks.enabled); independent of `calcEnabled`. */
+            calcBlocksEnabled?: boolean;
             /** Auto-insert the calc result on `=` instead of suggesting (birta.calc.autoInsert). */
             calcAutoInsert?: boolean;
             /** URL embeds: render a bare YouTube link as an inline facade card (birta.embeds.enabled). */

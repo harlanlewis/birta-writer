@@ -15,6 +15,7 @@ import {
     calcRefreshPlugin,
     calcArrowSuggestPlugin,
 } from "../plugins/calc";
+import { EXTERNAL_SYNC_META } from "../plugins/docChange";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -511,6 +512,51 @@ describe("auto-insert result refresh (editing an existing equation)", () => {
         // boundary rule rejects (prose assignment), so nothing rewrites.
         editChar(v, 4, "6");
         expect(blockText(v)).toBe("a12=6+7");
+        editor.destroy();
+    });
+
+    it("one transaction touching equations in TWO blocks refreshes both without corruption", async () => {
+        // Regression: the second rewrite's positions were computed against
+        // newState but never mapped through the first rewrite's step — when
+        // the first result changed length (7 → 14), the second landed at
+        // shifted offsets and produced garbage like "9+7=163".
+        const editor = await makeRefreshEditor("4+5= 9\n\n6+7= 13");
+        const v = view(editor);
+        // Paragraph 1 content starts at 1, paragraph 2 at nodeSize(p1)+1 = 9.
+        const tr = v.state.tr
+            .insertText("9", 1, 2)   // 4+5= 9 → 9+5= 9
+            .insertText("9", 9, 10); // 6+7= 13 → 9+7= 13 (same-length edits: no shift)
+        v.dispatch(tr);
+        const texts = [] as string[];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts).toEqual(["9+5= 14", "9+7= 16"]);
+        editor.destroy();
+    });
+
+    it("an external-sync transaction never triggers a refresh", async () => {
+        // An edit replayed from OUTSIDE this editor (raw text editor, git)
+        // carries EXTERNAL_SYNC_META; whatever result the on-disk author
+        // wrote is their text. Rewriting it would dirty the document with no
+        // user action and fight the file on disk (anchorSync's exemption).
+        const editor = await makeRefreshEditor("3+4= 7");
+        const v = view(editor);
+        v.dispatch(
+            v.state.tr.insertText("4", 1, 2).setMeta(EXTERNAL_SYNC_META, true),
+        );
+        expect(blockText(v)).toBe("4+4= 7"); // stale exactly as on disk
+        editor.destroy();
+    });
+
+    it("a digit-heavy long line stays responsive (no quadratic scan)", async () => {
+        // The old refresh regexes backtracked quadratically on exactly this
+        // shape (seconds per keystroke at 40k chars); the bounded scanner
+        // must keep a keystroke effectively instant.
+        const long = `${"1 ".repeat(20000)}and 3+4= 7`;
+        const editor = await makeRefreshEditor(long);
+        const v = view(editor);
+        const started = performance.now();
+        editChar(v, 0, "2");
+        expect(performance.now() - started).toBeLessThan(500);
         editor.destroy();
     });
 

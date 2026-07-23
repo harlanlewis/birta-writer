@@ -106,6 +106,15 @@ interface SlashMenuItemBase {
      * behind this flag so the default menu stays the same scannable list.
      */
     readonly searchOnly?: true;
+    /**
+     * Feature gate: when present and false at menu build, the row does not
+     * exist at all (not even via search) — for rows whose command is dead
+     * under a disabled setting (the Calc Block row when
+     * `birta.calc.blocks.enabled` is off). Evaluated each time the menu
+     * opens, so it tracks whatever the gate's own update semantics are
+     * (most `__i18n` gates are baked at panel load).
+     */
+    readonly visibleWhen?: () => boolean;
 }
 
 /**
@@ -174,7 +183,7 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     { id: "mathBlock", group: "insert", label: t("Math Block"), icon: IconMath, hint: "$$", keywords: ["math", "latex", "katex", "equation", "formula", "block", "display"], commandId: "insertCodeBlock", args: "LaTeX" },
     // A living-calculation block (```calc): variables + units, computed line by
     // line in a rendered preview. Same insert mechanism as Mermaid / Math Block.
-    { id: "calcBlock", group: "insert", label: t("Calc Block"), icon: IconCalculator, keywords: ["calc", "calculate", "calculation", "math", "spreadsheet", "variables", "units", "calca"], commandId: "insertCodeBlock", args: "calc" },
+    { id: "calcBlock", group: "insert", label: t("Calc Block"), icon: IconCalculator, keywords: ["calc", "calculate", "calculation", "math", "spreadsheet", "variables", "units", "calca"], commandId: "insertCodeBlock", args: "calc", visibleWhen: () => window.__i18n?.calcBlocksEnabled ?? true },
     { id: "link", group: "insert", label: t("Link"), icon: IconLink, hint: "[]()", keywords: ["link", "url", "anchor"], commandId: "insertLink" },
     // In-note anchor link to a heading (MAR-176). Terse noun label per the slash
     // convention; the verb-phrase "Link to Section" lives on the palette/tooltip.

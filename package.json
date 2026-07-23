@@ -1977,6 +1977,12 @@
                     "default": true,
                     "description": "%config.calc.enabled.description%"
                 },
+                "birta.calc.blocks.enabled": {
+                    "order": 107.5,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.calc.blocks.enabled.description%"
+                },
                 "birta.calc.autoInsert": {
                     "order": 108,
                     "type": "boolean",

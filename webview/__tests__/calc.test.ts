@@ -16,6 +16,7 @@ import {
     parseDefinition,
     buildScopeFromLines,
     evaluateCalcBlock,
+    findRefreshEquations,
 } from "../utils/calc";
 
 describe("evaluateExpression", () => {
@@ -560,5 +561,195 @@ describe("evaluateCalcBlock", () => {
             "just prose|",
             "mystery + 1|",
         ]);
+    });
+
+    it("a definition with a trailing = should still define (consistent with expression lines)", () => {
+        expect(render("x = 2 + 3 =\nx * 2")).toEqual([
+            "x = 2 + 3 =|5",
+            "x * 2|10",
+        ]);
+    });
+
+    it("a formula-shaped line that cannot compute should be kind 'error'", () => {
+        const kinds = evaluateCalcBlock(
+            "mystery + 1\n1 / 0\noops = nope * 2\n3 km in kg",
+        ).map((l) => l.kind);
+        // Unknown variable, division by zero, a broken definition RHS, and a
+        // known-units dimension mismatch are all formulas without a value.
+        expect(kinds).toEqual(["error", "error", "error", "error"]);
+    });
+
+    it("prose, comments, and bare numbers should be kind 'silent', never 'error'", () => {
+        const kinds = evaluateCalcBlock(
+            "just prose\nwell-known plan\n# note\n42\n5 glasses in cupboard",
+        ).map((l) => l.kind);
+        // Hyphenated prose parses as no valid structure; unknown units read as
+        // prose too — only confident formulas earn the error cue.
+        expect(kinds).toEqual(["silent", "silent", "silent", "silent", "silent"]);
+    });
+
+    it("computed lines should be kind 'value'", () => {
+        const rows = evaluateCalcBlock("x = 2\nx * 10");
+        expect(rows.map((l) => l.kind)).toEqual(["silent", "value"]);
+    });
+});
+
+describe("formatCalcResult honesty", () => {
+    it("safe integers should print exactly", () => {
+        expect(formatCalcResult(9007199254740991)).toBe("9007199254740991");
+    });
+
+    it("whole numbers beyond the safe-integer range should be refused, not approximated", () => {
+        // 2^53 + anything is unrepresentable territory: printing digits would
+        // manufacture precision (2^60 formats ~5M away from the true value).
+        expect(formatCalcResult(2 ** 60)).toBeNull();
+        expect(formatCalcResult(9007199254740992 + 4)).toBeNull();
+        expect(evaluateExpression("9007199254740992 + 3")).not.toBeNull(); // computes…
+        expect(detectCalcExpression("9007199254740992 + 3 =")).toBeNull(); // …but is never offered
+    });
+
+    it("fractional tails should cap at 6 decimals (an answer, not noise)", () => {
+        expect(formatCalcResult(10 / 3)).toBe("3.333333");
+        expect(formatCalcResult(1.86411357671)).toBe("1.864114");
+        expect(formatCalcResult(1234567.89)).toBe("1234567.89"); // integer part never rounded away
+    });
+
+    it("a tiny nonzero value that would display as 0 should be refused", () => {
+        expect(formatCalcResult(0.0000001)).toBeNull();
+        expect(formatCalcResult(-0.00000004)).toBeNull();
+    });
+
+    it("non-finite values should be refused", () => {
+        expect(formatCalcResult(Infinity)).toBeNull();
+        expect(formatCalcResult(NaN)).toBeNull();
+    });
+});
+
+describe("remainder semantics (%)", () => {
+    it("negative operands should follow JS remainder (truncate toward zero), as documented", () => {
+        expect(evaluateExpression("-10 % 3")).toBe(-1);
+        expect(evaluateExpression("10 % -3")).toBe(1);
+    });
+});
+
+describe("unit conversion round-trips", () => {
+    it("converting there and back should return the original within float noise", () => {
+        const pairs: Array<[string, string]> = [
+            ["km", "mi"], ["kg", "lb"], ["cup", "tbsp"], ["c", "f"], ["l", "gal"], ["h", "min"],
+        ];
+        for (const [a, b] of pairs) {
+            const out = convertUnit(convertUnit(123.456, a, b)!, b, a)!;
+            expect(out).toBeCloseTo(123.456, 9);
+        }
+    });
+
+    it("prototype-chain keys should never resolve as units", () => {
+        expect(convertUnit(5, "constructor", "c")).toBeNull();
+        expect(convertUnit(5, "constructor", "constructor")).toBeNull();
+        expect(convertUnit(5, "hasOwnProperty", "toString")).toBeNull();
+    });
+});
+
+describe("isCalcStructurallyValid — structure, not values", () => {
+    it("an expression whose placeholder evaluation would divide by zero is still VALID", () => {
+        // Structure and value are different questions; judging shape by
+        // evaluating with dummy values mis-rejected these (and mis-trimmed
+        // the => span as a consequence).
+        expect(isCalcStructurallyValid("x / (y - 1)")).toBe(true);
+        expect(isCalcStructurallyValid("10 / (a - b)")).toBe(true);
+        expect(isCalcStructurallyValid("1 / 0")).toBe(true);
+    });
+
+    it("malformed shapes stay invalid", () => {
+        expect(isCalcStructurallyValid("x *")).toBe(false);
+        expect(isCalcStructurallyValid("total x")).toBe(false);
+        expect(isCalcStructurallyValid("")).toBe(false);
+    });
+
+    it("a unit form needs known, same-dimension units", () => {
+        expect(isCalcStructurallyValid("3 km in mi")).toBe(true);
+        expect(isCalcStructurallyValid("3 km in kg")).toBe(false);
+        expect(isCalcStructurallyValid("5 glasses in cupboard")).toBe(false);
+    });
+});
+
+describe("detectArrowExpression — boundary discipline (never compute a fragment)", () => {
+    it("a comma-grouped number should not have its fragment evaluated", () => {
+        // `1,000 + 2 =>`: the run after the comma is `000 + 2` — offering 2
+        // would answer a different question than the visible one.
+        expect(detectArrowExpression("1,000 + 2 =>")).toBeNull();
+        expect(detectArrowExpression("price 1,500 * 2 =>")).toBeNull();
+    });
+
+    it("a bound sub-expression should never be answered for the whole", () => {
+        // `10 / (a - b)` is structurally valid as a WHOLE now, so the span is
+        // the full expression — never a trimmed `(a - b)` that drops the `10 /`.
+        const det = detectArrowExpression("10 / (a - b) =>");
+        expect(det?.expr).toBe("10 / (a - b)");
+    });
+
+    it("a leading number is not droppable prose", () => {
+        // `2 (3 + 4)` is invalid (no implicit multiplication) — but answering
+        // 7 for the parenthesized part would compute a different question.
+        expect(detectArrowExpression("2 (3 + 4) =>")).toBeNull();
+    });
+
+    it("prose words (including punctuation-carrying ones) still trim away", () => {
+        expect(detectArrowExpression("the total x*2 =>")?.expr).toBe("x*2");
+        expect(detectArrowExpression("costs. x*2 =>")?.expr).toBe("x*2");
+        expect(detectArrowExpression("see items 2 + 3 =>")?.expr).toBe("2 + 3");
+    });
+
+    it("an operator head after dropped or glued context should refuse", () => {
+        // `foo,bar + 2 =>`: the glued `bar` drops, but `+ 2` had a left
+        // operand we can't see — unary only stands at a true line start.
+        expect(detectArrowExpression("foo,bar + 2 =>")).toBeNull();
+    });
+
+    it("a true line-start unary minus is still offered", () => {
+        expect(detectArrowExpression("- 4 =>")?.expr).toBe("- 4");
+    });
+});
+
+describe("findRefreshEquations", () => {
+    it("a trailing equation should be found with expression and result spans", () => {
+        const text = "note 4+5= 9 done";
+        const [cand] = findRefreshEquations(text, 5, 8, 500);
+        expect(cand.form).toBe("trailing");
+        expect(text.slice(cand.res[0], cand.res[1])).toBe("9");
+        expect(text.slice(cand.expr[0], cand.expr[1]).trim()).toBe("4+5");
+    });
+
+    it("a leading equation (result=expr) should be found", () => {
+        const text = "12=5+7";
+        const cands = findRefreshEquations(text, 3, 6, 500);
+        const lead = cands.find((c) => c.form === "leading");
+        expect(lead).toBeDefined();
+        expect(text.slice(lead!.res[0], lead!.res[1])).toBe("12");
+        expect(text.slice(lead!.expr[0], lead!.expr[1])).toBe("5+7");
+    });
+
+    it("=> and == are never equations", () => {
+        expect(findRefreshEquations("budget / 12 => 416", 0, 18, 500)).toEqual([]);
+        expect(findRefreshEquations("==highlight== 5", 0, 15, 500)).toEqual([]);
+    });
+
+    it("candidates outside the changed range are not reported", () => {
+        // Shapes are deliberately broad (validation rejects false hits later);
+        // the guarantee here is only that the FAR equation is not examined.
+        const text = "4+5= 9 and much later 6+7= 13";
+        const cands = findRefreshEquations(text, 0, 2, 500);
+        expect(cands.length).toBeGreaterThan(0);
+        expect(cands.some((c) => c.resultText === "13")).toBe(false);
+        expect(cands.some((c) => c.form === "trailing" && c.resultText === "9")).toBe(true);
+    });
+
+    it("a pathological digit-heavy line should scan in linear time", () => {
+        // The regex this scanner replaced backtracked quadratically here
+        // (~10s at this size); the scan must stay effectively instant.
+        const text = `${"1 ".repeat(20000)}=x`;
+        const started = performance.now();
+        findRefreshEquations(text, text.length - 5, text.length, 500);
+        expect(performance.now() - started).toBeLessThan(200);
     });
 });

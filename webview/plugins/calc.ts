@@ -34,13 +34,16 @@ import { InputRule, Plugin, PluginKey } from "../pm";
 import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { $inputRule, $prose } from "@milkdown/utils";
 import { createSuggestMenuFromRows } from "../components/pathLink/linkTargetComplete";
-import { caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
+import { CARET_CONTEXT_WINDOW, caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
+import { EXTERNAL_SYNC_META } from "./docChange";
 import {
+    ARITHMETIC_CLASS,
     buildScopeFromLines,
     detectArrowExpression,
     detectCalcExpression,
     evaluateCalc,
     evaluateExpression,
+    findRefreshEquations,
     formatCalcResult,
     isCalcStructurallyValid,
 } from "../utils/calc";
@@ -274,7 +277,7 @@ export const calcArrowSuggestPlugin = $prose(() =>
  * detectCalcExpression, so a false shape (a bare number, a letter mixed in)
  * falls through to normal typing.
  */
-const CALC_AUTOINSERT_REGEX = /[0-9.+\-*/%^() \t]*=$/;
+const CALC_AUTOINSERT_REGEX = new RegExp(`[${ARITHMETIC_CLASS} \\t]*=$`);
 
 /**
  * When `birta.calc.autoInsert` is on, typing the `=` that completes an
@@ -297,18 +300,18 @@ export const calcAutoInsertPlugin = $inputRule(() =>
         // run, so its position 0 is always the run start and the left-boundary
         // guards can never fire — `1,000 + 2=` would evaluate the fragment
         // `000 + 2` and auto-insert a WRONG `= 2`. Rebuild the REAL context
-        // (the last ≤500 chars of the block, plus the just-typed `=` that is
-        // not in the doc yet) so the guards see the comma/letter before the
-        // run, and flag the window edge when the block is longer than that.
+        // (the same window the caret-suggest path sees, plus the just-typed `=`
+        // that is not in the doc yet) so the guards see the comma/letter before
+        // the run, and flag the window edge when the block is longer than that.
         const textBefore =
             $end.parent.textBetween(
-                Math.max(0, $end.parentOffset - 500),
+                Math.max(0, $end.parentOffset - CARET_CONTEXT_WINDOW),
                 $end.parentOffset,
                 undefined,
                 "￼",
             ) + "=";
         const det = detectCalcExpression(textBefore, {
-            boundaryUnknown: $end.parentOffset > 500,
+            boundaryUnknown: $end.parentOffset > CARET_CONTEXT_WINDOW,
         });
         if (!det) { return null; }
         return state.tr.insertText(`= ${det.result}`, end);
@@ -317,32 +320,25 @@ export const calcAutoInsertPlugin = $inputRule(() =>
 
 // ── Auto-insert mode: refresh a stale answer when its expression is edited ──
 
-/**
- * Equation shapes in a block's text, both insertion forms:
- *  - TRAILING: `expr = result` (an operator-bearing run, its `=`, the number);
- *  - LEADING:  `result=expr` (the number the leading form inserted BEFORE its
- *    `=`; `=5+7` became `12=5+7`).
- * Broad on purpose — each hit re-validates through detectCalcExpression before
- * anything is touched. For the leading form the result token is EXCISED first:
- * `12=5+7` raw would (correctly) fail the leading boundary rule (`a=5+7` is a
- * prose assignment), but with the result removed the text reproduces exactly
- * what the original insertion validated.
- */
-const TRAILING_EQ_RE = /[0-9.+\-*/%^() \t]*[0-9)][ \t]*=[ \t]*(-?\d[\d,]*(?:\.\d+)?)/g;
-const LEADING_EQ_RE = /(-?\d[\d,]*(?:\.\d+)?)[ \t]*=[ \t]*([0-9.+\-*/%^() \t]*[0-9)])/g;
-
 export const calcRefreshPlugin = $prose(() => new Plugin({
     key: new PluginKey("MD_CALC_REFRESH"),
     appendTransaction(trs, _oldState, newState) {
         if (!calcEnabled() || !calcAutoInsert()) { return null; }
         if (!trs.some((tr) => tr.docChanged)) { return null; }
+        // An external-sync transaction replays an edit made OUTSIDE this
+        // editor (the raw text editor, a git checkout). Whatever result the
+        // on-disk author wrote is THEIR text — rewriting it here would dirty
+        // the document the instant it synced in, with no user action, and
+        // fight the file on disk. Same exemption anchorSync applies.
+        if (trs.some((tr) => tr.getMeta(EXTERNAL_SYNC_META))) { return null; }
 
-        // The changed positions in the NEW doc. Each step's range is mapped
-        // through the transaction's REMAINING steps so multi-step transactions
-        // (a paste with normalizations) still report final-doc coordinates.
+        // The changed positions in the FINAL doc: each step's range is mapped
+        // through its transaction's remaining steps, then through every LATER
+        // transaction — coordinates from trs[0] are meaningless against
+        // newState if trs[1] inserted text before them.
         const changed: Array<{ from: number; to: number }> = [];
-        for (const tr of trs) {
-            if (!tr.docChanged) { continue; }
+        trs.forEach((tr, k) => {
+            if (!tr.docChanged) { return; }
             tr.mapping.maps.forEach((map, i) => {
                 map.forEach((_a, _b, from, to) => {
                     let f = from;
@@ -351,10 +347,14 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                         f = tr.mapping.maps[j]!.map(f);
                         t = tr.mapping.maps[j]!.map(t);
                     }
+                    for (let j = k + 1; j < trs.length; j++) {
+                        f = trs[j]!.mapping.map(f);
+                        t = trs[j]!.mapping.map(t);
+                    }
                     changed.push({ from: f, to: t });
                 });
             });
-        }
+        });
         if (changed.length === 0) { return null; }
 
         let out = newState.tr;
@@ -371,62 +371,45 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
             // offsets 1:1 with positions (the proofread/notes masking contract).
             const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
             // This hook rides EVERY doc change while auto-insert is on; a block
-            // with no "=" can hold no equation — skip before any regex work.
+            // with no "=" can hold no equation — skip before any scan work.
             if (!text.includes("=")) { continue; }
 
-            /** Apply one refresh in this block if `resultText` went stale. */
-            const refresh = (
-                exprSpan: [number, number],
-                resSpan: [number, number],
-                resultText: string,
-                validate: () => ReturnType<typeof detectCalcExpression>,
-            ): boolean => {
-                const localFrom = change.from - blockStart;
-                const localTo = change.to - blockStart;
+            const localFrom = Math.max(0, change.from - blockStart);
+            const localTo = Math.min(text.length, Math.max(localFrom, change.to - blockStart));
+            // Bounded, backtracking-free scan around the change (utils/calc.ts
+            // explains why this is not a regex); every candidate is re-validated
+            // through detectCalcExpression before anything is touched.
+            for (const cand of findRefreshEquations(text, localFrom, localTo, CARET_CONTEXT_WINDOW)) {
                 // The edit must intersect the EXPRESSION side — result edits
                 // are the user's override and are never fought.
-                if (localTo < exprSpan[0] || localFrom > exprSpan[1]) { return false; }
-                if (localFrom >= resSpan[0] && localFrom < resSpan[1]) { return false; }
-                const det = validate();
-                if (!det || det.result === resultText) { return false; }
-                out = out.insertText(det.result, blockStart + resSpan[0], blockStart + resSpan[1]);
-                return true;
-            };
-
-            let done = false;
-            TRAILING_EQ_RE.lastIndex = 0;
-            for (let m = TRAILING_EQ_RE.exec(text); m && !done; m = TRAILING_EQ_RE.exec(text)) {
-                const runStart = m.index;
-                const eqIdx = m[0].lastIndexOf("=");
-                const resultText = m[1]!;
-                const resStart = runStart + m[0].length - resultText.length;
-                done = refresh(
-                    [runStart, runStart + eqIdx],
-                    [resStart, runStart + m[0].length],
-                    resultText,
+                if (localTo < cand.expr[0] || localFrom > cand.expr[1]) { continue; }
+                if (localFrom >= cand.res[0] && localFrom < cand.res[1]) { continue; }
+                const det = cand.form === "trailing"
                     // Re-validate with the run's real left context so every
                     // detection guard (comma fragments, letters) still applies.
-                    () => detectCalcExpression(text.slice(0, runStart + eqIdx + 1), { boundaryUnknown: false }),
-                );
-            }
-            LEADING_EQ_RE.lastIndex = 0;
-            for (let m = LEADING_EQ_RE.exec(text); m && !done; m = LEADING_EQ_RE.exec(text)) {
-                const resultText = m[1]!;
-                const exprText = m[2]!;
-                const resStart = m.index;
-                const resEnd = resStart + resultText.length;
-                const exprStart = m.index + m[0].length - exprText.length;
-                const exprEnd = m.index + m[0].length;
-                done = refresh(
-                    [exprStart, exprEnd],
-                    [resStart, resEnd],
-                    resultText,
+                    ? detectCalcExpression(text.slice(0, cand.expr[1] + 1), { boundaryUnknown: false })
                     // Excise the result: the remaining `…=expr` is byte-for-byte
                     // what the original leading-form insertion validated.
-                    () => detectCalcExpression(text.slice(0, resStart) + text.slice(resEnd, exprEnd), { boundaryUnknown: false }),
+                    : detectCalcExpression(
+                        text.slice(0, cand.res[0]) + text.slice(cand.res[1], cand.expr[1]),
+                        { boundaryUnknown: false },
+                    );
+                if (!det) { continue; }
+                // Compare comma-blind: `1,500` for a recomputed `1500` is the
+                // same value in the user's grouping style — leave it alone.
+                if (det.result === cand.resultText.replace(/,/g, "")) { continue; }
+                // Positions were computed against newState; map them through
+                // the steps THIS transaction has already accumulated (an
+                // earlier refresh in another block may have shifted them —
+                // unmapped, a second rewrite lands at corrupt offsets).
+                out = out.insertText(
+                    det.result,
+                    out.mapping.map(blockStart + cand.res[0]),
+                    out.mapping.map(blockStart + cand.res[1]),
                 );
+                touched = true;
+                break; // one refresh per block per pass
             }
-            if (done) { touched = true; }
         }
         return touched ? out : null;
     },

@@ -17,6 +17,15 @@ import { Plugin, type PluginKey } from "../pm";
 import type { EditorState, EditorView } from "../pm";
 import type { LinkSuggestMenu, SuggestMenuAnchor } from "../components/pathLink/linkTargetComplete";
 
+/**
+ * How far back from the caret the match window reaches, in characters. Every
+ * consumer of a `match(textBefore)` spec sees at most this much context, and
+ * anything that re-derives the same context elsewhere (the calc auto-insert
+ * input rule, the refresh scanner's run cap) must use the SAME number — a
+ * mismatch would let one surface validate what another refuses.
+ */
+export const CARET_CONTEXT_WINDOW = 500;
+
 /** The construct ending at the caret that suggestions attach to. */
 export interface CaretMatch {
     /** Doc position of the construct's opening character. */
@@ -179,12 +188,12 @@ class CaretSuggestController {
         if ($from.parent.type.spec.code) { return null; } // code block
         if ($from.marks().some((m) => m.type.spec.code)) { return null; } // inline code
         const textBefore = $from.parent.textBetween(
-            Math.max(0, $from.parentOffset - 500),
+            Math.max(0, $from.parentOffset - CARET_CONTEXT_WINDOW),
             $from.parentOffset,
             undefined,
             "\uFFFC",
         );
-        const m = specMatch(textBefore, { truncated: $from.parentOffset > 500 });
+        const m = specMatch(textBefore, { truncated: $from.parentOffset > CARET_CONTEXT_WINDOW });
         if (!m || textBefore.slice(-m.length).includes("\uFFFC")) { return null; }
         return {
             start: selection.from - m.length,

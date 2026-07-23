@@ -35,6 +35,15 @@ import './codeBlock.css';
 const shouldAutoConvertCodeBlock = (): boolean =>
     window.__i18n?.codeBlockAutoConvert ?? true;
 
+/**
+ * Fenced ```calc ledger gate (birta.calc.blocks.enabled). Independent of the
+ * INLINE gate (birta.calc.enabled) on purpose: a worksheet the user typed into
+ * a calc fence keeps computing even with calc silenced in prose. Off, a calc
+ * fence is an ordinary code block — no evaluation runs at all.
+ */
+const calcBlocksEnabled = (): boolean =>
+    window.__i18n?.calcBlocksEnabled ?? true;
+
 const shouldWordWrapCodeBlock = (): boolean =>
     window.__i18n?.codeBlockWordWrap ?? false;
 
@@ -530,7 +539,7 @@ export function createCodeBlockView(
     // ── LaTeX state (block math preview via KaTeX) ────────
     let isLatex = normalizeCodeLanguage(currentLang) === "latex";
     // ── Calc state (living-calculation preview, MAR-196) ──
-    let isCalc = normalizeCodeLanguage(currentLang) === "calc";
+    let isCalc = normalizeCodeLanguage(currentLang) === "calc" && calcBlocksEnabled();
     // A block that shows a rendered preview instead of raw code — mermaid,
     // LaTeX, or calc. All reuse the same code/preview toggle and container.
     const isPreviewable = (): boolean => isMermaid || isLatex || isCalc;
@@ -839,18 +848,28 @@ export function createCodeBlockView(
     calcPreview.appendChild(calcRender);
 
     let calcRenderTimer: ReturnType<typeof setTimeout> | null = null;
+    // What the ledger currently shows; NodeView update() also fires for
+    // decoration-only churn (block selection, folds), and re-evaluating an
+    // unchanged block for those would be wasted work. Null = never rendered.
+    let lastCalcRendered: string | null = null;
     /**
      * Paint each source line beside its computed value (a two-column ledger).
      * Synchronous, deterministic, and network-free — no lazy dependency, so it
      * is cheap enough to re-run on every edit (the "living" recompute). The
      * source is never mutated; results live only here, so the block round-trips
      * as ordinary Markdown.
+     *
+     * The `= ` before a value is REAL text (not a ::before pseudo-element), so
+     * a copied selection reads `source` / `= value` line by line — and it is
+     * omitted when the source line already ends in `=` or `=>`, which would
+     * otherwise read doubled (`3 km in mi =>  = 1.86`).
      */
     function renderCalc(code: string): void {
         if (!isCalc || !isPreviewMode) { return; }
+        lastCalcRendered = code;
         const rows = evaluateCalcBlock(code);
         calcRender.replaceChildren();
-        for (const { raw, result } of rows) {
+        for (const { raw, result, kind } of rows) {
             const row = document.createElement("div");
             row.className = "calc-row";
             const src = document.createElement("span");
@@ -860,7 +879,24 @@ export function createCodeBlockView(
             if (result !== null) {
                 const res = document.createElement("span");
                 res.className = "calc-row-result";
-                res.textContent = result;
+                if (!/=>?\s*$/.test(raw)) {
+                    const eq = document.createElement("span");
+                    eq.className = "calc-row-eq";
+                    eq.textContent = "= ";
+                    res.appendChild(eq);
+                }
+                res.appendChild(document.createTextNode(result));
+                row.appendChild(res);
+            } else if (kind === "error") {
+                // A line that READS as a formula but has no honest value (an
+                // unknown variable, a dimension mismatch, division by zero).
+                // Advisory and quiet — a dimmed dash, no color, no text — but
+                // present: in a block whose point is computing, a silent
+                // absence needs a signal (docs/DESIGN_PRINCIPLES.md).
+                const res = document.createElement("span");
+                res.className = "calc-row-result calc-row-result--error";
+                res.textContent = "—";
+                res.title = t("This line looks like a formula but has no value");
                 row.appendChild(res);
             }
             calcRender.appendChild(row);
@@ -1602,7 +1638,7 @@ export function createCodeBlockView(
             const wasPreviewable = isPreviewable();
             isMermaid = newLang === "mermaid";
             isLatex = normalizeCodeLanguage(newLang) === "latex";
-            isCalc = normalizeCodeLanguage(newLang) === "calc";
+            isCalc = normalizeCodeLanguage(newLang) === "calc" && calcBlocksEnabled();
             const nowPreviewable = isPreviewable();
 
             picker.update(newLang);
@@ -1626,14 +1662,19 @@ export function createCodeBlockView(
                 toggleBtn.style.display = "none";
                 exitPreviewMode();
                 lastRenderedCode = "";
+                lastCalcRendered = null;
             }
             if (nowPreviewable && isPreviewMode) {
                 const newCode = updatedNode.textContent;
                 if (isCalc) {
                     // The living recompute: cheap and synchronous, lightly
-                    // debounced so a fast burst of typing coalesces.
-                    if (calcRenderTimer) clearTimeout(calcRenderTimer);
-                    calcRenderTimer = setTimeout(() => renderCalc(newCode), 150);
+                    // debounced so a fast burst of typing coalesces. Skipped
+                    // when the text didn't change — update() also fires for
+                    // decoration-only churn (selection, folds).
+                    if (newCode !== lastCalcRendered) {
+                        if (calcRenderTimer) clearTimeout(calcRenderTimer);
+                        calcRenderTimer = setTimeout(() => renderCalc(newCode), 150);
+                    }
                 } else if (isLatex) {
                     if (latexRenderTimer) clearTimeout(latexRenderTimer);
                     latexRenderTimer = setTimeout(() => renderLatex(newCode), 300);
@@ -1646,7 +1687,13 @@ export function createCodeBlockView(
         },
 
         ignoreMutation(mutation: ViewMutationRecord): boolean {
-            if (mutation.type === "selection") return false;
+            // A DOM selection inside the calc ledger must be IGNORED: the
+            // ledger is non-content DOM, so if ProseMirror reacts it re-asserts
+            // its own (editor) selection on every mousemove, wiping the user's
+            // drag mid-gesture — the ledger becomes unselectable and its
+            // values uncopyable. Everywhere else, selection mutations stay
+            // ProseMirror's business.
+            if (mutation.type === "selection") return calcPreview.contains(mutation.target);
             if (mutation.type === "attributes") return true; // update() modifies className, so ignore attribute mutations to prevent a reconcile infinite loop (B085)
             return (
                 !codeEl.contains(mutation.target as Node) &&

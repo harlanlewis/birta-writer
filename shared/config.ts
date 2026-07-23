@@ -122,8 +122,17 @@ export interface BirtaConfig extends ProofreadConfig {
      * calc advisory/`calc.autoInsert` split exactly.
      */
     pasteUnfurlAutoApply: boolean;
-    /** Inline calc-on-`=` master gate (birta.calc.enabled). */
+    /**
+     * Inline (unfenced) calc gate (birta.calc.enabled): the `=` and `=>`
+     * caret suggestions and the auto-insert rule in ordinary prose. Fenced
+     * ```calc blocks are governed by `calcBlocksEnabled`, deliberately
+     * independent — a worksheet the user typed into a calc fence should keep
+     * computing even when they've silenced calc in prose.
+     */
     calcEnabled: boolean;
+    /** Fenced ```calc block gate (birta.calc.blocks.enabled): the live ledger
+     * preview. Off, a calc fence is just an ordinary code block. */
+    calcBlocksEnabled: boolean;
     /**
      * URL-embed feature gate (birta.embeds.enabled): a bare provider link
      * (YouTube) on its own line renders as an inline facade card — a static
@@ -235,6 +244,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
     pasteUnfurlAutoApply: "pasteUnfurl.autoApply",
     calcEnabled: "calc.enabled",
+    calcBlocksEnabled: "calc.blocks.enabled",
     calcAutoInsert: "calc.autoInsert",
     autoUpdateAnchors: "autoUpdateAnchors",
     embedsEnabled: "embeds.enabled",
@@ -325,7 +335,9 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // forbids. Turn this on to get the old silent upgrade back.
     pasteUnfurlAutoApply: false,
     // Calc: the feature ships on, but advisory (no silent mutation) by default.
+    // The inline and block gates are independent — see the interface docs.
     calcEnabled: true,
+    calcBlocksEnabled: true,
     calcAutoInsert: false,
     // Auto-update anchor links on heading rename ships ON — the maintainer
     // wants it automatic ("magical"); the gate is the escape hatch for anyone

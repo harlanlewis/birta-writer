@@ -87,6 +87,33 @@ The answer appears as a suggestion — confirm with **Tab** (Return stays a newl
 
 What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) — same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
 
+### Living calculations (`=>`)
+
+Ending an expression with `=>` unlocks the richer form: **named variables**
+defined earlier in the document as `name = value` lines (only definitions
+*above* the cursor count, read top-to-bottom), and **offline unit conversions**
+with `in` / `to` across length, mass, time, volume, and temperature. Same
+Tab-confirmed suggestion, same plain-text insert, same eval-free offline
+engine (currency is deliberately absent — live rates would need the network).
+
+budget = 5000
+
+rent = 1500
+
+Try `=>` at the end of any line below:
+
+rent / budget * 100 =>
+
+budget - rent =>
+
+3 km in mi =>
+
+180 lb to kg =>
+
+Both inline forms live under `birta.calc.enabled`. Fragments are never
+computed: `1,000 + 2 =>` offers nothing rather than answering the digits after
+the comma, and results display at most 6 decimals — an answer, not noise.
+
 ### Highlight
 
 `==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict — each of these stays plain text, byte-preserved:
@@ -419,6 +446,29 @@ graph TD
     A[Start] --> B{Decision}
     B -->|Yes| C[Do thing]
     B -->|No| D[Skip]
+```
+
+### Calc blocks
+
+A fenced `calc` block is a live worksheet (insert from the slash menu's **Calc
+Block**): every line computes under one shared, top-to-bottom scope, shown in a
+selectable source/value ledger that recomputes as you type. The source is never
+rewritten — the block round-trips byte-for-byte, and toggling to code shows
+exactly what you typed. A line that *reads* as a formula but can't compute (the
+`typo * 2` below — an unknown name) shows a quiet dimmed dash; plain prose and
+comments stay silent. Own switch: `birta.calc.blocks.enabled`, independent of
+the inline calculators.
+
+```calc
+# a tiny budget worksheet
+income = 5000
+rent = 1500
+food = 800
+total = rent + food
+left = income - total
+share = rent / income * 100
+3 km in mi
+typo * 2
 ```
 
 ---

@@ -72,7 +72,7 @@ describe("calc code-block preview", () => {
         expect(ledger(nv)).toEqual([
             "budget = 5000|",       // bare literal — no echoed value
             "rent = 1800|",
-            "budget - rent|3200",
+            "budget - rent|= 3200", // the `= ` lead-in is real text, so it copies
         ]);
     });
 
@@ -104,7 +104,7 @@ describe("calc code-block preview", () => {
             "```calc\nx = 2\nx * 10\n```\n",
         );
         await wait();
-        expect(ledger(nv)).toEqual(["x = 2|", "x * 10|20"]);
+        expect(ledger(nv)).toEqual(["x = 2|", "x * 10|= 20"]);
 
         // Change `x = 2` to `x = 3` in the document and feed the updated node to
         // the NodeView, exactly as ProseMirror would on an edit.
@@ -114,6 +114,52 @@ describe("calc code-block preview", () => {
         nv.update(view.state.doc.nodeAt(pos)!);
         await wait(200); // past the 150ms live-recompute debounce
 
-        expect(ledger(nv)).toEqual(["x = 3|", "x * 10|30"]);
+        expect(ledger(nv)).toEqual(["x = 3|", "x * 10|= 30"]);
+    });
+
+    it("with birta.calc.blocks.enabled off, a calc fence should be an ordinary code block", async () => {
+        window.__i18n = { calcBlocksEnabled: false } as unknown as typeof window.__i18n;
+        const { nv } = await makeCodeBlockView("```calc\n2 + 3\n```\n");
+        await wait();
+        // No auto-preview, no ledger, no preview toggle: the gate means the
+        // feature costs (and shows) nothing — the fence is just code.
+        expect(nv.dom.querySelector("pre")?.classList.contains("code-pre--preview-hidden"))
+            .toBe(false);
+        expect(nv.dom.querySelectorAll(".calc-row")).toHaveLength(0);
+        expect(
+            (nv.dom.querySelector(".code-view-toggle-btn") as HTMLElement).style.display,
+        ).toBe("none");
+    });
+
+    it("the block gate is independent of the INLINE calc gate", async () => {
+        // Inline calc off, blocks untouched: the worksheet keeps computing.
+        window.__i18n = { calcEnabled: false } as unknown as typeof window.__i18n;
+        const { nv } = await makeCodeBlockView("```calc\n2 + 3\n```\n");
+        await wait();
+        expect(ledger(nv)).toEqual(["2 + 3|= 5"]);
+    });
+
+    it("a formula-shaped line with no value should show a quiet error cue", async () => {
+        const { nv } = await makeCodeBlockView(
+            "```calc\njust prose\nmystery * 2\n```\n",
+        );
+        await wait();
+        const rows = Array.from(nv.dom.querySelectorAll(".calc-row"));
+        // Prose: no result element at all. Broken formula: the dimmed dash.
+        expect(rows[0].querySelector(".calc-row-result")).toBeNull();
+        const err = rows[1].querySelector(".calc-row-result--error");
+        expect(err?.textContent).toBe("—");
+    });
+
+    it("a source line already ending in => should not double the = lead-in", async () => {
+        const { nv } = await makeCodeBlockView("```calc\n2 + 3 =>\n```\n");
+        await wait();
+        expect(ledger(nv)).toEqual(["2 + 3 =>|5"]); // no `= ` prefix
+    });
+
+    it("a definition with a trailing = should still define", async () => {
+        const { nv } = await makeCodeBlockView("```calc\nx = 2 + 3 =\nx * 2\n```\n");
+        await wait();
+        expect(ledger(nv)).toEqual(["x = 2 + 3 =|5", "x * 2|= 10"]);
     });
 });

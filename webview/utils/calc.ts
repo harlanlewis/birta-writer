@@ -22,9 +22,11 @@
  * fidelity line: no new node type, no marker).
  *
  * Operator semantics worth pinning down:
- * - `%` is MODULO (binary infix, same precedence as `*` and `/`), not percent:
- *   `10 % 3` is `1`. Percent-as-postfix is ambiguous with modulo, so we take
- *   the unambiguous, deterministic reading.
+ * - `%` is the REMAINDER operator (binary infix, same precedence as `*` and
+ *   `/`; JS `%`, truncated toward zero): `10 % 3` is `1` and `-10 % 3` is `-1`
+ *   — not percent, and not the always-positive mathematical modulo.
+ *   Percent-as-postfix is ambiguous with remainder, so we take the
+ *   unambiguous, deterministic reading.
  * - `^` (and `**`) is exponentiation, right-associative, binding TIGHTER than
  *   unary minus — `-2 ^ 2` is `-(2 ^ 2)` = `-4`, matching ordinary math.
  * - No scientific notation: `1e3` contains a letter and is rejected. This is a
@@ -48,8 +50,19 @@ type Token =
     | { kind: "lparen" }
     | { kind: "rparen" };
 
-/** Characters that may appear in an arithmetic expression (letters excluded). */
-const EXPR_CHAR = /[0-9.+\-*/%^()\s]/;
+// ── The grammar's character classes — SINGLE SOURCE ──────────────────────────
+// Every detection surface (the `=` caret detection here, the auto-insert input
+// rule, the refresh scanner) builds its regex from these constants, so
+// extending the grammar is a one-line change instead of six synchronized edits.
+
+/** Class body: characters of a pure-arithmetic run (letters excluded). */
+export const ARITHMETIC_CLASS = "0-9.+\\-*/%^()";
+/** One arithmetic-run character, whitespace included (tokenizer pre-check). */
+const EXPR_CHAR = new RegExp(`[${ARITHMETIC_CLASS}\\s]`);
+/** The binary/unary operator characters, as a test for "contains an operator". */
+const HAS_OPERATOR = /[+\-*/%^]/;
+/** An expression that STARTS with a binary operator (left-operand suspicion). */
+const OP_HEAD = /^[+\-*/%^]/;
 /** The first character of an identifier (variable name): a letter or `_`. */
 const IDENT_START = /[A-Za-z_]/;
 /** A subsequent identifier character: letter, digit, or `_`. */
@@ -116,7 +129,17 @@ function tokenize(input: string, allowIdent: boolean): Token[] | null {
 /** Thrown for div/mod by zero; caught at the top and turned into `null`. */
 class CalcError extends Error {}
 
-/** A single-pass recursive-descent parser/evaluator over the token stream. */
+/**
+ * A single-pass recursive-descent parser/evaluator over the token stream.
+ *
+ * `structural` mode answers only "is this a well-formed expression?" — value
+ * errors (division by zero, an unknown identifier) do not fail the parse, and
+ * every identifier resolves to a dummy. It exists because structure and value
+ * are different questions: `x / (y - 1)` is a perfectly-formed expression even
+ * though evaluating it with placeholder values would divide by zero, and the
+ * `=>` span detection must judge the SHAPE from the visible text alone (the
+ * real scope is only known later, at fetch time).
+ */
 class Parser {
     private pos = 0;
     constructor(
@@ -127,6 +150,7 @@ class Parser {
          * on the pure-arithmetic path, where no `ident` token can ever appear.
          */
         private readonly resolve?: (name: string) => number | undefined,
+        private readonly structural = false,
     ) {}
 
     atEnd(): boolean {
@@ -166,11 +190,11 @@ class Parser {
             if (op === "*") {
                 left = left * right;
             } else if (op === "/") {
-                if (right === 0) { throw new CalcError("division by zero"); }
-                left = left / right;
+                if (right === 0 && !this.structural) { throw new CalcError("division by zero"); }
+                left = right === 0 ? 0 : left / right;
             } else {
-                if (right === 0) { throw new CalcError("modulo by zero"); }
-                left = left % right;
+                if (right === 0 && !this.structural) { throw new CalcError("remainder by zero"); }
+                left = right === 0 ? 0 : left % right;
             }
         }
     }
@@ -204,6 +228,7 @@ class Parser {
         }
         if (tok.kind === "ident") {
             this.pos++;
+            if (this.structural) { return 1; } // any name is resolvable in shape-land
             const value = this.resolve?.(tok.name);
             if (value === undefined || !Number.isFinite(value)) {
                 throw new CalcError(`unknown or non-finite variable: ${tok.name}`);
@@ -225,7 +250,7 @@ class Parser {
 /**
  * Evaluates an arithmetic expression. Returns the numeric result, or `null`
  * for anything not a single complete, finite value: malformed syntax, leftover
- * tokens, division or modulo by zero, or an overflow to ±Infinity / NaN.
+ * tokens, division or remainder by zero, or an overflow to ±Infinity / NaN.
  *
  * `resolve` opts into variable support (the `=>` path): when provided,
  * identifiers are tokenized and resolved through it — an unknown name yields
@@ -250,20 +275,65 @@ export function evaluateExpression(
 }
 
 /**
- * Formats a numeric result as the plain text inserted into the document.
- * Rounds to 12 significant digits first so floating-point artifacts don't leak
- * into prose (`0.1 + 0.2` reads `0.3`, not `0.30000000000000004`), then lets
- * `String` drop trailing zeros. Normalizes `-0` to `0`.
+ * Whether `input` parses as a well-formed expression with identifiers allowed
+ * — structure only, values ignored (see Parser's `structural` mode). This is
+ * the parse-without-evaluating check: `x / (y - 1)` is valid here even though
+ * no scope is consulted, and `x *` is not.
  */
-export function formatCalcResult(value: number): string {
-    // Safe integers print exactly — `toPrecision(12)` exists to hide float
-    // artifacts in fractional results, but applied to a 13-digit integer it
-    // MANUFACTURES one (`9999999999999` → `10000000000000`).
-    if (Number.isSafeInteger(value)) {
-        return String(Object.is(value, -0) ? 0 : value);
+function isValidExpressionStructure(input: string): boolean {
+    const tokens = tokenize(input, true);
+    if (!tokens || tokens.length === 0) { return false; }
+    try {
+        const parser = new Parser(tokens, undefined, true);
+        parser.parseExpr();
+        return parser.atEnd();
+    } catch {
+        return false;
     }
-    const rounded = Number(value.toPrecision(12));
-    return String(Object.is(rounded, -0) ? 0 : rounded);
+}
+
+/**
+ * Displayed decimal places are capped here: a fractional tail beyond this reads
+ * as noise, not an answer (`3 km in mi` should say `1.864114`, not
+ * `1.86411357671`) — and on the inline paths the display IS what gets inserted
+ * into prose. The source expression always remains, so nothing is lost to the
+ * rounding; block scopes chain on full-precision values, never on the display.
+ */
+const MAX_DISPLAY_DECIMALS = 6;
+
+/**
+ * Formats a numeric result as the plain text shown beside — or inserted into —
+ * the document, or `null` when no HONEST plain-digits rendering exists. This is
+ * the one formatting policy for every calc surface (`=`, `=>`, the block
+ * ledger); a `null` means the caller shows/offers nothing.
+ *
+ * Refusals, and why:
+ * - Non-finite values (overflow, NaN): not a number a reader can use.
+ * - Whole numbers beyond `Number.isSafeInteger`: a double can't represent every
+ *   integer past 2^53, so printing full digits would MANUFACTURE precision
+ *   (`2^60` → `…4610000000000`, wrong by millions). `toPrecision` has the same
+ *   problem for 13+-digit safe integers, which is why safe integers print via
+ *   `String` exactly.
+ * - Exponent-shaped output (`1e+21`, `1e-9`): carries a letter, in a feature
+ *   whose contract is "pure digits in, pure digits out".
+ * - A nonzero value whose capped display would round to `0`: showing `0` for
+ *   not-zero is a lie; better to show nothing.
+ *
+ * Fractional results are first rounded to 12 significant digits so float
+ * artifacts never leak (`0.1 + 0.2` reads `0.3`), then capped to
+ * MAX_DISPLAY_DECIMALS decimal places. `-0` normalizes to `0`.
+ */
+export function formatCalcResult(value: number): string | null {
+    if (!Number.isFinite(value)) { return null; }
+    const v = Object.is(value, -0) ? 0 : value;
+    if (Number.isInteger(v)) {
+        return Number.isSafeInteger(v) ? String(v) : null;
+    }
+    const rounded = Number(v.toPrecision(12));
+    const capped = Number(rounded.toFixed(MAX_DISPLAY_DECIMALS));
+    if (capped === 0) { return null; } // tiny-but-nonzero would display as 0
+    const text = String(Object.is(capped, -0) ? 0 : capped);
+    return text.includes("e") ? null : text;
 }
 
 /** A detected calc construct ending at the caret. */
@@ -283,16 +353,14 @@ export interface CalcMatch {
 /** The `=` (with any trailing spaces/tabs) that ends the text before the caret. */
 const TRAILING_EQUALS = /=[ \t]*$/;
 /** The maximal run of arithmetic characters immediately before that `=`. */
-const TRAILING_EXPR = /[0-9.+\-*/%^() \t]*$/;
+const TRAILING_EXPR = new RegExp(`[${ARITHMETIC_CLASS} \\t]*$`);
 /**
  * The LEADING form: `=<expr>` ending at the caret, with the `=` at line start
  * or after whitespace — `a=5+7` is a prose assignment (no boundary) and
  * `==x` never matches (the char class excludes `=`, and the second `=` has no
  * boundary before it).
  */
-const LEADING_FORM = /(^|[ \t])=([0-9.+\-*/%^() \t]+)$/;
-/** At least one operator: a bare number is not offered (`the value 42 =`). */
-const HAS_OPERATOR = /[+\-*/%^]/;
+const LEADING_FORM = new RegExp(`(^|[ \\t])=([${ARITHMETIC_CLASS} \\t]+)$`);
 
 /**
  * Detects an arithmetic expression that ends, at the caret, in `=` (optionally
@@ -355,8 +423,8 @@ export function detectCalcExpression(
     // opens with its own number.
     if (runStart > 0) {
         const glued = run[0] !== " " && run[0] !== "\t";
-        if (glued && /[\p{L}\p{N},_]/u.test(beforeEquals[runStart - 1])) { return null; }
-        if (/^[+\-*/%^]/.test(expr)) { return null; }
+        if (glued && TOKEN_GLUE.test(beforeEquals[runStart - 1])) { return null; }
+        if (OP_HEAD.test(expr)) { return null; }
     }
     // Date-like shapes (`2026-07-17 =`) DO compute, as chained subtraction —
     // a deliberate maintainer ruling: any digits-and-operators run before `=`
@@ -369,17 +437,21 @@ export function detectCalcExpression(
     const value = evaluateExpression(expr);
     if (value === null) { return null; }
     const result = formatCalcResult(value);
-    // Results that stringify with an exponent — too large (`1e+21`) or too
-    // small (`1 / 1000000000` → `1e-9`) for plain digits — carry a letter, in
-    // a feature whose contract is "pure digits in, pure digits out". Offer
-    // nothing instead.
-    if (result.includes("e")) { return null; }
+    if (result === null) { return null; }
     // Span from the expression's first character (after any leading run
     // whitespace) through the caret (the end of textBefore).
     const leadingWs = run.length - run.replace(/^[ \t]+/, "").length;
     const start = runStart + leadingWs;
     return { length: textBefore.length - start, expr, result };
 }
+
+/**
+ * A character that can GLUE to the start of an arithmetic/calc run and make it
+ * a fragment of a larger token — a letter, digit, comma (digit grouping), or
+ * underscore immediately before the run means the run's head is the TAIL of
+ * something bigger (`1,000` → `000`). Shared by every boundary guard.
+ */
+const TOKEN_GLUE = /[\p{L}\p{N},_]/u;
 
 /**
  * The result-first form: `=5+7` at the caret offers `12`, accepted as
@@ -400,7 +472,7 @@ function detectLeadingForm(textBefore: string, boundaryUnknown: boolean): CalcMa
     const value = evaluateExpression(expr);
     if (value === null) { return null; }
     const result = formatCalcResult(value);
-    if (result.includes("e")) { return null; }
+    if (result === null) { return null; }
     const start = lead.index + lead[1].length; // the `=` itself
     return { length: textBefore.length - start, expr, result };
 }
@@ -496,27 +568,37 @@ const LINEAR_UNITS: Record<string, { dim: Dim; factor: number }> = {
     gallons: { dim: "volume", factor: 3.785411784 },
 };
 
-/** Temperature units → the °C base, and back; affine, so not plain factors. */
-const TEMP_TO_C: Record<string, (v: number) => number> = {
-    c: (v) => v,
-    "°c": (v) => v,
-    celsius: (v) => v,
-    f: (v) => (v - 32) * 5 / 9,
-    "°f": (v) => (v - 32) * 5 / 9,
-    fahrenheit: (v) => (v - 32) * 5 / 9,
-    k: (v) => v - 273.15,
-    kelvin: (v) => v - 273.15,
+/**
+ * Temperature units: conversion to AND from the °C base as one entry per unit,
+ * so a spelling can never exist in one direction but not the other. Affine
+ * (offsets, not just factors), hence not part of LINEAR_UNITS.
+ */
+const TEMP_UNITS: Record<string, { toC: (v: number) => number; fromC: (c: number) => number }> = {
+    c: { toC: (v) => v, fromC: (c) => c },
+    "°c": { toC: (v) => v, fromC: (c) => c },
+    celsius: { toC: (v) => v, fromC: (c) => c },
+    f: { toC: (v) => (v - 32) * 5 / 9, fromC: (c) => c * 9 / 5 + 32 },
+    "°f": { toC: (v) => (v - 32) * 5 / 9, fromC: (c) => c * 9 / 5 + 32 },
+    fahrenheit: { toC: (v) => (v - 32) * 5 / 9, fromC: (c) => c * 9 / 5 + 32 },
+    k: { toC: (v) => v - 273.15, fromC: (c) => c + 273.15 },
+    kelvin: { toC: (v) => v - 273.15, fromC: (c) => c + 273.15 },
 };
-const TEMP_FROM_C: Record<string, (c: number) => number> = {
-    c: (c) => c,
-    "°c": (c) => c,
-    celsius: (c) => c,
-    f: (c) => c * 9 / 5 + 32,
-    "°f": (c) => c * 9 / 5 + 32,
-    fahrenheit: (c) => c * 9 / 5 + 32,
-    k: (c) => c + 273.15,
-    kelvin: (c) => c + 273.15,
-};
+
+/**
+ * Whether `from` and `to` name KNOWN units of the same dimension. `Object.hasOwn`
+ * everywhere — a plain `in`/index lookup walks the prototype chain, and a unit
+ * spelled `constructor` must be an unknown unit, not `Object`.
+ */
+function unitsCompatible(from: string, to: string): boolean {
+    if (Object.hasOwn(TEMP_UNITS, from) && Object.hasOwn(TEMP_UNITS, to)) { return true; }
+    if (!Object.hasOwn(LINEAR_UNITS, from) || !Object.hasOwn(LINEAR_UNITS, to)) { return false; }
+    return LINEAR_UNITS[from].dim === LINEAR_UNITS[to].dim;
+}
+
+/** Whether `unit` (already lowercased) names any known unit at all. */
+function isKnownUnit(unit: string): boolean {
+    return Object.hasOwn(TEMP_UNITS, unit) || Object.hasOwn(LINEAR_UNITS, unit);
+}
 
 /**
  * Converts `value` from one unit to another, or `null` when a unit is unknown
@@ -525,29 +607,31 @@ const TEMP_FROM_C: Record<string, (c: number) => number> = {
 export function convertUnit(value: number, from: string, to: string): number | null {
     const f = from.toLowerCase();
     const trg = to.toLowerCase();
-    if (f in TEMP_TO_C && trg in TEMP_FROM_C) {
-        return TEMP_FROM_C[trg](TEMP_TO_C[f](value));
+    if (!unitsCompatible(f, trg)) { return null; }
+    if (Object.hasOwn(TEMP_UNITS, f)) {
+        return TEMP_UNITS[trg].fromC(TEMP_UNITS[f].toC(value));
     }
-    const a = LINEAR_UNITS[f];
-    const b = LINEAR_UNITS[trg];
-    if (!a || !b || a.dim !== b.dim) { return null; }
-    const result = value * a.factor / b.factor;
+    const result = value * LINEAR_UNITS[f].factor / LINEAR_UNITS[trg].factor;
     return Number.isFinite(result) ? result : null;
 }
 
+/** The parsed pieces of a `<numeric-expr> <fromUnit> (in|to) <toUnit>` form. */
+interface UnitForm {
+    numExpr: string;
+    fromUnit: string;
+    toUnit: string;
+}
+
 /**
- * The unit-conversion form `<numeric-expr> <fromUnit> (in|to) <toUnit>`, e.g.
- * `3 km in mi`, `180 lb to kg`, `100 C in F`, `2 * 3 cups in ml`. The `in`/`to`
- * keyword is matched right-anchored (so `min`/`into` inside a word never
- * trips it), the target unit is the final token, and the source unit is the
- * word right before the keyword; whatever precedes that is the numeric
- * expression, evaluated with `resolve` so `x cups in ml` works. Returns the
- * converted number, or null when the shape or the units don't line up.
+ * Parses the unit-conversion SHAPE `<numeric-expr> <fromUnit> (in|to) <toUnit>`
+ * — e.g. `3 km in mi`, `180 lb to kg`, `2 * 3 cups in ml` — without touching
+ * values. The `in`/`to` keyword is matched right-anchored (so `min`/`into`
+ * inside a word never trips it), the target unit is the final token, and the
+ * source unit is the word right before the keyword; whatever precedes that is
+ * the numeric expression. Returns null when the shape doesn't hold. Whether
+ * the units are KNOWN is the caller's question, not a shape question.
  */
-function evaluateUnitForm(
-    input: string,
-    resolve: (name: string) => number | undefined,
-): number | null {
+function parseUnitForm(input: string): UnitForm | null {
     // The keyword must be word-bounded (a non-letter, or start, before it) so
     // `min`/`into`/`ton` never trip it. That boundary char, when present, is
     // consumed by the group and belongs to the left (numeric-expr + unit) part.
@@ -561,9 +645,19 @@ function evaluateUnitForm(
     const fromUnit = unitMatch[1];
     const numExpr = left.slice(0, unitMatch.index).trim();
     if (!numExpr) { return null; }
-    const value = evaluateExpression(numExpr, resolve);
+    return { numExpr, fromUnit, toUnit };
+}
+
+/** Evaluates a parsed unit form against `resolve`; null on any failure. */
+function evaluateUnitForm(
+    input: string,
+    resolve: (name: string) => number | undefined,
+): number | null {
+    const form = parseUnitForm(input);
+    if (!form) { return null; }
+    const value = evaluateExpression(form.numExpr, resolve);
     if (value === null) { return null; }
-    return convertUnit(value, fromUnit, toUnit);
+    return convertUnit(value, form.fromUnit, form.toUnit);
 }
 
 /**
@@ -581,17 +675,24 @@ export function evaluateCalc(input: string, scope?: Map<string, number>): number
 }
 
 /**
- * Whether `input` is a well-FORMED living-calculation expression, independent of
- * whether its variables happen to be defined — every identifier is treated as
- * resolvable. The `=>` caret detection uses this to fix the highlighted span
+ * Whether `input` is a well-FORMED living-calculation expression, independent
+ * of whether its variables happen to be defined or its values divide cleanly —
+ * a true parse-only check (Parser's structural mode), so `x / (y - 1)` is
+ * valid here. The `=>` caret detection uses this to fix the highlighted span
  * from the visible text alone (the real scope, and thus the real result, is
- * only known later at fetch time); an expression that is structurally valid but
+ * only known later at fetch time); a structurally valid expression that
  * references an undefined variable simply produces no result then.
+ *
+ * The unit form is valid when its shape holds, its units are known and
+ * compatible, and its numeric part is well-formed.
  */
 export function isCalcStructurallyValid(input: string): boolean {
-    const anyValue = (): number => 1;
-    if (evaluateUnitForm(input, anyValue) !== null) { return true; }
-    return evaluateExpression(input, anyValue) !== null;
+    const form = parseUnitForm(input);
+    if (form && unitsCompatible(form.fromUnit.toLowerCase(), form.toUnit.toLowerCase())
+        && isValidExpressionStructure(form.numExpr)) {
+        return true;
+    }
+    return isValidExpressionStructure(input);
 }
 
 /** A detected `=>` construct ending at the caret. */
@@ -607,6 +708,17 @@ const TRAILING_ARROW = /=>[ \t]*$/;
 /** Characters that may appear in a living-calc expression run (letters allowed). */
 const CALC_RUN = /[\w+\-*/%^().°'" \t]*$/u;
 /**
+ * A prose-ish token the `=>` trimming loop may drop from the front of the run:
+ * it must contain a letter (it reads as a WORD — `the`, `total`, `costs.`,
+ * `it's`), and it may not contain expression material (an operator or paren).
+ * A pure number is deliberately NOT droppable: a leading number is either part
+ * of the expression (`2 (3 + 4)` — dropping the `2` would compute a different
+ * question) or the tail fragment of a bigger token (`1,000` → `000`), and both
+ * must refuse rather than answer wrongly — the same "never compute a fragment"
+ * rule the `=` path enforces.
+ */
+const DROPPABLE_TOKEN = /^[\w.'"°]*[A-Za-z_][\w.'"°]*$/;
+/**
  * Caps that keep `detectArrowExpression` O(1) on the un-debounced keystroke path
  * (`match` runs per transaction). A real inline expression is short and sits
  * within a few tokens of the `=>`, so we only ever look at the tail of a long
@@ -618,18 +730,28 @@ const MAX_ARROW_TOKEN_DROPS = 24;
 
 /**
  * Detects a living-calculation expression that ends, at the caret, in `=>`
- * (optionally followed by spaces already typed). Unlike the `=` path, `=>`
- * never occurs in ordinary prose, so detection needs almost none of that path's
- * anti-hijack paranoia. The one real problem is that the run before `=>` can
- * contain letters (variables, units) and therefore also ordinary prose words;
- * so the maximal trailing run is trimmed to its LONGEST suffix that is a
- * structurally valid expression, dropping leading whitespace-separated tokens
- * one at a time (`the total x*2 =>` → `x*2`).
+ * (optionally followed by spaces already typed). Unlike `=`, `=>` never occurs
+ * in ordinary prose, so the trigger needs no hijack paranoia — but the run
+ * before `=>` can contain letters (variables, units) and therefore ordinary
+ * prose words, so the maximal trailing run is trimmed to its LONGEST suffix
+ * that is a structurally valid expression, dropping leading tokens one at a
+ * time (`the total x*2 =>` → `x*2`).
  *
- * Returns the matched span and expression, or null when there is no `=>` or the
- * text before it holds no valid, non-trivial expression. A bare number
- * (`42 =>`) is refused — echoing it back is pointless — but a lone variable
- * (`total =>`) is offered, since showing a definition's value is the point.
+ * The trimming carries the `=` path's full boundary discipline — every rule
+ * exists to refuse a run that would compute a DIFFERENT question than the
+ * visible one:
+ * - only prose-ish WORDS are droppable (see DROPPABLE_TOKEN); hitting a number
+ *   or expression material refuses (`2 (3+4) =>` offers nothing rather than 7);
+ * - a run glued to a word-ish char (`1,000 + 2 =>` — the comma splits the
+ *   token) must drop its fragment head, which, being a number, refuses;
+ * - a chosen expression may start with an operator only when it IS the whole
+ *   run at a true line start (`- 4 =>` is unary; after any drop or glue an
+ *   operator head had a left operand we can't see).
+ *
+ * Returns the matched span and expression, or null when there is no `=>` or no
+ * valid, non-trivial expression before it. A bare number (`42 =>`) is refused —
+ * echoing it back is pointless — but a lone variable (`total =>`) is offered,
+ * since showing a definition's value is the point.
  */
 export function detectArrowExpression(
     textBefore: string,
@@ -641,10 +763,7 @@ export function detectArrowExpression(
     const fullRun = CALC_RUN.exec(beforeArrow)?.[0] ?? "";
     // Only the tail can hold a (short) inline expression; capping it bounds the
     // per-keystroke tokenization. A capped run still yields correct positions
-    // because it is a suffix and runStart is derived from its length. The
-    // discarded head also means a chosen expression can never be flush against a
-    // truncated window start, so the fragment risk the boundary guard covers
-    // can't reach it.
+    // because it is a suffix and runStart is derived from its length.
     const run = fullRun.length > MAX_ARROW_RUN
         ? fullRun.slice(fullRun.length - MAX_ARROW_RUN)
         : fullRun;
@@ -652,17 +771,33 @@ export function detectArrowExpression(
     const trimmedRun = run.trim();
     if (!trimmedRun) { return null; }
 
-    // Longest valid suffix: starting from the trimmed run, drop leading
-    // whitespace-separated tokens until what remains parses (or nothing does).
-    // This peels prose off the front while keeping the largest real expression
-    // (`the total x*2` → `x*2`). Bounded by MAX_ARROW_TOKEN_DROPS so a long
-    // prose line ending in `=>` stays cheap.
+    // Glued start: the char before the run (also visible when the run was
+    // length-capped — the cap cut point is inside beforeArrow) is word-ish, so
+    // the run's first token is the TAIL of a larger token and can never be
+    // trusted. Force the trimming loop to drop it before considering anything.
+    const glued = runStart > 0
+        && run[0] !== " " && run[0] !== "\t"
+        && TOKEN_GLUE.test(beforeArrow[runStart - 1]);
+
+    // Longest valid suffix: starting from the trimmed run, drop leading tokens
+    // until what remains parses (or nothing does). Bounded by
+    // MAX_ARROW_TOKEN_DROPS so a long prose line ending in `=>` stays cheap.
     let expr = trimmedRun;
-    for (let drops = 0; ; drops++) {
-        if (isCalcStructurallyValid(expr) && !isBareNumber(expr)) { break; }
-        if (drops >= MAX_ARROW_TOKEN_DROPS) { return null; }
+    let drops = 0;
+    for (;;) {
+        const mustDrop = glued && drops === 0;
+        if (!mustDrop
+            && isCalcStructurallyValid(expr)
+            && !isBareNumber(expr)
+            // An operator head is only unary when the candidate is the whole
+            // run at a true, untruncated line start.
+            && !(OP_HEAD.test(expr) && (drops > 0 || runStart > 0 || opts?.boundaryUnknown))
+        ) { break; }
         const sp = expr.search(/\s/);
-        if (sp === -1) { return null; }
+        const head = sp === -1 ? expr : expr.slice(0, sp);
+        if (!DROPPABLE_TOKEN.test(head)) { return null; }
+        if (++drops > MAX_ARROW_TOKEN_DROPS) { return null; }
+        if (sp === -1) { return null; } // dropped the last token — nothing left
         expr = expr.slice(sp + 1).trimStart();
         if (!expr) { return null; }
     }
@@ -701,6 +836,22 @@ export function parseDefinition(line: string): { name: string; rhs: string } | n
 }
 
 /**
+ * The one definition-evaluation step shared by every scope builder: resolve
+ * the right-hand side against the definitions seen so far and, when it yields
+ * a value, enter it into `scope`. Returns the value, or null when the RHS does
+ * not resolve (the scope is left untouched — a broken definition never
+ * clobbers an earlier good one).
+ */
+function applyDefinition(
+    def: { name: string; rhs: string },
+    scope: Map<string, number>,
+): number | null {
+    const value = evaluateCalc(def.rhs, scope);
+    if (value !== null) { scope.set(def.name, value); }
+    return value;
+}
+
+/**
  * Builds a variable scope from document lines, top to bottom: each
  * `name = expr` line whose right-hand side resolves to a finite number (using
  * the names defined ABOVE it) adds/overrides that name. Sequential, so a
@@ -711,31 +862,56 @@ export function buildScopeFromLines(lines: readonly string[]): Map<string, numbe
     const scope = new Map<string, number>();
     for (const line of lines) {
         const def = parseDefinition(line);
-        if (!def) { continue; }
-        const value = evaluateCalc(def.rhs, scope);
-        if (value !== null) { scope.set(def.name, value); }
+        if (def) { applyDefinition(def, scope); }
     }
     return scope;
 }
 
 // ── Calc block ("Calca mode": a fenced ```calc region) ───────────────────────
 
+/**
+ * How a calc-block line came out:
+ * - `value`: computed fine — `result` holds the display text;
+ * - `silent`: nothing to show and nothing wrong — a blank, a comment, prose,
+ *   a bare literal, or a definition whose source already spells its value;
+ * - `error`: the line READS as a formula (a definition, an operator-bearing
+ *   expression, a known-units conversion) but no honest value exists — an
+ *   unknown variable, division by zero, a dimension mismatch, a result too
+ *   big to print truthfully. The ledger shows a quiet cue, because inside a
+ *   block whose whole point is computing, a silent absence needs a signal
+ *   (docs/DESIGN_PRINCIPLES.md) — while prose stays uncued.
+ */
+export type CalcLineKind = "value" | "silent" | "error";
+
 /** One rendered line of a calc block: the source verbatim + the value to show. */
 export interface CalcBlockLine {
     /** The source line, unchanged (the block round-trips as ordinary Markdown). */
     raw: string;
-    /**
-     * The formatted result to display beside the line, or null for lines that
-     * yield none — blanks, comments, prose, a bare literal, or an expression
-     * whose value is already spelled out in the source (`budget = 5000`).
-     */
+    /** The formatted result to display beside the line; null unless `kind` is `value`. */
     result: string | null;
+    kind: CalcLineKind;
 }
 
 /** A calc-block comment/annotation line: `#` or `//`, so prose can sit inline. */
 const CALC_COMMENT = /^\s*(#|\/\/)/;
-/** An explicit trailing `=` or `=>` on an expression line — stripped before eval. */
+/** An explicit trailing `=` or `=>` on a block line — stripped before parsing,
+ * so `x = 2 + 3 =` still defines `x` and `3 km in mi =>` still converts. */
 const CALC_TRAILING_EQ = /\s*=>?[ \t]*$/;
+
+/**
+ * Whether a non-definition block line READS as a formula — the error-cue
+ * gate. Confidence comes from structure, not values: an operator-bearing,
+ * well-formed expression (`total * 2`) or a known-units conversion shape
+ * (`3 km in kg`) is a formula even when it can't produce a value; hyphenated
+ * prose (`well-known plan`) parses as no valid structure and stays silent.
+ */
+function looksLikeFormula(expr: string): boolean {
+    const form = parseUnitForm(expr);
+    if (form && isKnownUnit(form.fromUnit.toLowerCase()) && isKnownUnit(form.toUnit.toLowerCase())) {
+        return true;
+    }
+    return HAS_OPERATOR.test(expr) && isValidExpressionStructure(expr);
+}
 
 /**
  * Evaluate a fenced `calc` block: every line under ONE shared scope, top to
@@ -750,8 +926,8 @@ const CALC_TRAILING_EQ = /\s*=>?[ \t]*$/;
  *    the source already spells it out (`budget = 5000` shows nothing extra,
  *    `total = 12 * 100` shows `1200`);
  *  - otherwise an expression (`budget * 0.3`, `3 km in mi`, optionally ending in
- *    `=` / `=>`) → its value is shown; a bare number or non-computable/prose
- *    line shows nothing.
+ *    `=` / `=>`) → its value is shown; a bare number or prose shows nothing,
+ *    and a line that reads as a formula but can't compute is flagged `error`.
  *
  * Deterministic, eval-free, network-free — the same engine as the `=` and `=>`
  * paths, only evaluated line-by-line over a shared scope.
@@ -759,25 +935,146 @@ const CALC_TRAILING_EQ = /\s*=>?[ \t]*$/;
 export function evaluateCalcBlock(source: string): CalcBlockLine[] {
     const scope = new Map<string, number>();
     return source.split("\n").map((raw): CalcBlockLine => {
-        if (!raw.trim() || CALC_COMMENT.test(raw)) { return { raw, result: null }; }
+        if (!raw.trim() || CALC_COMMENT.test(raw)) { return { raw, result: null, kind: "silent" }; }
 
-        const def = parseDefinition(raw);
+        const line = raw.replace(CALC_TRAILING_EQ, "");
+        const def = parseDefinition(line);
         if (def) {
-            const value = evaluateCalc(def.rhs, scope);
-            if (value === null) { return { raw, result: null }; }
-            scope.set(def.name, value);
+            const value = applyDefinition(def, scope);
+            if (value === null) { return { raw, result: null, kind: "error" }; }
             const formatted = formatCalcResult(value);
+            if (formatted === null) { return { raw, result: null, kind: "error" }; }
             // No echo when the RHS already is the value (`x = 5`); show it when
             // the RHS is an expression (`x = 2 + 3` → 5) or a conversion.
-            return { raw, result: def.rhs === formatted ? null : formatted };
+            return formatted === def.rhs
+                ? { raw, result: null, kind: "silent" }
+                : { raw, result: formatted, kind: "value" };
         }
 
-        const expr = raw.replace(CALC_TRAILING_EQ, "").trim();
-        if (!expr || /^[0-9.]+$/.test(expr)) { return { raw, result: null }; }
+        const expr = line.trim();
+        if (!expr || isBareNumber(expr)) { return { raw, result: null, kind: "silent" }; }
         const value = evaluateCalc(expr, scope);
-        if (value === null) { return { raw, result: null }; }
+        if (value === null) {
+            return { raw, result: null, kind: looksLikeFormula(expr) ? "error" : "silent" };
+        }
         const formatted = formatCalcResult(value);
-        // Exponent results carry a letter, breaking the plain-number contract.
-        return { raw, result: formatted.includes("e") ? null : formatted };
+        if (formatted === null) { return { raw, result: null, kind: "error" }; }
+        return { raw, result: formatted, kind: "value" };
     });
+}
+
+// ── Refresh scanning (auto-insert mode) ──────────────────────────────────────
+
+/** One equation occurrence in a block's text, as the refresh hook consumes it. */
+export interface EquationSpan {
+    /** `trailing`: `expr = result`. `leading`: `result=expr` (the `=`-first insert). */
+    form: "trailing" | "leading";
+    /** Character span of the expression side, END-INCLUSIVE of the `=` for the
+     * trailing form (mirrors the original regex's span semantics). */
+    expr: [number, number];
+    /** Character span of the result text, end-exclusive. */
+    res: [number, number];
+    /** The current result text, verbatim (may carry the user's `,` grouping). */
+    resultText: string;
+}
+
+/** A previously-inserted result: optional minus, digits with `,` grouping,
+ * optional decimals. Sticky, so it anchors exactly where the scan points it. */
+const RESULT_NUMBER = /-?\d[\d,]*(?:\.\d+)?/y;
+/** The same shape, anchored — validates a backward-collected candidate. */
+const RESULT_NUMBER_EXACT = /^-?\d[\d,]*(?:\.\d+)?$/;
+const RESULT_CHAR = /[\d,.]/;
+const DIGIT = /[0-9]/;
+const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
+
+/**
+ * Finds `expr = result` / `result=expr` equation shapes in `text` whose spans
+ * intersect [from, to] — the candidates the auto-insert refresh re-validates.
+ *
+ * This is a hand-rolled scan, NOT a regex, on purpose: the natural regex for
+ * "an arithmetic run, then `=`, then a number" (`[class]*[0-9)]…=`) backtracks
+ * QUADRATICALLY on a long digit-heavy line that contains `=` but never
+ * completes the shape — and this runs inside `appendTransaction`, on the
+ * synchronous keystroke path. The scan walks outward from each `=` instead:
+ * linear, bounded by `maxRun` per side, and only within the neighborhood of
+ * the change (an equation an edit didn't touch can't have gone stale).
+ *
+ * Candidates are returned trailing-first, left-to-right (the original
+ * evaluation order); every candidate must still be re-validated through
+ * detectCalcExpression by the caller — the shapes here are deliberately broad.
+ */
+export function findRefreshEquations(
+    text: string,
+    from: number,
+    to: number,
+    maxRun: number,
+): EquationSpan[] {
+    const trailing: EquationSpan[] = [];
+    const leading: EquationSpan[] = [];
+    // An equation intersecting [from, to] has its `=` within an expression run
+    // or a result of it; pad the examined region by one run either side.
+    const margin = maxRun + 40;
+    const scanFrom = Math.max(0, from - margin);
+    const scanTo = Math.min(text.length, to + margin);
+    for (let e = text.indexOf("=", scanFrom); e !== -1 && e < scanTo; e = text.indexOf("=", e + 1)) {
+        // `==` (highlight syntax) and `=>` are never equations.
+        if (text[e + 1] === "=" || text[e - 1] === "=" || text[e + 1] === ">") { continue; }
+
+        // TRAILING `expr = result`: an arithmetic run before the `=` whose last
+        // non-space char is a digit or `)`, and a number after it.
+        let runStart = e;
+        while (runStart > 0 && e - runStart < maxRun && ARITH_OR_WS.test(text[runStart - 1])) {
+            runStart--;
+        }
+        let runEnd = e; // exclusive; walk back over the spaces before `=`
+        while (runEnd > runStart && (text[runEnd - 1] === " " || text[runEnd - 1] === "\t")) {
+            runEnd--;
+        }
+        const lastCh = text[runEnd - 1];
+        if (runEnd > runStart && (DIGIT.test(lastCh) || lastCh === ")")) {
+            let resStart = e + 1;
+            while (text[resStart] === " " || text[resStart] === "\t") { resStart++; }
+            RESULT_NUMBER.lastIndex = resStart;
+            const num = RESULT_NUMBER.exec(text);
+            if (num) {
+                trailing.push({
+                    form: "trailing",
+                    expr: [runStart, e],
+                    res: [resStart, resStart + num[0].length],
+                    resultText: num[0],
+                });
+            }
+        }
+
+        // LEADING `result=expr`: a number before the `=`, and an arithmetic run
+        // after it ending in a digit or `)`.
+        let resEnd = e; // exclusive; walk back over spaces, then the number
+        while (resEnd > 0 && (text[resEnd - 1] === " " || text[resEnd - 1] === "\t")) { resEnd--; }
+        let resStart = resEnd;
+        while (resStart > 0 && RESULT_CHAR.test(text[resStart - 1])) { resStart--; }
+        if (text[resStart - 1] === "-") { resStart--; }
+        const resText = text.slice(resStart, resEnd);
+        if (resStart < resEnd && RESULT_NUMBER_EXACT.test(resText)) {
+            let exprStart = e + 1;
+            while (text[exprStart] === " " || text[exprStart] === "\t") { exprStart++; }
+            let exprEnd = exprStart;
+            while (exprEnd < text.length && exprEnd - exprStart < maxRun && ARITH_OR_WS.test(text[exprEnd])) {
+                exprEnd++;
+            }
+            while (exprEnd > exprStart && !(DIGIT.test(text[exprEnd - 1]) || text[exprEnd - 1] === ")")) {
+                exprEnd--;
+            }
+            if (exprEnd > exprStart) {
+                leading.push({
+                    form: "leading",
+                    expr: [exprStart, exprEnd],
+                    res: [resStart, resEnd],
+                    resultText: resText,
+                });
+            }
+        }
+    }
+    const intersects = (s: EquationSpan): boolean =>
+        !(to < Math.min(s.expr[0], s.res[0]) || from > Math.max(s.expr[1], s.res[1]));
+    return [...trailing, ...leading].filter(intersects);
 }
