@@ -17,15 +17,27 @@ This document is a **living reference** of every content type Birta Writer suppo
 
 # Heading 1
 
+A line of content under a Heading 1.
+
 ## Heading 2
+
+A line of content under a Heading 2.
 
 ### Heading 3
 
+A line of content under a Heading 3.
+
 #### Heading 4
+
+A line of content under a Heading 4.
 
 ##### Heading 5
 
+A line of content under a Heading 5.
+
 ###### Heading 6
+
+A line of content under a Heading 6.
 
 Setext headings round-trip in their original form too (these two are real
 setext source — open the raw file to confirm saving never rewrites them to
