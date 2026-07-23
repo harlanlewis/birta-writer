@@ -216,12 +216,24 @@ describe("advisory inline calc", () => {
         expect(optionTexts()).toEqual([]);
     });
 
-    it("should be silent when calc is disabled", async () => {
+    it("should be silent when calc is disabled (advisory `=`)", async () => {
         window.__i18n = { translations: {}, isMac: false, calcEnabled: false };
         typeText(v, " 2+3=");
         await vi.advanceTimersByTimeAsync(250);
 
         expect(optionTexts()).toEqual([]);
+    });
+
+    it("re-accepting at `expr =| old` REPLACES the stale answer, never inserts beside it", async () => {
+        const stale = await makeEditor("3+4= 9");
+        const sv = view(stale);
+        // Park the caret right after the `=` — the old answer sits beyond it,
+        // outside the caret-anchored match, and used to survive the insert.
+        sv.dispatch(sv.state.tr.setSelection(TextSelection.create(sv.state.doc, 5)));
+        await vi.advanceTimersByTimeAsync(250);
+        sv.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        expect(sv.state.doc.firstChild?.textContent).toBe("3+4= 7"); // not "3+4= 7 9"
+        await stale.destroy();
     });
 });
 
@@ -359,6 +371,17 @@ describe("`=>` living calculations (variables + units)", () => {
         await vi.advanceTimersByTimeAsync(250);
 
         expect(optionTexts()).toEqual([]);
+    });
+
+    it("re-accepting at `expr =>| old` REPLACES the stale answer, never inserts beside it", async () => {
+        editor = await makeArrowEditor("2+3 => 99");
+        v = view(editor);
+        // Caret right after the `=>` — the stale 99 sits beyond it, outside
+        // the caret-anchored match, and used to survive the insert.
+        v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 7)));
+        await vi.advanceTimersByTimeAsync(250);
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+        expect(v.state.doc.firstChild?.textContent).toBe("2+3 => 5"); // not "2+3 => 5 99"
     });
 });
 
@@ -560,6 +583,67 @@ describe("auto-insert result refresh (editing an existing equation)", () => {
             v.state.tr.insertText("4", 1, 2).setMeta(EXTERNAL_SYNC_META, true),
         );
         expect(blockText(v)).toBe("4+4= 7"); // stale exactly as on disk
+        editor.destroy();
+    });
+
+    it("`=>` refreshes on expression edits even in ADVISORY mode (no auto-insert)", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("2+3 => 5");
+        const v = view(editor);
+        editChar(v, 0, "4"); // 2+3 => 5  →  4+3 => 7
+        expect(blockText(v)).toBe("4+3 => 7");
+        editor.destroy();
+    });
+
+    it("editing an upstream definition cascades to every `=>` below it", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\n\ny = 2\n\nx+y => 6\n\nx*2 => 8");
+        const v = view(editor);
+        // Rewrite the definition's value: x = 4 → x = 5 ("4" is at offset 4).
+        editChar(v, 4, "5");
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts).toEqual(["x = 5", "y = 2", "x+y => 7", "x*2 => 10"]);
+        editor.destroy();
+    });
+
+    it("editing the `=>` RESULT is the user's override and is left alone", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("2+3 => 5");
+        const v = view(editor);
+        editChar(v, 7, "9"); // hand-rewrite the answer
+        expect(blockText(v)).toBe("2+3 => 9");
+        editor.destroy();
+    });
+
+    it("a `=>` with no accepted answer is never touched (nothing to maintain)", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\n\nx+1 =>");
+        const v = view(editor);
+        editChar(v, 4, "5");
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts).toEqual(["x = 5", "x+1 =>"]); // the advisory menu owns this case
+        editor.destroy();
+    });
+
+    it("an equation inside inline code is source, never rewritten", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("see `2+3 => 5` here");
+        const v = view(editor);
+        // Edit the "2" inside the backticked span (offset 4 in the text).
+        editChar(v, 4, "4");
+        expect(blockText(v)).toBe("see 4+3 => 5 here"); // stale, untouched
         editor.destroy();
     });
 

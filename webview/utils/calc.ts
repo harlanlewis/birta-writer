@@ -881,10 +881,12 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
 
 /** One equation occurrence in a block's text, as the refresh hook consumes it. */
 export interface EquationSpan {
-    /** `trailing`: `expr = result`. `leading`: `result=expr` (the `=`-first insert). */
-    form: "trailing" | "leading";
+    /** `trailing`: `expr = result`. `leading`: `result=expr` (the `=`-first
+     * insert). `arrow`: `expr => result` — the living-calculation form, whose
+     * expression may carry variables and units. */
+    form: "trailing" | "leading" | "arrow";
     /** Character span of the expression side, END-INCLUSIVE of the `=` for the
-     * trailing form (mirrors the original regex's span semantics). */
+     * trailing and arrow forms (mirrors the original regex's span semantics). */
     expr: [number, number];
     /** Character span of the result text, end-exclusive. */
     res: [number, number];
@@ -900,6 +902,8 @@ const RESULT_NUMBER_EXACT = /^-?\d[\d,]*(?:\.\d+)?$/;
 const RESULT_CHAR = /[\d,.]/;
 const DIGIT = /[0-9]/;
 const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
+/** One character of an `=>` expression run (letters allowed — variables, units). */
+const ARROW_RUN_CHAR = /[\w+\-*/%^().°'" \t]/u;
 
 /**
  * Finds `expr = result` / `result=expr` equation shapes in `text` whose spans
@@ -927,14 +931,40 @@ export function findRefreshEquations(
 ): EquationSpan[] {
     const trailing: EquationSpan[] = [];
     const leading: EquationSpan[] = [];
+    const arrow: EquationSpan[] = [];
     // An equation intersecting [from, to] has its `=` within an expression run
     // or a result of it; pad the examined region by one run either side.
     const margin = maxRun + 40;
     const scanFrom = Math.max(0, from - margin);
     const scanTo = Math.min(text.length, to + margin);
     for (let e = text.indexOf("=", scanFrom); e !== -1 && e < scanTo; e = text.indexOf("=", e + 1)) {
-        // `==` (highlight syntax) and `=>` are never equations.
-        if (text[e + 1] === "=" || text[e - 1] === "=" || text[e + 1] === ">") { continue; }
+        // ARROW `expr => result`: the living-calculation form. Only a
+        // number-bearing arrow is an equation to maintain — a bare `=>` with
+        // no accepted answer belongs to the advisory suggestion, not refresh.
+        if (text[e + 1] === ">") {
+            let resStart = e + 2;
+            while (text[resStart] === " " || text[resStart] === "\t") { resStart++; }
+            RESULT_NUMBER.lastIndex = resStart;
+            const num = RESULT_NUMBER.exec(text);
+            if (num) {
+                let exprStart = e;
+                while (exprStart > 0 && e - exprStart < maxRun && ARROW_RUN_CHAR.test(text[exprStart - 1])) {
+                    exprStart--;
+                }
+                if (text.slice(exprStart, e).trim()) {
+                    arrow.push({
+                        form: "arrow",
+                        expr: [exprStart, e],
+                        res: [resStart, resStart + num[0].length],
+                        resultText: num[0],
+                    });
+                }
+            }
+            continue;
+        }
+        // `==` (highlight syntax) is never an equation; a `>`-preceded `=`
+        // can't occur (handled above), and `=`-adjacent pairs are skipped.
+        if (text[e + 1] === "=" || text[e - 1] === "=") { continue; }
 
         // TRAILING `expr = result`: an arithmetic run before the `=` whose last
         // non-space char is a digit or `)`, and a number after it.
@@ -992,5 +1022,5 @@ export function findRefreshEquations(
     }
     const intersects = (s: EquationSpan): boolean =>
         !(to < Math.min(s.expr[0], s.res[0]) || from > Math.max(s.expr[1], s.res[1]));
-    return [...trailing, ...leading].filter(intersects);
+    return [...trailing, ...leading, ...arrow].filter(intersects);
 }

@@ -47,7 +47,10 @@ import {
     findRefreshEquations,
     formatCalcResult,
     isCalcStructurallyValid,
+    parseDefinition,
+    type EquationSpan,
 } from "../utils/calc";
+import { calcUnitsReady } from "../utils/calcUnits";
 import { notifySetCalcAutoInsert } from "../messaging";
 import { t } from "../i18n";
 
@@ -155,10 +158,15 @@ const calcSuggestSpec: CaretSuggestSpec = {
  */
 function applyCalcResult(view: EditorView, start: number, caret: number, result: string): void {
     const region = view.state.doc.textBetween(start, caret);
-    const replacement = region.startsWith("=")
+    const leading = region.startsWith("=");
+    const replacement = leading
         ? `${result}${region}`
         : region.replace(/=[ \t]*$/, `= ${result}`);
-    view.dispatch(view.state.tr.insertText(replacement, start, caret).scrollIntoView());
+    // Trailing form only: consume a stale answer after the caret so
+    // re-accepting at `expr =| old` replaces the old number (the leading
+    // form writes BEFORE the `=`, where nothing stale can sit).
+    const end = leading ? caret : caret + staleResultLengthAfter(view.state, caret);
+    view.dispatch(view.state.tr.insertText(replacement, start, end).scrollIntoView());
 }
 
 /** Advisory inline-calc plugin (registered beside the other caret suggestions). */
@@ -186,14 +194,20 @@ const calcArrowSuggestKey = new PluginKey("MD_CALC_ARROW_SUGGEST");
  * request, never the keystroke path.
  */
 function scopeUpToCaret(state: EditorState): Map<string, number> {
-    const caret = state.selection.from;
+    return scopeUpTo(state, state.selection.from);
+}
+
+/** The same scope, cut at an arbitrary document position (the refresh path
+ * resolves each `=>` equation against the definitions above ITS line, not the
+ * caret's). */
+function scopeUpTo(state: EditorState, upTo: number): Map<string, number> {
     const lines: string[] = [];
     state.doc.descendants((node: ProseNode, pos: number) => {
-        if (pos >= caret) { return false; } // node starts at/after the caret — prune
+        if (pos >= upTo) { return false; } // node starts at/after the cut — prune
         if (node.type.spec.code || node.type.name === "heading") { return false; }
         if (node.isTextblock) {
             const blockStart = pos + 1;
-            const end = Math.min(node.content.size, caret - blockStart);
+            const end = Math.min(node.content.size, upTo - blockStart);
             const text = node.textBetween(
                 0,
                 end,
@@ -272,12 +286,33 @@ const calcArrowSpec: CaretSuggestSpec = {
 /**
  * Write the result after the `=>`, normalizing spacing to `<expr> => <result>`.
  * Plain text only — like the `=` path, nothing calc-specific persists in the
- * document, so the file round-trips as if the number had been typed.
+ * document, so the file round-trips as if the number had been typed. An old
+ * answer sitting just AFTER the caret (`expr =>| stale` — the caret parked at
+ * the arrow of an already-answered equation) is consumed, so re-accepting
+ * REPLACES the stale number instead of inserting beside it.
  */
 function applyArrowResult(view: EditorView, start: number, caret: number, result: string): void {
     const region = view.state.doc.textBetween(start, caret);
     const replacement = region.replace(/=>[ \t]*$/, `=> ${result}`);
-    view.dispatch(view.state.tr.insertText(replacement, start, caret).scrollIntoView());
+    const end = caret + staleResultLengthAfter(view.state, caret);
+    view.dispatch(view.state.tr.insertText(replacement, start, end).scrollIntoView());
+}
+
+/**
+ * Length of a stale answer directly after `caret` in the same block —
+ * optional spaces then a plain number (the only shape calc ever writes).
+ * Zero when what follows is anything else; atoms mask to ￼ and hard breaks
+ * to a newline-like leaf, neither of which a number can match through.
+ */
+function staleResultLengthAfter(state: EditorState, caret: number): number {
+    const $caret = state.doc.resolve(caret);
+    const rest = $caret.parent.textBetween(
+        $caret.parentOffset,
+        $caret.parent.content.size,
+        undefined,
+        "￼",
+    );
+    return /^[ \t]*-?\d[\d,]*(?:\.\d+)?/.exec(rest)?.[0].length ?? 0;
 }
 
 /** Advisory `=>` living-calculation plugin. */
@@ -334,12 +369,35 @@ export const calcAutoInsertPlugin = $inputRule(() =>
     }),
 );
 
-// ── Auto-insert mode: refresh a stale answer when its expression is edited ──
+// ── Refresh: keep an inserted answer true to its (edited) equation ──────────
+//
+// Two consent regimes, one mechanism:
+//  - `=`/leading equations refresh only in auto-insert mode — `=` occurs in
+//    ordinary prose, so maintaining it is tied to the mode that writes it.
+//  - `expr => result` refreshes whenever calc is ENABLED: `=>` is explicit
+//    living-calculation syntax, its result was written by explicit consent
+//    (Tab or auto-insert), and the feature's contract is that it stays true —
+//    both when its own expression is edited and when a `name = value`
+//    definition ABOVE it changes (the variable cascade). Result-side edits
+//    remain the user's override in every form and are never fought.
+
+/** Whether any line of a block's text is a `name = value` definition. */
+function blockHasDefinition(text: string): boolean {
+    return text.includes("=") && text.split("\n").some((line) => parseDefinition(line) !== null);
+}
+
+/** Whether [from, to] of the doc carries an inline-code mark — an equation
+ * inside backticks is SOURCE, never a live calculation (`` `x => 5` ``). */
+function rangeInCode(state: EditorState, from: number, to: number): boolean {
+    return Object.values(state.schema.marks).some(
+        (mark) => mark.spec.code && state.doc.rangeHasMark(from, to, mark),
+    );
+}
 
 export const calcRefreshPlugin = $prose(() => new Plugin({
     key: new PluginKey("MD_CALC_REFRESH"),
     appendTransaction(trs, _oldState, newState) {
-        if (!calcEnabled() || !calcAutoInsert()) { return null; }
+        if (!calcEnabled()) { return null; }
         if (!trs.some((tr) => tr.docChanged)) { return null; }
         // An external-sync transaction replays an edit made OUTSIDE this
         // editor (the raw text editor, a git checkout). Whatever result the
@@ -375,31 +433,39 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
 
         let out = newState.tr;
         let touched = false;
+        const autoInsert = calcAutoInsert();
         const seenBlocks = new Set<number>();
-        for (const change of changed) {
-            const pos = Math.min(change.from, newState.doc.content.size);
-            const $pos = newState.doc.resolve(pos);
-            if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) { continue; }
-            const blockStart = $pos.start();
-            if (seenBlocks.has(blockStart)) { continue; }
-            seenBlocks.add(blockStart);
-            // Inline atoms mask to a char arithmetic can't contain, keeping
-            // offsets 1:1 with positions (the proofread/notes masking contract).
-            const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
-            // This hook rides EVERY doc change while auto-insert is on; a block
-            // with no "=" can hold no equation — skip before any scan work.
-            if (!text.includes("=")) { continue; }
+        // Spans already rewritten this pass (`blockStart:resStart`), so the
+        // variable cascade never re-touches what the local pass refreshed.
+        const refreshed = new Set<string>();
+        // Earliest document position whose block held an edited definition —
+        // every `=>` equation from there DOWN may have gone stale.
+        let cascadeFrom = -1;
 
-            const localFrom = Math.max(0, change.from - blockStart);
-            const localTo = Math.min(text.length, Math.max(localFrom, change.to - blockStart));
-            // Bounded, backtracking-free scan around the change (utils/calc.ts
-            // explains why this is not a regex); every candidate is re-validated
-            // through detectCalcExpression before anything is touched.
-            for (const cand of findRefreshEquations(text, localFrom, localTo, CARET_CONTEXT_WINDOW)) {
-                // The edit must intersect the EXPRESSION side — result edits
-                // are the user's override and are never fought.
-                if (localTo < cand.expr[0] || localFrom > cand.expr[1]) { continue; }
-                if (localFrom >= cand.res[0] && localFrom < cand.res[1]) { continue; }
+        /** Recompute one candidate; rewrite its result if stale. True if rewritten. */
+        const refresh = (blockStart: number, text: string, cand: EquationSpan): boolean => {
+            const key = `${blockStart}:${cand.res[0]}`;
+            if (refreshed.has(key)) { return false; }
+            // An equation inside inline code is source, not a calculation.
+            if (rangeInCode(newState, blockStart + cand.expr[0], blockStart + cand.res[1])) {
+                return false;
+            }
+            let result: string | null = null;
+            if (cand.form === "arrow") {
+                // The arrow's own detection re-derives the expression with the
+                // full boundary discipline; its value resolves against the
+                // definitions above ITS line — never the caret's.
+                const det = detectArrowExpression(text.slice(0, cand.expr[1] + 2), {
+                    boundaryUnknown: false,
+                });
+                if (!det) { return false; }
+                const value = evaluateCalc(det.expr, scopeUpTo(newState, blockStart + cand.expr[0]));
+                result = value === null ? null : formatCalcResult(value);
+                // A unit conversion before the lazy engine loads can't compute
+                // — kick the load off so the NEXT edit refreshes (this hook is
+                // synchronous and cannot await).
+                if (result === null && !calcUnitsReady()) { void ensureCalcUnits().catch(() => undefined); }
+            } else {
                 const det = cand.form === "trailing"
                     // Re-validate with the run's real left context so every
                     // detection guard (comma fragments, letters) still applies.
@@ -410,22 +476,78 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                         text.slice(0, cand.res[0]) + text.slice(cand.res[1], cand.expr[1]),
                         { boundaryUnknown: false },
                     );
-                if (!det) { continue; }
-                // Compare comma-blind: `1,500` for a recomputed `1500` is the
-                // same value in the user's grouping style — leave it alone.
-                if (det.result === cand.resultText.replace(/,/g, "")) { continue; }
-                // Positions were computed against newState; map them through
-                // the steps THIS transaction has already accumulated (an
-                // earlier refresh in another block may have shifted them —
-                // unmapped, a second rewrite lands at corrupt offsets).
-                out = out.insertText(
-                    det.result,
-                    out.mapping.map(blockStart + cand.res[0]),
-                    out.mapping.map(blockStart + cand.res[1]),
-                );
-                touched = true;
-                break; // one refresh per block per pass
+                result = det?.result ?? null;
             }
+            if (result === null) { return false; }
+            // Compare comma-blind: `1,500` for a recomputed `1500` is the
+            // same value in the user's grouping style — leave it alone.
+            if (result === cand.resultText.replace(/,/g, "")) { return false; }
+            // Positions were computed against newState; map them through the
+            // steps THIS transaction has already accumulated (an earlier
+            // refresh may have shifted them — unmapped, a second rewrite
+            // lands at corrupt offsets).
+            out = out.insertText(
+                result,
+                out.mapping.map(blockStart + cand.res[0]),
+                out.mapping.map(blockStart + cand.res[1]),
+            );
+            refreshed.add(key);
+            touched = true;
+            return true;
+        };
+
+        for (const change of changed) {
+            const pos = Math.min(change.from, newState.doc.content.size);
+            const $pos = newState.doc.resolve(pos);
+            if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) { continue; }
+            const blockStart = $pos.start();
+            if (seenBlocks.has(blockStart)) { continue; }
+            seenBlocks.add(blockStart);
+            // Inline atoms mask to a char arithmetic can't contain, keeping
+            // offsets 1:1 with positions (the proofread/notes masking contract).
+            const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
+            // This hook rides EVERY doc change; a block with no "=" can hold
+            // no equation and no definition — skip before any scan work.
+            if (!text.includes("=")) { continue; }
+
+            // An edited definition can stale every `=>` below it.
+            if (blockHasDefinition(text)) {
+                cascadeFrom = cascadeFrom === -1 ? blockStart : Math.min(cascadeFrom, blockStart);
+            }
+
+            const localFrom = Math.max(0, change.from - blockStart);
+            const localTo = Math.min(text.length, Math.max(localFrom, change.to - blockStart));
+            // Bounded, backtracking-free scan around the change (utils/calc.ts
+            // explains why this is not a regex); every candidate is re-validated
+            // through the full detection discipline before anything is touched.
+            for (const cand of findRefreshEquations(text, localFrom, localTo, CARET_CONTEXT_WINDOW)) {
+                if (cand.form !== "arrow" && !autoInsert) { continue; }
+                // The edit must intersect the EXPRESSION side — result edits
+                // are the user's override and are never fought.
+                if (localTo < cand.expr[0] || localFrom > cand.expr[1]) { continue; }
+                if (localFrom >= cand.res[0] && localFrom < cand.res[1]) { continue; }
+                if (refresh(blockStart, text, cand)) { break; } // one local per block
+            }
+        }
+
+        // The variable cascade: recompute every `=>` equation at or below the
+        // edited definition (each against the scope at its own line). Runs
+        // only when a definition-bearing block was edited, and only over
+        // blocks that actually contain "=>" — a keystroke in ordinary prose
+        // never reaches this walk.
+        if (cascadeFrom !== -1) {
+            newState.doc.descendants((node: ProseNode, pos: number) => {
+                if (!node.isTextblock) { return true; }
+                if (node.type.spec.code) { return false; }
+                const blockStart = pos + 1;
+                if (blockStart + node.content.size < cascadeFrom) { return false; }
+                const text = node.textBetween(0, node.content.size, undefined, "￼");
+                if (!text.includes("=>")) { return false; }
+                for (const cand of findRefreshEquations(text, 0, text.length, CARET_CONTEXT_WINDOW)) {
+                    if (cand.form === "arrow") { refresh(blockStart, text, cand); }
+                }
+                return false;
+            });
         }
         return touched ? out : null;
     },

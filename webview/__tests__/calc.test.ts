@@ -840,8 +840,15 @@ describe("findRefreshEquations", () => {
         expect(text.slice(lead!.expr[0], lead!.expr[1])).toBe("5+7");
     });
 
-    it("=> and == are never equations", () => {
-        expect(findRefreshEquations("budget / 12 => 416", 0, 18, 500)).toEqual([]);
+    it("an answered => IS an equation (the living form); == never is", () => {
+        const text = "budget / 12 => 416";
+        const [cand] = findRefreshEquations(text, 0, text.length, 500);
+        expect(cand?.form).toBe("arrow");
+        expect(text.slice(cand.res[0], cand.res[1])).toBe("416");
+        expect(text.slice(cand.expr[0], cand.expr[1]).trim()).toBe("budget / 12");
+        // A bare `=>` with no accepted answer belongs to the advisory
+        // suggestion, not refresh — and highlight syntax is never math.
+        expect(findRefreshEquations("budget / 12 =>", 0, 14, 500)).toEqual([]);
         expect(findRefreshEquations("==highlight== 5", 0, 15, 500)).toEqual([]);
     });
 

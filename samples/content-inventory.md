@@ -112,6 +112,11 @@ budget - rent =>
 
 180 lb to kg =>
 
+Accepted `=>` answers stay **alive**: edit the expression — or a definition
+above it — and the number updates in place. Editing the answer itself is your
+override; the editor never fights it. Try it: change `rent = 1500` above after
+accepting a result below.
+
 Both inline forms live under `birta.calc.enabled`. Fragments are never
 computed: `1,000 + 2 =>` offers nothing rather than answering the digits after
 the comma, and results display at most 6 decimals — an answer, not noise.

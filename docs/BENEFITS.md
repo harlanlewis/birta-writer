@@ -16,12 +16,26 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
 
 - It sits within [VS Code](https://code.visualstudio.com) and its *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor, or comparing changes in a diff view. Birta Writer is simple by design, but every aspect is customizable through VS Code's settings scopes at app, user, or project level.
 
-- There's a little more magic than you might expect, like an inline calculator that autocompletes the answer to a math expression (`6^2+(8*3/4)= 42`), or evaluates one with `=>` using named variables you defined earlier in the document and offline unit conversions (`3 km in mi =>`, `rent / budget * 100 =>`) — and a fenced ` ```calc ` block that turns those into a live worksheet, computing every line under one shared scope. All computed locally, never over the network.
-
 - It helps me write better:
 
   - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, punctuation, and vocabulary.
   - Customizable draft-management tools for jumping to `[TK]` notes, `TODOs`, and inline comments.
+- It's better at math than me:
+
+  - Basic equations answered right in your text, like `6^2+(8*3/4)= 42`. Updates the answer when you change the equation, too.
+
+  - Turn your document into a worksheet with variables:
+
+    - x=4
+    - y=2
+    - x+y=> 6
+  - 1000ms in hr => 0.000278
+
+  - 1 km in mi => 0.621371
+
+  - 24901 mile in km => 40074.274944
+
+- or  evaluates one with `=>` using named variables you defined earlier in the document and offline unit conversions (`3 km in mi =>`, `rent / budget * 100 =>`) — and a fenced ` ```calc ` block that turns those into a live worksheet, computing every line under one shared scope. All computed locally, never over the network.
 
 - It's private.
 
