@@ -5,7 +5,7 @@
     --directive-accent: var(--vscode-descriptionForeground);
     border: 1px solid color-mix(in srgb, var(--directive-accent) 35%, transparent);
     border-left: 3px solid var(--directive-accent);
-    border-radius: 4px;
+    border-radius: var(--ui-radius-m);
     background: color-mix(in srgb, var(--directive-accent) 6%, transparent);
     margin: 0 0 var(--content-flow-gap);
 

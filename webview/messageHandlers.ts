@@ -25,7 +25,7 @@ import { setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
 import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks } from "./messaging";
-import { renderFrontmatterPanel } from "./components/frontmatter";
+import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import { runEditorCommand } from "./editorCommands";
 import {
@@ -312,6 +312,12 @@ export function createMessageHandlers(
             // a transaction — so the flag alone changes nothing on screen.
             regateEmbedsIfPossible();
         },
+        copyFormatChanged(msg) {
+            // Read at copy time from __i18n — flipping the field is the update.
+            if (window.__i18n) {
+                window.__i18n.copyFormat = msg.format;
+            }
+        },
         featureGateChanged(msg) {
             // Read-at-use-time gates: flipping the __i18n field is the whole
             // update (calc's advisory/auto split, the checklist sink, the
@@ -321,6 +327,9 @@ export function createMessageHandlers(
             }
             if (msg.gate === "embedsEnabled") {
                 regateEmbedsIfPossible();
+            }
+            if (msg.gate === "frontmatterAddButton") {
+                refreshFrontmatterEmptyState();
             }
         },
         setBlockHandles(msg) {

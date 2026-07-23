@@ -60,7 +60,7 @@ export function createLangPickerItem(
     selected: boolean,
 ): HTMLLIElement {
     const item = document.createElement("li");
-    item.className = "lang-picker-item";
+    item.className = "ui-menu-row lang-picker-item";
     item.dataset["value"] = value;
     item.setAttribute("role", "option");
     item.setAttribute("aria-selected", selected ? "true" : "false");
@@ -551,7 +551,7 @@ export function createCodeBlockView(
 
     function makeMermaidBtn(icon: string, tipText: string, extraClass = ""): HTMLButtonElement {
         return createButton({
-            className: "mermaid-zoom-btn" + (extraClass ? ` ${extraClass}` : ""),
+            className: "ui-btn mermaid-zoom-btn" + (extraClass ? ` ${extraClass}` : ""),
             icon,
             tabIndex: -1,
             title: tipText,
@@ -565,7 +565,7 @@ export function createCodeBlockView(
 
     // Code/preview toggle button (shown only for mermaid)
     const toggleBtn = document.createElement("button");
-    toggleBtn.className = "code-view-toggle-btn";
+    toggleBtn.className = "ui-btn code-view-toggle-btn";
     toggleBtn.tabIndex = -1;
     toggleBtn.innerHTML = IconEye;
     toggleBtn.style.display = isPreviewable() ? "inline-flex" : "none";
@@ -574,21 +574,21 @@ export function createCodeBlockView(
 
     // Word-wrap toggle for the current code block (local override, not written to Markdown)
     const wordWrapBtn = document.createElement("button");
-    wordWrapBtn.className = "code-wrap-toggle-btn";
+    wordWrapBtn.className = "ui-btn code-wrap-toggle-btn";
     wordWrapBtn.tabIndex = -1;
     wordWrapBtn.innerHTML = IconWrapText;
     const wordWrapTooltip = applyTooltip(wordWrapBtn, t("Toggle Word Wrap"), { placement: "above" });
 
     // Fullscreen button (always present)
     const fullscreenBtn = document.createElement("button");
-    fullscreenBtn.className = "mermaid-zoom-btn code-block-fullscreen-btn";
+    fullscreenBtn.className = "ui-btn mermaid-zoom-btn code-block-fullscreen-btn";
     fullscreenBtn.tabIndex = -1;
     fullscreenBtn.innerHTML = IconMaximize2;
     applyTooltip(fullscreenBtn, t("View Fullscreen"), { placement: "above" });
 
     // Copy button
     const copyBtn = document.createElement("button");
-    copyBtn.className = "copy-btn";
+    copyBtn.className = "ui-btn copy-btn";
     copyBtn.tabIndex = -1;
     copyBtn.innerHTML = IconCopy;
     const copyTooltip = applyTooltip(copyBtn, t("Copy Code"), { placement: "above" });
@@ -718,7 +718,7 @@ export function createCodeBlockView(
 
     const overlayZoomOut = makeMermaidBtn(IconZoomOut, t("Zoom Out"), "mermaid-overlay-btn");
     const overlayZoomVal = document.createElement("button");
-    overlayZoomVal.className = "mermaid-zoom-btn mermaid-overlay-btn mermaid-overlay-val";
+    overlayZoomVal.className = "ui-btn mermaid-zoom-btn mermaid-overlay-btn mermaid-overlay-val";
     overlayZoomVal.tabIndex = -1;
     overlayZoomVal.textContent = "100%";
     applyTooltip(overlayZoomVal, t("Reset Zoom"), { placement: "above" });
@@ -735,7 +735,7 @@ export function createCodeBlockView(
 
     // Center reset button (fit-to-view)
     const panResetBtn = document.createElement("button");
-    panResetBtn.className = "mermaid-pan-btn mermaid-pan-reset";
+    panResetBtn.className = "ui-btn mermaid-pan-btn mermaid-pan-reset";
     panResetBtn.tabIndex = -1;
     panResetBtn.innerHTML = IconResetZoom;
     applyTooltip(panResetBtn, t("Reset Zoom"), { placement: "above" });
@@ -769,7 +769,7 @@ export function createCodeBlockView(
 
     function makePanBtn(icon: string, dir: string): HTMLButtonElement {
         const btn = document.createElement("button");
-        btn.className = "mermaid-pan-btn";
+        btn.className = "ui-btn mermaid-pan-btn";
         btn.tabIndex = -1;
         btn.innerHTML = icon;
         btn.addEventListener("mousedown", (e) => {
@@ -1287,13 +1287,13 @@ export function createCodeBlockView(
         lbTitle.textContent = "Mermaid";
 
         const lbToggleBtn = document.createElement("button");
-        lbToggleBtn.className = "mermaid-zoom-btn";
+        lbToggleBtn.className = "ui-btn mermaid-zoom-btn";
         lbToggleBtn.tabIndex = -1;
         lbToggleBtn.innerHTML = IconCode;
         const lbToggleTip = applyTooltip(lbToggleBtn, t("Edit Code"), { placement: "above" });
         const lbZoomOutBtn  = makeMermaidBtn(IconZoomOut, t("Zoom Out"));
         const lbZoomResetBtn = document.createElement("button");
-        lbZoomResetBtn.className = "mermaid-zoom-btn";
+        lbZoomResetBtn.className = "ui-btn mermaid-zoom-btn";
         lbZoomResetBtn.tabIndex = -1;
         lbZoomResetBtn.textContent = "100%";
         applyTooltip(lbZoomResetBtn, t("Reset Zoom"), { placement: "above" });

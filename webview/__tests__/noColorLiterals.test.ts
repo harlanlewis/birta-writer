@@ -132,8 +132,11 @@ const NAMED_COLORS =
         "teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen").split(" ");
 const NAMED_COLOR_RE = new RegExp(`(?<![\\w-])(?:${NAMED_COLORS.join("|")})(?![\\w(-])`, "gi");
 
-/** Shadow-context detector: box-shadow/text-shadow declarations and drop-shadow(). */
-const SHADOW_DECL_RE = /(?:^|[;{])\s*(?:box-shadow|text-shadow)\s*:/;
+/** Shadow-context detector: box-shadow/text-shadow declarations, drop-shadow(),
+ *  and shadow-valued custom properties (`--ui-card-shadow:` — a token holding a
+ *  shadow is still a depth cue; the monochrome-translucent rule applies to it
+ *  the same way). */
+const SHADOW_DECL_RE = /(?:^|[;{])\s*(?:box-shadow|text-shadow|--[\w-]*shadow[\w-]*)\s*:/;
 
 /**
  * Translucent monochrome rgba() — allowed ONLY inside shadow declarations
@@ -253,6 +256,14 @@ describe("no bare color literals in webview CSS", () => {
         ).toEqual([]);
         expect(
             scanCssTextForColorLiterals("a { filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.5)); }"),
+        ).toEqual([]);
+        // A shadow-valued token is still a shadow (ui/chrome.css --ui-card-shadow).
+        expect(
+            scanCssTextForColorLiterals(":root { --ui-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }"),
+        ).toEqual([]);
+        // Tier-suffixed shadow tokens count too (--ui-card-shadow-s).
+        expect(
+            scanCssTextForColorLiterals(":root { --ui-card-shadow-s: 0 2px 8px rgba(0, 0, 0, 0.3); }"),
         ).toEqual([]);
         // A tinted shadow is a palette choice and stays flagged.
         expect(

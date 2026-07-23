@@ -162,7 +162,7 @@ export function initFindBar(
     bar.setAttribute("role", "search");
 
     const btnToggleReplace = createButton({
-        className: "find-bar__btn find-bar__toggle",
+        className: "ui-btn ui-btn--icon find-bar__btn find-bar__toggle",
         icon: IconChevronRight,
         title: t("Toggle Replace"),
     });
@@ -192,14 +192,14 @@ export function initFindBar(
     // keybindings, and the webview cannot query their effective binding,
     // so printing a default here could show a wrong shortcut.
     const btnPrev = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         icon: IconChevronUp,
         title: `${t("Previous Match")} (${kbd("Shift-Enter")})`,
     });
     btnPrev.setAttribute("aria-label", t("Previous Match"));
 
     const btnNext = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         icon: IconChevronDown,
         title: `${t("Next Match")} (Enter)`,
     });
@@ -215,7 +215,7 @@ export function initFindBar(
         kbd(isMac ? `Mod-Alt-${letter}` : `Alt-${letter}`);
 
     const btnCase = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         label: "Aa",
         title: `${t("Match Case")} (${toggleKbd("C")})`,
     });
@@ -223,7 +223,7 @@ export function initFindBar(
     btnCase.setAttribute("aria-pressed", "false");
 
     const btnWord = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         label: "ab",
         title: `${t("Match Whole Word")} (${toggleKbd("W")})`,
     });
@@ -231,7 +231,7 @@ export function initFindBar(
     btnWord.setAttribute("aria-pressed", "false");
 
     const btnRegex = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         label: ".*",
         title: `${t("Use Regular Expression")} (${toggleKbd("R")})`,
     });
@@ -239,7 +239,7 @@ export function initFindBar(
     btnRegex.setAttribute("aria-pressed", "false");
 
     const btnInSelection = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         icon: IconFindSelection,
         title: `${t("Find in Selection")} (${toggleKbd("L")})`,
     });
@@ -247,7 +247,7 @@ export function initFindBar(
     btnInSelection.setAttribute("aria-pressed", "false");
 
     const btnClose = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         icon: IconX,
         title: `${t("Close")} (Esc)`,
     });
@@ -268,14 +268,14 @@ export function initFindBar(
     replaceInput.autocomplete = "off";
 
     const btnReplace = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         icon: IconReplace,
         title: `${t("Replace")} (Enter)`,
     });
     btnReplace.setAttribute("aria-label", t("Replace"));
 
     const btnReplaceAll = createButton({
-        className: "find-bar__btn",
+        className: "ui-btn ui-btn--icon find-bar__btn",
         icon: IconReplaceAll,
         title: `${t("Replace All")} (${kbd("Mod-Enter")})`,
     });

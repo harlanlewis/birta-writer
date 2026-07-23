@@ -255,7 +255,7 @@ export function createSuggestMenuFromRows(
 
     rows.forEach((text, i) => {
         const li = document.createElement("li");
-        li.className = "fm-suggest-item";
+        li.className = "ui-menu-row fm-suggest-item";
         if (rowDefs[i].action) { li.classList.add("fm-suggest-item--action"); }
         li.id = `${menuId}-opt-${i}`;
         li.setAttribute("role", "option");

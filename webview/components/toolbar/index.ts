@@ -83,7 +83,7 @@ function btn(
     extraClass = "",
 ): HTMLButtonElement {
     return createButton({
-        className: `tb-btn${extraClass ? " " + extraClass : ""}`,
+        className: `ui-btn tb-btn${extraClass ? " " + extraClass : ""}`,
         icon,
         title,
         onClick,
@@ -104,7 +104,7 @@ function createMenuTrigger(opts: {
     ariaLabel?: string;
 }): HTMLButtonElement {
     const el = document.createElement("button");
-    el.className = opts.className ?? "tb-btn tb-fmt-btn";
+    el.className = opts.className ?? "ui-btn tb-btn tb-fmt-btn";
     if (opts.html !== undefined) { el.innerHTML = opts.html; }
     if (opts.text !== undefined) { el.textContent = opts.text; }
     if (opts.ariaLabel) { el.setAttribute("aria-label", opts.ariaLabel); }
@@ -118,7 +118,7 @@ function createMenuTrigger(opts: {
 /** A horizontal menu divider — the shared separator idiom for every dropdown. */
 function makeSep(): HTMLElement {
     const sep = document.createElement("div");
-    sep.className = "tb-menu-sep";
+    sep.className = "ui-menu-divider tb-menu-sep";
     sep.setAttribute("role", "separator");
     return sep;
 }
@@ -139,7 +139,7 @@ interface CheckItem {
  */
 function createCheckItem(label: string): CheckItem {
     const el = document.createElement("div");
-    el.className = "tb-fmt-item tb-check-item";
+    el.className = "ui-menu-row tb-fmt-item tb-check-item";
     el.setAttribute("role", "menuitemcheckbox");
     const mark = document.createElement("span");
     mark.className = "menu-check";
@@ -172,7 +172,7 @@ interface FillItem {
  */
 function createFillItem(label: string): FillItem {
     const el = document.createElement("div");
-    el.className = "tb-fmt-item tb-fmt-fill-item";
+    el.className = "ui-menu-row tb-fmt-item tb-fmt-fill-item";
     el.setAttribute("role", "menuitemradio");
     el.setAttribute("aria-checked", "false");
     el.textContent = label;
@@ -195,7 +195,7 @@ function createFillItem(label: string): FillItem {
  */
 function createSwitchItem(label: string): CheckItem {
     const el = document.createElement("div");
-    el.className = "tb-fmt-item tb-switch-item";
+    el.className = "ui-menu-row tb-fmt-item tb-switch-item";
     el.setAttribute("role", "switch");
     el.setAttribute("aria-checked", "true");
     const labelEl = document.createElement("span");
@@ -240,7 +240,7 @@ function showImageInsertPanel(
     const titleText = document.createElement("span");
     titleText.textContent = t("Insert Image");
     const closeBtn = document.createElement("button");
-    closeBtn.className = "img-insert-close-btn";
+    closeBtn.className = "ui-btn ui-btn--icon img-insert-close-btn";
     closeBtn.innerHTML = IconX;
     closeBtn.type = "button";
     titleBar.appendChild(titleText);
@@ -257,12 +257,12 @@ function showImageInsertPanel(
     tabProject.type = "button";
 
     const tabUrl = document.createElement("button");
-    tabUrl.className = "img-insert-tab";
+    tabUrl.className = "ui-btn img-insert-tab";
     tabUrl.textContent = t("URL");
     tabUrl.type = "button";
 
     const tabUpload = document.createElement("button");
-    tabUpload.className = "img-insert-tab";
+    tabUpload.className = "ui-btn img-insert-tab";
     tabUpload.textContent = t("Upload");
     tabUpload.type = "button";
 
@@ -319,7 +319,7 @@ function showImageInsertPanel(
     uploadSection.style.display = "none";
 
     const selectFileBtn = document.createElement("button");
-    selectFileBtn.className = "img-insert-browse-btn";
+    selectFileBtn.className = "ui-btn ui-btn--secondary img-insert-browse-btn";
     selectFileBtn.type = "button";
     selectFileBtn.textContent = t("Select local image");
 
@@ -347,12 +347,12 @@ function showImageInsertPanel(
     btnRow.className = "img-insert-btn-row";
 
     const okBtn = document.createElement("button");
-    okBtn.className = "img-insert-ok-btn";
+    okBtn.className = "ui-btn ui-btn--primary img-insert-ok-btn";
     okBtn.innerHTML = IconCheck + " " + t("Confirm");
     okBtn.type = "button";
 
     const cancelBtn = document.createElement("button");
-    cancelBtn.className = "img-insert-cancel-btn";
+    cancelBtn.className = "ui-btn img-insert-cancel-btn";
     cancelBtn.innerHTML = IconX + " " + t("Cancel");
     cancelBtn.type = "button";
 
@@ -902,7 +902,7 @@ export function initToolbar(
         for (const mode of CONTENT_WIDTH_MODES) {
             const segBtn = document.createElement("button");
             segBtn.type = "button";
-            segBtn.className = "tb-seg-btn";
+            segBtn.className = "ui-btn ui-btn--secondary tb-seg-btn";
             segBtn.setAttribute("role", "radio");
             segBtn.textContent = widthLabels[mode].label;
             segBtn.title = widthLabels[mode].title;
@@ -929,7 +929,7 @@ export function initToolbar(
         ): HTMLButtonElement => {
             const b = document.createElement("button");
             b.type = "button";
-            b.className = `tb-font-size-btn ${cls}`;
+            b.className = `ui-btn tb-font-size-btn ${cls}`;
             b.textContent = "A";
             b.title = label;
             b.setAttribute("aria-label", label);
@@ -948,7 +948,7 @@ export function initToolbar(
         );
         sizeValueEl = document.createElement("button");
         sizeValueEl.setAttribute("type", "button");
-        sizeValueEl.className = "tb-font-size-value";
+        sizeValueEl.className = "ui-btn tb-font-size-value";
         sizeValueEl.title = t("Reset font size");
         sizeValueEl.addEventListener("mousedown", (e) => {
             e.preventDefault();
@@ -1252,7 +1252,7 @@ export function initToolbar(
         for (const { type, icon, label, command } of choices) {
             const row = document.createElement("button");
             row.type = "button";
-            row.className = "tb-fmt-item tb-list-item";
+            row.className = "ui-menu-row tb-fmt-item tb-list-item";
             row.setAttribute("role", "menuitemcheckbox");
             row.setAttribute("aria-checked", "false");
             const iconEl = document.createElement("span");
@@ -1285,7 +1285,7 @@ export function initToolbar(
         listMenu.appendChild(makeSep());
         const sinkRow = document.createElement("button");
         sinkRow.type = "button";
-        sinkRow.className = "tb-fmt-item tb-list-item";
+        sinkRow.className = "ui-menu-row tb-fmt-item tb-list-item";
         sinkRow.setAttribute("role", "menuitemcheckbox");
         sinkRow.title = t("Checking a task moves it below the unchecked items (birta.checklist.sinkChecked)");
         const sinkIcon = document.createElement("span");
@@ -1346,7 +1346,7 @@ export function initToolbar(
         const addRow = (key: CodeRowKey, icon: string, label: string, run: () => void): void => {
             const row = document.createElement("button");
             row.type = "button";
-            row.className = "tb-fmt-item tb-callout-item";
+            row.className = "ui-menu-row tb-fmt-item tb-callout-item";
             row.setAttribute("role", "menuitemcheckbox");
             row.setAttribute("aria-checked", "false");
             row.innerHTML = icon;
@@ -1419,7 +1419,7 @@ export function initToolbar(
         const addRow = (key: string, icon: string, label: string, run: () => void): void => {
             const row = document.createElement("button");
             row.type = "button";
-            row.className = "tb-fmt-item tb-callout-item";
+            row.className = "ui-menu-row tb-fmt-item tb-callout-item";
             row.setAttribute("role", "menuitemcheckbox");
             row.setAttribute("aria-checked", "false");
             row.innerHTML = icon;
@@ -1482,7 +1482,7 @@ export function initToolbar(
         dbgWrap.className = "tb-fmt-wrap";
 
         const dbgBtn = document.createElement("button");
-        dbgBtn.className = "tb-btn tb-fmt-btn";
+        dbgBtn.className = "ui-btn tb-btn tb-fmt-btn";
         dbgBtn.innerHTML = IconList + IconChevronDown;
         dbgBtn.setAttribute("aria-label", t("Debug"));
         // No tooltip: it would overlap the dropdown menu (see the font picker).
@@ -1496,7 +1496,7 @@ export function initToolbar(
         dbgMenu.style.display = "none";
 
         const testLineItem = document.createElement("button");
-        testLineItem.className = "tb-fmt-item";
+        testLineItem.className = "ui-menu-row tb-fmt-item";
         testLineItem.textContent = t("Test get line number");
         testLineItem.addEventListener("click", async () => {
             closeDbgMenu(); // shared close — owns the Escape-layer unregister
@@ -1693,7 +1693,7 @@ export function initToolbar(
         };
         const addHeader = (parent: HTMLElement, title: string): void => {
             const header = document.createElement("div");
-            header.className = "tb-fmt-header";
+            header.className = "ui-heading ui-menu-heading tb-fmt-header";
             header.textContent = title;
             parent.appendChild(header);
         };
@@ -1725,7 +1725,7 @@ export function initToolbar(
         // on. It's an action, not a check, so no toggle.
         if (onShowProofreading) {
             const showItem = document.createElement("div");
-            showItem.className = "tb-fmt-item tb-checks-action";
+            showItem.className = "ui-menu-row tb-fmt-item tb-checks-action";
             showItem.setAttribute("role", "menuitem");
             showItem.tabIndex = -1;
             showItem.textContent = t("Show issues");
@@ -1820,7 +1820,7 @@ export function initToolbar(
 
         const addEntry = (label: string, onSelect: () => void): void => {
             const entry = document.createElement("div");
-            entry.className = "tb-fmt-item";
+            entry.className = "ui-menu-row tb-fmt-item";
             entry.textContent = label;
             entry.addEventListener("mousedown", (e) => {
                 e.preventDefault();
@@ -1880,7 +1880,7 @@ export function initToolbar(
 
     const moreBtn = createMenuTrigger({
         text: "⋯",
-        className: "tb-btn tb-more-btn",
+        className: "ui-btn tb-btn tb-more-btn",
         ariaLabel: t("More"),
     });
 
@@ -1916,7 +1916,7 @@ export function initToolbar(
     let toolbarVisible = latestConfig?.visible !== false;
 
     const showTab = createButton({
-        className: "toolbar-toggle-tab",
+        className: "ui-btn toolbar-toggle-tab",
         icon: IconChevronDown,
         title: t("Show toolbar"),
         onClick: () => setToolbarVisible(true),
@@ -1961,13 +1961,13 @@ export function initToolbar(
 
         const label = document.createElement("span");
         label.className = "tb-hidden-tray-label";
-        label.textContent = t("Hidden — drag to add");
+        label.textContent = t("Drag to add and remove:");
 
         const trayItems = document.createElement("div");
         trayItems.className = "tb-hidden-tray-items tb-zone";
 
         const doneBtn = document.createElement("button");
-        doneBtn.className = "tb-edit-done";
+        doneBtn.className = "ui-btn ui-btn--primary tb-edit-done";
         doneBtn.textContent = t("Done");
 
         tray.append(label, trayItems, doneBtn);

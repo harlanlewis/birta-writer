@@ -166,7 +166,7 @@ function sBtn(
     title: string,
     onClick: () => void,
 ): HTMLButtonElement {
-    return createButton({ className: "sel-tb-btn", icon, title, tooltipPlacement: "above", onClick });
+    return createButton({ className: "ui-btn sel-tb-btn", icon, title, tooltipPlacement: "above", onClick });
 }
 
 /** The gutter symbol for a block node: a heading → an "H{n}" text badge, a
@@ -347,7 +347,7 @@ export function setupSelectionToolbar(
     fmtWrap.className = "sel-tb-fmt-wrap";
 
     const fmtBtn = document.createElement("button");
-    fmtBtn.className = "sel-tb-btn sel-tb-fmt-btn";
+    fmtBtn.className = "ui-btn sel-tb-btn sel-tb-fmt-btn";
     fmtBtn.innerHTML = `<span class="sel-tb-fmt-label">P</span>${IconChevronDown}`;
     fmtBtn.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -378,7 +378,7 @@ export function setupSelectionToolbar(
 
     formats.forEach(([, shortLabel, action]) => {
         const item = document.createElement("div");
-        item.className = "sel-tb-fmt-item";
+        item.className = "ui-menu-row sel-tb-fmt-item";
         item.textContent = shortLabel;
         item.addEventListener("mousedown", (e) => {
             e.preventDefault();
@@ -473,7 +473,7 @@ export function setupSelectionToolbar(
     // No shortcut label: insert-link is a user-rebindable contributed
     // keybinding and the webview cannot query its effective binding.
     const linkBtn = createButton({
-        className: "sel-tb-btn sel-tb-link-btn",
+        className: "ui-btn sel-tb-btn sel-tb-link-btn",
         icon: IconLink,
         title: t("Insert/Edit Link"),
         tooltipPlacement: "above",
@@ -563,7 +563,7 @@ export function setupSelectionToolbar(
     alignWrap.style.display = "none";
 
     const alignBtn = document.createElement("button");
-    alignBtn.className = "sel-tb-btn sel-tb-fmt-btn";
+    alignBtn.className = "ui-btn sel-tb-btn sel-tb-fmt-btn";
     alignBtn.innerHTML = IconAlignLeft + IconChevronDown;
     alignBtn.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -581,7 +581,7 @@ export function setupSelectionToolbar(
     ];
     alignDefs.forEach(([icon, title, value]) => {
         const item = document.createElement("div");
-        item.className = "sel-tb-fmt-item sel-tb-align-item";
+        item.className = "ui-menu-row sel-tb-fmt-item sel-tb-align-item";
         item.innerHTML = icon;
         applyTooltip(item as HTMLElement, title, { placement: "above" });
         item.addEventListener("mousedown", (e) => {

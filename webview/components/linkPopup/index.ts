@@ -323,14 +323,14 @@ export function setupLinkPopup(
     // Icon-only header buttons: applyTooltip strips the native title, so each
     // carries an explicit aria-label for its accessible name (screen readers).
     const btnOpen = document.createElement("button");
-    btnOpen.className = "lp-btn lp-btn-open";
+    btnOpen.className = "ui-btn ui-btn--icon lp-btn lp-btn-open";
     btnOpen.innerHTML = IconExternalLink;
     btnOpen.setAttribute("aria-label", t("Open link"));
     const btnOpenTooltip = applyTooltip(btnOpen, openHint, { placement: "above" });
 
     // Copy the link's href to the clipboard (Docs/Slack link-chip convention).
     const btnCopy = document.createElement("button");
-    btnCopy.className = "lp-btn lp-btn-copy";
+    btnCopy.className = "ui-btn ui-btn--icon lp-btn lp-btn-copy";
     btnCopy.innerHTML = IconCopy;
     btnCopy.setAttribute("aria-label", t("Copy link"));
     const btnCopyTooltip = applyTooltip(btnCopy, t("Copy link"), { placement: "above" });
@@ -340,13 +340,13 @@ export function setupLinkPopup(
     // header beside Open/Copy/Edit; its icon carries a slash so the "remove"
     // meaning is unambiguous, and only its hover uses the error color (see CSS).
     const btnRemove = document.createElement("button");
-    btnRemove.className = "lp-btn lp-btn-remove";
+    btnRemove.className = "ui-btn ui-btn--icon lp-btn lp-btn-remove";
     btnRemove.setAttribute("aria-label", t("Remove Link"));
     btnRemove.innerHTML = IconLinkOff;
     applyTooltip(btnRemove, t("Remove Link"), { placement: "above" });
 
     const btnEdit = document.createElement("button");
-    btnEdit.className = "lp-btn lp-btn-edit";
+    btnEdit.className = "ui-btn ui-btn--icon lp-btn lp-btn-edit";
     btnEdit.innerHTML = IconPencil;
     btnEdit.setAttribute("aria-label", t("Edit link"));
     applyTooltip(btnEdit, t("Edit link"), { placement: "above" });
@@ -395,7 +395,7 @@ export function setupLinkPopup(
     // document-relative path; the field is filled but NOT committed — the
     // popup's apply-on-Enter/blur contract stays the single write path.
     const btnBrowse = document.createElement("button");
-    btnBrowse.className = "lp-btn lp-btn-browse";
+    btnBrowse.className = "ui-btn ui-btn--icon lp-btn lp-btn-browse";
     btnBrowse.innerHTML = IconFolderOpen;
     applyTooltip(btnBrowse, t("Browse files…"), { placement: "above" });
     // preventDefault keeps focus in the URL input (a focus trip to the button

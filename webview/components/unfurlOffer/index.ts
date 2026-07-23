@@ -85,7 +85,7 @@ export function offerUnfurlTitle(opts: UnfurlOfferOptions): void {
     closeCurrent();
 
     const el = document.createElement("div");
-    el.className = "unfurl-offer";
+    el.className = "ui-notice unfurl-offer";
     el.setAttribute("role", "status");
     // Announced without interrupting, matching the network opt-in pill.
     el.setAttribute("aria-live", "polite");
@@ -102,13 +102,13 @@ export function offerUnfurlTitle(opts: UnfurlOfferOptions): void {
 
     const acceptBtn = document.createElement("button");
     acceptBtn.type = "button";
-    acceptBtn.className = "unfurl-offer__accept";
+    acceptBtn.className = "ui-btn ui-btn--accent unfurl-offer__accept";
     acceptBtn.textContent = t("Use title");
     acceptBtn.title = t("Replace the link text with this page title");
 
     const dismissBtn = document.createElement("button");
     dismissBtn.type = "button";
-    dismissBtn.className = "unfurl-offer__dismiss";
+    dismissBtn.className = "ui-btn ui-btn--icon ui-notice__dismiss unfurl-offer__dismiss";
     dismissBtn.setAttribute("aria-label", t("Keep the plain link"));
     dismissBtn.textContent = "×";
 
@@ -119,7 +119,7 @@ export function offerUnfurlTitle(opts: UnfurlOfferOptions): void {
     // go hunting for why they're being asked.
     const alwaysBtn = document.createElement("button");
     alwaysBtn.type = "button";
-    alwaysBtn.className = "unfurl-offer__always";
+    alwaysBtn.className = "ui-btn unfurl-offer__always";
     alwaysBtn.textContent = alwaysLabel();
     alwaysBtn.title = t("Apply fetched titles without asking (birta.pasteUnfurl.autoApply)");
 

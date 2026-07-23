@@ -20,7 +20,7 @@ import {
     resolveContentWidthConfig,
     type BirtaConfig,
 } from "./config";
-import { BIRTA_CONFIG_DEFAULTS } from "../shared/config";
+import { BIRTA_CONFIG_DEFAULTS, normalizeCopyFormat } from "../shared/config";
 import { resolveFontFamily, clampFontSizePercent } from "../shared/fontPresets";
 import { clampMaxWidthCh } from "../shared/contentWidth";
 import { normalizeBlockHandlesMode, blockHandlesBodyClass } from "../shared/blockHandles";
@@ -231,6 +231,8 @@ export function buildWebviewHtml(
     const codeBlockWordWrap = resolveCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
     const tocAutoHideThreshold = clampNumberSetting(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);
     const frontmatterExpanded = config.frontmatterExpanded;
+    const frontmatterAddButton = config.frontmatterAddButton !== false;
+    const copyFormat = normalizeCopyFormat(config.copyFormat);
     const blockHandles = normalizeBlockHandlesMode(config.blockHandles);
     const mermaidTheme = normalizeMermaidThemeMode(config.mermaidTheme);
     const folding = readFoldingConfig(document.uri);
@@ -243,7 +245,10 @@ export function buildWebviewHtml(
     // optional-chained so a stripped-down test context still resolves.
     const productName =
         (context.extension?.packageJSON?.displayName as string | undefined) ?? "Birta Writer";
-    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, notesCustomMarkers: config.notesCustomMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName })};`;
+    // .replace(/</g, "\\u003c"): JSON.stringify leaves "<" intact, so a string
+    // setting containing "</script>" would close the inline script element
+    // early (no code execution under the nonce CSP, but style injection).
+    const i18nScript = `window.__i18n=${JSON.stringify({ translations, isMac, debugMode, codeBlockAutoConvert, smartLinks, network: networkEnabled, pasteUnfurl, pasteUnfurlAutoApply, calcEnabled, calcAutoInsert, autoUpdateAnchors, embedsEnabled, checklistSinkChecked, notesCustomMarkers: config.notesCustomMarkers, reviewGroupByType: config.reviewGroupByType, codeBlockWordWrap, tocAutoHideThreshold, tocVisibility, frontmatterExpanded, frontmatterAddButton, copyFormat, proofread, toolbar, floatingToolbar, fontPreset, fontStacks, fontSize, contentWidth: contentWidth.mode, maxContentWidth, mermaidTheme, documentUri, productName }).replace(/</g, "\\u003c")};`;
     const bodyClasses = [
         isAutoWidth ? "editor-width-auto" : "",
         codeBlockWordWrap ? "code-block-word-wrap" : "",

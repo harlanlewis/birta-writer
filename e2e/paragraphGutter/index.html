@@ -15,6 +15,9 @@
     --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
   }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production. */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
   // tocAutoHideThreshold: the MAR-158 fixture carries 4 headings, enough to

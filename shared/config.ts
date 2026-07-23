@@ -55,6 +55,20 @@ export interface BirtaConfig extends ProofreadConfig {
      *  normalize with normalizeTocVisibility (a settings.json typo → "auto"). */
     tocVisibility: TocVisibility;
     frontmatterExpanded: boolean;
+    /** Show the Add-metadata button on documents without frontmatter
+     *  (birta.frontmatterAddButton). Off hides the empty state entirely;
+     *  the Edit Frontmatter command still reaches the same flow. */
+    frontmatterAddButton: boolean;
+    /**
+     * What a native copy (Cmd+C / the Copy menu) puts on the clipboard's
+     * plain-text flavor (birta.copyFormat): "markdown" (default) serializes the
+     * selection back to Markdown source, "richText" keeps the editor's plain
+     * rendition. The rich HTML flavor is written either way, so pasting into
+     * rich-text apps (and back into the editor) keeps formatting in both modes.
+     * Settings-file values are free text — normalize with normalizeCopyFormat
+     * before they cross into the webview.
+     */
+    copyFormat: "markdown" | "richText";
     customCss: string[];
     customJs: string[];
     fontPreset: FontPreset;
@@ -160,6 +174,11 @@ export interface BirtaConfig extends ProofreadConfig {
 }
 
 /** Field → setting key under the `birta.` prefix. */
+/** A settings.json typo (the enum constrains only the Settings UI) → the default. */
+export function normalizeCopyFormat(value: unknown): "markdown" | "richText" {
+    return value === "richText" ? "richText" : "markdown";
+}
+
 export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } = {
     // Proofreading (ProofreadConfig fields)
     proofreadingEnabled: "proofreading.enabled",
@@ -197,6 +216,8 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     tocWidth: "tocWidth",
     tocVisibility: "tocVisibility",
     frontmatterExpanded: "frontmatterExpanded",
+    frontmatterAddButton: "frontmatterAddButton",
+    copyFormat: "copyFormat",
     customCss: "customCss",
     customJs: "customJs",
     fontPreset: "fontPreset",
@@ -264,6 +285,11 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     tocWidth: 260,
     tocVisibility: DEFAULT_TOC_VISIBILITY,
     frontmatterExpanded: true,
+    frontmatterAddButton: true,
+    // Native copy yields Markdown source by default — pasting into any
+    // plain-text target keeps the syntax; "richText" restores the plain
+    // rendition (the rich HTML flavor rides along in both modes).
+    copyFormat: "markdown",
     customCss: [],
     customJs: [],
     fontPreset: DEFAULT_FONT_PRESET,

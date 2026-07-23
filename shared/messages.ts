@@ -365,7 +365,9 @@ export type ToWebviewMessage =
     // Live update for the boolean feature gates that read from __i18n at use
     // time (not at plugin composition): a settings-UI edit, palette toggle
     // command, or another webview's menu switch reaches every open editor.
-    | { type: "featureGateChanged"; gate: "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl" | "pasteUnfurlAutoApply" | "embedsEnabled"; enabled: boolean }
+    | { type: "featureGateChanged"; gate: "calcAutoInsert" | "checklistSinkChecked" | "pasteUnfurl" | "pasteUnfurlAutoApply" | "embedsEnabled" | "frontmatterAddButton"; enabled: boolean }
+    // Live update for birta.copyFormat (a string gate, read at copy time).
+    | { type: "copyFormatChanged"; format: "markdown" | "richText" }
     | { type: "fmSuggestions"; key: string; values: string[] }
     | { type: "proofreadConfig"; config: ProofreadConfig }
     // Live update of the Notes-tab custom markers (birta.notes.customMarkers changed).

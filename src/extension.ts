@@ -6,6 +6,7 @@ import { normalizeMermaidThemeMode } from "../shared/mermaid";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
+import { normalizeCopyFormat } from "../shared/config";
 import { WordCountStatusBar } from "./wordCountStatus";
 import { reportErrorWithNotification } from "./errorSink";
 import {
@@ -457,6 +458,19 @@ export function activate(context: vscode.ExtensionContext) {
                     type: "featureGateChanged",
                     gate: "embedsEnabled",
                     enabled: readBirtaSetting("embedsEnabled"),
+                });
+            }
+            if (e.affectsConfiguration("birta.frontmatterAddButton")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "featureGateChanged",
+                    gate: "frontmatterAddButton",
+                    enabled: readBirtaSetting("frontmatterAddButton"),
+                });
+            }
+            if (e.affectsConfiguration("birta.copyFormat")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "copyFormatChanged",
+                    format: normalizeCopyFormat(readBirtaSetting("copyFormat")),
                 });
             }
             if (e.affectsConfiguration("birta.network.enabled")) {

@@ -62,11 +62,11 @@
     border: 1px solid var(--vscode-panel-border);
 }
 .mw-grip--row .mw-grip-handle {
-    border-radius: 4px 0 0 4px;
+    border-radius: var(--ui-radius-m) 0 0 var(--ui-radius-m);
     border-right: none;
 }
 .mw-grip--col .mw-grip-handle {
-    border-radius: 4px 4px 0 0;
+    border-radius: var(--ui-radius-m) var(--ui-radius-m) 0 0;
     border-bottom: none;
 }
 .mw-grip:hover .mw-grip-handle,

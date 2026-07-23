@@ -364,6 +364,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.copyAsRichText",
+                "title": "%command.editor.copyAsRichText.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.editRawMarkdown",
                 "title": "%command.editor.editRawMarkdown.title%",
                 "category": "Birta Writer"
@@ -938,7 +943,11 @@
                 },
                 {
                     "command": "birta.editor.copyAsMarkdown",
-                    "when": "false"
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.editor.copyAsRichText",
+                    "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
                     "command": "birta.editor.editRawMarkdown",
@@ -1156,6 +1165,11 @@
                     "group": "3_copy@2"
                 },
                 {
+                    "command": "birta.editor.copyAsRichText",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'editor'",
+                    "group": "3_copy@3"
+                },
+                {
                     "command": "birta.editor.copyAsHtml",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'table'",
                     "group": "3_copy@1"
@@ -1166,6 +1180,11 @@
                     "group": "3_copy@2"
                 },
                 {
+                    "command": "birta.editor.copyAsRichText",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'table'",
+                    "group": "3_copy@3"
+                },
+                {
                     "command": "birta.editor.copyAsHtml",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'link'",
                     "group": "3_copy@1"
@@ -1174,6 +1193,11 @@
                     "command": "birta.editor.copyAsMarkdown",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'link'",
                     "group": "3_copy@2"
+                },
+                {
+                    "command": "birta.editor.copyAsRichText",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'link'",
+                    "group": "3_copy@3"
                 },
                 {
                     "command": "birta.editor.editRawMarkdown",
@@ -1478,6 +1502,26 @@
                     "type": "boolean",
                     "default": true,
                     "description": "%config.frontmatterExpanded.description%"
+                },
+                "birta.frontmatterAddButton": {
+                    "order": 7,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.frontmatterAddButton.description%"
+                },
+                "birta.copyFormat": {
+                    "order": 3,
+                    "type": "string",
+                    "enum": [
+                        "markdown",
+                        "richText"
+                    ],
+                    "default": "markdown",
+                    "description": "%config.copyFormat.description%",
+                    "enumDescriptions": [
+                        "%config.copyFormat.markdown%",
+                        "%config.copyFormat.richText%"
+                    ]
                 },
                 "birta.customCss": {
                     "order": 12,

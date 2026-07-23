@@ -22,6 +22,9 @@
     --vscode-symbolIcon-keywordForeground: #c586c0;
   }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); margin: 0; }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production. */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
   // Docked mode becomes a pure width test (1000 >= 220 + 720) — and the

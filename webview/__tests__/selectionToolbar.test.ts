@@ -128,7 +128,7 @@ describe("selection toolbar link button", () => {
         expect(btn.previousElementSibling?.className).toBe("sel-tb-sep");
         expect(
             btn.previousElementSibling?.previousElementSibling?.className,
-        ).toBe("sel-tb-btn"); // inline-code button
+        ).toContain("sel-tb-btn"); // inline-code button
     });
 
     it("mousedown on the link button should invoke openLinkPrompt exactly once and preventDefault", () => {

@@ -15,6 +15,12 @@
     --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
   }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production.
+     This suite's scroll steps park content under the bar and click gutter
+     markers there (written against the old unstyled ~11px bar), so the bar is
+     click-through here — height realism without re-tuning every coordinate. */
+  .editor-topbar { height: 40px; box-sizing: border-box; pointer-events: none; }
 </style>
 <script>
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };

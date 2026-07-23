@@ -136,7 +136,9 @@ export async function run({ page, check, baseUrl }) {
     check("emptying all fields posts an empty frontmatter string", fm === "", JSON.stringify(fm));
 
     // ── 7. Undo after the deletes restores fields (panel stayed alive) ──
-    await page.locator("#frontmatter-panel").click();
+    // Focus directly: a center-of-panel click can land under the fixed toolbar
+    // now that the harness bar has a realistic height.
+    await page.locator("#frontmatter-panel").evaluate((el) => el.focus());
     await page.keyboard.press("Meta+z");
     await page.waitForTimeout(200);
     const rowsAfterUndo = await page.locator("#frontmatter-panel tbody tr").count();
@@ -183,5 +185,41 @@ export async function run({ page, check, baseUrl }) {
     check(
         "Shift+Tab from a value cell returns focus to its key cell",
         await page.evaluate(() => document.activeElement?.classList.contains("fm-key")),
+    );
+
+    // ── 10. Empty state: "Add metadata" sits below the toolbar, clear of content ──
+    // Regression guards, both found the hard way: a hardcoded top offset put the
+    // button underneath the fixed .editor-topbar, and an out-of-flow rework put
+    // it underneath the first content line instead (visible but not clickable —
+    // #editor's blocks intercepted the pointer). It must clear the measured
+    // toolbar, stay clear of the first content block, and take a REAL click.
+    await page.goto(`${baseUrl}/index.html?empty=1`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForSelector("#frontmatter-panel.fm-empty .fm-add-metadata-btn", { timeout: 10000 });
+    await page.waitForTimeout(200);
+    const btnBox = await page.locator(".fm-add-metadata-btn").boundingBox();
+    const barBottom = await page
+        .locator(".editor-topbar")
+        .evaluate((el) => el.getBoundingClientRect().bottom);
+    check(
+        "empty-state Add metadata button sits below the toolbar",
+        btnBox !== null && btnBox.y >= barBottom,
+        `button.y=${btnBox?.y} toolbar.bottom=${barBottom}`,
+    );
+    const firstBlockTop = await page
+        .locator(".milkdown .ProseMirror > *")
+        .first()
+        .evaluate((el) => el.getBoundingClientRect().top);
+    check(
+        "empty-state button stays clear of the first content block",
+        btnBox !== null && btnBox.y + btnBox.height <= firstBlockTop,
+        `button.bottom=${btnBox ? btnBox.y + btnBox.height : "?"} content.top=${firstBlockTop}`,
+    );
+    // A real pointer click (Playwright verifies the hit target) must reach it.
+    await page.locator(".fm-add-metadata-btn").click();
+    await page.waitForTimeout(150);
+    check(
+        "a real click on Add metadata opens the metadata table",
+        (await page.locator("#frontmatter-panel .frontmatter-table").count()) === 1,
     );
 }

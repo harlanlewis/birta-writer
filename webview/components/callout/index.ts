@@ -251,7 +251,7 @@ export function createCalloutView(
         for (const kind of CALLOUT_KINDS) {
             const item = document.createElement("button");
             item.type = "button";
-            item.className = "callout-menu-item";
+            item.className = "ui-menu-row callout-menu-item";
             item.dataset["kind"] = kind;
             item.setAttribute("role", "menuitem");
             item.innerHTML = CALLOUT_ICONS[kind];

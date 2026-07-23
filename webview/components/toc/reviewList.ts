@@ -124,7 +124,7 @@ export function initReviewList(
 
     function makeSeg(label: string, grouped: boolean): HTMLButtonElement {
         const btn = document.createElement("button");
-        btn.className = "review-seg";
+        btn.className = "ui-btn review-seg";
         btn.textContent = label;
         btn.tabIndex = -1;
         btn.addEventListener("mousedown", (e) => {

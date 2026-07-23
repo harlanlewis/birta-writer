@@ -15,9 +15,10 @@
     padding: 3px 2px 3px 2px;
     background: var(--vscode-editorWidget-background);
     border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: 2px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
-    font-size: 13px;
+    /* A docked panel — the l radius per the chrome.css role table. */
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow-s);
+    font-size: var(--ui-fs-l);
     font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
     color: var(--vscode-editorWidget-foreground);
     opacity: 0;
@@ -77,9 +78,9 @@
     padding: 0 4px;
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-    border-radius: 2px;
+    border-radius: var(--ui-radius-s);
     color: var(--vscode-input-foreground);
-    font-size: 13px;
+    font-size: var(--ui-fs-l);
     font-family: inherit;
     outline: none;
     box-sizing: border-box;
@@ -106,7 +107,7 @@
 /* Match count */
 .find-bar__count {
     padding: 0 6px;
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     white-space: nowrap;
     color: var(--vscode-descriptionForeground);
     min-width: 46px;
@@ -121,7 +122,7 @@
 /* Hint row: raw-source (syntax) matches are find-only */
 .find-bar__hint {
     padding: 1px 4px 0;
-    font-size: 11px;
+    font-size: var(--ui-fs-s);
     color: var(--vscode-descriptionForeground);
     transition: color 0.15s ease;
 
@@ -139,50 +140,27 @@
     flex-shrink: 0;
 }
 
-/* Shared button styles */
+/* Buttons compose the .ui-btn/.ui-btn--icon primitive (ui/chrome.css) —
+   anatomy, hover/active washes, and the 22px square come from there; this
+   class carries only the find bar's own voice (icon ink, small bold text
+   for the Aa/W/.* toggles). */
 .find-bar__btn {
-    -webkit-appearance: none;
-    appearance: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    margin: 0;
-    flex-shrink: 0;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 3px;
     color: var(--vscode-icon-foreground);
-    cursor: pointer;
-    font-size: 11px;
-    font-family: inherit;
+    font-size: var(--ui-fs-s);
     font-weight: 600;
     letter-spacing: 0;
-    line-height: 1;
     user-select: none;
     -webkit-user-select: none;
 }
 
-.find-bar__btn:hover {
-    background: var(--vscode-toolbar-hoverBackground);
-    border-color: var(--vscode-toolbar-hoverOutline, transparent);
-    color: var(--vscode-icon-foreground);
-}
-
-.find-bar__btn:active {
-    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
-}
-
-.find-bar__btn--active {
-    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
-    border-color: var(--vscode-contrastActiveBorder, transparent);
-    color: var(--vscode-icon-foreground);
-}
-
+/* Persistent-on: the canonical quiet "on" pair (VS Code's activated-option
+   tokens — its own find-widget toggle look, shared with .tb-btn--active).
+   contrastActiveBorder keeps the toggles visible in high-contrast themes. */
+.find-bar__btn--active,
 .find-bar__btn--active:hover {
-    background: var(--vscode-toolbar-hoverBackground);
+    background: var(--vscode-inputOption-activeBackground);
+    border-color: var(--vscode-contrastActiveBorder, transparent);
+    color: var(--vscode-inputOption-activeForeground);
 }
 
 .find-bar__btn svg {

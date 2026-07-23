@@ -597,7 +597,7 @@ function createFmChip(
     text.addEventListener('blur', () => commitChip());
 
     const removeBtn = createButton({
-        className: 'fm-chip-remove',
+        className: 'ui-btn fm-chip-remove',
         icon: IconX,
         title: t('Remove item'),
         ariaLabel: `${t('Remove item')}: "${item.value}"`,
@@ -629,7 +629,7 @@ function bindFmListCell(
     }
 
     const addBtn = createButton({
-        className: 'fm-chip-add',
+        className: 'ui-btn fm-chip-add',
         icon: IconPlus,
         title: t('Add item'),
         tooltipPlacement: 'above',
@@ -662,7 +662,7 @@ function createFmRow(entry: FmEntry, tbody: HTMLElement, panel: HTMLElement): HT
     const tdDel = document.createElement('td');
     tdDel.className = 'fm-action';
     const delBtn = createButton({
-        className: 'fm-delete-btn',
+        className: 'ui-btn ui-btn--icon fm-delete-btn',
         icon: IconTrash2,
         title: t('Delete field'),
         ariaLabel: deleteFieldAriaLabel(entry.key),
@@ -721,6 +721,11 @@ function createFmRow(entry: FmEntry, tbody: HTMLElement, panel: HTMLElement): HT
                 // The entry was never serialized, so nothing to commit; remove
                 // the row in place (a rebuild would steal focus from siblings).
                 tr.remove();
+                // An abandoned Add-metadata start (no committed frontmatter,
+                // nothing to undo) reverts to the empty-state affordance.
+                if (currentFmEntries.length === 0 && lastCommittedFm === '' && fmUndoStack.length === 0) {
+                    renderFrontmatterPanel(undefined);
+                }
             }, 0);
         });
     }
@@ -827,27 +832,98 @@ function createRawEditor(raw: string): HTMLTextAreaElement {
 }
 
 /**
- * Renders the frontmatter panel before #editor; removes it when there is no
- * frontmatter. This is the external entry point (init / external update /
- * revert), so it also resets the panel-local undo/redo history.
+ * Renders the frontmatter panel before #editor. This is the external entry
+ * point (init / external update / revert), so it also resets the panel-local
+ * undo/redo history. A document without frontmatter gets the empty state: the
+ * panel row survives with a single "Add metadata" button (the Show/Hide
+ * toggle and Add-field controls exist only when there is content to show).
  */
 export function renderFrontmatterPanel(frontmatter: string | undefined): void {
     fmUndoStack = [];
     fmRedoStack = [];
     lastCommittedFm = frontmatter ?? '';
 
-    // No frontmatter → clear state and remove the panel
+    // No frontmatter → clear state and offer the Add-metadata affordance
     if (!frontmatter) {
         closeActiveFmSuggestMenu();
         currentFmEntries = [];
         currentFmRaw = '';
-        document.getElementById('frontmatter-panel')?.remove();
-        const editorEl = document.getElementById('editor');
-        if (editorEl) { editorEl.style.paddingTop = ''; }
+        renderEmptyMetadataState();
         return;
     }
 
     renderFmContent(frontmatter);
+}
+
+/**
+ * The no-frontmatter state: just the "Add metadata" button, occupying the
+ * panel's standard slot below the toolbar (see .fm-empty in style.css).
+ * Clicking it opens an empty table with a fresh focused row; abandoning that
+ * row untyped reverts here.
+ */
+function renderEmptyMetadataState(): void {
+    const existing = document.getElementById('frontmatter-panel');
+    const editorEl = document.getElementById('editor');
+    // Gate (birta.frontmatterAddButton): off removes the affordance entirely —
+    // no panel, no editor inset — restoring the plain frontmatter-less layout.
+    // The Edit Frontmatter command still reaches startAddMetadata directly.
+    if (window.__i18n?.frontmatterAddButton === false) {
+        existing?.remove();
+        if (editorEl) { editorEl.style.paddingTop = ''; }
+        return;
+    }
+    const panel = existing ?? document.createElement('div');
+    panel.id = 'frontmatter-panel';
+    panel.className = 'frontmatter-panel fm-empty';
+    panel.tabIndex = -1;
+    panel.innerHTML = '';
+
+    const addRow = document.createElement('div');
+    addRow.className = 'fm-add-row';
+    const addBtn = createButton({
+        className: 'ui-btn ui-btn--chip fm-add-metadata-btn',
+        onClick: () => startAddMetadata(),
+    });
+    addBtn.innerHTML = `${IconPlus} <span>${t('Add metadata')}</span>`;
+    addRow.appendChild(addBtn);
+    panel.appendChild(addRow);
+
+    if (!existing) {
+        editorEl?.parentNode?.insertBefore(panel, editorEl);
+    }
+    // The panel supplies the toolbar clearance, same as the populated state.
+    if (editorEl) { editorEl.style.paddingTop = '16px'; }
+}
+
+/**
+ * Re-renders the empty state after the birta.frontmatterAddButton gate flips
+ * (live settings broadcast). A document WITH frontmatter is untouched — the
+ * gate governs only the frontmatter-less affordance.
+ */
+export function refreshFrontmatterEmptyState(): void {
+    const panel = document.getElementById("frontmatter-panel");
+    const hasContent = panel !== null && !panel.classList.contains("fm-empty");
+    if (hasContent) { return; }
+    renderFrontmatterPanel(undefined);
+}
+
+/**
+ * Opens the metadata editor from the empty state: an empty table plus one
+ * fresh, focused row. Nothing is committed — and the document is untouched —
+ * until the user actually enters a field; committing one sends the fenced
+ * block to the extension, which inserts it at the top of the document.
+ */
+function startAddMetadata(): void {
+    // A persisted collapsed state must not hide the row being added.
+    setFmCollapsed(false);
+    renderFmContent('');
+    const panel = document.getElementById('frontmatter-panel');
+    if (!panel) { return; }
+    // Apply the expansion directly too, not just via the persisted-state read.
+    const toggleBtn = panel.querySelector('.fm-toggle-btn') as HTMLButtonElement | null;
+    if (toggleBtn) { applyFmCollapsed(panel, toggleBtn, false); }
+    const tbody = panel.querySelector('.frontmatter-table tbody') as HTMLElement | null;
+    if (tbody) { addNewRow(tbody, panel); }
 }
 
 /**
@@ -911,7 +987,7 @@ function renderFmContent(frontmatter: string): void {
         addRow.appendChild(createToggleButton(panel));
 
         const addBtn = createButton({
-            className: 'fm-add-btn',
+            className: 'ui-btn ui-btn--chip fm-add-btn',
             onClick: () => addNewRow(tbody, panel),
         });
         addBtn.innerHTML = `${IconPlus} <span>${t('Add field')}</span>`;
@@ -936,11 +1012,22 @@ function renderFmContent(frontmatter: string): void {
 /**
  * Focuses the frontmatter panel (command-palette / context-menu "Edit
  * Frontmatter"): expands it when collapsed and moves focus to the first
- * editable field. No-op when the document has no frontmatter panel.
+ * editable field. On a document without frontmatter it starts adding some —
+ * the same flow as the empty state's own "Add metadata" button.
  */
 export function focusFrontmatterPanel(): void {
     const panel = document.getElementById("frontmatter-panel");
-    if (!panel) { return; }
+    // No panel at all (frontmatter-less doc with the Add-metadata button
+    // hidden): the command still starts the add flow from nothing.
+    if (!panel) {
+        startAddMetadata();
+        return;
+    }
+    if (panel.classList.contains("fm-empty")) {
+        startAddMetadata();
+        panel.scrollIntoView({ block: "nearest" });
+        return;
+    }
     if (panel.classList.contains("collapsed")) {
         const toggle = panel.querySelector(".fm-toggle-btn") as HTMLElement | null;
         // element.click() fires with detail 0, which createButton's keyboard
@@ -955,7 +1042,7 @@ export function focusFrontmatterPanel(): void {
 /** Creates the collapse/expand toggle button and applies the persisted state. */
 function createToggleButton(panel: HTMLElement): HTMLButtonElement {
     const toggleBtn = createButton({
-        className: 'fm-toggle-btn',
+        className: 'ui-btn ui-btn--chip fm-toggle-btn',
         onClick: () => {
             const collapsed = !panel.classList.contains('collapsed');
             setFmCollapsed(collapsed);

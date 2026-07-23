@@ -30,6 +30,7 @@ import {
     codeBlockBackspacePlugin,
     contentGuardPlugin,
     codeBlockSelectAllPlugin,
+    copyMarkdownPlugin,
     docChangePlugin,
     setDocChangeListener,
     footnoteNumberingPlugin,
@@ -558,6 +559,10 @@ export async function createEditor(
         // Pasting a URL over a selection links the selection instead of
         // replacing it (handlePaste; no other plugin registers one).
         .use(pasteLinkPlugin)
+        // Native copy/cut put the selection's Markdown source on the
+        // clipboard's plain-text flavor (clipboardTextSerializer; gated on
+        // birta.copyFormat).
+        .use(copyMarkdownPlugin)
         .use(wikiLinkCompletePlugin)
         // Adjacent-list handling (two halves of one policy): edit-created
         // adjacency joins automatically; a split the SOURCE already carries
