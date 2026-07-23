@@ -675,6 +675,54 @@ describe("formatCalcResult honesty", () => {
     });
 });
 
+describe("functions and constants (the identifier path)", () => {
+    const resolve = (scope: Record<string, number>) => (name: string) => scope[name];
+
+    it("known functions should apply — including the user's log10/pi shape", () => {
+        expect(evaluateCalc("log10(4/3*pi)")).toBeCloseTo(Math.log10((4 / 3) * Math.PI), 12);
+        expect(evaluateCalc("sqrt(9)")).toBe(3);
+        expect(evaluateCalc("sqrt(abs(-16)) + 1")).toBe(5);
+        expect(evaluateCalc("round(2.6)")).toBe(3);
+        expect(evaluateCalc("LOG10(100)")).toBe(2); // case-insensitive names
+    });
+
+    it("constants should resolve, including the π glyph, after the user's scope", () => {
+        expect(evaluateCalc("2 * pi")).toBeCloseTo(2 * Math.PI, 12);
+        expect(evaluateCalc("2 * π")).toBeCloseTo(2 * Math.PI, 12);
+        expect(evaluateCalc("tau / 2")).toBeCloseTo(Math.PI, 12);
+        // A user definition always shadows the constant.
+        expect(evaluateExpression("e + 1", resolve({ e: 2 }))).toBe(3);
+        expect(evaluateCalc("pi * 2", new Map([["pi", 3]]))).toBe(6);
+    });
+
+    it("an unknown name before ( should never become a call", () => {
+        expect(evaluateCalc("alert(1)")).toBeNull();
+        expect(evaluateCalc("foo(2) + 1")).toBeNull();
+        expect(isCalcStructurallyValid("foo(2)")).toBe(false);
+        expect(isCalcStructurallyValid("log10(x)")).toBe(true); // known fn, unknown var — shape is fine
+    });
+
+    it("functions stay OFF the pure-digits `=` path", () => {
+        expect(evaluateExpression("sqrt(9)")).toBeNull(); // letters rejected without a resolver
+        expect(detectCalcExpression("sqrt(9) =")).toBeNull();
+    });
+
+    it("=> detection should carry a function expression whole", () => {
+        expect(detectArrowExpression("log10(4/3*pi) =>")?.expr).toBe("log10(4/3*pi)");
+        expect(detectArrowExpression("2 * π =>")?.expr).toBe("2 * π");
+    });
+
+    it("domain errors should yield null, not NaN output", () => {
+        expect(evaluateCalc("sqrt(0-9)")).toBeNull();
+        expect(evaluateCalc("asin(2)")).toBeNull();
+    });
+
+    it("a failing call-shaped block line earns the error cue", () => {
+        const rows = evaluateCalcBlock("log10(mystery)");
+        expect(rows[0].kind).toBe("error");
+    });
+});
+
 describe("remainder semantics (%)", () => {
     it("negative operands should follow JS remainder (truncate toward zero), as documented", () => {
         expect(evaluateExpression("-10 % 3")).toBe(-1);

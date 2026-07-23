@@ -18,6 +18,7 @@ import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
 import { headingInputReplacedPlugins } from "./plugins/headingInput";
+import { emphasisInputReplacedPlugins, mathAwareEmphasisStarInputRule } from "./plugins/emphasisInput";
 import {
     sourceStyleHandlers,
     sourceStylePlugin,
@@ -143,6 +144,10 @@ export const pureCommonmark = [
         // Stock `#` input rule ADDS hashes to an existing heading's level;
         // headingAbsoluteInputRule (plugins/headingInput.ts) replaces it.
         if (headingInputReplacedPlugins.has(plugin)) return false;
+        // Stock `*emphasis*` rule italicizes intraword stars, eating the `*`s
+        // of typed arithmetic (`60*60*1000`); the math-aware replacement
+        // (plugins/emphasisInput.ts) registers below.
+        if (emphasisInputReplacedPlugins.has(plugin)) return false;
         const displayName = (plugin as { meta?: { displayName?: string } }).meta?.displayName;
         return !(displayName?.includes("remarkInlineLinkPlugin"));
     }),
@@ -155,6 +160,8 @@ export const pureCommonmark = [
     ...mathPlugin,
     ...sourceStylePlugin,
     ...tableBreaksPlugin,
+    // Replaces the stock star-emphasis input rule filtered out above.
+    mathAwareEmphasisStarInputRule,
     // AFTER the preset: override the bullet_list / ordered_list / list_item
     // parseMarkdown runners so `spread` parses as a real boolean, not a string
     // (MAR-124). See plugins/list.ts.

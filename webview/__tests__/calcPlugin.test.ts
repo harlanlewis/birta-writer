@@ -516,14 +516,29 @@ describe("auto-insert result refresh (editing an existing equation)", () => {
         editor.destroy();
     });
 
-    it("advisory mode (autoInsert off) never rewrites the document", async () => {
+    it("`=` refreshes in advisory mode too — maintenance is not insertion", async () => {
+        // autoInsert governs only whether typing `=` INSERTS unprompted; an
+        // answer that already exists updates when its expression is edited,
+        // whatever the mode (the maintainer's expectation: `3+4=7` edited to
+        // `4+4=` reads `=8`, live).
         (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
             translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
         };
-        const editor = await makeRefreshEditor("3+4= 7");
+        const editor = await makeRefreshEditor("3+4=7");
         const v = view(editor);
         editChar(v, 0, "4");
-        expect(blockText(v)).toBe("4+4= 7"); // stale, but untouched — consent rule
+        expect(blockText(v)).toBe("4+4=8");
+        editor.destroy();
+    });
+
+    it("calc disabled: nothing ever refreshes", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: false, calcAutoInsert: true,
+        };
+        const editor = await makeRefreshEditor("3+4= 7\n\n2+3 => 5");
+        const v = view(editor);
+        editChar(v, 0, "4");
+        expect(blockText(v)).toBe("4+4= 7");
         editor.destroy();
     });
 

@@ -40,9 +40,49 @@
  *   term   := factor (('*' | '/' | '%') factor)*
  *   factor := ('+' | '-') factor | power        // unary, looser than '^'
  *   power  := primary ('^' factor)?             // right-associative
- *   primary := number | '(' expr ')'
+ *   primary := number | ident | fn '(' expr ')' | '(' expr ')'
+ *              // ident/fn only on the identifier-allowing (`=>`/block) path
  */
 import { calcUnitsReady, convertUnit, isKnownUnit, unitsCompatible } from "./calcUnits";
+
+/**
+ * The function table for the identifier-allowing path — a FIXED map of pure
+ * numeric functions, matched case-insensitively. This is the whole call
+ * surface: a name not in this map is a parse error, so `alert(1)` (rejected
+ * at the tokenizer on the `=` path, an unknown function here) can never
+ * become a call. `log` is base-10, the note-taking convention; `ln` is the
+ * natural log.
+ */
+const FUNCTIONS = new Map<string, (x: number) => number>([
+    ["sqrt", Math.sqrt],
+    ["abs", Math.abs],
+    ["ln", Math.log],
+    ["log", Math.log10],
+    ["log10", Math.log10],
+    ["log2", Math.log2],
+    ["exp", Math.exp],
+    ["sin", Math.sin],
+    ["cos", Math.cos],
+    ["tan", Math.tan],
+    ["asin", Math.asin],
+    ["acos", Math.acos],
+    ["atan", Math.atan],
+    ["round", Math.round],
+    ["floor", Math.floor],
+    ["ceil", Math.ceil],
+]);
+
+/**
+ * Constants, matched case-insensitively — resolved only AFTER the caller's
+ * scope, so a user's own `e = 2` or `pi = 3` definition always wins.
+ */
+const CONSTANTS = new Map<string, number>([
+    ["pi", Math.PI],
+    ["π", Math.PI],
+    ["tau", 2 * Math.PI],
+    ["τ", 2 * Math.PI],
+    ["e", Math.E],
+]);
 
 type Token =
     | { kind: "num"; value: number }
@@ -64,10 +104,11 @@ const EXPR_CHAR = new RegExp(`[${ARITHMETIC_CLASS}\\s]`);
 const HAS_OPERATOR = /[+\-*/%^]/;
 /** An expression that STARTS with a binary operator (left-operand suspicion). */
 const OP_HEAD = /^[+\-*/%^]/;
-/** The first character of an identifier (variable name): a letter or `_`. */
-const IDENT_START = /[A-Za-z_]/;
-/** A subsequent identifier character: letter, digit, or `_`. */
-const IDENT_CHAR = /[A-Za-z0-9_]/;
+/** The first character of an identifier (variable name): a letter, `_`, or a
+ * constant glyph (`π`, `τ`). */
+const IDENT_START = /[A-Za-zπτ_]/;
+/** A subsequent identifier character: letter, digit, `_`, or constant glyph. */
+const IDENT_CHAR = /[A-Za-z0-9πτ_]/;
 
 /**
  * Splits `input` into tokens, or returns null the moment it sees anything that
@@ -229,8 +270,21 @@ class Parser {
         }
         if (tok.kind === "ident") {
             this.pos++;
+            // A KNOWN function name followed by `(` is a call — the only call
+            // syntax there is; an unknown name before `(` falls through to the
+            // variable path, whose leftover `(…)` then fails the parse (no
+            // implicit multiplication, no surprise calls).
+            const fn = FUNCTIONS.get(tok.name.toLowerCase());
+            if (fn && this.peek()?.kind === "lparen") {
+                this.pos++;
+                const arg = this.parseExpr();
+                const close = this.peek();
+                if (!close || close.kind !== "rparen") { throw new CalcError("unbalanced parentheses"); }
+                this.pos++;
+                return fn(arg);
+            }
             if (this.structural) { return 1; } // any name is resolvable in shape-land
-            const value = this.resolve?.(tok.name);
+            const value = this.resolve?.(tok.name) ?? CONSTANTS.get(tok.name.toLowerCase());
             if (value === undefined || !Number.isFinite(value)) {
                 throw new CalcError(`unknown or non-finite variable: ${tok.name}`);
             }
@@ -584,8 +638,9 @@ export interface ArrowMatch {
 
 /** The `=>` (with any trailing spaces/tabs) that ends the text before the caret. */
 const TRAILING_ARROW = /=>[ \t]*$/;
-/** Characters that may appear in a living-calc expression run (letters allowed). */
-const CALC_RUN = /[\w+\-*/%^().°'" \t]*$/u;
+/** Characters that may appear in a living-calc expression run (letters and
+ * the constant glyphs allowed). */
+const CALC_RUN = /[\wπτ+\-*/%^().°'" \t]*$/u;
 /**
  * A prose-ish token the `=>` trimming loop may drop from the front of the run:
  * it must contain a letter (it reads as a WORD — `the`, `total`, `costs.`,
@@ -596,7 +651,7 @@ const CALC_RUN = /[\w+\-*/%^().°'" \t]*$/u;
  * must refuse rather than answer wrongly — the same "never compute a fragment"
  * rule the `=` path enforces.
  */
-const DROPPABLE_TOKEN = /^[\w.'"°]*[A-Za-z_][\w.'"°]*$/;
+const DROPPABLE_TOKEN = /^[\w.'"°πτ]*[A-Za-zπτ_][\w.'"°πτ]*$/u;
 /**
  * Caps that keep `detectArrowExpression` O(1) on the un-debounced keystroke path
  * (`match` runs per transaction). A real inline expression is short and sits
@@ -805,7 +860,10 @@ function looksLikeFormula(expr: string, scope: Map<string, number>): boolean {
     if (form && isKnownUnit(form.fromUnit) && isKnownUnit(form.toUnit)) {
         return true;
     }
-    if (!HAS_OPERATOR.test(expr) || !isValidExpressionStructure(expr)) { return false; }
+    const hasCall = HAS_FUNCTION_CALL.test(expr);
+    if ((!HAS_OPERATOR.test(expr) && !hasCall) || !isValidExpressionStructure(expr)) {
+        return false;
+    }
     // A single word-shaped token headed by an UNKNOWN identifier and joined
     // only by hyphens/slashes reads as a prose compound (`T-1000`, `COVID-19`,
     // `B-52`, `either/or`), even when a number gives it structural evidence.
@@ -818,9 +876,14 @@ function looksLikeFormula(expr: string, scope: Map<string, number>): boolean {
     const tokens = tokenize(expr, true);
     if (!tokens) { return false; }
     return tokens.some(
-        (tok) => tok.kind === "num" || (tok.kind === "ident" && scope.has(tok.name)),
+        (tok) =>
+            tok.kind === "num" ||
+            (tok.kind === "ident" && (scope.has(tok.name) || FUNCTIONS.has(tok.name.toLowerCase()))),
     );
 }
+
+/** An identifier immediately followed by `(` — a call-shaped span. */
+const HAS_FUNCTION_CALL = /[A-Za-zπτ_][\wπτ]*\s*\(/u;
 
 /**
  * Evaluate a fenced `calc` block: every line under ONE shared scope, top to
@@ -903,7 +966,7 @@ const RESULT_CHAR = /[\d,.]/;
 const DIGIT = /[0-9]/;
 const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
 /** One character of an `=>` expression run (letters allowed — variables, units). */
-const ARROW_RUN_CHAR = /[\w+\-*/%^().°'" \t]/u;
+const ARROW_RUN_CHAR = /[\wπτ+\-*/%^().°'" \t]/u;
 
 /**
  * Finds `expr = result` / `result=expr` equation shapes in `text` whose spans

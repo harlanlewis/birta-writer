@@ -371,15 +371,16 @@ export const calcAutoInsertPlugin = $inputRule(() =>
 
 // ── Refresh: keep an inserted answer true to its (edited) equation ──────────
 //
-// Two consent regimes, one mechanism:
-//  - `=`/leading equations refresh only in auto-insert mode — `=` occurs in
-//    ordinary prose, so maintaining it is tied to the mode that writes it.
-//  - `expr => result` refreshes whenever calc is ENABLED: `=>` is explicit
-//    living-calculation syntax, its result was written by explicit consent
-//    (Tab or auto-insert), and the feature's contract is that it stays true —
-//    both when its own expression is edited and when a `name = value`
-//    definition ABOVE it changes (the variable cascade). Result-side edits
-//    remain the user's override in every form and are never fought.
+// One consent model, every form: an EXISTING equation whose expression side
+// the user just edited updates in place whenever calc is enabled — for `=`
+// and leading forms when their own expression changes, and for
+// `expr => result` also when a `name = value` definition ABOVE it changes
+// (the variable cascade). `birta.calc.autoInsert` governs only whether typing
+// `=` INSERTS an answer unprompted; maintenance of an answer that already
+// exists is not insertion — the consent was given when the answer was
+// accepted, and a stale number the user just invalidated is the thing the
+// feature exists to prevent. Result-side edits remain the user's override in
+// every form and are never fought; equations inside inline code are source.
 
 /** Whether any line of a block's text is a `name = value` definition. */
 function blockHasDefinition(text: string): boolean {
@@ -433,7 +434,6 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
 
         let out = newState.tr;
         let touched = false;
-        const autoInsert = calcAutoInsert();
         const seenBlocks = new Set<number>();
         // Spans already rewritten this pass (`blockStart:resStart`), so the
         // variable cascade never re-touches what the local pass refreshed.
@@ -521,7 +521,6 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
             // explains why this is not a regex); every candidate is re-validated
             // through the full detection discipline before anything is touched.
             for (const cand of findRefreshEquations(text, localFrom, localTo, CARET_CONTEXT_WINDOW)) {
-                if (cand.form !== "arrow" && !autoInsert) { continue; }
                 // The edit must intersect the EXPRESSION side — result edits
                 // are the user's override and are never fought.
                 if (localTo < cand.expr[0] || localFrom > cand.expr[1]) { continue; }
