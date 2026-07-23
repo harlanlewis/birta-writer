@@ -232,6 +232,11 @@ const calcArrowSpec: CaretSuggestSpec = {
         // evaluating so `3 km in mi =>` works on first use. The controller
         // tolerates a late cb (stale-reply generations), and a failed load
         // degrades to arithmetic-only — conversions yield null, nothing shown.
+        // Known, accepted window: during the FIRST chunk load only, a doc
+        // rewrite that keeps the match alive (an external-sync replay editing
+        // a definition above) can surface a value computed against the
+        // pre-rewrite state; the next transaction's 200ms re-request corrects
+        // it, and every later call resolves in a microtask (no window).
         void ensureCalcUnits().catch(() => undefined).then(() => {
             const scope = ctx ? scopeUpToCaret(ctx.state) : undefined;
             const value = evaluateCalc(query, scope);

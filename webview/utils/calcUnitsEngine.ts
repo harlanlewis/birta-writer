@@ -30,9 +30,14 @@ export function createUnitMath(): UnitMath {
     // mathjs's teaspoon/tablespoon are METRIC (5 / 15 ml) while its cup,
     // pint, quart, and gallon are US customary — a mixed system a recipe
     // can't survive (a US cup would be 47.3 "teaspoons"). Override the
-    // spoons to US customary so the kitchen set agrees with itself (and
-    // with the values this feature has always used): 1 cup = 16 tbsp.
-    math.createUnit("teaspoon", { definition: "4.92892159375 mL" }, { override: true });
-    math.createUnit("tablespoon", { definition: "14.78676478125 mL" }, { override: true });
+    // spoons — SINGULAR AND PLURAL, mathjs registers each spelling as its
+    // own unit — to US customary so the kitchen set agrees with itself (and
+    // with the values this feature has always used): 1 cup = 16 tbsp = 48 tsp.
+    for (const name of ["teaspoon", "teaspoons"]) {
+        math.createUnit(name, { definition: "4.92892159375 mL" }, { override: true });
+    }
+    for (const name of ["tablespoon", "tablespoons"]) {
+        math.createUnit(name, { definition: "14.78676478125 mL" }, { override: true });
+    }
     return math;
 }

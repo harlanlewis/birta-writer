@@ -708,6 +708,28 @@ describe("unit conversion round-trips", () => {
         expect(evaluateCalc("100 hectare in acre")).toBeCloseTo(247.105, 2);
     });
 
+    it("historical spellings stay case-insensitive — never reinterpreted as SI prefixes", () => {
+        // To mathjs alone, `Ml`/`ML` is the MEGAlitre and `T` the tesla; the
+        // hand-rolled tables matched case-insensitively, and any casing of a
+        // historical spelling must keep its historical meaning (a silent
+        // 10^9 reinterpretation is the worst possible answer).
+        expect(convertUnit(500, "ML", "l")).toBeCloseTo(0.5, 9);
+        expect(convertUnit(1, "Ml", "l")).toBeCloseTo(0.001, 9);
+        expect(convertUnit(1, "Mm", "m")).toBeCloseTo(0.001, 9);
+        expect(convertUnit(5, "Mg", "g")).toBeCloseTo(0.005, 9);
+        expect(convertUnit(5, "T", "kg")).toBeCloseTo(5000, 9);
+        expect(convertUnit(3, "S", "ms")).toBeCloseTo(3000, 9);
+        expect(convertUnit(2, "H", "s")).toBeCloseTo(7200, 9);
+        // Catalog names stay exact-case: MB really is the megabyte.
+        expect(convertUnit(1000, "MB", "GB")).toBe(1);
+    });
+
+    it("spoon plurals are US customary too (one kitchen system, not two)", () => {
+        expect(convertUnit(1, "cup", "teaspoons")).toBeCloseTo(48, 6);
+        expect(convertUnit(1, "cup", "tablespoons")).toBeCloseTo(16, 6);
+        expect(convertUnit(3, "teaspoons", "ml")).toBeCloseTo(14.78676478125, 6);
+    });
+
     it("legacy spellings and temperature shorthands keep their historical meaning", () => {
         // `C`/`F` must stay temperature (to mathjs alone they'd be
         // coulomb/farad), and tsp/tbsp/nmi/pound resolve via aliases.
