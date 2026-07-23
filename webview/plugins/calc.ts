@@ -31,11 +31,19 @@
  * evaluation, no work runs.
  */
 import { InputRule, Plugin, PluginKey } from "../pm";
-import type { EditorView } from "../pm";
+import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { $inputRule, $prose } from "@milkdown/utils";
 import { createSuggestMenuFromRows } from "../components/pathLink/linkTargetComplete";
 import { caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
-import { detectCalcExpression, evaluateExpression, formatCalcResult } from "../utils/calc";
+import {
+    buildScopeFromLines,
+    detectArrowExpression,
+    detectCalcExpression,
+    evaluateCalc,
+    evaluateExpression,
+    formatCalcResult,
+    isCalcStructurallyValid,
+} from "../utils/calc";
 import { notifySetCalcAutoInsert } from "../messaging";
 import { t } from "../i18n";
 
@@ -147,6 +155,106 @@ function applyCalcResult(view: EditorView, start: number, caret: number, result:
 /** Advisory inline-calc plugin (registered beside the other caret suggestions). */
 export const calcSuggestPlugin = $prose(() =>
     caretSuggestPlugin(calcSuggestKey, calcSuggestSpec),
+);
+
+// ── `=>` living calculations: variables + offline units (MAR-196) ────────────
+
+const calcArrowSuggestKey = new PluginKey("MD_CALC_ARROW_SUGGEST");
+
+/**
+ * Every line of prose in the document, in reading order, so a `=>` sees the
+ * variable definitions (`name = value`) anywhere above or below it. Code blocks
+ * are skipped (a `name = value` inside a fence is source, not a definition), and
+ * hard breaks split a multi-line paragraph into separate lines while inline
+ * atoms mask to ￼ (never a name or digit), keeping the scan honest.
+ *
+ * O(document) and run only when the debounced `=>` request fires — never on the
+ * keystroke path — so a big document costs nothing until you actually type `=>`.
+ */
+function collectDocLines(state: EditorState): string[] {
+    const lines: string[] = [];
+    state.doc.descendants((node: ProseNode) => {
+        if (node.type.spec.code) { return false; } // don't descend into code blocks
+        if (node.isTextblock) {
+            const text = node.textBetween(
+                0,
+                node.content.size,
+                "\n",
+                (leaf) => (leaf.type.name === "hardbreak" ? "\n" : "￼"),
+            );
+            for (const line of text.split("\n")) { lines.push(line); }
+            return false; // a textblock's children are inline; text is captured
+        }
+        return true;
+    });
+    return lines;
+}
+
+/**
+ * The `=>` advisory suggestion: typing `<expr> =>` offers the computed value,
+ * confirmed with Tab (Enter stays a newline, like the `=` path). The expression
+ * may reference variables defined anywhere in the document and use offline unit
+ * conversions (`3 km in mi =>`). Detection is block-local (the expression ends
+ * at the caret); only variable RESOLUTION needs the whole document, done in
+ * `fetch` where the editor state is available.
+ */
+const calcArrowSpec: CaretSuggestSpec = {
+    match(textBefore, ctx) {
+        if (!calcEnabled()) { return null; }
+        const det = detectArrowExpression(textBefore, { boundaryUnknown: ctx?.truncated ?? false });
+        return det ? { length: det.length, query: det.expr } : null;
+    },
+
+    // Structural validity only (variables assumed resolvable); the real
+    // resolution happens in fetch against the document scope.
+    shouldSuggest: (query) => isCalcStructurallyValid(query),
+
+    fetch(query, cb, ctx) {
+        const scope = ctx ? buildScopeFromLines(collectDocLines(ctx.state)) : undefined;
+        const value = evaluateCalc(query, scope);
+        if (value === null) { cb([]); return; }
+        const result = formatCalcResult(value);
+        // Exponent results carry a letter, breaking the plain-text contract.
+        cb(result.includes("e") ? [] : [result]);
+    },
+
+    buildMenu(items, match, anchor, onPick) {
+        const results = items as string[];
+        if (results.length === 0) { return null; }
+        const result = results[0];
+        return createSuggestMenuFromRows(
+            [{ text: result, title: `${match.query} => ${result}`, hint: "Tab" }],
+            anchor,
+            onPick,
+        );
+    },
+
+    pick(view, match, picked) {
+        applyArrowResult(view, match.start, match.caret, picked);
+    },
+
+    // Pre-select the lone advisory result so Tab confirms it; Enter keeps its
+    // newline meaning (see caretSuggest.ts autoActivate handling).
+    autoActivate: true,
+    // The `=>` construct can coincide with the structural list-merge advisory at
+    // the same caret; the one the user is actively typing wins.
+    yieldsToOpenMenus: true,
+};
+
+/**
+ * Write the result after the `=>`, normalizing spacing to `<expr> => <result>`.
+ * Plain text only — like the `=` path, nothing calc-specific persists in the
+ * document, so the file round-trips as if the number had been typed.
+ */
+function applyArrowResult(view: EditorView, start: number, caret: number, result: string): void {
+    const region = view.state.doc.textBetween(start, caret);
+    const replacement = region.replace(/=>[ \t]*$/, `=> ${result}`);
+    view.dispatch(view.state.tr.insertText(replacement, start, caret).scrollIntoView());
+}
+
+/** Advisory `=>` living-calculation plugin. */
+export const calcArrowSuggestPlugin = $prose(() =>
+    caretSuggestPlugin(calcArrowSuggestKey, calcArrowSpec),
 );
 
 // ── Auto-insert mode (input rule) ────────────────────────────────────────────

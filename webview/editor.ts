@@ -22,6 +22,7 @@ import { instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import {
     anchorSyncPlugin,
+    calcArrowSuggestPlugin,
     calcAutoInsertPlugin,
     calcRefreshPlugin,
     calcSuggestPlugin,
@@ -577,7 +578,11 @@ export async function createEditor(
     // smartLinks). The internal autoInsert flag still decides which of the two
     // composed plugins actually fires.
     if (window.__i18n?.calcEnabled ?? true) {
-        builder = builder.use(calcSuggestPlugin).use(calcAutoInsertPlugin).use(calcRefreshPlugin);
+        builder = builder
+            .use(calcSuggestPlugin)
+            .use(calcArrowSuggestPlugin)
+            .use(calcAutoInsertPlugin)
+            .use(calcRefreshPlugin);
     }
 
     // URL embeds (MAR-56): render a bare provider link (YouTube) as an inline

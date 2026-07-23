@@ -9,7 +9,12 @@ import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core"
 import { TextSelection } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
-import { calcSuggestPlugin, calcAutoInsertPlugin, calcRefreshPlugin } from "../plugins/calc";
+import {
+    calcSuggestPlugin,
+    calcAutoInsertPlugin,
+    calcRefreshPlugin,
+    calcArrowSuggestPlugin,
+} from "../plugins/calc";
 
 async function makeEditor(markdown: string): Promise<Editor> {
     const root = document.createElement("div");
@@ -197,6 +202,113 @@ describe("advisory inline calc", () => {
     it("should be silent when calc is disabled", async () => {
         window.__i18n = { translations: {}, isMac: false, calcEnabled: false };
         typeText(v, " 2+3=");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual([]);
+    });
+});
+
+describe("`=>` living calculations (variables + units)", () => {
+    async function makeArrowEditor(markdown: string): Promise<Editor> {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        return Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, markdown);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .use(calcSuggestPlugin)
+            .use(calcArrowSuggestPlugin)
+            .create();
+    }
+
+    let editor: Editor;
+    let v: EditorView;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        delete window.__i18n; // defaults: calc enabled
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    it("typing an expression then => should show the result", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 2+3 =>");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual(["5"]);
+    });
+
+    it("Tab should write the result after the =>, keeping the expression", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 2+3 =>");
+        await vi.advanceTimersByTimeAsync(250);
+        v.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+
+        expect(v.state.doc.textContent).toBe("x 2+3 => 5");
+    });
+
+    it("a variable defined elsewhere in the document should resolve", async () => {
+        editor = await makeArrowEditor("budget = 5000\n\nz\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " budget / 100 =>");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual(["50"]);
+    });
+
+    it("an offline unit conversion should compute", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 3 km in mi =>");
+        await vi.advanceTimersByTimeAsync(250);
+
+        const rows = optionTexts();
+        expect(rows).toHaveLength(1);
+        expect(rows[0].startsWith("1.864")).toBe(true);
+    });
+
+    it("an undefined variable should offer nothing", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " mystery * 2 =>");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual([]);
+    });
+
+    it("a bare number before => should offer nothing", async () => {
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 42 =>");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual([]);
+    });
+
+    it("should be silent when calc is disabled", async () => {
+        window.__i18n = { translations: {}, isMac: false, calcEnabled: false };
+        editor = await makeArrowEditor("x\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " 2+3 =>");
         await vi.advanceTimersByTimeAsync(250);
 
         expect(optionTexts()).toEqual([]);

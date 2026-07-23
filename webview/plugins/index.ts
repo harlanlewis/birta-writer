@@ -1,5 +1,5 @@
 export { anchorSyncPlugin, headingRangeTouched } from "./anchorSync";
-export { calcAutoInsertPlugin, calcRefreshPlugin, calcSuggestPlugin } from "./calc";
+export { calcArrowSuggestPlugin, calcAutoInsertPlugin, calcRefreshPlugin, calcSuggestPlugin } from "./calc";
 export { insertCalloutCommand } from "./callouts";
 export { toggleHighlightCommand } from "./highlight";
 export { caretScrollMarginPlugin } from "./caretScrollMargin";

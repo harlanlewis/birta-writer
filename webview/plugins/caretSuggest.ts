@@ -56,8 +56,13 @@ export interface CaretSuggestSpec {
     matchState?(state: EditorState): CaretMatch | null;
     /** Whether `query` should trigger a suggestion request at all. */
     shouldSuggest(query: string): boolean;
-    /** Requests suggestions for `query`; `cb` may be called once, later. */
-    fetch(query: string, cb: (items: unknown) => void): void;
+    /**
+     * Requests suggestions for `query`; `cb` may be called once, later. `ctx`
+     * exposes the live editor state for suggestions that need document-wide
+     * context beyond the current construct — the `=>` calc reads it to resolve
+     * variables defined elsewhere in the document. Most specs ignore it.
+     */
+    fetch(query: string, cb: (items: unknown) => void, ctx?: { state: EditorState }): void;
     /** Builds the menu from a reply. Returns null when nothing to show. */
     buildMenu(
         items: unknown,
@@ -217,7 +222,7 @@ class CaretSuggestController {
             ) {
                 this.showMenu(items);
             }
-        });
+        }, { state: this.view.state });
     }
 
     private showMenu(items: unknown): void {

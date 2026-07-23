@@ -9,6 +9,12 @@ import {
     evaluateExpression,
     formatCalcResult,
     detectCalcExpression,
+    convertUnit,
+    evaluateCalc,
+    isCalcStructurallyValid,
+    detectArrowExpression,
+    parseDefinition,
+    buildScopeFromLines,
 } from "../utils/calc";
 
 describe("evaluateExpression", () => {
@@ -314,5 +320,190 @@ describe("formatCalcResult precision", () => {
     it("integers beyond 12 significant digits should print exactly", () => {
         expect(formatCalcResult(9999999999999)).toBe("9999999999999");
         expect(formatCalcResult(1234567890123)).toBe("1234567890123");
+    });
+});
+
+// ── Living calculations: `=>`, variables, offline units (MAR-196) ─────────────
+
+describe("evaluateExpression with a variable resolver", () => {
+    const scope = new Map([["x", 5], ["budget", 5000], ["rent", 1800]]);
+    const resolve = (n: string): number | undefined => scope.get(n);
+
+    it("a known variable should resolve to its value", () => {
+        expect(evaluateExpression("x", resolve)).toBe(5);
+        expect(evaluateExpression("x * 2", resolve)).toBe(10);
+    });
+
+    it("variables should combine with arithmetic and precedence", () => {
+        expect(evaluateExpression("rent / budget * 100", resolve)).toBe(36);
+        expect(evaluateExpression("(budget - rent) / 2", resolve)).toBe(1600);
+    });
+
+    it("an unknown variable should yield null", () => {
+        expect(evaluateExpression("y + 1", resolve)).toBeNull();
+        expect(evaluateExpression("x + missing", resolve)).toBeNull();
+    });
+
+    it("without a resolver, identifiers should still be rejected (the = path)", () => {
+        expect(evaluateExpression("x * 2")).toBeNull();
+    });
+});
+
+describe("convertUnit", () => {
+    it("length conversions should be exact-ish", () => {
+        expect(convertUnit(3, "km", "mi")).toBeCloseTo(1.8641, 3);
+        expect(convertUnit(100, "cm", "m")).toBeCloseTo(1, 9);
+        expect(convertUnit(1, "mi", "km")).toBeCloseTo(1.609344, 6);
+    });
+
+    it("mass conversions should convert across the dimension", () => {
+        expect(convertUnit(1, "kg", "lb")).toBeCloseTo(2.2046, 3);
+        expect(convertUnit(180, "lb", "kg")).toBeCloseTo(81.6466, 3);
+    });
+
+    it("temperature should convert affinely (offsets, not just factors)", () => {
+        expect(convertUnit(100, "C", "F")).toBeCloseTo(212, 9);
+        expect(convertUnit(32, "F", "C")).toBeCloseTo(0, 9);
+        expect(convertUnit(0, "C", "K")).toBeCloseTo(273.15, 9);
+    });
+
+    it("unit names should be case-insensitive", () => {
+        expect(convertUnit(1, "KM", "M")).toBeCloseTo(1000, 9);
+    });
+
+    it("cross-dimension or unknown units should return null", () => {
+        expect(convertUnit(5, "km", "kg")).toBeNull();
+        expect(convertUnit(5, "km", "flurbs")).toBeNull();
+        expect(convertUnit(5, "widgets", "m")).toBeNull();
+    });
+});
+
+describe("evaluateCalc (unit form + variables)", () => {
+    it("a bare unit conversion should compute", () => {
+        expect(evaluateCalc("3 km in mi")).toBeCloseTo(1.8641, 3);
+        expect(evaluateCalc("180 lb to kg")).toBeCloseTo(81.6466, 3);
+        expect(evaluateCalc("100 C in F")).toBeCloseTo(212, 9);
+    });
+
+    it("the numeric side of a conversion may be an expression with variables", () => {
+        const scope = new Map([["n", 2]]);
+        expect(evaluateCalc("n * 3 cups in ml", scope)).toBeCloseTo(1419.53, 1);
+    });
+
+    it("the `in` keyword must be word-bounded (min/into never trip it)", () => {
+        // "5 min" is a time quantity, not "5 m in ..." — with no target it is
+        // not a conversion and (as arithmetic) `5 min` is two tokens → null.
+        expect(evaluateCalc("5 min")).toBeNull();
+    });
+
+    it("variable arithmetic should compute through the scope", () => {
+        const scope = new Map([["budget", 5000], ["rent", 1800]]);
+        expect(evaluateCalc("rent / budget * 100", scope)).toBe(36);
+    });
+
+    it("an unresolved variable should yield null", () => {
+        expect(evaluateCalc("mystery + 1", new Map())).toBeNull();
+    });
+});
+
+describe("isCalcStructurallyValid", () => {
+    it("well-formed expressions (vars assumed resolvable) should be valid", () => {
+        expect(isCalcStructurallyValid("x * 2")).toBe(true);
+        expect(isCalcStructurallyValid("3 km in mi")).toBe(true);
+        expect(isCalcStructurallyValid("undefinedvar + 1")).toBe(true);
+    });
+
+    it("prose / malformed shapes should be invalid", () => {
+        expect(isCalcStructurallyValid("the total is")).toBe(false);
+        expect(isCalcStructurallyValid("2 +")).toBe(false);
+    });
+});
+
+describe("detectArrowExpression", () => {
+    it("an arithmetic expression before => should be detected", () => {
+        const m = detectArrowExpression("2 + 3 =>");
+        expect(m).not.toBeNull();
+        expect(m!.expr).toBe("2 + 3");
+        expect(m!.length).toBe(8); // "2 + 3 =>"
+    });
+
+    it("a variable expression before => should be detected", () => {
+        expect(detectArrowExpression("x * 2 =>")?.expr).toBe("x * 2");
+    });
+
+    it("leading prose should be trimmed to the longest valid suffix", () => {
+        const m = detectArrowExpression("Total is x*2 =>");
+        expect(m!.expr).toBe("x*2");
+        expect(m!.length).toBe(6); // "x*2 =>"
+    });
+
+    it("a unit conversion before => should be detected whole", () => {
+        expect(detectArrowExpression("3 km in mi =>")?.expr).toBe("3 km in mi");
+    });
+
+    it("a lone variable before => should be offered (show its value)", () => {
+        expect(detectArrowExpression("total =>")?.expr).toBe("total");
+    });
+
+    it("a bare number before => should not be detected", () => {
+        expect(detectArrowExpression("42 =>")).toBeNull();
+    });
+
+    it("text without => should not be detected", () => {
+        expect(detectArrowExpression("x * 2")).toBeNull();
+        expect(detectArrowExpression("x * 2 = >")).toBeNull(); // a space breaks =>
+    });
+
+    it("a suffix flush against a truncated window start should be refused", () => {
+        // The first token could be a fragment of a name/number cut off before
+        // the window — resolving it would be wrong.
+        expect(detectArrowExpression("budget * 2 =>", { boundaryUnknown: true })).toBeNull();
+        // A whitespace boundary inside the window stays trusted.
+        expect(detectArrowExpression("x budget * 2 =>", { boundaryUnknown: true })?.expr)
+            .toBe("budget * 2");
+    });
+});
+
+describe("parseDefinition", () => {
+    it("a name = value line should parse", () => {
+        expect(parseDefinition("x = 42")).toEqual({ name: "x", rhs: "42" });
+        expect(parseDefinition("  budget = 5000 ")).toEqual({ name: "budget", rhs: "5000" });
+        expect(parseDefinition("total = a + b")).toEqual({ name: "total", rhs: "a + b" });
+    });
+
+    it("== (highlight) and => (arrow) should not be definitions", () => {
+        expect(parseDefinition("x == y")).toBeNull();
+        expect(parseDefinition("x => 5")).toBeNull();
+    });
+
+    it("prose or a non-identifier left side should not be a definition", () => {
+        expect(parseDefinition("just some prose")).toBeNull();
+        expect(parseDefinition("2 + 2 = 4")).toBeNull();
+    });
+});
+
+describe("buildScopeFromLines", () => {
+    it("sequential definitions should accumulate, later referencing earlier", () => {
+        const scope = buildScopeFromLines(["budget = 5000", "rent = 1800", "left = budget - rent"]);
+        expect(scope.get("budget")).toBe(5000);
+        expect(scope.get("rent")).toBe(1800);
+        expect(scope.get("left")).toBe(3200);
+    });
+
+    it("a forward reference should not resolve (top-to-bottom only)", () => {
+        const scope = buildScopeFromLines(["a = b + 1", "b = 5"]);
+        expect(scope.get("b")).toBe(5);
+        expect(scope.has("a")).toBe(false);
+    });
+
+    it("a later redefinition should win", () => {
+        const scope = buildScopeFromLines(["x = 1", "x = 9"]);
+        expect(scope.get("x")).toBe(9);
+    });
+
+    it("non-definition lines should be ignored", () => {
+        const scope = buildScopeFromLines(["# Heading", "some prose", "y = 7"]);
+        expect(scope.get("y")).toBe(7);
+        expect(scope.size).toBe(1);
     });
 });
