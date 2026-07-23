@@ -162,23 +162,32 @@ export const calcSuggestPlugin = $prose(() =>
 const calcArrowSuggestKey = new PluginKey("MD_CALC_ARROW_SUGGEST");
 
 /**
- * Every line of prose in the document, in reading order, so a `=>` sees the
- * variable definitions (`name = value`) anywhere above or below it. Code blocks
- * are skipped (a `name = value` inside a fence is source, not a definition), and
- * hard breaks split a multi-line paragraph into separate lines while inline
- * atoms mask to ￼ (never a name or digit), keeping the scan honest.
+ * The variable scope a `=>` at `caret` resolves against: every `name = value`
+ * definition from the document start up to the caret, in reading order. Only
+ * definitions ABOVE the cursor count, so a `=>` never resolves against one that
+ * appears after it — the value shown matches what a reader sees scanning down to
+ * that line, and a later redefinition can't retroactively change an earlier
+ * result.
  *
- * O(document) and run only when the debounced `=>` request fires — never on the
- * keystroke path — so a big document costs nothing until you actually type `=>`.
+ * Skips code blocks (a `name = value` in a fence is source, not a definition)
+ * and headings (a title is not a data line); hard breaks split a paragraph into
+ * lines while inline atoms mask to ￼ (never a name or digit). Everything at or
+ * after the caret is pruned before any text work, so the scan pays only for the
+ * document ABOVE the cursor, not the whole file — and runs only on the debounced
+ * request, never the keystroke path.
  */
-function collectDocLines(state: EditorState): string[] {
+function scopeUpToCaret(state: EditorState): Map<string, number> {
+    const caret = state.selection.from;
     const lines: string[] = [];
-    state.doc.descendants((node: ProseNode) => {
-        if (node.type.spec.code) { return false; } // don't descend into code blocks
+    state.doc.descendants((node: ProseNode, pos: number) => {
+        if (pos >= caret) { return false; } // node starts at/after the caret — prune
+        if (node.type.spec.code || node.type.name === "heading") { return false; }
         if (node.isTextblock) {
+            const blockStart = pos + 1;
+            const end = Math.min(node.content.size, caret - blockStart);
             const text = node.textBetween(
                 0,
-                node.content.size,
+                end,
                 "\n",
                 (leaf) => (leaf.type.name === "hardbreak" ? "\n" : "￼"),
             );
@@ -187,7 +196,7 @@ function collectDocLines(state: EditorState): string[] {
         }
         return true;
     });
-    return lines;
+    return buildScopeFromLines(lines);
 }
 
 /**
@@ -210,7 +219,7 @@ const calcArrowSpec: CaretSuggestSpec = {
     shouldSuggest: (query) => isCalcStructurallyValid(query),
 
     fetch(query, cb, ctx) {
-        const scope = ctx ? buildScopeFromLines(collectDocLines(ctx.state)) : undefined;
+        const scope = ctx ? scopeUpToCaret(ctx.state) : undefined;
         const value = evaluateCalc(query, scope);
         if (value === null) { cb([]); return; }
         const result = formatCalcResult(value);

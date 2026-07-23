@@ -283,6 +283,36 @@ describe("`=>` living calculations (variables + units)", () => {
         expect(rows[0].startsWith("1.864")).toBe(true);
     });
 
+    // Place the caret at the end of the i-th top-level block.
+    function caretAtBlockEnd(vw: EditorView, i: number): void {
+        let start = 0;
+        for (let j = 0; j < i; j++) { start += vw.state.doc.child(j).nodeSize; }
+        const node = vw.state.doc.child(i);
+        const pos = start + 1 + node.content.size;
+        vw.dispatch(vw.state.tr.setSelection(TextSelection.create(vw.state.doc, pos)));
+    }
+
+    it("only definitions ABOVE the caret resolve (a later redefinition can't win)", async () => {
+        editor = await makeArrowEditor("x = 1\n\nMID\n\nx = 9\n");
+        v = view(editor);
+        caretAtBlockEnd(v, 1); // in the middle block, between the two definitions
+        typeText(v, " x * 10 =>");
+        await vi.advanceTimersByTimeAsync(250);
+
+        // x resolves to 1 (the definition above), not 9 (below the caret) → 10.
+        expect(optionTexts()).toEqual(["10"]);
+    });
+
+    it("a definition inside a heading should be ignored (a title is not data)", async () => {
+        editor = await makeArrowEditor("# Budget = 5000\n\nz\n");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        typeText(v, " Budget * 2 =>");
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(optionTexts()).toEqual([]); // Budget never defined → nothing offered
+    });
+
     it("an undefined variable should offer nothing", async () => {
         editor = await makeArrowEditor("x\n");
         v = view(editor);

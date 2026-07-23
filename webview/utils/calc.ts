@@ -606,6 +606,15 @@ export interface ArrowMatch {
 const TRAILING_ARROW = /=>[ \t]*$/;
 /** Characters that may appear in a living-calc expression run (letters allowed). */
 const CALC_RUN = /[\w+\-*/%^().°'" \t]*$/u;
+/**
+ * Caps that keep `detectArrowExpression` O(1) on the un-debounced keystroke path
+ * (`match` runs per transaction). A real inline expression is short and sits
+ * within a few tokens of the `=>`, so we only ever look at the tail of a long
+ * prose line and drop a bounded number of leading words. Prose longer than this
+ * before a `=>` simply isn't offered — the right trade for a per-keystroke hook.
+ */
+const MAX_ARROW_RUN = 160;
+const MAX_ARROW_TOKEN_DROPS = 24;
 
 /**
  * Detects a living-calculation expression that ends, at the caret, in `=>`
@@ -629,17 +638,29 @@ export function detectArrowExpression(
     const arrow = TRAILING_ARROW.exec(textBefore);
     if (!arrow) { return null; }
     const beforeArrow = textBefore.slice(0, arrow.index);
-    const run = CALC_RUN.exec(beforeArrow)?.[0] ?? "";
+    const fullRun = CALC_RUN.exec(beforeArrow)?.[0] ?? "";
+    // Only the tail can hold a (short) inline expression; capping it bounds the
+    // per-keystroke tokenization. A capped run still yields correct positions
+    // because it is a suffix and runStart is derived from its length. The
+    // discarded head also means a chosen expression can never be flush against a
+    // truncated window start, so the fragment risk the boundary guard covers
+    // can't reach it.
+    const run = fullRun.length > MAX_ARROW_RUN
+        ? fullRun.slice(fullRun.length - MAX_ARROW_RUN)
+        : fullRun;
     const runStart = arrow.index - run.length;
     const trimmedRun = run.trim();
     if (!trimmedRun) { return null; }
 
-    // Longest valid suffix: starting from the whole trimmed run, drop leading
+    // Longest valid suffix: starting from the trimmed run, drop leading
     // whitespace-separated tokens until what remains parses (or nothing does).
     // This peels prose off the front while keeping the largest real expression
-    // (`the total x*2` → `x*2`).
+    // (`the total x*2` → `x*2`). Bounded by MAX_ARROW_TOKEN_DROPS so a long
+    // prose line ending in `=>` stays cheap.
     let expr = trimmedRun;
-    while (!(isCalcStructurallyValid(expr) && !isBareNumber(expr))) {
+    for (let drops = 0; ; drops++) {
+        if (isCalcStructurallyValid(expr) && !isBareNumber(expr)) { break; }
+        if (drops >= MAX_ARROW_TOKEN_DROPS) { return null; }
         const sp = expr.search(/\s/);
         if (sp === -1) { return null; }
         expr = expr.slice(sp + 1).trimStart();
