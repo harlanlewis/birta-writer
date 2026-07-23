@@ -1,7 +1,7 @@
 /**
  * Content-width segmented control (MAR-51) end-to-end checks against the real
  * bundle: the typography (A) menu carries a Full Width / Fixed Width segmented
- * control above "Font settings"; picking Fixed Width caps the document
+ * control (the Font settings row left the menu); picking Fixed Width caps the document
  * (`--editor-max-width` px + no full-width body class) and Full Width restores
  * the pane-filling layout. Choices post a `setContentWidth` message.
  */
@@ -38,18 +38,22 @@ export async function run({ page, check, baseUrl }) {
     });
     check("the segment labels stay on a single line (no wrap)", singleLine);
 
-    // The segmented control sits above the "Font settings" row.
-    const orderOk = await page.evaluate(() => {
+    // The "Font settings" row deliberately LEFT this menu (the display (A)
+    // menu slimmed down — see the CHANGELOG Changed entry; the entry lives in
+    // Settings-only territory now). Pin the removal alongside the control's
+    // presence, so a resurrected row fails loudly instead of drifting back.
+    const slimmed = await page.evaluate(() => {
         const menu = document.querySelector(".tb-font-menu");
-        if (!menu) return false;
-        const seg = menu.querySelector(".tb-seg-row");
-        const settings = [...menu.querySelectorAll(".tb-fmt-item")].find(
-            (el) => el.textContent.trim() === "Font settings",
-        );
-        if (!seg || !settings) return false;
-        return seg.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING;
+        if (!menu) return { seg: false, settingsRow: true };
+        return {
+            seg: !!menu.querySelector(".tb-seg-row"),
+            settingsRow: [...menu.querySelectorAll(".tb-fmt-item")].some(
+                (el) => el.textContent.trim() === "Font settings",
+            ),
+        };
     });
-    check("the width control sits above the Font settings row", !!orderOk);
+    check("the width control renders and the Font settings row stays gone",
+        slimmed.seg && !slimmed.settingsRow, JSON.stringify(slimmed));
 
     // Default: Full Width active.
     const fullBtn = segButtons.nth(0);

@@ -182,6 +182,16 @@ describe("Turn into — non-prose sources", () => {
         expect(markdown(editor)).toBe("- [ ] one\n- [ ] two");
     });
 
+    it("a NESTED bullet list → ordered should convert the whole tree from the menu", async () => {
+        // The shipped bug, pinned through the real menu wiring (row →
+        // convertAt → retypeList): only the top layer converted, leaving a
+        // bullet sublist inside a freshly ordered list.
+        const editor = await makeEditor("- one\n- two\n  - child a\n  - child b");
+        view(editor);
+        pickRow(openMenuOn(markers()[0]!), "Ordered List");
+        expect(markdown(editor)).toBe("1. one\n2. two\n   1. child a\n   2. child b");
+    });
+
     it("bullet list → paragraph should unwrap every item", async () => {
         const editor = await makeEditor("- one\n- two");
         view(editor);
