@@ -53,18 +53,21 @@ export async function run({ page, check, baseUrl }) {
     check("clicking a style hit opens the findings popup", await page.locator(POPUP).isVisible());
 
     // ── 2. Overlapping findings stack, most-specific first ───────────
+    // Chip labels come from the ONE canonical style-category vocabulary
+    // (webview/utils/styleCategories.ts — plural section labels, shared with
+    // the Checks menu and the review sidebar since the sidebar overhaul).
     const t = await tags();
-    check("popup shows a Filler section", t.includes("Filler"), JSON.stringify(t));
-    check("popup also stacks the Long sentence section", t.includes("Long sentence"), JSON.stringify(t));
-    check("the filler (smaller span) is listed first", t[0] === "Filler", JSON.stringify(t));
+    check("popup shows a Fillers section", t.includes("Fillers"), JSON.stringify(t));
+    check("popup also stacks the Long sentences section", t.includes("Long sentences"), JSON.stringify(t));
+    check("the filler (smaller span) is listed first", t[0] === "Fillers", JSON.stringify(t));
 
     const g = await groups();
-    const fillerGroup = g.find((x) => x.tag === "Filler");
-    const longGroup = g.find((x) => x.tag === "Long sentence");
+    const fillerGroup = g.find((x) => x.tag === "Fillers");
+    const longGroup = g.find((x) => x.tag === "Long sentences");
     check("the filler section offers Remove + Ignore", JSON.stringify(fillerGroup?.items) === JSON.stringify(["Remove", "Ignore"]), JSON.stringify(fillerGroup));
     check("the long-sentence section offers only Ignore (a judgment call)", JSON.stringify(longGroup?.items) === JSON.stringify(["Ignore"]), JSON.stringify(longGroup));
     // The chip already names the category, so the message must not repeat it.
-    check("the message does not repeat the category chip", !/\bFiller\b/i.test(fillerGroup?.message ?? "Filler"), JSON.stringify(fillerGroup));
+    check("the message does not repeat the category chip", !/\bfillers?\b/i.test(fillerGroup?.message ?? "Filler"), JSON.stringify(fillerGroup));
 
     // ── 3. Remove deletes the flagged span and closes the popup ──────
     await page.locator(`${POPUP} .pf-popup-item`, { hasText: "Remove" }).first().click();

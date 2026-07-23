@@ -92,73 +92,32 @@ export async function run({ page, check, baseUrl }) {
     );
     check("--tb-menu-gap published to CSS from MENU_GAP", cssVar === "6px", `value="${cssVar}"`);
 
-    // ── 5. Typography menu: the block-handles radio rows ──
-    // A captioned Always show/Headings and hover/Hover only radio trio under
-    // the width segments; picks apply the handles-rest-* body class
-    // immediately (menu stays open) and post setBlockHandles for the
-    // settings round-trip.
+    // ── 5. Typography menu: slimmed to the frequent moves ──
+    // The display (A) menu deliberately LOST its rarely-changed rows (the
+    // Show Block Handles radio trio and the Font settings entry moved to
+    // Settings-only territory — see the CHANGELOG "display (A) menu slimmed
+    // down" entries). What remains: the size stepper, the width segments,
+    // and the editor-font presets. The birta.blockHandles setting itself
+    // still works and is covered by the extension/webview unit suites
+    // (extension.blockHandles.test.ts, markdownEditorProvider.blockHandles).
     const fontBtn = '[data-item-id="fontPreset"] .tb-fmt-btn';
     const fontMenu = '[data-item-id="fontPreset"] .tb-font-menu';
-    const handleRowLabels = ["Always show", "Headings and hover", "Hover only"];
     const fontOverflowed = await page.$eval(fontBtn, (el) => !!el.closest(".tb-more-menu"));
     check("font menu renders on the bar (not overflowed)", !fontOverflowed);
     await page.hover(fontBtn);
     await page.waitForTimeout(OPEN_WAIT);
     check("hovering the A button opens the typography menu", (await disp(fontMenu)) === "flex");
-    const caption = await page.$eval(`${fontMenu} .tb-seg-caption`, (el) => el.textContent).catch(() => null);
-    check("the handle rows carry their caption", caption === "Show Block Handles", `caption=${caption}`);
-    const rowState = () =>
-        page.$$eval(`${fontMenu} [role="menuitemradio"]`, (els, labels) =>
-            els.filter((el) => labels.includes(el.querySelector(".tb-check-label")?.textContent))
-                .map((el) => ({
-                    label: el.querySelector(".tb-check-label")?.textContent,
-                    on: el.getAttribute("aria-checked") === "true",
-                })), handleRowLabels);
-    const atRest = await rowState();
-    check("three radio rows in display order with Headings and hover (default) active",
-        JSON.stringify(atRest) === JSON.stringify([
-            { label: "Always show", on: false },
-            { label: "Headings and hover", on: true },
-            { label: "Hover only", on: false },
-        ]), JSON.stringify(atRest));
-    // Pick Hover only: body class flips, the row checks, the menu stays open.
-    const rowBox = (label) =>
-        page.$$eval(`${fontMenu} [role="menuitemradio"]`, (els, wanted) => {
-            const el = els.find((e) => e.querySelector(".tb-check-label")?.textContent === wanted);
-            const r = el.getBoundingClientRect();
-            return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-        }, label);
-    const hoverBox = await rowBox("Hover only");
-    await page.mouse.move(hoverBox.x, hoverBox.y);
-    await page.mouse.down();
-    await page.mouse.up();
-    await page.waitForTimeout(30);
-    check("picking Hover only applies the handles-rest-hover body class",
-        await page.evaluate(() => document.body.classList.contains("handles-rest-hover")));
-    check("picking Hover only checks its row", (await rowState())[2].on === true);
-    check("the menu stays open after a handle-row pick", (await disp(fontMenu)) === "flex");
-    const postedHandles = await page.evaluate(() =>
-        window.__posted.filter((m) => m.type === "setBlockHandles").map((m) => m.mode));
-    check("the pick posts setBlockHandles for the settings round-trip",
-        JSON.stringify(postedHandles) === JSON.stringify(["hover"]), JSON.stringify(postedHandles));
-    // Always show is the third state: its own body class, replacing hover's.
-    const alwaysBox = await rowBox("Always show");
-    await page.mouse.move(alwaysBox.x, alwaysBox.y);
-    await page.mouse.down();
-    await page.mouse.up();
-    await page.waitForTimeout(30);
-    check("picking Always show swaps in the handles-rest-always body class",
-        await page.evaluate(() => document.body.classList.contains("handles-rest-always")
-            && !document.body.classList.contains("handles-rest-hover")));
-    // Restore the default for any checks that follow.
-    const headingsBox = await rowBox("Headings and hover");
-    await page.mouse.move(headingsBox.x, headingsBox.y);
-    await page.mouse.down();
-    await page.mouse.up();
-    await page.waitForTimeout(30);
-    check("picking Headings and hover clears the override body class",
-        await page.evaluate(() => !document.body.classList.contains("handles-rest-hover")
-            && !document.body.classList.contains("handles-rest-always")));
+    const menuShape = await page.$eval(fontMenu, (menu) => ({
+        radios: [...menu.querySelectorAll('[role="menuitemradio"]')].length,
+        captions: [...menu.querySelectorAll(".tb-seg-caption")].map((e) => e.textContent),
+        text: menu.textContent ?? "",
+    }));
+    check("the block-handles radio trio has left the menu (Settings-only now)",
+        menuShape.radios === 0 && !menuShape.captions.includes("Show Block Handles"),
+        JSON.stringify(menuShape.captions));
+    check("the slimmed menu keeps width segments and the font presets",
+        /Full Width/.test(menuShape.text) && /Editor font/.test(menuShape.text),
+        JSON.stringify(menuShape.text.slice(0, 120)));
     // Leave the menu before the gear checks below.
     await page.mouse.move(500, 800, { steps: 5 });
     await page.waitForTimeout(30);
