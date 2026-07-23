@@ -4,10 +4,12 @@ Birta Writer is a live visual editor for editing richly formatted and structured
 
 ## Why I use it
 
-- Fast and responsive, with familiar and powerful controls including drag and drop, slash commands, and keyboard shortcuts. 
-- Instant updates reflects changes made outside of your edits, including AI agent edits or cloud sync.
+- Fast and responsive, with familiar and powerful controls including drag and drop, slash commands, and keyboard shortcuts.
+
+- Instant updates reflect changes made outside of your edits, including AI agent edits or cloud sync.
+
 - Safely open and edit any Markdown-like content with no risk of data loss or unexpected modification due to parser mishandling unfamiliar syntax. Document fidelity is a first-class concern.
-- It sits within [VS Code](https://code.visualstudio.com) and it's *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor with multi-cursor support, or opening a diff view to compare conflicting changes. Birta Writer is simple by design, but nearly every aspect is customizable through VS Code's settings scopes at app, user, or project level.
+- It sits within [VS Code](https://code.visualstudio.com) and its *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor with multi-cursor support, or opening a diff view to compare conflicting changes. Birta Writer is simple by design, but nearly every aspect is customizable through VS Code's settings scopes at app, user, or project level.
 - There's a little more magic than you might expect, like an inline calculator to autocomplete math equations with the answer, like `6^2+(8*3/4)= 42`
 
 - It helps me write better:
@@ -79,8 +81,6 @@ My first attempt at a visual Markdown editor was in 2011, with Eric Danielson.
 It was a web-based local Markdown editor that synced through the Dropbox API, embarrassingly called [Marlan](https://github.com/harlanlewis/Marlan). The world is so different now, and there's so much more foundation to stand on.
 
 It's incredibly fun to think about this same problem from a new vantage of experience and purpose, crafting at speed the same tools I use to sharpen thought.
-
-
 
 ---
 
