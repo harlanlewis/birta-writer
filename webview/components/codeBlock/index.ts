@@ -846,6 +846,30 @@ export function createCodeBlockView(
     const calcRender = document.createElement("div");
     calcRender.className = "calc-render";
     calcPreview.appendChild(calcRender);
+    calcPreview.addEventListener("click", () => {
+        // stopEvent keeps ProseMirror's mouse handling out of the ledger —
+        // which also means PM's caret stays wherever it was, invisibly. A
+        // later Enter/keymap stroke would edit the document at that stale
+        // caret with no visual feedback. Clicking read-only chrome should
+        // leave the editor inert until the user clicks back into content, so
+        // drop editor focus; clicking any content refocuses through PM's own
+        // mousedown. On `click` (not mousedown) so it runs AFTER the
+        // browser's own focus settling, which would otherwise hand focus
+        // straight back — and because blurring the host collapses the DOM
+        // selection, a ledger selection (a drag that just ended here) is
+        // captured first and re-asserted after: inert editor, intact copy.
+        if (!view.hasFocus()) { return; }
+        const sel = window.getSelection();
+        const ledgerRanges =
+            sel && !sel.isCollapsed && calcPreview.contains(sel.anchorNode)
+                ? Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i).cloneRange())
+                : [];
+        view.dom.blur();
+        if (sel && ledgerRanges.length > 0) {
+            sel.removeAllRanges();
+            for (const range of ledgerRanges) { sel.addRange(range); }
+        }
+    });
 
     let calcRenderTimer: ReturnType<typeof setTimeout> | null = null;
     // What the ledger currently shows; NodeView update() also fires for

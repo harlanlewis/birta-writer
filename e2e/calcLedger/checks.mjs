@@ -87,6 +87,32 @@ export async function run({ page, check, baseUrl }) {
         check("clicking prose restores a normal editor caret", caretInProse);
     }
 
+    // ── Clicking the ledger leaves the editor INERT (no stale-caret edits) ──
+    if (prosePos) {
+        await page.mouse.click(prosePos.x, prosePos.y); // park a live caret in prose
+        await page.waitForTimeout(80);
+        const parasBefore = await page.$$eval(".ProseMirror p", (els) => els.length);
+        await page.mouse.click(srcBox.x + 4, srcBox.y + srcBox.height / 2); // into the ledger
+        await page.waitForTimeout(80);
+        await page.keyboard.press("Enter");
+        await page.keyboard.type("zz");
+        await page.waitForTimeout(120);
+        const parasAfter = await page.$$eval(".ProseMirror p", (els) => els.length);
+        const leaked = await page.evaluate(() =>
+            (document.querySelector(".ProseMirror")?.textContent ?? "").includes("zz"));
+        check("Enter/typing after a ledger click edits nothing (editor inert)",
+            parasAfter === parasBefore && !leaked,
+            `paras ${parasBefore}→${parasAfter}, leaked=${leaked}`);
+        // …and clicking back into prose restores a live editor.
+        await page.mouse.click(prosePos.x, prosePos.y);
+        await page.waitForTimeout(80);
+        await page.keyboard.type("Q");
+        await page.waitForTimeout(120);
+        const typed = await page.evaluate(() =>
+            (document.querySelector(".ProseMirror")?.textContent ?? "").includes("Q"));
+        check("clicking back into prose restores normal typing", typed);
+    }
+
     // ── Disabled gate: the fence is an ordinary code block ──
     await page.goto(`${baseUrl}/index.html?blocksOff=1`);
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
