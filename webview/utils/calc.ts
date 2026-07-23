@@ -760,6 +760,23 @@ function isBareNumber(expr: string): boolean {
     return /^[0-9.]+$/.test(expr.trim());
 }
 
+/**
+ * Whether `expr` references any VARIABLE — an identifier that is not a
+ * function call. The cascade uses this to skip constant-only equations
+ * (`2+3 => 99` depends on no definition, so no definition edit may touch
+ * it); constants (`pi`) count as variables here on purpose, because a scope
+ * definition can shadow them.
+ */
+export function expressionUsesVariables(expr: string): boolean {
+    const tokens = tokenize(expr, true);
+    if (!tokens) { return false; }
+    return tokens.some(
+        (tok, i) =>
+            tok.kind === "ident" &&
+            !(FUNCTIONS.has(tok.name.toLowerCase()) && tokens[i + 1]?.kind === "lparen"),
+    );
+}
+
 // ── Variable definitions ─────────────────────────────────────────────────────
 
 /**
@@ -957,11 +974,12 @@ export interface EquationSpan {
     resultText: string;
 }
 
-/** A previously-inserted result: optional minus, digits with `,` grouping,
+/** A previously-inserted result: optional minus, digits with `,` grouping
+ * (a comma must sit BETWEEN digits — `5, then` keeps its prose comma),
  * optional decimals. Sticky, so it anchors exactly where the scan points it. */
-const RESULT_NUMBER = /-?\d[\d,]*(?:\.\d+)?/y;
+const RESULT_NUMBER = /-?\d(?:[\d,]*\d)?(?:\.\d+)?/y;
 /** The same shape, anchored — validates a backward-collected candidate. */
-const RESULT_NUMBER_EXACT = /^-?\d[\d,]*(?:\.\d+)?$/;
+const RESULT_NUMBER_EXACT = /^-?\d(?:[\d,]*\d)?(?:\.\d+)?$/;
 const RESULT_CHAR = /[\d,.]/;
 const DIGIT = /[0-9]/;
 const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);

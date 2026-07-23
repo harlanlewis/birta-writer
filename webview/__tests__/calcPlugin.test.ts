@@ -11,7 +11,7 @@ import { ensureCalcUnits } from "../utils/calc";
 // timers) so the fake-timer tests below see synchronous resolution.
 beforeAll(() => ensureCalcUnits());
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
-import { TextSelection } from "../pm";
+import { TextSelection, history, undo } from "../pm";
 import type { EditorView } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
@@ -650,6 +650,85 @@ describe("auto-insert result refresh (editing an existing equation)", () => {
         editor.destroy();
     });
 
+    it("a definition on a HARDBREAK line still cascades (not just first-line defs)", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("Notes:\\\nx = 4\n\nx*2 => 8");
+        const v = view(editor);
+        // "x = 4" is the second visual line of the first block; edit its 4.
+        const idx = v.state.doc.firstChild!.textContent.indexOf("4");
+        editChar(v, idx, "5");
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts[1]).toBe("x*2 => 10");
+        editor.destroy();
+    });
+
+    it("a prose comma directly after the result survives a refresh", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("2+3 => 5, then more");
+        const v = view(editor);
+        editChar(v, 2, "4");
+        expect(blockText(v)).toBe("2+4 => 6, then more");
+        editor.destroy();
+    });
+
+    it("editing an arrow's RESULT in a definition-bearing block is NOT refought", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\\\nx*2 => 8");
+        const v = view(editor);
+        // Hand-edit the 8 → 9: the block holds a definition, so the cascade
+        // runs — but the user's own edit is the override and must stand.
+        const idx = v.state.doc.firstChild!.textContent.indexOf("8");
+        editChar(v, idx, "9");
+        expect(v.state.doc.firstChild!.textContent).toContain("x*2 => 9");
+        editor.destroy();
+    });
+
+    it("a constant-only arrow never depends on definitions (overrides persist)", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\n\n2+3 => 99");
+        const v = view(editor);
+        editChar(v, 4, "5"); // edit x — 2+3 has no variables, 99 is the user's
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts[1]).toBe("2+3 => 99");
+        editor.destroy();
+    });
+
+    it("advisory `=` leaves prose annotations alone (result followed by a word)", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("Dec 24-26 = 3 days off");
+        const v = view(editor);
+        const idx = v.state.doc.firstChild!.textContent.indexOf("24");
+        editChar(v, idx + 1, "3"); // 24 → 23
+        expect(blockText(v)).toBe("Dec 23-26 = 3 days off"); // never "-3 days"
+        editor.destroy();
+    });
+
+    it("a definition inside inline code never feeds the scope or cascades", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("`x = 4`\n\nx*2 => 8");
+        const v = view(editor);
+        const idx = v.state.doc.firstChild!.textContent.indexOf("4");
+        editChar(v, idx, "5"); // edit inside the backticks
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts[1]).toBe("x*2 => 8"); // untouched — backticked text is source
+        editor.destroy();
+    });
+
     it("an equation inside inline code is source, never rewritten", async () => {
         (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
             translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
@@ -678,8 +757,16 @@ describe("auto-insert result refresh (editing an existing equation)", () => {
     it("undo reverts the edit and the refreshed answer together", async () => {
         const editor = await makeRefreshEditor("3+4= 7");
         const v = view(editor);
+        // A real history plugin, registered onto the live state so this test
+        // actually exercises undo (it used to only re-assert the refresh).
+        const withHistory = v.state.reconfigure({
+            plugins: [...v.state.plugins, history()],
+        });
+        v.updateState(withHistory);
         editChar(v, 0, "4");
         expect(blockText(v)).toBe("4+4= 8");
+        undo(v.state, v.dispatch);
+        expect(blockText(v)).toBe("3+4= 7"); // one undo: expression AND answer
         editor.destroy();
     });
 });

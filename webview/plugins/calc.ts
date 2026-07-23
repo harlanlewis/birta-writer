@@ -44,6 +44,7 @@ import {
     ensureCalcUnits,
     evaluateCalc,
     evaluateExpression,
+    expressionUsesVariables,
     findRefreshEquations,
     formatCalcResult,
     isCalcStructurallyValid,
@@ -197,6 +198,30 @@ function scopeUpToCaret(state: EditorState): Map<string, number> {
     return scopeUpTo(state, state.selection.from);
 }
 
+/**
+ * A textblock's calc-visible text, offset-preserving: every char maps 1:1 to
+ * a document position after blockStart. Hard breaks become `\n` (so LINES are
+ * real — a definition on the second hardbreak line is a definition), inline
+ * atoms mask to `￼` (never an operand), and INLINE-CODE text masks to `￼`
+ * per character — `` `x = 4` `` is source: not a definition, not an equation,
+ * exactly like a code block.
+ */
+function blockCalcText(node: ProseNode): string {
+    let text = "";
+    node.forEach((child) => {
+        if (child.isText) {
+            text += child.marks.some((m) => m.type.spec.code)
+                ? "￼".repeat(child.text?.length ?? 0)
+                : child.text ?? "";
+        } else if (child.type.name === "hardbreak") {
+            text += "\n";
+        } else {
+            text += "￼".repeat(child.nodeSize);
+        }
+    });
+    return text;
+}
+
 /** The same scope, cut at an arbitrary document position (the refresh path
  * resolves each `=>` equation against the definitions above ITS line, not the
  * caret's). */
@@ -208,13 +233,9 @@ function scopeUpTo(state: EditorState, upTo: number): Map<string, number> {
         if (node.isTextblock) {
             const blockStart = pos + 1;
             const end = Math.min(node.content.size, upTo - blockStart);
-            const text = node.textBetween(
-                0,
-                end,
-                "\n",
-                (leaf) => (leaf.type.name === "hardbreak" ? "\n" : "￼"),
-            );
-            for (const line of text.split("\n")) { lines.push(line); }
+            for (const line of blockCalcText(node).slice(0, end).split("\n")) {
+                lines.push(line);
+            }
             return false; // a textblock's children are inline; text is captured
         }
         return true;
@@ -312,7 +333,7 @@ function staleResultLengthAfter(state: EditorState, caret: number): number {
         undefined,
         "￼",
     );
-    return /^[ \t]*-?\d[\d,]*(?:\.\d+)?/.exec(rest)?.[0].length ?? 0;
+    return /^[ \t]*-?\d(?:[\d,]*\d)?(?:\.\d+)?/.exec(rest)?.[0].length ?? 0;
 }
 
 /** Advisory `=>` living-calculation plugin. */
@@ -382,17 +403,19 @@ export const calcAutoInsertPlugin = $inputRule(() =>
 // feature exists to prevent. Result-side edits remain the user's override in
 // every form and are never fought; equations inside inline code are source.
 
-/** Whether any line of a block's text is a `name = value` definition. */
+/**
+ * Whether any line of a block's text is a `name = value` definition whose
+ * right-hand side READS as a calc expression. The structural gate is what
+ * keeps prose like `a = b means the assignment operator` from triggering the
+ * document-below cascade on every keystroke — a definition that could never
+ * contribute a value can never stale an answer.
+ */
 function blockHasDefinition(text: string): boolean {
-    return text.includes("=") && text.split("\n").some((line) => parseDefinition(line) !== null);
-}
-
-/** Whether [from, to] of the doc carries an inline-code mark — an equation
- * inside backticks is SOURCE, never a live calculation (`` `x => 5` ``). */
-function rangeInCode(state: EditorState, from: number, to: number): boolean {
-    return Object.values(state.schema.marks).some(
-        (mark) => mark.spec.code && state.doc.rangeHasMark(from, to, mark),
-    );
+    if (!text.includes("=")) { return false; }
+    return text.split("\n").some((line) => {
+        const def = parseDefinition(line);
+        return def !== null && isCalcStructurallyValid(def.rhs);
+    });
 }
 
 export const calcRefreshPlugin = $prose(() => new Plugin({
@@ -442,14 +465,20 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
         // every `=>` equation from there DOWN may have gone stale.
         let cascadeFrom = -1;
 
-        /** Recompute one candidate; rewrite its result if stale. True if rewritten. */
-        const refresh = (blockStart: number, text: string, cand: EquationSpan): boolean => {
+        /**
+         * Recompute one candidate; rewrite its result if stale. True if
+         * rewritten. `scope` (cascade only) is the incrementally-built scope
+         * at the candidate's line — without it, arrows resolve via a fresh
+         * scopeUpTo walk.
+         */
+        const refresh = (
+            blockStart: number,
+            text: string,
+            cand: EquationSpan,
+            scope?: Map<string, number>,
+        ): boolean => {
             const key = `${blockStart}:${cand.res[0]}`;
             if (refreshed.has(key)) { return false; }
-            // An equation inside inline code is source, not a calculation.
-            if (rangeInCode(newState, blockStart + cand.expr[0], blockStart + cand.res[1])) {
-                return false;
-            }
             let result: string | null = null;
             if (cand.form === "arrow") {
                 // The arrow's own detection re-derives the expression with the
@@ -459,13 +488,27 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                     boundaryUnknown: false,
                 });
                 if (!det) { return false; }
-                const value = evaluateCalc(det.expr, scopeUpTo(newState, blockStart + cand.expr[0]));
+                const value = evaluateCalc(
+                    det.expr,
+                    scope ?? scopeUpTo(newState, blockStart + cand.expr[0]),
+                );
                 result = value === null ? null : formatCalcResult(value);
                 // A unit conversion before the lazy engine loads can't compute
                 // — kick the load off so the NEXT edit refreshes (this hook is
                 // synchronous and cannot await).
                 if (result === null && !calcUnitsReady()) { void ensureCalcUnits().catch(() => undefined); }
             } else {
+                // Advisory mode: a `=` result followed by a WORD reads as
+                // prose annotation ("Dec 24-26 = 3 days off") far more often
+                // than a maintained answer — leave it alone. Auto-insert mode
+                // opted into aggressive maintenance and keeps full reach.
+                if (!calcAutoInsert()) {
+                    const tail = text.slice(cand.res[1]);
+                    // Whitespace is excluded from the accepting class, or the
+                    // `[ \t]*` would backtrack and let a space "satisfy"
+                    // non-letter while a word still follows.
+                    if (!/^[ \t]*($|[^\p{L}\p{N} \t])/u.test(tail)) { return false; }
+                }
                 const det = cand.form === "trailing"
                     // Re-validate with the run's real left context so every
                     // detection guard (comma fragments, letters) still applies.
@@ -503,9 +546,9 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
             const blockStart = $pos.start();
             if (seenBlocks.has(blockStart)) { continue; }
             seenBlocks.add(blockStart);
-            // Inline atoms mask to a char arithmetic can't contain, keeping
-            // offsets 1:1 with positions (the proofread/notes masking contract).
-            const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
+            // Offset-preserving masked text: atoms and inline-code to ￼
+            // (never operands, never equations), hardbreaks to real lines.
+            const text = blockCalcText($pos.parent);
             // This hook rides EVERY doc change; a block with no "=" can hold
             // no equation and no definition — skip before any scan work.
             if (!text.includes("=")) { continue; }
@@ -529,21 +572,57 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
             }
         }
 
-        // The variable cascade: recompute every `=>` equation at or below the
-        // edited definition (each against the scope at its own line). Runs
-        // only when a definition-bearing block was edited, and only over
-        // blocks that actually contain "=>" — a keystroke in ordinary prose
-        // never reaches this walk.
+        // The variable cascade: recompute the variable-bearing `=>` equations
+        // at or below the edited definition. ONE scope, built incrementally
+        // as the walk descends (seeded with everything above the cascade
+        // start), so per-arrow semantics — "definitions above ITS line" —
+        // hold at O(doc) instead of O(arrows × doc). Guards:
+        //  - only when a structurally-plausible definition was edited;
+        //  - only variable-bearing expressions (a `2+3 => 99` override has no
+        //    dependency on any definition and is never touched);
+        //  - never a result the CURRENT edit intersects (that edit IS the
+        //    user's override — rewriting it back would undo them mid-keystroke).
         if (cascadeFrom !== -1) {
+            const scope = scopeUpTo(newState, cascadeFrom);
+            const resIntersectsChange = (blockStart: number, cand: EquationSpan): boolean =>
+                changed.some(
+                    (c) =>
+                        c.from <= blockStart + cand.res[1] && c.to >= blockStart + cand.res[0],
+                );
             newState.doc.descendants((node: ProseNode, pos: number) => {
                 if (!node.isTextblock) { return true; }
-                if (node.type.spec.code) { return false; }
+                if (node.type.spec.code || node.type.name === "heading") { return false; }
                 const blockStart = pos + 1;
-                if (blockStart + node.content.size < cascadeFrom) { return false; }
-                const text = node.textBetween(0, node.content.size, undefined, "￼");
-                if (!text.includes("=>")) { return false; }
-                for (const cand of findRefreshEquations(text, 0, text.length, CARET_CONTEXT_WINDOW)) {
-                    if (cand.form === "arrow") { refresh(blockStart, text, cand); }
+                if (blockStart + node.content.size <= cascadeFrom) { return false; }
+                const text = blockCalcText(node);
+                if (!text.includes("=")) { return false; }
+                const arrows = text.includes("=>")
+                    ? findRefreshEquations(text, 0, text.length, CARET_CONTEXT_WINDOW)
+                        .filter((c) => c.form === "arrow")
+                    : [];
+                // Line-ordered: refresh each line's arrows against the scope
+                // ABOVE it, then feed the line's own definition into the scope
+                // (buildScopeFromLines' exact reading order).
+                let arrowIdx = 0;
+                let lineStart = 0;
+                for (const line of text.split("\n")) {
+                    const lineEnd = lineStart + line.length;
+                    while (arrowIdx < arrows.length && arrows[arrowIdx].expr[0] <= lineEnd) {
+                        const cand = arrows[arrowIdx];
+                        arrowIdx++;
+                        if (!expressionUsesVariables(text.slice(cand.expr[0], cand.expr[1]))) { continue; }
+                        if (resIntersectsChange(blockStart, cand)) { continue; }
+                        refresh(blockStart, text, cand, scope);
+                    }
+                    const def = parseDefinition(line);
+                    if (def) {
+                        // The one definition-evaluation step (see
+                        // buildScopeFromLines): a resolvable RHS enters scope,
+                        // a broken one never clobbers an earlier good value.
+                        const value = evaluateCalc(def.rhs, scope);
+                        if (value !== null) { scope.set(def.name, value); }
+                    }
+                    lineStart = lineEnd + 1;
                 }
                 return false;
             });
