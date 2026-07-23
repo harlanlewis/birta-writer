@@ -1,10 +1,9 @@
 # Birta Writer
 
-Birta Writer strives to be your favorite way to read and write Markdown documents.
+Birta Writer is a live visual editor for editing richly formatted and structured Markdown documents. It strives to be your favorite way to write and edit, regardless of format.
 
 ## Why I use it
 
-- Birta Writer is a live visual editor for directly editing richly formatted and structured content.
 - Fast and responsive, with familiar and powerful controls including drag and drop, slash commands, and keyboard shortcuts. 
 - Instant updates reflects changes made outside of your edits, including AI agent edits or cloud sync.
 - Safely open and edit any Markdown-like content with no risk of data loss or unexpected modification due to parser mishandling unfamiliar syntax. Document fidelity is a first-class concern.
@@ -77,9 +76,9 @@ I'm tired of:
 
 My first attempt at a visual Markdown editor was in 2011, with Eric Danielson.
 
-It was a web-based local Markdown editor that synced through the Dropbox API. It was (embarrassingly) called [Marlan](https://github.com/harlanlewis/Marlan). The world is so different now, and there's so much more shared foundation to stand on. 
+It was a web-based local Markdown editor that synced through the Dropbox API, embarrassingly called [Marlan](https://github.com/harlanlewis/Marlan). The world is so different now, and there's so much more foundation to stand on.
 
-It's incredibly exciting to think about this same problem from a new vantage of experience and purpose, crafting at speed the same tools I use to sharpen thought.
+It's incredibly fun to think about this same problem from a new vantage of experience and purpose, crafting at speed the same tools I use to sharpen thought.
 
 
 
