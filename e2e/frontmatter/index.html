@@ -24,20 +24,26 @@
     --vscode-textBlockQuote-background: rgba(128, 128, 128, 0.08);
   }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  /* Give the harness topbar a realistic toolbar height (~48px in VS Code) so
+     the empty-state geometry check actually discriminates: a button placed at
+     a hardcoded offset would clear a skinny empty div but not the real bar. */
+  .editor-topbar { min-height: 48px; }
 </style>
 <script>
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
   window.__posted = [];
   const CONTENT = "---\ntitle: Content inventory\ntags:\n  - reference\n  - showcase\n---\n\n# Sample\n\ntext\n";
   const FRONTMATTER = "---\ntitle: Content inventory\ntags:\n  - reference\n  - showcase\n---\n";
+  // ?empty=1 boots a document with no frontmatter, for the fm-empty checks.
+  const EMPTY = new URLSearchParams(location.search).get("empty") === "1";
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);
       if (msg.type === "ready") {
         window.postMessage({
           type: "init",
-          content: CONTENT,
-          frontmatter: FRONTMATTER,
+          content: EMPTY ? "# Sample\n\ntext\n" : CONTENT,
+          frontmatter: EMPTY ? undefined : FRONTMATTER,
           syncVersion: 1,
         }, "*");
       }

@@ -148,7 +148,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
 
     function renderRow(item: SlashMenuItem, index: number): HTMLElement {
         const row = document.createElement("div");
-        row.className = "slash-menu-item";
+        row.className = "ui-menu-row slash-menu-item";
         row.id = slashRowDomId(item.id);
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", "false");
@@ -211,7 +211,7 @@ export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
                     continue;
                 }
                 const header = document.createElement("div");
-                header.className = "slash-menu-group-label";
+                header.className = "ui-heading ui-menu-heading slash-menu-group-label";
                 header.setAttribute("role", "presentation");
                 header.textContent = group.label;
                 list.appendChild(header);

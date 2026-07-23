@@ -1,25 +1,31 @@
 # Birta Writer
 
-Birta Writer is a live visual editor for editing richly formatted and structured Markdown documents. It strives to be your favorite way to write and edit, regardless of format.
+Birta Writer is a visual editor for richly formatted Markdown documents. It strives to be your favorite way to write and edit text.
+
+
 
 ## Why I use it
 
-- Fast and responsive, with familiar and powerful controls including drag and drop, slash commands, and keyboard shortcuts.
+- Fast to open and responsive to use.
+
+- Familiar and powerful controls including slash commands, block-based drag-and-drop, and VS Code keyboard shortcuts for editing.
 
 - Instant updates reflect changes made outside of your edits, including AI agent edits or cloud sync.
 
-- Safely open and edit any Markdown-like content with no risk of data loss or unexpected modification due to parser mishandling unfamiliar syntax. Document fidelity is a first-class concern.
-- It sits within [VS Code](https://code.visualstudio.com) and its *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor with multi-cursor support, or opening a diff view to compare conflicting changes. Birta Writer is simple by design, but nearly every aspect is customizable through VS Code's settings scopes at app, user, or project level.
+- Safely opens and edits any Markdown-like content with no risk of data loss or unexpected modification due to parser mishandling unfamiliar syntax. Document fidelity is a first-class concern.
+
+- It sits within [VS Code](https://code.visualstudio.com) and its *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor, or comparing changes in a diff view. Birta Writer is simple by design, but every aspect is customizable through VS Code's settings scopes at app, user, or project level.
+
 - There's a little more magic than you might expect, like an inline calculator that autocompletes the answer to a math expression (`6^2+(8*3/4)= 42`), or evaluates one with `=>` using named variables you defined earlier in the document and offline unit conversions (`3 km in mi =>`, `rent / budget * 100 =>`) — and a fenced ` ```calc ` block that turns those into a live worksheet, computing every line under one shared scope. All computed locally, never over the network.
 
 - It helps me write better:
 
   - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, punctuation, and vocabulary.
-  - Customizable draft-management tools to help you find `[TK]` notes, `TODOs`, and inline comments.
+  - Customizable draft-management tools for jumping to `[TK]` notes, `TODOs`, and inline comments.
 
 - It's private.
 
-  - By default, makes no network requests of any kind. Rich link previews are opt-in.
+  - By default, it makes no network requests of any kind. Even rich link previews are opt-in.
   - No usage tracking to opt out of, because it doesn't exist.
 
 While superficially a single-document editor, Birta Writer has deceptively-deep system awareness and broad compatibility:
@@ -41,7 +47,7 @@ Use Birta Writer as a knowledge base complement when you want a more enjoyable a
 
 Almost everything I do on a computer in 2026 reduces to code and context.
 
-I pipe meeting transcripts to research repositories to spreadsheets to confluence documents to tickets to coding agents to pull request descriptions to communication channels to slide decks and back again.
+I pipe meeting transcripts → research repositories → spreadsheets → confluence documents → tickets → coding agents → pull request descriptions → communication channels → slide decks. Then back again.
 
 The emergent interface between humans and AI is text, and the dominant flavor is Markdown. 
 
@@ -50,11 +56,12 @@ Markdown is simple, semantic, portable, universal, and I ***really*** want to lo
 I'm tired of:
 
 - Pouring content into proprietary systems, only for my preferences to change or for the platforms to develop in ways that no longer serve me.
+
 - Copy-pasting across apps, losing all formatting and semantics.
 
 - Restricting my documents to a single tightly-coupled AI agent system or harness.
 
-- Tools I can't trust to keep my private content private (having worked at both security and health care technology companies has strongly shaped my thinking here).
+- Tools that leak private content. Experience in both security and health technology companies has strongly shaped my thinking and expectations here.
 
 - Popping back and forth between apps depending on the format of my text document. It's just text.
 
@@ -65,14 +72,13 @@ I'm tired of:
 
 ### Design principles
 
-1. Data fidelity first. Preserve, rather than "correct", unexpected syntax that the editor can't handle. Bonus: broad interoperability with Obsidian, [FOAM](https://marketplace.visualstudio.com/items?itemName=foam.foam-vscode), Logseq, and the rest are a happy side effect of non-destructive tolerance.
+Every new feature, interaction, and presentation decision must satisfy my bar for quality:
 
-1) Understand and natively support the Markdown that people and tools actually write. CommonMark is a good starting point, but there are *at least* three different widely-adopted formats for callouts. Breadth is a virtue.
-
-1. It's a real editor that feels capable and ergonomic in every sense. Must be fast (to open and use), keyboard-first, capability rich, and get out of your way. You can always choose to switch to the raw text editor, you should rarely *need* to.
-
-1) Fully integrate with VS Code. Embrace its customizability and infinite ecosystem while establishing calm, opinionated defaults.
-2) As Teller put it, *"Sometimes magic is just someone spending more time on something than anyone else might reasonably expect."* Magic is especially powerful when unexpected. 
+1. Data fidelity first. Preserve, rather than "correct", unexpected syntax that the editor can't handle. Bonus: broad interoperability with Obsidian, [FOAM](https://marketplace.visualstudio.com/items?itemName=foam.foam-vscode), Logseq, and the rest is a happy side effect of non-destructive tolerance.
+2. Natively support the Markdown that people and tools actually write. [CommonMark](https://commonmark.org/help/) is a great starting point, but there are *at least* three different widely-adopted formats for callouts, none of which are in the essential set. Breadth is a virtue.
+3. Ergonomic and capable in every sense. Must be fast (to open and use), keyboard-first, feature rich, and get out of your way so you can *just write*.
+4. Fully integrate with VS Code. Embrace infinite customizability and inherit existing preferences, while establishing calm, opinionated defaults.
+5. As Teller put it, *"Sometimes magic is just someone spending more time on something than anyone else might reasonably expect."* It's especially powerful when unexpected.
 
 ### Ancient history
 
@@ -80,7 +86,7 @@ My first attempt at a visual Markdown editor was in 2011, with Eric Danielson.
 
 It was a web-based local Markdown editor that synced through the Dropbox API, embarrassingly called [Marlan](https://github.com/harlanlewis/Marlan). The world is so different now, and there's so much more foundation to stand on.
 
-It's incredibly fun to think about this same problem from a new vantage of experience and purpose, crafting at speed the same tools I use to sharpen thought.
+It's so *fun* to think about this same problem from a new vantage of experience and purpose, crafting at speed the same tools I use to sharpen thought.
 
 ---
 

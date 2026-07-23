@@ -243,6 +243,35 @@ describe("editorCommands registry — copy commands", () => {
         editorCommands.copyAsMarkdown(() => editor, { blockPos: v.state.doc.content.size + 50 });
         expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
     });
+
+    describe("copyAsRichText (webview-side clipboard write)", () => {
+        const setData = vi.fn();
+
+        beforeEach(() => {
+            // jsdom has no execCommand; supply one that fires a synthetic copy
+            // event the way the browser would, so the one-shot listener runs.
+            (document as unknown as { execCommand: unknown }).execCommand = vi.fn(() => {
+                const evt = new Event("copy", { cancelable: true }) as Event & {
+                    clipboardData?: { setData: typeof setData };
+                };
+                evt.clipboardData = { setData };
+                document.dispatchEvent(evt);
+                return true;
+            });
+        });
+
+        afterEach(() => {
+            delete (document as unknown as { execCommand?: unknown }).execCommand;
+        });
+
+        it("should write rich HTML and plain-text flavors without posting to the extension", () => {
+            v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)));
+            editorCommands.copyAsRichText(() => editor);
+            expect(setData).toHaveBeenCalledWith("text/html", expect.stringContaining("hello"));
+            expect(setData).toHaveBeenCalledWith("text/plain", expect.stringContaining("hello"));
+            expect(mockVscodeApi.postMessage).not.toHaveBeenCalled();
+        });
+    });
 });
 
 describe("editorCommands registry — table row/column commands", () => {

@@ -7,7 +7,7 @@
 .math-inline {
     display: inline-block;
     padding: 0 2px;
-    border-radius: 4px;
+    border-radius: var(--ui-radius-m);
     line-height: normal;
     transition: background 100ms ease;
 

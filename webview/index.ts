@@ -19,8 +19,11 @@
  */
 
 import "./perfBoot"; // MUST stay first: stamps mdw:eval-start before any other module evaluates.
-import "./style.css";
+// chrome.css MUST come first: it is the base layer (tokens + primitives), and
+// every surface rule — style.css included — overrides it on specificity ties.
+import "./ui/chrome.css"; // shared ui-* chrome tokens (radius/spacing/type) + button/menu primitives
 import "./ui/typography.css"; // shared ui-* chrome type scale (menus, panels, sidebars)
+import "./style.css";
 import { installCrashReporter } from "./crashReporter";
 
 // Crash boundary (MAR-169): install before any component initializes, so an

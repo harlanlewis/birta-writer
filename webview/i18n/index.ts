@@ -42,6 +42,10 @@ declare global {
             tocVisibility?: import("../../shared/messages").TocVisibility;
             /** Frontmatter panel expanded on open (birta.frontmatterExpanded). */
             frontmatterExpanded?: boolean;
+            /** Add-metadata button on frontmatter-less documents (birta.frontmatterAddButton). */
+            frontmatterAddButton?: boolean;
+            /** Native-copy plain-text flavor: Markdown source (default) or the plain rendition (birta.copyFormat). */
+            copyFormat?: "markdown" | "richText";
             proofread?: ProofreadConfig;
             /** Per-item toolbar placement config (see the toolbar registry). */
             toolbar?: ToolbarConfig;

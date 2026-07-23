@@ -264,10 +264,15 @@ export async function run({ page, check, baseUrl }) {
         const m = menu.getBoundingClientRect();
         const a = marker.getBoundingClientRect();
         // Below-anchor placement: menu top ≈ marker bottom + 4 (a flip to
-        // above is also legal; accept either side within tolerance).
+        // above is also legal; accept either side within tolerance). A marker
+        // scrolled under the fixed topbar is the sanctioned exception: the
+        // menu clamps to the band floor (topbar + 8) instead of following it
+        // underneath.
+        const topbar = document.querySelector(".editor-topbar")?.getBoundingClientRect().bottom ?? 0;
         const below = Math.abs(m.top - (a.bottom + 4)) <= 3;
         const above = Math.abs(m.bottom - (a.top - 4)) <= 3;
-        return { menu: true, marker: true, tracks: below || above };
+        const clamped = a.bottom + 4 < topbar + 8 && Math.abs(m.top - (topbar + 8)) <= 1;
+        return { menu: true, marker: true, tracks: below || above || clamped };
     });
     check("menu tracks its marker through a scroll",
         glued.menu && glued.marker && glued.tracks === true, JSON.stringify(glued));
@@ -286,10 +291,14 @@ export async function run({ page, check, baseUrl }) {
         if (!menu) return null;
         const r = menu.getBoundingClientRect();
         const topbar = document.querySelector(".editor-topbar")?.getBoundingClientRect().height ?? 0;
+        // The scrollbox may be the menu itself or an inner rows list —
+        // accept a scrollable element anywhere in the menu's subtree.
+        const scrollable = [menu, ...menu.querySelectorAll("*")]
+            .some((el) => el.scrollHeight > el.clientHeight + 1);
         return {
             belowTopbar: r.top >= topbar,
             onScreen: r.bottom <= window.innerHeight - 4,
-            scrolls: menu.scrollHeight > menu.clientHeight + 1 || r.height < 400,
+            scrolls: scrollable || r.height < 400,
         };
     });
     check("small viewport: menu clears the topbar, fits on screen, scrolls internally",

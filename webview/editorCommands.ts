@@ -500,11 +500,59 @@ function blockContentAt(view: EditorView, blockPos: number): Fragment | undefine
     return node ? Fragment.from(node) : undefined;
 }
 
+/** The selection's content rendered to an HTML string via the schema's toDOM. */
+function htmlOfFragment(view: EditorView, content: Fragment): string {
+    const domSerializer = DOMSerializer.fromSchema(view.state.schema);
+    const fragment = domSerializer.serializeFragment(content);
+    const div = document.createElement("div");
+    div.appendChild(fragment);
+    return div.innerHTML;
+}
+
+/**
+ * Writes a rich (text/html) clipboard entry with a plain-text fallback flavor.
+ * Must run webview-side: vscode.env.clipboard is text-only. The synchronous
+ * execCommand path (a one-shot copy listener supplies both flavors) works
+ * without focus/permission negotiation; the async clipboard API is the
+ * fallback for environments that dropped execCommand.
+ */
+function writeRichClipboard(html: string, text: string): void {
+    const onCopy = (e: ClipboardEvent): void => {
+        e.preventDefault();
+        // Stop here: ProseMirror's own copy handler (on the editor DOM,
+        // reached later in the capture→target path) does not check
+        // defaultPrevented and would clear and rewrite both flavors from the
+        // live selection — replacing this command's plain rendition with the
+        // clipboardTextSerializer's markdown.
+        e.stopPropagation();
+        e.clipboardData?.setData("text/html", html);
+        e.clipboardData?.setData("text/plain", text);
+    };
+    document.addEventListener("copy", onCopy, true);
+    let copied = false;
+    try {
+        copied = document.execCommand?.("copy") ?? false;
+    } catch {
+        copied = false;
+    } finally {
+        document.removeEventListener("copy", onCopy, true);
+    }
+    if (copied || typeof ClipboardItem === "undefined") { return; }
+    navigator.clipboard?.write?.([
+        new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+    ]).catch((err) => console.error("[birta] rich-text copy failed", err));
+}
+
 /**
  * Serializes the selection — or, when it's empty, the block under the
- * right-click target — and hands it to the extension's clipboard.
+ * right-click target — and copies it. "markdown"/"html" hand text to the
+ * extension's clipboard; "richText" writes a real HTML clipboard flavor from
+ * the webview so rich-text apps paste formatting.
  */
-function copySelection(getEditor: GetEditor, format: "html" | "markdown", args?: unknown): void {
+function copySelection(getEditor: GetEditor, format: "html" | "markdown" | "richText", args?: unknown): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
@@ -523,12 +571,13 @@ function copySelection(getEditor: GetEditor, format: "html" | "markdown", args?:
             const serializer = ctx.get(serializerCtx);
             const doc = view.state.schema.topNodeType.create(null, content);
             notifyClipboardWrite("markdown", serializer(doc));
+        } else if (format === "richText") {
+            writeRichClipboard(
+                htmlOfFragment(view, content),
+                content.textBetween(0, content.size, "\n\n"),
+            );
         } else {
-            const domSerializer = DOMSerializer.fromSchema(view.state.schema);
-            const fragment = domSerializer.serializeFragment(content);
-            const div = document.createElement("div");
-            div.appendChild(fragment);
-            notifyClipboardWrite("html", div.innerHTML);
+            notifyClipboardWrite("html", htmlOfFragment(view, content));
         }
     });
 }
@@ -602,6 +651,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     tableDeleteTable: (getEditor, args) => tableCmd(getEditor, deleteTable, args),
     copyAsHtml: (getEditor, args) => copySelection(getEditor, "html", args),
     copyAsMarkdown: (getEditor, args) => copySelection(getEditor, "markdown", args),
+    copyAsRichText: (getEditor, args) => copySelection(getEditor, "richText", args),
     editRawMarkdown: () => host.editRawMarkdown?.(),
     hideToolbar: () => host.hideToolbar?.(),
     showToolbar: () => host.showToolbar?.(),

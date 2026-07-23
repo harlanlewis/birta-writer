@@ -3,7 +3,7 @@
     /* Owns the flow gap below the block (the inner <pre> is margin:0); shares
        the content rhythm scale so code blocks space like every other block. */
     margin: 0 0 var(--content-flow-gap);
-    border-radius: 6px;
+    border-radius: var(--ui-radius-l);
     /* keep overflow visible to avoid clipping the language dropdown menu */
     border: 1px solid var(--vscode-panel-border);
 }
@@ -17,7 +17,7 @@
     border-bottom: 1px solid
         var(--vscode-panel-border);
     gap: 4px;
-    border-radius: 6px 6px 0 0;
+    border-radius: var(--ui-radius-l) var(--ui-radius-l) 0 0;
 }
 
 /* ─── lang-picker custom searchable dropdown ─── */
@@ -32,9 +32,9 @@
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
-    border-radius: 4px;
+    border-radius: var(--ui-radius-m);
     padding: 2px 6px;
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     font-family: inherit;
     cursor: pointer;
     height: 22px;
@@ -55,9 +55,9 @@
     z-index: 1000;
     background: var(--vscode-dropdown-background, var(--vscode-editor-background));
     border: 1px solid var(--vscode-focusBorder);
-    border-radius: 4px;
+    border-radius: var(--ui-radius-l);
     min-width: 160px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--ui-card-shadow);
 }
 
 .lang-picker-search {
@@ -69,7 +69,7 @@
         var(--vscode-widget-border, var(--vscode-panel-border));
     background: transparent;
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     font-family: inherit;
     outline: none;
 }
@@ -90,19 +90,16 @@
     margin: 0;
 }
 
+/* Composes .ui-menu-row; local: rhythm, dropdown ink, and the keyboard
+   --focused wash sharing the primitive's hover token. */
 .lang-picker-item {
-    display: flex;
-    align-items: center;
     gap: 6px;
     padding: 5px 10px;
-    font-size: 12px;
-    cursor: pointer;
     color: var(--vscode-dropdown-foreground, var(--vscode-editor-foreground));
 }
 
-.lang-picker-item:hover,
 .lang-picker-item--focused {
-    background: var(--vscode-list-hoverBackground);
+    background: var(--ui-menu-hover-bg, var(--vscode-list-hoverBackground));
 }
 
 /* Current language: marked with the shared leading check glyph (like the toolbar
@@ -122,7 +119,7 @@
        code/preview elements above square theirs off. */
     background: var(--vscode-textCodeBlock-background);
     cursor: ns-resize;
-    border-radius: 0 0 6px 6px;
+    border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
     transition: background 0.15s;
 }
 
@@ -131,38 +128,27 @@
     opacity: 0.3;
 }
 
-/* Copy button (SVG icon) */
+/* Copy button (SVG icon) — composes .ui-btn; local: the header's 26×22 box,
+   editor ink, resting fade, and a visible hover hairline. */
 .copy-btn,
 .code-wrap-toggle-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 26px;
     height: 22px;
-    background: transparent;
     color: var(--vscode-editor-foreground);
-    border: 1px solid transparent;
-    border-radius: 3px;
-    cursor: pointer;
     opacity: 0.6;
-    transition:
-        opacity 0.1s,
-        background 0.1s,
-        color 0.15s;
-    flex-shrink: 0;
-    padding: 0;
 }
 
 .copy-btn:hover,
 .code-wrap-toggle-btn:hover {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground);
     border-color: var(--vscode-panel-border);
 }
 
+/* Persistent-on: the canonical quiet "on" pair (see .find-bar__btn--active). */
 .code-wrap-toggle-btn--active {
     opacity: 1;
-    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+    background: var(--vscode-inputOption-activeBackground);
+    color: var(--vscode-inputOption-activeForeground);
     border-color: var(--vscode-panel-border);
 }
 
@@ -391,7 +377,7 @@ body.mermaid-canvas-dark {
     /* On the canvas, not the header — must read on the (possibly white) canvas. */
     color: var(--mermaid-canvas-fg);
     opacity: 0.6;
-    font-size: 13px;
+    font-size: var(--ui-fs-l);
 }
 
 .mermaid-error {
@@ -407,7 +393,7 @@ body.mermaid-canvas-dark {
 
 .mermaid-error-msg {
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 11px;
+    font-size: var(--ui-fs-s);
     white-space: pre-wrap;
     word-break: break-all;
     margin: 0;
@@ -420,36 +406,28 @@ body.mermaid-canvas-dark {
     opacity: 0.85;
 }
 
-/* ─── Shared header buttons (zoom overlay / lightbox / toggle / fullscreen) ─── */
+/* ─── Shared header buttons (zoom overlay / lightbox / toggle / fullscreen) ───
+   Compose .ui-btn; local: the header's 26×22 box, editor ink, resting fade,
+   and a visible hover hairline. */
 .mermaid-zoom-btn,
 .code-view-toggle-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 26px;
     height: 22px;
-    background: transparent;
     color: var(--vscode-editor-foreground);
-    border: 1px solid transparent;
-    border-radius: 3px;
-    cursor: pointer;
     opacity: 0.65;
-    transition: opacity 0.1s, background 0.1s;
-    flex-shrink: 0;
-    padding: 0;
 }
 
 .mermaid-zoom-btn:hover,
 .code-view-toggle-btn:hover {
     opacity: 1;
-    background: var(--vscode-toolbar-hoverBackground);
     border-color: var(--vscode-panel-border);
 }
 
-/* Active state: indicate via background color while keeping the foreground consistent (avoids the focusBorder blue darkening the icon) */
+/* Persistent-on: the canonical quiet "on" pair (see .find-bar__btn--active). */
 .code-view-toggle-btn--active {
     opacity: 1;
-    background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+    background: var(--vscode-inputOption-activeBackground);
+    color: var(--vscode-inputOption-activeForeground);
     border-color: var(--vscode-panel-border);
 }
 
@@ -465,7 +443,7 @@ body.mermaid-canvas-dark {
     pointer-events: none;
     background: var(--vscode-editorHoverWidget-background);
     border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
+    border-radius: var(--ui-radius-m);
     padding: 1px 2px;
 }
 
@@ -484,7 +462,7 @@ body.mermaid-canvas-dark {
 .mermaid-overlay-val {
     min-width: 40px !important;
     width: auto !important;
-    font-size: 11px;
+    font-size: var(--ui-fs-s);
     font-family: var(--vscode-editor-font-family, monospace);
     letter-spacing: -0.3px;
 }
@@ -527,7 +505,7 @@ body.mermaid-canvas-dark {
 
 .mermaid-lightbox-title {
     flex: 1;
-    font-size: 13px;
+    font-size: var(--ui-fs-l);
     font-weight: 500;
     opacity: 0.8;
 }
@@ -552,7 +530,7 @@ body.mermaid-canvas-dark {
     transform-origin: center center;
     background: var(--mermaid-canvas);
     padding: 20px;
-    border-radius: 8px;
+    border-radius: var(--ui-radius-xl);
 }
 
 .mermaid-lightbox-svg svg {
@@ -591,26 +569,23 @@ body.mermaid-canvas-dark {
     pointer-events: none;
 }
 
+/* Composes .ui-btn; local: a FILLED resting ground (these float over the
+   diagram, so transparency would vanish), visible hairline, resting fade. */
 .mermaid-pan-btn {
     pointer-events: all;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 22px;
     height: 22px;
-    background: var(--vscode-editorHoverWidget-background);
+    background: var(--ui-card-bg);
     color: var(--vscode-editor-foreground);
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 3px;
-    cursor: pointer;
+    border-color: var(--vscode-panel-border);
     opacity: 0.55;
-    transition: opacity 0.1s, background 0.1s;
-    padding: 0;
 }
 
 .mermaid-pan-btn:hover {
     opacity: 1;
     background: var(--vscode-toolbar-hoverBackground);
+    /* Keep the hairline through hover (see .img-insert-cancel-btn). */
+    border-color: var(--vscode-panel-border);
 }
 
 /* Middle reset button: slightly larger, to distinguish it from the directional buttons */
@@ -801,7 +776,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     padding: 20px 16px;
     min-height: 80px;
     background: var(--vscode-textCodeBlock-background);
-    border-radius: 0 0 6px 6px;
+    border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
     user-select: none;
 }
 
@@ -819,7 +794,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
 .latex-empty {
     opacity: 0.5;
     font-style: italic;
-    font-size: 13px;
+    font-size: var(--ui-fs-l);
 }
 
 /* ─── Calc block preview (living calculations, MAR-196) ─────────────────────
@@ -835,7 +810,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     padding: 12px 16px;
     min-height: 80px;
     background: var(--vscode-textCodeBlock-background);
-    border-radius: 0 0 6px 6px;
+    border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
     user-select: none;
 }
 

@@ -11,27 +11,20 @@
     background: var(--palette-ground);
     color: var(--palette-ink);
     border: 1px solid var(--palette-border);
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
     user-select: none;
+    /* Retheme the .ui-btn primitives inside onto the palette-chip ground. */
+    --ui-btn-ink: var(--palette-ink);
+    --ui-btn-hover-bg: var(--palette-hover);
+    --ui-btn-active-bg: var(--palette-active);
 }
 
+/* Composes .ui-btn (anatomy + palette washes via the container vars above);
+   local: the chip's own padding and icon gap. */
 .sel-tb-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     gap: 2px;
     padding: 4px 5px;
-    background: none;
-    border: none;
-    border-radius: 4px;
-    color: var(--palette-ink);
-    cursor: pointer;
-    line-height: 1;
-}
-
-.sel-tb-btn:hover {
-    background: var(--palette-hover);
 }
 
 /* A button reflecting a mark/construct already applied on the selection — the
@@ -60,7 +53,7 @@
 .sel-tb-block-badge {
     display: inline-block;
     min-width: 16px;
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     font-weight: 700;
     text-align: center;
     line-height: 1;
@@ -84,7 +77,7 @@
 }
 
 .sel-tb-fmt-label {
-    font-size: 11px;
+    font-size: var(--ui-fs-s);
     font-weight: 700;
     min-width: 16px;
     text-align: center;
@@ -102,32 +95,30 @@
     flex-direction: column;
     background: var(--palette-ground);
     color: var(--palette-ink);
-    border-radius: 5px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
     overflow: hidden;
+    /* Rows are .ui-menu-row primitives on the palette ground. */
+    --ui-menu-ink: var(--palette-ink);
+    --ui-menu-hover-bg: var(--palette-hover);
     min-width: 52px;
 }
 
-.sel-tb-fmt-item {
-    padding: 5px 12px;
-    font-size: 12px;
-    color: var(--palette-ink);
-    cursor: pointer;
-    text-align: left;
-    white-space: nowrap;
-}
-
-.sel-tb-fmt-item:hover {
-    background: var(--palette-hover);
-}
+/* .sel-tb-fmt-item is the bare .ui-menu-row primitive (palette ink/wash
+   from the menu vars above); the class remains for the --active state. */
 
 .sel-tb-fmt-item--active {
     font-weight: 600;
 }
 
+/* Right-aligned check column (the row is a flex .ui-menu-row, so the ::after
+   is a flex item — margin-left:auto parks it at the row's end, matching the
+   other menus' right-aligned hint column instead of floating a gap-width
+   away from short labels). */
 .sel-tb-fmt-item--active::after {
-    content: " ✓";
-    font-size: 10px;
+    content: "✓";
+    margin-left: auto;
+    font-size: var(--ui-fs-xs);
 }
 
 /* Alignment submenu item (icon rather than text, centered) */

@@ -7,6 +7,7 @@ export { contentGuardPlugin, tagContentGuard } from "./contentGuard";
 export { docChangePlugin, setDocChangeListener } from "./docChange";
 export { codeBlockBackspacePlugin } from "./codeBlockBackspace";
 export { codeBlockSelectAllPlugin } from "./codeBlockSelectAll";
+export { copyMarkdownPlugin } from "./copyMarkdown";
 export {
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,

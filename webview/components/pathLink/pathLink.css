@@ -20,23 +20,24 @@
     max-height: 240px;
     overflow-y: auto;
     border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-panel-border));
-    border-radius: 4px;
+    border-radius: var(--ui-radius-l);
     background: var(--vscode-editorSuggestWidget-background, var(--vscode-editor-background));
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--ui-card-shadow);
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
 }
 
+/* Composes .ui-menu-row; local: compact rhythm + suggest ink. */
 .path-complete-item {
-    display: flex;
-    align-items: center;
     gap: 6px;
     padding: 3px 10px;
-    cursor: pointer;
     color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-editor-foreground));
 }
 
-.path-complete-item--active {
+/* Selection idiom: the suggest-widget tokens; also under the pointer, so
+   hovering the active row never demotes it to the plain hover wash. */
+.path-complete-item--active,
+.path-complete-item--active:hover {
     background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground));
     color: var(--vscode-editorSuggestWidget-selectedForeground, var(--vscode-list-activeSelectionForeground));
 }

@@ -4,7 +4,7 @@
     color: var(--vscode-textLink-foreground);
     font-weight: 600;
     padding: 0 1px;
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
     line-height: 0;
     transition: background-color 0.12s ease;
 }
@@ -25,7 +25,7 @@
     padding: 4px 6px;
     border-left: 2px solid var(--vscode-panel-border);
     background-color: var(--vscode-textBlockQuote-background);
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 var(--ui-radius-m) var(--ui-radius-m) 0;
 }
 
 .footnote-def-marker {
@@ -48,7 +48,7 @@
     font-weight: 600;
     color: var(--vscode-textLink-foreground);
     background-color: var(--vscode-badge-background);
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
 }
 
 .footnote-def-backlink {
@@ -57,7 +57,7 @@
     color: var(--vscode-descriptionForeground);
     font-size: 0.9em;
     padding: 0 2px;
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
 }
 .footnote-def-backlink:hover {
     color: var(--vscode-textLink-activeForeground);
@@ -91,8 +91,8 @@
     color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
     background-color: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
     border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-panel-border));
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow-s);
 }
 
 .footnote-popup-marker {

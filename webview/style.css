@@ -55,14 +55,16 @@
     display: flex;
     flex-direction: column;
     min-width: 200px;
+    /* Rows are .ui-menu-row primitives; this sets their ink. */
+    --ui-menu-ink: var(--vscode-editorHoverWidget-foreground);
     /* max-height is set per-open by position(): the space actually available
        on the chosen side of the anchor, minus the topbar. The ROWS scroll
        (.block-menu-body); the search input stays pinned. */
     padding: 4px 0;
-    background: var(--vscode-editorHoverWidget-background);
-    border: 1px solid var(--vscode-editorHoverWidget-border);
-    border-radius: 5px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
 }
 
 /* "Search actions…" — the filter input pinned above the rows (the rows
@@ -71,12 +73,12 @@
     flex: none;
     margin: 4px 8px 6px;
     padding: 4px 8px;
-    border: 1px solid var(--vscode-editorHoverWidget-border);
-    border-radius: 4px;
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-m);
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     font: inherit;
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
 
     &::placeholder {
         color: var(--vscode-input-placeholderForeground);
@@ -97,40 +99,15 @@
 
 .block-menu-empty {
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     color: var(--vscode-descriptionForeground);
     user-select: none;
 }
 
+/* Composes .ui-menu-row (anatomy, highlight model, disabled state);
+   local: this menu's denser row rhythm. */
 .block-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
     padding: 4px 10px;
-    border: 0;
-    background: none;
-    color: var(--vscode-editorHoverWidget-foreground);
-    font: inherit;
-    font-size: 12px;
-    text-align: left;
-    cursor: pointer;
-
-    /* One highlight model for mouse and keyboard (the slash menu's lesson). */
-    &:hover,
-    &:focus-visible {
-        background: var(--vscode-list-hoverBackground);
-        outline: none;
-    }
-
-    &[aria-disabled="true"] {
-        opacity: 0.4;
-        cursor: default;
-
-        &:hover {
-            background: none;
-        }
-    }
 }
 
 /* Leading 16px slot — SVG icon or text badge, the slash menu's row anatomy. */
@@ -149,7 +126,7 @@
 
 .block-menu-item-badge {
     flex: 0 0 16px;
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     font-weight: 700;
     text-align: center;
     color: var(--vscode-descriptionForeground);
@@ -166,7 +143,7 @@
     flex: none;
     margin-left: 16px;
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     color: var(--vscode-descriptionForeground);
 }
 
@@ -198,20 +175,13 @@
     color: var(--vscode-errorForeground);
 }
 
-/* Menu group heading — the shared .ui-heading grade (see ui/typography.css). */
+/* Composes .ui-heading + .ui-menu-heading; local: denser padding. */
 .block-menu-header {
     padding: 6px 10px 2px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--vscode-foreground);
-    user-select: none;
 }
 
-.block-menu-divider {
-    height: 1px;
-    margin: 4px 0;
-    background: var(--vscode-editorHoverWidget-border);
-}
+/* .block-menu-divider is the bare .ui-menu-divider primitive (the class name
+   remains on the element for querying). */
 
 /* The typed "/query" while the slash menu is open — the text feeding the
    filter reads as UI input, not document prose (the Notion affordance).
@@ -219,7 +189,7 @@
    decoration plugin with this dedicated class. */
 .ProseMirror .slash-query {
     background: var(--vscode-toolbar-hoverBackground);
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
 }
 
 /* The block a menu is open FOR: a quiet tint so Duplicate/Delete's target is
@@ -233,7 +203,7 @@
        blocks) would swallow the tint. */
     outline: 1px solid var(--vscode-toolbar-hoverBackground);
     outline-offset: 2px;
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
 }
 
 /* Drag pill: rides the cursor during a block drag, naming what's moving —
@@ -245,10 +215,10 @@
     /* Same inverted chip as .custom-tooltip — the two read as one family. */
     background: var(--vscode-editor-foreground);
     color: var(--vscode-editor-background);
-    border-radius: 3px;
+    border-radius: var(--ui-radius-m);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 11px;
+    font-size: var(--ui-fs-s);
     pointer-events: none;
     white-space: nowrap;
 }
@@ -257,7 +227,7 @@
     margin-left: 10px;
     opacity: 0.65; /* dimmed against the inverted ground */
     font-family: var(--vscode-font-family, sans-serif);
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
 }
 
 html,
@@ -360,7 +330,11 @@ html {
 .frontmatter-panel {
     max-width: var(--editor-max-width, none);
     margin: 0 auto;
-    padding: 56px 48px 0;
+    /* Top padding clears the fixed toolbar via its measured height (the same
+       --editor-topbar-height the find bar and TOC use) + 16px of air — a
+       static value would slide under a taller bar (larger UI font). #editor
+       mirrors this for documents where the panel is absent. */
+    padding: calc(var(--editor-topbar-height, 40px) + 16px) 48px 0;
     /* Mirror #editor's content inset so the field labels line up with the body
        content column at ~76px. `--editor-content-left-padding` is the CONTENT
        (key-text) inset — kept equal to #editor's so the TOC offset math keeps the
@@ -457,24 +431,16 @@ html {
    `right: 100%` pushes it fully left of the zero-width anchor cell; `margin-right`
    nudges the right edge onto the gutter/badge line. */
 .fm-delete-btn {
+    /* Composes .ui-btn/.ui-btn--icon; local: gutter placement, muted ink,
+       hidden-until-hover reveal, destructive hover ink. */
+    --ui-btn-size: 24px;
     position: absolute;
     top: 50%;
     right: 100%;
     margin-right: 1px;
     transform: translateY(-50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    border: none;
-    border-radius: 4px;
-    background: transparent;
     color: var(--vscode-descriptionForeground);
-    cursor: pointer;
     opacity: 0;
-    transition: opacity 0.1s, color 0.1s, background 0.1s;
 
     svg {
         width: 14px;
@@ -483,7 +449,6 @@ html {
 
     &:hover {
         color: var(--vscode-errorForeground);
-        background: var(--vscode-toolbar-hoverBackground);
     }
 
     /* Keyboard parity with the row-hover reveal */
@@ -505,30 +470,19 @@ html {
     gap: 8px;
 }
 
-/* The toggle and "Add field" buttons share one quiet ghost style */
+/* The toggle, "Add field", and "Add metadata" buttons are pure
+   .ui-btn/.ui-btn--chip primitives, except the font: the frontmatter panel
+   lives in the content area, so its chips scale with the content zoom
+   (em against the panel's --content-font-scale-derived size) rather than
+   taking the fixed chrome --ui-fs-m. */
 .fm-add-btn,
-.fm-toggle-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 10px;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--vscode-descriptionForeground);
+.fm-toggle-btn,
+.fm-add-metadata-btn {
     font-size: 0.85em;
-    cursor: pointer;
-    transition: color 0.1s, border-color 0.1s, background 0.1s;
 
     svg {
         width: 13px;
         height: 13px;
-    }
-
-    &:hover {
-        color: var(--vscode-editor-foreground);
-        border-color: var(--vscode-focusBorder);
-        background: var(--vscode-toolbar-hoverBackground);
     }
 }
 
@@ -539,7 +493,7 @@ html {
     box-sizing: border-box;
     padding: 8px 10px;
     border: 1px solid var(--vscode-panel-border);
-    border-radius: 4px;
+    border-radius: var(--ui-radius-m);
     background: var(--vscode-input-background);
     color: var(--vscode-editor-foreground);
     font-family: var(--vscode-editor-font-family, monospace);
@@ -563,6 +517,17 @@ html {
     }
 }
 
+/* No-frontmatter empty state (.fm-empty): only the "Add metadata" button, in
+   the panel's standard slot — in flow, in the toolbar-cleared top padding the
+   panel always has, with #editor's inset reduced to 16px exactly as for a
+   populated panel (the component sets that inline). Not an overlay and not a
+   zero-height trick: the toolbar-to-content gap is smaller than the button,
+   so anything out of flow ends up under the bar or on top of the first
+   content line. Deliberately NO rules of its own — same slot, same 4px row
+   offset, same ghost chip as the collapsed panel's "Show metadata", so the
+   two states render at the identical spot with identical weight. (An earlier
+   0.55-opacity "quiet" variant just read as a disabled button.) */
+
 /* Collapsed: hide the table/raw editor and Add-field button, keep only the toggle */
 .frontmatter-panel.collapsed {
     .frontmatter-table,
@@ -576,7 +541,9 @@ html {
 #editor {
     max-width: var(--editor-max-width, none);
     margin: 0 auto;
-    padding: 56px 48px 80px;
+    /* Toolbar-aware top clearance — see .frontmatter-panel. (When a panel is
+       rendered above, the component overrides this inline to 16px.) */
+    padding: calc(var(--editor-topbar-height, 40px) + 16px) 48px 80px;
     padding-left: 76px;
     min-height: 100vh;
     outline: none;
@@ -753,7 +720,7 @@ body:not(.editor-width-auto) {
             display: inline-block;
             max-width: 100%;
             padding: 0 0.35em;
-            border-radius: 3px;
+            border-radius: var(--ui-radius-s);
             background: var(--vscode-textBlockQuote-background);
             color: var(--vscode-descriptionForeground);
             font-family: var(--vscode-editor-font-family, monospace);
@@ -808,7 +775,7 @@ body:not(.editor-width-auto) {
         .image-ref {
             display: inline-block;
             padding: 0 0.35em;
-            border-radius: 3px;
+            border-radius: var(--ui-radius-s);
             background: var(--vscode-textBlockQuote-background);
             color: var(--vscode-descriptionForeground);
             font-family: var(--vscode-editor-font-family, monospace);
@@ -924,7 +891,7 @@ body:not(.editor-width-auto) {
             margin: -5px -4px;
             padding: 5px 6px;
             border: 0;
-            border-radius: 4px;
+            border-radius: var(--ui-radius-m);
             background: transparent;
             color: inherit;
             font-family: var(--vscode-editor-font-family, monospace);
@@ -996,7 +963,7 @@ body:not(.editor-width-auto) {
             height: 18px;
             padding: 0;
             border: 0;
-            border-radius: 4px;
+            border-radius: var(--ui-radius-m);
             background: transparent;
             color: var(--vscode-descriptionForeground);
             cursor: pointer;
@@ -1046,7 +1013,7 @@ body:not(.editor-width-auto) {
             margin-left: 0.4em;
             padding: 0 0.5em;
             border: 0;
-            border-radius: 3px;
+            border-radius: var(--ui-radius-s);
             background: var(--vscode-editor-foldBackground);
             color: var(--vscode-descriptionForeground);
             font-family: inherit;
@@ -1093,7 +1060,7 @@ body:not(.editor-width-auto) {
         code {
             background: var(--vscode-textCodeBlock-background);
             color: var(--vscode-textPreformat-foreground, var(--vscode-editor-foreground));
-            border-radius: 3px;
+            border-radius: var(--ui-radius-s);
             /* Tight horizontal padding so the chip doesn't leave a visible gap
                before adjacent punctuation (e.g. `code`. ). */
             padding: 0.15em 0.3em;
@@ -1104,7 +1071,7 @@ body:not(.editor-width-auto) {
         /* Code block */
         pre {
             background: var(--vscode-textCodeBlock-background);
-            border-radius: 6px;
+            border-radius: var(--ui-radius-l);
             padding: 1em;
             overflow-x: auto;
             margin: 0 0 var(--content-flow-gap);
@@ -1431,7 +1398,7 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
     height: 18px;
     padding: 0;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--ui-radius-m);
     background: transparent;
     color: var(--vscode-descriptionForeground);
     cursor: pointer;
@@ -1457,7 +1424,7 @@ body.handles-rest-hover.handles-quiet .heading-sticky-title:not([data-collapsed=
     margin: -5px -4px;
     padding: 5px 6px;
     border: 0;
-    border-radius: 4px;
+    border-radius: var(--ui-radius-m);
     background: transparent;
     color: inherit;
     /* Monospace literal hashes, matching the in-document gutter marker. */
@@ -1572,12 +1539,12 @@ body.toolbar-hidden::before {
        foreground becomes the chip's ground and vice versa. */
     background: var(--vscode-editor-foreground);
     color: var(--vscode-editor-background);
-    border-radius: 3px;
-    font-size: 12px;
+    border-radius: var(--ui-radius-m);
+    font-size: var(--ui-fs-m);
     line-height: 1.4;
     white-space: nowrap;
     pointer-events: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+    box-shadow: var(--ui-card-shadow-s);
 }
 
 /* Chip-list editing for list-valued frontmatter keys (tags, related, ...) */
@@ -1595,7 +1562,7 @@ body.toolbar-hidden::before {
     max-width: 100%;
     padding: 1px 4px 1px 8px;
     border: 1px solid var(--vscode-panel-border);
-    border-radius: 10px;
+    border-radius: var(--ui-radius-pill);
     background: var(--vscode-textBlockQuote-background);
 
     .fm-chip-text {
@@ -1609,18 +1576,12 @@ body.toolbar-hidden::before {
         }
     }
 
+    /* Composes .ui-btn; local: tiny pill box, muted ink, resting fade. */
     .fm-chip-remove {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
         width: 16px;
         height: 16px;
-        padding: 0;
-        border: none;
-        border-radius: 8px;
-        background: transparent;
+        border-radius: var(--ui-radius-pill);
         color: var(--vscode-descriptionForeground);
-        cursor: pointer;
         opacity: 0.4;
 
         svg {
@@ -1635,18 +1596,13 @@ body.toolbar-hidden::before {
     }
 }
 
+/* Composes .ui-btn; local: pill box with a visible hairline, muted ink. */
 .fm-chip-add {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 20px;
     height: 20px;
-    padding: 0;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 10px;
-    background: transparent;
+    border-color: var(--vscode-panel-border);
+    border-radius: var(--ui-radius-pill);
     color: var(--vscode-descriptionForeground);
-    cursor: pointer;
 
     svg {
         width: 11px;
@@ -1662,6 +1618,9 @@ body.toolbar-hidden::before {
 /* Suggestion dropdown for the "+" chip button: workspace-wide values used
    under the same frontmatter key (filter input on top, create row at the end) */
 .fm-suggest-menu {
+    /* Rows are .ui-menu-row primitives; suggest menus wash with the
+       suggest-selection token. */
+    --ui-menu-hover-bg: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-hoverBackground));
     position: fixed;
     /* Above every anchoring surface (the link editor is z 9999): the URL
        autocomplete drops over the popup that hosts its input, never under. */
@@ -1671,8 +1630,8 @@ body.toolbar-hidden::before {
     background: var(--vscode-editorSuggestWidget-background, var(--vscode-dropdown-background, var(--vscode-editor-background)));
     border: 1px solid
         var(--vscode-editorSuggestWidget-border, var(--vscode-focusBorder));
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
 }
 
 .fm-suggest-input {
@@ -1684,7 +1643,7 @@ body.toolbar-hidden::before {
         var(--vscode-widget-border, var(--vscode-panel-border));
     background: transparent;
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     font-family: inherit;
     outline: none;
 }
@@ -1702,18 +1661,16 @@ body.toolbar-hidden::before {
     }
 }
 
+/* Composes .ui-menu-row; local: suggest ink + rhythm, and the keyboard
+   --focused wash sharing the hover token. */
 .fm-suggest-item {
     padding: 5px 10px;
-    font-size: 12px;
-    cursor: pointer;
     color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-dropdown-foreground, var(--vscode-editor-foreground)));
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 
-    &:hover,
     &.fm-suggest-item--focused {
-        background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-hoverBackground));
+        background: var(--ui-menu-hover-bg, var(--vscode-list-hoverBackground));
     }
 
     &.fm-suggest-create {
@@ -1730,9 +1687,9 @@ body.toolbar-hidden::before {
     }
     .fm-suggest-item__hint {
         color: var(--vscode-descriptionForeground);
-        font-size: 10px;
+        font-size: var(--ui-fs-xs);
         border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
-        border-radius: 3px;
+        border-radius: var(--ui-radius-s);
         padding: 0 4px;
         flex: none;
     }
@@ -1759,11 +1716,16 @@ body.toolbar-hidden::before {
     z-index: 1000;
     min-width: 220px;
     max-width: 320px;
+    /* Rows are .ui-menu-row primitives. The highlight is JS-driven (a roving
+       --focused class moved by keyboard AND mouseover), so the primitive's
+       CSS hover wash is silenced — two washes would show double rows. */
+    --ui-menu-hover-bg: transparent;
+    --ui-menu-ink: var(--vscode-editorSuggestWidget-foreground, var(--vscode-dropdown-foreground, var(--vscode-editor-foreground)));
     background: var(--vscode-editorSuggestWidget-background, var(--vscode-dropdown-background, var(--vscode-editor-background)));
     border: 1px solid
         var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border, var(--vscode-panel-border)));
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
     font-family: var(--vscode-font-family);
 }
 
@@ -1774,25 +1736,16 @@ body.toolbar-hidden::before {
     overscroll-behavior: contain;
 }
 
-/* Menu group heading — the shared .ui-heading grade (see ui/typography.css). */
+/* Composes .ui-heading + .ui-menu-heading; local: this menu's rhythm. */
 .slash-menu-group-label {
     padding: 7px 10px 2px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--vscode-foreground);
 }
 
+/* Composes .ui-menu-row; local: denser rhythm + the single JS-driven
+   highlight (see the container comment above). */
 .slash-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
     padding: 4px 10px;
-    font-size: 12px;
-    cursor: pointer;
-    color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-dropdown-foreground, var(--vscode-editor-foreground)));
 
-    /* Hover moves the highlight (mouseover handler), so --focused is the
-       single highlight style — no separate :hover to avoid double rows */
     &.slash-menu-item--focused {
         background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-hoverBackground));
     }
@@ -1810,7 +1763,7 @@ body.toolbar-hidden::before {
 .slash-menu-item-badge {
     width: 16px;
     flex: none;
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     font-weight: 700;
     text-align: center;
     color: var(--vscode-descriptionForeground);
@@ -1827,7 +1780,7 @@ body.toolbar-hidden::before {
     flex: none;
     margin-left: 16px;
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     color: var(--vscode-descriptionForeground);
 }
 
@@ -1839,7 +1792,7 @@ body.toolbar-hidden::before {
     padding: 5px 10px;
     border-top: 1px solid
         var(--vscode-widget-border, var(--vscode-panel-border));
-    font-size: 10px;
+    font-size: var(--ui-fs-xs);
     color: var(--vscode-descriptionForeground);
 }
 
@@ -2071,7 +2024,7 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-hos
     z-index: 5;
     background: var(--vscode-editor-selectionBackground);
     opacity: 0.45;
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
     pointer-events: none;
 }
 
@@ -2119,7 +2072,7 @@ body.block-marqueeing .milkdown .editor {
     z-index: 1140;
     background: var(--vscode-focusBorder);
     opacity: 0.22;
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
     pointer-events: none;
     transition: opacity 550ms ease-out;
 }
@@ -2131,20 +2084,16 @@ body.block-marqueeing .milkdown .editor {
 /* Content-guard notice (MAR-108): a quiet transient status pill shown when
    the guard vetoes a gesture that would have changed document content —
    advisory, non-blocking, fades out on its own (DESIGN_PRINCIPLES: quiet). */
+/* Composes .ui-notice; local: viewport-fixed bottom-center anchoring, a
+   wider text cap, and a slower fade (it dismisses itself, so it leaves as
+   gently as it came). */
 .content-guard-notice {
     position: fixed;
     bottom: 16px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 1200;
     max-width: 60ch;
     padding: 4px 12px;
-    border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: 4px;
-    background: var(--vscode-editorWidget-background);
-    color: var(--vscode-editorWidget-foreground);
-    font-size: 12px;
-    opacity: 0;
     pointer-events: none;
     transition: opacity 200ms ease-out;
 }
@@ -2343,7 +2292,7 @@ body.block-marqueeing .milkdown .editor {
     aspect-ratio: 16 / 9;
     overflow: hidden;
     border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: 6px;
+    border-radius: var(--ui-radius-l);
     background: var(--vscode-editorWidget-background);
 }
 
@@ -2372,7 +2321,7 @@ body.block-marqueeing .milkdown .editor {
     align-items: center;
     justify-content: center;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--ui-radius-m);
     background: var(--vscode-editorWidget-background);
     color: var(--vscode-foreground);
     opacity: 0.55;
@@ -2401,7 +2350,7 @@ body.block-marqueeing .milkdown .editor {
     justify-content: center;
     padding: 0;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--ui-radius-xl);
     cursor: pointer;
     color: var(--vscode-button-foreground);
     background: var(--vscode-button-background);

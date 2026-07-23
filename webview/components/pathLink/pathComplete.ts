@@ -143,7 +143,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
 
         items.forEach((item, i) => {
             const li = document.createElement("li");
-            li.className = "path-complete-item";
+            li.className = "ui-menu-row path-complete-item";
 
             // Icon
             const iconEl = document.createElement("span");
