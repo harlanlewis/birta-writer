@@ -1686,6 +1686,17 @@ export function createCodeBlockView(
             return true;
         },
 
+        stopEvent(event: Event): boolean {
+            // Mouse events inside the calc ledger are the browser's business:
+            // native text selection (click-drag, double-click word select)
+            // must not compete with ProseMirror's own mouse handling, whose
+            // double-click handler word-selects in the DOCUMENT and wipes the
+            // ledger selection. The ledger holds no buttons (the header and
+            // resize handle live outside calcPreview), and it is
+            // contentEditable=false, so no editing event can originate here.
+            return event.target instanceof Node && calcPreview.contains(event.target);
+        },
+
         ignoreMutation(mutation: ViewMutationRecord): boolean {
             // A DOM selection inside the calc ledger must be IGNORED: the
             // ledger is non-content DOM, so if ProseMirror reacts it re-asserts

@@ -588,6 +588,31 @@ describe("evaluateCalcBlock", () => {
         expect(kinds).toEqual(["silent", "silent", "silent", "silent", "silent"]);
     });
 
+    it("hyphen/slash chains of solely unknown words stay silent (prose, not formulas)", () => {
+        const kinds = evaluateCalcBlock(
+            "one-off\nwin/win\nstate-of-the-art\neither/or\na/b",
+        ).map((l) => l.kind);
+        // Structurally these ARE ident chains with operators, but with no
+        // number and no known variable there is no evidence of a formula.
+        expect(kinds).toEqual(["silent", "silent", "silent", "silent", "silent"]);
+    });
+
+    it("an unknown-word chain that references a KNOWN variable earns the cue", () => {
+        const rows = evaluateCalcBlock("rent = 1500\nrent + fod");
+        expect(rows[1].kind).toBe("error"); // rent is real, `fod` is a typo
+    });
+
+    it("a literal definition with an unprintable value defines silently, no error cue", () => {
+        const rows = evaluateCalcBlock(
+            "x = 0.0000001\nbig = 10000000000000000\ncheck = big / 2",
+        );
+        // The source already spells each value — nothing to display, nothing
+        // wrong; and the definitions really do enter scope for lines below.
+        expect(rows[0].kind).toBe("silent");
+        expect(rows[1].kind).toBe("silent");
+        expect(rows[2]).toMatchObject({ kind: "value", result: "5000000000000000" });
+    });
+
     it("computed lines should be kind 'value'", () => {
         const rows = evaluateCalcBlock("x = 2\nx * 10");
         expect(rows.map((l) => l.kind)).toEqual(["silent", "value"]);
@@ -708,6 +733,25 @@ describe("detectArrowExpression — boundary discipline (never compute a fragmen
 
     it("a true line-start unary minus is still offered", () => {
         expect(detectArrowExpression("- 4 =>")?.expr).toBe("- 4");
+    });
+
+    it("an expression longer than the run cap refuses instead of answering its tail", () => {
+        // 121 ones sum to 121; the capped 160-char tail sums to 80. The cut
+        // point is never a trusted boundary — refuse, never answer a fragment.
+        const long = `${"1+".repeat(120)}1 =>`;
+        expect(detectArrowExpression(long)).toBeNull();
+        expect(detectArrowExpression(`${"1 + ".repeat(80)}1 =>`)).toBeNull();
+    });
+
+    it("capped PROSE before a short expression still trims and offers", () => {
+        // Longer than the 160-char run cap, but within the 24-token drop cap.
+        const prose = `${"longishword ".repeat(18)}x*2 =>`;
+        expect(detectArrowExpression(prose)?.expr).toBe("x*2");
+    });
+
+    it("an expression just under the run cap still computes whole", () => {
+        const expr = `${"1+".repeat(75)}1`; // 151 chars < 160
+        expect(detectArrowExpression(`${expr} =>`)?.expr).toBe(expr);
     });
 });
 

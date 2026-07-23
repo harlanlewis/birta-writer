@@ -764,20 +764,26 @@ export function detectArrowExpression(
     // Only the tail can hold a (short) inline expression; capping it bounds the
     // per-keystroke tokenization. A capped run still yields correct positions
     // because it is a suffix and runStart is derived from its length.
-    const run = fullRun.length > MAX_ARROW_RUN
-        ? fullRun.slice(fullRun.length - MAX_ARROW_RUN)
-        : fullRun;
+    const capped = fullRun.length > MAX_ARROW_RUN;
+    const run = capped ? fullRun.slice(fullRun.length - MAX_ARROW_RUN) : fullRun;
     const runStart = arrow.index - run.length;
     const trimmedRun = run.trim();
     if (!trimmedRun) { return null; }
 
-    // Glued start: the char before the run (also visible when the run was
-    // length-capped — the cap cut point is inside beforeArrow) is word-ish, so
-    // the run's first token is the TAIL of a larger token and can never be
-    // trusted. Force the trimming loop to drop it before considering anything.
-    const glued = runStart > 0
+    // The run's first token can never be trusted when either
+    // - the run was length-CAPPED: the cut point is arbitrary, and the
+    //   discarded head may bind the surviving tail (`1+1+…+1 =>` cut after an
+    //   operator would otherwise answer the tail's sum — a fragment answer for
+    //   a longer visible expression). Even a cut at whitespace is untrusted:
+    //   the discarded prefix can end in a binding operator (`10 + <cut>…`); or
+    // - the char before the run is word-ish (letter/digit/comma/underscore):
+    //   the head is the TAIL of a larger token (`1,000` → `000`).
+    // Either way, force the trimming loop to drop the first token before
+    // considering anything — for genuine long expressions the head is a
+    // number/paren, which is undroppable, so they refuse outright.
+    const glued = capped || (runStart > 0
         && run[0] !== " " && run[0] !== "\t"
-        && TOKEN_GLUE.test(beforeArrow[runStart - 1]);
+        && TOKEN_GLUE.test(beforeArrow[runStart - 1]));
 
     // Longest valid suffix: starting from the trimmed run, drop leading tokens
     // until what remains parses (or nothing does). Bounded by
@@ -900,17 +906,26 @@ const CALC_TRAILING_EQ = /\s*=>?[ \t]*$/;
 
 /**
  * Whether a non-definition block line READS as a formula — the error-cue
- * gate. Confidence comes from structure, not values: an operator-bearing,
- * well-formed expression (`total * 2`) or a known-units conversion shape
- * (`3 km in kg`) is a formula even when it can't produce a value; hyphenated
- * prose (`well-known plan`) parses as no valid structure and stays silent.
+ * gate. Confidence needs two things:
+ * - structure: an operator-bearing, well-formed expression (`total * 2`) or a
+ *   known-units conversion shape (`3 km in kg`) — hyphenated prose with a
+ *   trailing word (`well-known plan`) parses as no valid structure;
+ * - evidence: at least one number or one KNOWN variable. A chain of solely
+ *   unknown words is structurally an expression too (`one-off`, `win/win`,
+ *   `state-of-the-art` are ident chains with operators), but it reads as
+ *   prose — cueing it would put error dashes on ordinary notes.
  */
-function looksLikeFormula(expr: string): boolean {
+function looksLikeFormula(expr: string, scope: Map<string, number>): boolean {
     const form = parseUnitForm(expr);
     if (form && isKnownUnit(form.fromUnit.toLowerCase()) && isKnownUnit(form.toUnit.toLowerCase())) {
         return true;
     }
-    return HAS_OPERATOR.test(expr) && isValidExpressionStructure(expr);
+    if (!HAS_OPERATOR.test(expr) || !isValidExpressionStructure(expr)) { return false; }
+    const tokens = tokenize(expr, true);
+    if (!tokens) { return false; }
+    return tokens.some(
+        (tok) => tok.kind === "num" || (tok.kind === "ident" && scope.has(tok.name)),
+    );
 }
 
 /**
@@ -942,10 +957,15 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
         if (def) {
             const value = applyDefinition(def, scope);
             if (value === null) { return { raw, result: null, kind: "error" }; }
+            // A literal RHS already spells its value — nothing to display, and
+            // nothing wrong, even when the value itself is unprintable
+            // (`x = 0.0000001` defines fine and shows no echo; an error dash
+            // on a definition the ledger visibly uses downstream would lie).
+            if (/^-?[0-9.]+$/.test(def.rhs)) { return { raw, result: null, kind: "silent" }; }
             const formatted = formatCalcResult(value);
             if (formatted === null) { return { raw, result: null, kind: "error" }; }
-            // No echo when the RHS already is the value (`x = 5`); show it when
-            // the RHS is an expression (`x = 2 + 3` → 5) or a conversion.
+            // No echo when the RHS already is the value; show it when the RHS
+            // is an expression (`x = 2 + 3` → 5) or a conversion.
             return formatted === def.rhs
                 ? { raw, result: null, kind: "silent" }
                 : { raw, result: formatted, kind: "value" };
@@ -955,7 +975,7 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
         if (!expr || isBareNumber(expr)) { return { raw, result: null, kind: "silent" }; }
         const value = evaluateCalc(expr, scope);
         if (value === null) {
-            return { raw, result: null, kind: looksLikeFormula(expr) ? "error" : "silent" };
+            return { raw, result: null, kind: looksLikeFormula(expr, scope) ? "error" : "silent" };
         }
         const formatted = formatCalcResult(value);
         if (formatted === null) { return { raw, result: null, kind: "error" }; }
@@ -996,8 +1016,10 @@ const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
  * QUADRATICALLY on a long digit-heavy line that contains `=` but never
  * completes the shape — and this runs inside `appendTransaction`, on the
  * synchronous keystroke path. The scan walks outward from each `=` instead:
- * linear, bounded by `maxRun` per side, and only within the neighborhood of
- * the change (an equation an edit didn't touch can't have gone stale).
+ * linear, and only within the neighborhood of the change (an equation an edit
+ * didn't touch can't have gone stale). Expression runs are capped at `maxRun`
+ * per side; the result-number walks are uncapped but each is a single linear
+ * pass — no shape here can backtrack.
  *
  * Candidates are returned trailing-first, left-to-right (the original
  * evaluation order); every candidate must still be re-validated through
