@@ -338,7 +338,13 @@ body {
     --content-flow-gap: 0.85em;      /* paragraphs and rendered blocks (quotes, code, tables, callouts, …) */
     --content-list-gap: 0.3em;       /* between list items and stacked paragraphs within an item */
     --content-heading-before: 0.7em; /* a heading's own space above (adds to the previous block's gap) */
-    --content-heading-after: 0.3em;  /* a heading's space below — tight, bonds to the following content */
+    /* A heading's space below: still tighter than the flow gap (the heading
+       bonds to the section it opens), but with enough air that an indented
+       first block — a list, whose text column also shifts right — doesn't
+       read as cramped against the heading's baseline. One token for every
+       heading level and every following block type; resist per-pair
+       overrides here (they broke the deterministic-gap model). */
+    --content-heading-after: 0.45em;
 }
 
 /* Browser-native scroll-into-view (initial focus, find-in-page, …) must not

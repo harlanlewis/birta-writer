@@ -32,9 +32,10 @@
 import { serializerCtx } from "@milkdown/core";
 import type { EditorView } from "../../pm";
 import { Fragment } from "../../pm";
-import type { Node as ProseNode, NodeType } from "../../pm";
+import type { Node as ProseNode } from "../../pm";
 import { TextSelection } from "../../pm";
 import { setHeadingLevelAt } from "../../editing/blockOps";
+import { convertListTreeAt } from "../../editing/listConvert";
 import { runEditorCommand, type GetEditor } from "../../editorCommands";
 import { conversionKindAt, type ConversionKind } from "../../blockCapabilities";
 
@@ -155,32 +156,16 @@ export function unwrapListTo(view: EditorView, pos: number, level: number): bool
     return true;
 }
 
-/** list ↔ list: retype the node; the task flavor is a per-item `checked`
- * attr sweep (checked:false to become tasks, null to stop being tasks). */
+/** list ↔ list: retype the WHOLE TREE — the list, its items, and every
+ * nested list — via the shared converter (editing/listConvert), so a bullet
+ * list with ordered sub-steps converts through and through, never just its
+ * top layer. Task flavor rides as a per-item `checked` sweep in the same
+ * transaction. */
 export function retypeList(view: EditorView, pos: number, target: ConversionKind): boolean {
-    const list = view.state.doc.nodeAt(pos);
-    const bullet = view.state.schema.nodes["bullet_list"];
-    const ordered = view.state.schema.nodes["ordered_list"];
-    if (!list || !bullet || !ordered) {
+    if (target !== "bulletList" && target !== "orderedList" && target !== "taskList") {
         return false;
     }
-    const nodeType: NodeType = target === "orderedList" ? ordered : bullet;
-    const checked: boolean | null = target === "taskList" ? false : null;
-    let tr = view.state.tr;
-    if (list.type !== nodeType) {
-        tr = tr.setNodeMarkup(pos, nodeType, list.attrs);
-    }
-    list.forEach((item, offset) => {
-        const itemPos = pos + 1 + offset;
-        if ((item.attrs["checked"] ?? null) !== checked) {
-            tr = tr.setNodeMarkup(itemPos, null, { ...item.attrs, checked });
-        }
-    });
-    if (!tr.docChanged) {
-        return false;
-    }
-    view.dispatch(tr);
-    return true;
+    return convertListTreeAt(view, pos, target);
 }
 
 /** list → quote/callout: wrap the whole list — "- a / - b" becomes

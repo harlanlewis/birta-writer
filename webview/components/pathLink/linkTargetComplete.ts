@@ -21,7 +21,11 @@
  * autocomplete plugin (webview/plugins/linkUrlComplete.ts), which shows the
  * same dropdown anchored at the editor caret instead of under an <input>.
  */
-import { notifyGetLinkTargetSuggestions, notifyResolveLinkTarget } from "@/messaging";
+import {
+    notifyGetLinkTargetSuggestions,
+    notifyPickLinkTarget,
+    notifyResolveLinkTarget,
+} from "@/messaging";
 import { getEditorView } from "@/editor";
 import { collectDocHeadings } from "@/utils/headingUtils";
 import { slugifyHeadings } from "@/utils/slug";
@@ -101,6 +105,34 @@ export function requestLinkTargetResolve(
     _pendingResolves.set(id, cb);
     notifyResolveLinkTarget(id, path, wiki ? true : undefined);
     setTimeout(() => { _pendingResolves.delete(id); }, 5000);
+}
+
+type PickCallback = (path: string | null) => void;
+
+// Reply callback registry for pickLinkTarget (ids unique per request).
+const _pendingPicks = new Map<string, PickCallback>();
+
+/** Called by messageHandlers.ts to route a linkTargetPicked reply. */
+export function dispatchLinkTargetPicked(id: string, path: string | null): void {
+    const cb = _pendingPicks.get(id);
+    if (cb) {
+        _pendingPicks.delete(id);
+        cb(path);
+    }
+}
+
+/**
+ * Opens the OS-native file picker on the extension side; `cb` receives the
+ * picked file as a document-relative path, or null on cancel. Unlike its
+ * siblings the callback lives for 5 MINUTES — a native dialog waits on a
+ * human, not a filesystem scan — and a genuinely lost reply only strands an
+ * entry in the map, never UI state.
+ */
+export function requestPickLinkTarget(cb: PickCallback): void {
+    const id = `ltp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    _pendingPicks.set(id, cb);
+    notifyPickLinkTarget(id);
+    setTimeout(() => { _pendingPicks.delete(id); }, 300_000);
 }
 
 /** A rendered suggestion dropdown (see createLinkSuggestMenu). */

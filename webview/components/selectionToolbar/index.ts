@@ -34,6 +34,9 @@ import {
     IconAlignRight,
     IconTrash2,
     IconGripVertical,
+    IconList,
+    IconListOrdered,
+    IconCheckSquare,
 } from "@/ui/icons";
 import { applyTooltip } from "@/ui/tooltip";
 import { t, kbd } from "@/i18n";
@@ -166,18 +169,54 @@ function sBtn(
     return createButton({ className: "sel-tb-btn", icon, title, tooltipPlacement: "above", onClick });
 }
 
-/** The gutter symbol for a block node: a heading → an "H{n}" text badge, any
- *  other block → its gutter marker icon (¶, image, table, code, …), so the
- *  block palette's menu button reads as the very same affordance the margin
- *  handle shows. Falls back to the grip glyph for a block the gutter doesn't
- *  badge. */
+/** The gutter symbol for a block node: a heading → an "H{n}" text badge, a
+ *  list (or list item) → its flavor's icon (the gutter marks lists per ITEM,
+ *  so the list node derives the same glyph), any other block → its gutter
+ *  marker icon (¶, image, table, code, …), so the block palette's menu button
+ *  reads as the very same affordance the margin handle shows. Falls back to
+ *  the grip glyph for a block the gutter doesn't badge. */
 function blockSymbolHTML(node: PMNode | null): string {
     if (!node) { return IconGripVertical; }
     if (node.type.name === "heading") {
         const level = Math.min(Math.max(Number(node.attrs["level"]) || 1, 1), 6);
         return `<span class="sel-tb-block-badge">H${level}</span>`;
     }
+    if (node.type.name === "bullet_list" || node.type.name === "ordered_list") {
+        return listSymbolHTML(node);
+    }
+    if (node.type.name === "list_item") {
+        if (node.attrs["checked"] != null) { return IconCheckSquare; }
+        return node.attrs["listType"] === "ordered" ? IconListOrdered : IconList;
+    }
     return blockMarkerSpec(node)?.icon ?? IconGripVertical;
+}
+
+/** A list node's flavor icon — the slash registry's own art (IconList /
+ *  IconListOrdered / IconCheckSquare), task detected like the capability
+ *  classifier (first item carries a `checked` attr). */
+function listSymbolHTML(node: PMNode): string {
+    if (node.type.name === "ordered_list") { return IconListOrdered; }
+    return node.firstChild?.attrs["checked"] != null ? IconCheckSquare : IconList;
+}
+
+/** The symbol for a whole BLOCK RANGE: when every covered sibling renders the
+ *  same gutter symbol, the palette leads with that symbol — the selection
+ *  reads as "N of this kind" — and falls back to the neutral grip for a mixed
+ *  run. Works at any depth (top-level blocks and list-item ranges alike). */
+function rangeSymbolHTML(view: EditorView, from: number, to: number): string {
+    const $from = view.state.doc.resolve(from);
+    const parent = $from.depth === 0 ? view.state.doc : $from.parent;
+    const base = $from.depth === 0 ? 0 : $from.start();
+    let symbol: string | null = null;
+    let mixed = false;
+    parent.forEach((child: PMNode, offset: number) => {
+        const pos = base + offset;
+        if (mixed || pos < from || pos >= to) { return; }
+        const s = blockSymbolHTML(child);
+        if (symbol === null) { symbol = s; }
+        else if (s !== symbol) { mixed = true; }
+    });
+    return mixed || symbol === null ? IconGripVertical : symbol;
 }
 
 function sSep(): HTMLElement {
@@ -825,10 +864,12 @@ export function setupSelectionToolbar(
         if (selection instanceof BlockRangeSelection) {
             hideAllInline();
             hideAllTable();
-            // The menu button shows the selected block's gutter symbol (¶ / H2 /
-            // image / table …), so it reads as the same handle the margin shows.
-            // Only rewrite when it changes (this branch re-runs on scroll/reflow).
-            const symbol = blockSymbolHTML(view.state.doc.nodeAt(selection.from));
+            // The menu button shows the selection's gutter symbol (¶ / H2 /
+            // list / image / table …) whenever every covered block agrees on
+            // one — so it reads as the same handle the margin shows — and the
+            // neutral grip for a mixed run. Only rewrite when it changes
+            // (this branch re-runs on scroll/reflow).
+            const symbol = rangeSymbolHTML(view, selection.from, selection.to);
             if (symbol !== lastBlockSymbol) {
                 blockMenuBtn.innerHTML = symbol;
                 lastBlockSymbol = symbol;

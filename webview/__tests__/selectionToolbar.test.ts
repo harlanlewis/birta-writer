@@ -649,6 +649,96 @@ describe("selection toolbar block-range mode", () => {
         expect(btn.querySelector(".sel-tb-block-badge"), "no text badge").toBeNull();
     });
 
+    /** innerHTML-normalized icon markup (the DOM serializes self-closing
+     *  SVG tags to open/close pairs, so raw icon strings never match). */
+    function renderedIcon(icon: string): string {
+        const el = document.createElement("div");
+        el.innerHTML = icon;
+        return el.innerHTML;
+    }
+
+    it("the block-menu button shows the LIST flavor icon for a selected list", async () => {
+        // Arrange — a bullet list with a nested sublist; select the whole list
+        editor = await makeEditor("- one\n- two\n  - nested\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        selectBlocks(v, 0, 1);
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert — the button reads as the list's own gutter symbol (the
+        // bullet-list icon), not the generic grip.
+        const { IconList } = await import("../ui/icons");
+        expect(blockMenuBtn().innerHTML).toBe(renderedIcon(IconList));
+    });
+
+    it("the block-menu button shows the ordered icon for an ordered list", async () => {
+        editor = await makeEditor("1. one\n2. two\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        selectBlocks(v, 0, 1);
+
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        const { IconListOrdered } = await import("../ui/icons");
+        expect(blockMenuBtn().innerHTML).toBe(renderedIcon(IconListOrdered));
+    });
+
+    it("the block-menu button shows the task icon for a task list", async () => {
+        editor = await makeEditor("- [ ] a\n- [x] b\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        selectBlocks(v, 0, 1);
+
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        const { IconCheckSquare } = await import("../ui/icons");
+        expect(blockMenuBtn().innerHTML).toBe(renderedIcon(IconCheckSquare));
+    });
+
+    it("a uniform multi-block run shows the shared symbol; a mixed run the grip", async () => {
+        // Arrange — two paragraphs then a list: [p, p] is uniform (pilcrow),
+        // [p, list] is mixed (grip).
+        editor = await makeEditor("one\n\ntwo\n\n- item\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        const p1 = v.state.doc.child(0).nodeSize;
+        const p2 = v.state.doc.child(1).nodeSize;
+
+        // Uniform: both paragraphs.
+        selectBlocks(v, 0, p1 + 1);
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+        const { IconPilcrow, IconGripVertical } = await import("../ui/icons");
+        expect(blockMenuBtn().innerHTML).toBe(renderedIcon(IconPilcrow));
+
+        // Mixed: second paragraph + the list.
+        selectBlocks(v, p1, p1 + p2 + 1);
+        selTb.onSelectionChange(v);
+        expect(blockMenuBtn().innerHTML).toBe(renderedIcon(IconGripVertical));
+    });
+
+    it("an ITEM-level range inside a list shows the item flavor icon", async () => {
+        // Arrange — select two list ITEMS (a nested block range, not the
+        // whole list): the symbol walk runs over the item siblings.
+        editor = await makeEditor("- one\n- two\n- three\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        // Items start at pos 1 (inside the list); select the first two.
+        const firstItem = v.state.doc.child(0).child(0);
+        selectBlocks(v, 1, 1 + firstItem.nodeSize + 1);
+
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        const { IconList } = await import("../ui/icons");
+        expect(blockMenuBtn().innerHTML).toBe(renderedIcon(IconList));
+    });
+
     it("a whole-block selection should lead with the Block menu (grab) button, before Move Up", async () => {
         // Arrange — three paragraphs, select the first two as whole blocks
         editor = await makeEditor("one\n\ntwo\n\nthree\n");

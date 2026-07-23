@@ -127,6 +127,11 @@ export function notifyGetLinkTargetSuggestions(id: string, query: string): void 
     vscode.postMessage({ type: "getLinkTargetSuggestions", id, query });
 }
 
+/** Link editor "browse": open the OS file picker; reply is `linkTargetPicked`. */
+export function notifyPickLinkTarget(id: string): void {
+    vscode.postMessage({ type: "pickLinkTarget", id });
+}
+
 export function notifyResolveImagePath(id: string, relPath: string): void {
     vscode.postMessage({ type: "resolveImagePath", id, relPath });
 }

@@ -692,6 +692,18 @@ export class MarkdownEditorProvider
                         ).catch((err) => reportError("resolveLinkTarget", err)); // hint is best-effort
                         break;
                     }
+                    case "pickLinkTarget": {
+                        await this._handlePickLinkTarget(document, webviewPanel, message.id)
+                            .catch((err) => {
+                                reportError("pickLinkTarget", err);
+                                // The webview's browse button waits on this reply —
+                                // a swallowed failure must still read as "canceled".
+                                postToWebview(webviewPanel.webview, {
+                                    type: "linkTargetPicked", id: message.id, path: null,
+                                });
+                            });
+                        break;
+                    }
                     case "switchToTextEditor": {
                         // Suppress the upcoming onDidChangeActiveTextEditor line-number callback (within 1.5s)
                         this.suppressNavFromTextEditor();
@@ -1418,6 +1430,47 @@ export class MarkdownEditorProvider
         } catch {
             // Panel disposed while the resolver awaited stat/findFiles.
         }
+    }
+
+    /**
+     * Link editor "browse" (pickLinkTarget): open the OS-native file picker
+     * anchored at the document's folder and reply with the picked file as a
+     * DOCUMENT-relative posix path — the same form the link resolver and the
+     * inline autocomplete author, so the resulting link reads and resolves
+     * like a hand-typed one. Cancel (or an untitled document) replies null;
+     * the webview keeps its field untouched either way until a real path
+     * arrives.
+     */
+    private async _handlePickLinkTarget(
+        document: vscode.TextDocument,
+        panel: vscode.WebviewPanel,
+        id: string,
+    ): Promise<void> {
+        const reply = (picked: string | null): void => {
+            try {
+                postToWebview(panel.webview, { type: "linkTargetPicked", id, path: picked });
+            } catch {
+                // Panel disposed while the dialog waited on the user.
+            }
+        };
+        if (document.uri.scheme !== "file") {
+            reply(null);
+            return;
+        }
+        const docDir = path.dirname(document.uri.fsPath);
+        const picked = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            defaultUri: vscode.Uri.file(docDir),
+            openLabel: vscode.l10n.t("Select Link Target"),
+        });
+        const fsPath = picked?.[0]?.fsPath;
+        if (!fsPath) {
+            reply(null);
+            return;
+        }
+        reply(path.relative(docDir, fsPath).split(path.sep).join("/"));
     }
 
     /**

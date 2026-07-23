@@ -433,6 +433,7 @@ export const window = {
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
     showQuickPick: vi.fn(),
+    showOpenDialog: vi.fn(),
     createQuickPick: vi.fn(makeFakeQuickPick),
     createStatusBarItem: vi.fn((_id?: unknown, _alignment?: unknown, _priority?: unknown) =>
         makeFakeStatusBarItem(),
