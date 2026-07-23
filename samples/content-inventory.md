@@ -92,9 +92,11 @@ What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after
 Ending an expression with `=>` unlocks the richer form: **named variables**
 defined earlier in the document as `name = value` lines (only definitions
 *above* the cursor count, read top-to-bottom), and **offline unit conversions**
-with `in` / `to` across length, mass, time, volume, and temperature. Same
-Tab-confirmed suggestion, same plain-text insert, same eval-free offline
-engine (currency is deliberately absent — live rates would need the network).
+with `in` / `to` across the full mathjs unit catalog — length, mass, time,
+volume, temperature, area, data, and more. Same Tab-confirmed suggestion, same
+plain-text insert; expressions are evaluated by the same eval-free offline
+engine, and the unit catalog never sees them (currency is deliberately absent
+— live rates would need the network).
 
 budget = 5000
 

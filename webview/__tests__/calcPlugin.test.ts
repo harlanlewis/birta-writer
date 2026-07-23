@@ -4,7 +4,12 @@
  * auto-insert input rule, and the enabled/auto-insert gating. The pure engine
  * is covered separately in calc.test.ts.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { ensureCalcUnits } from "../utils/calc";
+
+// The `=>` fetch path awaits the lazy unit engine; preload once (under real
+// timers) so the fake-timer tests below see synchronous resolution.
+beforeAll(() => ensureCalcUnits());
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { TextSelection } from "../pm";
 import type { EditorView } from "../pm";

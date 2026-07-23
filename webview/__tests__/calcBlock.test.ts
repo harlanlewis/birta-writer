@@ -4,7 +4,8 @@
  * under one shared, top-to-bottom scope, and re-renders live as the source
  * changes. The pure per-line engine is covered in calc.test.ts.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { ensureCalcUnits } from "../utils/calc";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { commonmark } from "@milkdown/preset-commonmark";
 import { gfmFidelity } from "../serialization";
@@ -58,6 +59,9 @@ function ledger(nv: CodeBlockNodeView): string[] {
 }
 
 describe("calc code-block preview", () => {
+    // renderCalc awaits the lazy unit engine; preload so the ledger paints
+    // within the tests' short waits.
+    beforeAll(() => ensureCalcUnits());
     beforeEach(() => { document.body.innerHTML = ""; delete window.__i18n; });
     afterEach(async () => {
         for (const e of editors) { await e.destroy(); }

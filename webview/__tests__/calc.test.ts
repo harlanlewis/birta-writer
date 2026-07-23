@@ -4,8 +4,9 @@
  * caret detection that keeps ordinary prose containing `=` from being
  * hijacked. Pure functions — no editor, no DOM.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import {
+    ensureCalcUnits,
     evaluateExpression,
     formatCalcResult,
     detectCalcExpression,
@@ -18,6 +19,10 @@ import {
     evaluateCalcBlock,
     findRefreshEquations,
 } from "../utils/calc";
+
+// The unit engine is a lazy chunk in production (callers await it); tests
+// preload once so every conversion below is synchronous and deterministic.
+beforeAll(() => ensureCalcUnits());
 
 describe("evaluateExpression", () => {
     it("simple addition should compute the sum", () => {
@@ -692,6 +697,26 @@ describe("unit conversion round-trips", () => {
         expect(convertUnit(5, "constructor", "c")).toBeNull();
         expect(convertUnit(5, "constructor", "constructor")).toBeNull();
         expect(convertUnit(5, "hasOwnProperty", "toString")).toBeNull();
+    });
+
+    it("the mathjs catalog reaches units the old hand table never had", () => {
+        // Area, data, energy… come free from the delegated catalog — the
+        // point of the swap: no local factor table to grow.
+        expect(convertUnit(1, "hectare", "acre")).toBeCloseTo(2.4710538, 3);
+        expect(convertUnit(1, "GB", "MB")).toBe(1000);
+        expect(convertUnit(2, "weeks", "days")).toBe(14);
+        expect(evaluateCalc("100 hectare in acre")).toBeCloseTo(247.105, 2);
+    });
+
+    it("legacy spellings and temperature shorthands keep their historical meaning", () => {
+        // `C`/`F` must stay temperature (to mathjs alone they'd be
+        // coulomb/farad), and tsp/tbsp/nmi/pound resolve via aliases.
+        expect(convertUnit(100, "c", "f")).toBeCloseTo(212, 9);
+        expect(convertUnit(1, "tsp", "ml")).toBeCloseTo(4.92892159375, 6);
+        expect(convertUnit(1, "tbsp", "ml")).toBeCloseTo(14.78676478125, 6);
+        expect(convertUnit(1, "nmi", "m")).toBe(1852);
+        expect(convertUnit(1, "pound", "kg")).toBeCloseTo(0.45359237, 9);
+        expect(convertUnit(100, "°c", "°f")).toBeCloseTo(212, 9);
     });
 });
 

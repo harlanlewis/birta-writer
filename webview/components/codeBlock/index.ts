@@ -19,7 +19,7 @@ import { loadMermaid } from "@/utils/mermaidLoader";
 import { isMermaidDark } from "./mermaidTheme";
 import { normalizeMermaidThemeMode, type MermaidThemeMode } from "../../../shared/mermaid";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
-import { evaluateCalcBlock } from "@/utils/calc";
+import { ensureCalcUnits, evaluateCalcBlock } from "@/utils/calc";
 import { renderKatexInto } from "@/utils/katexLoader";
 import { highlight, ensureGrammars } from "@/highlighter";
 import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
@@ -504,6 +504,7 @@ export function createCodeBlockView(
     dom: HTMLElement;
     contentDOM: HTMLElement;
     update: (n: PMNode) => boolean;
+    stopEvent: (event: Event) => boolean;
     ignoreMutation: (m: ViewMutationRecord) => boolean;
     destroy: () => void;
 } {
@@ -888,9 +889,15 @@ export function createCodeBlockView(
      * omitted when the source line already ends in `=` or `=>`, which would
      * otherwise read doubled (`3 km in mi =>  = 1.86`).
      */
-    function renderCalc(code: string): void {
+    async function renderCalc(code: string): Promise<void> {
         if (!isCalc || !isPreviewMode) { return; }
         lastCalcRendered = code;
+        // Unit conversions live in a lazy chunk (calcUnits.ts); load it before
+        // evaluating so `3 km in mi` has a value on first paint. A failed load
+        // degrades to arithmetic-only. If a newer render was scheduled while
+        // the chunk loaded, this one is stale — bail.
+        try { await ensureCalcUnits(); } catch { /* conversions yield no value */ }
+        if (lastCalcRendered !== code || !isCalc || !isPreviewMode) { return; }
         const rows = evaluateCalcBlock(code);
         calcRender.replaceChildren();
         for (const { raw, result, kind, value } of rows) {
@@ -1128,7 +1135,7 @@ export function createCodeBlockView(
 
     // Render whichever preview the current language maps to.
     function renderPreview(code: string): void {
-        if (isCalc) renderCalc(code);
+        if (isCalc) void renderCalc(code);
         else if (isLatex) void renderLatex(code);
         else void renderMermaid(code);
     }
@@ -1703,7 +1710,7 @@ export function createCodeBlockView(
                     // decoration-only churn (selection, folds).
                     if (newCode !== lastCalcRendered) {
                         if (calcRenderTimer) clearTimeout(calcRenderTimer);
-                        calcRenderTimer = setTimeout(() => renderCalc(newCode), 150);
+                        calcRenderTimer = setTimeout(() => void renderCalc(newCode), 150);
                     }
                 } else if (isLatex) {
                     if (latexRenderTimer) clearTimeout(latexRenderTimer);

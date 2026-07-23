@@ -42,6 +42,7 @@
  *   power  := primary ('^' factor)?             // right-associative
  *   primary := number | '(' expr ')'
  */
+import { calcUnitsReady, convertUnit, isKnownUnit, unitsCompatible } from "./calcUnits";
 
 type Token =
     | { kind: "num"; value: number }
@@ -481,139 +482,14 @@ function detectLeadingForm(textBefore: string, boundaryUnknown: boolean): CalcMa
 // "Living calculation" layer: the `=>` operator, named variables, and OFFLINE
 // unit conversion (MAR-196, Calca-inspired). Everything here is still the same
 // deterministic, eval-free, network-free discipline as the `=` path above — an
-// identifier is a lookup in a caller-supplied scope, never a code path, and
-// units are a fixed static table, never a rates service. Currency is
-// deliberately absent: live rates would need the network, which the offline
-// posture forbids.
+// identifier is a lookup in a caller-supplied scope, never a code path. Unit
+// conversion delegates to calcUnits.ts (a lazily-loaded, tree-shaken mathjs
+// unit instance — catalog and factors maintained there, i.e. NOT here; user
+// expressions never reach mathjs). Currency is deliberately absent: live
+// rates would need the network, which the offline posture forbids.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** A physical dimension a unit belongs to; conversion only works within one. */
-type Dim = "length" | "mass" | "time" | "volume" | "temperature";
-
-/**
- * Linear units: factor to the dimension's base unit (metre, kilogram, second,
- * litre). Names are matched lowercased, so `KM` and `km` are the same unit.
- * Temperature is affine (offsets, not just factors) and handled separately.
- */
-const LINEAR_UNITS: Record<string, { dim: Dim; factor: number }> = {
-    // length (base: metre)
-    mm: { dim: "length", factor: 0.001 },
-    cm: { dim: "length", factor: 0.01 },
-    dm: { dim: "length", factor: 0.1 },
-    m: { dim: "length", factor: 1 },
-    km: { dim: "length", factor: 1000 },
-    in: { dim: "length", factor: 0.0254 },
-    inch: { dim: "length", factor: 0.0254 },
-    inches: { dim: "length", factor: 0.0254 },
-    ft: { dim: "length", factor: 0.3048 },
-    foot: { dim: "length", factor: 0.3048 },
-    feet: { dim: "length", factor: 0.3048 },
-    yd: { dim: "length", factor: 0.9144 },
-    yard: { dim: "length", factor: 0.9144 },
-    yards: { dim: "length", factor: 0.9144 },
-    mi: { dim: "length", factor: 1609.344 },
-    mile: { dim: "length", factor: 1609.344 },
-    miles: { dim: "length", factor: 1609.344 },
-    nmi: { dim: "length", factor: 1852 },
-    // mass (base: kilogram)
-    mg: { dim: "mass", factor: 0.000001 },
-    g: { dim: "mass", factor: 0.001 },
-    kg: { dim: "mass", factor: 1 },
-    t: { dim: "mass", factor: 1000 },
-    tonne: { dim: "mass", factor: 1000 },
-    tonnes: { dim: "mass", factor: 1000 },
-    oz: { dim: "mass", factor: 0.028349523125 },
-    lb: { dim: "mass", factor: 0.45359237 },
-    lbs: { dim: "mass", factor: 0.45359237 },
-    pound: { dim: "mass", factor: 0.45359237 },
-    pounds: { dim: "mass", factor: 0.45359237 },
-    stone: { dim: "mass", factor: 6.35029318 },
-    // time (base: second)
-    ms: { dim: "time", factor: 0.001 },
-    s: { dim: "time", factor: 1 },
-    sec: { dim: "time", factor: 1 },
-    secs: { dim: "time", factor: 1 },
-    second: { dim: "time", factor: 1 },
-    seconds: { dim: "time", factor: 1 },
-    min: { dim: "time", factor: 60 },
-    mins: { dim: "time", factor: 60 },
-    minute: { dim: "time", factor: 60 },
-    minutes: { dim: "time", factor: 60 },
-    h: { dim: "time", factor: 3600 },
-    hr: { dim: "time", factor: 3600 },
-    hrs: { dim: "time", factor: 3600 },
-    hour: { dim: "time", factor: 3600 },
-    hours: { dim: "time", factor: 3600 },
-    day: { dim: "time", factor: 86400 },
-    days: { dim: "time", factor: 86400 },
-    week: { dim: "time", factor: 604800 },
-    weeks: { dim: "time", factor: 604800 },
-    // volume (base: litre)
-    ml: { dim: "volume", factor: 0.001 },
-    l: { dim: "volume", factor: 1 },
-    liter: { dim: "volume", factor: 1 },
-    litre: { dim: "volume", factor: 1 },
-    liters: { dim: "volume", factor: 1 },
-    litres: { dim: "volume", factor: 1 },
-    tsp: { dim: "volume", factor: 0.00492892159375 },
-    tbsp: { dim: "volume", factor: 0.01478676478125 },
-    cup: { dim: "volume", factor: 0.2365882365 },
-    cups: { dim: "volume", factor: 0.2365882365 },
-    pint: { dim: "volume", factor: 0.473176473 },
-    pints: { dim: "volume", factor: 0.473176473 },
-    quart: { dim: "volume", factor: 0.946352946 },
-    quarts: { dim: "volume", factor: 0.946352946 },
-    gal: { dim: "volume", factor: 3.785411784 },
-    gallon: { dim: "volume", factor: 3.785411784 },
-    gallons: { dim: "volume", factor: 3.785411784 },
-};
-
-/**
- * Temperature units: conversion to AND from the °C base as one entry per unit,
- * so a spelling can never exist in one direction but not the other. Affine
- * (offsets, not just factors), hence not part of LINEAR_UNITS.
- */
-const TEMP_UNITS: Record<string, { toC: (v: number) => number; fromC: (c: number) => number }> = {
-    c: { toC: (v) => v, fromC: (c) => c },
-    "°c": { toC: (v) => v, fromC: (c) => c },
-    celsius: { toC: (v) => v, fromC: (c) => c },
-    f: { toC: (v) => (v - 32) * 5 / 9, fromC: (c) => c * 9 / 5 + 32 },
-    "°f": { toC: (v) => (v - 32) * 5 / 9, fromC: (c) => c * 9 / 5 + 32 },
-    fahrenheit: { toC: (v) => (v - 32) * 5 / 9, fromC: (c) => c * 9 / 5 + 32 },
-    k: { toC: (v) => v - 273.15, fromC: (c) => c + 273.15 },
-    kelvin: { toC: (v) => v - 273.15, fromC: (c) => c + 273.15 },
-};
-
-/**
- * Whether `from` and `to` name KNOWN units of the same dimension. `Object.hasOwn`
- * everywhere — a plain `in`/index lookup walks the prototype chain, and a unit
- * spelled `constructor` must be an unknown unit, not `Object`.
- */
-function unitsCompatible(from: string, to: string): boolean {
-    if (Object.hasOwn(TEMP_UNITS, from) && Object.hasOwn(TEMP_UNITS, to)) { return true; }
-    if (!Object.hasOwn(LINEAR_UNITS, from) || !Object.hasOwn(LINEAR_UNITS, to)) { return false; }
-    return LINEAR_UNITS[from].dim === LINEAR_UNITS[to].dim;
-}
-
-/** Whether `unit` (already lowercased) names any known unit at all. */
-function isKnownUnit(unit: string): boolean {
-    return Object.hasOwn(TEMP_UNITS, unit) || Object.hasOwn(LINEAR_UNITS, unit);
-}
-
-/**
- * Converts `value` from one unit to another, or `null` when a unit is unknown
- * or the two belong to different dimensions (`3 km in kg` is meaningless).
- */
-export function convertUnit(value: number, from: string, to: string): number | null {
-    const f = from.toLowerCase();
-    const trg = to.toLowerCase();
-    if (!unitsCompatible(f, trg)) { return null; }
-    if (Object.hasOwn(TEMP_UNITS, f)) {
-        return TEMP_UNITS[trg].fromC(TEMP_UNITS[f].toC(value));
-    }
-    const result = value * LINEAR_UNITS[f].factor / LINEAR_UNITS[trg].factor;
-    return Number.isFinite(result) ? result : null;
-}
+export { convertUnit, ensureCalcUnits } from "./calcUnits";
 
 /** The parsed pieces of a `<numeric-expr> <fromUnit> (in|to) <toUnit>` form. */
 interface UnitForm {
@@ -688,9 +564,12 @@ export function evaluateCalc(input: string, scope?: Map<string, number>): number
  */
 export function isCalcStructurallyValid(input: string): boolean {
     const form = parseUnitForm(input);
-    if (form && unitsCompatible(form.fromUnit.toLowerCase(), form.toUnit.toLowerCase())
-        && isValidExpressionStructure(form.numExpr)) {
-        return true;
+    if (form && isValidExpressionStructure(form.numExpr)) {
+        // With the unit engine loaded, require known compatible units. Before
+        // it loads (it is lazy), accept the SHAPE: a bad unit then simply
+        // yields no result at fetch time and nothing is offered —
+        // under-promising is safe, guessing at the catalog is not.
+        if (!calcUnitsReady() || unitsCompatible(form.fromUnit, form.toUnit)) { return true; }
     }
     return isValidExpressionStructure(input);
 }
@@ -923,7 +802,7 @@ const CALC_TRAILING_EQ = /\s*=>?[ \t]*$/;
  */
 function looksLikeFormula(expr: string, scope: Map<string, number>): boolean {
     const form = parseUnitForm(expr);
-    if (form && isKnownUnit(form.fromUnit.toLowerCase()) && isKnownUnit(form.toUnit.toLowerCase())) {
+    if (form && isKnownUnit(form.fromUnit) && isKnownUnit(form.toUnit)) {
         return true;
     }
     if (!HAS_OPERATOR.test(expr) || !isValidExpressionStructure(expr)) { return false; }

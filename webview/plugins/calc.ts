@@ -41,6 +41,7 @@ import {
     buildScopeFromLines,
     detectArrowExpression,
     detectCalcExpression,
+    ensureCalcUnits,
     evaluateCalc,
     evaluateExpression,
     findRefreshEquations,
@@ -89,7 +90,8 @@ const calcSuggestSpec: CaretSuggestSpec = {
     // networked — the whole point of calc is determinism.
     fetch(query, cb) {
         const value = evaluateExpression(query);
-        cb(value === null ? [] : [formatCalcResult(value)]);
+        const result = value === null ? null : formatCalcResult(value);
+        cb(result === null ? [] : [result]);
     },
 
     buildMenu(items, match, anchor, onPick) {
@@ -128,8 +130,9 @@ const calcSuggestSpec: CaretSuggestSpec = {
             if (window.__i18n) { window.__i18n.calcAutoInsert = true; }
             notifySetCalcAutoInsert(true);
             const value = evaluateExpression(match.query);
-            if (value !== null) {
-                applyCalcResult(view, match.start, match.caret, formatCalcResult(value));
+            const result = value === null ? null : formatCalcResult(value);
+            if (result !== null) {
+                applyCalcResult(view, match.start, match.caret, result);
             }
             return;
         }
@@ -225,12 +228,17 @@ const calcArrowSpec: CaretSuggestSpec = {
     shouldSuggest: (query) => isCalcStructurallyValid(query),
 
     fetch(query, cb, ctx) {
-        const scope = ctx ? scopeUpToCaret(ctx.state) : undefined;
-        const value = evaluateCalc(query, scope);
-        if (value === null) { cb([]); return; }
-        const result = formatCalcResult(value);
-        // Exponent results carry a letter, breaking the plain-text contract.
-        cb(result.includes("e") ? [] : [result]);
+        // The unit engine is a lazy chunk (calcUnits.ts); load it before
+        // evaluating so `3 km in mi =>` works on first use. The controller
+        // tolerates a late cb (stale-reply generations), and a failed load
+        // degrades to arithmetic-only — conversions yield null, nothing shown.
+        void ensureCalcUnits().catch(() => undefined).then(() => {
+            const scope = ctx ? scopeUpToCaret(ctx.state) : undefined;
+            const value = evaluateCalc(query, scope);
+            if (value === null) { cb([]); return; }
+            const result = formatCalcResult(value);
+            cb(result === null ? [] : [result]);
+        });
     },
 
     buildMenu(items, match, anchor, onPick) {
