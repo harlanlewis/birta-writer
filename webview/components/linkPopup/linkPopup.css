@@ -25,10 +25,14 @@
     background: var(--palette-ground);
     color: var(--palette-ink);
     border: 1px solid var(--palette-border);
-    border-radius: 8px;
+    border-radius: var(--ui-radius-l);
     box-shadow: 0 4px 20px var(--vscode-widget-shadow);
     overflow: hidden;
     animation: lp-fadein 120ms ease;
+    /* Retheme the .ui-btn primitives inside onto the palette-chip ground. */
+    --ui-btn-ink: var(--palette-ink);
+    --ui-btn-hover-bg: var(--palette-hover);
+    --ui-btn-active-bg: var(--palette-active);
 }
 
 /* ─── Header ─── */
@@ -51,7 +55,7 @@
 .lp-url {
     flex: 1;
     min-width: 0;
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     color: var(--vscode-textLink-foreground);
     white-space: nowrap;
     overflow: hidden;
@@ -71,7 +75,7 @@
 /* ─── Anchor hint (→ heading text) ─── */
 .lp-anchor-hint {
     padding: 0 10px 7px 32px;
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     color: var(--palette-ink);
     opacity: 0.72;
     white-space: nowrap;
@@ -89,7 +93,7 @@
 /* ─── Resolved-target hint (→ where the link opens) ─── */
 .lp-resolved {
     padding: 0 10px 7px 32px;
-    font-size: 12px;
+    font-size: var(--ui-fs-m);
     color: var(--palette-ink);
     opacity: 0.72;
     white-space: nowrap;
@@ -107,25 +111,15 @@
     font-style: italic;
 }
 
-/* ─── Generic buttons ─── */
+/* ─── Generic buttons ───
+   Compose .ui-btn/.ui-btn--icon (anatomy + palette washes via the container
+   vars above); local: the 26px square and the resting fade. */
 .lp-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 5px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    background: transparent;
-    color: var(--palette-ink);
-    flex-shrink: 0;
+    --ui-btn-size: 26px;
     opacity: 0.78;
-    transition: opacity 0.1s, background 0.1s, color 0.1s;
 
     &:hover {
         opacity: 1;
-        background: var(--palette-hover);
     }
 }
 
@@ -172,8 +166,8 @@
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
     border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-    border-radius: 4px;
-    font-size: 12px;
+    border-radius: var(--ui-radius-m);
+    font-size: var(--ui-fs-m);
     font-family: inherit;
     outline: none;
     transition: border-color 0.1s;

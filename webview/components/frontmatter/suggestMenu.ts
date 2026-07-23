@@ -182,7 +182,7 @@ function createSuggestMenuCore(opts: SuggestCoreOptions): FmSuggestController {
         list.innerHTML = "";
         rows.forEach((row, i) => {
             const li = document.createElement("li");
-            li.className = "fm-suggest-item" + (row.isCreate ? " fm-suggest-create" : "");
+            li.className = "ui-menu-row fm-suggest-item" + (row.isCreate ? " fm-suggest-create" : "");
             li.textContent = row.isCreate ? `${t("Create")} "${row.value}"` : row.value;
             li.title = row.value;
             li.addEventListener("mousedown", (e) => {

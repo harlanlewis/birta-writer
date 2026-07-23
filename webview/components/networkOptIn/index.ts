@@ -102,7 +102,7 @@ export function offerNetworkOptIn(opts: NetworkOptInOptions): void {
     closeCurrent();
 
     const el = document.createElement("div");
-    el.className = "network-optin";
+    el.className = "ui-notice network-optin";
     el.setAttribute("role", "status");
     // aria-live polite: announced without interrupting, matching the guard notice.
     el.setAttribute("aria-live", "polite");
@@ -113,7 +113,7 @@ export function offerNetworkOptIn(opts: NetworkOptInOptions): void {
 
     const enableBtn = document.createElement("button");
     enableBtn.type = "button";
-    enableBtn.className = "network-optin__enable";
+    enableBtn.className = "ui-btn ui-btn--accent network-optin__enable";
     enableBtn.textContent = t("Enable");
     // Scope transparency (MAR-184): the write lands in user settings unless a
     // workspace value already exists, so say what accepting actually does.
@@ -121,7 +121,7 @@ export function offerNetworkOptIn(opts: NetworkOptInOptions): void {
 
     const dismissBtn = document.createElement("button");
     dismissBtn.type = "button";
-    dismissBtn.className = "network-optin__dismiss";
+    dismissBtn.className = "ui-btn ui-btn--icon ui-notice__dismiss network-optin__dismiss";
     dismissBtn.setAttribute("aria-label", t("Dismiss"));
     dismissBtn.textContent = "×"; // ×
 

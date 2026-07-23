@@ -104,7 +104,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // Side-switch: moves the panel to the opposite edge. Two-way arrows read as
     // "swap sides"; the tooltip names the destination.
     const flipBtn = document.createElement("button");
-    flipBtn.className = "toc-control-btn toc-flip-btn";
+    flipBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-flip-btn";
     flipBtn.tabIndex = -1;
     flipBtn.innerHTML = IconArrowLeftRight;
     controls.appendChild(flipBtn);
@@ -113,7 +113,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // filled edge marks the docked side) — the same icon the reveal tab uses, so
     // the two read as one persistent control as the panel slides away.
     const hideBtn = document.createElement("button");
-    hideBtn.className = "toc-control-btn toc-hide-btn";
+    hideBtn.className = "ui-btn ui-btn--icon toc-control-btn toc-hide-btn";
     hideBtn.tabIndex = -1;
     controls.appendChild(hideBtn);
 
@@ -175,7 +175,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     tabsList.append(tabContents, tabLinks, tabNotes, tabProofread);
 
     const tabsSelect = document.createElement("button");
-    tabsSelect.className = "toc-tabs-select";
+    tabsSelect.className = "ui-btn toc-tabs-select";
     tabsSelect.tabIndex = -1;
     tabsSelect.setAttribute("aria-haspopup", "menu");
     const tabsSelectLabel = document.createElement("span");
@@ -198,7 +198,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     function openTabsMenu(): void {
         tabsMenu.replaceChildren(...ALL_TABS.filter(([btn]) => !btn.hidden).map(([btn, tab]) => {
             const item = document.createElement("button");
-            item.className = "toc-tabs-menu__item";
+            item.className = "ui-menu-row toc-tabs-menu__item";
             item.textContent = btn.textContent;
             item.tabIndex = -1;
             item.classList.toggle("toc-tabs-menu__item--active", tab === activeTab);
@@ -256,7 +256,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
     function makeTabButton(tab: ReviewTab, label: string): HTMLButtonElement {
         const btn = document.createElement("button");
-        btn.className = "toc-tab";
+        btn.className = "ui-btn toc-tab";
         btn.textContent = label;
         btn.setAttribute("role", "tab");
         btn.dataset["tab"] = tab;
@@ -499,7 +499,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     // header's hide button and sits at the same corner, so hiding the panel
     // reads as the control staying put while the panel slides away behind it.
     const tabEl = document.createElement("button");
-    tabEl.className = "toc-toggle-tab";
+    tabEl.className = "ui-btn ui-btn--icon toc-toggle-tab";
     // Keyboard-reachable: Tab focuses it (flying the panel out as a preview via
     // the focus listener below), Enter/Space docks it open. Without tabIndex 0 —
     // and because the mousedown handler preventDefaults click-focus — the focus

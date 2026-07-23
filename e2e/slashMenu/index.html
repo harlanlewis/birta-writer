@@ -25,6 +25,9 @@
     --vscode-editor-font-family: monospace;
   }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production. */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };

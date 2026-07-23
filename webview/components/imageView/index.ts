@@ -130,7 +130,7 @@ function isolateInput(input: HTMLInputElement): void {
 
 // ─── Toolbar button factory ────────────────────────────────
 function makeBtn(icon: string, label: string): HTMLButtonElement {
-    return createButton({ className: "img-tb-btn", icon, tabIndex: -1, title: label, tooltipPlacement: "above" });
+    return createButton({ className: "ui-btn img-tb-btn", icon, tabIndex: -1, title: label, tooltipPlacement: "above" });
 }
 
 function makeSep(): HTMLElement {
@@ -258,7 +258,7 @@ export function createImageView(
 
     // File-name chip with a pencil: click to edit the image path (src attribute)
     const editPathBtn = document.createElement("button");
-    editPathBtn.className = "img-tb-btn img-tb-path";
+    editPathBtn.className = "ui-btn img-tb-btn img-tb-path";
     editPathBtn.tabIndex = -1;
     editPathBtn.setAttribute("aria-label", t("Edit Image Path"));
     const pathName = document.createElement("span");

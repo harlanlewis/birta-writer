@@ -63,9 +63,9 @@
     background: var(--vscode-editorWidget-background);
     color: var(--vscode-editorWidget-foreground);
     border: 1px solid var(--vscode-editorWidget-border);
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-    font-size: 13px;
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow-s);
+    font-size: var(--ui-fs-l);
 }
 
 /* One finding = one section. When several stack (overlapping findings), a rule
@@ -81,7 +81,7 @@
     width: 100%;
     padding: 4px 8px;
     border: none;
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
     background: transparent;
     color: inherit;
     text-align: left;
@@ -96,7 +96,7 @@
 .pf-popup-ignore {
     color: var(--vscode-descriptionForeground);
     border-top: 1px solid var(--vscode-editorWidget-border);
-    border-radius: 0 0 3px 3px;
+    border-radius: 0 0 var(--ui-radius-s) var(--ui-radius-s);
     margin-top: 2px;
     padding-top: 6px;
 }
@@ -116,17 +116,19 @@
     max-width: 260px;
 }
 
-/* Category chip that leads each finding's message ("Filler", "Long sentence"). */
+/* Category chip heading each finding's message ("Filler", "Long sentences") —
+   on its own line above the description, so the chip reads as the finding's
+   title rather than the first words of its sentence. */
 .pf-popup-tag {
-    display: inline-block;
-    margin-right: 6px;
+    display: block;
+    width: fit-content;
+    margin: 0 0 3px;
     padding: 0 5px;
-    border-radius: 3px;
+    border-radius: var(--ui-radius-s);
     background: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
-    font-size: 11px;
+    font-size: var(--ui-fs-s);
     line-height: 1.5;
-    vertical-align: 1px;
     white-space: nowrap;
 }
 

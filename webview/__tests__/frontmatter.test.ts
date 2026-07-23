@@ -11,6 +11,7 @@ import {
     parseTabularFrontmatter,
     serializeFrontmatter,
     renderFrontmatterPanel,
+    refreshFrontmatterEmptyState,
 } from "../components/frontmatter";
 
 const FM = '---\ntitle: "Hello"\ndate: 2026-01-01\ndraft: true\n---\n';
@@ -439,7 +440,7 @@ describe("renderFrontmatterPanel collapse toggle", () => {
         const toggle = panel!.querySelector(".fm-toggle-btn");
         expect(toggle?.textContent).toContain("Hide metadata");
         // The toggle sits immediately to the left of the Add-field button
-        expect(toggle?.nextElementSibling?.className).toBe("fm-add-btn");
+        expect(toggle?.nextElementSibling?.classList.contains("fm-add-btn")).toBe(true);
     });
 
     it("clicking the toggle should collapse the panel and persist the state", () => {
@@ -503,10 +504,118 @@ describe("renderFrontmatterPanel collapse toggle", () => {
         expect(mockVscodeApi.setState).toHaveBeenCalledWith({ scrollY: 120, fmCollapsed: true });
     });
 
-    it("undefined frontmatter should remove the panel", () => {
+    it("undefined frontmatter should replace the table with the empty state", () => {
         renderFrontmatterPanel(FM);
         renderFrontmatterPanel(undefined);
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.classList.contains("fm-empty")).toBe(true);
+        expect(panel.querySelector(".frontmatter-table")).toBeNull();
+        expect(panel.querySelector(".fm-toggle-btn")).toBeNull();
+    });
+});
+
+describe("frontmatter empty state (Add metadata)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockVscodeApi.getState.mockReturnValue(null);
+        window.__i18n = undefined;
+        setupDom();
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("a document without frontmatter should offer only the Add-metadata button", () => {
+        renderFrontmatterPanel(undefined);
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.classList.contains("fm-empty")).toBe(true);
+        expect(panel.querySelector(".fm-add-metadata-btn")).toBeTruthy();
+        // Content-conditional controls stay absent without content.
+        expect(panel.querySelector(".fm-toggle-btn")).toBeNull();
+        expect(panel.querySelector(".fm-add-btn")).toBeNull();
+        expect(panel.querySelector(".frontmatter-table")).toBeNull();
+    });
+
+    it("a document with frontmatter should not offer the Add-metadata button", () => {
+        renderFrontmatterPanel(FM);
+        expect(document.querySelector(".fm-add-metadata-btn")).toBeNull();
+    });
+
+    it("clicking Add metadata should open an empty table with a focused new row and commit nothing", () => {
+        renderFrontmatterPanel(undefined);
+        document.querySelector<HTMLButtonElement>(".fm-add-metadata-btn")!.click();
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.classList.contains("fm-empty")).toBe(false);
+        expect(panel.classList.contains("collapsed")).toBe(false);
+        expect(panel.querySelectorAll(".frontmatter-table tr")).toHaveLength(1);
+        expect(document.activeElement).toBe(panel.querySelector(".fm-key"));
+        expect(postedFrontmatters()).toEqual([]);
+    });
+
+    it("a persisted collapsed state should not hide the row being added", () => {
+        mockVscodeApi.getState.mockReturnValue({ fmCollapsed: true });
+        renderFrontmatterPanel(undefined);
+        document.querySelector<HTMLButtonElement>(".fm-add-metadata-btn")!.click();
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.classList.contains("collapsed")).toBe(false);
+        expect(mockVscodeApi.setState).toHaveBeenCalledWith(
+            expect.objectContaining({ fmCollapsed: false }),
+        );
+    });
+
+    it("committing the first field should post a full fenced block", () => {
+        renderFrontmatterPanel(undefined);
+        document.querySelector<HTMLButtonElement>(".fm-add-metadata-btn")!.click();
+        const row = document.querySelector(".frontmatter-table tr")!;
+        const keyTd = row.querySelector<HTMLElement>(".fm-key")!;
+        keyTd.textContent = "title";
+        keyTd.dispatchEvent(new Event("blur"));
+        const valTd = row.querySelector<HTMLElement>(".fm-val")!;
+        valTd.textContent = "Hello";
+        valTd.dispatchEvent(new Event("blur"));
+        expect(postedFrontmatters().at(-1)).toBe("---\ntitle: Hello\n---\n");
+    });
+
+    it("abandoning the fresh row untyped should revert to the empty state", () => {
+        renderFrontmatterPanel(undefined);
+        document.querySelector<HTMLButtonElement>(".fm-add-metadata-btn")!.click();
+
+        // Focus leaves the still-empty row (the table state has a toggle).
+        document.querySelector<HTMLButtonElement>(".fm-toggle-btn")!.focus();
+        vi.runAllTimers();
+
+        const panel = document.getElementById("frontmatter-panel")!;
+        expect(panel.classList.contains("fm-empty")).toBe(true);
+        expect(panel.querySelector(".fm-add-metadata-btn")).toBeTruthy();
+        expect(postedFrontmatters()).toEqual([]);
+    });
+
+    it("birta.frontmatterAddButton off should render no panel and no editor inset", () => {
+        window.__i18n = { frontmatterAddButton: false } as unknown as typeof window.__i18n;
+        renderFrontmatterPanel(undefined);
         expect(document.getElementById("frontmatter-panel")).toBeNull();
+        expect(document.getElementById("editor")!.style.paddingTop).toBe("");
+    });
+
+    it("the gate should not touch a document WITH frontmatter", () => {
+        window.__i18n = { frontmatterAddButton: false } as unknown as typeof window.__i18n;
+        renderFrontmatterPanel(FM);
+        expect(document.querySelector(".frontmatter-table")).toBeTruthy();
+    });
+
+    it("flipping the gate live should add and remove the empty state", () => {
+        renderFrontmatterPanel(undefined);
+        expect(document.querySelector(".fm-add-metadata-btn")).toBeTruthy();
+
+        window.__i18n = { frontmatterAddButton: false } as unknown as typeof window.__i18n;
+        refreshFrontmatterEmptyState();
+        expect(document.getElementById("frontmatter-panel")).toBeNull();
+
+        window.__i18n = { frontmatterAddButton: true } as unknown as typeof window.__i18n;
+        refreshFrontmatterEmptyState();
+        expect(document.querySelector(".fm-add-metadata-btn")).toBeTruthy();
     });
 });
 
@@ -972,7 +1081,7 @@ describe("frontmatter panel keyboard activation and ARIA", () => {
         expect(panelRows()).toHaveLength(0);
         expect(postedFrontmatters()).toEqual([""]);
         // Focus falls back to the Add-field button so the keyboard flow survives
-        expect(document.activeElement?.className).toBe("fm-add-btn");
+        expect(document.activeElement?.classList.contains("fm-add-btn")).toBe(true);
     });
 });
 

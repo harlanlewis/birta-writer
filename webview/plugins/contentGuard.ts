@@ -499,7 +499,7 @@ export function showGuardNotice(message: string): void {
     }
     if (!noticeEl || !noticeEl.isConnected) {
         noticeEl = document.createElement("div");
-        noticeEl.className = "content-guard-notice";
+        noticeEl.className = "ui-notice content-guard-notice";
         noticeEl.setAttribute("role", "status");
         noticeEl.setAttribute("aria-live", "polite");
         document.body.appendChild(noticeEl);

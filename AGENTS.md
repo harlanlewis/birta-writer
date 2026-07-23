@@ -96,6 +96,7 @@ packages/minimal-diff/src/index.ts            — Format-agnostic minimal-diff e
 webview/utils/minimalDiff.ts                  — Markdown FormatProfile (classifier + normalizers) + profile-bound minimal-diff API
 webview/messaging.ts                          — WebView ↔ Extension message protocol (the only comms layer)
 webview/style.css                             — VS Code theming (--vscode-* CSS variables)
+webview/ui/chrome.css                         — Chrome design tokens (--ui-radius/-space/-fs, card recipe) + the .ui-btn button primitive; guarded by chromeTokens.test.ts
 webview/i18n/index.ts                         — t() / kbd() translation functions
 webview/ui/icons.ts                           — SVG icons
 webview/ui/tooltip.ts                         — Tooltip component
@@ -117,6 +118,7 @@ webview/components/imageView/index.ts         — Image NodeView (selection/ligh
 - WebView ↔ Extension communication goes **only through** the wrappers in `webview/messaging.ts`.
 - The webview side never `import`s the VS Code API directly; it gets a handle via `acquireVsCodeApi()`.
 - CSS must use `--vscode-*` variables so light/dark themes both work. **No custom colors**: accents (selection, focus, drag chrome) use `var(--vscode-focusBorder)` with **no literal fallback** — inside VS Code the variable always exists (pinned/custom themes only *override* the native set, never remove it). Literal fallbacks for other `--vscode-*` variables are legacy; don't add new ones (repo-wide removal is tracked in Linear).
+- **Chrome skin composes `webview/ui/chrome.css`** — corner radii come from the `--ui-radius-*` scale, chrome text sizes from `--ui-fs-*`, floating menus/popups from the `--ui-card-*` recipe, new buttons compose the `.ui-btn` primitive (`class="ui-btn ui-btn--icon my-btn"`; filled CTAs use `--primary`/`--secondary`), menu rows/group headers compose `.ui-menu-row` / `.ui-heading ui-menu-heading` (containers retheme rows via `--ui-menu-ink`/`--ui-menu-hover-bg`), and advisory popup pills compose `.ui-notice` — instead of re-authoring anatomy. Two invariants: (a) `chrome.css` must stay the FIRST import in `webview/index.ts` — primitives and surface classes tie on specificity, so bundle order decides who wins (guarded by `cssImportOrder.test.ts`); (b) the old surface classes (`.tb-btn`, `.sel-tb-btn`, `.tb-fmt-item`, `.fm-suggest-item`, …) are now shells that are BROKEN without their primitive class — every creation site must compose both. Gotcha: a composed button that keeps a visible resting border must restate `border-color` in its own `:hover` (the primitive's hover border is the usually-transparent `toolbar-hoverOutline`). `chromeTokens.test.ts` fails the suite on a new raw radius or 9–13px font literal; `noColorLiterals.test.ts` guards colors. Document content (em-based, `--content-*`) is a separate system — don't mix them.
 - Don't keep global state outside modules (singletons like the editor view are the exception).
 
 ## Launch performance

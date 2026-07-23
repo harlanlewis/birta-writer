@@ -174,11 +174,7 @@ cell:
 
 A bare YouTube link on its own line renders as an inline player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The card is **render-only**: the stored source stays the plain link below, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
 
-
-
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
-
-
 
 Only known providers embed — **YouTube is the only provider today** (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
 
@@ -254,6 +250,8 @@ GitHub alerts and Obsidian callouts render with a per-kind icon and accent
 color. The icon is a button — click it (or Enter/Space when focused) to
 switch the kind; the title text is editable in place (Enter or click away
 saves, Escape reverts). The marker line's exact source bytes round-trip.
+
+
 
 > [!NOTE]
 > The five GitHub types: NOTE, TIP, IMPORTANT, WARNING, CAUTION.

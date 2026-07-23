@@ -136,7 +136,7 @@ function buildPanel(): HTMLDivElement {
     title.className = "shortcuts-help__title";
     title.textContent = t("Keyboard Shortcuts");
     const btnClose = createButton({
-        className: "shortcuts-help__close",
+        className: "ui-btn ui-btn--icon shortcuts-help__close",
         icon: IconX,
         title: `${t("Close")} (Esc)`,
         onClick: close,
@@ -254,7 +254,7 @@ function buildPanel(): HTMLDivElement {
     const footer = document.createElement("div");
     footer.className = "shortcuts-help__footer";
     const btnCustomize = createButton({
-        className: "shortcuts-help__customize",
+        className: "ui-btn ui-btn--primary shortcuts-help__customize",
         label: t("Edit Keyboard Shortcuts"),
         onClick: () => {
             close();

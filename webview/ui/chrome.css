@@ -1,0 +1,327 @@
+/* ── Chrome design tokens + button primitive (ui-*) ──────────────────────
+ *
+ * The single source of truth for how EXTENSION CHROME is skinned — buttons,
+ * menus, panels, chips, popups. Document CONTENT (headings, prose, code,
+ * callouts) keeps its own typographic system (--content-*, em-based) and is
+ * deliberately out of scope: content scales with the user's zoom, chrome
+ * tracks the VS Code UI.
+ *
+ * Composes with the existing shared families rather than replacing them:
+ *   - ui/typography.css  — the .ui-heading/.ui-label/.ui-caption type grades
+ *     (they consume the --ui-fs-* tokens below)
+ *   - --palette-*        — the floating chip family (selection/link/image
+ *     toolbars); containers retheme .ui-btn via the --ui-btn-* context vars
+ *   - --check-glyph, the global :focus-visible ring (style.css)
+ *
+ * Guarded by webview/__tests__/chromeTokens.test.ts: a border-radius pixel
+ * literal outside the sanctioned set (0/1px/2px hairlines, 50% circles)
+ * fails the suite — new chrome composes these tokens instead of minting
+ * new values.
+ */
+
+:root {
+    /* Radius scale — chosen by ROLE, not per surface:
+       s   inline details nested inside a control or row (badges, marks,
+           input fields inside a bar)
+       m   standalone controls: buttons, chips, inputs, menu rows
+       l   floating cards: menus, popups, docked panels, block cards
+       xl  large overlays: lightboxes, embed/play facades
+       pill fully-round chips and tracks (true circles use 50%). */
+    --ui-radius-s: 3px;
+    --ui-radius-m: 4px;
+    --ui-radius-l: 6px;
+    --ui-radius-xl: 8px;
+    --ui-radius-pill: 999px;
+
+    /* Chrome spacing scale. Use for padding/gap on NEW chrome surfaces; odd
+       one-off pixel nudges (optical alignment) stay literal — a token that
+       exists only to launder one value teaches nothing. Existing rhythms off
+       this scale (the 5px 12px menu row, 3px 10px chip, 5px 10px input) are
+       grandfathered as tuned values; don't invent new off-scale pairs.
+       Steps 3/5/6 are currently guidance for new chrome, not yet consumed. */
+    --ui-space-1: 2px;
+    --ui-space-2: 4px;
+    --ui-space-3: 6px;
+    --ui-space-4: 8px;
+    --ui-space-5: 12px;
+    --ui-space-6: 16px;
+
+    /* Chrome type sizes. The typography classes (.ui-heading/.ui-label/
+       .ui-caption) consume these; CSS-only surfaces reference the vars.
+       Icon-glyph font sizes (a 14px "×", a 16px "⤢") are display tuning,
+       not text — those stay literal. */
+    --ui-fs-l: 13px; /* prominent: find bar, panel titles */
+    --ui-fs-m: 12px; /* the chrome default: buttons, menu rows, inputs */
+    --ui-fs-s: 11px; /* secondary: captions, hints, sublabels */
+    --ui-fs-xs: 10px; /* fine print: badges, shortcut hints */
+
+    /* Floating-card recipe (menus, popups, panels): ground + line come from
+       the hover-widget theme tokens — the same ground the --palette-* chip
+       family sits on — plus one shared shadow. */
+    --ui-card-bg: var(--vscode-editorHoverWidget-background);
+    --ui-card-border: var(--vscode-editorHoverWidget-border);
+    --ui-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    /* Small tier: pills, tooltips, docked bars — closer to the surface. */
+    --ui-card-shadow-s: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Button primitive ────────────────────────────────────────────────────
+ *
+ * The shared anatomy every chrome button was hand-authoring: reset, centered
+ * inline-flex, quiet transparent ground, hover wash, radius from the scale.
+ * Compose it with a surface class that adds ONLY what differs there
+ * (`class="ui-btn ui-btn--icon find-bar__btn"`); the surface class keeps its
+ * name for querying/tests and carries colors, sizes, or states of its own.
+ *
+ * Variants:
+ *   .ui-btn--icon    fixed square; size via --ui-btn-size (default 22px)
+ *   .ui-btn--chip    text chip with a visible hairline border (the quiet
+ *                    "ghost" button: Add metadata / Add field / Show metadata)
+ *   .ui-btn--accent  focusBorder-outlined call-to-action that fills on hover
+ *   .ui-btn--primary / --secondary  filled CTAs (VS Code button tokens)
+ *
+ * Context vars — a CONTAINER sets these once to retheme every .ui-btn
+ * inside it (the palette chips do this; see selectionToolbar/linkPopup/
+ * imageView):
+ *   --ui-btn-ink         resting text/icon color
+ *   --ui-btn-hover-bg    hover wash
+ *   --ui-btn-active-bg   the :active press wash
+ *
+ * Keyboard focus comes from the global :focus-visible ring (style.css) —
+ * never redefined here.
+ */
+.ui-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--ui-radius-m);
+    color: var(--ui-btn-ink, inherit);
+    font-family: inherit;
+    font-size: var(--ui-fs-m);
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+        background 0.1s,
+        border-color 0.1s,
+        color 0.1s,
+        opacity 0.1s;
+}
+
+.ui-btn:hover {
+    background: var(--ui-btn-hover-bg, var(--vscode-toolbar-hoverBackground));
+    border-color: var(--vscode-toolbar-hoverOutline, transparent);
+}
+
+.ui-btn:active {
+    background: var(
+        --ui-btn-active-bg,
+        var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground))
+    );
+}
+
+.ui-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ui-btn:disabled:hover {
+    background: transparent;
+    border-color: transparent;
+}
+
+.ui-btn--icon {
+    width: var(--ui-btn-size, 22px);
+    height: var(--ui-btn-size, 22px);
+}
+
+.ui-btn--chip {
+    gap: var(--ui-space-2);
+    padding: 3px 10px;
+    border-color: var(--vscode-panel-border);
+    color: var(--vscode-descriptionForeground);
+}
+
+.ui-btn--chip:hover {
+    color: var(--vscode-editor-foreground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.ui-btn--accent {
+    border-color: var(--vscode-focusBorder);
+    color: var(--vscode-foreground);
+}
+
+.ui-btn--accent:hover {
+    background: var(--vscode-focusBorder);
+    color: var(--vscode-editor-background);
+    border-color: var(--vscode-focusBorder);
+}
+
+/* Persistent "on" states are SURFACE-OWNED (.tb-btn--active,
+   .find-bar__btn--active, ...): which token pair a surface lights with is a
+   product decision recorded next to its toggle, and the class is what tests
+   and e2e query. The primitive supplies only the momentary :active press. */
+
+/* Filled call-to-action pair — VS Code's button tokens. --primary is THE
+   confirming action of its surface (a dialog's OK, the customize bar's Done);
+   --secondary is the filled neutral beside it (Browse, segment controls).
+   Both suppress the quiet-hover border and keep their fill through :active
+   and :disabled, and both push the focus ring OUTSIDE the fill — the global
+   inset ring would vanish against it. */
+.ui-btn--primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.ui-btn--primary:hover,
+.ui-btn--primary:active {
+    background: var(--vscode-button-hoverBackground);
+    border-color: transparent;
+    color: var(--vscode-button-foreground);
+}
+
+.ui-btn--primary:disabled,
+.ui-btn--primary:disabled:hover {
+    background: var(--vscode-button-background);
+}
+
+.ui-btn--secondary {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
+}
+
+.ui-btn--secondary:hover,
+.ui-btn--secondary:active {
+    background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground));
+    border-color: transparent;
+}
+
+.ui-btn--secondary:disabled,
+.ui-btn--secondary:disabled:hover {
+    background: var(--vscode-button-secondaryBackground);
+}
+
+.ui-btn--primary:focus-visible,
+.ui-btn--secondary:focus-visible {
+    outline-offset: 1px;
+}
+
+/* ── Menu-row primitive ──────────────────────────────────────────────────
+ *
+ * The shared anatomy of a row inside any floating menu (block menu, slash
+ * menu, toolbar dropdowns, pickers, suggest lists): full-width flex row,
+ * quiet ground, one highlight wash for hover and real focus (JS-driven
+ * keyboard highlights reuse the --ui-menu-hover-bg token from their own
+ * surface class — the slash menu's lesson: mouse and keyboard must share a
+ * single highlight model). Compose with a surface class
+ * (`class="ui-menu-row tb-fmt-item"`) that carries only what differs.
+ *
+ * Context vars — set once on the MENU container:
+ *   --ui-menu-ink        row text color (default: inherit from the menu)
+ *   --ui-menu-hover-bg   the highlight wash. Suggest-style menus point it
+ *                        at their selection token; a menu whose highlight
+ *                        is JS-driven (the slash menu's roving --focused)
+ *                        sets it to transparent so CSS hover stays silent.
+ *
+ * SELECTED-state idioms stay surface-owned by design: the accent fill,
+ * the leading .menu-check glyph, and the suggest-widget selection are three
+ * different semantics — which one a menu uses is a product decision, not
+ * drift; the class carrying it is the surface's own.
+ */
+.ui-menu-row {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-4);
+    width: 100%;
+    padding: 5px 12px;
+    border: none;
+    background: none;
+    color: var(--ui-menu-ink, inherit);
+    font-family: inherit;
+    font-size: var(--ui-fs-m);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.ui-menu-row:hover,
+.ui-menu-row:focus-visible {
+    background: var(--ui-menu-hover-bg, var(--vscode-list-hoverBackground));
+    outline: none;
+}
+
+.ui-menu-row[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.ui-menu-row[aria-disabled="true"]:hover {
+    background: none;
+}
+
+/* Selected-row idioms (accent fill, leading .menu-check, suggest-widget
+   selection) are SURFACE-OWNED — see the note above the row primitive. */
+
+/* ── Menu group heading ──
+   Compose with the .ui-heading type grade (typography.css):
+   `class="ui-heading ui-menu-heading block-menu-header"`. Carries the
+   group-header behavior and the default rhythm; surfaces override padding
+   only where their menu is denser. */
+.ui-menu-heading {
+    padding: 6px 12px 2px;
+    cursor: default;
+    user-select: none;
+}
+
+/* ── Menu group divider ── */
+.ui-menu-divider {
+    height: 1px;
+    margin: var(--ui-space-2) 0;
+    background: var(--ui-card-border);
+}
+
+/* ── Quiet anchored notice ───────────────────────────────────────────────
+ *
+ * The advisory-pill family (DESIGN_PRINCIPLES: advisory, reversible, quiet):
+ * networkOptIn's "Enable network features", unfurlOffer's "use this title?",
+ * the content guard's veto toast. A themed editorWidget pill that fades in,
+ * never steals focus, never blocks typing. Compose with a surface class
+ * (`class="ui-notice unfurl-offer"`) that carries layout (row vs column),
+ * anchoring overrides, and its own --visible state class (kept per-surface
+ * so tests and callers name the surface, not the primitive). */
+.ui-notice {
+    position: absolute;
+    z-index: 1200;
+    max-width: 44ch;
+    padding: 4px 6px 4px 10px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: var(--ui-radius-l);
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-editorWidget-foreground);
+    box-shadow: var(--ui-card-shadow-s);
+    font-size: var(--ui-fs-m);
+    line-height: 1.4;
+    /* Fade in so it settles quietly rather than snapping into view. */
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+}
+
+/* The pill's icon-only × dismiss (compose with .ui-btn .ui-btn--icon). */
+.ui-notice__dismiss {
+    --ui-btn-size: 18px;
+    flex: 0 0 auto;
+    color: var(--vscode-descriptionForeground);
+    font-size: 14px;
+}
+
+.ui-notice__dismiss:hover {
+    color: var(--vscode-foreground);
+}

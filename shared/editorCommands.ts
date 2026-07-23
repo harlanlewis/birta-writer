@@ -99,7 +99,15 @@ export const EDITOR_COMMANDS = [
     { id: "tableDeleteColumn", title: "Delete Column", palette: false, sections: ["table"] },
     { id: "tableDeleteTable", title: "Delete Table", palette: false, sections: ["table"] },
     { id: "copyAsHtml", title: "Copy as HTML", palette: false, sections: ["editor", "table", "link"] },
-    { id: "copyAsMarkdown", title: "Copy as Markdown", palette: false, sections: ["editor", "table", "link"] },
+    // Copy as Markdown / Rich Text are palette commands too: native Cmd+C
+    // already yields whichever of the two birta.copyFormat selects, so the
+    // palette is how you reach the OTHER format for a one-off copy.
+    // (Copy as HTML stays menu-only: it copies HTML source as text — a
+    // developer affordance, not a paste-into-Word one.)
+    { id: "copyAsMarkdown", title: "Copy as Markdown", palette: true, sections: ["editor", "table", "link"] },
+    // Writes real rich text (an HTML clipboard flavor, written webview-side —
+    // vscode.env.clipboard is text-only), so rich editors paste formatting.
+    { id: "copyAsRichText", title: "Copy as Rich Text", palette: true, sections: ["editor", "table", "link"] },
     // Bottom "9_view" group of every content menu; same switch path as the
     // toolbar button (carries the first visible line to preserve the viewport).
     { id: "editRawMarkdown", title: "Edit Raw Markdown", palette: false, sections: ["editor", "table", "link"] },

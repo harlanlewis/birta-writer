@@ -733,7 +733,7 @@ export function openBlockMenu(
     ): HTMLElement => {
         const row = document.createElement("button");
         row.type = "button";
-        row.className = "block-menu-item";
+        row.className = "ui-menu-row block-menu-item";
         row.dataset["mutates"] = opts.mutates === false ? "0" : "1";
         // Every row is a listbox option (the combobox model): AT reaches it
         // through the input's aria-activedescendant, not by focusing it. The
@@ -825,7 +825,7 @@ export function openBlockMenu(
     };
     const addHeader = (label: string): void => {
         const header = document.createElement("div");
-        header.className = "block-menu-header";
+        header.className = "ui-heading ui-menu-heading block-menu-header";
         // Presentational inside the listbox (the slash menu's group-label
         // idiom) — a group label, not a selectable option.
         header.setAttribute("role", "presentation");
@@ -834,7 +834,7 @@ export function openBlockMenu(
     };
     const addDivider = (): void => {
         const divider = document.createElement("div");
-        divider.className = "block-menu-divider";
+        divider.className = "ui-menu-divider block-menu-divider";
         // A listbox owns `option` and `group` — `separator` is not a permitted
         // child, so the rule it draws is presentational here (the same call the
         // section header above makes). A real `role="group"` + aria-label per
@@ -1129,13 +1129,20 @@ export function openBlockMenu(
         }
         const left = clampLeft(rect.left, mw, viewportSize());
 
-        const spaceBelow = window.innerHeight - 8 - (rect.bottom + 4);
+        // The below-side start line is the anchor's bottom OR the topbar
+        // band's floor, whichever is lower: an anchor scrolled under the bar
+        // clamps the menu to the band, and the available space must be
+        // measured from that clamped line — measuring from the (hidden)
+        // anchor and clamping afterward pushed the menu down WITHOUT
+        // shrinking it, overflowing the viewport bottom.
+        const belowStart = Math.max(rect.bottom + 4, topbarBottom + 8);
+        const spaceBelow = window.innerHeight - 8 - belowStart;
         const spaceAbove = rect.top - 4 - (topbarBottom + 8);
         const below = naturalHeight <= spaceBelow || spaceBelow >= spaceAbove;
         const space = Math.max(below ? spaceBelow : spaceAbove, 48);
         menu.style.maxHeight = naturalHeight > space ? `${Math.floor(space)}px` : "";
         const height = Math.min(naturalHeight, space);
-        const top = below ? rect.bottom + 4 : rect.top - 4 - height;
+        const top = below ? belowStart : rect.top - 4 - height;
         menu.style.left = `${Math.round(left)}px`;
         menu.style.top = `${Math.round(Math.max(topbarBottom + 8, top))}px`;
     }
