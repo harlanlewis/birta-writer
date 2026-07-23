@@ -1707,6 +1707,18 @@ body.toolbar-hidden::before {
     max-width: 480px;
 }
 
+/* One dimmed, non-interactive teaching line under the rows (the slash menu's
+   footer pattern) — e.g. the `=` calc menu pointing at `=>`. */
+.fm-suggest-footer {
+    padding: 4px 10px 5px;
+    border-top: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+    color: var(--vscode-descriptionForeground);
+    font-size: var(--ui-fs-xs);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* Slash command menu: "/" at the start of a block (or after a space) opens a
    filterable insert menu anchored at the slash (MAR-18). Styled after the
    editorSuggestWidget so it reads as native IntelliSense; app-chrome UI font,

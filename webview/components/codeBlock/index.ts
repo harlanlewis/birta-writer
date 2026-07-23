@@ -869,7 +869,7 @@ export function createCodeBlockView(
         lastCalcRendered = code;
         const rows = evaluateCalcBlock(code);
         calcRender.replaceChildren();
-        for (const { raw, result, kind } of rows) {
+        for (const { raw, result, kind, value } of rows) {
             const row = document.createElement("div");
             row.className = "calc-row";
             const src = document.createElement("span");
@@ -886,6 +886,12 @@ export function createCodeBlockView(
                     res.appendChild(eq);
                 }
                 res.appendChild(document.createTextNode(result));
+                // Rounded display (12 sig digits, ≤6 decimals): offer the
+                // full-precision value on hover so the rounding is
+                // inspectable — `x = 0.9999999` showing `1` can be checked.
+                if (value !== undefined && String(value) !== result) {
+                    res.title = `= ${String(value)}`;
+                }
                 row.appendChild(res);
             } else if (kind === "error") {
                 // A line that READS as a formula but has no honest value (an

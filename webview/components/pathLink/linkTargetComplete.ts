@@ -207,6 +207,14 @@ export function createSuggestMenuFromRows(
     }>,
     anchor: SuggestMenuAnchor,
     onPick: (text: string) => void,
+    opts?: {
+        /**
+         * One dimmed, non-interactive teaching line under the rows (the slash
+         * menu's footer pattern): never picked, never highlighted, aria-hidden
+         * — the keyboard model is entirely the rows above it.
+         */
+        footer?: string;
+    },
 ): LinkSuggestMenu | null {
     const rows = rowDefs.map((r) => r.text);
     if (rows.length === 0) { return null; }
@@ -282,6 +290,14 @@ export function createSuggestMenuFromRows(
         });
         list.appendChild(li);
     });
+
+    if (opts?.footer) {
+        const footer = document.createElement("div");
+        footer.className = "fm-suggest-footer";
+        footer.setAttribute("aria-hidden", "true");
+        footer.textContent = opts.footer;
+        div.appendChild(footer);
+    }
 
     document.body.appendChild(div);
 

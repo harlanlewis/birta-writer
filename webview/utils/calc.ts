@@ -896,6 +896,12 @@ export interface CalcBlockLine {
     /** The formatted result to display beside the line; null unless `kind` is `value`. */
     result: string | null;
     kind: CalcLineKind;
+    /**
+     * The full-precision numeric value behind a `value` row. The display is
+     * rounded (12 significant digits, ≤6 decimals); when the two differ, the
+     * ledger offers this as a hover tooltip so the rounding is inspectable.
+     */
+    value?: number;
 }
 
 /** A calc-block comment/annotation line: `#` or `//`, so prose can sit inline. */
@@ -921,6 +927,15 @@ function looksLikeFormula(expr: string, scope: Map<string, number>): boolean {
         return true;
     }
     if (!HAS_OPERATOR.test(expr) || !isValidExpressionStructure(expr)) { return false; }
+    // A single word-shaped token headed by an UNKNOWN identifier and joined
+    // only by hyphens/slashes reads as a prose compound (`T-1000`, `COVID-19`,
+    // `B-52`, `either/or`), even when a number gives it structural evidence.
+    // Anything with a space, another operator, or a KNOWN leading variable is
+    // judged normally.
+    if (!/\s/.test(expr) && /^[A-Za-z_]/.test(expr) && !/[+*%^()]/.test(expr)) {
+        const head = /^[A-Za-z_]\w*/.exec(expr)![0];
+        if (!scope.has(head)) { return false; }
+    }
     const tokens = tokenize(expr, true);
     if (!tokens) { return false; }
     return tokens.some(
@@ -968,7 +983,7 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
             // is an expression (`x = 2 + 3` → 5) or a conversion.
             return formatted === def.rhs
                 ? { raw, result: null, kind: "silent" }
-                : { raw, result: formatted, kind: "value" };
+                : { raw, result: formatted, kind: "value", value };
         }
 
         const expr = line.trim();
@@ -979,7 +994,7 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
         }
         const formatted = formatCalcResult(value);
         if (formatted === null) { return { raw, result: null, kind: "error" }; }
-        return { raw, result: formatted, kind: "value" };
+        return { raw, result: formatted, kind: "value", value };
     });
 }
 

@@ -597,6 +597,26 @@ describe("evaluateCalcBlock", () => {
         expect(kinds).toEqual(["silent", "silent", "silent", "silent", "silent"]);
     });
 
+    it("word-shaped ident-number compounds stay silent (T-1000, COVID-19)", () => {
+        const kinds = evaluateCalcBlock("T-1000\nCOVID-19\nB-52\ns3/2").map((l) => l.kind);
+        // A space-free hyphen/slash compound headed by an UNKNOWN identifier
+        // reads as prose even though the number is structural evidence.
+        expect(kinds).toEqual(["silent", "silent", "silent", "silent"]);
+    });
+
+    it("the same compound shape with a KNOWN head is judged as a formula", () => {
+        // `T` defined but the tail fails → the cue is earned, not prose.
+        const rows = evaluateCalcBlock("T = 5\nT-x2");
+        expect(rows[1].kind).toBe("error");
+    });
+
+    it("value rows should carry the full-precision value beside the rounded display", () => {
+        const rows = evaluateCalcBlock("x = 0.9999999\nx * 1");
+        expect(rows[1]).toMatchObject({ kind: "value", result: "1", value: 0.9999999 });
+        const exact = evaluateCalcBlock("2 + 3");
+        expect(exact[0]).toMatchObject({ result: "5", value: 5 });
+    });
+
     it("an unknown-word chain that references a KNOWN variable earns the cue", () => {
         const rows = evaluateCalcBlock("rent = 1500\nrent + fod");
         expect(rows[1].kind).toBe("error"); // rent is real, `fod` is a typo

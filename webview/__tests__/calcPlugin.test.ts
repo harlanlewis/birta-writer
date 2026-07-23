@@ -89,6 +89,17 @@ describe("advisory inline calc", () => {
         expect(optionTexts()).toEqual(["5"]);
     });
 
+    it("the = menu should carry a non-interactive footer teaching =>", async () => {
+        typeText(v, " 2+3=");
+        await vi.advanceTimersByTimeAsync(250);
+
+        const footer = document.querySelector(".fm-suggest-menu .fm-suggest-footer");
+        // Present, decorative (aria-hidden), and never a pickable option row.
+        expect(footer?.textContent).toContain("=>");
+        expect(footer?.getAttribute("aria-hidden")).toBe("true");
+        expect(footer?.getAttribute("role")).toBeNull();
+    });
+
     it("Tab should insert the result, keeping the expression", async () => {
         typeText(v, " 2+3=");
         await vi.advanceTimersByTimeAsync(250);

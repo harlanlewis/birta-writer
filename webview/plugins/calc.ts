@@ -113,6 +113,9 @@ const calcSuggestSpec: CaretSuggestSpec = {
             ],
             anchor,
             onPick,
+            // The one moment a user provably wants inline math is the only
+            // in-product surface that can teach the richer form.
+            { footer: t("=> also computes — with variables and unit conversions") },
         );
     },
 

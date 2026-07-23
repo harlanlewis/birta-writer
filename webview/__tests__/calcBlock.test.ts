@@ -162,4 +162,14 @@ describe("calc code-block preview", () => {
         await wait();
         expect(ledger(nv)).toEqual(["x = 2 + 3 =|5", "x * 2|= 10"]);
     });
+
+    it("a rounded display should offer the full-precision value as a hover tooltip", async () => {
+        const { nv } = await makeCodeBlockView("```calc\n10 / 3\n2 + 3\n```\n");
+        await wait();
+        const results = Array.from(nv.dom.querySelectorAll(".calc-row-result"));
+        // 10/3 displays rounded → tooltip carries the full value; 2+3 is
+        // exact → no tooltip.
+        expect(results[0].getAttribute("title")).toBe(`= ${10 / 3}`);
+        expect(results[1].hasAttribute("title")).toBe(false);
+    });
 });
