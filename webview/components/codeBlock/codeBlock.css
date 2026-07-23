@@ -822,6 +822,56 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     font-size: 13px;
 }
 
+/* ─── Calc block preview (living calculations, MAR-196) ─────────────────────
+ * A read-only two-column ledger: each source line on the left, its computed
+ * value on the right. The source is never mutated — the value lives only here,
+ * so the ```calc block round-trips as ordinary Markdown. */
+.calc-preview {
+    /* display is controlled by JS (none / flex) */
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: auto;
+    padding: 12px 16px;
+    min-height: 80px;
+    background: var(--vscode-textCodeBlock-background);
+    border-radius: 0 0 6px 6px;
+    user-select: none;
+}
+
+.calc-render {
+    width: 100%;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--vscode-editor-font-size, 13px);
+    line-height: 1.6;
+    color: var(--vscode-editor-foreground);
+}
+
+.calc-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.calc-row-src {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.calc-row-result {
+    flex: none;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+    white-space: nowrap;
+}
+
+.calc-row-result::before {
+    content: "= ";
+    opacity: 0.5;
+    font-weight: 400;
+}
+
 /* ─── Folded code block (MAR-125): fold to the chrome/header row ────────────
  * The `collapsed` class arrives as a node decoration from the fold plugin.
  * The source `pre` collapses via the preview-mode idiom (visibility, not
@@ -843,6 +893,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
 }
 .code-block-wrapper.collapsed > .mermaid-preview,
 .code-block-wrapper.collapsed > .latex-preview,
+.code-block-wrapper.collapsed > .calc-preview,
 .code-block-wrapper.collapsed > .code-block-resize-handle {
     display: none !important;
 }

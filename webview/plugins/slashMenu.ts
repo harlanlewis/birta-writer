@@ -127,6 +127,7 @@ const HIDDEN_IN_TABLE_CELL = [
     "codeBlock",
     "mermaid",
     "mathBlock",
+    "calcBlock",
     "table",
 ] as const;
 

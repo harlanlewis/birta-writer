@@ -10,7 +10,7 @@ Birta Writer is a live visual editor for editing richly formatted and structured
 
 - Safely open and edit any Markdown-like content with no risk of data loss or unexpected modification due to parser mishandling unfamiliar syntax. Document fidelity is a first-class concern.
 - It sits within [VS Code](https://code.visualstudio.com) and its *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor with multi-cursor support, or opening a diff view to compare conflicting changes. Birta Writer is simple by design, but nearly every aspect is customizable through VS Code's settings scopes at app, user, or project level.
-- There's a little more magic than you might expect, like an inline calculator that autocompletes the answer to a math expression (`6^2+(8*3/4)= 42`), or evaluates one with `=>` using named variables you defined earlier in the document and offline unit conversions (`3 km in mi =>`, `rent / budget * 100 =>`) — all computed locally, never over the network.
+- There's a little more magic than you might expect, like an inline calculator that autocompletes the answer to a math expression (`6^2+(8*3/4)= 42`), or evaluates one with `=>` using named variables you defined earlier in the document and offline unit conversions (`3 km in mi =>`, `rent / budget * 100 =>`) — and a fenced ` ```calc ` block that turns those into a live worksheet, computing every line under one shared scope. All computed locally, never over the network.
 
 - It helps me write better:
 

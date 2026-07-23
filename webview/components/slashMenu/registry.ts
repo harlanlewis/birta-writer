@@ -17,6 +17,7 @@ import {
     IconAlertCircle,
     IconArrowLeftRight,
     IconBold,
+    IconCalculator,
     IconCheckSquare,
     IconClipboardList,
     IconCode,
@@ -171,6 +172,9 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     // (same mechanism as Mermaid), otherwise reachable only by typing "$$ ".
     { id: "math", group: "insert", label: t("Inline Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula", "inline"], commandId: "insertMath" },
     { id: "mathBlock", group: "insert", label: t("Math Block"), icon: IconMath, hint: "$$", keywords: ["math", "latex", "katex", "equation", "formula", "block", "display"], commandId: "insertCodeBlock", args: "LaTeX" },
+    // A living-calculation block (```calc): variables + units, computed line by
+    // line in a rendered preview. Same insert mechanism as Mermaid / Math Block.
+    { id: "calcBlock", group: "insert", label: t("Calc Block"), icon: IconCalculator, keywords: ["calc", "calculate", "calculation", "math", "spreadsheet", "variables", "units", "calca"], commandId: "insertCodeBlock", args: "calc" },
     { id: "link", group: "insert", label: t("Link"), icon: IconLink, hint: "[]()", keywords: ["link", "url", "anchor"], commandId: "insertLink" },
     // In-note anchor link to a heading (MAR-176). Terse noun label per the slash
     // convention; the verb-phrase "Link to Section" lives on the palette/tooltip.

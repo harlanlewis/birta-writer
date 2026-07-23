@@ -5,6 +5,7 @@ export const CODE_LANGUAGES: CodeLanguage[] = [
     ["bash", "Bash / Shell", ["sh", "shell", "zsh"]],
     ["batch", "Batch", ["bat", "cmd"]],
     ["c", "C"],
+    ["calc", "Calc", ["calca", "calculation"]],
     ["clojure", "Clojure", ["clj"]],
     ["cmake", "CMake"],
     ["coffeescript", "CoffeeScript", ["coffee"]],

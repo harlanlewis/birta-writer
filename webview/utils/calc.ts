@@ -717,3 +717,67 @@ export function buildScopeFromLines(lines: readonly string[]): Map<string, numbe
     }
     return scope;
 }
+
+// ── Calc block ("Calca mode": a fenced ```calc region) ───────────────────────
+
+/** One rendered line of a calc block: the source verbatim + the value to show. */
+export interface CalcBlockLine {
+    /** The source line, unchanged (the block round-trips as ordinary Markdown). */
+    raw: string;
+    /**
+     * The formatted result to display beside the line, or null for lines that
+     * yield none — blanks, comments, prose, a bare literal, or an expression
+     * whose value is already spelled out in the source (`budget = 5000`).
+     */
+    result: string | null;
+}
+
+/** A calc-block comment/annotation line: `#` or `//`, so prose can sit inline. */
+const CALC_COMMENT = /^\s*(#|\/\/)/;
+/** An explicit trailing `=` or `=>` on an expression line — stripped before eval. */
+const CALC_TRAILING_EQ = /\s*=>?[ \t]*$/;
+
+/**
+ * Evaluate a fenced `calc` block: every line under ONE shared scope, top to
+ * bottom, like a page you read down (or a tiny spreadsheet). Returns one entry
+ * per source line paired with the value to show beside it; the source itself is
+ * never rewritten, so the block round-trips byte-for-byte as ordinary Markdown
+ * — the result lives only in the rendered view.
+ *
+ * Line semantics (each resolved against the definitions ABOVE it):
+ *  - blank or a `#` / `//` comment → passed through, no result;
+ *  - `name = expr` → a definition: the value enters scope, and is shown unless
+ *    the source already spells it out (`budget = 5000` shows nothing extra,
+ *    `total = 12 * 100` shows `1200`);
+ *  - otherwise an expression (`budget * 0.3`, `3 km in mi`, optionally ending in
+ *    `=` / `=>`) → its value is shown; a bare number or non-computable/prose
+ *    line shows nothing.
+ *
+ * Deterministic, eval-free, network-free — the same engine as the `=` and `=>`
+ * paths, only evaluated line-by-line over a shared scope.
+ */
+export function evaluateCalcBlock(source: string): CalcBlockLine[] {
+    const scope = new Map<string, number>();
+    return source.split("\n").map((raw): CalcBlockLine => {
+        if (!raw.trim() || CALC_COMMENT.test(raw)) { return { raw, result: null }; }
+
+        const def = parseDefinition(raw);
+        if (def) {
+            const value = evaluateCalc(def.rhs, scope);
+            if (value === null) { return { raw, result: null }; }
+            scope.set(def.name, value);
+            const formatted = formatCalcResult(value);
+            // No echo when the RHS already is the value (`x = 5`); show it when
+            // the RHS is an expression (`x = 2 + 3` → 5) or a conversion.
+            return { raw, result: def.rhs === formatted ? null : formatted };
+        }
+
+        const expr = raw.replace(CALC_TRAILING_EQ, "").trim();
+        if (!expr || /^[0-9.]+$/.test(expr)) { return { raw, result: null }; }
+        const value = evaluateCalc(expr, scope);
+        if (value === null) { return { raw, result: null }; }
+        const formatted = formatCalcResult(value);
+        // Exponent results carry a letter, breaking the plain-number contract.
+        return { raw, result: formatted.includes("e") ? null : formatted };
+    });
+}

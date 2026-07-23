@@ -15,6 +15,7 @@ import {
     detectArrowExpression,
     parseDefinition,
     buildScopeFromLines,
+    evaluateCalcBlock,
 } from "../utils/calc";
 
 describe("evaluateExpression", () => {
@@ -505,5 +506,59 @@ describe("buildScopeFromLines", () => {
         const scope = buildScopeFromLines(["# Heading", "some prose", "y = 7"]);
         expect(scope.get("y")).toBe(7);
         expect(scope.size).toBe(1);
+    });
+});
+
+describe("evaluateCalcBlock", () => {
+    /** Compact "raw|result" view of a block, for readable assertions. */
+    const render = (src: string): string[] =>
+        evaluateCalcBlock(src).map((l) => `${l.raw}|${l.result ?? ""}`);
+
+    it("definitions and expressions should compute under one shared scope", () => {
+        expect(render("budget = 5000\nrent = 1800\nbudget - rent\nrent / budget * 100")).toEqual([
+            "budget = 5000|",       // bare literal — no echo
+            "rent = 1800|",
+            "budget - rent|3200",
+            "rent / budget * 100|36",
+        ]);
+    });
+
+    it("a definition with an expression RHS should echo its value", () => {
+        expect(render("total = 12 * 100")).toEqual(["total = 12 * 100|1200"]);
+    });
+
+    it("blank lines and comments should pass through untouched", () => {
+        expect(render("# a note\n\n2 + 3\n// trailing")).toEqual([
+            "# a note|",
+            "|",
+            "2 + 3|5",
+            "// trailing|",
+        ]);
+    });
+
+    it("an explicit trailing = or => on an expression should be tolerated", () => {
+        expect(render("2 + 3 =\n2 + 3 =>")).toEqual(["2 + 3 =|5", "2 + 3 =>|5"]);
+    });
+
+    it("unit conversions should work inside a block", () => {
+        const rows = evaluateCalcBlock("3 km in mi");
+        expect(rows[0].result!.startsWith("1.864")).toBe(true);
+    });
+
+    it("a later definition should be visible to lines below it", () => {
+        expect(render("x = 2\nx * 10\nx = 3\nx * 10")).toEqual([
+            "x = 2|",
+            "x * 10|20",
+            "x = 3|",
+            "x * 10|30", // uses the redefinition above this line
+        ]);
+    });
+
+    it("bare numbers, prose, and unresolved variables should show no result", () => {
+        expect(render("42\njust prose\nmystery + 1")).toEqual([
+            "42|",
+            "just prose|",
+            "mystery + 1|",
+        ]);
     });
 });

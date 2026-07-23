@@ -19,6 +19,7 @@ import { loadMermaid } from "@/utils/mermaidLoader";
 import { isMermaidDark } from "./mermaidTheme";
 import { normalizeMermaidThemeMode, type MermaidThemeMode } from "../../../shared/mermaid";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
+import { evaluateCalcBlock } from "@/utils/calc";
 import { renderKatexInto } from "@/utils/katexLoader";
 import { highlight, ensureGrammars } from "@/highlighter";
 import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
@@ -528,9 +529,11 @@ export function createCodeBlockView(
     let isMermaid = currentLang === "mermaid";
     // ── LaTeX state (block math preview via KaTeX) ────────
     let isLatex = normalizeCodeLanguage(currentLang) === "latex";
-    // A block that shows a rendered preview instead of raw code — mermaid or
-    // LaTeX. Both reuse the same code/preview toggle and preview container.
-    const isPreviewable = (): boolean => isMermaid || isLatex;
+    // ── Calc state (living-calculation preview, MAR-196) ──
+    let isCalc = normalizeCodeLanguage(currentLang) === "calc";
+    // A block that shows a rendered preview instead of raw code — mermaid,
+    // LaTeX, or calc. All reuse the same code/preview toggle and container.
+    const isPreviewable = (): boolean => isMermaid || isLatex || isCalc;
     let isPreviewMode = false;
     let renderTimer: ReturnType<typeof setTimeout> | null = null;
     let lastRenderedCode = "";
@@ -569,7 +572,8 @@ export function createCodeBlockView(
     toggleBtn.tabIndex = -1;
     toggleBtn.innerHTML = IconEye;
     toggleBtn.style.display = isPreviewable() ? "inline-flex" : "none";
-    const previewTip = (): string => (isLatex ? t("Preview Formula") : t("Preview Diagram"));
+    const previewTip = (): string =>
+        isCalc ? t("Preview Calculations") : isLatex ? t("Preview Formula") : t("Preview Diagram");
     const toggleTooltip = applyTooltip(toggleBtn, previewTip(), { placement: "above" });
 
     // Word-wrap toggle for the current code block (local override, not written to Markdown)
@@ -807,6 +811,8 @@ export function createCodeBlockView(
             mermaidPreview.style.height = `${newH}px`;
             latexPreview.style.maxHeight = `${newH}px`;
             latexPreview.style.height = `${newH}px`;
+            calcPreview.style.maxHeight = `${newH}px`;
+            calcPreview.style.height = `${newH}px`;
         };
         const onUp = () => {
             document.removeEventListener("mousemove", onMove);
@@ -824,8 +830,46 @@ export function createCodeBlockView(
     latexRender.className = "latex-render";
     latexPreview.appendChild(latexRender);
 
+    // ── Calc preview area (living calculations) ───────────
+    const calcPreview = document.createElement("div");
+    calcPreview.className = "calc-preview";
+    calcPreview.contentEditable = "false";
+    const calcRender = document.createElement("div");
+    calcRender.className = "calc-render";
+    calcPreview.appendChild(calcRender);
+
+    let calcRenderTimer: ReturnType<typeof setTimeout> | null = null;
+    /**
+     * Paint each source line beside its computed value (a two-column ledger).
+     * Synchronous, deterministic, and network-free — no lazy dependency, so it
+     * is cheap enough to re-run on every edit (the "living" recompute). The
+     * source is never mutated; results live only here, so the block round-trips
+     * as ordinary Markdown.
+     */
+    function renderCalc(code: string): void {
+        if (!isCalc || !isPreviewMode) { return; }
+        const rows = evaluateCalcBlock(code);
+        calcRender.replaceChildren();
+        for (const { raw, result } of rows) {
+            const row = document.createElement("div");
+            row.className = "calc-row";
+            const src = document.createElement("span");
+            src.className = "calc-row-src";
+            src.textContent = raw || " "; // keep blank lines visible/tall
+            row.appendChild(src);
+            if (result !== null) {
+                const res = document.createElement("span");
+                res.className = "calc-row-result";
+                res.textContent = result;
+                row.appendChild(res);
+            }
+            calcRender.appendChild(row);
+        }
+    }
+
     // The single element that is visible while in preview mode.
-    const previewEl = (): HTMLElement => (isLatex ? latexPreview : mermaidPreview);
+    const previewEl = (): HTMLElement =>
+        isCalc ? calcPreview : isLatex ? latexPreview : mermaidPreview;
 
     let latexRenderTimer: ReturnType<typeof setTimeout> | null = null;
     async function renderLatex(code: string): Promise<void> {
@@ -847,6 +891,7 @@ export function createCodeBlockView(
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
     wrapper.appendChild(latexPreview);
+    wrapper.appendChild(calcPreview);
     wrapper.appendChild(resizeHandle);
     scheduleLineNumberRefresh();
 
@@ -1011,12 +1056,14 @@ export function createCodeBlockView(
         pre.classList.remove("code-pre--preview-hidden");
         mermaidPreview.style.display = "none";
         latexPreview.style.display = "none";
+        calcPreview.style.display = "none";
         wordWrapBtn.style.display = "inline-flex";
     }
 
     // Render whichever preview the current language maps to.
     function renderPreview(code: string): void {
-        if (isLatex) void renderLatex(code);
+        if (isCalc) renderCalc(code);
+        else if (isLatex) void renderLatex(code);
         else void renderMermaid(code);
     }
 
@@ -1551,6 +1598,7 @@ export function createCodeBlockView(
             const wasPreviewable = isPreviewable();
             isMermaid = newLang === "mermaid";
             isLatex = normalizeCodeLanguage(newLang) === "latex";
+            isCalc = normalizeCodeLanguage(newLang) === "calc";
             const nowPreviewable = isPreviewable();
 
             picker.update(newLang);
@@ -1574,7 +1622,12 @@ export function createCodeBlockView(
             }
             if (nowPreviewable && isPreviewMode) {
                 const newCode = updatedNode.textContent;
-                if (isLatex) {
+                if (isCalc) {
+                    // The living recompute: cheap and synchronous, lightly
+                    // debounced so a fast burst of typing coalesces.
+                    if (calcRenderTimer) clearTimeout(calcRenderTimer);
+                    calcRenderTimer = setTimeout(() => renderCalc(newCode), 150);
+                } else if (isLatex) {
                     if (latexRenderTimer) clearTimeout(latexRenderTimer);
                     latexRenderTimer = setTimeout(() => renderLatex(newCode), 300);
                 } else if (newCode !== lastRenderedCode) {
@@ -1600,6 +1653,7 @@ export function createCodeBlockView(
             if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
             if (renderTimer) clearTimeout(renderTimer);
             if (latexRenderTimer) clearTimeout(latexRenderTimer);
+            if (calcRenderTimer) clearTimeout(calcRenderTimer);
             if (lineNumberRaf !== null) cancelAnimationFrame(lineNumberRaf);
             lineNumberResizeObserver?.disconnect();
             mermaidPreview.removeEventListener("wheel", onPreviewWheel);
