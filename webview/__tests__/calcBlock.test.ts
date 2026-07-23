@@ -76,6 +76,23 @@ describe("calc code-block preview", () => {
         ]);
     });
 
+    it("an empty calc block should start in code mode, not an un-editable preview", async () => {
+        const { nv } = await makeCodeBlockView("```calc\n\n```\n");
+        await wait();
+        // Preview mode hides the editable source via this class; an empty block
+        // must NOT be in preview, or the user can't type what they just inserted.
+        expect(nv.dom.querySelector("pre")?.classList.contains("code-pre--preview-hidden"))
+            .toBe(false);
+        expect(nv.dom.querySelectorAll(".calc-row")).toHaveLength(0);
+    });
+
+    it("a non-empty calc block should auto-enter preview on mount", async () => {
+        const { nv } = await makeCodeBlockView("```calc\n2 + 3\n```\n");
+        await wait();
+        expect(nv.dom.querySelector("pre")?.classList.contains("code-pre--preview-hidden"))
+            .toBe(true);
+    });
+
     it("a non-calc code block should not render a calc ledger", async () => {
         const { nv } = await makeCodeBlockView("```js\nconst x = 1\n```\n");
         await wait();

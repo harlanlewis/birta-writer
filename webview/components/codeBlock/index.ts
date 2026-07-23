@@ -1079,7 +1079,11 @@ export function createCodeBlockView(
     });
 
     // ── Mermaid / LaTeX enter preview mode by default ──────────────────
-    if (isPreviewable() && shouldAutoConvertCodeBlock()) {
+    // Auto-preview only a NON-EMPTY previewable block. A freshly inserted
+    // (empty) ```calc / ```mermaid / ```math block must start in code mode, or
+    // preview hides the editable source and the user can't type into what they
+    // just inserted.
+    if (isPreviewable() && shouldAutoConvertCodeBlock() && node.textContent.trim()) {
         enterPreviewMode();
         setTimeout(() => renderPreview(node.textContent), 0);
     }
@@ -1610,7 +1614,10 @@ export function createCodeBlockView(
 
             if (!wasPreviewable && nowPreviewable) {
                 toggleBtn.style.display = "inline-flex";
-                if (shouldAutoConvertCodeBlock()) {
+                // Same empty-block guard as on mount: switching an empty block's
+                // language to a previewable one keeps it editable rather than
+                // flipping to an empty preview the user can't type into.
+                if (shouldAutoConvertCodeBlock() && updatedNode.textContent.trim()) {
                     enterPreviewMode();
                     setTimeout(() => renderPreview(updatedNode.textContent), 0);
                 }

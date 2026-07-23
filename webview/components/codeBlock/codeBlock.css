@@ -845,6 +845,9 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     font-size: var(--vscode-editor-font-size, 13px);
     line-height: 1.6;
     color: var(--vscode-editor-foreground);
+    /* The ledger is read-only chrome, but its computed values are worth
+     * copying — unlike a mermaid canvas, so opt text selection back in. */
+    user-select: text;
 }
 
 .calc-row {
