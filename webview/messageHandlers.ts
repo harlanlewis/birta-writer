@@ -18,7 +18,7 @@ import { applyFoldingControls } from "./utils/foldingControls";
 import { foldPluginKey, type FoldMeta } from "./plugins/foldState";
 import { setImageUriMap } from "./components/imageView";
 import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
-import { dispatchLinkTargetSuggestions, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
+import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor";
 import { setProofreadConfig } from "./plugins";
@@ -286,6 +286,9 @@ export function createMessageHandlers(
         },
         linkTargetResolved(msg) {
             dispatchLinkTargetResolved(msg.id, msg.resolved);
+        },
+        linkTargetPicked(msg) {
+            dispatchLinkTargetPicked(msg.id, msg.path);
         },
         imagePathResolved(msg) {
             dispatchImagePathResolved(msg.id, msg.webviewUri);

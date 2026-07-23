@@ -206,6 +206,10 @@ export type ToExtensionMessage =
     // Popup hint: where would this link path open right now? (same resolver
     // as openFile, no side effects)
     | { type: "resolveLinkTarget"; id: string; path: string; wiki?: true }
+    // Link editor "browse" button: open the OS-native file picker and reply
+    // (`linkTargetPicked`) with the chosen file as a document-relative path —
+    // or null when the user cancels the dialog.
+    | { type: "pickLinkTarget"; id: string }
     | { type: "resolveImagePath"; id: string; relPath: string }
     // Bare URL pasted onto an EMPTY selection: the webview has already inserted
     // `[url](url)` optimistically and asks the extension (the only side not
@@ -341,6 +345,9 @@ export type ToWebviewMessage =
     // Reply to resolveLinkTarget: workspace-relative display path (posix),
     // absolute when outside the workspace, null for a smart-mode miss.
     | { type: "linkTargetResolved"; id: string; resolved: string | null }
+    // Reply to pickLinkTarget: the picked file, document-relative (posix
+    // separators), or null when the native dialog was canceled.
+    | { type: "linkTargetPicked"; id: string; path: string | null }
     | { type: "imagePathResolved"; id: string; webviewUri: string }
     // Reply to `unfurlUrl`: the deterministically-parsed page title, or null on
     // any failure (offline, non-200, timeout, no title in the HTML). `id`

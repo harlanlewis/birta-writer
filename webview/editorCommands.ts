@@ -51,6 +51,13 @@ import {
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
 import { openBlockMenuAtCaret } from "@/components/blockMenu";
 import { uncheckAllTasks } from "@/editing/checklistSink";
+import {
+    convertListTreeAt,
+    innermostListAt,
+    listKindOf,
+    outermostListAt,
+    type ListKind,
+} from "@/editing/listConvert";
 import { insertInlineMathCommand } from "@/plugins/math";
 import { getView, lift } from "@/pm";
 import { liftListItem } from "@/pm";
@@ -259,29 +266,44 @@ function toggleWrap(
     });
 }
 
-/** Task list toggle: lift out of a task item, or wrap in a bullet list and
- * mark its items as checkable. Mirrors the original toolbar behavior. */
-function toggleTaskList(getEditor: GetEditor): void {
+/**
+ * List toggle, one grammar for all three flavors (toolbar Lists menu, slash
+ * menu, palette commands):
+ *   - caret in a list of ANOTHER flavor → CONVERT the whole tree in place
+ *     (the outermost list, every nested list and item — editing/listConvert;
+ *     the same converter the block menu's Turn-into runs), never a nested
+ *     re-wrap;
+ *   - caret in a list of the SAME flavor → toggle off (lift out — the
+ *     historical behavior);
+ *   - caret not in a list → wrap the selection (the stock commands).
+ */
+function toggleList(getEditor: GetEditor, kind: ListKind): void {
     const editor = getEditor();
     if (!editor) { return; }
     editor.action((ctx) => {
         const view = getView(ctx);
-        const { state } = view;
-        const { $from } = state.selection;
-        let isTaskList = false;
-        for (let depth = $from.depth; depth >= 0; depth--) {
-            const node = $from.node(depth);
-            if (node.type.name === "list_item" && node.attrs["checked"] != null) {
-                isTaskList = true;
-                break;
+        const $from = view.state.selection.$from;
+        const inner = innermostListAt($from);
+        if (inner) {
+            // Flavor identity is judged at the list the caret is IN (what the
+            // toolbar's active state highlights); the conversion applies to
+            // the whole tree from the outermost list.
+            if (listKindOf(inner.node) !== kind) {
+                const outer = outermostListAt($from) ?? inner;
+                convertListTreeAt(view, outer.pos, kind);
+            } else {
+                lift(view.state, view.dispatch);
             }
-        }
-        if (isTaskList) {
-            lift(state, view.dispatch);
             return;
         }
         const mgr = ctx.get(commandsCtx);
-        mgr.call(wrapInBulletListCommand.key as never);
+        mgr.call(
+            (kind === "orderedList"
+                ? wrapInOrderedListCommand.key
+                : wrapInBulletListCommand.key) as never,
+        );
+        if (kind !== "taskList") { return; }
+        // Task flavor rides on bullet_list as a per-item `checked` attr.
         const { state: newState, dispatch } = view;
         const { from, to } = newState.selection;
         let tr = newState.tr;
@@ -532,9 +554,9 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     setHeading4: (getEditor) => setHeading(getEditor, 4),
     setHeading5: (getEditor) => setHeading(getEditor, 5),
     setHeading6: (getEditor) => setHeading(getEditor, 6),
-    toggleBulletList: (getEditor) => toggleWrap(getEditor, "bullet_list", wrapInBulletListCommand),
-    toggleOrderedList: (getEditor) => toggleWrap(getEditor, "ordered_list", wrapInOrderedListCommand),
-    toggleTaskList: (getEditor) => toggleTaskList(getEditor),
+    toggleBulletList: (getEditor) => toggleList(getEditor, "bulletList"),
+    toggleOrderedList: (getEditor) => toggleList(getEditor, "orderedList"),
+    toggleTaskList: (getEditor) => toggleList(getEditor, "taskList"),
     toggleBlockquote: (getEditor) => toggleWrap(getEditor, "blockquote", wrapInBlockquoteCommand),
     // Optional string arg = fence language ("mermaid" from the slash menu)
     insertCodeBlock: (getEditor, args) =>

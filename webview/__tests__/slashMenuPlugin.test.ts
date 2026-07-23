@@ -483,11 +483,13 @@ describe("context-aware item filtering (toggles hidden where they would remove)"
         expect(labels).toContain("Bullet List");
     });
 
-    it("inside a task list both Task List and Bullet List should be hidden", async () => {
+    it("inside a task list only Task List is hidden — Bullet List converts", async () => {
         const labels = await openIn("- [ ] todo\n");
         expect(labels).not.toContain("Task List");
-        // A task item lives in a bullet_list; toggling either would lift it.
-        expect(labels).not.toContain("Bullet List");
+        // Only the list's CURRENT flavor hides (that row would lift); the
+        // other flavors convert the whole tree in place, so "Bullet List"
+        // is the make-these-plain-bullets conversion here.
+        expect(labels).toContain("Bullet List");
         expect(labels).toContain("Ordered List");
     });
 
@@ -582,7 +584,20 @@ describe("contextHiddenItemIds — nesting policy", () => {
 
     it("a bullet-list ancestor should still hide the bulletList toggle row", async () => {
         const $from = await fromInside("- item text", "item text");
-        expect(contextHiddenItemIds($from).has("bulletList")).toBe(true);
+        const hidden = contextHiddenItemIds($from);
+        expect(hidden.has("bulletList")).toBe(true);
+        // The other flavors stay: they convert the whole tree in place.
+        expect(hidden.has("orderedList")).toBe(false);
+        expect(hidden.has("taskList")).toBe(false);
+    });
+
+    it("a TASK-list ancestor should hide taskList but keep Bullet List (a conversion)", async () => {
+        const $from = await fromInside("- [ ] task text", "task text");
+        const hidden = contextHiddenItemIds($from);
+        expect(hidden.has("taskList")).toBe(true);
+        // "Bullet List" is the make-these-plain conversion, no longer a lift.
+        expect(hidden.has("bulletList")).toBe(false);
+        expect(hidden.has("orderedList")).toBe(false);
     });
 
     it("a table cell should still hide every block-level row (no table in table)", async () => {

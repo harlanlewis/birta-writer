@@ -136,8 +136,15 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
         const node = $from.node(depth);
         switch (node.type.name) {
             case "bullet_list":
-                // Lifting out is the toolbar's job, in task lists too.
-                hidden.add("bulletList");
+                // Hide only the flavor this list ALREADY is — that row would
+                // lift, and lifting out is the toolbar's job. The OTHER list
+                // rows stay: they CONVERT the whole tree in place
+                // (editing/listConvert), so inside a task list "Bullet List"
+                // is the make-these-plain conversion, not a lift. Flavor is
+                // read off the first item, like the capability classifier.
+                hidden.add(
+                    node.firstChild?.attrs["checked"] != null ? "taskList" : "bulletList",
+                );
                 break;
             case "ordered_list":
                 hidden.add("orderedList");
@@ -151,12 +158,10 @@ export function contextHiddenItemIds($from: ResolvedPos): Set<string> {
             // list/quote toggles above, which would lift. Nesting
             // flexibility is the policy; table cells below stay the one
             // hard restriction (cells are paragraph-only).
-            case "list_item":
-            case "task_list_item":
-                if (node.attrs["checked"] != null) {
-                    hidden.add("taskList");
-                }
-                break;
+            //
+            // (No per-item task check here: the list-level flavor above
+            // covers task lists, and in a MIXED list the Task List row now
+            // usefully converts the whole tree to tasks.)
             case "table_cell":
             case "table_header":
                 for (const id of HIDDEN_IN_TABLE_CELL) {

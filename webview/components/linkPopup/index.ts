@@ -6,6 +6,7 @@ import {
     IconCopy,
     IconExternalLink,
     IconFileText,
+    IconFolderOpen,
     IconHash,
     IconLink,
     IconLinkOff,
@@ -18,6 +19,7 @@ import { attachInputUndo } from "@/utils/inputUndo";
 import {
     attachLinkTargetComplete,
     requestLinkTargetResolve,
+    requestPickLinkTarget,
 } from "@/components/pathLink/linkTargetComplete";
 import { createLinkFormatSwitch, wikiAllowedFor } from "./formatSwitch";
 import { onOutsideClick } from "@/ui/outsideClick";
@@ -387,6 +389,39 @@ export function setupLinkPopup(
     inputUrl.className = "lp-input lp-url-input";
     inputUrl.placeholder = t("URL, path, or #heading");
 
+    // OS-native file browser beside the URL field: complements the inline
+    // path autocomplete for targets you'd rather find than type (deep trees,
+    // non-markdown assets). The extension shows the dialog and replies with a
+    // document-relative path; the field is filled but NOT committed — the
+    // popup's apply-on-Enter/blur contract stays the single write path.
+    const btnBrowse = document.createElement("button");
+    btnBrowse.className = "lp-btn lp-btn-browse";
+    btnBrowse.innerHTML = IconFolderOpen;
+    applyTooltip(btnBrowse, t("Browse files…"), { placement: "above" });
+    // preventDefault keeps focus in the URL input (a focus trip to the button
+    // is not a save point, and the dialog must not open on a half-blurred
+    // field); the popup's outside-click handler never sees this (inside).
+    btnBrowse.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+    btnBrowse.addEventListener("click", () => {
+        requestPickLinkTarget((picked) => {
+            // The popup may have closed (Escape) or re-targeted while the
+            // dialog waited on the user — a late reply must not resurrect it.
+            if (picked === null || !isEditMode) { return; }
+            inputUrl.value = picked;
+            // Run the field's own input pipeline (resolved-target hint).
+            inputUrl.dispatchEvent(new Event("input", { bubbles: true }));
+            inputUrl.focus();
+        });
+    });
+
+    const urlRow = document.createElement("div");
+    urlRow.className = "lp-url-row";
+    urlRow.appendChild(inputUrl);
+    urlRow.appendChild(btnBrowse);
+
     // Format choice: standard markdown by default; an existing link opens on
     // its own format. Switching converts the link in place on apply.
     const formatSwitch = createLinkFormatSwitch("markdown", (format) => {
@@ -400,7 +435,7 @@ export function setupLinkPopup(
     // the point of a link), then the local-link format that shapes it, then the
     // label the reader sees. Tab order follows this DOM order.
     body.appendChild(divider);
-    body.appendChild(inputUrl);
+    body.appendChild(urlRow);
     body.appendChild(formatSwitch.el);
     body.appendChild(inputText);
 

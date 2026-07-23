@@ -183,6 +183,25 @@
     }
 }
 
+/* URL field + the OS-file-browser button, one row. The input keeps its
+   full-width feel (flex: 1); the button matches the header .lp-btn grammar,
+   sized down to the input's 24px height so the row stays one line. */
+.lp-url-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    .lp-input {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .lp-btn-browse {
+        width: 24px;
+        height: 24px;
+    }
+}
+
 /* The format-switch label sits on the (possibly inverted) popup ground; recolor
    its muted text to the palette ink so it reads on either polarity. The select
    itself keeps its native dropdown tokens. */

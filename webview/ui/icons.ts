@@ -79,6 +79,7 @@ export const IconAlignRight  = svg(`<line x1="21" y1="6" x2="3" y2="6"/><line x1
 export const IconTrash2      = svg(`<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>`);
 export const IconEraser      = svg(`<path d="M20 20H7L3 16l10-10 7 7-1.5 1.5"/><path d="M6.0001 10.0001 14 18"/>`);
 export const IconPencil      = svg(`<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>`);
+export const IconFolderOpen  = svg(`<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>`);
 export const IconZoomIn      = svg(`<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>`);
 export const IconImageOff    = svg(`<line x1="2" y1="2" x2="22" y2="22"/><path d="M10.41 10.41a2 2 0 1 1-2.83-2.83"/><path d="M13.5 6H5a2 2 0 0 0-2 2v10"/><path d="M14.528 14.528 19 19"/><path d="M21 15V8a2 2 0 0 0-2-2h-1"/><path d="m7 21 3.43-3.43"/>`);
 
