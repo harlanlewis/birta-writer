@@ -42,7 +42,7 @@ import { openLinkEditor } from "@/components/linkPopup";
 import { offerNetworkOptIn } from "@/components/networkOptIn";
 import { notifyUnfurl } from "@/messaging";
 import { registerPendingUnfurl } from "@/unfurl";
-import { recognizeProvider } from "@/utils/embedProviders";
+import { providerFor, recognizeProvider } from "@/utils/embedProviders";
 import { t } from "@/i18n";
 
 /** Scheme URL (https://…, ftp://…, and the authority-less mailto:). */
@@ -248,13 +248,16 @@ function handleEmptySelectionPaste(
     // the fetch FAILS. Ownership keys off the embed FEATURE flag, not the master
     // switch: with network off the card is what the user gets once they opt in,
     // so the title is still the wrong thing to fetch.
-    if (embedsFeatureEnabled() && recognizeProvider(href)) {
-        if (!networkEnabled()) {
+    const providerMatch = embedsFeatureEnabled() ? recognizeProvider(href) : null;
+    if (providerMatch) {
+        if (!networkEnabled() && providerFor(providerMatch.kind).needsNetwork) {
             // Offer the master switch for the CARD, not for a title fetch.
             // Nothing to complete on accept: the link already has the shape the
             // decoration pass looks for, and re-gating renders the card in place.
+            // A no-network provider (GitHub) skips the offer entirely — its
+            // card renders immediately, so there is nothing to opt into.
             offerNetworkOptIn({
-                label: t("Show video card?"),
+                label: t("Show embed card?"),
                 anchorRect: rectForRange(view, from, from + href.length),
             });
         }

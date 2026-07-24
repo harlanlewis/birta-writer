@@ -21,7 +21,7 @@ import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor";
-import { setProofreadConfig } from "./plugins";
+import { regateCalcCues, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
 import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks } from "./messaging";
@@ -327,6 +327,13 @@ export function createMessageHandlers(
             }
             if (msg.gate === "embedsEnabled") {
                 regateEmbedsIfPossible();
+            }
+            if (msg.gate === "calcEnabled") {
+                // The advisory/auto calc paths read the flag per event; only
+                // the stale-cue decorations need an explicit re-gate (clear
+                // cues on off, first scan on on).
+                const view = getEditorView();
+                if (view) { regateCalcCues(view); }
             }
             if (msg.gate === "frontmatterAddButton") {
                 refreshFrontmatterEmptyState();

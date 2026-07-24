@@ -19,6 +19,7 @@ import {
     setFontSize,
     setProofreadOption,
     updateSettingRespectingScope,
+    updateUserSetting,
 } from "./config";
 import { SaveFlushController } from "./saveFlushController";
 import { watchExternalDocumentChanges } from "./externalChanges";
@@ -888,9 +889,10 @@ export class MarkdownEditorProvider
                         break;
                     case "setNetworkEnabled":
                         // Just-in-time opt-in (MAR-179): the user accepted an
-                        // "Enable" affordance. Persist the master switch through
-                        // the scope-respecting write-back, exactly like the
-                        // toolbar settings above.
+                        // "Enable" affordance. Consent keys are application-
+                        // scoped (MAR-199), so this writes to USER settings
+                        // unconditionally — a workspace write would be ignored
+                        // on read and land in a committable file.
                         //
                         // The accept flow posts `unfurlUrl` for the triggering
                         // link IMMEDIATELY after this message, and the async
@@ -902,7 +904,7 @@ export class MarkdownEditorProvider
                         // setting is authoritative again.
                         this._networkWriteInFlight = message.enabled;
                         Promise.resolve(
-                            updateSettingRespectingScope("network.enabled", message.enabled),
+                            updateUserSetting("network.enabled", message.enabled),
                         )
                             .catch(() => undefined)
                             .then(() => { this._networkWriteInFlight = null; });
@@ -917,7 +919,9 @@ export class MarkdownEditorProvider
                         // The unfurl offer's "Always use fetched titles" row.
                         // The config-change listener broadcasts the new value,
                         // so every open webview picks it up live.
-                        updateSettingRespectingScope("pasteUnfurl.autoApply", message.enabled);
+                        // Consent key (application scope, MAR-199) — user
+                        // settings unconditionally, like network.enabled.
+                        updateUserSetting("pasteUnfurl.autoApply", message.enabled);
                         break;
                     case "setChecklistSink":
                         // The "Move checked tasks to bottom" toggle (toolbar Lists

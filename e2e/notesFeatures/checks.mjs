@@ -11,7 +11,10 @@
  *     (jsdom can't reach this — it needs the composed editor's getEditorView),
  *   - checklist sink + Uncheck All serialize the right markdown through the
  *     real sync pipeline (asserted on posted `update` content),
- *   - embeds stay completely dark with the network master switch off.
+ *   - with the network master switch off, network-using embeds (YouTube) stay
+ *     completely dark while the no-network GitHub info card still renders —
+ *     the switch gates requests, not rendering (the render ladder's Rung 0,
+ *     MAR-186).
  */
 
 /** The latest posted update's content once one matches, else "". */
@@ -35,16 +38,34 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 15000 });
     await page.waitForTimeout(600); // idle passes settle
 
-    // ── Embeds gated off (network:false) ──
-    const embedBits = await page.evaluate(() =>
-        document.querySelectorAll(".embed-host, .embed-card").length);
+    // ── Embeds gated per provider (network:false) ──
+    // Network-using providers stay dark; the offline GitHub card renders.
+    const networkCards = await page.evaluate(() =>
+        document.querySelectorAll('.embed-card:not([data-embed-kind="github"])').length);
     const rawLinkVisible = await page.evaluate(() => {
         const a = [...document.querySelectorAll(".ProseMirror a")]
             .find((el) => el.textContent.includes("youtu.be"));
         return !!a && getComputedStyle(a).display !== "none";
     });
-    check("no embed card/host with network off", embedBits === 0, `${embedBits} embed nodes`);
+    check("no network-using embed card with network off", networkCards === 0, `${networkCards} cards`);
     check("bare YouTube link stays a visible plain link", rawLinkVisible);
+    // The GitHub info card is built from URL parts alone (zero requests), so
+    // the network switch does not gate it. The card rides a lazy chunk, so
+    // wait for it rather than sampling once.
+    const githubCard = await page
+        .waitForSelector('.embed-card--info[data-embed-kind="github"]', { timeout: 5000 })
+        .then(() => true)
+        .catch(() => false);
+    check("GitHub info card renders offline (Rung 0)", githubCard, "no offline .embed-card--info");
+    if (githubCard) {
+        const cardText = await page.evaluate(() =>
+            document.querySelector('.embed-card--info[data-embed-kind="github"]').textContent);
+        check("GitHub card shows owner/repo from the URL alone",
+            cardText.includes("harlanlewis/birta-writer"), cardText);
+        const githubIframes = await page.evaluate(() =>
+            document.querySelectorAll(".embed-card--info iframe").length);
+        check("the info card never builds an iframe", githubIframes === 0);
+    }
 
     // ── Calc: trailing form, Tab confirm ──
     const para = page.locator(".ProseMirror p", { hasText: "some text" }).first();

@@ -2274,14 +2274,17 @@ body.block-marqueeing .milkdown .editor {
     pointer-events: none;
 }
 
-/* ── URL embeds (MAR-56) ──────────────────────────────────────────────────────
-   A bare provider link (YouTube) renders as an inline facade card via a view-only
-   decoration — the source markdown stays a plain link. `.embed-host` is the node
-   decoration on the embedded paragraph: it hides the raw <a> text so only the
-   card shows; the reveal-on-caret plugin drops this decoration (and the card
-   widget) while the caret is in the paragraph, so the link is always editable.
-   All chrome uses --vscode-* tokens; the accent is var(--vscode-focusBorder)
-   with no literal fallback. */
+/* ── URL embeds (MAR-56 / MAR-186) ────────────────────────────────────────────
+   A bare provider link (YouTube, Loom, Figma, GitHub) renders as an inline card
+   via a view-only decoration — the source markdown stays a plain link.
+   `.embed-host` is the node decoration on the embedded paragraph: it hides the
+   raw <a> text so only the card shows; the reveal-on-caret plugin drops this
+   decoration (and the card widget) while the caret is in the paragraph, so the
+   link is always editable. Player cards size their frame from --embed-aspect
+   (set inline from the provider table); the GitHub info card is a frameless
+   row. All chrome uses --vscode-* tokens; the accent is
+   var(--vscode-focusBorder) with no literal fallback, and provider marks are
+   monochrome currentColor — never brand colors. */
 .embed-host > a {
     display: none;
 }
@@ -2301,11 +2304,37 @@ body.block-marqueeing .milkdown .editor {
 .embed-card__frame {
     position: relative;
     width: 100%;
-    aspect-ratio: 16 / 9;
+    aspect-ratio: var(--embed-aspect, 16 / 9);
     overflow: hidden;
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: var(--ui-radius-l);
     background: var(--vscode-editorWidget-background);
+}
+
+/* Branded facade (Loom, Figma): a local monochrome mark + name in place of a
+   thumbnail — zero network until the play click. Muted so the play overlay
+   stays the visual verb. */
+.embed-card__brand {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    /* Leave the center clear for the play overlay. */
+    padding-bottom: 64px;
+    color: var(--vscode-foreground);
+    opacity: 0.6;
+
+    & svg {
+        width: 32px;
+        height: 32px;
+    }
+}
+
+.embed-card__brand-name {
+    font-size: var(--ui-fs-s);
 }
 
 .embed-card__thumb,
@@ -2376,4 +2405,63 @@ body.block-marqueeing .milkdown .editor {
 .embed-card__play svg {
     width: 28px;
     height: 28px;
+}
+
+/* Info card (GitHub): a frameless compact row built from URL parts alone — it
+   renders with the network switch off, because it makes no request. Positioned
+   so the shared corner external button anchors to the card itself. */
+.embed-card--info {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 44px 10px 12px;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: var(--ui-radius-l);
+    background: var(--vscode-editorWidget-background);
+
+    & .embed-card__external {
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    &:hover .embed-card__external {
+        opacity: 1;
+    }
+}
+
+.embed-card__mark {
+    display: flex;
+    flex: none;
+    color: var(--vscode-foreground);
+    opacity: 0.8;
+
+    & svg {
+        width: 22px;
+        height: 22px;
+    }
+}
+
+.embed-card__text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.embed-card__title {
+    font-weight: 600;
+    font-size: var(--ui-fs-l);
+    color: var(--vscode-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.embed-card__detail {
+    font-size: var(--ui-fs-s);
+    color: var(--vscode-descriptionForeground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

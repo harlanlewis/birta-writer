@@ -422,6 +422,13 @@ export function activate(context: vscode.ExtensionContext) {
             // Read-at-use-time feature gates: broadcast the fresh value so
             // every open webview follows a settings edit, palette toggle, or
             // another webview's menu switch without a reload.
+            if (e.affectsConfiguration("birta.calc.enabled")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "featureGateChanged",
+                    gate: "calcEnabled",
+                    enabled: readBirtaSetting("calcEnabled"),
+                });
+            }
             if (e.affectsConfiguration("birta.calc.autoInsert")) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "featureGateChanged",

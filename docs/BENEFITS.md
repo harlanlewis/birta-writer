@@ -259,18 +259,27 @@ That only holds if the editor does the things you expect from VS Code:
 - **Offline by default — nothing leaves your machine unless you turn it on.**
   Every feature that could touch the network sits behind a single master switch,
   `birta.network.enabled`, which ships **off**. With it off the editor makes no
-  outbound request at all. Turn it on and exactly two features become live, each
-  narrow and legible: **paste-unfurl** contacts *only* the host of a bare URL you
+  outbound request at all — the one embed that still renders offline, the GitHub
+  info card, is built purely from the URL text in your document and requests
+  nothing. Turn the switch on and exactly two features become live, each narrow
+  and legible: **paste-unfurl** contacts *only* the host of a bare URL you
   paste (with nothing selected) to read that page's title — no third-party
   service, no analytics, it refuses local and private-network addresses (and
   re-checks every redirect), and it falls back to the plain link when the page is
-  offline or untitled; and **URL embeds** load *only* a YouTube thumbnail for a
-  bare YouTube link on its own line, with the player (privacy-mode
-  `youtube-nocookie.com`) created only if you click play. You don't have to hunt
+  offline or untitled; and **URL embed players** contact *only* the named
+  provider of a bare link on its own line — a YouTube thumbnail at render, the
+  player (privacy-mode `youtube-nocookie.com`), a Loom video, or a live Figma
+  frame created only when you click — with each provider's exact hosts pinned
+  in the webview's content-security-policy, never a wildcard, never an
+  aggregation service. You don't have to hunt
   for the setting first: whichever of the two you just triggered offers a quiet,
   dismissable prompt right where you're working, and you decide in place.
   Flipping the switch takes effect immediately in every open editor — there is
-  nothing to reload. **Why it matters:** the private default is the *default*,
+  nothing to reload. And the decision is *yours alone*: the network settings are
+  user-level only (VS Code `application` scope), so a repository's checked-in
+  `.vscode/settings.json` can never switch them on for you — a guarantee pinned
+  by a test that fails the build if a consent setting ever loses that scope.
+  **Why it matters:** the private default is the *default*,
   not a setting you have to remember to find; the two exceptions are opt-in,
   self-limited, and each still has its own switch (`birta.pasteUnfurl.enabled`,
   `birta.embeds.enabled`).

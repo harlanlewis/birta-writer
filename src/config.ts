@@ -170,6 +170,19 @@ export function updateSettingRespectingScope(key: string, value: unknown): Thena
 }
 
 /**
+ * Persist a setting to USER settings unconditionally. This is the write path
+ * for application-scoped consent keys (MAR-199: `network.enabled` & co) —
+ * workspace values are ignored on read for those keys, so a workspace write
+ * would be consent that silently does nothing (and lands in a committable
+ * file). Don't route consent through updateSettingRespectingScope: its
+ * inspect()-based targeting depends on how VS Code surfaces workspaceValue
+ * for application-scoped keys, which this function makes irrelevant.
+ */
+export function updateUserSetting(key: string, value: unknown): Thenable<void> {
+    return getBirtaConfiguration().update(key, value, vscode.ConfigurationTarget.Global);
+}
+
+/**
  * Every proofread toggle the webview may write, mapped to its setting path.
  * `proofreading` is the master gate; the three domain masters and the
  * sub-checks live under their own keys. Unknown keys are ignored (guards

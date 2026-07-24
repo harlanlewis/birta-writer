@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- e2e harness: stale/broken living-calc answer cues (MAR-206). Real-browser
+     truths jsdom can't reach — the cue decorations actually paint (tint /
+     tint+strike), the click popup opens with the right actions, Update /
+     Remove answer write through to the serialized markdown, and an
+     externalUpdate (raw-editor edit) raises a cue WITHOUT rewriting the doc. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-editorWarning-foreground: #cca700;
+    --vscode-editorInfo-foreground: #3794ff;
+    --vscode-editor-hoverHighlightBackground: rgba(90,93,94,0.25);
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-editorLineNumber-foreground: #858585;
+    --vscode-panel-border: #444444;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = {
+    translations: {}, isMac: true,
+    calcEnabled: true,
+    toolbar: { placements: {}, order: [] },
+  };
+  window.__posted = [];
+  const DOC = [
+    "# Stale cues",
+    "",
+    "x = 4",
+    "",
+    "x\\*2 => 8",
+    "",
+    "z = 10",
+    "",
+    "z\\*2 => 15",
+    "",
+    "w = 3",
+    "",
+    "w+1 => 9",
+    "",
+    "y\\*3 => 9",
+    "",
+    "2+3 => 99",
+    "",
+    "3+4 = 99",
+    "",
+    "q = 2",
+    "",
+    // The equation HEADS a 30+-word sentence, so the long-sentence style flag
+    // covers the cue's number — the popup-merge case. (It must head it: the
+    // arrow detector's token-drop cap rightly refuses an equation buried
+    // behind dozens of prose words.)
+    "q\\*2 => 7 which keeps this one sentence rolling forward with word after word after word piled steadily higher so that the style checker flags the entire line as one long sentence from its very first character to its very last",
+    "",
+  ].join("\n");
+  window.__doc = DOC;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

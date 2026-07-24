@@ -27,30 +27,35 @@
  *
  * Perf: the card DOM builder is a cached dynamic import (never in the launch
  * graph), and the first decoration pass is armed on idle after first paint — a
- * doc full of embeds must not block interactivity. When disabled the decoration
- * function returns DecorationSet.empty on the first read: no scan, no import, no
- * idle pass (the plugin is also composed conditionally in editor.ts).
+ * doc full of embeds must not block interactivity. With the feature off the
+ * decoration function returns DecorationSet.empty on the first read: no scan,
+ * no import, no idle pass. (The plugin itself is composed unconditionally in
+ * editor.ts — see the comment there — and is inert when gated off.)
  */
 import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { Decoration, DecorationSet, Plugin, PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
-import { recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
+import { providerFor, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
 
 /** Upper bound on how long after first paint the first embed pass may wait. */
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
 
 /**
- * Whether embeds are ACTIVE: the master network switch (MAR-179, offline by
- * default) AND the per-feature key must both be on. The flags are baked into
- * __i18n at panel load (like calc). When the master is off — the default — this
- * is false, so computeEmbedDecorations returns empty and the idle arm never
- * schedules: no card, no thumbnail, no CSP hosts (webviewHtml.ts gates those on
- * the same pair). The FEATURE key defaults on, so the master is the single
- * off-by-default gate.
+ * The two gates (MAR-179 / MAR-186), read separately because they mean
+ * different things. The FEATURE key governs whether embed cards exist at all.
+ * The master NETWORK switch (offline by default) governs *requests*, not
+ * rendering — so it gates only the providers whose card fetches something
+ * (needsNetwork). A no-network provider like GitHub builds its card from the
+ * URL alone and renders even offline; that is the render ladder's Rung 0. The
+ * flags are baked into __i18n at panel load (like calc); regateEmbeds() below
+ * covers live flips.
  */
-function embedsEnabled(): boolean {
-    return (window.__i18n?.network ?? false) && (window.__i18n?.embedsEnabled ?? true);
+function embedsFeatureOn(): boolean {
+    return window.__i18n?.embedsEnabled ?? true;
+}
+function networkOn(): boolean {
+    return window.__i18n?.network ?? false;
 }
 
 /**
@@ -115,21 +120,31 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): () => HTMLElement {
     };
 }
 
+/** One recognized bare-link paragraph, cached between doc changes. */
+interface CachedEmbed {
+    from: number;
+    to: number;
+    match: EmbedMatch;
+    href: string;
+}
+
 /**
- * Build the embed decoration set for the current doc + selection. Returns
- * DecorationSet.empty immediately when the feature is off (no provider scan, no
- * widget, no import). Top-level bare-link paragraphs get a host node decoration
- * (hides the link text) and a card widget — EXCEPT the paragraph the selection
- * is in, which is left bare so the raw link is editable (reveal-on-caret).
- * Exported for unit testing.
+ * Walk the doc for recognized bare-link paragraphs. Returns [] immediately
+ * when the feature is off (no provider scan, no widget, no import). This is
+ * the expensive half — URL recognition per bare link — and the plugin runs it
+ * only on doc changes (and the arm/regate), NEVER on selection-only
+ * transactions: reveal-on-caret needs the selection, but re-walking the doc
+ * per caret move re-parsed every bare URL on every arrow key (perf review,
+ * 2026-07-24 — the sibling proofread/calcStale plugins never recompute on
+ * selection either).
  */
-export function computeEmbedDecorations(state: EditorState): DecorationSet {
-    if (!embedsEnabled()) {
-        return DecorationSet.empty;
+export function collectEmbeds(state: EditorState): CachedEmbed[] {
+    if (!embedsFeatureOn()) {
+        return [];
     }
-    const { doc, selection } = state;
-    const decorations: Decoration[] = [];
-    doc.forEach((node, pos) => {
+    const network = networkOn();
+    const embeds: CachedEmbed[] = [];
+    state.doc.forEach((node, pos) => {
         const href = bareLinkHref(node);
         if (!href) {
             return;
@@ -138,30 +153,57 @@ export function computeEmbedDecorations(state: EditorState): DecorationSet {
         if (!match) {
             return;
         }
-        const from = pos;
-        const to = pos + node.nodeSize;
-        // Reveal-on-caret: selection inside this paragraph → show the raw link.
-        if (selection.to > from && selection.from < to) {
+        // The network switch gates requests: providers whose card would fetch
+        // (thumbnail/player) wait for it; no-network cards render regardless.
+        if (!network && providerFor(match.kind).needsNetwork) {
             return;
         }
+        embeds.push({ from: pos, to: pos + node.nodeSize, match, href });
+    });
+    return embeds;
+}
+
+/**
+ * The cheap half: build decorations from cached matches + the current
+ * selection. O(#embeds), no walk, no URL parsing — safe to run per caret move.
+ */
+function decorationsFor(
+    embeds: readonly CachedEmbed[],
+    selection: EditorState["selection"],
+    doc: ProseNode,
+): DecorationSet {
+    const decorations: Decoration[] = [];
+    for (const embed of embeds) {
+        // Reveal-on-caret: selection inside this paragraph → show the raw link.
+        if (selection.to > embed.from && selection.from < embed.to) {
+            continue;
+        }
         decorations.push(
-            Decoration.node(from, to, { class: "embed-host" }),
+            Decoration.node(embed.from, embed.to, { class: "embed-host" }),
         );
         decorations.push(
-            Decoration.widget(from + 1, embedWidget(match, href), {
+            Decoration.widget(embed.from + 1, embedWidget(embed.match, embed.href), {
                 side: -1,
                 // The position is part of the key: two bare links to the SAME
                 // video are two distinct widgets, and same-key widgets would
                 // make ProseMirror treat them as one during redraw
                 // reconciliation (skipped/misplaced DOM).
-                key: `embed:${match.kind}:${match.id}:${from}`,
+                key: `embed:${embed.match.kind}:${embed.match.id}:${embed.from}`,
             }),
         );
-    });
+    }
     return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;
 }
 
-type EmbedState = { armed: boolean; deco: DecorationSet };
+/**
+ * Full recompute: walk + filter. Exported for unit testing; the plugin itself
+ * only takes this path on doc changes and the arm — see apply() below.
+ */
+export function computeEmbedDecorations(state: EditorState): DecorationSet {
+    return decorationsFor(collectEmbeds(state), state.selection, state.doc);
+}
+
+type EmbedState = { armed: boolean; embeds: readonly CachedEmbed[]; deco: DecorationSet };
 
 type EmbedMeta = { type: "arm" };
 
@@ -171,9 +213,9 @@ export const embedPlugin = $prose(() =>
     new Plugin<EmbedState>({
         key: embedPluginKey,
         state: {
-            init: () => ({ armed: false, deco: DecorationSet.empty }),
+            init: () => ({ armed: false, embeds: [], deco: DecorationSet.empty }),
             apply(tr, value, _oldState, newState) {
-                let { armed, deco } = value;
+                let { armed, embeds, deco } = value;
                 const meta = tr.getMeta(embedPluginKey) as EmbedMeta | undefined;
                 if (meta?.type === "arm") {
                     armed = true;
@@ -181,16 +223,23 @@ export const embedPlugin = $prose(() =>
                 if (!armed) {
                     // Nothing renders until the idle arm opens the gate — the
                     // first pass never runs synchronously during mount.
-                    return { armed, deco: DecorationSet.empty };
+                    return { armed, embeds: [], deco: DecorationSet.empty };
                 }
-                if (tr.docChanged || tr.selectionSet || meta?.type === "arm") {
-                    // Selection changes drive reveal-on-caret; doc changes and the
-                    // initial arm rebuild from scratch.
-                    deco = computeEmbedDecorations(newState);
+                if (tr.docChanged || meta?.type === "arm") {
+                    // The doc (or a gate, via regate's arm) changed: re-walk,
+                    // then filter against the new selection.
+                    embeds = collectEmbeds(newState);
+                    deco = decorationsFor(embeds, newState.selection, newState.doc);
+                } else if (tr.selectionSet) {
+                    // Selection-only: the doc is unchanged (no steps → cached
+                    // positions still hold), so reveal-on-caret needs only the
+                    // cheap filter over the cached matches — no walk, no URL
+                    // parsing per caret move.
+                    deco = decorationsFor(embeds, newState.selection, newState.doc);
                 } else {
                     deco = deco.map(tr.mapping, tr.doc);
                 }
-                return { armed, deco };
+                return { armed, embeds, deco };
             },
         },
         props: {
@@ -201,8 +250,11 @@ export const embedPlugin = $prose(() =>
         view(view) {
             // Arm the first pass on idle, after paint — decoration work must
             // never block interactivity. A disabled feature schedules nothing.
+            // The arm keys off the FEATURE flag alone: with network off, the
+            // pass still runs for the no-network cards (one idle top-level
+            // scan; network providers are skipped inside the compute).
             let idle: { cancel: () => void } | null = null;
-            if (embedsEnabled()) {
+            if (embedsFeatureOn()) {
                 idle = requestIdle(() => {
                     if (!view.isDestroyed) {
                         view.dispatch(view.state.tr.setMeta(embedPluginKey, { type: "arm" } satisfies EmbedMeta));

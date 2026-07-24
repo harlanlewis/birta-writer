@@ -639,6 +639,34 @@ function parseUnitForm(input: string): UnitForm | null {
     return { numExpr, fromUnit, toUnit };
 }
 
+/**
+ * Whether `input` has the unit-conversion SHAPE (`3 km in mi`), independent of
+ * whether the units are known. Expressions with this shape — like ones with
+ * variables — carry a premise outside their own literal text (the unit
+ * catalog), which is what the stale-cue classifier keys on.
+ */
+export function isUnitForm(input: string): boolean {
+    return parseUnitForm(input) !== null;
+}
+
+/**
+ * Whether `input` is a unit conversion that can NEVER compute: both units are
+ * known but dimensionally incompatible (`3 km in kg`). Detection refuses such
+ * spans outright (a span that can't compute is never offered), so an ALREADY
+ * ANSWERED conversion whose unit was edited into impossibility escapes every
+ * detection-based path — this is the stale-cue classifier's fallback for
+ * exactly that case. Unknown units stay false: a word that isn't in the
+ * catalog reads as prose, not as a broken formula.
+ */
+export function isImpossibleUnitConversion(input: string): boolean {
+    if (!calcUnitsReady()) { return false; }
+    const form = parseUnitForm(input);
+    if (!form || !isValidExpressionStructure(form.numExpr)) { return false; }
+    return isKnownUnit(form.fromUnit)
+        && isKnownUnit(form.toUnit)
+        && !unitsCompatible(form.fromUnit, form.toUnit);
+}
+
 /** Evaluates a parsed unit form against `resolve`; null on any failure. */
 function evaluateUnitForm(
     input: string,
@@ -869,6 +897,17 @@ export function unresolvedVariables(expr: string, scope: Map<string, number>): s
  * A plain number with no marker never matches, so `x = 6` keeps its 6.
  */
 const DEFINITION_ANSWER_TAIL = /\s*=>?[ \t]*(?:-?\d(?:[\d,]*\d)?(?:\.\d+)?)?[ \t]*$/;
+
+/**
+ * The name of a definition-SHAPED line head (`x = …`), valid RHS or not — or
+ * null when the line has no such head. This is the mid-edit guard's question,
+ * shared by the refresh engine's withdrawal and the stale-cue classifier so
+ * the two can never drift: an unresolved name that still has a head above is
+ * being retyped, not vanished, and must not orphan its dependents.
+ */
+export function definitionHeadName(line: string): string | null {
+    return /^\s*([A-Za-zπτ_][\wπτ]*)\s*=(?![=>])/u.exec(line)?.[1] ?? null;
+}
 
 /**
  * A single `name = value` definition line. The name is a plain identifier
@@ -1109,6 +1148,17 @@ export interface EquationSpan {
     res: [number, number];
     /** The current result text, verbatim (may carry the user's `,` grouping). */
     resultText: string;
+}
+
+/**
+ * Whether a shown result text is the same number as a freshly computed one,
+ * comma-blind: `1,500` for a recomputed `1500` is the same value in the user's
+ * grouping style. The ONE comparison idiom for "does this answer still hold",
+ * shared by the refresh engine and the stale-cue classifier so they can never
+ * disagree about what counts as stale.
+ */
+export function resultTextMatches(computed: string, shown: string): boolean {
+    return computed === shown.replace(/,/g, "");
 }
 
 /** A previously-inserted result: optional minus, digits with `,` grouping

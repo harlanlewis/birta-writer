@@ -65,7 +65,7 @@ The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~st
 
 Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
 
-### Inline calculator
+### Inline calculator `=`
 
 Start or end a math equation with `=` to automatically compute it. For example, `5+7^4-1=` or `=32+7`
 
@@ -85,7 +85,7 @@ The answer appears as a suggestion — confirm with **Tab** (Return stays a newl
 
 What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) — same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
 
-### Living calculations (`=>`)
+### Living calculations `=>`
 
 Ending an expression with `=>` unlocks the richer form: **named variables**
 defined earlier in the document as `name = value` lines (only definitions
@@ -210,19 +210,33 @@ cell:
 
 ### URL embeds
 
-A bare YouTube link on its own line renders as an inline player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The card is **render-only**: the stored source stays the plain link below, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
+A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
+
+A YouTube link gets a player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it:
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
-Only known providers embed — **YouTube is the only provider today** (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
+A Loom link gets the same click-to-load player behind a quiet branded facade (no thumbnail is fetched — nothing loads until you press play):
 
-<https://github.com/harlanlewis/birta-writer/>
+https://www.loom.com/share/0123456789abcdef0123456789abcdef
+
+A Figma link — design files, FigJam boards, slides, or prototypes — gets a taller frame that loads the live Figma embed on click:
+
+https://www.figma.com/design/BAZsTPbh6W1r66Bdo9xkQp/Design-System
+
+A GitHub repo, pull request, issue, or file link gets a compact info card built **from the URL alone** — zero network, so it renders even with the network switch off:
+
+https://github.com/harlanlewis/birta-writer
+
+https://github.com/microsoft/vscode/pull/12345
+
+Only known providers embed (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
 
 https://vimeo.com/76979871
 
 [watch this](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
 
-Embeds are network features and are **off by default** — with `birta.network.enabled` off the lines above are ordinary links; turn the master switch on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) and reopen the file to see the cards.
+The player cards are network features and are **off by default** — with `birta.network.enabled` off, only the GitHub cards above render and every other line is an ordinary link; turn the master switch on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
 
 ---
 
@@ -461,7 +475,7 @@ graph TD
 
 ### Calc
 
-Math worksheets read and evaluate equations. Unlike [Inline calculator](#inline-calculator) and [Living calculations (=>)](#living-calculations-), `Calc` blocks only *read* and *evaluate* equations. They do not modify the raw Markdown by writing answers.
+Math worksheets read and evaluate equations. Unlike [Inline calculator](#inline-calculator-) and [Living calculations (=>)](#living-calculations-), `Calc` blocks only *read* and *evaluate* equations. They do not modify the raw Markdown by writing answers.
 
 ```calc
 # a tiny budget worksheet
@@ -645,7 +659,7 @@ Add your own tokens with `birta.notes.customMarkers` — a plain word like
 
 ### Raw `<video>` / `<iframe>` tags
 
-Raw `<video>` / `<iframe>` HTML tags aren't rendered as players — they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **YouTube link** on its own line does render as a player card, though — see **URL embeds** above.
+Raw `<video>` / `<iframe>` HTML tags aren't rendered as players — they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Loom, Figma, GitHub) on its own line does render as a card, though — see **URL embeds** above.
 
 ### Wikilink embeds
 

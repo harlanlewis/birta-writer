@@ -36,6 +36,7 @@ import { CARET_CONTEXT_WINDOW } from "./caretSuggest";
 import { EXTERNAL_SYNC_META } from "./docChange";
 import {
     applyDefinition,
+    definitionHeadName,
     detectArrowExpression,
     detectCalcExpression,
     ensureCalcUnits,
@@ -44,6 +45,7 @@ import {
     formatCalcResult,
     isCalcStructurallyValid,
     parseDefinitions,
+    resultTextMatches,
     unresolvedVariables,
     expressionUsesVariables,
     type EquationSpan,
@@ -244,9 +246,7 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                 result = det?.result ?? null;
             }
             if (result === null) { return false; }
-            // Compare comma-blind: `1,500` for a recomputed `1500` is the
-            // same value in the user's grouping style — leave it alone.
-            if (result === cand.resultText.replace(/,/g, "")) { return false; }
+            if (resultTextMatches(result, cand.resultText)) { return false; }
             // Positions were computed against newState; map them through the
             // steps THIS transaction has already accumulated (an earlier
             // refresh may have shifted them — unmapped, a second rewrite
@@ -346,8 +346,8 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                     }
                     // Any definition-SHAPED head marks its name as mid-edit
                     // for the withdrawal guard, valid RHS or not.
-                    const head = /^\s*([A-Za-zπτ_][\wπτ]*)\s*=(?![=>])/u.exec(line);
-                    if (head) { defHeadedNames.add(head[1]); }
+                    const head = definitionHeadName(line);
+                    if (head !== null) { defHeadedNames.add(head); }
                     for (const def of parseDefinitions(line)) {
                         // The one definition-evaluation step, shared with
                         // buildScopeFromLines: a resolvable RHS enters scope,

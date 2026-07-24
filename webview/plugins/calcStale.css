@@ -1,0 +1,31 @@
+/*
+ * Living-calc answer cues — one visual family, two levels:
+ *
+ * - A faint warning-tinted background means "this computed number no longer
+ *   matches the document" (stale: the expression now computes to a different
+ *   value).
+ * - The same tint WITH a strikethrough escalates to "it no longer computes at
+ *   all — remove it" (broken: a vanished definition, a division by zero, an
+ *   impossible unit conversion). Strikethrough is the editor's established
+ *   "delete this" vocabulary (docs/DESIGN_PRINCIPLES.md); removal is exactly
+ *   what the [Remove answer] action — and the refresh engine's own withdrawal —
+ *   does.
+ *
+ * Deliberately NOT an underline: every dotted underline is already spoken for
+ * (style flags, spelling, grammar), and a cue about a NUMBER's validity must
+ * not read as prose advice.
+ */
+.calc-cue {
+    cursor: pointer;
+}
+
+.calc-cue--stale,
+.calc-cue--broken {
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 18%, transparent);
+    border-radius: 2px;
+}
+
+.calc-cue--broken {
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+}
