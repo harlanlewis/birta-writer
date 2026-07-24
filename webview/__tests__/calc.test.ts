@@ -831,6 +831,19 @@ describe("unit conversion round-trips", () => {
         expect(convertUnit(3, "teaspoons", "ml")).toBeCloseTo(14.78676478125, 6);
     });
 
+    it("calendar units read the note-taker's way, not the Julian year", () => {
+        // Policy triangle (calendars aren't metric, all three can't hold):
+        // a year is 365 days AND 12 months; the month is the honest average.
+        expect(convertUnit(1, "year", "days")).toBe(365);
+        expect(convertUnit(1, "year", "months")).toBeCloseTo(12, 9);
+        expect(convertUnit(1, "month", "days")).toBeCloseTo(365 / 12, 9);
+        expect(convertUnit(365, "days", "years")).toBeCloseTo(1, 9);
+        // The longer spans follow the overridden year exactly.
+        expect(convertUnit(1, "decade", "years")).toBeCloseTo(10, 9);
+        expect(convertUnit(1, "century", "years")).toBeCloseTo(100, 9);
+        expect(convertUnit(2, "millennia", "centuries")).toBeCloseTo(20, 9);
+    });
+
     it("legacy spellings and temperature shorthands keep their historical meaning", () => {
         // `C`/`F` must stay temperature (to mathjs alone they'd be
         // coulomb/farad), and tsp/tbsp/nmi/pound resolve via aliases.
