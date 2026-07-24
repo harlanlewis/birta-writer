@@ -141,6 +141,89 @@ describe("evaluateExpression", () => {
     });
 });
 
+describe("evaluateExpression — operator glyph aliases", () => {
+    it("× should multiply like *", () => {
+        expect(evaluateExpression("12 × 4")).toBe(48);
+    });
+
+    it("÷ should divide like /", () => {
+        expect(evaluateExpression("12 ÷ 4")).toBe(3);
+    });
+
+    it("middle dot and dot operator should multiply", () => {
+        expect(evaluateExpression("3 · 4")).toBe(12);
+        expect(evaluateExpression("3 ⋅ 4")).toBe(12);
+    });
+
+    it("Unicode minus should subtract and negate like -", () => {
+        expect(evaluateExpression("9 − 4")).toBe(5);
+        expect(evaluateExpression("−5 + 2")).toBe(-3);
+    });
+
+    it("glyphs should work on the identifier path too", () => {
+        const resolve = (n: string) => (n === "a" ? 3 : undefined);
+        expect(evaluateExpression("a × 2", resolve)).toBe(6);
+        expect(evaluateExpression("a ÷ 2", resolve)).toBe(1.5);
+    });
+
+    it("x between digits should multiply on the digits-only path", () => {
+        expect(evaluateExpression("2 x 3")).toBe(6);
+        expect(evaluateExpression("1024x768")).toBe(786432);
+    });
+
+    it("x should stay an identifier on the variable path", () => {
+        const resolve = (n: string) => (n === "x" ? 5 : undefined);
+        expect(evaluateExpression("x * 2", resolve)).toBe(10);
+        // `2 x 3` on the ident path reads x as a variable → trailing junk → null
+        expect(evaluateExpression("2 x 3", resolve)).toBeNull();
+    });
+});
+
+describe("detectCalcExpression — operator glyphs and x", () => {
+    it("2 x 3 = should be detected with result 6", () => {
+        const m = detectCalcExpression("2 x 3 =");
+        expect(m?.result).toBe("6");
+    });
+
+    it("3 × 4 = should be detected with result 12", () => {
+        const m = detectCalcExpression("3 × 4 =");
+        expect(m?.result).toBe("12");
+    });
+
+    it("the leading form =2x3 should be detected", () => {
+        const m = detectCalcExpression("=2x3");
+        expect(m?.result).toBe("6");
+    });
+
+    it("an x-run glued to a preceding word should not be detected", () => {
+        expect(detectCalcExpression("box 3 =")).toBeNull();
+        expect(detectCalcExpression("max 5 =")).toBeNull();
+    });
+
+    it("a Unicode-minus expression should be maintainable by the refresh scanner", () => {
+        const text = "9 − 4 = 5";
+        const spans = findRefreshEquations(text, 0, text.length, 80);
+        expect(spans.some((s) => s.form === "trailing")).toBe(true);
+    });
+
+    it("an x-multiplication equation should be maintainable by the refresh scanner", () => {
+        const text = "2 x 3 = 6";
+        const spans = findRefreshEquations(text, 0, text.length, 80);
+        expect(spans.some((s) => s.form === "trailing")).toBe(true);
+    });
+});
+
+describe("evaluateCalc — glyphs with variables and units", () => {
+    it("a scope variable named x should win on the => path", () => {
+        const scope = new Map([["x", 5]]);
+        expect(evaluateCalc("x * 2", scope)).toBe(10);
+    });
+
+    it("glyph operators should combine with unit conversion", () => {
+        expect(evaluateCalc("2 × 3 km in m")).toBe(6000);
+    });
+});
+
 describe("formatCalcResult", () => {
     it("integers should format without a decimal point", () => {
         expect(formatCalcResult(48)).toBe("48");

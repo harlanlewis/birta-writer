@@ -17,10 +17,13 @@
  * SAFETY IS THE WHOLE POINT. This never touches `eval`, `new Function`, or any
  * other dynamic-code path, and it never reaches the network or an LLM. It is a
  * hand-written recursive-descent parser over a fixed token set: digits, the
- * binary operators `+ - * / % ^` (plus `**` as an alias for `^`), parentheses,
- * and unary +/-. Anything containing a letter or any other character —
- * identifiers, `alert(1)`, `1e3` scientific notation, hex — is rejected at the
- * tokenizer, so there are no variables and therefore no side effects. Malformed
+ * binary operators `+ - * / % ^` (plus `**` as an alias for `^`, and the
+ * Unicode glyphs `× · ⋅ ÷ −` read as `* * * / -`), parentheses, and unary
+ * +/-. On the digits-only path the letter `x` between operands is also
+ * multiplication (`2 x 3 =` → 6) — the one letter admitted there, still just
+ * an operator alias. Anything else containing a letter or any other character
+ * — identifiers, `alert(1)`, `1e3` scientific notation, hex — is rejected at
+ * the tokenizer, so there are no variables and therefore no side effects. Malformed
  * or non-computable input (unbalanced parens, a trailing operator, division by
  * zero, an overflow to Infinity) yields `null`, and the caller shows nothing.
  *
@@ -113,16 +116,32 @@ type Token =
 // rule, the refresh scanner) builds its regex from these constants, so
 // extending the grammar is a one-line change instead of six synchronized edits.
 
-/** Class body: characters of a pure-arithmetic run (letters excluded; the
- * superscript digits read as exponents, so `5²` is arithmetic). */
-export const ARITHMETIC_CLASS = "0-9.+\\-*/%^()⁰¹²³⁴⁵⁶⁷⁸⁹";
+/** Unicode operator glyphs, tokenized as their ASCII equivalents on every
+ * path — each is unambiguously an operator, never prose or an identifier. */
+const GLYPH_OPS: Record<string, "*" | "/" | "-"> = {
+    "×": "*", "·": "*", "⋅": "*", "÷": "/", "−": "-",
+};
+const GLYPH_OP_CLASS = "×·⋅÷−";
+
+/** Class body: characters of a pure-arithmetic run — the ASCII operators, the
+ * Unicode operator glyphs, and the superscript digits (exponents, so `5²` is
+ * arithmetic). The letter `x` is the one letter here: on this digits-only
+ * grammar it can only mean multiplication (`2 x 3`, `1024x768`), and the
+ * identifier-allowing paths never consult this class. */
+export const ARITHMETIC_CLASS = `0-9.+\\-*/%^()⁰¹²³⁴⁵⁶⁷⁸⁹${GLYPH_OP_CLASS}x`;
 /** One arithmetic-run character, whitespace included (tokenizer pre-check). */
 const EXPR_CHAR = new RegExp(`[${ARITHMETIC_CLASS}\\s]`);
 /** The binary/unary operator characters, as a test for "contains an operator"
- * — a superscript digit IS an exponentiation. */
-const HAS_OPERATOR = /[+\-*/%^⁰¹²³⁴⁵⁶⁷⁸⁹]/;
-/** An expression that STARTS with a binary operator (left-operand suspicion). */
-const OP_HEAD = /^[+\-*/%^]/;
+ * — a superscript digit IS an exponentiation. Shared with the block path, so
+ * `x` is NOT here (there it is an identifier, and `exp` alone must not read
+ * as operator-bearing); the `=` path tests HAS_EQ_OPERATOR instead. */
+const HAS_OPERATOR = new RegExp(`[+\\-*/%^⁰¹²³⁴⁵⁶⁷⁸⁹${GLYPH_OP_CLASS}]`);
+/** The `=` path's operator test: the shared set plus `x`-as-multiplication. */
+const HAS_EQ_OPERATOR = new RegExp(`[+\\-*/%^⁰¹²³⁴⁵⁶⁷⁸⁹${GLYPH_OP_CLASS}x]`);
+/** An expression that STARTS with a binary operator (left-operand suspicion).
+ * `x` is deliberately absent: on the `=>` path a leading `x` is a variable,
+ * and on the `=` path a leading `x` fails the parse anyway (no left operand). */
+const OP_HEAD = new RegExp(`^[+\\-*/%^${GLYPH_OP_CLASS}]`);
 /** The first character of an identifier (variable name): a letter, `_`, or a
  * constant glyph (`π`, `τ`). */
 const IDENT_START = /[A-Za-zπτ_]/;
@@ -167,6 +186,11 @@ function tokenize(input: string, allowIdent: boolean): Token[] | null {
             tokens.push({ kind: "num", value: parseFloat(digits) });
             continue;
         }
+        const glyph = GLYPH_OPS[ch];
+        if (glyph) { tokens.push({ kind: "op", value: glyph }); i++; continue; }
+        // Digits-only grammar: `x` can only mean multiplication (`2 x 3`,
+        // `1024x768`). On the identifier path it was consumed as an ident above.
+        if (!allowIdent && ch === "x") { tokens.push({ kind: "op", value: "*" }); i++; continue; }
         if (!EXPR_CHAR.test(ch)) { return null; } // a letter or stray symbol → not arithmetic
 
         if (ch >= "0" && ch <= "9" || ch === ".") {
@@ -485,9 +509,14 @@ export function detectCalcExpression(
     const eq = TRAILING_EQUALS.exec(textBefore);
     if (!eq) { return detectLeadingForm(textBefore, opts?.boundaryUnknown ?? false); }
     const beforeEquals = textBefore.slice(0, eq.index);
-    const run = TRAILING_EXPR.exec(beforeEquals)?.[0] ?? "";
+    let run = TRAILING_EXPR.exec(beforeEquals)?.[0] ?? "";
+    // `x` is in the arithmetic class as multiplication, but a LONE `x` heading
+    // the run can't be an operator (no left operand) — it reads as prose or a
+    // variable name, exactly as it did before `x` joined the grammar. Shed it,
+    // so `x 12*4 =` still computes 48 while `2 x 3 =` multiplies.
+    while (/^[ \t]*x[ \t]/.test(run)) { run = run.replace(/^[ \t]*x/, ""); }
     const expr = run.trim();
-    if (!expr || !HAS_OPERATOR.test(expr)) { return null; }
+    if (!expr || !HAS_EQ_OPERATOR.test(expr)) { return null; }
     const runStart = eq.index - run.length;
     // A run starting at position 0 of a possibly-truncated window: the char
     // before it is invisible, so the token-split guard below cannot rule out
@@ -555,7 +584,7 @@ function detectLeadingForm(textBefore: string, boundaryUnknown: boolean): CalcMa
     // boundary (lead[1] non-empty) is inside the window and stays trusted.
     if (boundaryUnknown && lead.index === 0 && lead[1] === "") { return null; }
     const expr = lead[2].trim();
-    if (!expr || !HAS_OPERATOR.test(expr)) { return null; }
+    if (!expr || !HAS_EQ_OPERATOR.test(expr)) { return null; }
     const value = evaluateExpression(expr);
     if (value === null) { return null; }
     const result = formatCalcResult(value);
@@ -566,7 +595,7 @@ function detectLeadingForm(textBefore: string, boundaryUnknown: boolean): CalcMa
 
 // ─────────────────────────────────────────────────────────────────────────────
 // "Living calculation" layer: the `=>` operator, named variables, and OFFLINE
-// unit conversion (MAR-196, Calca-inspired). Everything here is still the same
+// unit conversion (MAR-196). Everything here is still the same
 // deterministic, eval-free, network-free discipline as the `=` path above — an
 // identifier is a lookup in a caller-supplied scope, never a code path. Unit
 // conversion delegates to calcUnits.ts (a lazily-loaded, tree-shaken mathjs
@@ -672,7 +701,7 @@ export interface ArrowMatch {
 const TRAILING_ARROW = /=>[ \t]*$/;
 /** Characters that may appear in a living-calc expression run (letters, the
  * constant glyphs, and superscript exponents allowed). */
-const CALC_RUN = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^().°'" \t]*$/u;
+const CALC_RUN = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^×·⋅÷−().°'" \t]*$/u;
 /**
  * A prose-ish token the `=>` trimming loop may drop from the front of the run:
  * it must contain a letter (it reads as a WORD — `the`, `total`, `costs.`,
@@ -908,7 +937,7 @@ export function buildScopeFromLines(lines: readonly string[]): Map<string, numbe
     return scope;
 }
 
-// ── Calc block ("Calca mode": a fenced ```calc region) ───────────────────────
+// ── Calculation block (a fenced ```calc region) ──────────────────────────────
 
 /**
  * How a calc-block line came out:
@@ -1094,7 +1123,7 @@ const RESULT_CHAR = /[\d,.]/;
 const VALUE_END = /[0-9)⁰¹²³⁴⁵⁶⁷⁸⁹]/;
 const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
 /** One character of an `=>` expression run (letters allowed — variables, units). */
-const ARROW_RUN_CHAR = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^().°'" \t]/u;
+const ARROW_RUN_CHAR = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^×·⋅÷−().°'" \t]/u;
 
 /**
  * Finds `expr = result` / `result=expr` / `expr => result` equation shapes in
