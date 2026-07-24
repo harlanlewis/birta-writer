@@ -116,6 +116,8 @@ log10(4/3 * pi) =>
 
 sqrt(2) * π =>
 
+budget² - rent² =>
+
 Accepted `=>` answers stay **alive**: edit the expression — or a definition
 above it — and the number updates in place. Editing the answer itself is your
 override; the editor never fights it. Try it: change `rent = 1500` above after

@@ -373,6 +373,17 @@ describe("`=>` living calculations (variables + units)", () => {
         expect(optionTexts()).toEqual([]);
     });
 
+    it("a definition carrying its inserted answer feeds the next `=>` (screenshot bug)", async () => {
+        // `e=d => 6` must define e as 6; `e =>` below then offers 6 — never
+        // Euler's 2.718282 (removed as a constant for exactly this trap).
+        editor = await makeArrowEditor("a=2\n\nb=4\n\nd=a+b\n\ne=d => 6\n\ne =>");
+        v = view(editor);
+        placeCursorAtEnd(v);
+        v.dispatch(v.state.tr.setSelection(v.state.selection)); // nudge an update
+        await vi.advanceTimersByTimeAsync(250);
+        expect(optionTexts()).toEqual(["6"]);
+    });
+
     it("re-accepting at `expr =>| old` REPLACES the stale answer, never inserts beside it", async () => {
         editor = await makeArrowEditor("2+3 => 99");
         v = view(editor);

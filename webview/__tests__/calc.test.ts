@@ -503,6 +503,17 @@ describe("buildScopeFromLines", () => {
         expect(scope.has("a")).toBe(false);
     });
 
+    it("a definition carrying its own inserted answer still defines (e=d => 6)", () => {
+        // The screenshot bug: the arrow answer the feature itself wrote was
+        // read as part of the right-hand side, so `e` never entered scope —
+        // and (before its removal) the Euler constant silently answered.
+        const scope = buildScopeFromLines(["a=2", "b=4", "d=a+b", "e=d => 6"]);
+        expect(scope.get("d")).toBe(6);
+        expect(scope.get("e")).toBe(6);
+        // Same for a `=`-form tail with an answer.
+        expect(buildScopeFromLines(["x = 2+3= 5"]).get("x")).toBe(5);
+    });
+
     it("a later redefinition should win", () => {
         const scope = buildScopeFromLines(["x = 1", "x = 9"]);
         expect(scope.get("x")).toBe(9);
@@ -690,9 +701,29 @@ describe("functions and constants (the identifier path)", () => {
         expect(evaluateCalc("2 * pi")).toBeCloseTo(2 * Math.PI, 12);
         expect(evaluateCalc("2 * π")).toBeCloseTo(2 * Math.PI, 12);
         expect(evaluateCalc("tau / 2")).toBeCloseTo(Math.PI, 12);
-        // A user definition always shadows the constant.
-        expect(evaluateExpression("e + 1", resolve({ e: 2 }))).toBe(3);
+        // A user definition always shadows the constant — π included, since
+        // parseDefinition accepts the glyph as a name.
         expect(evaluateCalc("pi * 2", new Map([["pi", 3]]))).toBe(6);
+        expect(buildScopeFromLines(["π = 3"]).get("π")).toBe(3);
+    });
+
+    it("`e` is deliberately NOT a constant — it's everyone's variable name", () => {
+        // A missing `e = …` definition silently resolving to 2.718282 is
+        // worse than no answer; exp(1) gives Euler when genuinely wanted.
+        expect(evaluateCalc("e")).toBeNull();
+        expect(evaluateCalc("e + 1")).toBeNull();
+        expect(evaluateExpression("e + 1", resolve({ e: 2 }))).toBe(3);
+        expect(evaluateCalc("exp(1)")).toBeCloseTo(Math.E, 12);
+    });
+
+    it("superscript digits read as exponents on BOTH paths", () => {
+        expect(evaluateExpression("5²")).toBe(25);            // pure-digits `=` path
+        expect(evaluateCalc("c²", new Map([["c", 3]]))).toBe(9);
+        expect(evaluateCalc("2¹⁰")).toBe(1024);               // multi-digit run
+        expect(detectCalcExpression("5² =")?.result).toBe("25");
+        expect(detectArrowExpression("c² + 1 =>")?.expr).toBe("c² + 1");
+        // A footnote-style superscript glued to prose never computes.
+        expect(detectCalcExpression("word² =")).toBeNull();
     });
 
     it("an unknown name before ( should never become a call", () => {

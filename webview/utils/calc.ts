@@ -74,15 +74,24 @@ const FUNCTIONS = new Map<string, (x: number) => number>([
 
 /**
  * Constants, matched case-insensitively — resolved only AFTER the caller's
- * scope, so a user's own `e = 2` or `pi = 3` definition always wins.
+ * scope, so a user's own `pi = 3` definition always wins. Euler's `e` is
+ * deliberately NOT here: `e` is among the most common variable names, and a
+ * missing/broken `e = …` definition silently resolving to 2.718282 is worse
+ * than no answer (`exp(1)` gives Euler when genuinely wanted).
  */
 const CONSTANTS = new Map<string, number>([
     ["pi", Math.PI],
     ["π", Math.PI],
     ["tau", 2 * Math.PI],
     ["τ", 2 * Math.PI],
-    ["e", Math.E],
 ]);
+
+/** Unicode superscript digits, read as an exponent: `c²` ≡ `c^2`. */
+const SUPERSCRIPT_DIGITS: Record<string, string> = {
+    "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+    "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+};
+const SUPERSCRIPT_CLASS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
 
 type Token =
     | { kind: "num"; value: number }
@@ -96,12 +105,14 @@ type Token =
 // rule, the refresh scanner) builds its regex from these constants, so
 // extending the grammar is a one-line change instead of six synchronized edits.
 
-/** Class body: characters of a pure-arithmetic run (letters excluded). */
-export const ARITHMETIC_CLASS = "0-9.+\\-*/%^()";
+/** Class body: characters of a pure-arithmetic run (letters excluded; the
+ * superscript digits read as exponents, so `5²` is arithmetic). */
+export const ARITHMETIC_CLASS = "0-9.+\\-*/%^()⁰¹²³⁴⁵⁶⁷⁸⁹";
 /** One arithmetic-run character, whitespace included (tokenizer pre-check). */
 const EXPR_CHAR = new RegExp(`[${ARITHMETIC_CLASS}\\s]`);
-/** The binary/unary operator characters, as a test for "contains an operator". */
-const HAS_OPERATOR = /[+\-*/%^]/;
+/** The binary/unary operator characters, as a test for "contains an operator"
+ * — a superscript digit IS an exponentiation. */
+const HAS_OPERATOR = /[+\-*/%^⁰¹²³⁴⁵⁶⁷⁸⁹]/;
 /** An expression that STARTS with a binary operator (left-operand suspicion). */
 const OP_HEAD = /^[+\-*/%^]/;
 /** The first character of an identifier (variable name): a letter, `_`, or a
@@ -133,6 +144,19 @@ function tokenize(input: string, allowIdent: boolean): Token[] | null {
             let name = "";
             while (i < input.length && IDENT_CHAR.test(input[i])) { name += input[i]; i++; }
             tokens.push({ kind: "ident", name });
+            continue;
+        }
+        // A superscript-digit run is an exponent: `c²` ≡ `c^2`, `2¹⁰` ≡ `2^10`.
+        // Available on BOTH paths — a superscript is visibly arithmetic, so it
+        // doesn't breach the `=` path's "pure digits and operators" contract.
+        if (SUPERSCRIPT_DIGITS[ch] !== undefined) {
+            let digits = "";
+            while (i < input.length && SUPERSCRIPT_DIGITS[input[i]] !== undefined) {
+                digits += SUPERSCRIPT_DIGITS[input[i]];
+                i++;
+            }
+            tokens.push({ kind: "op", value: "^" });
+            tokens.push({ kind: "num", value: parseFloat(digits) });
             continue;
         }
         if (!EXPR_CHAR.test(ch)) { return null; } // a letter or stray symbol → not arithmetic
@@ -638,9 +662,9 @@ export interface ArrowMatch {
 
 /** The `=>` (with any trailing spaces/tabs) that ends the text before the caret. */
 const TRAILING_ARROW = /=>[ \t]*$/;
-/** Characters that may appear in a living-calc expression run (letters and
- * the constant glyphs allowed). */
-const CALC_RUN = /[\wπτ+\-*/%^().°'" \t]*$/u;
+/** Characters that may appear in a living-calc expression run (letters, the
+ * constant glyphs, and superscript exponents allowed). */
+const CALC_RUN = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^().°'" \t]*$/u;
 /**
  * A prose-ish token the `=>` trimming loop may drop from the front of the run:
  * it must contain a letter (it reads as a WORD — `the`, `total`, `costs.`,
@@ -780,16 +804,29 @@ export function expressionUsesVariables(expr: string): boolean {
 // ── Variable definitions ─────────────────────────────────────────────────────
 
 /**
- * A single `name = value` definition line. The name is a plain identifier; the
- * `=` must be a single `=` (not `==` highlight syntax, not `=>`), and the value
- * is any living-calc expression that resolves against the definitions seen so
- * far. Returns the name and raw right-hand side, or null when the line is not a
- * definition (ordinary prose, a heading, a `=>` line, etc.).
+ * The answer tail an insertion leaves on a line: `=` or `=>`, optionally
+ * followed by the number it wrote. Stripped from a definition's right-hand
+ * side, because a definition that carries its own inserted answer
+ * (`e=d => 6`) still defines `e` as `d` — the answer is display, not value.
+ * A plain number with no marker never matches, so `x = 6` keeps its 6.
+ */
+const DEFINITION_ANSWER_TAIL = /\s*=>?[ \t]*(?:-?\d(?:[\d,]*\d)?(?:\.\d+)?)?[ \t]*$/;
+
+/**
+ * A single `name = value` definition line. The name is a plain identifier
+ * (constant glyphs allowed, so `π = 3` can shadow the constant); the `=` must
+ * be a single `=` (not `==` highlight syntax, not `=>`), and the value is any
+ * living-calc expression that resolves against the definitions seen so far —
+ * with any trailing inserted answer stripped first. Returns the name and
+ * right-hand side, or null when the line is not a definition (ordinary prose,
+ * a heading, a `=>` line, etc.).
  */
 export function parseDefinition(line: string): { name: string; rhs: string } | null {
-    const m = /^\s*([A-Za-z_]\w*)\s*=(?![=>])\s*(\S.*)$/.exec(line);
+    const m = /^\s*([A-Za-zπτ_][\wπτ]*)\s*=(?![=>])\s*(\S.*)$/u.exec(line);
     if (!m) { return null; }
-    return { name: m[1], rhs: m[2].trim() };
+    const rhs = m[2].replace(DEFINITION_ANSWER_TAIL, "").trim();
+    if (!rhs) { return null; }
+    return { name: m[1], rhs };
 }
 
 /**
@@ -984,7 +1021,7 @@ const RESULT_CHAR = /[\d,.]/;
 const DIGIT = /[0-9]/;
 const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
 /** One character of an `=>` expression run (letters allowed — variables, units). */
-const ARROW_RUN_CHAR = /[\wπτ+\-*/%^().°'" \t]/u;
+const ARROW_RUN_CHAR = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^().°'" \t]/u;
 
 /**
  * Finds `expr = result` / `result=expr` equation shapes in `text` whose spans
