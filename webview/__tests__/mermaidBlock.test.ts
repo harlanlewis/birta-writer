@@ -170,6 +170,35 @@ describe("mermaid code-block rendering", () => {
         expect(nv.dom.querySelector(".mermaid-svg-container svg")?.textContent).toBe("graph TD; C");
     });
 
+    it("a theme change landing while a render is in flight should still repaint (MAR-203)", async () => {
+        let release!: () => void;
+        mermaidMock.state.gate = new Promise<void>((r) => { release = r; });
+        await makeCodeBlockView("```mermaid\ngraph TD; A\n```\n");
+        await wait(0); // mount render starts and stalls on the gate
+        expect(renderedCodes()).toEqual(["graph TD; A"]);
+
+        // The theme moves on while the render is in flight: invalidate()
+        // can't help (nothing is memoized yet) — the finally's theme
+        // re-check is what closes this race.
+        setMermaidThemeMode("dark");
+        mermaidMock.state.gate = null;
+        release();
+        await wait(20);
+        expect(renderedCodes()).toEqual(["graph TD; A", "graph TD; A"]);
+    });
+
+    it("re-entering preview with unchanged code and theme should not re-render (memo)", async () => {
+        const { nv } = await makeCodeBlockView("```mermaid\ngraph TD; A\n```\n");
+        await wait(20);
+        expect(renderedCodes()).toEqual(["graph TD; A"]);
+
+        clickToggle(nv); // to code mode
+        clickToggle(nv); // back to preview — same code, same theme
+        await wait(20);
+        expect(renderedCodes()).toEqual(["graph TD; A"]); // memo skip, SVG kept
+        expect(nv.dom.querySelector(".mermaid-svg-container svg")).not.toBeNull();
+    });
+
     it("a mermaid theme change should actually re-render an already-rendered diagram (MAR-203)", async () => {
         await makeCodeBlockView("```mermaid\ngraph TD; A-->B\n```\n");
         await wait(20);

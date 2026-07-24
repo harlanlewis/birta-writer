@@ -173,6 +173,11 @@ function mermaidDarkNow(): boolean {
     return isMermaidDark(mermaidThemeMode, mermaidThemeMode === "auto" ? currentEditorBg() : "");
 }
 
+/** The Mermaid init-theme key for the current effective mode. */
+function mermaidThemeKey(): "dark" | "default" {
+    return mermaidDarkNow() ? "dark" : "default";
+}
+
 /**
  * Reflect the effective (light/dark) Mermaid canvas onto <body>, so the CSS
  * `--mermaid-canvas` variable — white by default, dark under this class — backs
@@ -286,10 +291,11 @@ async function renderMermaidToSvg(
 // ─── Mermaid instance registry (used to re-render on theme change) ──────────
 type MermaidInstance = {
     /**
-     * Drop the render memo and repaint. The memo guard in renderMermaid
-     * rejects same-code re-renders, so a theme change must clear it or the
-     * "re-render everything" pass is a no-op (MAR-203). A block sitting in
-     * code mode only drops the memo — it repaints on its next preview entry.
+     * Re-request the current diagram after a theme/setting change. The render
+     * memo is (code, theme)-aware, so the request re-renders exactly when the
+     * effective palette changed and is a cheap no-op otherwise (switching
+     * between two dark themes repaints nothing). A block sitting in code mode
+     * needs no action here — its next preview entry hits the same guard.
      */
     invalidate: () => void;
 };
@@ -600,6 +606,9 @@ export function createCodeBlockView(
     let isPreviewMode = false;
     let renderTimer: ReturnType<typeof setTimeout> | null = null;
     let lastRenderedCode = "";
+    // The theme key the current SVG was rendered with — the memo is
+    // (code, theme), so theme changes invalidate it naturally (MAR-203).
+    let lastRenderedTheme = "";
     let inFlightRender = false;
     // Latest-wins slot: code that arrived while a render was in flight, run
     // when that render settles instead of being dropped (MAR-203).
@@ -1111,7 +1120,11 @@ export function createCodeBlockView(
     async function renderMermaid(code: string): Promise<void> {
         if (!isMermaid || !isPreviewMode) return;
         if (inFlightRender) { pendingCode = code; return; }
-        if (code === lastRenderedCode && svgContainer.querySelector("svg")) return;
+        if (
+            code === lastRenderedCode &&
+            lastRenderedTheme === mermaidThemeKey() &&
+            svgContainer.querySelector("svg")
+        ) return;
 
         // Claim the render slot synchronously (before any await) so a second
         // call while Mermaid lazily loads can't start a concurrent render.
@@ -1139,6 +1152,9 @@ export function createCodeBlockView(
                 applyAdaptiveHeight();
             }
             lastRenderedCode = code;
+            // What THIS render was initialized with (not the live key — the
+            // theme may have moved on mid-flight; the finally settles that).
+            lastRenderedTheme = lastMermaidTheme;
             fitToView();
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -1151,17 +1167,22 @@ export function createCodeBlockView(
             inFlightRender = false;
             const next = pendingCode;
             pendingCode = null;
-            if (next !== null && next !== lastRenderedCode) void renderMermaid(next);
+            // Re-run for parked code, or when the theme moved on while this
+            // render was in flight — the (code, theme) memo guard settles
+            // what actually needs repainting. The svg check keeps a FAILED
+            // render from retrying itself in a loop over a theme mismatch.
+            if (next !== null) void renderMermaid(next);
+            else if (svgContainer.querySelector("svg") && lastRenderedTheme !== mermaidThemeKey()) {
+                void renderMermaid(code);
+            }
         }
     }
 
     // Register the Mermaid instance (used to re-render on theme change)
     const mermaidInstance: MermaidInstance = {
         invalidate() {
-            if (!isMermaid || !lastRenderedCode) return;
-            const code = lastRenderedCode;
-            lastRenderedCode = "";
-            if (isPreviewMode) void renderMermaid(code);
+            if (!isMermaid || !isPreviewMode || !lastRenderedCode) return;
+            void renderMermaid(lastRenderedCode);
         },
     };
     mermaidInstances.add(mermaidInstance);
@@ -1765,10 +1786,10 @@ export function createCodeBlockView(
             }
             if (wasPreviewable && nowPreviewable && newKind !== prevKind) {
                 // Previewable→previewable language flip (latex→mermaid, …):
-                // neither branch above fires, but the visible pane and the
-                // per-type render memos belong to the OLD type (MAR-204).
-                lastRenderedCode = "";
-                lastCalcRendered = null;
+                // neither branch above fires, but the visible pane belongs to
+                // the OLD type (MAR-204). The render memos need no reset —
+                // renderPreview recomputes calc/latex unconditionally and the
+                // mermaid memo self-validates on (code, theme).
                 if (isPreviewMode) {
                     if (updatedNode.textContent.trim()) {
                         // Re-enter: hides the stale pane, shows the new type's.
@@ -1779,6 +1800,10 @@ export function createCodeBlockView(
                         // preview would hide the only editable surface.
                         exitPreviewMode();
                     }
+                } else {
+                    // In code mode only the toggle's tooltip is stale — it
+                    // still names the old type's preview.
+                    toggleTooltip.setText(previewTip());
                 }
             }
             if (nowPreviewable && isPreviewMode) {

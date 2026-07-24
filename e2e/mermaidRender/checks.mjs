@@ -110,9 +110,22 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify({ naturalW1, naturalW2 }));
 
     // ── Theme change repaints in place (was a silent no-op, MAR-203) ──
+    // A theme-changed event that does NOT move the effective palette (e.g.
+    // switching between two dark themes) must NOT re-render: the memo is
+    // (code, theme)-aware.
     await page.evaluate(() => {
-        const svg = document.querySelector(".mermaid-svg-container svg");
-        svg.setAttribute("data-e2e-old", "1");
+        document.querySelector(".mermaid-svg-container svg").setAttribute("data-e2e-old", "1");
+        window.dispatchEvent(new CustomEvent("theme-changed"));
+    });
+    await page.waitForTimeout(600);
+    check("a same-palette theme event does not re-render",
+        await page.evaluate(() =>
+            document.querySelector(".mermaid-svg-container svg")?.hasAttribute("data-e2e-old")));
+
+    // A REAL palette change (dark editor → light editor in auto mode) must
+    // repaint the already-rendered diagram in place.
+    await page.evaluate(() => {
+        document.documentElement.style.setProperty("--vscode-editor-background", "#ffffff");
         window.dispatchEvent(new CustomEvent("theme-changed"));
     });
     await page.waitForFunction(
