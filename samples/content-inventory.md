@@ -459,18 +459,9 @@ graph TD
     B -->|No| D[Skip]
 ```
 
-### Calc blocks
+### Calc
 
-`calc` 
-
-A fenced `calc` block is a live worksheet (insert from the slash menu's **Calc
-Block**): every line computes under one shared, top-to-bottom scope, shown in a
-selectable source/value ledger that recomputes as you type. The source is never
-rewritten — the block round-trips byte-for-byte, and toggling to code shows
-exactly what you typed. A line that *reads* as a formula but can't compute (the
-`typo * 2` below — an unknown name) shows a quiet dimmed dash; plain prose and
-comments stay silent. Own switch: `birta.calc.blocks.enabled`, independent of
-the inline calculators.
+Math worksheets read and evaluate equations. Unlike [Inline calculator](#inline-calculator) and [Living calculations (=>)](#living-calculations-), `Calc` blocks only *read* and *evaluate* equations. They do not modify the raw Markdown by writing answers.
 
 ```calc
 # a tiny budget worksheet
