@@ -49,6 +49,7 @@ import {
     formatCalcResult,
     isCalcStructurallyValid,
     parseDefinitions,
+    unresolvedVariables,
     type EquationSpan,
 } from "../utils/calc";
 import { calcUnitsReady } from "../utils/calcUnits";
@@ -460,6 +461,20 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
         // Spans already rewritten this pass (`blockStart:resStart`), so the
         // variable cascade never re-touches what the local pass refreshed.
         const refreshed = new Set<string>();
+        // Names with a definition-SHAPED line head (`x =`) in the cascade
+        // walk, valid or not: an unresolved name that still has a head is a
+        // definition MID-EDIT (backspacing `x = 4` on the way to `x = 5`),
+        // not a vanished one — withdrawal must wait for it.
+        const defHeadedNames = new Set<string>();
+        // Lazily-built inverse mappings, for asking what an expression
+        // resolved to BEFORE this batch (withdrawal's liveness proof).
+        let inverses: ReturnType<(typeof trs)[number]["mapping"]["invert"]>[] | null = null;
+        const mapToOld = (pos: number): number => {
+            inverses ??= trs.map((tr) => tr.mapping.invert());
+            let p = pos;
+            for (let i = inverses.length - 1; i >= 0; i--) { p = inverses[i]!.map(p); }
+            return Math.max(0, Math.min(p, oldState.doc.content.size));
+        };
         // Earliest document position whose block held an edited definition —
         // every `=>` equation from there DOWN may have gone stale.
         let cascadeFrom = -1;
@@ -469,12 +484,18 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
         // transaction touched (its step coordinates are exact against
         // oldState; later transactions in a batch are relative to
         // intermediate docs and are covered by the post-edit trigger).
-        trs[0]!.mapping.maps.forEach((map) => {
-            map.forEach((oldFrom, oldEnd) => {
+        const firstMapping = trs[0]!.mapping;
+        firstMapping.maps.forEach((map, i) => {
+            // A step's coordinates are relative to the doc AFTER the steps
+            // before it — map them back through those steps' inverse to get
+            // true oldState positions (a composite transaction that inserts
+            // then deletes a definition would otherwise be misread).
+            const back = firstMapping.slice(0, i).invert();
+            map.forEach((stepFrom, stepEnd) => {
                 const size = oldState.doc.content.size;
                 oldState.doc.nodesBetween(
-                    Math.min(oldFrom, size),
-                    Math.min(oldEnd, size),
+                    Math.max(0, Math.min(back.map(stepFrom, -1), size)),
+                    Math.max(0, Math.min(back.map(stepEnd, 1), size)),
                     (node: ProseNode, pos: number) => {
                         if (!node.isTextblock) { return true; }
                         if (node.type.spec.code) { return false; }
@@ -525,15 +546,24 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                         return false;
                     }
                     // CASCADE only: the document no longer justifies this
-                    // answer (its definition vanished or broke) — WITHDRAW
-                    // it, leaving `expr =>`. A stale number masquerading as
-                    // live is the one lie the feature must not tell; the
-                    // withdrawal is quiet and one undo restores everything.
-                    // Never from a LOCAL edit: mid-typing an expression is
-                    // transiently unresolvable, and destroying the answer on
-                    // the first keystroke of a rename would be hostile —
-                    // and re-answering always needs the user's Tab.
+                    // answer — WITHDRAW it, leaving `expr =>`. A stale number
+                    // masquerading as live is the one lie the feature must
+                    // not tell; withdrawal is quiet and one undo restores
+                    // everything. Three proofs are required first:
+                    //  - not a LOCAL edit (mid-typing an expression is
+                    //    transiently unresolvable; destroying the answer on
+                    //    the first keystroke of a rename would be hostile);
+                    //  - no unresolved name is a definition MID-EDIT (an
+                    //    `x =` head above means "being retyped", not gone);
+                    //  - the answer was LIVE before this batch (it resolved
+                    //    against the old state) — a number after a `=>` the
+                    //    feature never answered is prose, and prose digits
+                    //    are never ours to delete.
                     if (!scope) { return false; }
+                    const unresolved = unresolvedVariables(det.expr, scope);
+                    if (unresolved.some((name) => defHeadedNames.has(name))) { return false; }
+                    const oldScope = scopeUpTo(oldState, mapToOld(blockStart + cand.expr[0]));
+                    if (evaluateCalc(det.expr, oldScope) === null) { return false; }
                     out = out.delete(
                         out.mapping.map(blockStart + cand.expr[1] + 2),
                         out.mapping.map(blockStart + cand.res[1]),
@@ -657,8 +687,20 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                         arrowIdx++;
                         if (!expressionUsesVariables(text.slice(cand.expr[0], cand.expr[1]))) { continue; }
                         if (resIntersectsChange(blockStart, cand)) { continue; }
+                        // An arrow whose EXPRESSION the current edit touches
+                        // belongs to the local pass, which never withdraws —
+                        // typing over `x` in the arrow itself must not
+                        // destroy the answer via the same-block cascade.
+                        if (changed.some(
+                            (c) => c.from <= blockStart + cand.expr[1]
+                                && c.to >= blockStart + cand.expr[0],
+                        )) { continue; }
                         refresh(blockStart, text, cand, scope);
                     }
+                    // Any definition-SHAPED head marks its name as mid-edit
+                    // for the withdrawal guard, valid RHS or not.
+                    const head = /^\s*([A-Za-zπτ_][\wπτ]*)\s*=(?![=>])/u.exec(line);
+                    if (head) { defHeadedNames.add(head[1]); }
                     for (const def of parseDefinitions(line)) {
                         // The one definition-evaluation step (see
                         // buildScopeFromLines): a resolvable RHS enters scope,

@@ -503,6 +503,13 @@ describe("buildScopeFromLines", () => {
         expect(scope.has("a")).toBe(false);
     });
 
+    it("a computed multi-def segment echoes its value in the ledger", () => {
+        const rows = evaluateCalcBlock("a=5, b=2+3");
+        expect(rows[0]).toMatchObject({ kind: "value", result: "5" });
+        const twoComputed = evaluateCalcBlock("a=1+1, b=2+2");
+        expect(twoComputed[0]).toMatchObject({ kind: "value", result: "2, 4" });
+    });
+
     it("multiple definitions on one line apply — all-or-nothing on the comma split", () => {
         const scope = buildScopeFromLines(["a=5, b=2", "c = a+b"]);
         expect(scope.get("a")).toBe(5);

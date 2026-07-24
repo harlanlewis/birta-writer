@@ -819,6 +819,82 @@ describe("auto-insert result refresh (editing an existing equation)", () => {
         editor.destroy();
     });
 
+    it("withdrawal NEVER deletes digits from prose the feature didn't answer", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        // `load` never resolved, so `5 servers` is prose — an unrelated
+        // definition edit must not strip its digits.
+        const editor = await makeRefreshEditor("x = 4\n\nload => 5 servers\n\nnext steps => 3 items");
+        const v = view(editor);
+        editChar(v, 4, "5"); // x = 4 → x = 5
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts).toEqual(["x = 5", "load => 5 servers", "next steps => 3 items"]);
+        editor.destroy();
+    });
+
+    it("backspacing a definition's value does NOT destroy dependent answers", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\n\nx*2 => 8");
+        const v = view(editor);
+        // Backspace the 4: `x = ` is a definition MID-EDIT, not vanished.
+        v.dispatch(v.state.tr.delete(5, 6));
+        let texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts[1]).toBe("x*2 => 8"); // stale for a keystroke, intact
+        // Retype a new value: the answer catches up, never having been lost.
+        v.dispatch(v.state.tr.insertText("5", 5, 5));
+        texts = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts).toEqual(["x = 5", "x*2 => 10"]);
+        editor.destroy();
+    });
+
+    it("typing over the arrow's own variable never withdraws via the same-block cascade", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\\\nx*2 => 8");
+        const v = view(editor);
+        const idx = v.state.doc.firstChild!.textContent.indexOf("x*2");
+        editChar(v, idx, "y"); // rename the arrow's own x — local edit territory
+        expect(v.state.doc.firstChild!.textContent).toContain("y*2 => 8"); // preserved
+        editor.destroy();
+    });
+
+    it("superscript `=` equations refresh like their caret twins", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("5²= 25");
+        const v = view(editor);
+        editChar(v, 0, "6");
+        expect(blockText(v)).toBe("6²= 36");
+        editor.destroy();
+    });
+
+    it("a composite transaction (insert then delete a definition) still withdraws", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("intro\n\nx = 4\n\nx*2 => 8");
+        const v = view(editor);
+        // One transaction: pad block 1, THEN delete the definition paragraph
+        // at post-insert coordinates — the old-state trigger must back-map.
+        const defNode = v.state.doc.child(1);
+        const defPos = v.state.doc.firstChild!.nodeSize;
+        const tr = v.state.tr.insertText(" padded", 6, 6);
+        tr.delete(tr.mapping.map(defPos), tr.mapping.map(defPos + defNode.nodeSize));
+        v.dispatch(tr);
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts[texts.length - 1]).toBe("x*2 =>"); // withdrawn, not stale
+        editor.destroy();
+    });
+
     it("undo reverts the edit and the refreshed answer together", async () => {
         const editor = await makeRefreshEditor("3+4= 7");
         const v = view(editor);

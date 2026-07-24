@@ -801,6 +801,25 @@ export function expressionUsesVariables(expr: string): boolean {
     );
 }
 
+/**
+ * The variable names in `expr` that `scope` does not resolve (function calls
+ * and constants excluded). The withdrawal guards use this to ask WHY an
+ * expression stopped computing — an unresolved name whose definition is
+ * visibly mid-edit is transient, not vanished.
+ */
+export function unresolvedVariables(expr: string, scope: Map<string, number>): string[] {
+    const tokens = tokenize(expr, true);
+    if (!tokens) { return []; }
+    const names: string[] = [];
+    tokens.forEach((tok, i) => {
+        if (tok.kind !== "ident") { return; }
+        if (FUNCTIONS.has(tok.name.toLowerCase()) && tokens[i + 1]?.kind === "lparen") { return; }
+        if (scope.has(tok.name) || CONSTANTS.has(tok.name.toLowerCase())) { return; }
+        names.push(tok.name);
+    });
+    return names;
+}
+
 // ── Variable definitions ─────────────────────────────────────────────────────
 
 /**
@@ -984,13 +1003,21 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
         const line = raw.replace(CALC_TRAILING_EQ, "");
         const defs = parseDefinitions(line);
         if (defs.length > 1) {
-            // A multi-definition line (`a=5, b=2`): every value is spelled in
-            // the source, so nothing to display — unless a segment breaks.
+            // A multi-definition line (`a=5, b=2`): literal segments spell
+            // their values; COMPUTED segments (`b=2+3`) echo theirs, joined,
+            // exactly like a single computed definition would.
+            const shown: string[] = [];
             let allApplied = true;
             for (const def of defs) {
-                if (applyDefinition(def, scope) === null) { allApplied = false; }
+                const value = applyDefinition(def, scope);
+                if (value === null) { allApplied = false; continue; }
+                const formatted = formatCalcResult(value);
+                if (formatted !== null && formatted !== def.rhs) { shown.push(formatted); }
             }
-            return { raw, result: null, kind: allApplied ? "silent" : "error" };
+            if (!allApplied) { return { raw, result: null, kind: "error" }; }
+            return shown.length > 0
+                ? { raw, result: shown.join(", "), kind: "value" }
+                : { raw, result: null, kind: "silent" };
         }
         const def = defs[0];
         if (def) {
@@ -1047,6 +1074,9 @@ const RESULT_NUMBER = /-?\d(?:[\d,]*\d)?(?:\.\d+)?/y;
 const RESULT_NUMBER_EXACT = /^-?\d(?:[\d,]*\d)?(?:\.\d+)?$/;
 const RESULT_CHAR = /[\d,.]/;
 const DIGIT = /[0-9]/;
+/** A char an expression can END on: digit, `)`, or a superscript exponent —
+ * `5²=` is a maintainable equation just like `5^2=`. */
+const VALUE_END = /[0-9)⁰¹²³⁴⁵⁶⁷⁸⁹]/;
 const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
 /** One character of an `=>` expression run (letters allowed — variables, units). */
 const ARROW_RUN_CHAR = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^().°'" \t]/u;
@@ -1123,7 +1153,7 @@ export function findRefreshEquations(
             runEnd--;
         }
         const lastCh = text[runEnd - 1];
-        if (runEnd > runStart && (DIGIT.test(lastCh) || lastCh === ")")) {
+        if (runEnd > runStart && VALUE_END.test(lastCh)) {
             let resStart = e + 1;
             while (text[resStart] === " " || text[resStart] === "\t") { resStart++; }
             RESULT_NUMBER.lastIndex = resStart;
@@ -1153,7 +1183,7 @@ export function findRefreshEquations(
             while (exprEnd < text.length && exprEnd - exprStart < maxRun && ARITH_OR_WS.test(text[exprEnd])) {
                 exprEnd++;
             }
-            while (exprEnd > exprStart && !(DIGIT.test(text[exprEnd - 1]) || text[exprEnd - 1] === ")")) {
+            while (exprEnd > exprStart && !VALUE_END.test(text[exprEnd - 1])) {
                 exprEnd--;
             }
             if (exprEnd > exprStart) {
