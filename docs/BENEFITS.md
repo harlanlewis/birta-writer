@@ -20,13 +20,13 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
 
   - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, punctuation, and vocabulary.
   - Customizable draft-management tools for jumping to `[TK]` notes, `TODOs`, and inline comments.
-- It's better at math than me:
+- It's better than me at math:
 
-  - Basic equations answered right in your text. `6^2+(8*3/4)= 42` just prints the answer for you after the `=`. Updates when you change the equation, too.
+  - Basic equations compute in text. `6^2+(8*3/4)= 42` prints the answer after the `=`. It updates when you change the equation, too.
 
-  - Turn your document into a worksheet using `=>`
+  - Variables, conversions, and more advanced math with `=>`
 
-    - Construct quick formulas…
+    - Construct formulas…
 
       - a=2, b=4
       - c=sqrt(a²+b²) => 4.472136
@@ -38,10 +38,11 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
       - savings=budget-(rent+food) => 1700
       - savings \* 12 => 20400
 
-    - …or just some quick conversions:
+    - …or quick conversions:
 
       - 24901 mile in km => 40074.274944
       - t = 24\*60\*60\*1000ms in days => 1
+      - t*365 days in weeks => 52.142857
 
 - It's private.
 
