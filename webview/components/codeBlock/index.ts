@@ -183,13 +183,9 @@ export function syncMermaidCanvasClass(): void {
     document.body.classList.toggle("mermaid-canvas-dark", mermaidDarkNow());
 }
 
-/** Re-render every visible Mermaid diagram (after a theme or setting change). */
+/** Re-render every Mermaid diagram (after a theme or setting change). */
 function rerenderAllMermaid(): void {
-    for (const instance of mermaidInstances) {
-        if (instance.isMermaid && instance.isPreviewMode && instance.lastRenderedCode) {
-            instance.renderMermaid(instance.lastRenderedCode);
-        }
-    }
+    for (const instance of mermaidInstances) instance.invalidate();
 }
 
 /**
@@ -233,12 +229,69 @@ async function ensureMermaid(): Promise<typeof import("mermaid")["default"]> {
     return mermaid;
 }
 
+/**
+ * Render Mermaid source to SVG in a clean off-screen host and measure its
+ * natural size there.
+ *
+ * The host MUST NOT be the on-screen preview container: Mermaid measures
+ * HTML labels with getBoundingClientRect() wherever it renders, and that is
+ * scaled by any ancestor CSS transform — rendering inside the pan/zoomed
+ * `svgContainer` corrupted every re-render's geometry (clipped/mis-sized
+ * text, MAR-202). visibility:hidden (not display:none) keeps layout alive
+ * for measurement; the explicit width makes width-sensitive diagrams
+ * (gantt's width:100%) lay out at the real target width.
+ */
+async function renderMermaidToSvg(
+    code: string,
+    renderWidth: number,
+): Promise<{ svg: string; width: number; height: number }> {
+    const mermaid = await ensureMermaid();
+    const host = document.createElement("div");
+    host.style.cssText =
+        `position:absolute;top:0;left:-10000px;visibility:hidden;pointer-events:none;width:${renderWidth}px`;
+    document.body.appendChild(host);
+    try {
+        const id = `mmid-${Math.random().toString(36).slice(2, 9)}`;
+        const { svg } = await mermaid.render(id, code, host);
+        // Natural-size fallback chain: viewBox (most precise) → explicit
+        // non-percentage width/height attributes → the laid-out size inside
+        // the sized host (valid because the host has the real render width).
+        host.innerHTML = svg;
+        const svgEl = host.querySelector("svg");
+        let nw = 0, nh = 0;
+        const vb = svgEl?.getAttribute("viewBox");
+        if (vb) {
+            const parts = vb.trim().split(/[\s,]+/);
+            if (parts.length >= 4) {
+                nw = parseFloat(parts[2]);
+                nh = parseFloat(parts[3]);
+            }
+        }
+        if (!nw) {
+            const wa = svgEl?.getAttribute("width");
+            if (wa && !wa.includes("%")) nw = parseFloat(wa);
+        }
+        if (!nh) {
+            const ha = svgEl?.getAttribute("height");
+            if (ha && !ha.includes("%")) nh = parseFloat(ha);
+        }
+        if (!nw) nw = svgEl?.clientWidth || renderWidth;
+        if (!nh) nh = svgEl?.clientHeight || 400;
+        return { svg, width: nw, height: nh };
+    } finally {
+        host.remove();
+    }
+}
+
 // ─── Mermaid instance registry (used to re-render on theme change) ──────────
 type MermaidInstance = {
-    isMermaid: boolean;
-    isPreviewMode: boolean;
-    lastRenderedCode: string;
-    renderMermaid: (code: string) => Promise<void>;
+    /**
+     * Drop the render memo and repaint. The memo guard in renderMermaid
+     * rejects same-code re-renders, so a theme change must clear it or the
+     * "re-render everything" pass is a no-op (MAR-203). A block sitting in
+     * code mode only drops the memo — it repaints on its next preview entry.
+     */
+    invalidate: () => void;
 };
 const mermaidInstances = new Set<MermaidInstance>();
 
@@ -547,7 +600,13 @@ export function createCodeBlockView(
     let isPreviewMode = false;
     let renderTimer: ReturnType<typeof setTimeout> | null = null;
     let lastRenderedCode = "";
-    let isRendering = false;
+    let inFlightRender = false;
+    // Latest-wins slot: code that arrived while a render was in flight, run
+    // when that render settles instead of being dropped (MAR-203).
+    let pendingCode: string | null = null;
+    // True once the user pans/zooms by hand; a container resize then leaves
+    // their transform alone instead of snapping back to fit (MAR-205).
+    let hasManualTransform = false;
     let panX = 0, panY = 0, zoomLevel = 1.0;
     let naturalSvgW = 0, naturalSvgH = 0; // SVG viewBox natural size (fixed)
     const ZOOM_MIN = 0.05, ZOOM_MAX = 10.0, ZOOM_BTN = 0.25;
@@ -794,6 +853,7 @@ export function createCodeBlockView(
                 case "left":  panX += PAN_STEP; break;
                 case "right": panX -= PAN_STEP; break;
             }
+            hasManualTransform = true;
             applyTransform();
         });
         return btn;
@@ -973,6 +1033,24 @@ export function createCodeBlockView(
         : null;
     lineNumberResizeObserver?.observe(codeEl);
 
+    // Refit the diagram when the preview container's WIDTH changes (panel
+    // resize): the adaptive height and fit zoom were computed for the old
+    // width (MAR-205). Width-only guard — our own height writes retrigger
+    // the observer, and reacting to them would loop. A hand pan/zoom is
+    // respected: the transform only snaps back to fit while it IS the fit.
+    let lastPreviewWidth = 0;
+    const previewResizeObserver = typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            if (!isMermaid || !isPreviewMode || !naturalSvgW) return;
+            const w = mermaidPreview.clientWidth;
+            if (!w || w === lastPreviewWidth) return;
+            lastPreviewWidth = w;
+            applyAdaptiveHeight();
+            if (!hasManualTransform) fitToView();
+        })
+        : null;
+    previewResizeObserver?.observe(mermaidPreview);
+
     // ── Transform helpers ──────────────────────────────────
     function applyTransform(): void {
         svgContainer.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
@@ -997,64 +1075,57 @@ export function createCodeBlockView(
             const padding = 40;
             const scaleX = (containerW - padding) / naturalSvgW;
             const scaleY = (containerH - padding) / naturalSvgH;
-            zoomLevel = Math.min(scaleX, scaleY, ZOOM_MAX);
+            // Cap at natural size — small diagrams center at 100% instead of
+            // being blown up to fill (matches the height estimator's cap).
+            zoomLevel = Math.min(scaleX, scaleY, 1.0);
             zoomLevel = Math.max(ZOOM_MIN, zoomLevel);
             panX = 0; panY = 0;
+            hasManualTransform = false;
             applyTransform();
         });
     }
 
+    /**
+     * Size the preview container from the diagram's fit-width height (capped
+     * ≤1.0 so small diagrams aren't enlarged); tall diagrams expand up to
+     * ~one viewport. Re-run on container resize with the stored natural size.
+     */
+    function applyAdaptiveHeight(): void {
+        if (!naturalSvgW || !naturalSvgH) return;
+        const availableW = mermaidPreview.clientWidth || 800;
+        const fitWidthScale = Math.min((availableW - 40) / naturalSvgW, 1.0);
+        const idealH = naturalSvgH * fitWidthScale + 80; // 40px padding top and bottom
+        const maxH = Math.min(window.innerHeight * 0.92, 2000);
+        const finalH = Math.max(300, Math.min(Math.ceil(idealH), maxH));
+        mermaidPreview.style.height = finalH + "px";
+        mermaidPreview.style.minHeight = finalH + "px";
+    }
+
     // ── Mermaid rendering ──────────────────────────────────
+    // Single-flight, latest-wins: a call while a render is in flight parks
+    // its code in pendingCode (checked in the finally) instead of being
+    // dropped — the pending check runs BEFORE the memo guard so the newest
+    // code always wins (MAR-203). Rendering + measurement happen in the
+    // off-screen host (renderMermaidToSvg), never in the transformed
+    // svgContainer (MAR-202).
     async function renderMermaid(code: string): Promise<void> {
         if (!isMermaid || !isPreviewMode) return;
-        if (isRendering) return;
+        if (inFlightRender) { pendingCode = code; return; }
         if (code === lastRenderedCode && svgContainer.querySelector("svg")) return;
 
         // Claim the render slot synchronously (before any await) so a second
-        // call while Mermaid lazily loads can't slip past the isRendering guard.
-        isRendering = true;
+        // call while Mermaid lazily loads can't start a concurrent render.
+        inFlightRender = true;
         naturalSvgW = 0; naturalSvgH = 0;
         svgContainer.innerHTML = `<div class="mermaid-loading">${t("Rendering...")}</div>`;
-
-        // svgContainer is inline-block, and the loading div is absolutely positioned so it takes no space → clientWidth=0.
-        // Set a temporary width before rendering so Mermaid (especially Gantt charts) lays out at the correct width.
         const renderWidth = mermaidPreview.clientWidth || 800;
-        svgContainer.style.width = renderWidth + "px";
 
-        // Pass svgContainer as the third argument: mermaid then uses a hidden div (invisible),
-        // no longer injecting a visible error element (bomb icon) into body, and auto-removes the hidden div after rendering
-        const id = `mmid-${Math.random().toString(36).slice(2, 9)}`;
         try {
-            const mermaid = await ensureMermaid();
-            const { svg } = await mermaid.render(id, code, svgContainer);
+            const { svg, width: nw, height: nh } = await renderMermaidToSvg(code, renderWidth);
             svgContainer.innerHTML = svg;
             const svgEl = svgContainer.querySelector("svg");
             if (svgEl) {
                 svgEl.style.display = "block";
-                // Multi-level fallback for reading the natural size (svgContainer.style.width is still renderWidth here,
-                // so width="100%" SVGs like Gantt charts compute clientWidth at the real width)
-                let nw = 0, nh = 0;
-                // 1. viewBox (most precise)
-                const vb = svgEl.getAttribute("viewBox");
-                if (vb) {
-                    const parts = vb.trim().split(/[\s,]+/);
-                    if (parts.length >= 4) {
-                        nw = parseFloat(parts[2]);
-                        nh = parseFloat(parts[3]);
-                    }
-                }
-                // 2. Explicit width/height attributes (excluding percentage values like "100%")
-                if (!nw) {
-                    const wa = svgEl.getAttribute("width");
-                    if (wa && !wa.includes("%")) nw = parseFloat(wa);
-                }
-                if (!nh) {
-                    const ha = svgEl.getAttribute("height");
-                    if (ha && !ha.includes("%")) nh = parseFloat(ha);
-                }
-                // 3. The browser's actual rendered size (svgContainer width is still set, so clientWidth is valid)
-                if (!nw) nw = svgEl.clientWidth || renderWidth;
-                if (!nh) nh = svgEl.clientHeight || 400;
                 naturalSvgW = nw;
                 naturalSvgH = nh;
                 // Write the natural size back to the SVG attributes so CSS scale is based on a fixed pixel size
@@ -1065,26 +1136,11 @@ export function createCodeBlockView(
                 // otherwise they override the width/height attributes written above and the SVG renders at the container width
                 svgEl.style.maxWidth = "none";
                 svgEl.style.height = "";
-                // Clear the temporary render width (the size has been read)
-                svgContainer.style.width = "";
-                // ── Adaptive container height ────────────────────────
-                // Estimate a suitable container height from the "fill width" scale ratio; tall diagrams expand automatically
-                // fitWidthScale is capped at ≤1.0, so small diagrams aren't enlarged
-                const availableW = mermaidPreview.clientWidth || 800;
-                const fitWidthScale = Math.min((availableW - 40) / nw, 1.0);
-                const idealH = nh * fitWidthScale + 80; // 40px padding top and bottom
-                const maxH = Math.min(window.innerHeight * 0.92, 2000);
-                const finalH = Math.max(300, Math.min(Math.ceil(idealH), maxH));
-                mermaidPreview.style.height = finalH + "px";
-                mermaidPreview.style.minHeight = finalH + "px";
-                // ─────────────────────────────────────────────────────
-            } else {
-                svgContainer.style.width = "";
+                applyAdaptiveHeight();
             }
             lastRenderedCode = code;
             fitToView();
         } catch (err) {
-            svgContainer.style.width = ""; // restore on error too
             const msg = err instanceof Error ? err.message : String(err);
             svgContainer.innerHTML = `
                 <div class="mermaid-error">
@@ -1092,16 +1148,21 @@ export function createCodeBlockView(
                     <pre class="mermaid-error-msg">${escapeHtml(msg)}</pre>
                 </div>`;
         } finally {
-            isRendering = false;
+            inFlightRender = false;
+            const next = pendingCode;
+            pendingCode = null;
+            if (next !== null && next !== lastRenderedCode) void renderMermaid(next);
         }
     }
 
     // Register the Mermaid instance (used to re-render on theme change)
     const mermaidInstance: MermaidInstance = {
-        get isMermaid() { return isMermaid; },
-        get isPreviewMode() { return isPreviewMode; },
-        get lastRenderedCode() { return lastRenderedCode; },
-        renderMermaid,
+        invalidate() {
+            if (!isMermaid || !lastRenderedCode) return;
+            const code = lastRenderedCode;
+            lastRenderedCode = "";
+            if (isPreviewMode) void renderMermaid(code);
+        },
     };
     mermaidInstances.add(mermaidInstance);
 
@@ -1116,6 +1177,12 @@ export function createCodeBlockView(
         // ancestor is un-overridable — visibility is, so the marker's own
         // visibility:visible keeps the grabber alive in preview mode.
         pre.classList.add("code-pre--preview-hidden");
+        // Hide every pane before showing the current type's: a language flip
+        // between previewable types (latex→mermaid) re-enters preview mode
+        // with a DIFFERENT pane, and the old one must not linger (MAR-204).
+        mermaidPreview.style.display = "none";
+        latexPreview.style.display = "none";
+        calcPreview.style.display = "none";
         previewEl().style.display = "flex";
         wordWrapBtn.style.display = "none";
     }
@@ -1171,6 +1238,7 @@ export function createCodeBlockView(
         const onMove = (ev: MouseEvent) => {
             panX = ev.clientX - startX;
             panY = ev.clientY - startY;
+            hasManualTransform = true;
             applyTransform();
         };
         const onUp = () => {
@@ -1200,6 +1268,7 @@ export function createCodeBlockView(
         panX = mx + (panX - mx) * r;
         panY = my + (panY - my) * r;
         zoomLevel = newZoom;
+        hasManualTransform = true;
         applyTransform();
     };
     mermaidPreview.addEventListener("wheel", onPreviewWheel, { passive: false });
@@ -1208,11 +1277,13 @@ export function createCodeBlockView(
     overlayZoomOut.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
         zoomLevel = Math.max(ZOOM_MIN, zoomLevel - ZOOM_BTN);
+        hasManualTransform = true;
         applyTransform();
     });
     overlayZoomIn.addEventListener("mousedown", (e) => {
         e.preventDefault(); e.stopPropagation();
         zoomLevel = Math.min(ZOOM_MAX, zoomLevel + ZOOM_BTN);
+        hasManualTransform = true;
         applyTransform();
     });
     overlayZoomVal.addEventListener("mousedown", (e) => {
@@ -1529,7 +1600,8 @@ export function createCodeBlockView(
             const sH = parseFloat(svgEl2.getAttribute("height") ?? "0");
             if (sW && sH && bW && bH) {
                 lbPanX = 0; lbPanY = 0;
-                lbZoom = Math.max(ZOOM_MIN, Math.min((bW - 80) / sW, (bH - 80) / sH, ZOOM_MAX));
+                // Cap at natural size, same as the inline fitToView.
+                lbZoom = Math.max(ZOOM_MIN, Math.min((bW - 80) / sW, (bH - 80) / sH, 1.0));
                 applyLbTransform();
             }
         }
@@ -1539,32 +1611,20 @@ export function createCodeBlockView(
         // ── Mermaid rendering inside the lightbox ────────────────────────
         async function renderLbMermaid(code: string): Promise<void> {
             lbSvgContainer.innerHTML = `<div class="mermaid-loading">${t("Rendering...")}</div>`;
-            const id = `lbmm-${Math.random().toString(36).slice(2, 9)}`;
-            const hidden = document.createElement("div");
-            hidden.style.cssText = "position:absolute;visibility:hidden;pointer-events:none";
-            document.body.appendChild(hidden);
             try {
-                const mermaid = await ensureMermaid();
-                const { svg } = await mermaid.render(id, code, hidden);
+                const { svg, width, height } =
+                    await renderMermaidToSvg(code, lbPreviewPane.clientWidth || 800);
                 lbSvgContainer.innerHTML = svg;
                 const svgEl = lbSvgContainer.querySelector("svg");
                 if (svgEl) {
-                    const vb = svgEl.getAttribute("viewBox");
-                    if (vb) {
-                        const parts = vb.trim().split(/[\s,]+/);
-                        if (parts.length >= 4) {
-                            const w = parseFloat(parts[2]), h = parseFloat(parts[3]);
-                            if (w && h) { svgEl.setAttribute("width", String(w)); svgEl.setAttribute("height", String(h)); }
-                        }
-                    }
+                    svgEl.setAttribute("width", String(width));
+                    svgEl.setAttribute("height", String(height));
                     svgEl.style.display = "block";
                 }
                 requestAnimationFrame(fitLbView);
             } catch (err) {
                 const msg = err instanceof Error ? err.message : String(err);
                 lbSvgContainer.innerHTML = `<div class="mermaid-error"><span>${IconAlertCircle}</span><pre class="mermaid-error-msg">${escapeHtml(msg)}</pre></div>`;
-            } finally {
-                if (document.body.contains(hidden)) document.body.removeChild(hidden);
             }
         }
 
@@ -1673,10 +1733,12 @@ export function createCodeBlockView(
 
             const newLang = (updatedNode.attrs["language"] as string) || "";
             const wasPreviewable = isPreviewable();
+            const prevKind = isCalc ? "calc" : isLatex ? "latex" : isMermaid ? "mermaid" : "";
             isMermaid = newLang === "mermaid";
             isLatex = normalizeCodeLanguage(newLang) === "latex";
             isCalc = normalizeCodeLanguage(newLang) === "calc" && calcBlocksEnabled();
             const nowPreviewable = isPreviewable();
+            const newKind = isCalc ? "calc" : isLatex ? "latex" : isMermaid ? "mermaid" : "";
 
             picker.update(newLang);
             const classLang = normalizeCodeLanguage(newLang);
@@ -1700,6 +1762,24 @@ export function createCodeBlockView(
                 exitPreviewMode();
                 lastRenderedCode = "";
                 lastCalcRendered = null;
+            }
+            if (wasPreviewable && nowPreviewable && newKind !== prevKind) {
+                // Previewable→previewable language flip (latex→mermaid, …):
+                // neither branch above fires, but the visible pane and the
+                // per-type render memos belong to the OLD type (MAR-204).
+                lastRenderedCode = "";
+                lastCalcRendered = null;
+                if (isPreviewMode) {
+                    if (updatedNode.textContent.trim()) {
+                        // Re-enter: hides the stale pane, shows the new type's.
+                        enterPreviewMode();
+                        setTimeout(() => renderPreview(updatedNode.textContent), 0);
+                    } else {
+                        // Same empty-block guard as the enter branch: an empty
+                        // preview would hide the only editable surface.
+                        exitPreviewMode();
+                    }
+                }
             }
             if (nowPreviewable && isPreviewMode) {
                 const newCode = updatedNode.textContent;
@@ -1758,6 +1838,7 @@ export function createCodeBlockView(
             if (calcRenderTimer) clearTimeout(calcRenderTimer);
             if (lineNumberRaf !== null) cancelAnimationFrame(lineNumberRaf);
             lineNumberResizeObserver?.disconnect();
+            previewResizeObserver?.disconnect();
             mermaidPreview.removeEventListener("wheel", onPreviewWheel);
             // A NodeView can die with its lightbox open (external sync /
             // revert replacing the node): drop the Escape-layer entry and

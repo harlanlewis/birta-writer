@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- e2e harness: mermaid render pipeline (MAR-202/203/205). Real-browser
+     truths jsdom can't reach: the actual Mermaid layout geometry. The pinned
+     regression is measurement corruption — re-rendering used to happen inside
+     the pan/zoom-scaled container, so HTML labels measured wrong and every
+     re-render after the first clipped/mis-sized its text. The fixture is a
+     wide LR flowchart so fit-to-view rests well below 100%. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-inputOption-activeBackground: rgba(14,99,156,0.4); --vscode-inputOption-activeBorder: #007fd4;
+    --vscode-editor-hoverHighlightBackground: rgba(90,93,94,0.25);
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-editorLineNumber-foreground: #858585;
+    --vscode-panel-border: #444444;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = {
+    translations: {}, isMac: true,
+    // `auto` so the window `theme-changed` listener is live (the default
+    // `light` mode ignores editor theme switches by design).
+    mermaidTheme: "auto",
+    toolbar: { placements: {}, order: [] },
+  };
+  window.__posted = [];
+  const DOC = [
+    "# Mermaid render",
+    "",
+    "```mermaid",
+    "flowchart LR",
+    "  A[This is a long node label for measuring] --> B[Second quite long node label here]",
+    "  B --> C[Third extended node label text content]",
+    "  C --> D[Fourth long descriptive label text]",
+    "  D --> E[Fifth wide node label for good measure]",
+    "  E --> F[Sixth terminal node label LongEnd]",
+    "```",
+    "",
+    "after prose",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
