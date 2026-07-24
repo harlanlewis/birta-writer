@@ -26,33 +26,23 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
 
   - Turn your document into a worksheet with variables using `=>`.
 
-    - Construct formulas:
+    - Construct quick formulas…
 
       - a=2, b=4
-      - d=a+b
-      - e=d => 
-      - e=>
-      -
-      - csq => a^2 + b^2 => 20
-      - csq =>
-      - csq=> 20
-      - c => sqrt(csq)=> 4.472136
-      - -log((2/8)\*c)+2^2=> 3.30103
-      - E = mc² =>
-      - dec 24-26= -2
+      - csq=a²+b²
+      - c=sqrt(csq) => 4.472136
+      - bananas = log(c+3^8) => 3.817266
+      - π² => 9.869604
 
-    -
+    - … for something useful…
+
+      - budget = 4000, rent=700
+      - margin=budget-rent => 3300
+
+    - …or just do some quick conversions:
       - 24901 mile in km => 40074.274944
 
-      - t = 60 \* 1000ms in hr
-      - t\*60\*60 => 60
-
-      - log10(4/3\*pi)=> 0.622089
-      - pi=> 3.141593
-      - log2(5\*pi)=> 3.973424
-      - log(5)=> 0.69897
-
-- or  evaluates one with `=>` using named variables you defined earlier in the document and offline unit conversions (`3 km in mi =>`, `rent / budget * 100 =>`) — and a fenced ` ```calc ` block that turns those into a live worksheet, computing every line under one shared scope. All computed locally, never over the network.
+      - t = 60 \* 1000ms in min => 1
 
 - It's private.
 

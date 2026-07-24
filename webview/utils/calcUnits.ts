@@ -2,12 +2,11 @@
  * webview/utils/calcUnits.ts
  *
  * The unit-conversion engine behind calc's `<expr> <from> (in|to) <to>` form —
- * a thin, lazily-loaded seam over mathjs's unit system, replacing the
- * hand-maintained factor tables that used to live in calc.ts. The win is the
+ * a thin, lazily-loaded seam over mathjs's unit system. The point is the
  * CATALOG: every mathjs unit (length, mass, time, volume, area, data,
- * energy, …, with plural and abbreviated spellings) converts with zero table
- * maintenance here; this module owns only a small legacy-alias map and the
- * loader.
+ * energy, …, with plural and abbreviated spellings) converts with zero
+ * factor-table maintenance here; this module owns only a small legacy-alias
+ * map and the loader.
  *
  * SAFETY POSTURE, deliberately narrow: user EXPRESSIONS never reach mathjs —
  * calc.ts's hand-written parser owns all expression evaluation (its

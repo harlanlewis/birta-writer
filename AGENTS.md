@@ -91,6 +91,9 @@ webview/editor.ts                             — Editor composition root (chrom
 webview/format/                               — FormatModule seam: per-format presets/serialization/NodeViews/diff profile (markdown is format #1)
 webview/crashReporter.ts                      — Webview crash boundary (posts structured crash messages)
 webview/editing/blockOps.ts                   — Published block-operations surface for UI components
+webview/utils/calc.ts                         — The deterministic calc engine (eval-free parser, =/=> detection, block evaluation, refresh scanner); units via the lazy mathjs seam in calcUnits.ts
+webview/plugins/calc.ts                       — Inline-calc ProseMirror wiring: advisory =/=> suggestions + the auto-insert rule
+webview/plugins/calcRefresh.ts                — The answer-maintenance engine: refresh, variable cascade, and withdrawal (consent model in its header)
 webview/serialization.ts                      — Serializer config (stringify options, table handler, pure-markdown preset)
 packages/minimal-diff/src/index.ts            — Format-agnostic minimal-diff engine (LCS merge + round-trip protection), workspace package
 webview/utils/minimalDiff.ts                  — Markdown FormatProfile (classifier + normalizers) + profile-bound minimal-diff API

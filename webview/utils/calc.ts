@@ -1,10 +1,18 @@
 /**
  * webview/utils/calc.ts
  *
- * A tiny, deterministic arithmetic evaluator and the caret-detection helper
- * behind inline calc-on-`=` ("Math Notes", MAR-177). Typing an arithmetic
- * expression immediately followed by `=` (e.g. `12 * 4 =`) computes the result
- * so the editor can offer it as an advisory suggestion or, opt-in, insert it.
+ * The deterministic calc engine — every text-level piece of the inline
+ * calculators and the ```calc block, in five sections (each with its own
+ * `──` banner below):
+ *   1. the tokenizer/parser and the one formatting policy;
+ *   2. `=` caret detection ("Math Notes", MAR-177) with its anti-hijack
+ *      boundary discipline;
+ *   3. the living-calculation layer (MAR-196): `=>` detection, functions and
+ *      constants, definitions/scope, units via the lazy calcUnits.ts seam;
+ *   4. the ```calc block evaluator (typed line results for the ledger);
+ *   5. the refresh scanner — the text layer of the answer-maintenance engine
+ *      in plugins/calcRefresh.ts.
+ * Pure functions, no ProseMirror, no DOM.
  *
  * SAFETY IS THE WHOLE POINT. This never touches `eval`, `new Function`, or any
  * other dynamic-code path, and it never reaches the network or an LLM. It is a
@@ -680,8 +688,10 @@ const DROPPABLE_TOKEN = /^[\w.'"°πτ]*[A-Za-zπτ_][\w.'"°πτ]*$/u;
  * Caps that keep `detectArrowExpression` O(1) on the un-debounced keystroke path
  * (`match` runs per transaction). A real inline expression is short and sits
  * within a few tokens of the `=>`, so we only ever look at the tail of a long
- * prose line and drop a bounded number of leading words. Prose longer than this
- * before a `=>` simply isn't offered — the right trade for a per-keystroke hook.
+ * prose line and drop a bounded number of leading words. A run longer than the
+ * cap force-drops its first token (the cut point is never a trusted boundary):
+ * capped PROSE still trims through to its tail expression, while a capped
+ * EXPRESSION refuses outright — its head is an undroppable number/paren.
  */
 const MAX_ARROW_RUN = 160;
 const MAX_ARROW_TOKEN_DROPS = 24;
@@ -874,7 +884,7 @@ export function parseDefinitions(line: string): Array<{ name: string; rhs: strin
  * not resolve (the scope is left untouched — a broken definition never
  * clobbers an earlier good one).
  */
-function applyDefinition(
+export function applyDefinition(
     def: { name: string; rhs: string },
     scope: Map<string, number>,
 ): number | null {
@@ -1011,6 +1021,10 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
             for (const def of defs) {
                 const value = applyDefinition(def, scope);
                 if (value === null) { allApplied = false; continue; }
+                // Same literal-RHS rule as a single definition: a spelled-out
+                // value (`5.0`, `0.50`) never echoes, whatever its canonical
+                // form; only COMPUTED segments show their result.
+                if (/^-?[0-9.]+$/.test(def.rhs)) { continue; }
                 const formatted = formatCalcResult(value);
                 if (formatted !== null && formatted !== def.rhs) { shown.push(formatted); }
             }
@@ -1049,7 +1063,7 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
     });
 }
 
-// ── Refresh scanning (auto-insert mode) ──────────────────────────────────────
+// ── Refresh scanning (the answer-maintenance engine's text layer) ────────────
 
 /** One equation occurrence in a block's text, as the refresh hook consumes it. */
 export interface EquationSpan {
@@ -1057,8 +1071,10 @@ export interface EquationSpan {
      * insert). `arrow`: `expr => result` — the living-calculation form, whose
      * expression may carry variables and units. */
     form: "trailing" | "leading" | "arrow";
-    /** Character span of the expression side, END-INCLUSIVE of the `=` for the
-     * trailing and arrow forms (mirrors the original regex's span semantics). */
+    /** Character span of the expression side. For the trailing and arrow
+     * forms, `expr[1]` is the INDEX OF the `=` itself — consumers slicing
+     * `[expr[0], expr[1])` get the expression without it, and the validation
+     * paths add `+1`/`+2` to include the marker. */
     expr: [number, number];
     /** Character span of the result text, end-exclusive. */
     res: [number, number];
@@ -1073,7 +1089,6 @@ const RESULT_NUMBER = /-?\d(?:[\d,]*\d)?(?:\.\d+)?/y;
 /** The same shape, anchored — validates a backward-collected candidate. */
 const RESULT_NUMBER_EXACT = /^-?\d(?:[\d,]*\d)?(?:\.\d+)?$/;
 const RESULT_CHAR = /[\d,.]/;
-const DIGIT = /[0-9]/;
 /** A char an expression can END on: digit, `)`, or a superscript exponent —
  * `5²=` is a maintainable equation just like `5^2=`. */
 const VALUE_END = /[0-9)⁰¹²³⁴⁵⁶⁷⁸⁹]/;
@@ -1082,8 +1097,9 @@ const ARITH_OR_WS = new RegExp(`[${ARITHMETIC_CLASS} \\t]`);
 const ARROW_RUN_CHAR = /[\wπτ⁰¹²³⁴⁵⁶⁷⁸⁹+\-*/%^().°'" \t]/u;
 
 /**
- * Finds `expr = result` / `result=expr` equation shapes in `text` whose spans
- * intersect [from, to] — the candidates the auto-insert refresh re-validates.
+ * Finds `expr = result` / `result=expr` / `expr => result` equation shapes in
+ * `text` whose spans intersect [from, to] — the candidates the refresh engine
+ * (plugins/calcRefresh.ts) re-validates before touching anything.
  *
  * This is a hand-rolled scan, NOT a regex, on purpose: the natural regex for
  * "an arithmetic run, then `=`, then a number" (`[class]*[0-9)]…=`) backtracks

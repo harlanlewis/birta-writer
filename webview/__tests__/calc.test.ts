@@ -18,6 +18,8 @@ import {
     buildScopeFromLines,
     evaluateCalcBlock,
     findRefreshEquations,
+    expressionUsesVariables,
+    unresolvedVariables,
 } from "../utils/calc";
 
 // The unit engine is a lazy chunk in production (callers await it); tests
@@ -918,6 +920,24 @@ describe("detectArrowExpression — boundary discipline (never compute a fragmen
     it("an expression just under the run cap still computes whole", () => {
         const expr = `${"1+".repeat(75)}1`; // 151 chars < 160
         expect(detectArrowExpression(`${expr} =>`)?.expr).toBe(expr);
+    });
+});
+
+describe("expressionUsesVariables / unresolvedVariables (the cascade's dependency lens)", () => {
+    it("variables count; function calls and pure numbers don't", () => {
+        expect(expressionUsesVariables("x*2")).toBe(true);
+        expect(expressionUsesVariables("2+3")).toBe(false);
+        expect(expressionUsesVariables("log10(100)")).toBe(false);
+        expect(expressionUsesVariables("log10(x)")).toBe(true);
+        // Constants count on purpose — a scope definition can shadow them.
+        expect(expressionUsesVariables("2*pi")).toBe(true);
+    });
+
+    it("unresolvedVariables names exactly what the scope can't answer", () => {
+        const scope = new Map([["x", 1]]);
+        expect(unresolvedVariables("x + y + pi + sqrt(z)", scope)).toEqual(["y", "z"]);
+        expect(unresolvedVariables("x * 2", scope)).toEqual([]);
+        expect(unresolvedVariables("not an expression!!", scope)).toEqual([]);
     });
 });
 
