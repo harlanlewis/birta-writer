@@ -35,7 +35,7 @@
     color: var(--vscode-editorWidget-foreground);
     border: 1px solid var(--vscode-editorWidget-border);
     border-radius: var(--ui-radius-l);
-    box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+    box-shadow: var(--ui-card-shadow-s);
     font-family: var(--vscode-font-family);
     font-size: var(--ui-fs-m);
     line-height: 1.5;
