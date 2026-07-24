@@ -31,7 +31,9 @@ from there) and its **Marketplace publisher id** — not npm.
 
 Icelandic *birta* — to brighten / reveal / **publish**; the source brought into the light and
 shown plainly (*birting* = a publication). Chosen for meaning-fit, clean mouthfeel, and
-availability (`birta.dev` free; no editor/Markdown/notes product on the name).
+availability (`birta.dev` free; no editor/Markdown/notes product on the name). The full
+linguistic and cultural reference — declension, cognates, cross-language false friends,
+sensitivity — lives in [`docs/research/birta-name-meaning.md`](research/birta-name-meaning.md).
 
 Runners-up held in reserve: **Palese**, **Disvela**, **Limpido**. Rejected candidates
 (**Grove, Loam, Gleba, Limn/Limner, Valo, Trazo**, …) fell to collisions, mouthfeel, or the
