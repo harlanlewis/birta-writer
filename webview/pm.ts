@@ -65,7 +65,7 @@ export { canJoin, Mapping, ReplaceAroundStep, ReplaceStep } from "@milkdown/pros
 export type { Mappable } from "@milkdown/prose/transform";
 
 // ─── prose/commands: generic editing commands ───
-export { deleteSelection, lift, splitBlock, toggleMark, wrapIn } from "@milkdown/prose/commands";
+export { deleteSelection, joinTextblockBackward, lift, splitBlock, toggleMark, wrapIn } from "@milkdown/prose/commands";
 
 // ─── prose/history: undo history ───
 export { history, redo, undo } from "@milkdown/prose/history";

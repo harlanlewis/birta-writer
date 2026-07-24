@@ -142,6 +142,10 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
         // chain as insertParagraph's binding, not in a contributed chord.
         "webview/plugins/headingFold/foldCommands.ts": ["Mod-Enter"],
         "webview/plugins/history.ts": ["Mod-Shift-z", "Mod-y", "Mod-z"],
+        // list: typing-level Backspace family — Mod-Backspace (delete to line
+        // start) on an already-empty item must fall through to the same
+        // join/delete as plain Backspace instead of doing nothing.
+        "webview/plugins/list.ts": ["Mod-Backspace"],
         // insertParagraph: Mod-Enter must beat the preset's exit-code-block
         // binding synchronously (registered before the presets, returning
         // false in those contexts); claimed by the key-leak guard.

@@ -253,7 +253,7 @@ Embeds are network features and are **off by default** — with `birta.network.e
    1. Sub-step a
    2. Sub-step b
       1. Deeply nested step
-         1. Even more deeply nested step
+      2. Even more deeply nested step
 3. Third step
 
 ### Task list

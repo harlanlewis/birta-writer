@@ -66,6 +66,8 @@ import {
     uncheckAllTasks,
 } from "../../editing/checklistSink";
 import { mergeableListBoundary, mergeListsAt } from "../../editing/listMerge";
+import { outermostListAt } from "../../editing/listConvert";
+import { listTreeIsLoose, setListTreeSpread } from "../../plugins/list";
 import { blockMarkdownAt, selectInto } from "./turnInto";
 import { moveBlocks, moveFits } from "../../editing/blockOps";
 import {
@@ -1009,6 +1011,24 @@ export function openBlockMenu(
                 icon: IconList,
                 action: () => mergeListsAt(view, mergeBelow),
             });
+        }
+        // Tight/loose is the author's character — the editor never rewrites
+        // it on its own (the spread normalizer is force-only) — so the
+        // deliberate switch lives here. One toggle row, named for the state
+        // it will CREATE, applied to the whole outermost list tree. Tighten
+        // keeps any blank line Markdown requires (a multi-paragraph item).
+        // blockPos sits INSIDE the list chain (conversionPos is before it).
+        const outer = outermostListAt(view.state.doc.resolve(blockPos));
+        if (outer) {
+            const loose = listTreeIsLoose(view.state.doc, outer.pos);
+            action(
+                loose ? t("Tighten List") : t("Loosen List"),
+                ["tighten", "loosen", "spacing", "spread", "blank", "lines", "compact", "list"],
+                {
+                    icon: IconList,
+                    action: () => setListTreeSpread(view, outer.pos, !loose),
+                },
+            );
         }
     }
     action(movesSection ? t("Move Section Up") : t("Move Up"), ["move", "up", "reorder"], {
