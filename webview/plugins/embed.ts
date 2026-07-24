@@ -27,30 +27,35 @@
  *
  * Perf: the card DOM builder is a cached dynamic import (never in the launch
  * graph), and the first decoration pass is armed on idle after first paint — a
- * doc full of embeds must not block interactivity. When disabled the decoration
- * function returns DecorationSet.empty on the first read: no scan, no import, no
- * idle pass (the plugin is also composed conditionally in editor.ts).
+ * doc full of embeds must not block interactivity. With the feature off the
+ * decoration function returns DecorationSet.empty on the first read: no scan,
+ * no import, no idle pass. (The plugin itself is composed unconditionally in
+ * editor.ts — see the comment there — and is inert when gated off.)
  */
 import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { Decoration, DecorationSet, Plugin, PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
-import { recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
+import { providerFor, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
 
 /** Upper bound on how long after first paint the first embed pass may wait. */
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
 
 /**
- * Whether embeds are ACTIVE: the master network switch (MAR-179, offline by
- * default) AND the per-feature key must both be on. The flags are baked into
- * __i18n at panel load (like calc). When the master is off — the default — this
- * is false, so computeEmbedDecorations returns empty and the idle arm never
- * schedules: no card, no thumbnail, no CSP hosts (webviewHtml.ts gates those on
- * the same pair). The FEATURE key defaults on, so the master is the single
- * off-by-default gate.
+ * The two gates (MAR-179 / MAR-186), read separately because they mean
+ * different things. The FEATURE key governs whether embed cards exist at all.
+ * The master NETWORK switch (offline by default) governs *requests*, not
+ * rendering — so it gates only the providers whose card fetches something
+ * (needsNetwork). A no-network provider like GitHub builds its card from the
+ * URL alone and renders even offline; that is the render ladder's Rung 0. The
+ * flags are baked into __i18n at panel load (like calc); regateEmbeds() below
+ * covers live flips.
  */
-function embedsEnabled(): boolean {
-    return (window.__i18n?.network ?? false) && (window.__i18n?.embedsEnabled ?? true);
+function embedsFeatureOn(): boolean {
+    return window.__i18n?.embedsEnabled ?? true;
+}
+function networkOn(): boolean {
+    return window.__i18n?.network ?? false;
 }
 
 /**
@@ -124,9 +129,10 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): () => HTMLElement {
  * Exported for unit testing.
  */
 export function computeEmbedDecorations(state: EditorState): DecorationSet {
-    if (!embedsEnabled()) {
+    if (!embedsFeatureOn()) {
         return DecorationSet.empty;
     }
+    const network = networkOn();
     const { doc, selection } = state;
     const decorations: Decoration[] = [];
     doc.forEach((node, pos) => {
@@ -136,6 +142,11 @@ export function computeEmbedDecorations(state: EditorState): DecorationSet {
         }
         const match = recognizeProvider(href);
         if (!match) {
+            return;
+        }
+        // The network switch gates requests: providers whose card would fetch
+        // (thumbnail/player) wait for it; no-network cards render regardless.
+        if (!network && providerFor(match.kind).needsNetwork) {
             return;
         }
         const from = pos;
@@ -201,8 +212,11 @@ export const embedPlugin = $prose(() =>
         view(view) {
             // Arm the first pass on idle, after paint — decoration work must
             // never block interactivity. A disabled feature schedules nothing.
+            // The arm keys off the FEATURE flag alone: with network off, the
+            // pass still runs for the no-network cards (one idle top-level
+            // scan; network providers are skipped inside the compute).
             let idle: { cancel: () => void } | null = null;
-            if (embedsEnabled()) {
+            if (embedsFeatureOn()) {
                 idle = requestIdle(() => {
                     if (!view.isDestroyed) {
                         view.dispatch(view.state.tr.setMeta(embedPluginKey, { type: "arm" } satisfies EmbedMeta));

@@ -596,9 +596,9 @@ export async function createEditor(
             .use(calcStalePlugin);
     }
 
-    // URL embeds (MAR-56): render a bare provider link (YouTube) as an inline
-    // facade card via a view-only decoration — the source stays a plain link and
-    // round-trips byte-identically.
+    // URL embeds (MAR-56/MAR-186): render a bare provider link (YouTube, Loom,
+    // Figma, GitHub) as an inline card via a view-only decoration — the source
+    // stays a plain link and round-trips byte-identically.
     //
     // Composed UNCONDITIONALLY, unlike the gates above it. A Milkdown plugin
     // cannot be composed after creation, so gating composition on the network

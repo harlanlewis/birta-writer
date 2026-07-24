@@ -115,7 +115,7 @@ describe("offerNetworkOptIn", () => {
     });
 
     it("onEnable should be optional (an embed opt-in has nothing to complete)", () => {
-        offerNetworkOptIn({ label: "Show video card?", anchorRect: null });
+        offerNetworkOptIn({ label: "Show embed card?", anchorRect: null });
 
         expect(() => press(".network-optin__enable")).not.toThrow();
 

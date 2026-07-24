@@ -23,6 +23,8 @@ import { computeEmbedDecorations, embedPlugin, regateEmbeds } from "../plugins/e
 import { renderEmbedCard } from "../utils/embedCard";
 
 const ID = "dQw4w9WgXcQ";
+const LOOM = "0123456789abcdef0123456789abcdef";
+const FKEY = "BAZsTPbh6W1r66Bdo9xkQp";
 
 beforeEach(() => {
     // Embeds are gated on the master network switch (MAR-179, offline by
@@ -124,6 +126,94 @@ describe("renderEmbedCard — the click-to-load facade", () => {
     });
 });
 
+describe("renderEmbedCard — branded facades (Loom, Figma)", () => {
+    it("a Loom card should show the branded facade — no thumbnail, no network, no iframe", () => {
+        const card = renderEmbedCard({ kind: "loom", id: LOOM });
+        // The zero-fetch facade: a local mark instead of a fetched thumbnail.
+        expect(card.querySelector("img")).toBeNull();
+        expect(card.querySelector(".embed-card__brand")).not.toBeNull();
+        expect(card.querySelector(".embed-card__brand-name")!.textContent).toBe("Loom");
+        expect(card.querySelector("iframe")).toBeNull();
+    });
+
+    it("clicking play on a Loom card should build the loom.com/embed iframe", () => {
+        const card = renderEmbedCard({ kind: "loom", id: LOOM });
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        const iframe = card.querySelector<HTMLIFrameElement>("iframe");
+        expect(iframe).not.toBeNull();
+        expect(iframe!.src).toContain(`https://www.loom.com/embed/${LOOM}`);
+        expect(iframe!.getAttribute("referrerpolicy")).toBe("strict-origin-when-cross-origin");
+    });
+
+    it("a Figma card should carry the taller aspect and build the Embed Kit 2.0 iframe on click", () => {
+        const card = renderEmbedCard({ kind: "figma", id: `design/${FKEY}` });
+        // The interactive-canvas frame is taller than a video's 16:9.
+        expect(card.style.getPropertyValue("--embed-aspect")).toBe("4 / 3");
+        expect(card.querySelector("iframe")).toBeNull();
+
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+
+        const iframe = card.querySelector<HTMLIFrameElement>("iframe");
+        expect(iframe).not.toBeNull();
+        expect(iframe!.src).toBe(`https://embed.figma.com/design/${FKEY}?embed-host=birta-writer`);
+    });
+
+    it("without a source URL the external button should fall back to the canonical page", async () => {
+        const { mockVscodeApi } = await import("./setup");
+        mockVscodeApi.postMessage.mockClear();
+        const card = renderEmbedCard({ kind: "loom", id: LOOM });
+
+        card.querySelector<HTMLButtonElement>(".embed-card__external")!.click();
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "openUrl",
+            url: `https://www.loom.com/share/${LOOM}`,
+        });
+    });
+});
+
+describe("renderEmbedCard — the GitHub info card", () => {
+    it("a repo card should be a frameless row with owner/repo and NO iframe path at all", () => {
+        const card = renderEmbedCard({ kind: "github", id: "harlanlewis/birta-writer" });
+        expect(card.classList.contains("embed-card--info")).toBe(true);
+        expect(card.dataset["embedKind"]).toBe("github");
+        // No player anatomy whatsoever — this card can never make a request.
+        expect(card.querySelector(".embed-card__frame")).toBeNull();
+        expect(card.querySelector(".embed-card__play")).toBeNull();
+        expect(card.querySelector("iframe")).toBeNull();
+        expect(card.querySelector("img")).toBeNull();
+        expect(card.querySelector(".embed-card__title")!.textContent).toBe("harlanlewis/birta-writer");
+        // A bare repo has no detail line.
+        expect(card.querySelector(".embed-card__detail")).toBeNull();
+    });
+
+    it("PR, issue, and file cards should carry their detail line", () => {
+        const pull = renderEmbedCard({ kind: "github", id: "o/r/pull/42" });
+        expect(pull.querySelector(".embed-card__detail")!.textContent).toBe("Pull request #42");
+
+        const issue = renderEmbedCard({ kind: "github", id: "o/r/issues/7" });
+        expect(issue.querySelector(".embed-card__detail")!.textContent).toBe("Issue #7");
+
+        const blob = renderEmbedCard({ kind: "github", id: "o/r/blob/main/src/deep/file.ts" });
+        expect(blob.querySelector(".embed-card__detail")!.textContent).toBe("src/deep/file.ts");
+    });
+
+    it("the external button should open the page through the extension", async () => {
+        const { mockVscodeApi } = await import("./setup");
+        mockVscodeApi.postMessage.mockClear();
+        const source = "https://github.com/o/r/pull/42";
+        const card = renderEmbedCard({ kind: "github", id: "o/r/pull/42" }, source);
+
+        const external = card.querySelector<HTMLButtonElement>(".embed-card__external")!;
+        const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        external.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true); // caret-safety contract holds here too
+
+        external.click();
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openUrl", url: source });
+    });
+});
+
 describe("computeEmbedDecorations — trigger conditions", () => {
     it("a bare YouTube link on its own line should get a host node deco + a card widget", async () => {
         const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
@@ -199,14 +289,63 @@ describe("computeEmbedDecorations — trigger conditions", () => {
     });
 
     it("offline by default (network=false) should render nothing even with the feature on", async () => {
-        // The master network switch gates embeds: with it off (the default),
-        // no card renders even though embedsEnabled defaults on (MAR-179).
+        // The master network switch gates network-using providers: with it off
+        // (the default), a YouTube card — which fetches a thumbnail — never
+        // renders even though embedsEnabled defaults on (MAR-179).
         window.__i18n = { translations: {}, network: false, embedsEnabled: true } as unknown as typeof window.__i18n;
         const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
         const view = editorView(editor);
         caretTo(view, 1);
         const set = computeEmbedDecorations(view.state);
         expect(decoCounts(set)).toEqual({ nodes: 0, widgets: 0 });
+        await editor.destroy();
+    });
+
+    it("a GitHub link should render its card even with the network switch OFF", async () => {
+        // The render ladder's Rung 0 (MAR-186): the switch gates REQUESTS, and
+        // the GitHub info card makes none — built from URL parts alone, it
+        // renders offline. Only network-using providers wait for the switch.
+        window.__i18n = { translations: {}, network: false, embedsEnabled: true } as unknown as typeof window.__i18n;
+        const editor = await makeCorpusEditor(
+            `# Title\n\nhttps://github.com/harlanlewis/birta-writer\n\nhttps://youtu.be/${ID}\n`,
+        );
+        const view = editorView(editor);
+        caretTo(view, 1);
+        const counts = decoCounts(computeEmbedDecorations(view.state));
+        // Exactly the GitHub paragraph decorates; the YouTube one stays dark.
+        expect(counts).toEqual({ nodes: 1, widgets: 1 });
+        await editor.destroy();
+    });
+
+    it("embedsEnabled=false should silence the no-network cards too", async () => {
+        // The FEATURE flag is the one switch that turns cards off entirely.
+        window.__i18n = { translations: {}, network: false, embedsEnabled: false } as unknown as typeof window.__i18n;
+        const editor = await makeCorpusEditor(`# Title\n\nhttps://github.com/owner/repo\n`);
+        const view = editorView(editor);
+        caretTo(view, 1);
+        expect(decoCounts(computeEmbedDecorations(view.state))).toEqual({ nodes: 0, widgets: 0 });
+        await editor.destroy();
+    });
+
+    it("every provider kind should decorate a bare link on its own line", async () => {
+        const editor = await makeCorpusEditor(
+            [
+                "# Title",
+                "",
+                `https://youtu.be/${ID}`,
+                "",
+                `https://www.loom.com/share/${LOOM}`,
+                "",
+                `https://www.figma.com/design/${FKEY}/My-File`,
+                "",
+                "https://github.com/owner/repo/pull/42",
+                "",
+            ].join("\n"),
+        );
+        const view = editorView(editor);
+        caretTo(view, 1);
+        const counts = decoCounts(computeEmbedDecorations(view.state));
+        expect(counts).toEqual({ nodes: 4, widgets: 4 });
         await editor.destroy();
     });
 });
@@ -258,7 +397,18 @@ describe("regateEmbeds — a gate flip takes effect without a doc edit", () => {
 
 describe("serialization is untouched by the embed decorations (round-trip proof)", () => {
     it("the embed plugin should add nothing to the serialized markdown", async () => {
-        const source = `# Title\n\nhttps://www.youtube.com/watch?v=${ID}\n`;
+        const source = [
+            "# Title",
+            "",
+            `https://www.youtube.com/watch?v=${ID}`,
+            "",
+            `https://www.loom.com/share/${LOOM}`,
+            "",
+            `https://www.figma.com/design/${FKEY}/My-File`,
+            "",
+            "https://github.com/owner/repo/pull/42",
+            "",
+        ].join("\n");
         // Decorations live in props.decorations, never in state.doc, so getMarkdown
         // cannot see them: the serialization with the plugin active is identical to
         // the serialization without it (whatever the serializer's own autolink

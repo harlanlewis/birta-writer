@@ -213,21 +213,23 @@ export function buildWebviewHtml(
     const calcAutoInsert = config.calcAutoInsert;
     const autoUpdateAnchors = config.autoUpdateAnchors;
     const embedsEnabled = config.embedsEnabled;
-    // URL embeds (MAR-56) need two extra CSP grants: the YouTube thumbnail image
-    // hosts (img-src) and the privacy-mode player iframe host (a new frame-src,
-    // since default-src 'none' otherwise blocks all iframes). Added ADDITIVELY,
-    // as specific hosts with no wildcards.
+    // URL embeds (MAR-56/MAR-186) need two extra CSP grants: the thumbnail
+    // image hosts (img-src — YouTube is the only thumbnail provider) and the
+    // provider player iframe hosts (frame-src, since default-src 'none'
+    // otherwise blocks all iframes). Added ADDITIVELY, as specific hosts with
+    // no wildcards; a provider without a player (GitHub's info card) adds
+    // nothing here.
     //
     // Emitted UNCONDITIONALLY, even though embeds may be gated off. CSP is fixed
     // at panel load and cannot change without recreating the webview, so gating
     // these grants meant that enabling embeds in a running editor produced a
     // card with a broken thumbnail — the grant was missing no matter what the
-    // plugin did. A grant PERMITS a request; it never makes one. With embeds
-    // off, no card is built, no thumbnail element exists, and nothing is
+    // plugin did (MAR-183). A grant PERMITS a request; it never makes one. With
+    // embeds off, no card is built, no thumbnail element exists, and nothing is
     // fetched: the offline-by-default guarantee lives in the gated code paths,
     // not in the absence of a CSP entry.
     const embedImgHosts = " https://i.ytimg.com https://img.youtube.com";
-    const embedFrameSrc = "\n             frame-src https://www.youtube-nocookie.com;";
+    const embedFrameSrc = "\n             frame-src https://www.youtube-nocookie.com https://www.loom.com https://embed.figma.com;";
     const checklistSinkChecked = config.checklistSinkChecked;
     const codeBlockWordWrap = resolveCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
     const tocAutoHideThreshold = clampNumberSetting(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);
