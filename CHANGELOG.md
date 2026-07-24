@@ -157,7 +157,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
-- **Network consent is now user-level only** — the settings that let the editor touch the network or write fetched content into a file (`birta.network.enabled`, `birta.embeds.enabled`, `birta.pasteUnfurl.enabled`, `birta.pasteUnfurl.autoApply`) can no longer be set from a workspace's `.vscode/settings.json`. Previously a repository you opened could quietly enable them for you; now only your own user settings decide, and the offline-by-default guarantee holds regardless of what a workspace ships.
+- **Network consent is now user-level only** — the settings that let the editor touch the network or write fetched content into a file (`birta.network.enabled`, `birta.embeds.enabled`, `birta.pasteUnfurl.enabled`, `birta.pasteUnfurl.autoApply`) can no longer be set from a workspace's `.vscode/settings.json`. Previously a repository you opened could quietly enable them for you; now only your own user settings decide, and the offline-by-default guarantee holds regardless of what a workspace ships. Accepting an in-editor "Enable" prompt likewise always records your choice in your user settings, never in a workspace file.
+- **Embed players run in a sandboxed frame** — the click-to-load player iframe (YouTube, Loom, Figma) now carries a minimal capability sandbox: the framed page can run its player but cannot navigate your editor, submit forms, trigger downloads, or write to your clipboard. What hosts may be framed was already pinned by the content-security-policy; this pins what a framed page may do.
 
 ---
 

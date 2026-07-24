@@ -29,12 +29,16 @@ import {
 } from "./embedProviders";
 import { notifyOpenUrl } from "../messaging";
 import { t } from "../i18n";
+// icons.ts is already in the eager bundle; importing shared glyphs here only
+// references that module — it de-duplicates without growing either chunk.
+import { IconExternalLink, IconEye } from "../ui/icons";
 
-/** A play-triangle glyph, painted with currentColor. */
+/** A play-triangle glyph, painted with currentColor (video providers). */
 const PLAY_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>`;
 
-/** External-link glyph (arrow out of a box), painted with currentColor. */
-const EXTERNAL_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+/** Overlay glyphs by the provider table's activateIcon key. A play triangle
+ * promises playback, so an interactive canvas (Figma) gets the preview eye. */
+const ACTIVATE_ICONS = { play: PLAY_ICON, preview: IconEye } as const;
 
 /**
  * Monochrome provider marks, local to this lazy chunk (ui/icons.ts is in the
@@ -83,7 +87,16 @@ function loadPlayer(frame: HTMLElement, provider: EmbedProvider, id: string): vo
     const iframe = document.createElement("iframe");
     iframe.className = "embed-card__iframe";
     iframe.src = provider.playerUrl!(id);
-    iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture");
+    // Capability containment (adversarial-review hardening, 2026-07-24): CSP
+    // frame-src pins WHICH hosts may be framed; sandbox constrains what the
+    // framed page may DO. All three players are script-driven and need their
+    // own storage (allow-scripts + allow-same-origin); allow-popups covers
+    // in-player external links (popups inherit the sandbox); presentation
+    // covers cast/fullscreen flows. Deliberately absent: forms, downloads,
+    // top-navigation, pointer-lock — and clipboard-write from the allow list,
+    // which playback never needed.
+    iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-presentation");
+    iframe.setAttribute("allow", "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture");
     iframe.setAttribute("allowfullscreen", "");
     // Some providers refuse playback without a referrer they recognize —
     // YouTube's "Error 153 — video player configuration error" is the canonical
@@ -108,7 +121,7 @@ function externalButton(provider: EmbedProvider, id: string, sourceUrl?: string)
     external.className = "embed-card__external";
     external.title = t(provider.openLabel);
     external.setAttribute("aria-label", t(provider.openLabel));
-    external.innerHTML = EXTERNAL_ICON;
+    external.innerHTML = IconExternalLink;
     external.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -160,7 +173,7 @@ function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: strin
     play.type = "button";
     play.className = "embed-card__play";
     play.setAttribute("aria-label", t(provider.activateLabel ?? "Load preview"));
-    play.innerHTML = PLAY_ICON;
+    play.innerHTML = ACTIVATE_ICONS[provider.activateIcon ?? "play"];
     play.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();

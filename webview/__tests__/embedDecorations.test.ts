@@ -112,6 +112,20 @@ describe("renderEmbedCard — the click-to-load facade", () => {
         expect(iframe!.getAttribute("referrerpolicy")).toBe("strict-origin-when-cross-origin");
     });
 
+    it("the player iframe should be sandboxed with a minimal capability set", () => {
+        // CSP frame-src pins WHICH host may load; sandbox pins what it may DO.
+        // Pinned so a future provider can't quietly ship a fully-capable frame.
+        const card = renderEmbedCard({ kind: "youtube", id: ID });
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        const iframe = card.querySelector<HTMLIFrameElement>("iframe")!;
+
+        expect(iframe.getAttribute("sandbox")).toBe(
+            "allow-scripts allow-same-origin allow-popups allow-presentation",
+        );
+        // clipboard-write was never needed for playback — keep it out.
+        expect(iframe.getAttribute("allow")).not.toContain("clipboard-write");
+    });
+
     it("the Open-on-YouTube button should route the SOURCE url through the extension", async () => {
         const { mockVscodeApi } = await import("./setup");
         mockVscodeApi.postMessage.mockClear();
@@ -156,6 +170,18 @@ describe("renderEmbedCard — branded facades (Loom, Figma)", () => {
         const iframe = card.querySelector<HTMLIFrameElement>("iframe");
         expect(iframe).not.toBeNull();
         expect(iframe!.src).toBe(`https://embed.figma.com/design/${FKEY}?embed-host=birta-writer`);
+    });
+
+    it("Figma's overlay should be the preview glyph, not a play triangle", () => {
+        // A play triangle promises video playback; a design canvas loads a
+        // preview. Video providers keep the triangle.
+        const figma = renderEmbedCard({ kind: "figma", id: `design/${FKEY}` });
+        const loom = renderEmbedCard({ kind: "loom", id: LOOM });
+        const figmaGlyph = figma.querySelector(".embed-card__play")!.innerHTML;
+        const loomGlyph = loom.querySelector(".embed-card__play")!.innerHTML;
+        expect(figmaGlyph).not.toContain("M8 5v14l11-7z"); // the play triangle path
+        expect(figmaGlyph).toContain("circle"); // the eye glyph's pupil
+        expect(loomGlyph).toContain("M8 5v14l11-7z");
     });
 
     it("without a source URL the external button should fall back to the canonical page", async () => {

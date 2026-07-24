@@ -61,6 +61,12 @@ export interface EmbedProvider {
     openLabel: string;
     /** t() key for the facade's activate overlay ("Play video"). */
     activateLabel?: string;
+    /**
+     * Overlay glyph for the activate button. "play" (the default) is a media
+     * triangle — honest for video; an interactive canvas (Figma) uses
+     * "preview" so the affordance doesn't promise playback.
+     */
+    activateIcon?: "play" | "preview";
     /** t() key for the player iframe's title attribute. */
     playerTitle?: string;
 }
@@ -253,7 +259,14 @@ export function githubId(raw: string): string | null {
         return null;
     }
     const segments = url.pathname.split("/").filter(Boolean);
-    if (segments.length < 2 || !segments.every((s) => GITHUB_SEGMENT.test(s))) {
+    // The `.`/`..` rejection is belt-and-braces: `new URL()` normalizes dot
+    // segments out of pathname before we split, so none should ever arrive —
+    // but the extractor must be safe on its own terms, not by relying on that
+    // upstream side effect (adversarial-review finding, 2026-07-24).
+    if (
+        segments.length < 2 ||
+        !segments.every((s) => GITHUB_SEGMENT.test(s) && !/^\.\.?$/.test(s))
+    ) {
         return null;
     }
     const [owner, repo, section, fourth] = segments;
@@ -342,6 +355,7 @@ const PROVIDERS: readonly EmbedProvider[] = [
         externalUrl: (id) => `https://www.figma.com/${id}`,
         openLabel: "Open in Figma",
         activateLabel: "Load Figma preview",
+        activateIcon: "preview",
         playerTitle: "Figma embed",
     },
     {
@@ -363,16 +377,40 @@ export function providerFor(kind: EmbedKind): EmbedProvider {
 }
 
 /**
+ * Recognition cache. The embed plugin re-walks every bare-link paragraph on
+ * selection changes (reveal-on-caret needs the selection), so without a cache
+ * every caret move re-parses every bare URL through up to four `new URL()`
+ * calls — measurable on link-heavy documents (perf review, 2026-07-24). The
+ * result for a given href never changes within a session (the table is
+ * static), so a memo makes repeat walks O(1) per link. Bounded: cleared
+ * wholesale when full — simpler than LRU, and a working set over 512 distinct
+ * hrefs in one document is already pathological.
+ */
+const RECOGNIZE_CACHE = new Map<string, EmbedMatch | null>();
+const RECOGNIZE_CACHE_MAX = 512;
+
+/**
  * Recognize which provider (if any) a bare link href points at. Returns the
  * provider kind and stable id, or null when no provider matches. Pure and
- * deterministic — the plugin calls this while walking bare-link paragraphs.
+ * deterministic (memoized) — the plugin calls this while walking bare-link
+ * paragraphs. Callers must treat the returned match as read-only.
  */
 export function recognizeProvider(url: string): EmbedMatch | null {
+    const cached = RECOGNIZE_CACHE.get(url);
+    if (cached !== undefined) {
+        return cached;
+    }
+    let match: EmbedMatch | null = null;
     for (const provider of PROVIDERS) {
         const id = provider.extractId(url);
         if (id) {
-            return { kind: provider.kind, id };
+            match = { kind: provider.kind, id };
+            break;
         }
     }
-    return null;
+    if (RECOGNIZE_CACHE.size >= RECOGNIZE_CACHE_MAX) {
+        RECOGNIZE_CACHE.clear();
+    }
+    RECOGNIZE_CACHE.set(url, match);
+    return match;
 }

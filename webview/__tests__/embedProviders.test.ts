@@ -238,6 +238,28 @@ describe("recognizeProvider", () => {
     });
 });
 
+describe("recognizeProvider — memoization", () => {
+    it("repeated and interleaved calls should return consistent results", () => {
+        // The plugin re-walks bare links on selection changes; recognition is
+        // memoized so those walks are cheap. Pin that the cache never changes
+        // an answer — hits and misses agree with a fresh computation.
+        const urls = [
+            `https://youtu.be/${ID}`,
+            `https://www.loom.com/share/${LOOM}`,
+            "https://example.com/not-a-provider",
+            `https://youtu.be/${ID}`, // repeat (cache hit)
+            "https://github.com/owner/repo",
+            "https://example.com/not-a-provider", // repeat null (cached null)
+        ];
+        const first = urls.map((u) => recognizeProvider(u));
+        const second = urls.map((u) => recognizeProvider(u));
+        expect(second).toEqual(first);
+        expect(first[0]).toEqual({ kind: "youtube", id: ID });
+        expect(first[2]).toBeNull();
+        expect(first[5]).toBeNull();
+    });
+});
+
 describe("providerFor", () => {
     it("only github should be usable without the network", () => {
         expect(providerFor("github").needsNetwork).toBe(false);

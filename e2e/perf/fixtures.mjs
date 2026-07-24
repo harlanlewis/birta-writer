@@ -9,6 +9,10 @@
  *   large      — medium content scaled up, stresses parse + round-trip
  *   code-heavy — many code blocks across languages + a mermaid diagram
  *   math       — inline + block KaTeX, exercises the (lazy) math path
+ *   link-heavy — many BARE autolinks on their own lines (provider and not),
+ *                exercising the embed recognizer walk that titled links never
+ *                reach (bareLinkHref requires text === href) — the path the
+ *                2026-07-24 perf review found unmeasured
  */
 
 const LANGS = [
@@ -106,7 +110,23 @@ const math = (() => {
     return out;
 })();
 
-export const FIXTURES = { tiny, medium, large, "code-heavy": codeHeavy, math };
+const linkHeavy = (() => {
+    // A reading-list/link-dump shape: hundreds of bare autolinks each on its
+    // own line, mixing recognized providers (GitHub is the no-network card
+    // that renders even offline), non-provider hosts (the recognizer's
+    // all-four-extractors miss path), and interleaved prose. Deterministic —
+    // ids are index-derived.
+    let out = "# Link-heavy document\n\nA reading list of bare links, one per line.\n\n";
+    for (let i = 1; i <= 120; i++) {
+        out += `Note ${i}: a line of prose between the links.\n\n`;
+        out += `https://github.com/owner-${i}/repo-${i}\n\n`;
+        out += `https://example.com/article/${i}\n\n`;
+        out += `https://www.youtube.com/watch?v=abcdefgh${String(i).padStart(3, "0")}\n\n`;
+    }
+    return out;
+})();
+
+export const FIXTURES = { tiny, medium, large, "code-heavy": codeHeavy, math, "link-heavy": linkHeavy };
 
 // ~300 KB — the MAR-137 typing-lag tail (bites from ~40 KB up). Typing-harness
 // only: kept out of FIXTURES so `pnpm perf` runtimes and baseline.json stay
