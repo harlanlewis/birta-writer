@@ -527,7 +527,7 @@ function styleFinding(view: EditorView, from: number, to: number, style: StyleFi
  * (smallest span) first — so a filler inside a long sentence lists the filler
  * above the sentence. Duplicate (from,to,tag) findings are collapsed.
  */
-function findingsAt(view: EditorView, pos: number): PopupFinding[] {
+export function findingsAt(view: EditorView, pos: number): PopupFinding[] {
     const state = proofreadPluginKey.getState(view.state);
     if (!state) { return []; }
     const hits = state.combined.find(pos, pos)

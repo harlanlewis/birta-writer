@@ -25,6 +25,7 @@ import {
     calcArrowSuggestPlugin,
     calcAutoInsertPlugin,
     calcRefreshPlugin,
+    calcStalePlugin,
     calcSuggestPlugin,
     caretScrollMarginPlugin,
     cellClickFixPlugin,
@@ -591,7 +592,8 @@ export async function createEditor(
             .use(calcSuggestPlugin)
             .use(calcArrowSuggestPlugin)
             .use(calcAutoInsertPlugin)
-            .use(calcRefreshPlugin);
+            .use(calcRefreshPlugin)
+            .use(calcStalePlugin);
     }
 
     // URL embeds (MAR-56): render a bare provider link (YouTube) as an inline

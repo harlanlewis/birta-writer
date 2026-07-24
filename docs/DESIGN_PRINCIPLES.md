@@ -29,6 +29,15 @@ learn the vocabulary once and trust it everywhere.
   warning color, grammar the info color, style the muted description color. Hue
   tells you *which engine* flagged it. This is the one place color carries
   meaning, so nothing else in the proofreading layer competes for it.
+- **A warning-tinted background means "this computed number no longer matches
+  the document."** Reserved for values the editor itself computed (living-calc
+  answers) whose premise elsewhere has changed — never for prose. Adding a
+  strikethrough escalates it to "it no longer computes at all — remove it,"
+  composing the delete-this vocabulary above (removal is exactly what the
+  offered fix does). Deliberately a background, not an underline: every dotted
+  underline is spoken for, and a cue about a *number's validity* must not read
+  as prose advice. (`calc-cue--stale` / `calc-cue--broken`,
+  `webview/plugins/calcStale.ts`.)
 
 The corollary: **don't stack a second visual channel onto a decoration to say
 the same thing.** iA Writer can lean on hue alone because its canvas is otherwise
@@ -66,6 +75,31 @@ Proofreading (and anything like it) advises; it never acts on its own.
   "all clear" owes the user a visible cue.
 - **A disabled feature costs nothing.** No scan, no decoration pass, no lazy
   dependency loaded. (See "Launch performance" in `AGENTS.md`.)
+
+## Maintained dependencies
+
+Some things the editor writes depend on other parts of the document — a calc
+answer on its definitions, a section link on its heading's slug. The contract,
+distilled from the living-calculations and anchor-sync engines, is one ladder:
+
+- **Auto-maintain only what the user created through the editor.** An accepted
+  calc answer or a renamed heading's links may be updated in place as the user
+  edits — the consent was given when the artifact was accepted, and maintenance
+  is not insertion. Text the editor didn't write is never "maintained."
+- **When a premise provably vanishes, withdraw — don't leave a stale artifact.**
+  A deleted definition withdraws its dependent answers (`expr =>`); a stale
+  number masquerading as live is the one lie a computed value must not tell.
+  Withdrawal is quiet and one undo restores everything.
+- **When it vanishes *unprovably*, cue — don't rewrite.** A block move or an
+  edit made outside the editor breaks the proof that the artifact was ever
+  live, so the text stands untouched and a decoration says it no longer
+  follows (see the warning-tint vocabulary above), with the fix one click away.
+- **Never fight an external edit.** Content that arrives from the raw editor or
+  a git checkout is the author's text, whatever it says — external syncs are
+  exactly when cues appear and exactly when rewrites must not.
+
+A new dependent artifact (transcluded values, computed tables, cross-file
+links) should slot into this ladder rather than invent its own consent model.
 
 ## Analysis never blocks interactivity
 
