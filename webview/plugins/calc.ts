@@ -1,50 +1,54 @@
 /**
- * Inline calc-on-`=` — deterministic arithmetic at the caret ("Math Notes",
- * MAR-177).
+ * Inline-calc ProseMirror wiring: the advisory `=` suggestion ("Math Notes",
+ * MAR-177), the advisory `=>` living-calculation suggestion (MAR-196), and
+ * the opt-in auto-insert input rule. The evaluation and the deliberately-
+ * narrow caret detection live in webview/utils/calc.ts (a safe hand-written
+ * parser — never eval/Function, no network, no LLM); the answer-maintenance
+ * engine (refresh, variable cascade, withdrawal) lives in ./calcRefresh.ts,
+ * which imports this module's shared helpers (blockCalcText, scopeUpTo, the
+ * gates).
  *
- * Typing an arithmetic expression immediately followed by `=` (e.g. `12 * 4 =`,
- * `(3 + 4) / 2 =`) computes the result and offers it. By default the result is
- * ADVISORY: a single-row suggestion the user confirms with Tab, which writes
- * the number into the document as ordinary text. Return is deliberately left
- * free to start a new line — the pre-highlighted row never captures the user's
- * Enter (see caretSuggest.ts handleKeydown). It never silently mutates the
- * line. The opt-in `birta.calc.autoInsert` setting flips this to insert-on-`=`
- * via an input rule instead.
+ * - Advisory mode reuses the shared caret-suggestion controller
+ *   (caretSuggest.ts, the same machinery behind link/wikilink autocomplete):
+ *   debounce, stale-reply generations, Escape suppression, capture-phase
+ *   Enter/Tab handling, IME safety. The controller refuses code blocks and
+ *   inline code, `autoActivate` pre-selects the lone result so Tab confirms
+ *   it (Enter deliberately stays a newline), and accepting at a stale answer
+ *   REPLACES the old number (staleResultLengthAfter). The `=` fetch is
+ *   synchronous; the `=>` fetch awaits the lazy unit engine.
+ * - Auto-insert mode is a plain input rule: when the `=` is typed to
+ *   complete an expression, it appends `= <result>` right then.
  *
- * The evaluation and the deliberately-narrow caret detection live in
- * webview/utils/calc.ts (a safe hand-written parser — never eval/Function, no
- * network, no LLM); this module is only the ProseMirror wiring:
- *
- * - Advisory mode reuses the shared caret-suggestion controller (caretSuggest.ts,
- *   the same machinery behind link/wikilink autocomplete): debounce, stale-reply
- *   generations, Escape suppression, capture-phase Enter/Tab handling, IME
- *   safety. The controller already refuses code blocks and inline code, so calc
- *   never fires inside them. Its `fetch` is synchronous (compute, call back
- *   immediately — no async, no network), and `autoActivate` pre-selects the lone
- *   result so Tab confirms it without an arrow key first (Enter stays a newline).
- * - Auto-insert mode is a plain input rule: when the `=` is typed to complete an
- *   expression, it appends `= <result>` right then, keeping what the user typed.
- *
- * Both paths are gated on `birta.calc.enabled` (baked into window.__i18n at
- * panel load, like smartLinks). A disabled feature costs nothing: `match` /
- * the rule handler return null on the first property read, so no menu, no
- * evaluation, no work runs.
+ * Everything here is gated on `birta.calc.enabled` (baked into
+ * window.__i18n at panel load, like smartLinks). A disabled feature costs
+ * nothing: `match` / the rule handler return null on the first property
+ * read, so no menu, no evaluation, no work runs.
  */
-import { InputRule, Plugin, PluginKey } from "../pm";
-import type { EditorView } from "../pm";
+import { InputRule, PluginKey } from "../pm";
+import type { EditorState, EditorView, Node as ProseNode } from "../pm";
 import { $inputRule, $prose } from "@milkdown/utils";
 import { createSuggestMenuFromRows } from "../components/pathLink/linkTargetComplete";
-import { caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
-import { detectCalcExpression, evaluateExpression, formatCalcResult } from "../utils/calc";
+import { CARET_CONTEXT_WINDOW, caretSuggestPlugin, type CaretSuggestSpec } from "./caretSuggest";
+import {
+    ARITHMETIC_CLASS,
+    buildScopeFromLines,
+    detectArrowExpression,
+    detectCalcExpression,
+    ensureCalcUnits,
+    evaluateCalc,
+    evaluateExpression,
+    formatCalcResult,
+    isCalcStructurallyValid,
+} from "../utils/calc";
 import { notifySetCalcAutoInsert } from "../messaging";
 import { t } from "../i18n";
 
 /** calc is on by default; both flags are baked into __i18n at panel load. */
-function calcEnabled(): boolean {
+export function calcEnabled(): boolean {
     return window.__i18n?.calcEnabled ?? true;
 }
 /** Auto-insert is opt-in (advisory by default). */
-function calcAutoInsert(): boolean {
+export function calcAutoInsert(): boolean {
     return window.__i18n?.calcAutoInsert ?? false;
 }
 
@@ -78,7 +82,8 @@ const calcSuggestSpec: CaretSuggestSpec = {
     // networked — the whole point of calc is determinism.
     fetch(query, cb) {
         const value = evaluateExpression(query);
-        cb(value === null ? [] : [formatCalcResult(value)]);
+        const result = value === null ? null : formatCalcResult(value);
+        cb(result === null ? [] : [result]);
     },
 
     buildMenu(items, match, anchor, onPick) {
@@ -102,6 +107,9 @@ const calcSuggestSpec: CaretSuggestSpec = {
             ],
             anchor,
             onPick,
+            // The one moment a user provably wants inline math is the only
+            // in-product surface that can teach the richer form.
+            { footer: t("=> also computes — with variables and unit conversions") },
         );
     },
 
@@ -114,8 +122,9 @@ const calcSuggestSpec: CaretSuggestSpec = {
             if (window.__i18n) { window.__i18n.calcAutoInsert = true; }
             notifySetCalcAutoInsert(true);
             const value = evaluateExpression(match.query);
-            if (value !== null) {
-                applyCalcResult(view, match.start, match.caret, formatCalcResult(value));
+            const result = value === null ? null : formatCalcResult(value);
+            if (result !== null) {
+                applyCalcResult(view, match.start, match.caret, result);
             }
             return;
         }
@@ -138,15 +147,186 @@ const calcSuggestSpec: CaretSuggestSpec = {
  */
 function applyCalcResult(view: EditorView, start: number, caret: number, result: string): void {
     const region = view.state.doc.textBetween(start, caret);
-    const replacement = region.startsWith("=")
+    const leading = region.startsWith("=");
+    const replacement = leading
         ? `${result}${region}`
         : region.replace(/=[ \t]*$/, `= ${result}`);
-    view.dispatch(view.state.tr.insertText(replacement, start, caret).scrollIntoView());
+    // Trailing form only: consume a stale answer after the caret so
+    // re-accepting at `expr =| old` replaces the old number (the leading
+    // form writes BEFORE the `=`, where nothing stale can sit).
+    const end = leading ? caret : caret + staleResultLengthAfter(view.state, caret);
+    view.dispatch(view.state.tr.insertText(replacement, start, end).scrollIntoView());
 }
 
 /** Advisory inline-calc plugin (registered beside the other caret suggestions). */
 export const calcSuggestPlugin = $prose(() =>
     caretSuggestPlugin(calcSuggestKey, calcSuggestSpec),
+);
+
+// ── `=>` living calculations: variables + offline units (MAR-196) ────────────
+
+const calcArrowSuggestKey = new PluginKey("MD_CALC_ARROW_SUGGEST");
+
+/**
+ * The variable scope a `=>` at `caret` resolves against: every `name = value`
+ * definition from the document start up to the caret, in reading order. Only
+ * definitions ABOVE the cursor count, so a `=>` never resolves against one that
+ * appears after it — the value shown matches what a reader sees scanning down to
+ * that line, and a later redefinition can't retroactively change an earlier
+ * result.
+ *
+ * Skips code blocks (a `name = value` in a fence is source, not a definition)
+ * and headings (a title is not a data line); hard breaks split a paragraph into
+ * lines while inline atoms mask to ￼ (never a name or digit). Everything at or
+ * after the caret is pruned before any text work, so the scan pays only for the
+ * document ABOVE the cursor, not the whole file — and runs only on the debounced
+ * request, never the keystroke path.
+ */
+function scopeUpToCaret(state: EditorState): Map<string, number> {
+    return scopeUpTo(state, state.selection.from);
+}
+
+/**
+ * A textblock's calc-visible text, offset-preserving: every char maps 1:1 to
+ * a document position after blockStart. Hard breaks become `\n` (so LINES are
+ * real — a definition on the second hardbreak line is a definition), inline
+ * atoms mask to `￼` (never an operand), and INLINE-CODE text masks to `￼`
+ * per character — `` `x = 4` `` is source: not a definition, not an equation,
+ * exactly like a code block.
+ */
+export function blockCalcText(node: ProseNode): string {
+    let text = "";
+    node.forEach((child) => {
+        if (child.isText) {
+            text += child.marks.some((m) => m.type.spec.code)
+                ? "￼".repeat(child.text?.length ?? 0)
+                : child.text ?? "";
+        } else if (child.type.name === "hardbreak") {
+            text += "\n";
+        } else {
+            text += "￼".repeat(child.nodeSize);
+        }
+    });
+    return text;
+}
+
+/** The same scope, cut at an arbitrary document position (the refresh path
+ * resolves each `=>` equation against the definitions above ITS line, not the
+ * caret's). */
+export function scopeUpTo(state: EditorState, upTo: number): Map<string, number> {
+    const lines: string[] = [];
+    state.doc.descendants((node: ProseNode, pos: number) => {
+        if (pos >= upTo) { return false; } // node starts at/after the cut — prune
+        if (node.type.spec.code || node.type.name === "heading") { return false; }
+        if (node.isTextblock) {
+            const blockStart = pos + 1;
+            const end = Math.min(node.content.size, upTo - blockStart);
+            for (const line of blockCalcText(node).slice(0, end).split("\n")) {
+                lines.push(line);
+            }
+            return false; // a textblock's children are inline; text is captured
+        }
+        return true;
+    });
+    return buildScopeFromLines(lines);
+}
+
+/**
+ * The `=>` advisory suggestion: typing `<expr> =>` offers the computed value,
+ * confirmed with Tab (Enter stays a newline, like the `=` path). The expression
+ * may reference variables defined anywhere in the document and use offline unit
+ * conversions (`3 km in mi =>`). Detection is block-local (the expression ends
+ * at the caret); only variable RESOLUTION needs the whole document, done in
+ * `fetch` where the editor state is available.
+ */
+const calcArrowSpec: CaretSuggestSpec = {
+    match(textBefore, ctx) {
+        if (!calcEnabled()) { return null; }
+        const det = detectArrowExpression(textBefore, { boundaryUnknown: ctx?.truncated ?? false });
+        return det ? { length: det.length, query: det.expr } : null;
+    },
+
+    // Structural validity only (variables assumed resolvable); the real
+    // resolution happens in fetch against the document scope.
+    shouldSuggest: (query) => isCalcStructurallyValid(query),
+
+    fetch(query, cb, ctx) {
+        // The unit engine is a lazy chunk (calcUnits.ts); load it before
+        // evaluating so `3 km in mi =>` works on first use. The controller
+        // tolerates a late cb (stale-reply generations), and a failed load
+        // degrades to arithmetic-only — conversions yield null, nothing shown.
+        // Known, accepted window: during the FIRST chunk load only, a doc
+        // rewrite that keeps the match alive (an external-sync replay editing
+        // a definition above) can surface a value computed against the
+        // pre-rewrite state; the next transaction's 200ms re-request corrects
+        // it, and every later call resolves in a microtask (no window).
+        void ensureCalcUnits().catch(() => undefined).then(() => {
+            const scope = ctx ? scopeUpToCaret(ctx.state) : undefined;
+            const value = evaluateCalc(query, scope);
+            if (value === null) { cb([]); return; }
+            const result = formatCalcResult(value);
+            cb(result === null ? [] : [result]);
+        });
+    },
+
+    buildMenu(items, match, anchor, onPick) {
+        const results = items as string[];
+        if (results.length === 0) { return null; }
+        const result = results[0];
+        return createSuggestMenuFromRows(
+            [{ text: result, title: `${match.query} => ${result}`, hint: "Tab" }],
+            anchor,
+            onPick,
+        );
+    },
+
+    pick(view, match, picked) {
+        applyArrowResult(view, match.start, match.caret, picked);
+    },
+
+    // Pre-select the lone advisory result so Tab confirms it; Enter keeps its
+    // newline meaning (see caretSuggest.ts autoActivate handling).
+    autoActivate: true,
+    // The `=>` construct can coincide with the structural list-merge advisory at
+    // the same caret; the one the user is actively typing wins.
+    yieldsToOpenMenus: true,
+};
+
+/**
+ * Write the result after the `=>`, normalizing spacing to `<expr> => <result>`.
+ * Plain text only — like the `=` path, nothing calc-specific persists in the
+ * document, so the file round-trips as if the number had been typed. An old
+ * answer sitting just AFTER the caret (`expr =>| stale` — the caret parked at
+ * the arrow of an already-answered equation) is consumed, so re-accepting
+ * REPLACES the stale number instead of inserting beside it.
+ */
+function applyArrowResult(view: EditorView, start: number, caret: number, result: string): void {
+    const region = view.state.doc.textBetween(start, caret);
+    const replacement = region.replace(/=>[ \t]*$/, `=> ${result}`);
+    const end = caret + staleResultLengthAfter(view.state, caret);
+    view.dispatch(view.state.tr.insertText(replacement, start, end).scrollIntoView());
+}
+
+/**
+ * Length of a stale answer directly after `caret` in the same block —
+ * optional spaces then a plain number (the only shape calc ever writes).
+ * Zero when what follows is anything else; atoms mask to ￼ and hard breaks
+ * to a newline-like leaf, neither of which a number can match through.
+ */
+function staleResultLengthAfter(state: EditorState, caret: number): number {
+    const $caret = state.doc.resolve(caret);
+    const rest = $caret.parent.textBetween(
+        $caret.parentOffset,
+        $caret.parent.content.size,
+        undefined,
+        "￼",
+    );
+    return /^[ \t]*-?\d(?:[\d,]*\d)?(?:\.\d+)?/.exec(rest)?.[0].length ?? 0;
+}
+
+/** Advisory `=>` living-calculation plugin. */
+export const calcArrowSuggestPlugin = $prose(() =>
+    caretSuggestPlugin(calcArrowSuggestKey, calcArrowSpec),
 );
 
 // ── Auto-insert mode (input rule) ────────────────────────────────────────────
@@ -157,7 +337,7 @@ export const calcSuggestPlugin = $prose(() =>
  * detectCalcExpression, so a false shape (a bare number, a letter mixed in)
  * falls through to normal typing.
  */
-const CALC_AUTOINSERT_REGEX = /[0-9.+\-*/%^() \t]*=$/;
+const CALC_AUTOINSERT_REGEX = new RegExp(`[${ARITHMETIC_CLASS} \\t]*=$`);
 
 /**
  * When `birta.calc.autoInsert` is on, typing the `=` that completes an
@@ -180,137 +360,20 @@ export const calcAutoInsertPlugin = $inputRule(() =>
         // run, so its position 0 is always the run start and the left-boundary
         // guards can never fire — `1,000 + 2=` would evaluate the fragment
         // `000 + 2` and auto-insert a WRONG `= 2`. Rebuild the REAL context
-        // (the last ≤500 chars of the block, plus the just-typed `=` that is
-        // not in the doc yet) so the guards see the comma/letter before the
-        // run, and flag the window edge when the block is longer than that.
+        // (the same window the caret-suggest path sees, plus the just-typed `=`
+        // that is not in the doc yet) so the guards see the comma/letter before
+        // the run, and flag the window edge when the block is longer than that.
         const textBefore =
             $end.parent.textBetween(
-                Math.max(0, $end.parentOffset - 500),
+                Math.max(0, $end.parentOffset - CARET_CONTEXT_WINDOW),
                 $end.parentOffset,
                 undefined,
                 "￼",
             ) + "=";
         const det = detectCalcExpression(textBefore, {
-            boundaryUnknown: $end.parentOffset > 500,
+            boundaryUnknown: $end.parentOffset > CARET_CONTEXT_WINDOW,
         });
         if (!det) { return null; }
         return state.tr.insertText(`= ${det.result}`, end);
     }),
 );
-
-// ── Auto-insert mode: refresh a stale answer when its expression is edited ──
-
-/**
- * Equation shapes in a block's text, both insertion forms:
- *  - TRAILING: `expr = result` (an operator-bearing run, its `=`, the number);
- *  - LEADING:  `result=expr` (the number the leading form inserted BEFORE its
- *    `=`; `=5+7` became `12=5+7`).
- * Broad on purpose — each hit re-validates through detectCalcExpression before
- * anything is touched. For the leading form the result token is EXCISED first:
- * `12=5+7` raw would (correctly) fail the leading boundary rule (`a=5+7` is a
- * prose assignment), but with the result removed the text reproduces exactly
- * what the original insertion validated.
- */
-const TRAILING_EQ_RE = /[0-9.+\-*/%^() \t]*[0-9)][ \t]*=[ \t]*(-?\d[\d,]*(?:\.\d+)?)/g;
-const LEADING_EQ_RE = /(-?\d[\d,]*(?:\.\d+)?)[ \t]*=[ \t]*([0-9.+\-*/%^() \t]*[0-9)])/g;
-
-export const calcRefreshPlugin = $prose(() => new Plugin({
-    key: new PluginKey("MD_CALC_REFRESH"),
-    appendTransaction(trs, _oldState, newState) {
-        if (!calcEnabled() || !calcAutoInsert()) { return null; }
-        if (!trs.some((tr) => tr.docChanged)) { return null; }
-
-        // The changed positions in the NEW doc. Each step's range is mapped
-        // through the transaction's REMAINING steps so multi-step transactions
-        // (a paste with normalizations) still report final-doc coordinates.
-        const changed: Array<{ from: number; to: number }> = [];
-        for (const tr of trs) {
-            if (!tr.docChanged) { continue; }
-            tr.mapping.maps.forEach((map, i) => {
-                map.forEach((_a, _b, from, to) => {
-                    let f = from;
-                    let t = to;
-                    for (let j = i + 1; j < tr.mapping.maps.length; j++) {
-                        f = tr.mapping.maps[j]!.map(f);
-                        t = tr.mapping.maps[j]!.map(t);
-                    }
-                    changed.push({ from: f, to: t });
-                });
-            });
-        }
-        if (changed.length === 0) { return null; }
-
-        let out = newState.tr;
-        let touched = false;
-        const seenBlocks = new Set<number>();
-        for (const change of changed) {
-            const pos = Math.min(change.from, newState.doc.content.size);
-            const $pos = newState.doc.resolve(pos);
-            if (!$pos.parent.isTextblock || $pos.parent.type.spec.code) { continue; }
-            const blockStart = $pos.start();
-            if (seenBlocks.has(blockStart)) { continue; }
-            seenBlocks.add(blockStart);
-            // Inline atoms mask to a char arithmetic can't contain, keeping
-            // offsets 1:1 with positions (the proofread/notes masking contract).
-            const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "￼");
-            // This hook rides EVERY doc change while auto-insert is on; a block
-            // with no "=" can hold no equation — skip before any regex work.
-            if (!text.includes("=")) { continue; }
-
-            /** Apply one refresh in this block if `resultText` went stale. */
-            const refresh = (
-                exprSpan: [number, number],
-                resSpan: [number, number],
-                resultText: string,
-                validate: () => ReturnType<typeof detectCalcExpression>,
-            ): boolean => {
-                const localFrom = change.from - blockStart;
-                const localTo = change.to - blockStart;
-                // The edit must intersect the EXPRESSION side — result edits
-                // are the user's override and are never fought.
-                if (localTo < exprSpan[0] || localFrom > exprSpan[1]) { return false; }
-                if (localFrom >= resSpan[0] && localFrom < resSpan[1]) { return false; }
-                const det = validate();
-                if (!det || det.result === resultText) { return false; }
-                out = out.insertText(det.result, blockStart + resSpan[0], blockStart + resSpan[1]);
-                return true;
-            };
-
-            let done = false;
-            TRAILING_EQ_RE.lastIndex = 0;
-            for (let m = TRAILING_EQ_RE.exec(text); m && !done; m = TRAILING_EQ_RE.exec(text)) {
-                const runStart = m.index;
-                const eqIdx = m[0].lastIndexOf("=");
-                const resultText = m[1]!;
-                const resStart = runStart + m[0].length - resultText.length;
-                done = refresh(
-                    [runStart, runStart + eqIdx],
-                    [resStart, runStart + m[0].length],
-                    resultText,
-                    // Re-validate with the run's real left context so every
-                    // detection guard (comma fragments, letters) still applies.
-                    () => detectCalcExpression(text.slice(0, runStart + eqIdx + 1), { boundaryUnknown: false }),
-                );
-            }
-            LEADING_EQ_RE.lastIndex = 0;
-            for (let m = LEADING_EQ_RE.exec(text); m && !done; m = LEADING_EQ_RE.exec(text)) {
-                const resultText = m[1]!;
-                const exprText = m[2]!;
-                const resStart = m.index;
-                const resEnd = resStart + resultText.length;
-                const exprStart = m.index + m[0].length - exprText.length;
-                const exprEnd = m.index + m[0].length;
-                done = refresh(
-                    [exprStart, exprEnd],
-                    [resStart, resEnd],
-                    resultText,
-                    // Excise the result: the remaining `…=expr` is byte-for-byte
-                    // what the original leading-form insertion validated.
-                    () => detectCalcExpression(text.slice(0, resStart) + text.slice(resEnd, exprEnd), { boundaryUnknown: false }),
-                );
-            }
-            if (done) { touched = true; }
-        }
-        return touched ? out : null;
-    },
-}));

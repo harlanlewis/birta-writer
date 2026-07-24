@@ -66,7 +66,11 @@ export function slashRowDomId(itemId: string): string {
 }
 
 export function createSlashMenu(opts: SlashMenuOptions): SlashMenuHandle {
-    const items = opts.items ?? SLASH_MENU_ITEMS;
+    // Feature-gated rows drop out entirely at build (visibleWhen), so a
+    // disabled feature's command is unreachable even by search.
+    const items = (opts.items ?? SLASH_MENU_ITEMS).filter(
+        (item) => item.visibleWhen?.() ?? true,
+    );
 
     const root = document.createElement("div");
     root.className = "slash-menu";

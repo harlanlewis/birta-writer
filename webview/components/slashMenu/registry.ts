@@ -17,6 +17,7 @@ import {
     IconAlertCircle,
     IconArrowLeftRight,
     IconBold,
+    IconCalculator,
     IconCheckSquare,
     IconClipboardList,
     IconCode,
@@ -105,6 +106,15 @@ interface SlashMenuItemBase {
      * behind this flag so the default menu stays the same scannable list.
      */
     readonly searchOnly?: true;
+    /**
+     * Feature gate: when present and false at menu build, the row does not
+     * exist at all (not even via search) — for rows whose command is dead
+     * under a disabled setting (the Calculation Block row when
+     * `birta.calc.blocks.enabled` is off). Evaluated each time the menu
+     * opens, so it tracks whatever the gate's own update semantics are
+     * (most `__i18n` gates are baked at panel load).
+     */
+    readonly visibleWhen?: () => boolean;
 }
 
 /**
@@ -171,11 +181,14 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
     // (same mechanism as Mermaid), otherwise reachable only by typing "$$ ".
     { id: "math", group: "insert", label: t("Inline Math"), icon: IconMath, hint: "$", keywords: ["math", "latex", "katex", "equation", "formula", "inline"], commandId: "insertMath" },
     { id: "mathBlock", group: "insert", label: t("Math Block"), icon: IconMath, hint: "$$", keywords: ["math", "latex", "katex", "equation", "formula", "block", "display"], commandId: "insertCodeBlock", args: "LaTeX" },
+    // A living-calculation block (```calc): variables + units, computed line by
+    // line in a rendered preview. Same insert mechanism as Mermaid / Math Block.
+    { id: "calcBlock", group: "insert", label: t("Calculation Block"), icon: IconCalculator, keywords: ["calc", "calculate", "calculation", "math", "spreadsheet", "variables", "units"], commandId: "insertCodeBlock", args: "calc", visibleWhen: () => window.__i18n?.calcBlocksEnabled ?? true },
     { id: "link", group: "insert", label: t("Link"), icon: IconLink, hint: "[]()", keywords: ["link", "url", "anchor"], commandId: "insertLink" },
     // In-note anchor link to a heading (MAR-176). Terse noun label per the slash
     // convention; the verb-phrase "Link to Section" lives on the palette/tooltip.
     // Search-revealed (like the other parity rows) so the browse list stays lean.
-    { id: "sectionLink", group: "insert", label: t("Section Link"), icon: IconHash, keywords: ["section", "anchor", "jump", "toc"], commandId: "insertSectionLink", searchOnly: true },
+    { id: "sectionLink", group: "insert", label: t("Section Link"), icon: IconHash, keywords: ["section", "anchor", "jump", "toc", "header", "heading"], commandId: "insertSectionLink", searchOnly: true },
     { id: "footnote", group: "insert", label: t("Footnote"), icon: IconFootnote, hint: "[^]", keywords: ["footnote", "reference", "note"], commandId: "insertFootnote" },
     { id: "divider", group: "insert", label: t("Horizontal Rule"), icon: IconMinus, hint: "---", keywords: ["hr", "divider", "rule", "line", "separator"], commandId: "insertHorizontalRule" },
     // ── Inline formatting (toolbar parity; all search-revealed) ──
@@ -217,12 +230,38 @@ export const SLASH_MENU_ITEMS: readonly SlashMenuItem[] = [
 ];
 
 /**
- * Case-insensitive filter with prefix-first ranking. Three tiers, stable
+ * Whether `q` reads as a run of word prefixes of `label`, in order from its
+ * first word — the abbreviation a user naturally types when they compress a
+ * multi-word label ("seclink" / "slink" → "section link", "inlmath" →
+ * "inline math"). Both arguments must already be lowercased. Single-word
+ * labels are fully served by the prefix/substring tiers, so they never match
+ * here. Backtracks over prefix lengths (labels are a handful of short
+ * words, so the recursion is trivially bounded).
+ */
+function matchesWordPrefixes(q: string, label: string): boolean {
+    const words = label.split(/\s+/).filter(Boolean);
+    if (words.length < 2) { return false; }
+    const fits = (rest: string, wordIndex: number): boolean => {
+        if (!rest) { return true; }
+        if (wordIndex >= words.length) { return false; }
+        const word = words[wordIndex];
+        for (let i = 1; i <= Math.min(rest.length, word.length); i++) {
+            if (rest[i - 1] !== word[i - 1]) { break; }
+            if (fits(rest.slice(i), wordIndex + 1)) { return true; }
+        }
+        return false;
+    };
+    return fits(q, 0);
+}
+
+/**
+ * Case-insensitive filter with prefix-first ranking. Four tiers, stable
  * registry order within each: label prefix, then keyword prefix, then
- * label/keyword substring. Substring matching is the project convention
- * (lang picker, frontmatter suggest); the tiers only fix ORDERING so that
- * e.g. "ta" ranks Table above items merely containing "ta". Empty query
- * returns everything in registry (grouped) order.
+ * label/keyword substring, then word-prefix abbreviation ("seclink" →
+ * "Section Link"). Substring matching is the project convention (lang
+ * picker, frontmatter suggest); the tiers only fix ORDERING so that e.g.
+ * "ta" ranks Table above items merely containing "ta". Empty query returns
+ * everything in registry (grouped) order.
  */
 export function filterSlashItems<
     T extends { label: string; keywords: readonly string[]; searchOnly?: boolean },
@@ -235,6 +274,7 @@ export function filterSlashItems<
     const labelPrefix: T[] = [];
     const keywordPrefix: T[] = [];
     const substring: T[] = [];
+    const abbreviation: T[] = [];
     for (const item of items) {
         const label = item.label.toLowerCase();
         if (label.startsWith(q)) {
@@ -243,7 +283,9 @@ export function filterSlashItems<
             keywordPrefix.push(item);
         } else if (label.includes(q) || item.keywords.some((k) => k.includes(q))) {
             substring.push(item);
+        } else if (matchesWordPrefixes(q, label)) {
+            abbreviation.push(item);
         }
     }
-    return [...labelPrefix, ...keywordPrefix, ...substring];
+    return [...labelPrefix, ...keywordPrefix, ...substring, ...abbreviation];
 }

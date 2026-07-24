@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- e2e harness: the ```calc ledger (MAR-196). Real-browser truths jsdom can't
+     reach — chiefly that a mouse selection inside the ledger SURVIVES (the
+     NodeView's ignoreMutation must ignore ledger selections, or ProseMirror
+     re-asserts its own selection on every mousemove and the values are
+     uncopyable). `?blocksOff=1` loads with birta.calc.blocks.enabled=false. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-inputOption-activeBackground: rgba(14,99,156,0.4); --vscode-inputOption-activeBorder: #007fd4;
+    --vscode-editor-hoverHighlightBackground: rgba(90,93,94,0.25);
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-editorLineNumber-foreground: #858585;
+    --vscode-panel-border: #444444;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  const blocksOff = new URLSearchParams(location.search).get("blocksOff") === "1";
+  window.__i18n = {
+    translations: {}, isMac: true,
+    calcBlocksEnabled: !blocksOff,
+    toolbar: { placements: {}, order: [] },
+  };
+  window.__posted = [];
+  const DOC = [
+    "# Calc ledger",
+    "",
+    "intro prose line",
+    "",
+    "```calc",
+    "budget = 5000",
+    "rent = 1500",
+    "total = rent + budget",
+    "3 km in mi =>",
+    "oops * 2",
+    "plain words here",
+    "```",
+    "",
+    "after prose",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

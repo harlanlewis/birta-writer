@@ -5,15 +5,22 @@
  * list plugins registered exactly as webview/editor.ts registers them.
  *
  * Required behavior:
- * - Backspace/Delete on an EMPTY list item (that is not the list's only
- *   item) deletes the item; Backspace places the caret in the previous item.
- * - Backspace at the START of a non-empty item lifts it (outdent / exit).
+ * - Backspace (and Cmd+Backspace) at the start of a NESTED item joins it
+ *   onto the previous visible line, its subtree following one level up.
+ * - Backspace/Delete on an EMPTY top-level item (that is not the list's
+ *   only item) deletes the item; Backspace places the caret in the
+ *   previous item.
+ * - Backspace at the START of a non-empty TOP-LEVEL item lifts it out of
+ *   the list as a paragraph ("remove the bullet").
  * - Backspace mid-text is not intercepted by the plugin.
- * - After deleting a nested sublist out of a loose item, the stale
- *   spread:true is reset so serialization does not insert blank lines.
+ * - Spread: the editor never flips a list's tight/loose character on its
+ *   own — normalization only ADDS the blank line Markdown requires (a
+ *   paragraph following another block in an item). The deliberate switch
+ *   is the explicit Tighten/Loosen List action (setListTreeSpread).
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx, commandsCtx } from "@milkdown/core";
+import { wrapInBulletListCommand } from "@milkdown/preset-commonmark";
 import { TextSelection } from "../pm";
 import type { EditorView } from "../pm";
 import { getMarkdown } from "@milkdown/utils";
@@ -23,6 +30,7 @@ import {
     listLiftPlugin,
     listSpreadNormalizePlugin,
 } from "../plugins";
+import { listTreeIsLoose, setListTreeSpread } from "../plugins/list";
 
 let editors: Editor[] = [];
 
@@ -79,15 +87,31 @@ function clearCurrentParagraph(view: EditorView): void {
 }
 
 /** Press a key through the real keydown pipeline (all plugins, real order). */
-function pressKey(view: EditorView, key: string): boolean {
+function pressKey(
+    view: EditorView,
+    key: string,
+    modifiers?: { ctrlKey?: boolean; metaKey?: boolean },
+): boolean {
     const event = new KeyboardEvent("keydown", {
         key,
         bubbles: true,
         cancelable: true,
+        ...modifiers,
     });
     return (
         view.someProp("handleKeyDown", (handler) => handler(view, event)) ??
         false
+    );
+}
+
+/** Place the caret at the START of the first text node equal to `text`. */
+function placeCaretBeforeText(view: EditorView, text: string): void {
+    placeCaretAfterText(view, text);
+    const { $from } = view.state.selection;
+    view.dispatch(
+        view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, $from.start()),
+        ),
     );
 }
 
@@ -173,30 +197,24 @@ describe("Backspace at the start of a non-empty list item", () => {
         ]);
     });
 
-    it("a nested item should outdent one level", async () => {
-        // Arrange
+    it("a nested item should JOIN onto its parent's line, not outdent", async () => {
+        // Arrange — the maintainer ruling (2026-07-23): Backspace at a nested
+        // item's start deletes the item BREAK, like a text editor joining
+        // lines — repeated outdenting was unpredictable.
         const editor = await makeEditor("- a\n  - b\n");
         const view = getView(editor);
-        placeCaretAfterText(view, "b");
-        const { $from } = view.state.selection;
-        view.dispatch(
-            view.state.tr.setSelection(
-                TextSelection.create(view.state.doc, $from.start()),
-            ),
-        );
+        placeCaretBeforeText(view, "b");
 
         // Act
         const handled = pressKey(view, "Backspace");
 
-        // Assert — "b" is now a top-level sibling of "a"
+        // Assert — "b" merged into "a"'s own line; no sublist remains
         expect(handled).toBe(true);
         expect(view.state.doc.childCount).toBe(1);
         const list = view.state.doc.child(0);
-        expect(list.childCount).toBe(2);
-        expect(list.child(0).textContent).toBe("a");
-        expect(list.child(1).textContent).toBe("b");
-        const serialized = editor.action(getMarkdown());
-        expect(serialized).not.toMatch(/^\s+-/m); // no nested item left
+        expect(list.childCount).toBe(1);
+        expect(list.child(0).textContent).toBe("ab");
+        expect(editor.action(getMarkdown())).toBe("- ab\n");
     });
 
     it("Backspace mid-text should not be intercepted and must not change the doc", async () => {
@@ -234,6 +252,121 @@ describe("Backspace at the start of a non-empty list item", () => {
         pressKey(view, "Backspace");
         expect(view.state.doc.eq(before)).toBe(true);
         expect(topLevel(view)).toEqual([["paragraph", "plain"]]);
+    });
+});
+
+describe("Backspace/Cmd+Backspace joining nested items", () => {
+    it("a deep item should join the previous line and carry its children up one level", async () => {
+        const editor = await makeEditor(
+            "- foo\n- bar\n  - baz\n    - juj\n      - rex\n        - umi\n  - bin\n",
+        );
+        const view = getView(editor);
+        placeCaretBeforeText(view, "juj");
+
+        const handled = pressKey(view, "Backspace");
+
+        expect(handled).toBe(true);
+        // bar keeps two children: the merged "bazjuj" item, then "bin".
+        const bar = view.state.doc.child(0).child(1);
+        const barList = bar.lastChild!;
+        expect(barList.childCount).toBe(2);
+        const merged = barList.child(0);
+        expect(merged.firstChild?.textContent).toBe("bazjuj");
+        expect(barList.child(1).textContent).toBe("bin");
+        // juj's subtree is re-parented under the merged item, one level up.
+        const mergedSub = merged.lastChild!;
+        expect(mergedSub.type.name).toBe("bullet_list");
+        expect(mergedSub.child(0).firstChild?.textContent).toBe("rex");
+        expect(mergedSub.child(0).lastChild?.child(0).textContent).toBe("umi");
+        expect(editor.action(getMarkdown())).toBe(
+            "- foo\n- bar\n  - bazjuj\n    - rex\n      - umi\n  - bin\n",
+        );
+    });
+
+    it("an emptied nested first child should delete on Cmd+Backspace with the caret on the parent line", async () => {
+        const editor = await makeEditor("- foo\n- bar\n  - baz\n  - bin\n");
+        const view = getView(editor);
+        placeCaretAfterText(view, "baz");
+        clearCurrentParagraph(view);
+
+        // prosemirror-keymap reads Mod- as Ctrl on jsdom's non-mac platform.
+        const handled = pressKey(view, "Backspace", { ctrlKey: true });
+
+        expect(handled).toBe(true);
+        const bar = view.state.doc.child(0).child(1);
+        expect(bar.firstChild?.textContent).toBe("bar");
+        expect(bar.lastChild?.childCount).toBe(1);
+        expect(bar.lastChild?.child(0).textContent).toBe("bin");
+        expect(view.state.selection.$from.parent.textContent).toBe("bar");
+    });
+
+    it("a nested later item with children should join and keep them one level down", async () => {
+        const editor = await makeEditor("- a\n  - b\n  - c\n    - kid\n");
+        const view = getView(editor);
+        placeCaretBeforeText(view, "c");
+
+        const handled = pressKey(view, "Backspace");
+
+        expect(handled).toBe(true);
+        const sub = view.state.doc.child(0).child(0).lastChild!;
+        expect(sub.childCount).toBe(1);
+        const merged = sub.child(0);
+        expect(merged.firstChild?.textContent).toBe("bc");
+        expect(merged.lastChild?.child(0).textContent).toBe("kid");
+    });
+
+    it("a nested LATER item should join onto the previous sibling's line", async () => {
+        const editor = await makeEditor("- a\n  - b\n  - c\n");
+        const view = getView(editor);
+        placeCaretBeforeText(view, "c");
+
+        const handled = pressKey(view, "Backspace");
+
+        expect(handled).toBe(true);
+        const sub = view.state.doc.child(0).child(0).lastChild!;
+        expect(sub.childCount).toBe(1);
+        expect(sub.child(0).textContent).toBe("bc");
+    });
+
+    it("join with children AND trailing siblings should land them at one shared level", async () => {
+        const editor = await makeEditor("- top\n  - baz\n    - juj\n      - rex\n    - sib\n");
+        const view = getView(editor);
+        placeCaretBeforeText(view, "juj");
+
+        const handled = pressKey(view, "Backspace");
+
+        expect(handled).toBe(true);
+        // juj's child (rex) follows it up one level, becoming sib's sibling.
+        expect(editor.action(getMarkdown())).toBe(
+            "- top\n  - bazjuj\n    - rex\n    - sib\n",
+        );
+    });
+
+    it("an item after a code block must NEVER join into the code — falls back to lift", async () => {
+        // Fidelity guard: joining would pour "juj" verbatim inside the fence
+        // (one keystroke silently converting prose into code).
+        const editor = await makeEditor("- alpha\n\n  ```\n  code\n  ```\n\n  - juj\n");
+        const view = getView(editor);
+        placeCaretBeforeText(view, "juj");
+
+        const handled = pressKey(view, "Backspace");
+
+        expect(handled).toBe(true);
+        const serialized = editor.action(getMarkdown());
+        expect(serialized).not.toContain("codejuj");
+        expect(serialized).toContain("juj");
+    });
+
+    it("Cmd+Backspace mid-line must not be intercepted (delete-to-line-start is the DOM's)", async () => {
+        const editor = await makeEditor("- a\n  - b\n");
+        const view = getView(editor);
+        placeCaretAfterText(view, "b");
+        const before = view.state.doc;
+
+        const handled = pressKey(view, "Backspace", { ctrlKey: true });
+
+        expect(handled).toBe(false);
+        expect(view.state.doc.eq(before)).toBe(true);
     });
 });
 
@@ -277,15 +410,14 @@ describe("Delete on a list item", () => {
     });
 });
 
-describe("list spread normalization after deleting a nested sublist", () => {
-    it("deleting a loose item's sublist should serialize the list tight again", async () => {
-        // Arrange — loose list: item "a" holds a sublist, so the list
-        // serializes with blank lines between items
+describe("list spread normalization — the editor never flips a list's character", () => {
+    it("deleting a loose item's sublist should KEEP the list's loose character", async () => {
+        // Maintainer ruling (2026-07-24): tight/loose is the author's call —
+        // it changes the RENDERED output (<p> wrapping), so no edit may
+        // rewrite it. Cleanup is the explicit Tighten List action.
         const editor = await makeEditor("- a\n\n  - x\n\n- b\n");
         const view = getView(editor);
-        expect(editor.action(getMarkdown())).toContain("\n\n");
 
-        // Act — delete the nested sublist (the whole bullet_list under "a")
         let sublist: { pos: number; size: number } | null = null;
         view.state.doc.descendants((node, pos, parent) => {
             if (
@@ -302,10 +434,61 @@ describe("list spread normalization after deleting a nested sublist", () => {
             view.state.tr.delete(sublist!.pos, sublist!.pos + sublist!.size),
         );
 
-        // Assert — the appendTransaction reset the stale spread flags, so no
-        // blank lines are serialized between the remaining items
-        const serialized = editor.action(getMarkdown());
-        expect(serialized.trim()).toBe("- a\n- b");
+        expect(editor.action(getMarkdown())).toBe("- a\n\n- b\n");
+    });
+
+    it("Enter splitting an item in a TIGHT list should stay tight", async () => {
+        const editor = await makeEditor("- aa\n- b\n");
+        const view = getView(editor);
+        placeCaretAfterText(view, "aa");
+        const { $from } = view.state.selection;
+        view.dispatch(
+            view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, $from.pos - 1),
+            ),
+        );
+        pressKey(view, "Enter");
+
+        expect(editor.action(getMarkdown())).toBe("- a\n- a\n- b\n");
+    });
+
+    it("Enter splitting an item in a LOOSE list should stay loose", async () => {
+        const editor = await makeEditor("- aa\n\n- b\n");
+        const view = getView(editor);
+        placeCaretAfterText(view, "aa");
+        const { $from } = view.state.selection;
+        view.dispatch(
+            view.state.tr.setSelection(
+                TextSelection.create(view.state.doc, $from.pos - 1),
+            ),
+        );
+        pressKey(view, "Enter");
+
+        expect(editor.action(getMarkdown())).toBe("- a\n\n- a\n\n- b\n");
+    });
+
+    it("typing inside a TIGHT nested list should keep it tight", async () => {
+        // Regression: the normalizer used to force spread=true on any item
+        // with more than one child, so one keystroke inside a nested list
+        // loosened the whole structure with blank lines.
+        const editor = await makeEditor("- bar\n  - baz\n");
+        const view = getView(editor);
+        placeCaretAfterText(view, "baz");
+        view.dispatch(view.state.tr.insertText("!"));
+
+        expect(editor.action(getMarkdown())).toBe("- bar\n  - baz!\n");
+    });
+
+    it("typing inside an authored-LOOSE list should keep its blank lines", async () => {
+        // Regression: pure typing must never rewrite authored spacing — a
+        // stale spread is only relaxed after a STRUCTURAL change (the
+        // delete-sublist case above), never by a keystroke.
+        const editor = await makeEditor("- a\n\n- b\n");
+        const view = getView(editor);
+        placeCaretAfterText(view, "a");
+        view.dispatch(view.state.tr.insertText("!"));
+
+        expect(editor.action(getMarkdown())).toBe("- a!\n\n- b\n");
     });
 
     it("editing OUTSIDE a loose list should not reset its spacing", async () => {
@@ -322,5 +505,79 @@ describe("list spread normalization after deleting a nested sublist", () => {
 
         // Assert — the loose list keeps its blank lines
         expect(editor.action(getMarkdown())).toContain("- a\n\n- b");
+    });
+});
+
+describe("editor-created list items are born tight", () => {
+    it("turning a paragraph into a list should create a TIGHT item", async () => {
+        // The stock schema default was spread:true — masked by the old
+        // aggressive normalizer, fatal under force-only preservation.
+        const editor = await makeEditor("hello\n\nworld\n");
+        const view = getView(editor);
+        view.dispatch(
+            view.state.tr.setSelection(TextSelection.create(view.state.doc, 2)),
+        );
+        editor.action((ctx) =>
+            ctx.get(commandsCtx).call(wrapInBulletListCommand.key),
+        );
+
+        const item = view.state.doc.firstChild?.firstChild;
+        expect(item?.type.name).toBe("list_item");
+        expect(item?.attrs["spread"]).toBe(false);
+
+        // Growing the list keeps it tight (split copies the item's attrs).
+        placeCaretAfterText(view, "hello");
+        pressKey(view, "Enter");
+        view.dispatch(view.state.tr.insertText("x"));
+        expect(editor.action(getMarkdown())).toBe("- hello\n- x\n\nworld\n");
+    });
+});
+
+describe("setListTreeSpread — the explicit Tighten / Loosen List action", () => {
+    async function listAt(md: string) {
+        const editor = await makeEditor(md);
+        const view = getView(editor);
+        let pos = -1;
+        view.state.doc.forEach((node, offset) => {
+            if (pos < 0 && node.type.name === "bullet_list") pos = offset;
+        });
+        expect(pos).toBeGreaterThanOrEqual(0);
+        return { editor, view, pos };
+    }
+
+    it("tightening a loose list should remove its blank lines (nested lists too)", async () => {
+        const { editor, view, pos } = await listAt("- a\n\n  - x\n\n  - y\n\n- b\n");
+        expect(listTreeIsLoose(view.state.doc, pos)).toBe(true);
+
+        expect(setListTreeSpread(view, pos, false)).toBe(true);
+
+        expect(editor.action(getMarkdown())).toBe("- a\n  - x\n  - y\n- b\n");
+        expect(listTreeIsLoose(view.state.doc, pos)).toBe(false);
+    });
+
+    it("tightening should keep the blank line a multi-paragraph item requires", async () => {
+        const { editor, view, pos } = await listAt("- a\n\n  second\n\n- b\n");
+
+        setListTreeSpread(view, pos, false);
+
+        // The multi-paragraph item stays loose (tight would lazy-merge the
+        // paragraphs on reparse — byte loss); the sibling boundary follows
+        // the list's loose serialization.
+        expect(editor.action(getMarkdown())).toContain("- a\n\n  second");
+    });
+
+    it("loosening a tight list should blank-line every boundary and round-trip back", async () => {
+        const { editor, view, pos } = await listAt("- a\n  - x\n- b\n");
+
+        expect(setListTreeSpread(view, pos, true)).toBe(true);
+        expect(editor.action(getMarkdown())).toBe("- a\n\n  - x\n\n- b\n");
+
+        expect(setListTreeSpread(view, pos, false)).toBe(true);
+        expect(editor.action(getMarkdown())).toBe("- a\n  - x\n- b\n");
+    });
+
+    it("a no-op call should not dispatch (already tight)", async () => {
+        const { view, pos } = await listAt("- a\n- b\n");
+        expect(setListTreeSpread(view, pos, false)).toBe(false);
     });
 });

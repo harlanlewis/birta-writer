@@ -22,6 +22,7 @@ import { instrumentTransactions, mark, measure } from "./perf";
 import { createSyncScheduler } from "./syncScheduler";
 import {
     anchorSyncPlugin,
+    calcArrowSuggestPlugin,
     calcAutoInsertPlugin,
     calcRefreshPlugin,
     calcSuggestPlugin,
@@ -52,6 +53,7 @@ import {
     pasteLinkPlugin,
     mathInlineEditPlugin,
     wikiLinkCompletePlugin,
+    headingLinkCompletePlugin,
     listAutoJoinPlugin,
     listEnterPlugin,
     listLiftPlugin,
@@ -564,6 +566,9 @@ export async function createEditor(
         // birta.copyFormat).
         .use(copyMarkdownPlugin)
         .use(wikiLinkCompletePlugin)
+        // Typing `#` mid-prose (or the Section Link command) offers the
+        // document's headings; picking inserts a plain [title](#slug) link.
+        .use(headingLinkCompletePlugin)
         // Adjacent-list handling (two halves of one policy): edit-created
         // adjacency joins automatically; a split the SOURCE already carries
         // (a `-`→`*` marker change) is only offered — the caret advisory
@@ -582,7 +587,11 @@ export async function createEditor(
     // smartLinks). The internal autoInsert flag still decides which of the two
     // composed plugins actually fires.
     if (window.__i18n?.calcEnabled ?? true) {
-        builder = builder.use(calcSuggestPlugin).use(calcAutoInsertPlugin).use(calcRefreshPlugin);
+        builder = builder
+            .use(calcSuggestPlugin)
+            .use(calcArrowSuggestPlugin)
+            .use(calcAutoInsertPlugin)
+            .use(calcRefreshPlugin);
     }
 
     // URL embeds (MAR-56): render a bare provider link (YouTube) as an inline

@@ -1,5 +1,6 @@
 export { anchorSyncPlugin, headingRangeTouched } from "./anchorSync";
-export { calcAutoInsertPlugin, calcRefreshPlugin, calcSuggestPlugin } from "./calc";
+export { calcArrowSuggestPlugin, calcAutoInsertPlugin, calcSuggestPlugin } from "./calc";
+export { calcRefreshPlugin } from "./calcRefresh";
 export { insertCalloutCommand } from "./callouts";
 export { toggleHighlightCommand } from "./highlight";
 export { caretScrollMarginPlugin } from "./caretScrollMargin";
@@ -39,6 +40,7 @@ export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
 // editor.ts, gated on the network master switch). Import it directly.
 export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
+export { headingLinkCompletePlugin } from "./headingLinkComplete";
 export {
     listAutoJoinPlugin,
     listEnterPlugin,

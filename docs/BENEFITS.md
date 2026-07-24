@@ -16,12 +16,33 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
 
 - It sits within [VS Code](https://code.visualstudio.com) and its *vast* (but optional!) ecosystem of themes and extensions. You're a keystroke away from editing files in the raw editor, or comparing changes in a diff view. Birta Writer is simple by design, but every aspect is customizable through VS Code's settings scopes at app, user, or project level.
 
-- There's a little more magic than you might expect, like an inline calculator to autocomplete math equations with the answer, like `6^2+(8*3/4)= 42`.
-
 - It helps me write better:
 
   - Offline proofreading of spelling, grammar, prose, and common "AI tells" in sentence construction, punctuation, and vocabulary.
   - Customizable draft-management tools for jumping to `[TK]` notes, `TODOs`, and inline comments.
+- It's better than me at math:
+
+  - Basic equations compute in text. `6^2+(8*3/4)= 42` prints the answer after the `=`. It updates when you change the equation, too.
+
+  - Variables, conversions, and more advanced math with `=>`
+
+    - Construct formulas…
+
+      - a=2, b=4
+      - c=sqrt(a²+b²) => 4.472136
+      - log(c\*100+π^2) => 2.659995
+
+    - … for something useful…
+
+      - budget=3000, rent=700, food=600
+      - savings=budget-(rent+food) => 1700
+      - savings \* 12 => 20400
+
+    - …or quick conversions:
+
+      - 24901 mile in km => 40074.274944
+      - t = 24\*60\*60\*1000ms in days => 1
+      - t*365 days in weeks => 52.142857
 
 - It's private.
 

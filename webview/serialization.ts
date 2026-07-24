@@ -11,6 +11,7 @@ import { createFidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { imageStringAttrPlugins, imageStringAttrReplacedPlugins } from "./plugins/image";
+import { linkBoundaryPlugins } from "./plugins/linkBoundary";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { reparseHazardPlugin } from "./plugins/reparseHazard";
@@ -18,6 +19,7 @@ import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
 import { headingInputReplacedPlugins } from "./plugins/headingInput";
+import { emphasisInputReplacedPlugins, mathAwareEmphasisStarInputRule } from "./plugins/emphasisInput";
 import {
     sourceStyleHandlers,
     sourceStylePlugin,
@@ -143,6 +145,10 @@ export const pureCommonmark = [
         // Stock `#` input rule ADDS hashes to an existing heading's level;
         // headingAbsoluteInputRule (plugins/headingInput.ts) replaces it.
         if (headingInputReplacedPlugins.has(plugin)) return false;
+        // Stock `*emphasis*` rule italicizes intraword stars, eating the `*`s
+        // of typed arithmetic (`60*60*1000`); the math-aware replacement
+        // (plugins/emphasisInput.ts) registers below.
+        if (emphasisInputReplacedPlugins.has(plugin)) return false;
         const displayName = (plugin as { meta?: { displayName?: string } }).meta?.displayName;
         return !(displayName?.includes("remarkInlineLinkPlugin"));
     }),
@@ -155,6 +161,8 @@ export const pureCommonmark = [
     ...mathPlugin,
     ...sourceStylePlugin,
     ...tableBreaksPlugin,
+    // Replaces the stock star-emphasis input rule filtered out above.
+    mathAwareEmphasisStarInputRule,
     // AFTER the preset: override the bullet_list / ordered_list / list_item
     // parseMarkdown runners so `spread` parses as a real boolean, not a string
     // (MAR-124). See plugins/list.ts.
@@ -163,6 +171,10 @@ export const pureCommonmark = [
     // title-less image parses with "" (valid) instead of mdast's null, which
     // fails the node's own attr validation. See plugins/image.ts.
     ...imageStringAttrPlugins,
+    // AFTER the preset: the link mark becomes inclusive:false, so typing at
+    // a link's end boundary stays plain text instead of silently extending
+    // the link. See plugins/linkBoundary.ts.
+    ...linkBoundaryPlugins,
     fidelitySerializerPlugin,
     // Registers this editor's serializer/parser for the save-survival move
     // check (MAR-120). Rides the base preset so no construction site —

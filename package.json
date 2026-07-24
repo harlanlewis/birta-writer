@@ -1977,6 +1977,12 @@
                     "default": true,
                     "description": "%config.calc.enabled.description%"
                 },
+                "birta.calc.blocks.enabled": {
+                    "order": 107.5,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.calc.blocks.enabled.description%"
+                },
                 "birta.calc.autoInsert": {
                     "order": 108,
                     "type": "boolean",
@@ -2062,6 +2068,7 @@
         "dompurify": "^3.4.11",
         "harper.js": "^2.4.0",
         "katex": "^0.16.44",
+        "mathjs": "^15.2.0",
         "mermaid": "^11.0.0",
         "prosemirror-tables": "^1.8.5",
         "refractor": "^5.0.0",

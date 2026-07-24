@@ -81,11 +81,49 @@ Put the caret at the end of any line below and press `=` to try it:
 
 -2 ^ 2
 
-
-
 The answer appears as a suggestion — confirm with **Tab** (Return stays a newline), or pick "Always insert result" in the menu (also the **Toggle Calc Auto-Insert** palette command, `birta.calc.autoInsert`) to have every future trailing `=` answered instantly; the `=`-before form always stays a suggestion, since you may still be typing digits. The result inserts as plain text, so nothing calc-specific ever persists in the file.
 
 What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) — same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
+
+### Living calculations (`=>`)
+
+Ending an expression with `=>` unlocks the richer form: **named variables**
+defined earlier in the document as `name = value` lines (only definitions
+*above* the cursor count, read top-to-bottom), and **offline unit conversions**
+with `in` / `to` across the full mathjs unit catalog — length, mass, time,
+volume, temperature, area, data, and more. Same Tab-confirmed suggestion, same
+plain-text insert; expressions are evaluated by the same eval-free offline
+engine, and the unit catalog never sees them (currency is deliberately absent
+— live rates would need the network).
+
+budget = 5000
+
+rent = 1500
+
+Try `=>` at the end of any line below:
+
+rent / budget * 100 =>
+
+budget - rent =>
+
+3 km in mi =>
+
+180 lb to kg =>
+
+log10(4/3 * pi) =>
+
+sqrt(2) * π =>
+
+budget² - rent² =>
+
+Accepted `=>` answers stay **alive**: edit the expression — or a definition
+above it — and the number updates in place. Editing the answer itself is your
+override; the editor never fights it. Try it: change `rent = 1500` above after
+accepting a result below.
+
+Both inline forms live under `birta.calc.enabled`. Fragments are never
+computed: `1,000 + 2 =>` offers nothing rather than answering the digits after
+the comma, and results display at most 6 decimals — an answer, not noise.
 
 ### Highlight
 
@@ -215,7 +253,7 @@ Embeds are network features and are **off by default** — with `birta.network.e
    1. Sub-step a
    2. Sub-step b
       1. Deeply nested step
-         1. Even more deeply nested step
+      2. Even more deeply nested step
 3. Third step
 
 ### Task list
@@ -412,13 +450,29 @@ no highlighting here
 
 ### Diagrams (Mermaid)
 
-Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid` block.
+Fenced [Mermaid](https://mermaid.js.org) diagrams rendered with view controls.
 
 ```mermaid
 graph TD
     A[Start] --> B{Decision}
     B -->|Yes| C[Do thing]
     B -->|No| D[Skip]
+```
+
+### Calc
+
+Math worksheets read and evaluate equations. Unlike [Inline calculator](#inline-calculator) and [Living calculations (=>)](#living-calculations-), `Calc` blocks only *read* and *evaluate* equations. They do not modify the raw Markdown by writing answers.
+
+```calc
+# a tiny budget worksheet
+income = 5000, rent = 1500, food = 800
+total = rent + food
+left = income - total
+share = rent / income * 100
+
+# misc
+typo * 2
+log(400+π^2)
 ```
 
 ---
@@ -439,6 +493,8 @@ Block math:
 $$
 \int_0^1 x^2 \, dx = \frac{1}{3}
 $$
+
+
 
 ## Frontmatter
 

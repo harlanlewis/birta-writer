@@ -797,6 +797,74 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     font-size: var(--ui-fs-l);
 }
 
+/* ─── Calc block preview (living calculations, MAR-196) ─────────────────────
+ * A read-only two-column ledger: each source line on the left, its computed
+ * value on the right. The source is never mutated — the value lives only here,
+ * so the ```calc block round-trips as ordinary Markdown. */
+.calc-preview {
+    /* display is controlled by JS (none / flex) */
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: auto;
+    padding: var(--ui-space-5) var(--ui-space-6);
+    min-height: 80px;
+    background: var(--vscode-textCodeBlock-background);
+    border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
+    user-select: none;
+}
+
+.calc-render {
+    width: 100%;
+    font-family: var(--vscode-editor-font-family, monospace);
+    /* The ledger shows DOCUMENT content, so it sizes on the em-based content
+     * scale — 0.9em, the same ratio as the block's own source pane — and
+     * follows the A−/A+ content-size stepper instead of sitting frozen at the
+     * chrome size. */
+    font-size: 0.9em;
+    line-height: 1.6;
+    color: var(--vscode-editor-foreground);
+    /* The ledger is read-only chrome, but its computed values are worth
+     * copying — unlike a mermaid canvas, so opt text selection back in. (The
+     * NodeView's ignoreMutation must also ignore selections here, or
+     * ProseMirror re-asserts its own selection and wipes the drag.) */
+    user-select: text;
+}
+
+.calc-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2em;
+}
+
+.calc-row-src {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.calc-row-result {
+    flex: none;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+    white-space: nowrap;
+}
+
+/* The `= ` lead-in before a value — real text (it copies with the value),
+ * visually quiet so the value carries the weight. */
+.calc-row-eq {
+    opacity: 0.5;
+    font-weight: 400;
+}
+
+/* A formula-shaped line with no honest value: a dimmed dash, quiet on purpose
+ * (advisory, no color, no text) but present — a silent absence needs a signal. */
+.calc-row-result--error {
+    opacity: 0.4;
+    font-weight: 400;
+    cursor: help;
+}
+
 /* ─── Folded code block (MAR-125): fold to the chrome/header row ────────────
  * The `collapsed` class arrives as a node decoration from the fold plugin.
  * The source `pre` collapses via the preview-mode idiom (visibility, not
@@ -818,6 +886,7 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
 }
 .code-block-wrapper.collapsed > .mermaid-preview,
 .code-block-wrapper.collapsed > .latex-preview,
+.code-block-wrapper.collapsed > .calc-preview,
 .code-block-wrapper.collapsed > .code-block-resize-handle {
     display: none !important;
 }

@@ -19,6 +19,7 @@ import { loadMermaid } from "@/utils/mermaidLoader";
 import { isMermaidDark } from "./mermaidTheme";
 import { normalizeMermaidThemeMode, type MermaidThemeMode } from "../../../shared/mermaid";
 import { CODE_LANGUAGES, normalizeCodeLanguage } from "@/codeLanguages";
+import { ensureCalcUnits, evaluateCalcBlock } from "@/utils/calc";
 import { renderKatexInto } from "@/utils/katexLoader";
 import { highlight, ensureGrammars } from "@/highlighter";
 import { lockBodyScroll, unlockBodyScroll, animateCloseLightbox, bindLightboxDismiss } from "@/utils";
@@ -33,6 +34,15 @@ import './codeBlock.css';
 
 const shouldAutoConvertCodeBlock = (): boolean =>
     window.__i18n?.codeBlockAutoConvert ?? true;
+
+/**
+ * Fenced ```calc ledger gate (birta.calc.blocks.enabled). Independent of the
+ * INLINE gate (birta.calc.enabled) on purpose: a worksheet the user typed into
+ * a calc fence keeps computing even with calc silenced in prose. Off, a calc
+ * fence is an ordinary code block — no evaluation runs at all.
+ */
+const calcBlocksEnabled = (): boolean =>
+    window.__i18n?.calcBlocksEnabled ?? true;
 
 const shouldWordWrapCodeBlock = (): boolean =>
     window.__i18n?.codeBlockWordWrap ?? false;
@@ -494,6 +504,7 @@ export function createCodeBlockView(
     dom: HTMLElement;
     contentDOM: HTMLElement;
     update: (n: PMNode) => boolean;
+    stopEvent: (event: Event) => boolean;
     ignoreMutation: (m: ViewMutationRecord) => boolean;
     destroy: () => void;
 } {
@@ -528,9 +539,11 @@ export function createCodeBlockView(
     let isMermaid = currentLang === "mermaid";
     // ── LaTeX state (block math preview via KaTeX) ────────
     let isLatex = normalizeCodeLanguage(currentLang) === "latex";
-    // A block that shows a rendered preview instead of raw code — mermaid or
-    // LaTeX. Both reuse the same code/preview toggle and preview container.
-    const isPreviewable = (): boolean => isMermaid || isLatex;
+    // ── Calc state (living-calculation preview, MAR-196) ──
+    let isCalc = normalizeCodeLanguage(currentLang) === "calc" && calcBlocksEnabled();
+    // A block that shows a rendered preview instead of raw code — mermaid,
+    // LaTeX, or calc. All reuse the same code/preview toggle and container.
+    const isPreviewable = (): boolean => isMermaid || isLatex || isCalc;
     let isPreviewMode = false;
     let renderTimer: ReturnType<typeof setTimeout> | null = null;
     let lastRenderedCode = "";
@@ -569,7 +582,8 @@ export function createCodeBlockView(
     toggleBtn.tabIndex = -1;
     toggleBtn.innerHTML = IconEye;
     toggleBtn.style.display = isPreviewable() ? "inline-flex" : "none";
-    const previewTip = (): string => (isLatex ? t("Preview Formula") : t("Preview Diagram"));
+    const previewTip = (): string =>
+        isCalc ? t("Preview Calculations") : isLatex ? t("Preview Formula") : t("Preview Diagram");
     const toggleTooltip = applyTooltip(toggleBtn, previewTip(), { placement: "above" });
 
     // Word-wrap toggle for the current code block (local override, not written to Markdown)
@@ -807,6 +821,8 @@ export function createCodeBlockView(
             mermaidPreview.style.height = `${newH}px`;
             latexPreview.style.maxHeight = `${newH}px`;
             latexPreview.style.height = `${newH}px`;
+            calcPreview.style.maxHeight = `${newH}px`;
+            calcPreview.style.height = `${newH}px`;
         };
         const onUp = () => {
             document.removeEventListener("mousemove", onMove);
@@ -824,8 +840,109 @@ export function createCodeBlockView(
     latexRender.className = "latex-render";
     latexPreview.appendChild(latexRender);
 
+    // ── Calc preview area (living calculations) ───────────
+    const calcPreview = document.createElement("div");
+    calcPreview.className = "calc-preview";
+    calcPreview.contentEditable = "false";
+    const calcRender = document.createElement("div");
+    calcRender.className = "calc-render";
+    calcPreview.appendChild(calcRender);
+    calcPreview.addEventListener("click", () => {
+        // stopEvent keeps ProseMirror's mouse handling out of the ledger —
+        // which also means PM's caret stays wherever it was, invisibly. A
+        // later Enter/keymap stroke would edit the document at that stale
+        // caret with no visual feedback. Clicking read-only chrome should
+        // leave the editor inert until the user clicks back into content, so
+        // drop editor focus; clicking any content refocuses through PM's own
+        // mousedown. On `click` (not mousedown) so it runs AFTER the
+        // browser's own focus settling, which would otherwise hand focus
+        // straight back — and because blurring the host collapses the DOM
+        // selection, a ledger selection (a drag that just ended here) is
+        // captured first and re-asserted after: inert editor, intact copy.
+        if (!view.hasFocus()) { return; }
+        const sel = window.getSelection();
+        const ledgerRanges =
+            sel && !sel.isCollapsed && calcPreview.contains(sel.anchorNode)
+                ? Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i).cloneRange())
+                : [];
+        view.dom.blur();
+        if (sel && ledgerRanges.length > 0) {
+            sel.removeAllRanges();
+            for (const range of ledgerRanges) { sel.addRange(range); }
+        }
+    });
+
+    let calcRenderTimer: ReturnType<typeof setTimeout> | null = null;
+    // What the ledger currently shows; NodeView update() also fires for
+    // decoration-only churn (block selection, folds), and re-evaluating an
+    // unchanged block for those would be wasted work. Null = never rendered.
+    let lastCalcRendered: string | null = null;
+    /**
+     * Paint each source line beside its computed value (a two-column ledger).
+     * Synchronous, deterministic, and network-free — no lazy dependency, so it
+     * is cheap enough to re-run on every edit (the "living" recompute). The
+     * source is never mutated; results live only here, so the block round-trips
+     * as ordinary Markdown.
+     *
+     * The `= ` before a value is REAL text (not a ::before pseudo-element), so
+     * a copied selection reads `source` / `= value` line by line — and it is
+     * omitted when the source line already ends in `=` or `=>`, which would
+     * otherwise read doubled (`3 km in mi =>  = 1.86`).
+     */
+    async function renderCalc(code: string): Promise<void> {
+        if (!isCalc || !isPreviewMode) { return; }
+        lastCalcRendered = code;
+        // Unit conversions live in a lazy chunk (calcUnits.ts); load it before
+        // evaluating so `3 km in mi` has a value on first paint. A failed load
+        // degrades to arithmetic-only. If a newer render was scheduled while
+        // the chunk loaded, this one is stale — bail.
+        try { await ensureCalcUnits(); } catch { /* conversions yield no value */ }
+        if (lastCalcRendered !== code || !isCalc || !isPreviewMode) { return; }
+        const rows = evaluateCalcBlock(code);
+        calcRender.replaceChildren();
+        for (const { raw, result, kind, value } of rows) {
+            const row = document.createElement("div");
+            row.className = "calc-row";
+            const src = document.createElement("span");
+            src.className = "calc-row-src";
+            src.textContent = raw || " "; // keep blank lines visible/tall
+            row.appendChild(src);
+            if (result !== null) {
+                const res = document.createElement("span");
+                res.className = "calc-row-result";
+                if (!/=>?\s*$/.test(raw)) {
+                    const eq = document.createElement("span");
+                    eq.className = "calc-row-eq";
+                    eq.textContent = "= ";
+                    res.appendChild(eq);
+                }
+                res.appendChild(document.createTextNode(result));
+                // Rounded display (12 sig digits, ≤6 decimals): offer the
+                // full-precision value on hover so the rounding is
+                // inspectable — `x = 0.9999999` showing `1` can be checked.
+                if (value !== undefined && String(value) !== result) {
+                    res.title = `= ${String(value)}`;
+                }
+                row.appendChild(res);
+            } else if (kind === "error") {
+                // A line that READS as a formula but has no honest value (an
+                // unknown variable, a dimension mismatch, division by zero).
+                // Advisory and quiet — a dimmed dash, no color, no text — but
+                // present: in a block whose point is computing, a silent
+                // absence needs a signal (docs/DESIGN_PRINCIPLES.md).
+                const res = document.createElement("span");
+                res.className = "calc-row-result calc-row-result--error";
+                res.textContent = "—";
+                res.title = t("This line looks like a formula but has no value");
+                row.appendChild(res);
+            }
+            calcRender.appendChild(row);
+        }
+    }
+
     // The single element that is visible while in preview mode.
-    const previewEl = (): HTMLElement => (isLatex ? latexPreview : mermaidPreview);
+    const previewEl = (): HTMLElement =>
+        isCalc ? calcPreview : isLatex ? latexPreview : mermaidPreview;
 
     let latexRenderTimer: ReturnType<typeof setTimeout> | null = null;
     async function renderLatex(code: string): Promise<void> {
@@ -847,6 +964,7 @@ export function createCodeBlockView(
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
     wrapper.appendChild(latexPreview);
+    wrapper.appendChild(calcPreview);
     wrapper.appendChild(resizeHandle);
     scheduleLineNumberRefresh();
 
@@ -1011,12 +1129,14 @@ export function createCodeBlockView(
         pre.classList.remove("code-pre--preview-hidden");
         mermaidPreview.style.display = "none";
         latexPreview.style.display = "none";
+        calcPreview.style.display = "none";
         wordWrapBtn.style.display = "inline-flex";
     }
 
     // Render whichever preview the current language maps to.
     function renderPreview(code: string): void {
-        if (isLatex) void renderLatex(code);
+        if (isCalc) void renderCalc(code);
+        else if (isLatex) void renderLatex(code);
         else void renderMermaid(code);
     }
 
@@ -1032,7 +1152,11 @@ export function createCodeBlockView(
     });
 
     // ── Mermaid / LaTeX enter preview mode by default ──────────────────
-    if (isPreviewable() && shouldAutoConvertCodeBlock()) {
+    // Auto-preview only a NON-EMPTY previewable block. A freshly inserted
+    // (empty) ```calc / ```mermaid / ```math block must start in code mode, or
+    // preview hides the editable source and the user can't type into what they
+    // just inserted.
+    if (isPreviewable() && shouldAutoConvertCodeBlock() && node.textContent.trim()) {
         enterPreviewMode();
         setTimeout(() => renderPreview(node.textContent), 0);
     }
@@ -1551,6 +1675,7 @@ export function createCodeBlockView(
             const wasPreviewable = isPreviewable();
             isMermaid = newLang === "mermaid";
             isLatex = normalizeCodeLanguage(newLang) === "latex";
+            isCalc = normalizeCodeLanguage(newLang) === "calc" && calcBlocksEnabled();
             const nowPreviewable = isPreviewable();
 
             picker.update(newLang);
@@ -1562,7 +1687,10 @@ export function createCodeBlockView(
 
             if (!wasPreviewable && nowPreviewable) {
                 toggleBtn.style.display = "inline-flex";
-                if (shouldAutoConvertCodeBlock()) {
+                // Same empty-block guard as on mount: switching an empty block's
+                // language to a previewable one keeps it editable rather than
+                // flipping to an empty preview the user can't type into.
+                if (shouldAutoConvertCodeBlock() && updatedNode.textContent.trim()) {
                     enterPreviewMode();
                     setTimeout(() => renderPreview(updatedNode.textContent), 0);
                 }
@@ -1571,10 +1699,20 @@ export function createCodeBlockView(
                 toggleBtn.style.display = "none";
                 exitPreviewMode();
                 lastRenderedCode = "";
+                lastCalcRendered = null;
             }
             if (nowPreviewable && isPreviewMode) {
                 const newCode = updatedNode.textContent;
-                if (isLatex) {
+                if (isCalc) {
+                    // The living recompute: cheap and synchronous, lightly
+                    // debounced so a fast burst of typing coalesces. Skipped
+                    // when the text didn't change — update() also fires for
+                    // decoration-only churn (selection, folds).
+                    if (newCode !== lastCalcRendered) {
+                        if (calcRenderTimer) clearTimeout(calcRenderTimer);
+                        calcRenderTimer = setTimeout(() => void renderCalc(newCode), 150);
+                    }
+                } else if (isLatex) {
                     if (latexRenderTimer) clearTimeout(latexRenderTimer);
                     latexRenderTimer = setTimeout(() => renderLatex(newCode), 300);
                 } else if (newCode !== lastRenderedCode) {
@@ -1585,8 +1723,25 @@ export function createCodeBlockView(
             return true;
         },
 
+        stopEvent(event: Event): boolean {
+            // Mouse events inside the calc ledger are the browser's business:
+            // native text selection (click-drag, double-click word select)
+            // must not compete with ProseMirror's own mouse handling, whose
+            // double-click handler word-selects in the DOCUMENT and wipes the
+            // ledger selection. The ledger holds no buttons (the header and
+            // resize handle live outside calcPreview), and it is
+            // contentEditable=false, so no editing event can originate here.
+            return event.target instanceof Node && calcPreview.contains(event.target);
+        },
+
         ignoreMutation(mutation: ViewMutationRecord): boolean {
-            if (mutation.type === "selection") return false;
+            // A DOM selection inside the calc ledger must be IGNORED: the
+            // ledger is non-content DOM, so if ProseMirror reacts it re-asserts
+            // its own (editor) selection on every mousemove, wiping the user's
+            // drag mid-gesture — the ledger becomes unselectable and its
+            // values uncopyable. Everywhere else, selection mutations stay
+            // ProseMirror's business.
+            if (mutation.type === "selection") return calcPreview.contains(mutation.target);
             if (mutation.type === "attributes") return true; // update() modifies className, so ignore attribute mutations to prevent a reconcile infinite loop (B085)
             return (
                 !codeEl.contains(mutation.target as Node) &&
@@ -1600,6 +1755,7 @@ export function createCodeBlockView(
             if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
             if (renderTimer) clearTimeout(renderTimer);
             if (latexRenderTimer) clearTimeout(latexRenderTimer);
+            if (calcRenderTimer) clearTimeout(calcRenderTimer);
             if (lineNumberRaf !== null) cancelAnimationFrame(lineNumberRaf);
             lineNumberResizeObserver?.disconnect();
             mermaidPreview.removeEventListener("wheel", onPreviewWheel);

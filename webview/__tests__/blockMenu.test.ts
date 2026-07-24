@@ -1400,3 +1400,37 @@ describe("Merge with List Above / Below", () => {
         expect(markdown(editor)).toBe("- foo\n- bar\n- bingo\n- wingo");
     });
 });
+
+describe("Tighten / Loosen List", () => {
+    function rowLabels(menu: HTMLElement): (string | null)[] {
+        return Array.from(menu.querySelectorAll(".block-menu-item-label")).map(
+            (el) => el.textContent,
+        );
+    }
+
+    it("a tight list's item should offer Loosen List (not Tighten)", async () => {
+        const editor = await makeEditor("- foo\n- bar");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(rowLabels(menu)).toContain("Loosen List");
+        expect(rowLabels(menu)).not.toContain("Tighten List");
+    });
+
+    it("a loose list's item should offer Tighten List (not Loosen)", async () => {
+        const editor = await makeEditor("- foo\n\n- bar");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        expect(rowLabels(menu)).toContain("Tighten List");
+        expect(rowLabels(menu)).not.toContain("Loosen List");
+    });
+
+    it("picking Tighten List should remove the blank lines in one undo step", async () => {
+        const editor = await makeEditor("- foo\n\n- bar");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+
+        pickRow(menu, "Tighten List");
+
+        expect(markdown(editor)).toBe("- foo\n- bar");
+    });
+});

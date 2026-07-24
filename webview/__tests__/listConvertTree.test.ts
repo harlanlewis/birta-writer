@@ -92,6 +92,18 @@ afterEach(async () => {
 });
 
 describe("convertListTreeAt", () => {
+    it("conversion should preserve the list's loose/tight spacing character", async () => {
+        // The spacing ruling (2026-07-24): no edit rewrites tight/loose —
+        // conversion carries every node's spread attr through the retype.
+        const loose = await makeEditor("- a\n\n- b\n");
+        expect(convertListTreeAt(view(loose), 0, "orderedList")).toBe(true);
+        expect(markdown(loose)).toBe("1. a\n\n2. b\n");
+
+        const tight = await makeEditor("- a\n- b\n");
+        expect(convertListTreeAt(view(tight), 0, "orderedList")).toBe(true);
+        expect(markdown(tight)).toBe("1. a\n2. b\n");
+    });
+
     it("bullet → ordered should convert every nesting level", async () => {
         const editor = await makeEditor(NESTED_BULLET);
         const v = view(editor);

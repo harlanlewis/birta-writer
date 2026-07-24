@@ -16,6 +16,16 @@
 import { Plugin, type PluginKey } from "../pm";
 import type { EditorState, EditorView } from "../pm";
 import type { LinkSuggestMenu, SuggestMenuAnchor } from "../components/pathLink/linkTargetComplete";
+import { setPendingRange } from "./pendingRange";
+
+/**
+ * How far back from the caret the match window reaches, in characters. Every
+ * consumer of a `match(textBefore)` spec sees at most this much context, and
+ * anything that re-derives the same context elsewhere (the calc auto-insert
+ * input rule, the refresh scanner's run cap) must use the SAME number — a
+ * mismatch would let one surface validate what another refuses.
+ */
+export const CARET_CONTEXT_WINDOW = 500;
 
 /** The construct ending at the caret that suggestions attach to. */
 export interface CaretMatch {
@@ -56,8 +66,13 @@ export interface CaretSuggestSpec {
     matchState?(state: EditorState): CaretMatch | null;
     /** Whether `query` should trigger a suggestion request at all. */
     shouldSuggest(query: string): boolean;
-    /** Requests suggestions for `query`; `cb` may be called once, later. */
-    fetch(query: string, cb: (items: unknown) => void): void;
+    /**
+     * Requests suggestions for `query`; `cb` may be called once, later. `ctx`
+     * exposes the live editor state for suggestions that need document-wide
+     * context beyond the current construct — the `=>` calc reads it to resolve
+     * variables defined elsewhere in the document. Most specs ignore it.
+     */
+    fetch(query: string, cb: (items: unknown) => void, ctx?: { state: EditorState }): void;
     /** Builds the menu from a reply. Returns null when nothing to show. */
     buildMenu(
         items: unknown,
@@ -78,6 +93,15 @@ export interface CaretSuggestSpec {
      * user deliberately selects a row (and Tab then accepts that row).
      */
     autoActivate?: boolean;
+    /**
+     * Decorate the live construct (match.start → caret) with this class while
+     * the menu is open — the slash menu's "/query" pill affordance, shared:
+     * the typed filter text reads as UI input, not prose, and reverts to
+     * plain text the moment the menu closes. Rides the pendingRange
+     * decoration plugin; omit for menus whose construct should stay looking
+     * like ordinary text (link/wikilink/calc).
+     */
+    queryChipClass?: string;
     /**
      * Never open while ANOTHER caret suggestion's menu is up. The
      * text-construct menus (calc, link, wikilink) are mutually exclusive by
@@ -143,6 +167,27 @@ class CaretSuggestController {
             this.closeMenu();
             return;
         }
+        // The open menu already reflects this exact construct: nothing to
+        // refetch. This guard is load-bearing for menu stability — meta-only
+        // transactions (this controller's own chip sync, other plugins'
+        // decorations) land here constantly, and restarting the debounce for
+        // them rebuilds the menu every 200ms, resetting the arrow highlight
+        // and the list's scroll position. (Cost: a doc change that alters
+        // the SUGGESTIONS without touching the construct — an external sync
+        // adding a heading — won't refresh an already-open menu until the
+        // user types; acceptable for an advisory list.)
+        if (
+            this.menu && this.shownFor &&
+            match.start === this.shownFor.start &&
+            match.caret === this.shownFor.caret &&
+            match.query === this.shownFor.query
+        ) {
+            return;
+        }
+        // An open menu's chip tracks the construct as it grows/shrinks —
+        // waiting for the debounced re-fetch would leave freshly typed
+        // characters outside the chip for 200ms.
+        if (this.menu) { this.syncChip(match); }
 
         // Same 200ms debounce as the input-field autocompletion.
         if (this.debounceTimer) { clearTimeout(this.debounceTimer); }
@@ -174,12 +219,12 @@ class CaretSuggestController {
         if ($from.parent.type.spec.code) { return null; } // code block
         if ($from.marks().some((m) => m.type.spec.code)) { return null; } // inline code
         const textBefore = $from.parent.textBetween(
-            Math.max(0, $from.parentOffset - 500),
+            Math.max(0, $from.parentOffset - CARET_CONTEXT_WINDOW),
             $from.parentOffset,
             undefined,
             "\uFFFC",
         );
-        const m = specMatch(textBefore, { truncated: $from.parentOffset > 500 });
+        const m = specMatch(textBefore, { truncated: $from.parentOffset > CARET_CONTEXT_WINDOW });
         if (!m || textBefore.slice(-m.length).includes("\uFFFC")) { return null; }
         return {
             start: selection.from - m.length,
@@ -191,15 +236,54 @@ class CaretSuggestController {
 
     // ── Menu lifecycle ───────────────────────────────────────────────────
 
+    // The construct the current menu was built for (see the update() guard).
+    private shownFor: { start: number; caret: number; query: string } | null = null;
+
+    /** Tears down the menu DOM only — the chip survives, because every
+     * caller either rebuilds immediately (showMenu) or is a deliberate
+     * close that clears it itself (closeMenu). */
     private removeMenu(): void {
         this.menu?.destroy();
         this.menu = null;
+        this.shownFor = null;
         openControllers.delete(this);
+    }
+
+    // The last chip range applied (-1 = none), so update()'s per-transaction
+    // re-sync is a no-op unless the range really moved — syncChip itself
+    // dispatches a transaction, and an unconditional re-dispatch would loop.
+    private chipFrom = -1;
+    private chipTo = -1;
+
+    /** Applies/clears the query-chip decoration (see spec.queryChipClass).
+     * Deferred a microtask: this runs from the plugin view's update(), and a
+     * re-entrant dispatch inside applyTransaction breaks Milkdown's own state
+     * plumbing (the slash menu's syncQueryPill discipline). */
+    private syncChip(match: CaretMatch | null): void {
+        if (!this.spec.queryChipClass) { return; }
+        if (match === null && this.chipFrom === -1) { return; }
+        if (match !== null && match.start === this.chipFrom && match.caret === this.chipTo) {
+            return;
+        }
+        this.chipFrom = match === null ? -1 : match.start;
+        this.chipTo = match === null ? -1 : match.caret;
+        const range = match === null
+            ? null
+            : { from: match.start, to: match.caret, class: this.spec.queryChipClass };
+        queueMicrotask(() => {
+            if (this.destroyed || this.view.isDestroyed) { return; }
+            // The positions were captured before the deferral — a same-task
+            // transaction (a pick replacing the construct) can shrink the doc
+            // under them, and an out-of-range decoration throws.
+            if (range && range.to > this.view.state.doc.content.size) { return; }
+            setPendingRange(this.view, range);
+        });
     }
 
     private closeMenu(): void {
         this.closeGeneration++;
         this.removeMenu();
+        this.syncChip(null);
     }
 
     private request(): void {
@@ -217,7 +301,7 @@ class CaretSuggestController {
             ) {
                 this.showMenu(items);
             }
-        });
+        }, { state: this.view.state });
     }
 
     private showMenu(items: unknown): void {
@@ -226,12 +310,12 @@ class CaretSuggestController {
         // re-ranks against the CURRENT partial query, so a stale (debounced)
         // reply can never show outdated options.
         this.removeMenu();
-        if (this.view.composing) { return; }
+        if (this.view.composing) { this.syncChip(null); return; }
         // A yielding suggestion stands down while any OTHER menu is open —
         // two menus would stack at the same caret, both claiming Tab.
-        if (this.spec.yieldsToOpenMenus && openControllers.size > 0) { return; }
+        if (this.spec.yieldsToOpenMenus && openControllers.size > 0) { this.syncChip(null); return; }
         const match = this.matchContext();
-        if (!match) { return; }
+        if (!match) { this.syncChip(null); return; }
         const coords = this.caretCoords();
         this.menu = this.spec.buildMenu(
             items,
@@ -243,7 +327,15 @@ class CaretSuggestController {
             },
             (picked) => this.pick(picked),
         );
-        if (this.menu) { openControllers.add(this); }
+        if (this.menu) {
+            openControllers.add(this);
+            this.shownFor = { start: match.start, caret: match.caret, query: match.query };
+            this.syncChip(match);
+        } else {
+            // Nothing to show (zero rows, composing, yielded): a construct
+            // with no menu must not keep wearing the query chip.
+            this.syncChip(null);
+        }
         // Advisory single-result menus (calc) pre-select their row so Tab
         // confirms it directly; moveActive(1) lifts the highlight from -1 to 0.
         if (this.menu && this.spec.autoActivate) { this.menu.moveActive(1); }

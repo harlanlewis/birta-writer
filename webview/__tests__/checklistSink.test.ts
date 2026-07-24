@@ -184,20 +184,19 @@ describe("checklistSink — nested subtrees", () => {
         const v = view(editor);
         applyTaskToggle(v, itemPos(v, "alpha"), true, true);
         // alpha sinks below beta/gamma, and a1/a2 stay nested beneath it as one
-        // subtree (the nested sublist rides inside the moved list_item). A parent
-        // item carrying a sublist makes the outer list loose, so listSpread-
-        // NormalizePlugin canonicalizes the items to blank-line separation — an
-        // edit-triggered spread fix orthogonal to the reorder.
+        // subtree (the nested sublist rides inside the moved list_item). A
+        // trailing nested sublist is legal TIGHT markdown, so listSpread-
+        // NormalizePlugin keeps the list tight (spread is forced only when a
+        // paragraph follows another block inside an item).
         expect(markdown(editor)).toBe(
-            "- [ ] beta\n\n- [ ] gamma\n\n- [x] alpha\n\n  - [ ] a1\n  - [ ] a2",
+            "- [ ] beta\n- [ ] gamma\n- [x] alpha\n  - [ ] a1\n  - [ ] a2",
         );
 
-        // A single undo restores the subtree to the top, in the same canonical
-        // (loose) form — the ORDER is restored exactly in one step; the spread
-        // normalization is the unrelated plugin's doing, not a second undo step.
+        // A single undo restores the subtree to the top, in the same tight
+        // form — the ORDER is restored exactly in one step.
         undo(v.state, v.dispatch);
         expect(markdown(editor)).toBe(
-            "- [ ] alpha\n\n  - [ ] a1\n  - [ ] a2\n\n- [ ] beta\n\n- [ ] gamma",
+            "- [ ] alpha\n  - [ ] a1\n  - [ ] a2\n- [ ] beta\n- [ ] gamma",
         );
     });
 });

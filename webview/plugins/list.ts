@@ -5,8 +5,8 @@ import {
 } from "@milkdown/preset-commonmark";
 import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
 import { canJoin, keymap, Mapping } from "../pm";
-import { Plugin, PluginKey, TextSelection } from "../pm";
-import { liftListItem } from "../pm";
+import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
+import { joinTextblockBackward, liftListItem } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { isListNode, isSameTypeListBoundary } from "../editing/listMerge";
 
@@ -113,6 +113,17 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
         const base = prev(ctx);
         return {
             ...base,
+            // The stock default is `spread: true`, so every item created via
+            // default attrs (turn-into, the `- ` input rule's wrap) was born
+            // LOOSE. Parse runners always set spread explicitly, so the
+            // default only ever governs editor-created items — and a fresh
+            // item should be TIGHT, the overwhelming convention (the old
+            // aggressive normalizer masked this; force-only normalization
+            // would preserve the wrong default forever).
+            attrs: {
+                ...base.attrs,
+                spread: { default: false, validate: "boolean" },
+            },
             parseMarkdown: {
                 match: base.parseMarkdown.match,
                 runner: (state, node, type) => {
@@ -183,6 +194,56 @@ export const listSpreadReplacedPlugins = new Set<unknown>([
     orderedListSchema.node,
 ]);
 
+/**
+ * After joinTextblockBackward merges a nested item's first paragraph into the
+ * previous line, the joined item can survive as a paragraph-less SHELL
+ * holding only its old sublist — one level deeper than the user's mental
+ * model of "the children follow the line up":
+ *
+ *   item[ p("bazjuj"), ul[ item[ ul[rex…] ] ] ]   ←  `- bazjuj / - / - rex`
+ *
+ * Unwrap it in the same transaction (one undo step): the shell's inner list
+ * items replace the shell, so the subtree sits directly under the merged
+ * line. A no-op whenever the join left no shell.
+ */
+function spliceJoinShell(tr: any, listItemType: any): void {
+    const { $from } = tr.selection;
+    const itemDepth = $from.depth - 1;
+    if (itemDepth < 1 || $from.node(itemDepth).type !== listItemType) {
+        return;
+    }
+    const item = $from.node(itemDepth);
+    if (item.childCount < 2) {
+        return;
+    }
+    const sublist = item.child(1);
+    if (!isListNode(sublist)) {
+        return;
+    }
+    const shell = sublist.firstChild;
+    if (!shell || shell.type !== listItemType) {
+        return;
+    }
+    // The shell survives in one of two forms: only its old sublist, or an
+    // EMPTY leftover paragraph followed by the sublist.
+    let inner = null;
+    if (shell.childCount === 1 && isListNode(shell.firstChild)) {
+        inner = shell.firstChild;
+    } else if (
+        shell.childCount === 2 &&
+        shell.firstChild?.isTextblock &&
+        shell.firstChild.content.size === 0 &&
+        isListNode(shell.child(1))
+    ) {
+        inner = shell.child(1);
+    }
+    if (!inner) {
+        return;
+    }
+    const shellPos = $from.start(itemDepth) + item.child(0).nodeSize + 1;
+    tr.replaceWith(shellPos, shellPos + shell.nodeSize, inner.content);
+}
+
 function isEmptyListItem(item: any): boolean {
     return (
         item.childCount === 1 &&
@@ -191,8 +252,15 @@ function isEmptyListItem(item: any): boolean {
     );
 }
 
-// List Backspace: an empty list item is deleted first; at the start of a
-// non-empty item, lift it one level / turn it into a plain paragraph.
+// List Backspace: a NESTED item's start joins onto the previous visible line
+// — the item break is deleted like a text editor joining lines, and the
+// item's own sublist re-parents one level up (maintainer ruling 2026-07-23:
+// outdent-per-press dragged whole subtrees through every level and read as
+// unpredictable). A TOP-LEVEL item keeps the classic behavior: an empty item
+// is deleted, a non-empty one lifts out of the list as a paragraph
+// (Backspace "removes the bullet"). Cmd+Backspace shares the handler, so
+// delete-to-line-start on an already-empty item falls through to the same
+// join/delete instead of doing nothing.
 export const listLiftPlugin = $prose((ctx) => {
     const schema = ctx.get(schemaCtx);
     const listItemType = schema.nodes["list_item"];
@@ -238,34 +306,68 @@ export const listLiftPlugin = $prose((ctx) => {
         return true;
     };
 
-    return keymap({
-        Backspace: (state, dispatch) => {
-            const { selection } = state;
-            if (!selection.empty) {
-                return false;
-            }
-            const { $from } = selection;
-            if ($from.parentOffset !== 0) {
-                return false;
-            }
+    const backspaceAtItemStart = (state: any, dispatch: any): boolean => {
+        const { selection } = state;
+        if (!selection.empty) {
+            return false;
+        }
+        const { $from } = selection;
+        if ($from.parentOffset !== 0) {
+            return false;
+        }
 
-            if (deleteEmptyListItem(state, dispatch)) {
+        let listItemDepth = -1;
+        for (let d = $from.depth; d >= 0; d--) {
+            if ($from.node(d).type === listItemType) {
+                listItemDepth = d;
+                break;
+            }
+        }
+        if (listItemDepth < 0) {
+            return false;
+        }
+
+        // A nested item (its list's parent is itself a list item) joins onto
+        // the previous visible line: the item break is deleted, like a text
+        // editor joining lines, and the item's own subtree moves one level up
+        // with it. Top-level items skip this (a join would fuse two sibling
+        // bullets' text; lifting to a paragraph is the established "remove
+        // the bullet" gesture there).
+        const nested =
+            listItemDepth >= 2 && $from.node(listItemDepth - 2).type === listItemType;
+        if (nested) {
+            // The join target is the deepest textblock ending before this
+            // item. Joining is only predictable into a PARAGRAPH: into a
+            // code block it would pour the item's prose verbatim INTO the
+            // code (one keystroke silently converting content — a fidelity
+            // hazard), so any other target falls through to the lift below.
+            const $beforeItem = state.doc.resolve($from.before(listItemDepth));
+            const target = Selection.near($beforeItem, -1).$from.parent;
+            if (
+                target !== $from.parent &&
+                target.type.name === "paragraph" &&
+                joinTextblockBackward(state, dispatch && ((tr: any) => {
+                    spliceJoinShell(tr, listItemType);
+                    dispatch(tr);
+                }))
+            ) {
                 return true;
             }
+        }
 
-            let listItemDepth = -1;
-            for (let d = $from.depth; d >= 0; d--) {
-                if ($from.node(d).type === listItemType) {
-                    listItemDepth = d;
-                    break;
-                }
-            }
-            if (listItemDepth < 0) {
-                return false;
-            }
+        if (deleteEmptyListItem(state, dispatch)) {
+            return true;
+        }
 
-            return doLift(state, dispatch);
-        },
+        return doLift(state, dispatch);
+    };
+
+    return keymap({
+        Backspace: backspaceAtItemStart,
+        // Delete-to-line-start with nothing left to delete: same join/delete
+        // as Backspace (the handler only ever acts at parentOffset 0, so a
+        // mid-line Cmd+Backspace still reaches the DOM's own deletion).
+        "Mod-Backspace": backspaceAtItemStart,
         Delete: deleteEmptyListItem,
     });
 });
@@ -415,12 +517,102 @@ export const listAutoJoinPlugin = $prose(() => {
     });
 });
 
-// List spread normalization: after an edit, if a list item contains only a
-// single block child, reset its spread to false. This prevents a stale
-// spread:true (left over from a loose list after deleting a nested sublist)
-// from inserting extra blank lines on serialization. Only list nodes inside
-// the actually-changed range are normalized, so editing a table doesn't reset
-// list spacing across the whole document.
+/**
+ * Whether Markdown REQUIRES this item loose: a paragraph following another
+ * block inside the item would lazy-merge into it if serialized tight (byte
+ * loss on reparse). A trailing nested list — or any non-paragraph block —
+ * is legal tight markdown. The one spread rule every surface shares: the
+ * normalizer's force floor and the Tighten command's keep-list.
+ */
+function itemRequiresSpread(item: any): boolean {
+    let needs = false;
+    item.forEach((child: any, _offset: number, index: number) => {
+        if (index >= 1 && child.type.name === "paragraph") {
+            needs = true;
+        }
+    });
+    return needs;
+}
+
+/** Whether the list tree at `listPos` serializes loose anywhere — any list
+ * or item in it carrying spread. The Tighten/Loosen row's state probe. */
+export function listTreeIsLoose(doc: any, listPos: number): boolean {
+    const list = doc.nodeAt(listPos);
+    if (!list || !isListNode(list)) {
+        return false;
+    }
+    let loose = attrSpreadBool(list.attrs.spread);
+    list.descendants((n: any) => {
+        if (
+            (isListNode(n) || n.type.name === "list_item") &&
+            attrSpreadBool(n.attrs.spread)
+        ) {
+            loose = true;
+        }
+        return !loose;
+    });
+    return loose;
+}
+
+/**
+ * Sets the tight/loose CHARACTER of the whole list tree at `listPos` — the
+ * one sanctioned way the editor changes it (the normalizer below is
+ * force-only, so it never will). Tightening keeps any item Markdown
+ * requires loose (see itemRequiresSpread); loosening marks every list and
+ * item spread. Nested sublists follow the same setting; attr-only steps, so
+ * original-doc positions stay valid and it's one undo step. Returns false
+ * when `listPos` is not a list or nothing needed changing.
+ */
+export function setListTreeSpread(view: any, listPos: number, loose: boolean): boolean {
+    const { state } = view;
+    const list = state.doc.nodeAt(listPos);
+    if (!list || !isListNode(list)) {
+        return false;
+    }
+    const tr = state.tr;
+    const apply = (node: any, pos: number): void => {
+        let anyItemLoose = false;
+        let offset = pos + 1;
+        node.forEach((item: any) => {
+            const itemLoose = loose || itemRequiresSpread(item);
+            if (item.attrs.spread !== itemLoose) {
+                tr.setNodeMarkup(offset, undefined, { ...item.attrs, spread: itemLoose });
+            }
+            if (itemLoose) {
+                anyItemLoose = true;
+            }
+            let childOffset = offset + 1;
+            item.forEach((child: any) => {
+                if (isListNode(child)) {
+                    apply(child, childOffset);
+                }
+                childOffset += child.nodeSize;
+            });
+            offset += item.nodeSize;
+        });
+        const listLoose = loose || anyItemLoose;
+        if (node.attrs.spread !== listLoose) {
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, spread: listLoose });
+        }
+    };
+    apply(list, listPos);
+    if (tr.steps.length === 0) {
+        return false;
+    }
+    view.dispatch(tr);
+    return true;
+}
+
+// List spread normalization — FORCE-ONLY, by maintainer ruling (2026-07-24,
+// "the editor never changes a list's tight/loose character"): spread is
+// raised to true where Markdown REQUIRES a blank line (a paragraph following
+// another block inside an item would lazy-merge on reparse — byte loss), and
+// never lowered. Tight/loose is the author's call — it changes the RENDERED
+// output (loose items get <p> wrapping downstream), so auto-"cleanup" both
+// rewrote diffs and silently altered published pages. Deliberate cleanup is
+// the explicit Tighten/Loosen List command (setListSpread below).
+// Only list nodes inside the actually-changed range are examined, so editing
+// a table doesn't touch list spacing across the whole document.
 export const listSpreadNormalizePlugin = $prose((ctx) => {
     const schema = ctx.get(schemaCtx);
     return new Plugin({
@@ -460,21 +652,24 @@ export const listSpreadNormalizePlugin = $prose((ctx) => {
                 let listNeedsSpread = false;
                 let offset = 1;
                 node.forEach((item) => {
-                    const itemNeedsSpread = item.childCount > 1;
-                    if (item.attrs.spread !== itemNeedsSpread) {
+                    // Force-only: raise to true when required, otherwise keep
+                    // the author's character (coercing a legacy string form).
+                    const target = itemRequiresSpread(item) || attrSpreadBool(item.attrs.spread);
+                    if (item.attrs.spread !== target) {
                         tr.setNodeMarkup(pos + offset, undefined, {
                             ...item.attrs,
-                            spread: itemNeedsSpread,
+                            spread: target,
                         });
                         changed = true;
                     }
-                    if (itemNeedsSpread) listNeedsSpread = true;
+                    if (target) listNeedsSpread = true;
                     offset += item.nodeSize;
                 });
-                if (node.attrs.spread !== listNeedsSpread) {
+                const listTarget = listNeedsSpread || attrSpreadBool(node.attrs.spread);
+                if (node.attrs.spread !== listTarget) {
                     tr.setNodeMarkup(pos, undefined, {
                         ...node.attrs,
-                        spread: listNeedsSpread,
+                        spread: listTarget,
                     });
                     changed = true;
                 }
