@@ -377,17 +377,19 @@ export function providerFor(kind: EmbedKind): EmbedProvider {
 }
 
 /**
- * Recognition cache. The embed plugin re-walks every bare-link paragraph on
- * selection changes (reveal-on-caret needs the selection), so without a cache
- * every caret move re-parses every bare URL through up to four `new URL()`
- * calls — measurable on link-heavy documents (perf review, 2026-07-24). The
- * result for a given href never changes within a session (the table is
- * static), so a memo makes repeat walks O(1) per link. Bounded: cleared
- * wholesale when full — simpler than LRU, and a working set over 512 distinct
- * hrefs in one document is already pathological.
+ * Recognition cache. The embed plugin re-walks bare-link paragraphs on doc
+ * changes (selection-only transactions reuse cached matches and never reach
+ * here), so without a memo every keystroke in a link-heavy doc re-parses
+ * every bare URL through up to four `new URL()` calls. The result for a given
+ * href never changes within a session (the table is static), so repeat walks
+ * are O(1) per link. Bounded by FIFO eviction — evicting one entry per insert
+ * degrades gracefully, where a wholesale clear-at-cap gave a doc one link
+ * past the cap a 0% hit rate plus periodic O(cap) clears (review-of-the-review
+ * finding, 2026-07-24). Cyclic walks over more distinct hrefs than the cap
+ * still miss, so the cap is set above any realistic single document.
  */
 const RECOGNIZE_CACHE = new Map<string, EmbedMatch | null>();
-const RECOGNIZE_CACHE_MAX = 512;
+const RECOGNIZE_CACHE_MAX = 2048;
 
 /**
  * Recognize which provider (if any) a bare link href points at. Returns the
@@ -409,7 +411,11 @@ export function recognizeProvider(url: string): EmbedMatch | null {
         }
     }
     if (RECOGNIZE_CACHE.size >= RECOGNIZE_CACHE_MAX) {
-        RECOGNIZE_CACHE.clear();
+        // FIFO: Maps iterate in insertion order, so the first key is oldest.
+        const oldest = RECOGNIZE_CACHE.keys().next().value;
+        if (oldest !== undefined) {
+            RECOGNIZE_CACHE.delete(oldest);
+        }
     }
     RECOGNIZE_CACHE.set(url, match);
     return match;

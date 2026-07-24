@@ -405,6 +405,27 @@ describe("regateEmbeds — a gate flip takes effect without a doc edit", () => {
         await editor.destroy();
     });
 
+    it("reveal-on-caret should work through the cached-match path (selection-only transactions)", async () => {
+        // The plugin walks + recognizes only on doc changes; a selection-only
+        // transaction re-filters cached matches (no walk, no URL parsing).
+        // This drives that path end-to-end through real dispatches.
+        window.__i18n = { translations: {}, network: true } as unknown as typeof window.__i18n;
+        const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`, [embedPlugin]);
+        const view = editorView(editor);
+        caretTo(view, 1);
+        regateEmbeds(view); // arm + initial walk
+        expect(pluginDecoCount(view)).toBeGreaterThan(0);
+
+        // Caret INTO the embed paragraph: selection-only — card must drop.
+        caretTo(view, view.state.doc.content.size - 1);
+        expect(pluginDecoCount(view)).toBe(0);
+
+        // Caret back out: selection-only — card must return.
+        caretTo(view, 1);
+        expect(pluginDecoCount(view)).toBeGreaterThan(0);
+        await editor.destroy();
+    });
+
     it("turning embeds OFF should drop the cards immediately, not on the next click", async () => {
         window.__i18n = { translations: {}, network: true } as unknown as typeof window.__i18n;
         const editor = await makeCorpusEditor(`# Title\n\nhttps://youtu.be/${ID}\n`, [embedPlugin]);

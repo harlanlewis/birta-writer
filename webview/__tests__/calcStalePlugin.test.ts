@@ -167,6 +167,41 @@ describe("stale/broken cues in the live editor", () => {
         await editor.destroy();
     });
 
+    it("clicking a cued number should open the popup WITHOUT moving the caret", async () => {
+        // Deliberate divergence from proofread (which lets the caret land): a
+        // caret placed inside a maintained `=> answer` summons the inline-calc
+        // suggestion menu over this popup — two advisory surfaces fighting for
+        // one position. The click claims the event, shows the merged popup,
+        // and leaves the selection where it was.
+        const editor = await makeEditor("x = 4\n\nx\\*2 => 8");
+        const v = view(editor);
+        await settle();
+        v.dispatch(
+            v.state.tr.insertText("5", posOf(v, 0, "4"), posOf(v, 0, "4") + 1)
+                .setMeta(EXTERNAL_SYNC_META, true),
+        );
+        await settle();
+        const [cue] = cues(v);
+        expect(cue).toBeDefined();
+        const selectionBefore = v.state.selection;
+
+        const target = document.createElement("span");
+        target.className = "calc-cue";
+        const event = { target } as unknown as MouseEvent;
+        let claimed = false;
+        for (const p of v.state.plugins) {
+            if (p.props.handleClick?.call(p, v, cue.from, event)) {
+                claimed = true;
+                break;
+            }
+        }
+
+        expect(claimed).toBe(true); // proofread's handler never re-shows its subset
+        expect(document.querySelector(".pf-popup, [class*=popup]")).not.toBeNull();
+        expect(v.state.selection.eq(selectionBefore)).toBe(true); // caret untouched
+        await editor.destroy();
+    });
+
     it("[Remove answer] leaves `expr =>` — the withdrawal shape — in one undo step", async () => {
         const editor = await makeEditor("x\\*2 => 8\n\nx = 4");
         const v = view(editor);

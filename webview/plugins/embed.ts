@@ -120,22 +120,31 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): () => HTMLElement {
     };
 }
 
+/** One recognized bare-link paragraph, cached between doc changes. */
+interface CachedEmbed {
+    from: number;
+    to: number;
+    match: EmbedMatch;
+    href: string;
+}
+
 /**
- * Build the embed decoration set for the current doc + selection. Returns
- * DecorationSet.empty immediately when the feature is off (no provider scan, no
- * widget, no import). Top-level bare-link paragraphs get a host node decoration
- * (hides the link text) and a card widget — EXCEPT the paragraph the selection
- * is in, which is left bare so the raw link is editable (reveal-on-caret).
- * Exported for unit testing.
+ * Walk the doc for recognized bare-link paragraphs. Returns [] immediately
+ * when the feature is off (no provider scan, no widget, no import). This is
+ * the expensive half — URL recognition per bare link — and the plugin runs it
+ * only on doc changes (and the arm/regate), NEVER on selection-only
+ * transactions: reveal-on-caret needs the selection, but re-walking the doc
+ * per caret move re-parsed every bare URL on every arrow key (perf review,
+ * 2026-07-24 — the sibling proofread/calcStale plugins never recompute on
+ * selection either).
  */
-export function computeEmbedDecorations(state: EditorState): DecorationSet {
+export function collectEmbeds(state: EditorState): CachedEmbed[] {
     if (!embedsFeatureOn()) {
-        return DecorationSet.empty;
+        return [];
     }
     const network = networkOn();
-    const { doc, selection } = state;
-    const decorations: Decoration[] = [];
-    doc.forEach((node, pos) => {
+    const embeds: CachedEmbed[] = [];
+    state.doc.forEach((node, pos) => {
         const href = bareLinkHref(node);
         if (!href) {
             return;
@@ -149,30 +158,52 @@ export function computeEmbedDecorations(state: EditorState): DecorationSet {
         if (!network && providerFor(match.kind).needsNetwork) {
             return;
         }
-        const from = pos;
-        const to = pos + node.nodeSize;
+        embeds.push({ from: pos, to: pos + node.nodeSize, match, href });
+    });
+    return embeds;
+}
+
+/**
+ * The cheap half: build decorations from cached matches + the current
+ * selection. O(#embeds), no walk, no URL parsing — safe to run per caret move.
+ */
+function decorationsFor(
+    embeds: readonly CachedEmbed[],
+    selection: EditorState["selection"],
+    doc: ProseNode,
+): DecorationSet {
+    const decorations: Decoration[] = [];
+    for (const embed of embeds) {
         // Reveal-on-caret: selection inside this paragraph → show the raw link.
-        if (selection.to > from && selection.from < to) {
-            return;
+        if (selection.to > embed.from && selection.from < embed.to) {
+            continue;
         }
         decorations.push(
-            Decoration.node(from, to, { class: "embed-host" }),
+            Decoration.node(embed.from, embed.to, { class: "embed-host" }),
         );
         decorations.push(
-            Decoration.widget(from + 1, embedWidget(match, href), {
+            Decoration.widget(embed.from + 1, embedWidget(embed.match, embed.href), {
                 side: -1,
                 // The position is part of the key: two bare links to the SAME
                 // video are two distinct widgets, and same-key widgets would
                 // make ProseMirror treat them as one during redraw
                 // reconciliation (skipped/misplaced DOM).
-                key: `embed:${match.kind}:${match.id}:${from}`,
+                key: `embed:${embed.match.kind}:${embed.match.id}:${embed.from}`,
             }),
         );
-    });
+    }
     return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;
 }
 
-type EmbedState = { armed: boolean; deco: DecorationSet };
+/**
+ * Full recompute: walk + filter. Exported for unit testing; the plugin itself
+ * only takes this path on doc changes and the arm — see apply() below.
+ */
+export function computeEmbedDecorations(state: EditorState): DecorationSet {
+    return decorationsFor(collectEmbeds(state), state.selection, state.doc);
+}
+
+type EmbedState = { armed: boolean; embeds: readonly CachedEmbed[]; deco: DecorationSet };
 
 type EmbedMeta = { type: "arm" };
 
@@ -182,9 +213,9 @@ export const embedPlugin = $prose(() =>
     new Plugin<EmbedState>({
         key: embedPluginKey,
         state: {
-            init: () => ({ armed: false, deco: DecorationSet.empty }),
+            init: () => ({ armed: false, embeds: [], deco: DecorationSet.empty }),
             apply(tr, value, _oldState, newState) {
-                let { armed, deco } = value;
+                let { armed, embeds, deco } = value;
                 const meta = tr.getMeta(embedPluginKey) as EmbedMeta | undefined;
                 if (meta?.type === "arm") {
                     armed = true;
@@ -192,16 +223,23 @@ export const embedPlugin = $prose(() =>
                 if (!armed) {
                     // Nothing renders until the idle arm opens the gate — the
                     // first pass never runs synchronously during mount.
-                    return { armed, deco: DecorationSet.empty };
+                    return { armed, embeds: [], deco: DecorationSet.empty };
                 }
-                if (tr.docChanged || tr.selectionSet || meta?.type === "arm") {
-                    // Selection changes drive reveal-on-caret; doc changes and the
-                    // initial arm rebuild from scratch.
-                    deco = computeEmbedDecorations(newState);
+                if (tr.docChanged || meta?.type === "arm") {
+                    // The doc (or a gate, via regate's arm) changed: re-walk,
+                    // then filter against the new selection.
+                    embeds = collectEmbeds(newState);
+                    deco = decorationsFor(embeds, newState.selection, newState.doc);
+                } else if (tr.selectionSet) {
+                    // Selection-only: the doc is unchanged (no steps → cached
+                    // positions still hold), so reveal-on-caret needs only the
+                    // cheap filter over the cached matches — no walk, no URL
+                    // parsing per caret move.
+                    deco = decorationsFor(embeds, newState.selection, newState.doc);
                 } else {
                     deco = deco.map(tr.mapping, tr.doc);
                 }
-                return { armed, deco };
+                return { armed, embeds, deco };
             },
         },
         props: {

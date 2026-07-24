@@ -373,11 +373,21 @@ export const calcStalePlugin = $prose(() => {
                 if (cueFindings.length === 0) { return false; }
                 // Overlapping proofread decorations share the clicked span (a
                 // long-sentence flag can cover the whole equation), and both
-                // handlers drive the SAME singleton popup — whoever shows last
-                // wins. So stack every finding here into one popup, cue first
-                // (it is the most specific span), and claim the click: the
-                // proofread handler re-showing only its own subset would hide
-                // this one.
+                // handlers drive the SAME singleton popup. Stack every finding
+                // here into one popup, cue first (it is the most specific
+                // span), and return true so proofread's handler — registered
+                // after this plugin — never runs and re-shows only its own
+                // subset over the merged popup.
+                //
+                // Claiming the click ALSO suppresses ProseMirror's default
+                // caret placement, and that is deliberate — a divergence from
+                // proofread (which returns false and lets the caret land). A
+                // caret landing inside a maintained `=> answer` immediately
+                // summons the inline-calc suggestion menu over this popup —
+                // two advisory surfaces fighting for one position (verified
+                // e2e, 2026-07-24). The popup IS the interaction surface for a
+                // cued answer; clicking anywhere outside it still edits
+                // normally.
                 showFindingsPopup(view, pos, [...cueFindings, ...findingsAt(view, pos)]);
                 return true;
             },
