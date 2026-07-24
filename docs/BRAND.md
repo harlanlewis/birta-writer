@@ -57,12 +57,51 @@ decides whether we are designing *one flexible system* or *two things*.
 "Labs" / "Writer" (and later product words) are the differentiator. This is the first
 decision to lock — Phase 0 below.
 
+### The variation model — a constant core, an expressive descriptor
+
+Within the branded house, treat the wordmark as two parts with different jobs:
+
+- **The constant — *Birta* + the monogram.** One resolved logotype for the word *Birta*,
+  and one rigid `b` mark, identical across every product. This is the recognition anchor
+  and the equity that compounds — it is the favicon, the app icon, the avatar, and it
+  never flexes.
+- **The variable — the product descriptor.** *Writer*, *Budget*, *Reader*… each gets its
+  own typographic voice: Writer might be a fluid, contemporary thick-ink stroke; a
+  hypothetical *Budget* structured and solid. The descriptor is where a product's
+  personality — whimsy, seriousness, flair — is allowed to live.
+
+The grammar of the name carries this for free: *Birta* is the noun/verb (the house), the
+product word is the modifier (the thing). The brand structure mirrors the language, which
+is what makes it feel inevitable rather than applied.
+
+**What stays fixed for the family to hold — vary the personality, fix the geometry.** The
+word *Birta* and the monogram; the lockup geometry (how the descriptor aligns to *Birta* —
+shared baseline / optical size ratio, spacing, clear space); and monochrome. Only the
+descriptor's *letterform character* moves. Two lockups in the identical skeleton with
+different-temperature descriptors still read as one company; change the skeleton and the
+family fragments.
+
+**The tradeoff, going in.** This buys per-product personality at the cost of a typographic
+decision per product and a system harder to police than a rigid one. Mitigate by defining
+the axes a descriptor may move along (weight · structure · contrast · fluidity) as a small
+playbook, so variation is guided, not a free-for-all. It is the recommended model, but the
+central thing to pressure-test in Phase 2–3 is exactly *how much descriptor variance the
+constant can absorb before it stops reading as one company* — mock several products and
+squint.
+
 ---
 
 ## Principles
 
 The fixed stars. A proposal that fights one of these is a signal to rethink the proposal.
 Grouped by what they constrain.
+
+**Two scopes.** *Universal* principles bind *Birta* **and** every product descriptor.
+*Signature* principles bind the constant *Birta* only — a product descriptor may range
+beyond them (that is the whole point of the variation model above), but never below the
+universal floor: monochrome, no clip-art/props, value-not-hue where light is expressed,
+and legible at minimum size. Signature principles are tagged below; the rest are
+universal.
 
 ### Meaning
 
@@ -86,14 +125,19 @@ Grouped by what they constrain.
 5. **Value, not hue.** Where light is expressed, express it through value contrast and
    flat tone — no gradient as the defining feature, ever. (A two-value split is fine; a
    gradient is not.)
-6. **Humanist, not cold.** The word is warm. The default "Icelandic = cold minimal
-   blue-white" move is not just generic, it *misreads the word*. Curves, optical warmth,
-   a humanist hand — closer to the wordmark sketches (ARIA / FLOW / CURVE / STRUCTURAL)
-   than to a cold geometric grotesk.
-7. **Plain, not decorated.** The product's value is plainness — real files, minimal
-   diffs, nothing between you and the source. The identity should feel the same: honest,
-   unfussy, confident. No drop shadows, bevels, glass, or effects that vanish in
-   one-colour reproduction. This is also the tie-breaker when two candidates are close.
+6. **Humanist, not cold.** *(Birta's signature.)* The word is warm. The default
+   "Icelandic = cold minimal blue-white" move is not just generic, it *misreads the
+   word*. Curves, optical warmth, a humanist hand — closer to the wordmark sketches
+   (ARIA / FLOW / CURVE / STRUCTURAL) than to a cold geometric grotesk. A product
+   descriptor may run colder or more structured if the product calls for it (a *Budget*
+   reading serious and solid is appropriate); the constant *Birta* stays humanist and
+   carries the warmth for the family.
+7. **Plain, not decorated.** *(Birta's signature.)* The product's value is plainness —
+   real files, minimal diffs, nothing between you and the source. The constant should
+   feel the same: honest, unfussy, confident. The descriptor is the one sanctioned place
+   for flair — but flair *within the universal floor* (monochrome, no props, legible),
+   never drop shadows, bevels, glass, or effects that vanish in one colour. Between two
+   candidate *constants* that are otherwise close, the plainer wins.
 8. **No literal props.** No pen-nibs, no document/page shapes, no cursors. Apple isn't a
    computer; Birta isn't a page. Appropriateness ≠ depiction.
 
@@ -103,9 +147,10 @@ Grouped by what they constrain.
    noun *and* an approved given name — weak on legal distinctiveness alone (MAR-134 tracks
    clearance). A distinctive mark is ownable in a way the plain word may not be; lean on
    the mark for ownability.
-10. **One family, parent and product.** Whatever we choose has to flex across Labs and
-    Writer (and unnamed future products) from a shared root — not two unrelated marks.
-    Prefer differentiating by a mark *state* or the suffix word over redrawing.
+10. **One family from a fixed core and a variable descriptor.** The constant (*Birta* +
+    monogram) does the coherence work; the product descriptor carries personality (see
+    the variation model above). Differentiate products by the descriptor's voice, not by
+    redrawing the core. Guardrail: fix the geometry, vary only the character.
 11. **It's a set, not a lockup.** Plan for primary / horizontal / stacked / icon-only /
     monogram from the start, with clear-space and minimum-size rules — not one hero
     arrangement retrofitted later.
@@ -222,9 +267,16 @@ construction) applies; these are the Birta-specific sharpenings:
 
 ## Open decisions & next actions
 
-1. **Lock Phase 0** — pick the architecture model. Everything downstream depends on it.
-2. **Decide who executes** — maintainer, a hired designer, or agent-assisted exploration;
+1. **Lock Phase 0** — pick the architecture model (recommendation: branded house with the
+   constant-core / variable-descriptor variation model). Everything downstream depends on it.
+2. **Resolve the monogram's scope** — does the shared `b` stay rigidly constant across all
+   products (recommended — it is the recognition anchor), or may a product's *icon* pick up
+   its descriptor's flavor? Fix this alongside Phase 0; it bounds how far personality reaches.
+3. **Set the descriptor playbook** — the axes a product word may move along
+   (weight · structure · contrast · fluidity) and the coherence-absorption limit found by
+   squinting at several mocked products (Phase 2–3 output).
+4. **Decide who executes** — maintainer, a hired designer, or agent-assisted exploration;
    this doc is the brief either way.
-3. **Track it** — the *identity design* is planned work distinct from the MAR-134 rebrand
+5. **Track it** — the *identity design* is planned work distinct from the MAR-134 rebrand
    residual; worth its own Linear issue (via `/devlog`) referencing this doc, so the
    design effort and the legal/publishing tasks stay linked but separate.
