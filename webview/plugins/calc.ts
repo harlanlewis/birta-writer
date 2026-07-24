@@ -48,7 +48,7 @@ import {
     findRefreshEquations,
     formatCalcResult,
     isCalcStructurallyValid,
-    parseDefinition,
+    parseDefinitions,
     type EquationSpan,
 } from "../utils/calc";
 import { calcUnitsReady } from "../utils/calcUnits";
@@ -412,15 +412,14 @@ export const calcAutoInsertPlugin = $inputRule(() =>
  */
 function blockHasDefinition(text: string): boolean {
     if (!text.includes("=")) { return false; }
-    return text.split("\n").some((line) => {
-        const def = parseDefinition(line);
-        return def !== null && isCalcStructurallyValid(def.rhs);
-    });
+    return text.split("\n").some((line) =>
+        parseDefinitions(line).some((def) => isCalcStructurallyValid(def.rhs)),
+    );
 }
 
 export const calcRefreshPlugin = $prose(() => new Plugin({
     key: new PluginKey("MD_CALC_REFRESH"),
-    appendTransaction(trs, _oldState, newState) {
+    appendTransaction(trs, oldState, newState) {
         if (!calcEnabled()) { return null; }
         if (!trs.some((tr) => tr.docChanged)) { return null; }
         // An external-sync transaction replays an edit made OUTSIDE this
@@ -465,6 +464,30 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
         // every `=>` equation from there DOWN may have gone stale.
         let cascadeFrom = -1;
 
+        // A DELETED definition must cascade too: the post-edit block no
+        // longer shows it, so also inspect the PRE-edit blocks the first
+        // transaction touched (its step coordinates are exact against
+        // oldState; later transactions in a batch are relative to
+        // intermediate docs and are covered by the post-edit trigger).
+        trs[0]!.mapping.maps.forEach((map) => {
+            map.forEach((oldFrom, oldEnd) => {
+                const size = oldState.doc.content.size;
+                oldState.doc.nodesBetween(
+                    Math.min(oldFrom, size),
+                    Math.min(oldEnd, size),
+                    (node: ProseNode, pos: number) => {
+                        if (!node.isTextblock) { return true; }
+                        if (node.type.spec.code) { return false; }
+                        if (!blockHasDefinition(blockCalcText(node))) { return false; }
+                        let mapped = pos + 1;
+                        for (const tr of trs) { mapped = tr.mapping.map(mapped); }
+                        cascadeFrom = cascadeFrom === -1 ? mapped : Math.min(cascadeFrom, mapped);
+                        return false;
+                    },
+                );
+            });
+        });
+
         /**
          * Recompute one candidate; rewrite its result if stale. True if
          * rewritten. `scope` (cascade only) is the incrementally-built scope
@@ -493,10 +516,32 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                     scope ?? scopeUpTo(newState, blockStart + cand.expr[0]),
                 );
                 result = value === null ? null : formatCalcResult(value);
-                // A unit conversion before the lazy engine loads can't compute
-                // — kick the load off so the NEXT edit refreshes (this hook is
-                // synchronous and cannot await).
-                if (result === null && !calcUnitsReady()) { void ensureCalcUnits().catch(() => undefined); }
+                if (result === null) {
+                    // The lazy unit engine may simply not be loaded yet —
+                    // kick the load and try again on the next edit (this
+                    // hook is synchronous and cannot await).
+                    if (!calcUnitsReady()) {
+                        void ensureCalcUnits().catch(() => undefined);
+                        return false;
+                    }
+                    // CASCADE only: the document no longer justifies this
+                    // answer (its definition vanished or broke) — WITHDRAW
+                    // it, leaving `expr =>`. A stale number masquerading as
+                    // live is the one lie the feature must not tell; the
+                    // withdrawal is quiet and one undo restores everything.
+                    // Never from a LOCAL edit: mid-typing an expression is
+                    // transiently unresolvable, and destroying the answer on
+                    // the first keystroke of a rename would be hostile —
+                    // and re-answering always needs the user's Tab.
+                    if (!scope) { return false; }
+                    out = out.delete(
+                        out.mapping.map(blockStart + cand.expr[1] + 2),
+                        out.mapping.map(blockStart + cand.res[1]),
+                    );
+                    refreshed.add(key);
+                    touched = true;
+                    return true;
+                }
             } else {
                 // Advisory mode: a `=` result followed by a WORD reads as
                 // prose annotation ("Dec 24-26 = 3 days off") far more often
@@ -614,8 +659,7 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                         if (resIntersectsChange(blockStart, cand)) { continue; }
                         refresh(blockStart, text, cand, scope);
                     }
-                    const def = parseDefinition(line);
-                    if (def) {
+                    for (const def of parseDefinitions(line)) {
                         // The one definition-evaluation step (see
                         // buildScopeFromLines): a resolvable RHS enters scope,
                         // a broken one never clobbers an earlier good value.

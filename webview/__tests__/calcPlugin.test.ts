@@ -765,6 +765,60 @@ describe("auto-insert result refresh (editing an existing equation)", () => {
         editor.destroy();
     });
 
+    it("a vanished variable WITHDRAWS the dependent answer (silence over a stale lie)", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\n\nx*2 => 8");
+        const v = view(editor);
+        // Delete the entire definition paragraph.
+        v.dispatch(v.state.tr.delete(0, v.state.doc.firstChild!.nodeSize));
+        expect(v.state.doc.firstChild?.textContent).toBe("x*2 =>"); // answer gone, no lie left
+        editor.destroy();
+    });
+
+    it("withdrawal is one undo away, together with the deletion that caused it", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\n\nx*2 => 8");
+        const v = view(editor);
+        v.updateState(v.state.reconfigure({ plugins: [...v.state.plugins, history()] }));
+        v.dispatch(v.state.tr.delete(0, v.state.doc.firstChild!.nodeSize));
+        expect(v.state.doc.firstChild?.textContent).toBe("x*2 =>");
+        undo(v.state, v.dispatch);
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts).toEqual(["x = 4", "x*2 => 8"]); // definition AND answer restored
+        editor.destroy();
+    });
+
+    it("renaming a variable also withdraws answers it justified", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("x = 4\n\nx*2 => 8");
+        const v = view(editor);
+        editChar(v, 0, "y"); // x = 4 → y = 4: nothing defines x anymore
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts).toEqual(["y = 4", "x*2 =>"]);
+        editor.destroy();
+    });
+
+    it("multiple definitions on one line feed the cascade and the `=>` scope", async () => {
+        (window as unknown as { __i18n: Record<string, unknown> }).__i18n = {
+            translations: {}, isMac: true, calcEnabled: true, calcAutoInsert: false,
+        };
+        const editor = await makeRefreshEditor("a=5, b=2\n\na+b => 7");
+        const v = view(editor);
+        editChar(v, 2, "9"); // a=5 → a=9
+        const texts: string[] = [];
+        v.state.doc.forEach((child) => { texts.push(child.textContent); });
+        expect(texts).toEqual(["a=9, b=2", "a+b => 11"]);
+        editor.destroy();
+    });
+
     it("undo reverts the edit and the refreshed answer together", async () => {
         const editor = await makeRefreshEditor("3+4= 7");
         const v = view(editor);

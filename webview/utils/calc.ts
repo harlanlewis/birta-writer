@@ -830,6 +830,25 @@ export function parseDefinition(line: string): { name: string; rhs: string } | n
 }
 
 /**
+ * Every definition on a line. A line can carry several, separated by `,` or
+ * `;` (`a=5, b=2`) — but ONLY when every segment parses as a definition:
+ * all-or-nothing, because `a = 1,000` must read as one definition attempt
+ * (digit grouping), never be split into a silent, wrong `a = 1`. A line that
+ * fails the multi reading falls back to the single-definition parse.
+ */
+export function parseDefinitions(line: string): Array<{ name: string; rhs: string }> {
+    const segments = line.split(/[,;]/);
+    if (segments.length > 1) {
+        const defs = segments.map((segment) => parseDefinition(segment));
+        if (defs.every((def) => def !== null)) {
+            return defs as Array<{ name: string; rhs: string }>;
+        }
+    }
+    const single = parseDefinition(line);
+    return single ? [single] : [];
+}
+
+/**
  * The one definition-evaluation step shared by every scope builder: resolve
  * the right-hand side against the definitions seen so far and, when it yields
  * a value, enter it into `scope`. Returns the value, or null when the RHS does
@@ -855,8 +874,7 @@ function applyDefinition(
 export function buildScopeFromLines(lines: readonly string[]): Map<string, number> {
     const scope = new Map<string, number>();
     for (const line of lines) {
-        const def = parseDefinition(line);
-        if (def) { applyDefinition(def, scope); }
+        for (const def of parseDefinitions(line)) { applyDefinition(def, scope); }
     }
     return scope;
 }
@@ -964,7 +982,17 @@ export function evaluateCalcBlock(source: string): CalcBlockLine[] {
         if (!raw.trim() || CALC_COMMENT.test(raw)) { return { raw, result: null, kind: "silent" }; }
 
         const line = raw.replace(CALC_TRAILING_EQ, "");
-        const def = parseDefinition(line);
+        const defs = parseDefinitions(line);
+        if (defs.length > 1) {
+            // A multi-definition line (`a=5, b=2`): every value is spelled in
+            // the source, so nothing to display — unless a segment breaks.
+            let allApplied = true;
+            for (const def of defs) {
+                if (applyDefinition(def, scope) === null) { allApplied = false; }
+            }
+            return { raw, result: null, kind: allApplied ? "silent" : "error" };
+        }
+        const def = defs[0];
         if (def) {
             const value = applyDefinition(def, scope);
             if (value === null) { return { raw, result: null, kind: "error" }; }

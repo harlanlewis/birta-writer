@@ -503,6 +503,19 @@ describe("buildScopeFromLines", () => {
         expect(scope.has("a")).toBe(false);
     });
 
+    it("multiple definitions on one line apply — all-or-nothing on the comma split", () => {
+        const scope = buildScopeFromLines(["a=5, b=2", "c = a+b"]);
+        expect(scope.get("a")).toBe(5);
+        expect(scope.get("b")).toBe(2);
+        expect(scope.get("c")).toBe(7);
+        expect(buildScopeFromLines(["x=1; y=2"]).get("y")).toBe(2); // semicolons too
+        // `a = 1,000` is ONE definition attempt (digit grouping) — splitting
+        // it would silently define a wrong `a = 1`. It defines nothing.
+        expect(buildScopeFromLines(["a = 1,000"]).has("a")).toBe(false);
+        // A mixed line (one segment isn't a definition) also stays whole.
+        expect(buildScopeFromLines(["a=5, and prose"]).has("a")).toBe(false);
+    });
+
     it("a definition carrying its own inserted answer still defines (e=d => 6)", () => {
         // The screenshot bug: the arrow answer the feature itself wrote was
         // read as part of the right-hand side, so `e` never entered scope —

@@ -28,14 +28,16 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
 
     - Construct formulas:
 
-      - a=2
-
-      - b=4
-
-      - csq = a^2 + b^2
+      - a=2, b=4
+      - d=a+b
+      - e=d => 
+      - e=>
+      -
+      - csq => a^2 + b^2 => 20
+      - csq =>
       - csq=> 20
       - c => sqrt(csq)=> 4.472136
-      - -log((2/8)\*c)+2^2=> 4.90309
+      - -log((2/8)\*c)+2^2=> 3.30103
       - E = mc² =>
       - dec 24-26= -2
 
