@@ -377,46 +377,26 @@ export function providerFor(kind: EmbedKind): EmbedProvider {
 }
 
 /**
- * Recognition cache. The embed plugin re-walks bare-link paragraphs on doc
- * changes (selection-only transactions reuse cached matches and never reach
- * here), so without a memo every keystroke in a link-heavy doc re-parses
- * every bare URL through up to four `new URL()` calls. The result for a given
- * href never changes within a session (the table is static), so repeat walks
- * are O(1) per link. Bounded by FIFO eviction — evicting one entry per insert
- * degrades gracefully, where a wholesale clear-at-cap gave a doc one link
- * past the cap a 0% hit rate plus periodic O(cap) clears (review-of-the-review
- * finding, 2026-07-24). Cyclic walks over more distinct hrefs than the cap
- * still miss, so the cap is set above any realistic single document.
- */
-const RECOGNIZE_CACHE = new Map<string, EmbedMatch | null>();
-const RECOGNIZE_CACHE_MAX = 2048;
-
-/**
  * Recognize which provider (if any) a bare link href points at. Returns the
  * provider kind and stable id, or null when no provider matches. Pure and
- * deterministic (memoized) — the plugin calls this while walking bare-link
- * paragraphs. Callers must treat the returned match as read-only.
+ * deterministic — the plugin calls this while walking bare-link paragraphs.
+ *
+ * Deliberately NOT memoized: the plugin re-walks only on doc changes (a
+ * selection-only transaction reuses the cached CachedEmbed[] and never calls
+ * here — see embed.ts), and one walk is ~0.8µs per bare link. A memo was tried
+ * and measured (2026-07-24): it saved ~0.28ms per keystroke on a *pathological*
+ * 360-bare-link fixture — 4% of a keystroke dominated by ProseMirror's own
+ * reconciliation — and nothing measurable on a realistic doc, which is not
+ * worth a standing module-global cache. If the per-keystroke doc walk itself
+ * ever becomes the bottleneck, map the cached embeds through transactions
+ * (like proofread/calcStale/TOC) rather than caching recognition.
  */
 export function recognizeProvider(url: string): EmbedMatch | null {
-    const cached = RECOGNIZE_CACHE.get(url);
-    if (cached !== undefined) {
-        return cached;
-    }
-    let match: EmbedMatch | null = null;
     for (const provider of PROVIDERS) {
         const id = provider.extractId(url);
         if (id) {
-            match = { kind: provider.kind, id };
-            break;
+            return { kind: provider.kind, id };
         }
     }
-    if (RECOGNIZE_CACHE.size >= RECOGNIZE_CACHE_MAX) {
-        // FIFO: Maps iterate in insertion order, so the first key is oldest.
-        const oldest = RECOGNIZE_CACHE.keys().next().value;
-        if (oldest !== undefined) {
-            RECOGNIZE_CACHE.delete(oldest);
-        }
-    }
-    RECOGNIZE_CACHE.set(url, match);
-    return match;
+    return null;
 }

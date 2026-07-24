@@ -141,5 +141,6 @@ const xlarge = (() => {
 })();
 
 // tiny isolates the fixed per-keystroke floor; medium/large/xlarge give the
-// document-size scaling curve.
-export const TYPING_FIXTURES = { tiny, medium, large, xlarge };
+// document-size scaling curve; link-heavy isolates the embed recognizer's
+// per-keystroke cost (the plugin re-walks bare links on every doc change).
+export const TYPING_FIXTURES = { tiny, medium, large, xlarge, "link-heavy": linkHeavy };
