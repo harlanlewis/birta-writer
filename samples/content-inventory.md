@@ -65,7 +65,7 @@ The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~st
 
 Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
 
-### Inline calculator
+### Inline calculator `=`
 
 Start or end a math equation with `=` to automatically compute it. For example, `5+7^4-1=` or `=32+7`
 
@@ -85,7 +85,7 @@ The answer appears as a suggestion — confirm with **Tab** (Return stays a newl
 
 What it refuses: `1,000,000 / 3 =` offers nothing (evaluating the fragment after the comma would be a *wrong* answer), and `total = 2 + x` never triggers (letters aren't arithmetic) — same reason `=5+7` typed as `a=5+7` stays prose. A pure digits-and-operators run always computes, though — `2026-07-17 =` answers `2002`, chained subtraction, because the suggestion is yours to decline.
 
-### Living calculations (`=>`)
+### Living calculations `=>`
 
 Ending an expression with `=>` unlocks the richer form: **named variables**
 defined earlier in the document as `name = value` lines (only definitions
@@ -475,7 +475,7 @@ graph TD
 
 ### Calc
 
-Math worksheets read and evaluate equations. Unlike [Inline calculator](#inline-calculator) and [Living calculations (=>)](#living-calculations-), `Calc` blocks only *read* and *evaluate* equations. They do not modify the raw Markdown by writing answers.
+Math worksheets read and evaluate equations. Unlike [Inline calculator](#inline-calculator-) and [Living calculations (=>)](#living-calculations-), `Calc` blocks only *read* and *evaluate* equations. They do not modify the raw Markdown by writing answers.
 
 ```calc
 # a tiny budget worksheet
