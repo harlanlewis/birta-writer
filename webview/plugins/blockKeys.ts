@@ -21,11 +21,15 @@
  *                   block. Tables and code blocks keep their own semantics
  *                   (tables bail to native; codeBlockSelectAll's capture
  *                   handler preempts inside fences).
- *   - Alt+↑/↓ and   move the selected block range (staying selected) or the
- *   Cmd+Shift+↑/↓   caret's block (headings carry their section) — the same
+ *   - Alt+↑/↓       move the selected block range (staying selected) or the
+ *                   caret's block (headings carry their section) — the same
  *                   moveBlocks primitive (editing/moveBlocks) the menu and
  *                   drag use, so fold state, the landing flash, and
  *                   single-step undo all apply.
+ *   - Mod+Shift+↑/↓ ONLY for a non-text selection: extend to the document
+ *                   start/end as a text selection (native handling of our
+ *                   custom selection classes is undefined). A caret or text
+ *                   selection falls through to the platform's native chord.
  *   - Shift+Alt+↑/↓ duplicate the selected block range or the caret's block
  *                   (MAR-103, VS Code copy-line semantics) — the same
  *                   primitive the menu's Duplicate row uses. Delete Block
@@ -301,7 +305,34 @@ export const escalateSelectAll: Command = (state, dispatch) => {
     return true;
 };
 
-/** Alt+↑/↓ / Cmd+Shift+↑/↓: move the covered blocks (or the caret's block). */
+/**
+ * Mod+Shift+↑/↓: extend the selection to the document start/end — but ONLY
+ * when a non-text selection (block range, node selection, gap cursor) is
+ * active. For a caret or text selection this returns false so the browser's
+ * native chord handles it, keeping per-platform semantics. Custom selection
+ * classes have no native DOM representation, so the browser's handling of
+ * them is undefined — observed nondeterministic (sometimes anchoring at the
+ * range, sometimes selecting the whole document); this pins the anchor at
+ * the selection's far edge deterministically.
+ */
+export function selectToDocEdge(dir: -1 | 1): Command {
+    return (state, dispatch) => {
+        const sel = state.selection;
+        if (sel instanceof TextSelection) {
+            return false;
+        }
+        const $anchor = state.doc.resolve(dir === 1 ? sel.from : sel.to);
+        const $head = dir === 1
+            ? Selection.atEnd(state.doc).$to
+            : Selection.atStart(state.doc).$from;
+        dispatch?.(state.tr
+            .setSelection(TextSelection.between($anchor, $head))
+            .scrollIntoView());
+        return true;
+    };
+}
+
+/** Alt+↑/↓: move the covered blocks (or the caret's block). */
 export function moveSelectedBlocks(dir: -1 | 1): Command {
     return (state, dispatch, view) => {
         if (!view || !dispatch) {
@@ -496,11 +527,14 @@ const blockKeymap = keydownHandler({
     // staying put. Same reason Duplicate (Shift+Alt+Arrow) stays hardcoded.
     // Claimed in the key-leak guard so the workbench never double-handles it;
     // the palette command birta.editor.moveBlockUp/Down exposes the action for
-    // discovery and additional user bindings.
+    // discovery and additional user bindings. Mod-Shift-Arrow belongs to the
+    // platform's native selection extension (select-to-document-start/end on
+    // macOS) — selectToDocEdge only claims it for non-text selections, where
+    // no native behavior exists (see its doc comment).
     "Alt-ArrowDown": moveSelectedBlocks(1),
     "Alt-ArrowUp": moveSelectedBlocks(-1),
-    "Mod-Shift-ArrowDown": moveSelectedBlocks(1),
-    "Mod-Shift-ArrowUp": moveSelectedBlocks(-1),
+    "Mod-Shift-ArrowDown": selectToDocEdge(1),
+    "Mod-Shift-ArrowUp": selectToDocEdge(-1),
     "Shift-Alt-ArrowDown": duplicateSelectedBlocks(1),
     "Shift-Alt-ArrowUp": duplicateSelectedBlocks(-1),
 });

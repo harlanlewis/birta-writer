@@ -1,8 +1,8 @@
 /**
  * Tests for the block keyboard model (MAR-22 move keys / MAR-82 keyboard
  * remainder): Escape's caret↔block toggle, Shift+arrow block-wise
- * extend/shrink (and its never-steal-text-selection gate), and Alt/Cmd+Shift
- * arrow moves through the shared moveBlockTo machinery.
+ * extend/shrink (and its never-steal-text-selection gate), and Alt+arrow
+ * moves through the shared moveBlockTo machinery.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
@@ -235,7 +235,7 @@ describe("extendBlockSelection (Shift+arrows)", () => {
     });
 });
 
-describe("moveSelectedBlocks (Alt+arrows / Cmd+Shift+arrows)", () => {
+describe("moveSelectedBlocks (Alt+arrows)", () => {
     it("a caret block should move down past its neighbor", async () => {
         const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
         placeCaretIn(view, "Alpha");
@@ -316,6 +316,75 @@ describe("moveSelectedBlocks (Alt+arrows / Cmd+Shift+arrows)", () => {
         moveSelectedBlocks(-1)(view.state, view.dispatch, view);
         $c = view.state.doc.resolve(view.state.selection.from);
         expect($c.parent.textContent).toBe("Bravo");
+    });
+});
+
+describe("Mod-Shift-Arrow: native select-to-document-edge, deterministic for block selections", () => {
+    // For a caret/text selection Cmd/Ctrl+Shift+Up/Down must NOT be claimed:
+    // the platform's native selection extension owns it (it used to be a
+    // second binding for block move, shadowing the platform selection chord).
+    // For non-text selections (block range, node selection) the browser has
+    // no defined behavior, so selectToDocEdge claims the chord and extends
+    // to the document edge deterministically.
+    function modShiftArrow(key: "ArrowUp" | "ArrowDown", mod: "metaKey" | "ctrlKey"): KeyboardEvent {
+        return new KeyboardEvent("keydown", {
+            key, shiftKey: true, [mod]: true, bubbles: true, cancelable: true,
+        });
+    }
+
+    for (const mod of ["metaKey", "ctrlKey"] as const) {
+        for (const key of ["ArrowUp", "ArrowDown"] as const) {
+            it(`${mod}+Shift+${key} on a caret should not be consumed and should not move the block`, async () => {
+                const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+                placeCaretIn(view, "Beta");
+                expect(handleBlockKeydown(view, modShiftArrow(key, mod))).toBe(false);
+                expect(blockOrder(view)).toEqual(["Alpha", "Beta", "Gamma"]);
+            });
+        }
+    }
+
+    // The binding-hit cases use ctrlKey: jsdom reports a non-mac platform,
+    // so prosemirror-keymap resolves "Mod-" to Ctrl here.
+    it("a block selection + Mod+Shift+Down should become a text selection to the document end", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Beta");
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(view.state.selection).toBeInstanceOf(BlockRangeSelection);
+        expect(handleBlockKeydown(view, modShiftArrow("ArrowDown", "ctrlKey"))).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(TextSelection);
+        // Anchored at Beta's start, never at the document start.
+        expect(selectedText(view)).toBe("Beta Gamma");
+        expect(blockOrder(view)).toEqual(["Alpha", "Beta", "Gamma"]);
+    });
+
+    it("a block selection + Mod+Shift+Up should become a text selection to the document start", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Beta");
+        toggleBlockSelection(view.state, view.dispatch);
+        expect(handleBlockKeydown(view, modShiftArrow("ArrowUp", "ctrlKey"))).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(TextSelection);
+        expect(selectedText(view)).toBe("Alpha Beta");
+    });
+
+    it("a node selection + Mod+Shift+Down should become a text selection to the document end", async () => {
+        const view = await makeEditor("Alpha\n\n---\n\nGamma");
+        let hrPos = -1;
+        view.state.doc.forEach((node, offset) => { if (node.type.name === "hr") hrPos = offset; });
+        expect(hrPos).toBeGreaterThan(-1);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, hrPos)));
+        expect(handleBlockKeydown(view, modShiftArrow("ArrowDown", "ctrlKey"))).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(TextSelection);
+        expect(selectedText(view)).toContain("Gamma");
+    });
+
+    it("Alt+ArrowDown should still be consumed and move the block", async () => {
+        const view = await makeEditor("Alpha\n\nBeta\n\nGamma");
+        placeCaretIn(view, "Alpha");
+        const event = new KeyboardEvent("keydown", {
+            key: "ArrowDown", altKey: true, bubbles: true, cancelable: true,
+        });
+        expect(handleBlockKeydown(view, event)).toBe(true);
+        expect(blockOrder(view)).toEqual(["Beta", "Alpha", "Gamma"]);
     });
 });
 

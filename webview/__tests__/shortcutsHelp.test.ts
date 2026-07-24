@@ -154,11 +154,11 @@ describe("shortcutsHelp — content", () => {
             expect(descCell.querySelector("kbd")).toBeNull();
             expect(descCell.querySelector(".shortcuts-help__label")).not.toBeNull();
         }
-        // The move row groups its four chips as two alternatives of two
-        // chips each (never a flat run that could wrap 3+1).
+        // The move row lists the single Alt+arrow gesture as one intact pair
+        // (Mod-Shift-Arrow is the platform's native selection chord, not listed).
         const moveRow = rows.find((r) => r.textContent!.includes("Move block up / down"))!;
         const movePairs = [...moveRow.querySelectorAll(".shortcuts-help__pair")];
-        expect(movePairs.map((p) => p.querySelectorAll("kbd").length)).toEqual([2, 2]);
+        expect(movePairs.map((p) => p.querySelectorAll("kbd").length)).toEqual([2]);
         // Notes render inside the description cell, never as loose
         // full-width lines under the key column.
         const rowNotes = panel()!.querySelectorAll(".shortcuts-help__row .shortcuts-help__note");
@@ -188,7 +188,10 @@ describe("shortcutsHelp — content", () => {
         const chips = [...panel()!.querySelectorAll("kbd")].map((k) => k.textContent);
         expect(chips).toContain("Ctrl+B");
         expect(chips).toContain("Shift+Alt+→");
-        expect(chips).toContain("Ctrl+Shift+↑");
+        expect(chips).toContain("Alt+↑");
+        // Ctrl+Shift+↑ is the platform's native selection chord, no longer
+        // a listed block-move alternative.
+        expect(chips).not.toContain("Ctrl+Shift+↑");
         expect(chips).toContain("Ctrl+Enter");
         expect(chips).toContain("Shift+Tab");
         // No mac-only chord leaks onto the other platform

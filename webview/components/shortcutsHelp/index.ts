@@ -217,12 +217,7 @@ function buildPanel(): HTMLDivElement {
 
     addSection(t("Blocks"));
     addRow(
-        // Two alternatives for the same gesture — each pair stays intact,
-        // so the four chips always read as a 2×2 stack.
-        [
-            [keys("Alt-ArrowUp"), keys("Alt-ArrowDown")],
-            [keys("Mod-Shift-ArrowUp"), keys("Mod-Shift-ArrowDown")],
-        ],
+        [[keys("Alt-ArrowUp"), keys("Alt-ArrowDown")]],
         t("Move block up / down"),
         t("Move carries a heading's whole section."),
     );
