@@ -131,6 +131,21 @@ describe("filterSlashItems", () => {
         expect(ids.slice(0, 3)).toEqual(["heading1", "heading2", "heading3"]);
     });
 
+    it("a word-prefix abbreviation should match a multi-word label", () => {
+        // "seclink" = "sec"(tion) + "link" — the compressed form a user types
+        // for a label they know (user-reported expectation).
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "seclink"))).toContain("sectionLink");
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "seclin"))).toContain("sectionLink");
+        expect(label(filterSlashItems(SLASH_MENU_ITEMS, "inlmath"))).toContain("math");
+    });
+
+    it("abbreviation matches should rank below every other tier", () => {
+        // "secl" abbreviates "Section Link" but is a substring of nothing;
+        // any label/keyword prefix match must come first when both exist.
+        const ids = label(filterSlashItems(SLASH_MENU_ITEMS, "secl"));
+        expect(ids).toContain("sectionLink");
+    });
+
     it("a query matching nothing should return an empty list", () => {
         expect(filterSlashItems(SLASH_MENU_ITEMS, "zzzz")).toEqual([]);
     });

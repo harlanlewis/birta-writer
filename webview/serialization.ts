@@ -11,6 +11,7 @@ import { createFidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { imageStringAttrPlugins, imageStringAttrReplacedPlugins } from "./plugins/image";
+import { linkBoundaryPlugins } from "./plugins/linkBoundary";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { reparseHazardPlugin } from "./plugins/reparseHazard";
@@ -170,6 +171,10 @@ export const pureCommonmark = [
     // title-less image parses with "" (valid) instead of mdast's null, which
     // fails the node's own attr validation. See plugins/image.ts.
     ...imageStringAttrPlugins,
+    // AFTER the preset: the link mark becomes inclusive:false, so typing at
+    // a link's end boundary stays plain text instead of silently extending
+    // the link. See plugins/linkBoundary.ts.
+    ...linkBoundaryPlugins,
     fidelitySerializerPlugin,
     // Registers this editor's serializer/parser for the save-survival move
     // check (MAR-120). Rides the base preset so no construction site —

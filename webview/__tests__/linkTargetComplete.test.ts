@@ -8,12 +8,25 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
+import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
+import type { EditorView } from "../pm";
+import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
     attachLinkTargetComplete,
     createLinkSuggestMenu,
     dispatchLinkTargetSuggestions,
 } from "../components/pathLink/linkTargetComplete";
 import { setupLinkPopup } from "../components/linkPopup";
+
+// The heading-anchor rows read the live document through getEditorView();
+// most describes below run editor-less (currentView stays null → no anchor
+// rows, the historical behavior), while the anchors describe points it at a
+// real Milkdown doc.
+let currentView: EditorView | null = null;
+vi.mock("@/editor", async (importOriginal) => {
+    const mod = await importOriginal<typeof import("@/editor")>();
+    return { ...mod, getEditorView: () => currentView };
+});
 
 /** Workspace files as the Extension replies with them (both forms each). */
 const ITEMS = [
@@ -514,5 +527,74 @@ describe("link target autocompletion — link popup URL field wiring", () => {
 
         expect(input.value).toBe("../notion/index.md");
         expect(menuEl()).toBeNull();
+    });
+});
+
+describe("link target autocompletion — same-document heading anchors", () => {
+    const DOC = "# Living calculations\n\n## Overview\n\n## Overview\n\nx\n";
+    let input: HTMLInputElement;
+    let detach: () => void;
+    let editor: Editor;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        editor = await Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, DOC);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .create();
+        currentView = editor.action((ctx) => ctx.get(editorViewCtx));
+        input = document.createElement("input");
+        input.type = "text";
+        document.body.appendChild(input);
+        detach = attachLinkTargetComplete(input);
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        detach();
+        currentView = null;
+        await editor.destroy();
+    });
+
+    it("a # query should list matching anchors locally (no file request)", async () => {
+        await type(input, "#over");
+
+        expect(postedRequests()).toHaveLength(0);
+        expect(optionTexts()).toEqual(["#overview", "#overview-1"]);
+    });
+
+    it("a bare # should browse every addressable heading", async () => {
+        await type(input, "#");
+
+        expect(optionTexts()).toEqual([
+            "#living-calculations",
+            "#overview",
+            "#overview-1",
+        ]);
+    });
+
+    it("plain text matching a heading should offer the anchor without the # prefix", async () => {
+        await type(input, "over");
+        reply([]); // no file matches — the anchors still show
+
+        expect(optionTexts()).toEqual(["#overview", "#overview-1"]);
+    });
+
+    it("anchors should ride along after file matches for a shared query", async () => {
+        await type(input, "living");
+        reply([
+            { relative: "../living/index.md", rootRelative: "/write/living/index.md" },
+        ]);
+
+        expect(optionTexts()).toEqual(["../living/index.md", "#living-calculations"]);
     });
 });

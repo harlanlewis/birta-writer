@@ -8,8 +8,11 @@
  *
  * Files are offered in the form matching what the user is reaching for:
  * document-relative ("../notion/index.md") by default, workspace-root-based
- * ("/write/notion/index.md") when the typed text starts with "/". External
- * targets (http/https/mailto/#anchor) never trigger suggestions.
+ * ("/write/notion/index.md") when the typed text starts with "/". Same-
+ * document heading anchors are offered too — alone for a `#…` query, and
+ * alongside file matches when plain text matches a heading title or slug
+ * (the `#` prefix is optional). External targets (http/https/mailto) never
+ * trigger suggestions.
  *
  * Flow mirrors imgPathComplete.ts: input (debounced 200ms) →
  * getLinkTargetSuggestions → linkTargetSuggestions reply → dropdown. The
@@ -27,8 +30,10 @@ import {
     notifyResolveLinkTarget,
 } from "@/messaging";
 import { getEditorView } from "@/editor";
-import { collectDocHeadings } from "@/utils/headingUtils";
-import { slugifyHeadings } from "@/utils/slug";
+import {
+    collectHeadingSuggestions,
+    filterHeadingSuggestions,
+} from "@/utils/headingSuggest";
 import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
 import { onOutsideClick } from "@/ui/outsideClick";
 import type { LinkTargetSuggestionItem } from "../../../shared/messages";
@@ -382,51 +387,8 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
         input.focus();
     }
 
-    function showMenu(items: LinkTargetSuggestionItem[]): void {
-        // Replace any previous menu without bumping closeGeneration: rendering
-        // a reply is not a user-initiated close, and it must not invalidate a
-        // newer request that is still in flight. The menu builder re-ranks
-        // against the input's CURRENT value: replies are async and the user
-        // may have kept typing since the request was sent.
-        removeMenu();
-        const rect = input.getBoundingClientRect();
-        menu = createLinkSuggestMenu(
-            items,
-            input.value,
-            {
-                left: rect.left,
-                top: rect.bottom + 2,
-                flipTop: rect.top - 2,
-                minWidth: rect.width,
-            },
-            applySelection,
-        );
-    }
-
-    /**
-     * A `#…` query suggests SAME-DOCUMENT heading anchors — the missing path
-     * to an internal section link from the URL field. Headings and slugs come
-     * from the same model-sourced pair the section-link picker and the anchor
-     * resolver use (collectDocHeadings + slugifyHeadings), so a picked
-     * `#slug` always resolves. Local and synchronous — no extension roundtrip.
-     */
-    function showHeadingAnchors(query: string): void {
-        const view = getEditorView();
-        if (!view) { closeMenu(); return; }
-        const needle = query.slice(1).toLowerCase();
-        const headings = collectDocHeadings(view.state.doc);
-        const slugs = slugifyHeadings(headings.map((h) => h.text));
-        const rows = headings
-            .map((h, i) => ({ text: `#${slugs[i]}`, title: h.text }))
-            // A heading whose content slugifies to nothing (an emoji/atom-only
-            // title) would offer a bare `#` that resolves nowhere — drop it.
-            .filter((r) => r.text !== "#")
-            .filter(
-                (r) =>
-                    !needle ||
-                    r.text.toLowerCase().includes(needle) ||
-                    r.title.toLowerCase().includes(needle),
-            );
+    /** Renders `rows` anchored under the input (closes on zero rows). */
+    function showRows(rows: Array<{ text: string; title?: string }>): void {
         if (rows.length === 0) { closeMenu(); return; }
         removeMenu();
         const rect = input.getBoundingClientRect();
@@ -437,14 +399,56 @@ export function attachLinkTargetComplete(input: HTMLInputElement): () => void {
         );
     }
 
+    /**
+     * SAME-DOCUMENT heading anchors matching `needle` — the path to an
+     * internal section link from the URL field. The source and ranking are
+     * utils/headingSuggest.ts (shared with the `#` caret autocomplete and
+     * the section-link picker, and model-consistent with the anchor
+     * resolver, so a picked `#slug` always resolves). Rows write `#slug`
+     * into the field. Local and synchronous — no extension roundtrip.
+     * `allowEmpty` lists every heading for an empty needle (the browse state
+     * behind a typed bare `#`); without it an empty needle offers nothing.
+     */
+    function headingAnchorRows(
+        needle: string,
+        allowEmpty = false,
+    ): Array<{ text: string; title: string }> {
+        if (!needle && !allowEmpty) { return []; }
+        const view = getEditorView();
+        if (!view) { return []; }
+        return filterHeadingSuggestions(collectHeadingSuggestions(view.state.doc), needle)
+            .map((h) => ({ text: `#${h.slug}`, title: h.title }));
+    }
+
+    function showMenu(items: LinkTargetSuggestionItem[]): void {
+        // Replace any previous menu without bumping closeGeneration: rendering
+        // a reply is not a user-initiated close, and it must not invalidate a
+        // newer request that is still in flight. Rows are re-ranked against
+        // the input's CURRENT value: replies are async and the user may have
+        // kept typing since the request was sent. Heading anchors ride along
+        // after the file matches — typing part of a heading's title or slug
+        // offers the anchor without requiring the `#` prefix.
+        const trimmed = input.value.trim();
+        const fileRows = isLocalPathQuery(trimmed)
+            ? rankLinkTargets(items, trimmed).map((item) => ({
+                text: preferredLinkForm(item, trimmed),
+                title: item.rootRelative,
+            }))
+            : [];
+        showRows([...fileRows, ...headingAnchorRows(trimmed)]);
+    }
+
     function triggerSuggest(): void {
         const query = input.value.trim();
         if (query.startsWith("#")) {
-            showHeadingAnchors(query);
+            // Anchors only; the bare `#` is the browse state (every heading).
+            showRows(headingAnchorRows(query.slice(1), true));
             return;
         }
         if (!isLocalPathQuery(query)) {
-            closeMenu();
+            // Not a path — but part of a heading title/slug still offers the
+            // same-document anchor (the `#` prefix is optional).
+            showRows(headingAnchorRows(query));
             return;
         }
         const requestGeneration = closeGeneration;

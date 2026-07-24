@@ -179,9 +179,9 @@ function seamAfter(doc: PMNode, anchor: number, limit: number | null): Seam | "b
  *  sides. Inheriting the left side's marks unconditionally pulled the space
  *  into a run that ends at the seam: a link or inline-code left line rewrote
  *  the saved markdown (`[foo](url)` + `bar` → `[foo ](url)bar`; `` `foo` `` +
- *  `bar` → `` `foo `bar ``), a phase-0 fidelity break. (This schema sets no
- *  `inclusive: false` on link/code, so the marks() boundary convention can't
- *  be relied on; the intersection is the schema-independent rule.) Emphasis
+ *  `bar` → `` `foo `bar ``), a phase-0 fidelity break. (Link now sets
+ *  `inclusive: false` — plugins/linkBoundary.ts — but code does not; the
+ *  intersection is the schema-independent rule that needs neither.) Emphasis
  *  that genuinely spans both lines still carries the space. */
 function applySeam(tr: Transaction, seam: Seam): void {
     tr.delete(seam.a, seam.b);

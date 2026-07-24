@@ -49,6 +49,7 @@ import {
     unfoldAtCaret,
 } from "@/plugins";
 import { attrsFromMarker, calloutKind, markerWithKind } from "@/plugins/callouts";
+import { armBlockStartHeadingComplete } from "@/plugins/headingLinkComplete";
 import { openBlockMenuAtCaret } from "@/components/blockMenu";
 import { uncheckAllTasks } from "@/editing/checklistSink";
 import {
@@ -613,14 +614,34 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     insertHorizontalRule: (getEditor) => callCmd(getEditor, insertHrCommand),
     insertTable: (getEditor) => callCmd(getEditor, insertTableCommand, { row: 3, col: 3 }),
     insertLink: () => host.openLinkPrompt?.(),
-    // Capture the selection/caret and open the heading picker; picking inserts
-    // `[text](#slug)` via the shared link editor (see components/sectionLink).
-    // Lazy: the picker is invocation-only UI, so its bytes stay out of the
-    // launch bundle; the cached dynamic import costs one chunk fetch on first
-    // use (same pattern as katexLoader). The picker reads the view's CURRENT
-    // state when it opens, so the microtask gap cannot dangle a stale position.
+    // With a caret (no selection): insert the `#` trigger and let the heading
+    // autocomplete take over — the picker and the typed-`#` path are ONE
+    // mechanism, so the command gets slash-menu dynamics for free (inline
+    // type-to-filter with the query chip, arrows/Enter pick, Escape leaves
+    // the typed text). With a selection: open the heading picker, which
+    // linkifies the selected text to the chosen heading (typing there would
+    // overwrite the selection, so it keeps the fixed list).
+    // The picker stays lazy (invocation-only UI, out of the launch bundle;
+    // cached dynamic import, same pattern as katexLoader) and reads the
+    // view's CURRENT state when it opens, so the microtask gap cannot dangle
+    // a stale position.
     insertSectionLink: (getEditor) =>
         runProse(getEditor, (view) => {
+            const { selection } = view.state;
+            const { $from } = selection;
+            if (selection.empty && $from.parent.isTextblock && !$from.parent.type.spec.code) {
+                // Glued to a word ("foo|"), insert a separating space so the
+                // strict whitespace-before-`#` trigger holds; at a block
+                // start the armed one-shot allows the bare `#`.
+                const prev = $from.parentOffset === 0
+                    ? ""
+                    : view.state.doc.textBetween(selection.from - 1, selection.from, undefined, "￼");
+                const text = prev !== "" && !/\s/.test(prev) ? " #" : "#";
+                armBlockStartHeadingComplete();
+                view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+                view.focus();
+                return;
+            }
             import("@/components/sectionLink")
                 .then((m) => m.openSectionLinkPicker(view))
                 .catch((e) => console.error("[birta] section-link picker failed to load", e));

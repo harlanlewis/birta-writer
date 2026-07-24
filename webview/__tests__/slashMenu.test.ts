@@ -98,6 +98,9 @@ describe("createSlashMenu", () => {
         expect(rowLabels()).toEqual([
             "Heading 1", "Heading 2", "Heading 3",
             "Heading 4", "Heading 5", "Heading 6",
+            // Tier-2 keyword-prefix match ("head" starts "header"/"heading")
+            // — ranked after every label-prefix heading match.
+            "Section Link",
         ]);
     });
 
@@ -117,9 +120,9 @@ describe("createSlashMenu", () => {
     });
 
     it("moveActive should wrap in both directions", () => {
-        menu.setQuery("head"); // 6 heading rows, first highlighted
+        menu.setQuery("head"); // 6 heading rows + Section Link, first highlighted
         menu.moveActive(-1);
-        expect(focusedRow()?.id).toBe(slashRowDomId("heading6"));
+        expect(focusedRow()?.id).toBe(slashRowDomId("sectionLink"));
         menu.moveActive(1);
         expect(focusedRow()?.id).toBe(slashRowDomId("heading1"));
     });

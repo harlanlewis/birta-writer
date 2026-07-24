@@ -6,14 +6,19 @@
  * `[text](#slug)` to the one you choose. No new node/mark type — the output is
  * plain markdown that round-trips (phase-0 line).
  *
+ * This is the SELECTION path of the section-link command: with text selected,
+ * typing would overwrite it, so a fixed picker linkifies the selection to the
+ * chosen heading. (With only a caret, the command instead inserts `#` and the
+ * heading autocomplete takes over — plugins/headingLinkComplete.ts — with
+ * inline type-to-filter.)
+ *
  * How it composes with what already exists, rather than rebuilding any of it:
- *   - Headings come from `collectDocHeadings` — the same doc-model walk the TOC
- *     uses, so the picker and the outline can never disagree.
- *   - Slugs come from `collectDocHeadings` + `slugifyHeadings` — the SAME
- *     model-sourced pair linkPopup's resolveAnchorHeading resolves `#slug`
- *     clicks with, so producer and resolver agree on the slug even for a
- *     heading carrying an inline atom, and a link to the second "Overview"
- *     carries the matching `-N` suffix and jumps to the right one.
+ *   - Rows come from `utils/headingSuggest.ts` — the shared heading-suggestion
+ *     source (the same model-sourced collectDocHeadings + slugifyHeadings pair
+ *     linkPopup's resolveAnchorHeading resolves `#slug` clicks with, so
+ *     producer and resolver agree on the slug even for a heading carrying an
+ *     inline atom, and a link to the second "Overview" carries the matching
+ *     `-N` suffix and jumps to the right one).
  *   - The dropdown IS the workspace-file suggest widget (createSuggestMenuFromRows),
  *     so arrow/Enter navigation, hover, and viewport-flip placement come for free.
  *   - After a pick we apply the link, then open the standard link editor
@@ -22,8 +27,7 @@
  *     openLinkEditor's own semantics require; see applyPick for why.
  */
 import type { EditorView } from "@/pm";
-import { collectDocHeadings } from "@/utils/headingUtils";
-import { slugifyHeadings } from "@/utils/slug";
+import { collectHeadingSuggestions, outlineDisplayRows } from "@/utils/headingSuggest";
 import {
     createSuggestMenuFromRows,
     type LinkSuggestMenu,
@@ -42,28 +46,6 @@ interface HeadingPick {
     slug: string;
     /** The heading's own text — the link text when the caret is empty. */
     title: string;
-}
-
-/**
- * Ensures every row's display string is unique, so the pick-by-display-text map
- * below is injective even when two headings share a title AND a level. The
- * suggest widget reports a pick by its display TEXT, so two identical rows would
- * be indistinguishable; a "(2)", "(3)", … suffix on the later duplicate keeps
- * them apart (and reads as a helpful hint that the heading repeats). Purely a
- * display concern — the href still comes from slugifyHeadings' `-N` suffix.
- */
-function uniqueDisplay(base: string, used: Set<string>): string {
-    if (!used.has(base)) {
-        used.add(base);
-        return base;
-    }
-    let n = 2;
-    while (used.has(`${base} (${n})`)) {
-        n++;
-    }
-    const display = `${base} (${n})`;
-    used.add(display);
-    return display;
 }
 
 /**
@@ -91,8 +73,7 @@ export function openSectionLinkPicker(view: EditorView): void {
     }
     const selectionText = from !== to ? view.state.doc.textBetween(from, to) : "";
 
-    const headings = collectDocHeadings(view.state.doc);
-    const slugs = slugifyHeadings(headings.map((h) => h.text));
+    const suggestions = collectHeadingSuggestions(view.state.doc);
 
     // Anchor the dropdown at the caret (start of the range). coordsAtPos throws
     // in jsdom / on a detached view — fall back to the editor's own box, like
@@ -106,35 +87,20 @@ export function openSectionLinkPicker(view: EditorView): void {
         anchor = { left: r.left + 8, top: r.top + 8 };
     }
 
-    // Build rows + the display→pick map. An empty document (no headings) shows a
-    // single, inert "no headings" row so the command has visible feedback.
+    // Build rows + the display→pick map via the shared heading-suggestion
+    // source (utils/headingSuggest.ts — outline indentation, duplicate "(n)"
+    // disambiguation, unaddressable titles already dropped). A document with
+    // no addressable headings shows a single, inert "no headings" row so the
+    // command has visible feedback.
     const pickByDisplay = new Map<string, HeadingPick>();
     let rowDefs: Array<{ text: string; title?: string }>;
-    if (headings.length === 0) {
+    if (suggestions.length === 0) {
         rowDefs = [{ text: t("No headings in this document") }];
     } else {
-        const used = new Set<string>();
-        rowDefs = [];
-        headings.forEach((h, i) => {
-            // A heading whose title slugifies to "" is UNADDRESSABLE — an
-            // emoji/punctuation-only title (e.g. "## 🚀") produces no anchor, so
-            // the href would be a bare "#" that resolves to nothing (or the
-            // wrong heading). Don't offer it; a dead link is worse than no row.
-            if (slugs[i] === "") {
-                return;
-            }
-            // Indent by heading level (nbsp keeps the leading space from
-            // collapsing) so the list reads as the document's outline.
-            const indent = "  ".repeat(Math.max(0, h.level - 1));
-            const display = uniqueDisplay(indent + h.text, used);
-            pickByDisplay.set(display, { slug: slugs[i], title: h.text });
-            rowDefs.push({ text: display, title: h.text });
+        rowDefs = outlineDisplayRows(suggestions).map(({ display, pick }) => {
+            pickByDisplay.set(display, { slug: pick.slug, title: pick.title });
+            return { text: display, title: pick.title };
         });
-        // Every heading was unaddressable (all empty-slug): fall back to the
-        // same inert empty-state row an empty document shows.
-        if (rowDefs.length === 0) {
-            rowDefs = [{ text: t("No headings in this document") }];
-        }
     }
 
     let menu: LinkSuggestMenu | null = null;

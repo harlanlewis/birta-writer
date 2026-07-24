@@ -156,8 +156,10 @@ describe("slash command menu plugin", () => {
         expect(rowLabels()).toEqual([
             "Heading 1", "Heading 2", "Heading 3",
             "Heading 4", "Heading 5", "Heading 6",
+            // Tier-2 keyword-prefix match ("hea" starts "header"/"heading").
+            "Section Link",
             // Tier-3 substring match ("hea" inside the "cheatsheet" keyword)
-            // — ranked after every label-prefix heading match.
+            // — ranked after every prefix match.
             "Show Keyboard Shortcuts",
         ]);
     });

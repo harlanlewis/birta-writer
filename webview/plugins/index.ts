@@ -40,6 +40,7 @@ export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
 // editor.ts, gated on the network master switch). Import it directly.
 export { mathInlineEditPlugin } from "./mathInlineEdit";
 export { wikiLinkCompletePlugin } from "./wikiLinkComplete";
+export { headingLinkCompletePlugin } from "./headingLinkComplete";
 export {
     listAutoJoinPlugin,
     listEnterPlugin,
