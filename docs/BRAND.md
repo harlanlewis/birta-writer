@@ -66,18 +66,38 @@ Three tiers, with different jobs and different frequency of use:
   a required, standardized deliverable, not an afterthought.
 
 So every product ships **two expressions**: the standalone product wordmark, and the
-Birta lockup. Coherence rides on the constant "Birta" plus a fixed lockup relationship;
-personality rides on the product word. This is a deliberately loose family — products are
-free to build their own equity, and the "Birta" they share is what makes them relatives.
+Birta lockup. Personality rides on the product word; the shared "Birta" and a fixed lockup
+relationship make the products relatives. This is a deliberately loose family.
 
-### The hard consequence to decide early
+### The identity is a system — the wordmark is one layer
+
+The wordmarks are where this doc has spent its attention, but they are **one layer of a
+broader identity system**: palette, a supporting typeface for body/UI, a compositional
+grammar, motion, and voice all sit alongside them. Coherence is a property of the *whole
+system*, and it must not be forced onto the wordmarks alone.
+
+**Cross-product cohesion lives mostly in the other layers — palette first.** Across
+product wordmarks that might run fluid, structural, humanist-serif, geometric, crisp, or
+dynamic, a shared palette and brand system carry the family read far more reliably than any
+typographic thread could.
+
+**On a unifying thread *between the wordmarks themselves*: punt — deliberately.** The
+choice is to either find a nuanced shared touch across every product wordmark or let them
+be genuinely diverse and let the other layers unify them. **Working decision: the latter —
+no forced typographic thread across product wordmarks.** They share only the *universal
+floor* (monochrome-capable, value-not-hue, no clip-art, legible), which is a floor, not a
+unifying style. Revisit only if the family reads as incoherent once real palette and system
+are in play — not before. (A lean, not yet stress-tested with built examples.)
+
+### The utility glyph (required)
 
 A wordmark-only system **has no 16 px form.** App icons show the lockup and render large,
-so both words can work there — but a favicon, a tiny avatar, or a monochrome status glyph
-cannot show a wordmark. The system needs a **utility glyph** for those contexts (most
-likely a single letterform lifted from the "Birta" wordmark, treated as a *utility
-device*, not a logo and not a monogram-as-brand). This is the sharpest unresolved
-consequence of "no monogram," and it is called out again in Open Decisions.
+so both words work there — but a favicon, a tiny avatar, or a monochrome status glyph
+cannot show a wordmark. So a **functional utility glyph is a required deliverable** — most
+likely a single letterform lifted from the "Birta" wordmark, treated as a *utility device*
+(favicon, tiny avatar, status), explicitly not a logo and not a monogram-as-brand. It
+inherits the "Birta" letterforms so it stays of-a-piece without becoming a mark that stands
+in for the name.
 
 ---
 
@@ -136,8 +156,8 @@ universal.
 
 9. **No monogram — the wordmark is the identity.** "Birta" is always spelled out and
    never reduced to a letter or symbol. Recognition comes from the drawn word, not a mark
-   that stands in for it. (The one exception is a *utility glyph* for sub-lockup sizes —
-   a functional device, not a brand mark; see the architecture note and Open Decisions.)
+   that stands in for it. (The one exception is the required *utility glyph* for sub-lockup
+   sizes — a functional device, not a brand mark; see the architecture note.)
 10. **Distinctiveness lives in the lettering.** "Birta" is a common Icelandic noun *and*
     an approved given name — weak on legal distinctiveness as plain text (MAR-134 tracks
     clearance). With no symbol to carry it, the **custom letterforms** are the ownable
@@ -197,9 +217,12 @@ first:
    voices; a plain utility face for labels and UI sits under them. Custom kerning; likely
    custom letterforms. Bad kerning is the amateur tell, and here there is no symbol to hide
    behind.
-3. **Colour last, and thin.** If any colour enters, it is one warm value decided after the
-   wordmarks are final, chosen to reproduce reliably in one colour and to survive being
-   removed. Warm, never cold (Principle 6). No palette-of-the-moment.
+3. **Colour last — but a load-bearing *system* layer.** Colour has two roles that don't
+   conflict: no single wordmark may *depend* on it (each must survive one colour, Principles
+   4–5), yet the shared **system palette is a primary carrier of cross-product cohesion**
+   (see "the identity is a system," above). "Last" is discovery *order*, not importance —
+   the palette is decided after the wordmarks are resolved, kept limited and warm (never
+   cold, Principle 6), no palette-of-the-moment.
 4. **Motion, only if it serves.** Restraint by default; a single considered moment beats
    scattered effects and reads less "generated."
 
@@ -267,24 +290,27 @@ construction) applies; these are the Birta-specific sharpenings:
 
 ## Open decisions & next actions
 
-1. **Confirm Phase 0** — the three-tier wordmark model, no monogram. Everything downstream
-   depends on it.
-2. **The utility glyph** — decide what represents Birta below lockup size (favicon, tiny
-   avatar, monochrome status). Most likely a single letterform from the "Birta" wordmark
-   as a functional device. This is the sharpest consequence of no-monogram and needs an
-   explicit answer, not a default.
-3. **The app-icon lockup** — how "Birta [Product]" occupies a square with no symbol to
+**Decided (recorded above, not reopened):** the three-tier wordmark model with no
+monogram; the utility glyph is a required functional deliverable; and coherence across
+product wordmarks is punted to the other system layers (palette first) rather than a forced
+typographic thread.
+
+Still open:
+
+1. **The app-icon lockup** — how "Birta [Product]" occupies a square with no symbol to
    anchor it (stacked? cropped? the product word dominant with "Birta" as a small
-   endorsement?). The central layout problem.
-4. **Family-coherence stance** — how much a *standalone* product wordmark should signal
-   "Birta family" versus pure independence. The current model leans independent (the lockup
-   carries the connection); confirm that's intended, or add shared connective tissue.
-5. **The "Birta Labs" corporate lockup** — how the plain "Labs" suffix is set so it reads
+   endorsement?). The central layout problem of this system.
+2. **The other system layers** — palette above all (the primary cohesion carrier), plus the
+   supporting body/UI typeface, compositional grammar, motion, voice. This doc is
+   wordmark-forward so far; these need their own exploration and are where the family read
+   is won or lost.
+3. **The "Birta Labs" corporate lockup** — how the plain "Labs" suffix is set so it reads
    corporate, not as a product voice.
-6. **The product-voice playbook** — the axes a product word may move along
-   (weight · structure · contrast · fluidity), so future products vary in a guided way.
-7. **Who executes** — maintainer, a hired designer, or agent-assisted exploration; this
+4. **The product-voice playbook** — the axes a product word may move along
+   (weight · structure · contrast · fluidity), so each product is *developed* deliberately
+   even though products aren't *unified* typographically.
+5. **Who executes** — maintainer, a hired designer, or agent-assisted exploration; this
    doc is the brief either way.
-8. **Track it** — the *identity design* is planned work distinct from the MAR-134 rebrand
+6. **Track it** — the *identity design* is planned work distinct from the MAR-134 rebrand
    residual; worth its own Linear issue (via `/devlog`) referencing this doc, so the design
    effort and the legal/publishing tasks stay linked but separate.
