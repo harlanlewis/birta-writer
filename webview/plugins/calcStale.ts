@@ -43,6 +43,8 @@ import { Plugin, PluginKey, DecorationSet, Decoration } from "../pm";
 import type { EditorView, EditorState, Node as ProseNode } from "../pm";
 import { $prose } from "@milkdown/utils";
 import {
+    applyDefinition,
+    definitionHeadName,
     detectArrowExpression,
     ensureCalcUnits,
     evaluateCalc,
@@ -52,9 +54,9 @@ import {
     isImpossibleUnitConversion,
     isUnitForm,
     parseDefinitions,
-    applyDefinition,
     resultTextMatches,
     unresolvedVariables,
+    type EquationSpan,
 } from "../utils/calc";
 import { calcUnitsReady } from "../utils/calcUnits";
 import { blockCalcText, calcEnabled } from "./calc";
@@ -116,11 +118,6 @@ export function clearCueIgnores(): void {
 
 // ── The classifier (pure, exported for tests) ────────────────────────────────
 
-/** A definition-SHAPED line head (`x =`), valid RHS or not — the same regex as
- * calcRefresh's mid-edit guard: an unresolved name that still has a head above
- * is being retyped, not vanished, and must not flag its dependents. */
-const DEF_HEAD = /^\s*([A-Za-zπτ_][\wπτ]*)\s*=(?![=>])/u;
-
 export interface CalcCueScan {
     set: DecorationSet;
     /** True when a unit-shaped arrow was skipped because the lazy unit chunk
@@ -142,11 +139,7 @@ export function computeCalcCueDecorations(doc: ProseNode): CalcCueScan {
     const defHeaded = new Set<string>();
     let needsUnits = false;
 
-    const classify = (blockStart: number, text: string, cand: {
-        expr: [number, number];
-        res: [number, number];
-        resultText: string;
-    }): void => {
+    const classify = (blockStart: number, text: string, cand: EquationSpan): void => {
         // Re-derive through the full detection discipline — findRefreshEquations'
         // shapes are deliberately broad, and only a span the advisory path would
         // itself have offered may carry a cue.
@@ -232,8 +225,10 @@ export function computeCalcCueDecorations(doc: ProseNode): CalcCueScan {
                 classify(blockStart, text, arrows[arrowIdx]);
                 arrowIdx++;
             }
-            const head = DEF_HEAD.exec(line);
-            if (head) { defHeaded.add(head[1]); }
+            // The shared mid-edit guard (same helper as calcRefresh's
+            // withdrawal): a definition-shaped head, valid RHS or not.
+            const head = definitionHeadName(line);
+            if (head !== null) { defHeaded.add(head); }
             for (const def of parseDefinitions(line)) { applyDefinition(def, scope); }
             lineStart = lineEnd + 1;
         }

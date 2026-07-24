@@ -36,6 +36,7 @@ import { CARET_CONTEXT_WINDOW } from "./caretSuggest";
 import { EXTERNAL_SYNC_META } from "./docChange";
 import {
     applyDefinition,
+    definitionHeadName,
     detectArrowExpression,
     detectCalcExpression,
     ensureCalcUnits,
@@ -345,8 +346,8 @@ export const calcRefreshPlugin = $prose(() => new Plugin({
                     }
                     // Any definition-SHAPED head marks its name as mid-edit
                     // for the withdrawal guard, valid RHS or not.
-                    const head = /^\s*([A-Za-zπτ_][\wπτ]*)\s*=(?![=>])/u.exec(line);
-                    if (head) { defHeadedNames.add(head[1]); }
+                    const head = definitionHeadName(line);
+                    if (head !== null) { defHeadedNames.add(head); }
                     for (const def of parseDefinitions(line)) {
                         // The one definition-evaluation step, shared with
                         // buildScopeFromLines: a resolvable RHS enters scope,

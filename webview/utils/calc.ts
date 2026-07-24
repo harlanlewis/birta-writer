@@ -899,6 +899,17 @@ export function unresolvedVariables(expr: string, scope: Map<string, number>): s
 const DEFINITION_ANSWER_TAIL = /\s*=>?[ \t]*(?:-?\d(?:[\d,]*\d)?(?:\.\d+)?)?[ \t]*$/;
 
 /**
+ * The name of a definition-SHAPED line head (`x = …`), valid RHS or not — or
+ * null when the line has no such head. This is the mid-edit guard's question,
+ * shared by the refresh engine's withdrawal and the stale-cue classifier so
+ * the two can never drift: an unresolved name that still has a head above is
+ * being retyped, not vanished, and must not orphan its dependents.
+ */
+export function definitionHeadName(line: string): string | null {
+    return /^\s*([A-Za-zπτ_][\wπτ]*)\s*=(?![=>])/u.exec(line)?.[1] ?? null;
+}
+
+/**
  * A single `name = value` definition line. The name is a plain identifier
  * (constant glyphs allowed, so `π = 3` can shadow the constant); the `=` must
  * be a single `=` (not `==` highlight syntax, not `=>`), and the value is any
