@@ -58,7 +58,7 @@
     z-index: 10000;
     border: 1px solid var(--vscode-panel-border);
     border-radius: var(--ui-radius-l);
-    box-shadow: 0 8px 30px var(--vscode-widget-shadow);
+    box-shadow: var(--ui-card-shadow);
 }
 
 .toc-panel--flyout.toc-panel--flyout-in {
@@ -333,7 +333,7 @@ body.toc-resizing {
     background: var(--vscode-editor-background);
     border: 1px solid var(--vscode-panel-border);
     border-radius: var(--ui-radius-l);
-    box-shadow: 0 4px 16px var(--vscode-widget-shadow);
+    box-shadow: var(--ui-card-shadow);
 
     &[hidden] { display: none; }
 }

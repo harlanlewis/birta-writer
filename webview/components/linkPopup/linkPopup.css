@@ -26,7 +26,7 @@
     color: var(--palette-ink);
     border: 1px solid var(--palette-border);
     border-radius: var(--ui-radius-l);
-    box-shadow: 0 4px 20px var(--vscode-widget-shadow);
+    box-shadow: var(--ui-card-shadow);
     overflow: hidden;
     animation: lp-fadein 120ms ease;
     /* Retheme the .ui-btn primitives inside onto the palette-chip ground. */
