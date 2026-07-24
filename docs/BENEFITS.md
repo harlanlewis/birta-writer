@@ -29,9 +29,8 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
     - Construct quick formulas…
 
       - a=2, b=4
-      - csq=a²+b²
-      - c=sqrt(csq) => 4.472136
-      - bananas = log(c+π^8) => 3.977404
+      - c=sqrt(a²+b²) => 4.472136
+      - log(c\*100+π^2) => 2.659995
 
     - … for something useful…
 
@@ -42,8 +41,6 @@ Birta Writer is a visual editor for richly formatted Markdown documents. It stri
 
       - 24901 mile in km => 40074.274944
       - t = 24\*60\*60\*1000ms in days => 1
-      - 365 \* t days in years => 0.999316
-      - 1 year in days => 365.25
 
 - It's private.
 

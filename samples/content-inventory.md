@@ -450,7 +450,7 @@ no highlighting here
 
 ### Diagrams (Mermaid)
 
-Rendered with preview / zoom / pan; round-trips as a plain fenced `mermaid` block.
+Fenced [Mermaid](https://mermaid.js.org) diagrams rendered with view controls.
 
 ```mermaid
 graph TD
@@ -460,6 +460,8 @@ graph TD
 ```
 
 ### Calc blocks
+
+`calc` 
 
 A fenced `calc` block is a live worksheet (insert from the slash menu's **Calc
 Block**): every line computes under one shared, top-to-bottom scope, shown in a
@@ -472,14 +474,14 @@ the inline calculators.
 
 ```calc
 # a tiny budget worksheet
-income = 5000
-rent = 1500
-food = 800
+income = 5000, rent = 1500, food = 800
 total = rent + food
 left = income - total
 share = rent / income * 100
-3 km in mi
+
+# misc
 typo * 2
+log(400+π^2)
 ```
 
 ---

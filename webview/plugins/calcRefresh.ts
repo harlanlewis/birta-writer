@@ -6,11 +6,11 @@
  * whose expression side the user just edited updates in place whenever calc
  * is enabled: `=` and leading forms when their own expression changes, and
  * `expr => result` also when a `name = value` definition ABOVE it changes
- * (the variable cascade). `birta.calc.autoInsert` governs only whether typing
- * `=` INSERTS an answer unprompted; maintenance of an answer that already
- * exists is not insertion — the consent was given when the answer was
- * accepted, and a stale number the user just invalidated is the thing this
- * engine exists to prevent. Result-side edits remain the user's override in
+ * (the variable cascade). `birta.calc.autoInsert` never gates WHETHER an
+ * existing answer is maintained — maintenance is not insertion; the consent
+ * was given when the answer was accepted — though it does widen the REACH of
+ * `=` maintenance: advisory mode refuses a result followed by a word (the
+ * prose-annotation guard), auto-insert keeps full reach. Result-side edits remain the user's override in
  * every form; equations inside inline code are source and never touched. An
  * answer whose definitions vanish is WITHDRAWN (`expr =>`) under three
  * proofs — prior liveness against the old state, no definition mid-edit, and
@@ -24,8 +24,10 @@
  * Known accepted limits: a block MOVE that lifts an answered arrow above its
  * definition leaves the answer stale until the expression is next touched
  * (a move is a delete+insert; neither side can prove prior liveness for
- * relocated content), and a single edit orphaning hundreds of answers pays
- * an O(candidates × doc) one-time liveness cost.
+ * relocated content); a single edit orphaning hundreds of answers pays an
+ * O(candidates × doc) one-time liveness cost; and one transaction touching
+ * two equations in the SAME block refreshes only the first (each is pinned
+ * by a test).
  */
 import { Plugin, PluginKey } from "../pm";
 import type { Node as ProseNode } from "../pm";
