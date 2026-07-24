@@ -155,6 +155,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - The ` ```calca ` fence alias for calculation blocks — write ` ```calc ` or ` ```calculation `; an existing ` ```calca ` fence renders as an ordinary code block.
 
+### Security
+
+- **Network consent is now user-level only** — the settings that let the editor touch the network or write fetched content into a file (`birta.network.enabled`, `birta.embeds.enabled`, `birta.pasteUnfurl.enabled`, `birta.pasteUnfurl.autoApply`) can no longer be set from a workspace's `.vscode/settings.json`. Previously a repository you opened could quietly enable them for you; now only your own user settings decide, and the offline-by-default guarantee holds regardless of what a workspace ships.
+
 ---
 
 ## [0.2.3] - 2026-07-04

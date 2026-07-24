@@ -270,7 +270,11 @@ That only holds if the editor does the things you expect from VS Code:
   for the setting first: whichever of the two you just triggered offers a quiet,
   dismissable prompt right where you're working, and you decide in place.
   Flipping the switch takes effect immediately in every open editor — there is
-  nothing to reload. **Why it matters:** the private default is the *default*,
+  nothing to reload. And the decision is *yours alone*: the network settings are
+  user-level only (VS Code `application` scope), so a repository's checked-in
+  `.vscode/settings.json` can never switch them on for you — a guarantee pinned
+  by a test that fails the build if a consent setting ever loses that scope.
+  **Why it matters:** the private default is the *default*,
   not a setting you have to remember to find; the two exceptions are opt-in,
   self-limited, and each still has its own switch (`birta.pasteUnfurl.enabled`,
   `birta.embeds.enabled`).

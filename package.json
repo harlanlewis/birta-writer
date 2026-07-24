@@ -1951,24 +1951,28 @@
                     "order": 105,
                     "type": "boolean",
                     "default": false,
+                    "scope": "application",
                     "markdownDescription": "%config.network.enabled.description%"
                 },
                 "birta.pasteUnfurl.enabled": {
                     "order": 105.1,
                     "type": "boolean",
                     "default": true,
+                    "scope": "application",
                     "markdownDescription": "%config.pasteUnfurl.enabled.description%"
                 },
                 "birta.pasteUnfurl.autoApply": {
                     "order": 105.2,
                     "type": "boolean",
                     "default": false,
+                    "scope": "application",
                     "markdownDescription": "%config.pasteUnfurl.autoApply.description%"
                 },
                 "birta.embeds.enabled": {
                     "order": 105.3,
                     "type": "boolean",
                     "default": true,
+                    "scope": "application",
                     "markdownDescription": "%config.embeds.enabled.description%"
                 },
                 "birta.calc.enabled": {
