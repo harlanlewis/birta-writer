@@ -10,6 +10,8 @@ statement of values; it must not restate (and drift from) the canon:
 - **Scope & why it matters** → `docs/BENEFITS.md` — Birta is *a document editor* ("not a
   knowledge base, not an outliner, not a note graph").
 - **How the UI communicates** → `docs/DESIGN_PRINCIPLES.md`.
+- **Outward identity (mark, wordmark, visual theme, voice)** → `docs/BRAND.md` — the
+  principles and discovery plan for turning this naming decision into a visual identity.
 
 ## The brand brief
 
