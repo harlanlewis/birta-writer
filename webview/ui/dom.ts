@@ -1,6 +1,39 @@
 import { applyTooltip } from '@/ui/tooltip';
 
 /**
+ * Bind "the user activated this control" — by mouse OR by keyboard.
+ *
+ * Chrome buttons must act on `mousedown`, not `click`: the editor has focus,
+ * and a click that lands after the browser's default focus shift would steal
+ * the selection the button is about to operate on. But Enter/Space on a
+ * focused button synthesize a `click` with `detail === 0` and NEVER fire
+ * mousedown — so a mousedown-only button is reachable by Tab and completely
+ * inert once you get there.
+ *
+ * Binding both, with the detail check to keep a real mouse click from firing
+ * twice, is the only correct combination. It is exported because getting it
+ * wrong is silent: nothing throws, the button simply does nothing, and 15 of
+ * them shipped that way (MAR-217). Prefer `createButton`; use this directly
+ * when the call site needs to build its own element.
+ */
+export function bindActivate(
+    el: HTMLElement,
+    handler: (e: MouseEvent) => void,
+): void {
+    el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handler(e);
+    });
+    el.addEventListener('click', (e) => {
+        if (e.detail !== 0) return; // a real mouse click already ran on mousedown
+        e.preventDefault();
+        e.stopPropagation();
+        handler(e);
+    });
+}
+
+/**
  * Generic button factory.
  * onClick is automatically wrapped with e.preventDefault() + e.stopPropagation().
  */
@@ -36,21 +69,7 @@ export function createButton(options: {
 
     if (options.onClick) {
         const handler = options.onClick;
-        btn.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            handler();
-        });
-        // Enter/Space synthesize a click with detail 0 and never fire
-        // mousedown, so without this branch the button is keyboard-dead.
-        // Real mouse clicks (detail ≥ 1) were already handled above.
-        btn.addEventListener('click', (e) => {
-            if (e.detail === 0) {
-                e.preventDefault();
-                e.stopPropagation();
-                handler();
-            }
-        });
+        bindActivate(btn, () => handler());
     }
 
     return btn;

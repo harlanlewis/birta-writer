@@ -22,6 +22,7 @@
  * Body-mounted like the other chrome popups; one menu open at a time; the
  * keyboard model mirrors the toolbar dropdowns (roving arrows, Enter, Escape).
  */
+import { bindActivate } from "@/ui/dom";
 import type { EditorView } from "../../pm";
 import { Fragment } from "../../pm";
 import type { Node as ProseNode } from "../../pm";
@@ -802,9 +803,7 @@ export function openBlockMenu(
                 setHl(rowEls().indexOf(row));
             }
         });
-        row.addEventListener("mousedown", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
+        bindActivate(row, () => {
             if (opts.disabled) {
                 return;
             }

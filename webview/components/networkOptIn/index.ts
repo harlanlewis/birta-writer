@@ -27,6 +27,7 @@
  * session (module-scoped flag) — the user said no, so we stop asking until the
  * next reload. Accepting does not suppress (there's nothing left to ask).
  */
+import { bindActivate } from "@/ui/dom";
 import type { EditorView } from "@/pm";
 import { notifySetNetworkEnabled } from "@/messaging";
 import { t } from "@/i18n";
@@ -169,14 +170,10 @@ export function offerNetworkOptIn(opts: NetworkOptInOptions): void {
 
     // Pointer handlers use mousedown + preventDefault so the click never moves
     // the editor selection (the caret stays where the paste left it).
-    enableBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(enableBtn, () => {
         enable();
     });
-    dismissBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(dismissBtn, () => {
         dismiss();
     });
 

@@ -191,6 +191,51 @@ describe("MarkdownEditorProvider text document sync", () => {
         });
     });
 
+    describe("a rejected applyEdit must not poison the echo baseline", () => {
+        // `_lastSyncedText` has to be written BEFORE applyEdit — the change
+        // event fires during it and must be recognised as ours. On REJECTION
+        // (a concurrent version change, a closed or read-only document) that
+        // left the baseline claiming content the document never took, so every
+        // later comparison read "already in sync" and the webview and document
+        // stayed silently diverged with no path back.
+        it("an external change matching the rejected content should still be pushed", async () => {
+            // The baseline's only consumer is the echo test: `isEcho(text) =>
+            // text === _lastSyncedText`. Left poisoned with the rejected
+            // content, a GENUINE external write of that same text (git, another
+            // editor) is misread as our own echo and never reaches the webview.
+            const { handler, document, panel } = await setup("original\n");
+            const applyEdit = vscode.workspace.applyEdit as unknown as ReturnType<typeof vi.fn>;
+
+            applyEdit.mockResolvedValueOnce(false);
+            await handler({ type: "update", content: "webview text\n", baseSyncVersion: 0 });
+            await vi.advanceTimersByTimeAsync(500);
+            expect(document.getText(), "the rejected edit must not have landed").toBe("original\n");
+
+            // Someone else writes exactly the content our edit failed to apply.
+            document.setTextExternally("webview text\n");
+            await vi.advanceTimersByTimeAsync(200);
+
+            const pushes = externalUpdates(panel);
+            expect(
+                pushes.map((p) => p.content),
+                "a real external change was swallowed as our own echo",
+            ).toContain("webview text\n");
+        });
+
+        it("a rejection should be reported, not swallowed silently", async () => {
+            const { handler } = await setup("original\n");
+            const applyEdit = vscode.workspace.applyEdit as unknown as ReturnType<typeof vi.fn>;
+            const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+            applyEdit.mockResolvedValueOnce(false);
+            await handler({ type: "update", content: "webview text\n", baseSyncVersion: 0 });
+            await vi.advanceTimersByTimeAsync(500);
+
+            expect(consoleError).toHaveBeenCalled();
+            consoleError.mockRestore();
+        });
+    });
+
     describe("stale-update rejection", () => {
         it("an update whose baseSyncVersion is behind the current version should be dropped and the current state re-pushed", async () => {
             // Arrange — an external change bumps the sync version to 1

@@ -24,6 +24,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # esbuild STRIPS types without checking them, so neither the build job
+      # nor the perf jobs can catch a type error — before this step, one could
+      # merge to main and surface only at runtime. Runs before the tests so a
+      # type error fails fast.
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Run unit tests with coverage
         run: pnpm test:coverage
 

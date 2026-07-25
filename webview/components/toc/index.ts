@@ -1,4 +1,5 @@
 import './toc.css';
+import { bindActivate } from "@/ui/dom";
 import type { EditorView, Node as PmNode } from "@/pm";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
@@ -202,9 +203,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             item.textContent = btn.textContent;
             item.tabIndex = -1;
             item.classList.toggle("toc-tabs-menu__item--active", tab === activeTab);
-            item.addEventListener("mousedown", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+            bindActivate(item, () => {
                 closeTabsMenu();
                 setActiveTab(tab);
             });
@@ -212,9 +211,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         }));
         tabsMenu.hidden = false;
     }
-    tabsSelect.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(tabsSelect, () => {
         if (tabsMenu.hidden) { openTabsMenu(); } else { closeTabsMenu(); }
     });
     // Any click elsewhere drops the menu (capture: stopped mousedowns count).
@@ -262,9 +259,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         btn.dataset["tab"] = tab;
         // Roving tabindex (updateTabButtons keeps exactly the active tab at 0).
         btn.tabIndex = -1;
-        btn.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+        bindActivate(btn, () => {
             setActiveTab(tab);
         });
         return btn;
@@ -408,9 +403,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     updateHideButton();
     applyTooltip(hideBtn, t("Hide table of contents"), { placement: "below" });
 
-    flipBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(flipBtn, () => {
         const next: "left" | "right" = tocRight ? "left" : "right";
         // Apply optimistically for instant feedback; the setting echo re-applies
         // the same value (idempotent) once persisted.
@@ -418,9 +411,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         notifySetTocPosition(next);
     });
 
-    hideBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(hideBtn, () => {
         // Only visible while open, so this always collapses the panel.
         toggle();
     });
@@ -1133,9 +1124,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
 
 
     // Tab click: always call toggle
-    tabEl.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(tabEl, () => {
         hideFlyoutImmediate(); // a click opens persistently; drop the flyout now
         toggle();
     });

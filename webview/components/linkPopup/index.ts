@@ -1,4 +1,5 @@
 import "./linkPopup.css";
+import { bindActivate } from "@/ui/dom";
 import type { EditorView, Slice } from "@/pm";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
 import { collectDocHeadings, scrollElementBelowTopbar } from "@/utils/headingUtils";
@@ -959,9 +960,7 @@ export function setupLinkPopup(
         hidePopup();
     }
 
-    btnOpen.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(btnOpen, () => {
         openCurrentLink();
     });
 
@@ -989,9 +988,7 @@ export function setupLinkPopup(
         });
     }
 
-    btnCopy.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(btnCopy, () => {
         const href = currentLink?.href?.trim();
         if (!href) return;
         copyToClipboard(href);
@@ -1006,9 +1003,7 @@ export function setupLinkPopup(
 
     // ── Edit button: toggle edit mode ─────────────────────────────
 
-    btnEdit.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(btnEdit, () => {
         setEditMode(!isEditMode);
     });
 
@@ -1189,9 +1184,7 @@ export function setupLinkPopup(
 
     // ── Remove button ─────────────────────────────────────────────
 
-    btnRemove.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(btnRemove, () => {
         const view = getView();
         if (!view || !currentLink) { hidePopup(); return; }
         if (currentLink.readOnly) { hidePopup(); return; }
