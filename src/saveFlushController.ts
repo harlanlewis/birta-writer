@@ -58,9 +58,22 @@ export class SaveFlushController<TEdit> {
      */
     constructor(private readonly _flushTimeoutMs: number = 1000) {}
 
-    /** Reset a document's version to 0 (webview init/ready re-baseline). */
-    resetVersion(uriKey: string): void {
+    /**
+     * Re-baseline a document for a FRESH webview context (its `ready`).
+     *
+     * Resets both counters, because a webview that just announced `ready` has
+     * restarted BOTH of its own: `baseSyncVersion` and the module-level
+     * outbound `seq` in webview/messaging.ts. Resetting only the version left
+     * `_appliedSeq` at the previous context's high-water mark, so every
+     * `update` and `flushResult` from the new context — numbered from 1 again —
+     * failed the `seq <= _appliedSeq` staleness test and was silently dropped:
+     * edits would never dirty the document and Cmd+S would write stale bytes.
+     * `dispose()` cleared it only when the PANEL went away, which a webview
+     * reload (renderer crash recovery) does not do.
+     */
+    resetWebviewBaseline(uriKey: string): void {
         this._syncVersion.set(uriKey, 0);
+        this._appliedSeq.delete(uriKey);
     }
 
     /**

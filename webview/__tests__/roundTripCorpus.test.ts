@@ -9,6 +9,18 @@
  *   B. A real edit changes only the edited region: every original significant
  *      line survives verbatim (reference definitions, setext headings, HTML
  *      comments, escaping — nothing is silently dropped or rewritten).
+ *   C. Typing INSIDE a block never changes the document's structure: the
+ *      merged bytes reparse to the same node tree, modulo the edited text.
+ *
+ * Why C exists (2026-07-25): A and B between them never performed an in-place
+ * text edit — B only inserts a fresh paragraph at position 0 — so the entire
+ * "user types a character" path was ungated. That blind spot hid a document-
+ * destroying bug: one keystroke inside a `~~~` fence preceded by a line the
+ * serializer canonicalizes produced a MISMATCHED fence pair (``` open, `~~~`
+ * close), and every block after it was swallowed into the code block on
+ * reopen. B could not see it — no original line was lost, they were merely
+ * reclassified as code. C asserts the shape, which is what "lost" actually
+ * means to a reader.
  */
 import { describe, it, expect } from "vitest";
 import { editorViewCtx } from "@milkdown/core";
@@ -77,6 +89,89 @@ describe("corpus invariant B — an edit keeps every original line intact", () =
             // original content.
             expect(mergedSig[0]).toBe("Corpus edit marker paragraph.");
             await editor.destroy();
+        });
+    }
+});
+
+/** The full node-type tree of `md` after a REAL reparse — what a reader would
+ *  actually get back. Text nodes are excluded so the edited character itself
+ *  doesn't register as a difference. */
+async function reparsedShape(md: string): Promise<string[]> {
+    const editor = await makeEditor(md);
+    const kinds: string[] = [];
+    editor.action((ctx) => {
+        ctx.get(editorViewCtx).state.doc.descendants((node) => {
+            if (!node.isText) kinds.push(node.type.name);
+            return true;
+        });
+    });
+    await editor.destroy();
+    return kinds;
+}
+
+/**
+ * Fixtures invariant C fails on TODAY, each with the ticket that owns it. These
+ * are real, reproducible structure losses that the gate found the moment it was
+ * written — not flakes and not acceptable behaviour. They are listed rather than
+ * fixed because each needs a design decision in the merge layer, and listing
+ * them is strictly better than the alternative the gate replaced (no in-place
+ * edit coverage at all, which is how they survived this long).
+ *
+ * DELETE a line here the moment its ticket lands — an entry that stops failing
+ * is a gate silently doing nothing.
+ */
+const INVARIANT_C_KNOWN_FAILURES: Record<string, string> = {
+    // MAR-213: the edited line re-indents to the serializer's 2 spaces while its
+    // untouched children keep their tab bytes; mixing the two units breaks the
+    // outline tree and a child stops being a list item.
+    "logseq/journal.md": "MAR-213",
+    "logseq/page.md": "MAR-213",
+    // MAR-214: protection granularity is a LINE, but a table row is one line —
+    // editing any cell unprotects the whole row, and a `<br />`-only cell the
+    // serializer cannot round-trip is emitted empty, losing content.
+    "table-cell-breaks.md": "MAR-214",
+};
+
+describe("corpus invariant C — typing inside a block never restructures the document", () => {
+    for (const { name, content } of fixtures) {
+        const known = INVARIANT_C_KNOWN_FAILURES[name];
+        const label = known
+            ? `${name} should keep its structure when a character is typed into every paragraph [known failure: ${known}]`
+            : `${name} should keep its structure when a character is typed into every paragraph`;
+        (known ? it.fails : it)(label, async () => {
+            const before = await reparsedShape(content);
+
+            // Type into EVERY paragraph in turn, one editor per edit, so a
+            // construct is exercised wherever it sits rather than only at the
+            // first one the walk happens to reach.
+            const editor0 = await makeEditor(content);
+            const targets: number[] = [];
+            editor0.action((ctx) => {
+                ctx.get(editorViewCtx).state.doc.descendants((node, pos, parent) => {
+                    if (node.isText && (node.text?.length ?? 0) > 2 && parent?.type.name === "paragraph") {
+                        targets.push(pos + 1);
+                    }
+                    return true;
+                });
+            });
+            await editor0.destroy();
+
+            for (const at of targets.slice(0, 12)) {
+                const editor = await makeEditor(content);
+                const serialized0 = editor.action(getMarkdown());
+                const protection = computeRoundTripProtection(content, serialized0);
+                editor.action((ctx) => {
+                    const view = ctx.get(editorViewCtx);
+                    view.dispatch(view.state.tr.insertText("Z", at));
+                });
+                const merged = applyMinimalChanges(content, editor.action(getMarkdown()), protection);
+                await editor.destroy();
+
+                expect(
+                    await reparsedShape(merged),
+                    `typing at ${at} restructured the document — the saved bytes reparse differently`,
+                ).toEqual(before);
+            }
         });
     }
 });

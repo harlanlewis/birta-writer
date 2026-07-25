@@ -78,6 +78,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Typing inside a `~~~` code fence no longer swallows the rest of the file** — when a fence sat just after a line the editor rewrites on save (say a paragraph containing a literal `*`), a single keystroke inside the fence could save its opening line as ``` ``` ``` while leaving the closing `~~~` untouched. The mismatched pair meant everything below the fence reopened *as code*, silently. Fences now keep the marker style they were written with, whatever is around them.
+
 - **A file you just created is offered as a link target right away** — link autocomplete and the frontmatter value suggestions worked from a workspace scan refreshed on a timer, so a newly added file could take up to ten seconds to become suggestible and a deleted one kept being offered until the timer lapsed. Both now refresh the moment a file is created, deleted, or renamed.
 
 - **Adding a heading that repeats an existing one no longer silently hijacks its links** — in-note links target a heading by its text-derived slug, and two headings with the same text are told apart by a `-1` suffix in document order. Introducing a *new* heading above an identical one therefore renames the older heading's anchor out from under it, and existing `[…](#foo)` links quietly began jumping to the newcomer instead of the section they were written for — with nothing on screen to show it had happened. Those links now follow the heading they were pointing at. This covers every way a heading appears: pasting one in, pasting over a selection, and promoting a paragraph with `# ` or the gutter control. Duplicating a section is handled the way you'd want too — the copy's own links keep pointing inside the copy.
