@@ -681,9 +681,20 @@ export class MarkdownEditorProvider
                                 // save-flush has already superseded, so it can
                                 // never revert fresher content.
                                 if (!this._flush.claimSeq(uriKey, seq)) { return; }
+                                const outcome = await this._applyWebviewEdit(document, newContent);
+                                if (outcome === "rejected") {
+                                    // The edit exists only in the webview. It is
+                                    // not lost — the save flush re-serializes at
+                                    // save time — but silence here is how a
+                                    // divergence goes unnoticed, so say so.
+                                    reportError(
+                                        "applyWebviewEdit",
+                                        new Error(`applyEdit rejected for ${uriKey}`),
+                                    );
+                                    return;
+                                }
                                 // Identical to the current document (e.g. serializer no-op echo): nothing to do
-                                const applied = await this._applyWebviewEdit(document, newContent);
-                                if (!applied) { return; }
+                                if (outcome === "noop") { return; }
                                 this._pinTabOnFirstEdit(uriKey);
                                 postToWebview(webviewPanel.webview, { type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
                             });
@@ -1147,20 +1158,37 @@ export class MarkdownEditorProvider
 
     /**
      * Applies webview-produced whole-file content to the TextDocument as a
-     * single minimal range replacement. Returns false when the content is
-     * already current or the edit was rejected.
+     * single minimal range replacement.
+     *
+     * `"noop"` — the document already holds this content (the common
+     * serializer echo). `"applied"` — the document now holds it. `"rejected"`
+     * — VS Code refused the edit (a concurrent version change, a closed or
+     * read-only document); the edit lives ONLY in the webview.
+     *
+     * The three used to collapse into one boolean, which quietly broke the
+     * echo baseline. `_lastSyncedText` has to be written BEFORE `applyEdit`,
+     * because `onDidChangeTextDocument` fires during it and must recognise the
+     * change as ours — but on rejection that left the baseline claiming
+     * content the document does not have. Every later comparison against it
+     * then read as "already in sync", so the webview and the document stayed
+     * silently diverged with no path back. The baseline is now rolled back on
+     * rejection, so the next sync is treated as a real change and re-applies.
+     * (The save flush is the backstop either way: it asks the webview to
+     * serialize at save time and does not consult this baseline.)
      */
     private async _applyWebviewEdit(
         document: vscode.TextDocument,
         newContent: string,
-    ): Promise<boolean> {
+    ): Promise<"applied" | "noop" | "rejected"> {
+        const uriKey = document.uri.toString();
         const before = document.getText();
         const replace = computeReplaceRange(before, newContent);
-        if (!replace) { return false; }
-        this._armTripwire(document.uri.toString(), before, newContent, "update");
+        if (!replace) { return "noop"; }
+        this._armTripwire(uriKey, before, newContent, "update");
         // Record the expected text BEFORE applying: onDidChangeTextDocument
         // fires during applyEdit and must recognize this change as our own.
-        this._lastSyncedText.set(document.uri.toString(), newContent);
+        const prevSynced = this._lastSyncedText.get(uriKey);
+        this._lastSyncedText.set(uriKey, newContent);
         const edit = new vscode.WorkspaceEdit();
         edit.replace(
             document.uri,
@@ -1170,7 +1198,16 @@ export class MarkdownEditorProvider
             ),
             replace.replacement,
         );
-        return vscode.workspace.applyEdit(edit);
+        if (await vscode.workspace.applyEdit(edit)) {
+            return "applied";
+        }
+        // Un-poison the baseline: the document never took this content.
+        if (prevSynced === undefined) {
+            this._lastSyncedText.delete(uriKey);
+        } else {
+            this._lastSyncedText.set(uriKey, prevSynced);
+        }
+        return "rejected";
     }
 
     /**
