@@ -242,20 +242,25 @@ function normalizeWrappedLinkEmphasis(line: string): string {
     return line;
 }
 
-// Normalize a table data row: strip cell padding, treat a lone `<br />` as an
+// Normalize ONE table cell: strip its padding, treat a lone `<br />` as an
 // empty cell (older saves wrote empty cells as `<br />`), and canonicalize the
-// `<br>` / `<br/>` / `<br />` line-break spellings within cell text (MAR-17) so
+// `<br>` / `<br/>` / `<br />` line-break spellings within its text (MAR-17) so
 // a lost or changed variant attr degrades to no churn instead of a spurious
-// diff. `| fruit   |  price  |` → `|fruit|price|`
+// diff. Per-cell rather than inline in the row normalizer because the merge
+// also compares cells one at a time, to salvage the ones an edit elsewhere in
+// the row would otherwise rewrite (carrySavedTableCells, MAR-214) — one
+// definition of "these two cells say the same thing", used by both.
+function normalizeTableCell(cell: string): string {
+    const v = cell.trim();
+    // Legacy: an empty table cell used to be saved as the exact bytes
+    // `<br />`. Kept before canonicalization so it still collapses to "".
+    if (v === "<br />") return "";
+    return v.replace(/<br\s*\/?>/gi, "<br>");
+}
+
+// Normalize a table data row: `| fruit   |  price  |` → `|fruit|price|`
 function normalizeTableDataRow(line: string): string {
-    const t = line.trim();
-    const cells = t.split("|").slice(1, -1).map((c) => {
-        const v = c.trim();
-        // Legacy: an empty table cell used to be saved as the exact bytes
-        // `<br />`. Kept before canonicalization so it still collapses to "".
-        if (v === "<br />") return "";
-        return v.replace(/<br\s*\/?>/gi, "<br>");
-    });
+    const cells = line.trim().split("|").slice(1, -1).map(normalizeTableCell);
     return "|" + cells.join("|") + "|";
 }
 
@@ -387,6 +392,89 @@ function normLineForCompare(line: string, cls: LineClass): string {
     return normalizeWrappedLinkEmphasis(normalizeSplitStrong(normalizeOrgCookieEscape(line)));
 }
 
+// ─── Replacement reconciliation (MAR-213 / MAR-214) ─────────────────────────
+//
+// An edited line is written from the SERIALIZER's bytes, so every part of it
+// the user never touched gets canonicalized in passing — while the untouched
+// lines around it keep their saved bytes. That asymmetry is what turns an edit
+// destructive rather than merely cosmetic: two indentation conventions mixed
+// inside one outline reparent the block tree (a tab is 4 columns, two spaces
+// are 2), and re-emitting a whole table row empties the cells the serializer
+// cannot round-trip. The reconciler restores the saved bytes for the parts of
+// the line that compare EQUAL under the very normalizers the diff keys with —
+// it invents no new equivalence, it applies the existing ones below whole-line
+// granularity.
+
+const LEADING_WS_RE = /^[ \t]*/;
+
+// Carry the saved line's literal leading whitespace (tabs, widths, and all)
+// onto the serializer's line when the two indents are formatting-only variants
+// of one another. Three conditions, each load-bearing:
+//   1. the indents actually differ;
+//   2. they key EQUAL under normalizeOutlineIndent — the profile's own
+//      definition of "the same depth". A genuine outdent normalizes
+//      differently, so it stays an honest edit and the serializer's indent
+//      wins. Widening this (say, calling a 3-space indent "the same depth" as
+//      the serializer's 2) would invent an equivalence the diff does not have
+//      and would swallow real outdents — worse data loss than the bug;
+//   3. the rest of the line changed too. If the leading whitespace is the ONLY
+//      difference then the whitespace IS the edit, and carrying the saved
+//      bytes back would silently discard it. This does NOT follow from (2): a
+//      whitespace-only tab→space edit inside a top-level fence (a Makefile
+//      recipe line, compared verbatim as "fence-raw") is exactly such a pair,
+//      and dropping it was the MAR-161 data loss — pinned by "a whitespace-
+//      only tab→space edit inside a top-level fence should register as an
+//      edit" in minimalDiff.test.ts. The hook receives two bare strings and
+//      cannot see the line's class, but it does not need to: "the indent is
+//      the only thing that changed" answers the question on its own.
+function carrySavedIndent(saved: string, serial: string): string {
+    const savedWs = LEADING_WS_RE.exec(saved)![0];
+    const serialWs = LEADING_WS_RE.exec(serial)![0];
+    if (savedWs === serialWs) return serial;
+    if (normalizeOutlineIndent(savedWs) !== normalizeOutlineIndent(serialWs)) return serial;
+    if (saved.slice(savedWs.length) === serial.slice(serialWs.length)) return serial;
+    return savedWs + serial.slice(serialWs.length);
+}
+
+// Keep the SAVED bytes of every table cell the user did not touch. A row is
+// one line, so editing any cell re-emits the entire row from the serializer,
+// taking with it whatever the serializer cannot reproduce elsewhere in that
+// row — a lone `<br />` cell (keyed equal to an empty cell, so it comes back
+// empty: content loss in a cell the user never visited) and the `<br/>` /
+// `<br>` spellings. Cells that key equal under normalizeTableCell are
+// formatting-only differences, so the saved bytes win — the rule the merge
+// already applies to whole lines. At least one cell always differs here: a row
+// where none did would have keyed equal and merged as a plain `keep`.
+//
+// CELL PADDING is deliberately not salvaged: a cell whose bytes differ only in
+// surrounding spaces takes the serializer's spacing, exactly as the whole row
+// always has. What this carries is the cell CONTENT the serializer cannot
+// reproduce, not the column alignment of a row that is being rewritten anyway.
+function carrySavedTableCells(saved: string, serial: string): string {
+    const s = saved.trim();
+    const t = serial.trim();
+    if (!TABLE_ROW_RE.test(s) || !TABLE_ROW_RE.test(t)) return serial;
+    // A separator row carries column ALIGNMENT, which is real content and is
+    // keyed by normalizeSepRow, not by the per-cell normalizer.
+    if (SEP_ROW_RE.test(s) || SEP_ROW_RE.test(t)) return serial;
+    const savedCells = s.split("|").slice(1, -1);
+    const serialCells = t.split("|").slice(1, -1);
+    if (savedCells.length !== serialCells.length) return serial;
+    const merged = serialCells.map((cell, i) => {
+        const savedCell = savedCells[i];
+        if (savedCell.trim() === cell.trim()) return cell; // padding only
+        return normalizeTableCell(savedCell) === normalizeTableCell(cell) ? savedCell : cell;
+    });
+    return LEADING_WS_RE.exec(serial)![0] + "|" + merged.join("|") + "|";
+}
+
+/** Markdown's `FormatProfile.reconcileReplacement`. Pure and total: every
+ * branch falls back to the serializer's line, and neither pass can introduce a
+ * newline. */
+function reconcileReplacement(saved: string, serial: string): string {
+    return carrySavedTableCells(saved, carrySavedIndent(saved, serial));
+}
+
 // ─── Blank-line structure predicates (merge hooks) ──────────────────────────
 
 // A blockquote marker allows at most 3 leading spaces; 4+ is an indented
@@ -446,6 +534,7 @@ export const markdownProfile: FormatProfile = {
     // separator the edit dissolved (e.g. a block moving between callouts
     // merges two quotes into one) — MAR-122.
     blankSplitsBlock: (prev, next) => isQuoteLine(prev) && isQuoteLine(next),
+    reconcileReplacement,
 };
 
 /** `applyMinimalChanges` with markdown's profile bound (see the engine in

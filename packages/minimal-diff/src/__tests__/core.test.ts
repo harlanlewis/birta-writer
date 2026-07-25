@@ -20,6 +20,7 @@ const plain: FormatProfile = {
     keyLines: (lines) => lines.map((l) => l.trim().replace(/\s+/g, " ")),
     glueChangesConstruct: () => false,
     blankSplitsBlock: () => false,
+    reconcileReplacement: (_saved, serial) => serial,
 };
 
 describe("applyMinimalChanges (core, synthetic profile)", () => {
@@ -88,6 +89,95 @@ describe("applyMinimalChanges (core, synthetic profile)", () => {
         // Without the hook the glued saved bytes win.
         expect(applyMinimalChanges(saved, serialized, plain)).toBe(
             "para\n:::note\n\nzzz EDITED\n",
+        );
+    });
+});
+
+describe("reconcileReplacement — the profile's say over an in-place replacement's bytes", () => {
+    // A profile that carries the saved line's indentation onto the
+    // serializer's line — the shape of markdown's real implementation, minus
+    // the markdown.
+    const carryIndent: FormatProfile = {
+        ...plain,
+        reconcileReplacement: (saved, serial) =>
+            /^[ \t]*/.exec(saved)![0] + serial.replace(/^[ \t]*/, ""),
+    };
+
+    it("an in-place replacement should write the profile's reconciled bytes", () => {
+        const saved = "alpha\n\t beta old\n";
+        const serialized = "alpha\n  beta new\n";
+
+        expect(applyMinimalChanges(saved, serialized, carryIndent)).toBe("alpha\n\t beta new\n");
+        // Without the hook the serializer's whole line lands, indent included.
+        expect(applyMinimalChanges(saved, serialized, plain)).toBe("alpha\n  beta new\n");
+    });
+
+    it("keeps, pure insertions, and pure deletions should never consult the hook", () => {
+        const calls: Array<[string, string]> = [];
+        const recording: FormatProfile = {
+            ...plain,
+            reconcileReplacement: (saved, serial) => {
+                calls.push([saved, serial]);
+                return serial;
+            },
+        };
+        // A: keep. NEW: pure insertion. B: keep. C: pure deletion. D: keep.
+        // E: in-place replacement — the only edit the hook may see.
+        applyMinimalChanges(
+            "A\n\nB\n\nC\n\nD\n\nE old\n",
+            "A\n\nNEW\n\nB\n\nD\n\nE new\n",
+            recording,
+        );
+
+        expect(calls).toEqual([["E old", "E new"]]);
+    });
+
+    it("the reconciled bytes, not the serializer's, should decide the blank run around the line", () => {
+        // gapBefore's structure predicates reason about the emitted
+        // neighbours, so they must see the line actually written.
+        const quoted: FormatProfile = {
+            ...plain,
+            reconcileReplacement: (_saved, serial) => "> " + serial,
+            glueChangesConstruct: (prev, next) => prev.startsWith("> ") && next === "tail",
+        };
+        // "old"→"new" is the replacement; "tail" is a glued keep whose
+        // separating blank only wins if the PREVIOUS line reads as "> new".
+        expect(applyMinimalChanges("old\ntail\n", "new\n\ntail\n", quoted)).toBe("> new\n\ntail\n");
+
+        const unquoted: FormatProfile = {
+            ...plain,
+            // Strips the marker the serializer emitted: the NEXT-line side of
+            // the same rule — the predicate must be asked about the stripped
+            // line, so the saved blank (user spacing) stays.
+            reconcileReplacement: (_saved, serial) => serial.replace(/^> /, ""),
+            blankSplitsBlock: (prev, next) => prev.startsWith("> ") && next.startsWith("> "),
+        };
+        expect(applyMinimalChanges("> a\n\n> b old\n", "> a\n> b new\n", unquoted)).toBe(
+            "> a\n\nb new\n",
+        );
+    });
+
+    it("a hook returning a multi-line string should be ignored (line accounting is one-in one-out)", () => {
+        const splitter: FormatProfile = {
+            ...plain,
+            reconcileReplacement: (_saved, serial) => serial + "\nSMUGGLED",
+        };
+
+        expect(applyMinimalChanges("alpha\nbeta old\n", "alpha\nbeta new\n", splitter)).toBe(
+            "alpha\nbeta new\n",
+        );
+    });
+
+    it("a hook that throws should degrade to the serializer's line", () => {
+        const thrower: FormatProfile = {
+            ...plain,
+            reconcileReplacement: () => {
+                throw new Error("profile bug");
+            },
+        };
+
+        expect(applyMinimalChanges("alpha\nbeta old\n", "alpha\nbeta new\n", thrower)).toBe(
+            "alpha\nbeta new\n",
         );
     });
 });

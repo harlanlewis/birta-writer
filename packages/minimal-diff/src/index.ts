@@ -60,6 +60,39 @@ export interface FormatProfile {
      * edit dissolved, and the merge drops it.
      */
     blankSplitsBlock(prev: string, next: string): boolean;
+    /**
+     * An in-place replacement is about to commit the serializer's bytes for a
+     * line whose neighbours are unchanged. Return the bytes to write instead —
+     * the profile's chance to carry source-only facts (indent unit, untouched
+     * sub-line parts) that the serializer canonicalized away. MUST return a
+     * single line (no newlines) and MUST default to `serial` unchanged.
+     *
+     * This is the philosophy the keys already express — "a difference the
+     * profile considers formatting-only is never applied" — extended from
+     * whole-line to SUB-LINE granularity. A `keep` writes the saved bytes, but
+     * a replacement used to write the serializer's line wholesale, so every
+     * formatting-only part of an edited line (its outline indent unit, a table
+     * cell the user never touched) was canonicalized as collateral damage
+     * while its untouched neighbours kept theirs — leaving two conventions
+     * mixed inside one construct (MAR-213 / MAR-214).
+     */
+    reconcileReplacement(saved: string, serial: string): string;
+}
+
+/**
+ * Call `profile.reconcileReplacement` defensively. The merge's line accounting
+ * is one-line-in / one-line-out, so a profile that throws or hands back a
+ * multi-line string degrades to the serializer's line (the behaviour before
+ * the hook existed) instead of corrupting the output.
+ */
+function reconcileLine(profile: FormatProfile, saved: string, serial: string): string {
+    let out: string;
+    try {
+        out = profile.reconcileReplacement(saved, serial);
+    } catch {
+        return serial;
+    }
+    return typeof out === "string" && !out.includes("\n") ? out : serial;
 }
 
 interface SigLine {
@@ -612,11 +645,18 @@ export function applyMinimalChanges(
             // del immediately followed by ins = an in-place replacement: the
             // line changed but its surroundings did not, so the saved spacing
             // around it is kept (modulo the block-split guard in gapBefore).
-            out.push(...gapBefore(edit.saved.lineIdx, next.serial.lineIdx, next.serial.text));
-            out.push(next.serial.text);
+            // The profile gets the last word on the BYTES too — it may carry
+            // source-only facts the serializer canonicalized away.
+            const text = reconcileLine(profile, edit.saved.text, next.serial.text);
+            // Everything downstream must see the line actually written, not
+            // the raw serializer line: gapBefore's structure predicates reason
+            // about the emitted neighbours, so feeding them a line that was
+            // never written would decide the blank run on fiction.
+            out.push(...gapBefore(edit.saved.lineIdx, next.serial.lineIdx, text));
+            out.push(text);
             prevSavedIdx = edit.saved.lineIdx;
             prevSerialIdx = next.serial.lineIdx;
-            prevLineText = next.serial.text;
+            prevLineText = text;
             dirty = false;
             e += 2;
         } else if (edit.op === "del") {
