@@ -57,12 +57,23 @@
 
     /* Floating-card recipe (menus, popups, panels): ground + line come from
        the hover-widget theme tokens — the same ground the --palette-* chip
-       family sits on — plus one shared shadow. */
+       family sits on — plus the elevation shadow below. */
     --ui-card-bg: var(--vscode-editorHoverWidget-background);
     --ui-card-border: var(--vscode-editorHoverWidget-border);
-    --ui-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-    /* Small tier: pills, tooltips, docked bars — closer to the surface. */
-    --ui-card-shadow-s: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+    /* Elevation. TWO heights, because chrome only floats two ways: anchored to
+       something on the page (menus, popups, panels, docked bars, pills), or
+       over the whole editor (the image-insert modal, lightbox media). A finer
+       ladder is a fiction — at this ink weight a 2px offset difference is
+       invisible, which is exactly how the old "small tier" drifted into
+       sorting popups by nothing.
+       Each is two layers: a tight contact shadow that grounds the edge, plus a
+       wide ambient one that gives it height. The ink stays DARK on both themes
+       — a light shadow over a dark ground reads as glow, not lift — and stays
+       low-alpha because --ui-card-border already does the edge definition, so
+       the shadow signals height only. */
+    --ui-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 5px 14px rgba(0, 0, 0, 0.11);
+    --ui-card-shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.16);
 }
 
 /* ── Button primitive ────────────────────────────────────────────────────
@@ -306,7 +317,7 @@
     border-radius: var(--ui-radius-l);
     background: var(--vscode-editorWidget-background);
     color: var(--vscode-editorWidget-foreground);
-    box-shadow: var(--ui-card-shadow-s);
+    box-shadow: var(--ui-card-shadow);
     font-size: var(--ui-fs-m);
     line-height: 1.4;
     /* Fade in so it settles quietly rather than snapping into view. */

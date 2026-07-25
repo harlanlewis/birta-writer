@@ -523,7 +523,11 @@ body.mermaid-canvas-dark {
 
 /* lightbox SVG container: likewise avoids % sizing to prevent zoom jumps.
    Floated on the same canvas as the inline preview, so a light-theme diagram
-   (dark strokes) stays legible against the dark lightbox scrim. */
+   (dark strokes) stays legible against the dark lightbox scrim. The canvas is
+   the card here — it takes the overlay elevation, same as a lightboxed image.
+   The DIAGRAM never casts one: a drop-shadow on the <svg> traces its own
+   strokes, so every node and edge would grow a halo the exported diagram
+   doesn't have. */
 .mermaid-lightbox-svg {
     display: inline-block;
     flex-shrink: 0;
@@ -531,11 +535,11 @@ body.mermaid-canvas-dark {
     background: var(--mermaid-canvas);
     padding: 20px;
     border-radius: var(--ui-radius-xl);
+    box-shadow: var(--ui-card-shadow-overlay);
 }
 
 .mermaid-lightbox-svg svg {
     display: block;
-    filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.5));
     text-rendering: geometricPrecision;
     shape-rendering: geometricPrecision;
 }

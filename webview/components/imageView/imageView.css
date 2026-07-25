@@ -249,7 +249,7 @@
     max-height: 90vh;
     object-fit: contain;
     border-radius: var(--ui-radius-m);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--ui-card-shadow-overlay);
     cursor: default;
 }
 

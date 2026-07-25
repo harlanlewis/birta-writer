@@ -453,7 +453,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
     border: 1px solid var(--vscode-focusBorder);
     border-radius: var(--ui-radius-xl);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--ui-card-shadow-overlay);
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -694,7 +694,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     max-height: 90vh;
     object-fit: contain;
     border-radius: var(--ui-radius-m);
-    box-shadow: 0 4px 32px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--ui-card-shadow-overlay);
     cursor: default;
 }
 .img-lightbox-close {
@@ -803,7 +803,7 @@ body.has-sync-conflict .toolbar-toggle-tab {
     padding: 6px 8px;
     background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
     border-bottom: 1px solid var(--vscode-focusBorder);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--ui-card-shadow);
 }
 
 .tb-hidden-tray-label {

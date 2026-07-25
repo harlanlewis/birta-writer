@@ -17,7 +17,7 @@
     border: 1px solid var(--vscode-editorWidget-border);
     /* A docked panel — the l radius per the chrome.css role table. */
     border-radius: var(--ui-radius-l);
-    box-shadow: var(--ui-card-shadow-s);
+    box-shadow: var(--ui-card-shadow);
     font-size: var(--ui-fs-l);
     font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, sans-serif);
     color: var(--vscode-editorWidget-foreground);
