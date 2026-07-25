@@ -322,16 +322,31 @@ describe("round-trip protection — mid-document suppression (two string anchors
 const eols = (text: string): string =>
     text.split("\n").slice(0, -1).map((l) => (l.endsWith("\r") ? "CRLF" : "LF")).join(",");
 
+// A profile that keys RAW bytes. `plain` trims, which strips a `\r` in its own
+// key BY ACCIDENT — so a CRLF test written against `plain` passes on the broken
+// engine and pins nothing. Markdown really has raw-keyed classes: fence content
+// and indented code compare verbatim user bytes, so a tab-vs-space edit inside a
+// Makefile fence registers as a real edit. Anything asserting that an ending is
+// invisible to the profile must use this one.
+const raw: FormatProfile = {
+    ...plain,
+    keyLines: (lines) => lines.map((l) => `\x00RAW${l}`),
+    // Makes the keep/replacement distinction visible: a keep writes the saved
+    // bytes, a replacement shouts.
+    reconcileReplacement: (_saved, serial) => serial.toUpperCase(),
+};
+
 describe("line endings", () => {
     const crlf = "alpha\r\n\r\nbeta\r\n\r\ngamma\r\n";
+    const crlfSerial = "alpha\n\nbeta\n\ngamma\n";
 
     it("a CRLF document with no edit should key as unchanged (nothing to protect)", () => {
-        // The bug this pins: with `\r` inside the comparison key, a zero-edit
-        // round trip diffed as a WHOLE-FILE rewrite, so round-trip protection
-        // — meant for constructs the parser cannot reproduce — was spent
-        // entirely on holding the line endings.
-        expect(computeRoundTripProtection(crlf, "alpha\n\nbeta\n\ngamma\n", plain)).toBeNull();
-        expect(applyMinimalChanges(crlf, "alpha\n\nbeta\n\ngamma\n", plain)).toBe(crlf);
+        // The headline bug: with `\r` inside the comparison key, a zero-edit
+        // round trip diffed as a WHOLE-FILE rewrite, so round-trip protection —
+        // meant for constructs the parser cannot reproduce — was spent entirely
+        // on holding the line endings, one region per line.
+        expect(computeRoundTripProtection(crlf, crlfSerial, raw)).toBeNull();
+        expect(applyMinimalChanges(crlf, crlfSerial, raw)).toBe(crlf);
     });
 
     it("an edited line in a CRLF document should come back CRLF, not LF", () => {
@@ -341,15 +356,16 @@ describe("line endings", () => {
     });
 
     it("a line inserted into a CRLF document should carry CRLF", () => {
-        // Insertions have no saved counterpart, so their ending is invented
-        // from the document's dominant style — the half a per-line carry in
-        // the merge layer could never have reached.
+        // Insertions have no saved counterpart, so their ending is invented from
+        // the document's dominant style — the half a per-line carry in the merge
+        // layer could never have reached.
         const merged = applyMinimalChanges(crlf, "alpha\n\nbeta\n\ndelta\n\ngamma\n", plain);
         expect(merged).toBe("alpha\r\n\r\nbeta\r\n\r\ndelta\r\n\r\ngamma\r\n");
         expect(eols(merged)).toBe("CRLF,CRLF,CRLF,CRLF,CRLF,CRLF,CRLF");
     });
 
     it("an LF document should be untouched by the CRLF machinery", () => {
+        // Vacuous by design — a regression guard, not a discriminator.
         const lf = "alpha\n\nbeta\n";
         expect(applyMinimalChanges(lf, "alpha\n\nbeta\n", plain)).toBe(lf);
         expect(applyMinimalChanges(lf, "alpha\n\nbetaX\n", plain)).toBe("alpha\n\nbetaX\n");
@@ -359,8 +375,10 @@ describe("line endings", () => {
         // Normalizing to the dominant ending would be the easy fix and would
         // rewrite lines the user never touched — the zero-edit save would stop
         // being byte-identical. Every `keep` writes its own saved bytes instead.
+        // Keyed RAW: under `plain` the odd line's ending vanishes into `.trim()`
+        // and this asserts nothing.
         const mixed = "alpha\r\n\r\nbeta\n\r\ngamma\r\n";
-        expect(applyMinimalChanges(mixed, "alpha\n\nbeta\n\ngamma\n", plain)).toBe(mixed);
+        expect(applyMinimalChanges(mixed, crlfSerial, raw)).toBe(mixed);
 
         const merged = applyMinimalChanges(mixed, "alpha\n\nbetaX\n\ngamma\n", plain);
         expect(eols(merged)).toBe("CRLF,CRLF,LF,CRLF,CRLF");
@@ -368,39 +386,19 @@ describe("line endings", () => {
 
     it("a dominant-LF document should give an inserted line LF even when some lines are CRLF", () => {
         const mostlyLf = "alpha\n\nbeta\r\n\ngamma\n";
+        expect(applyMinimalChanges(mostlyLf, crlfSerial, raw)).toBe(mostlyLf);
+
         const merged = applyMinimalChanges(mostlyLf, "alpha\n\nbeta\n\ndelta\n\ngamma\n", plain);
         expect(eols(merged)).toBe("LF,LF,CRLF,LF,LF,LF,LF");
-    });
-
-    it("a profile that keys RAW bytes should still see CRLF and LF as the same line", () => {
-        // The observable that separates "the profile never sees a `\r`" from
-        // the rest of the mechanism — and it needs a profile that does not
-        // trim, because `plain` strips the `\r` in its own key by accident and
-        // so can never distinguish this. Markdown really has such classes:
-        // fence content and indented code compare VERBATIM user bytes, so a
-        // tab↔space edit inside a Makefile fence registers as a real edit.
-        //
-        // With the ending in the key, every fenced line of a CRLF file pairs
-        // as del+ins instead of keep — which is how a whole CRLF document came
-        // to be "protected" line by line in the first place.
-        const raw: FormatProfile = {
-            ...plain,
-            keyLines: (lines) => lines.map((l) => `\x00RAW${l}`),
-            reconcileReplacement: (_saved, serial) => serial.toUpperCase(),
-        };
-        const crlfRaw = "\tcode one\r\n\tcode two\r\n";
-        expect(computeRoundTripProtection(crlfRaw, "\tcode one\n\tcode two\n", raw)).toBeNull();
-        // A replacement would shout; a keep writes the saved bytes.
-        expect(applyMinimalChanges(crlfRaw, "\tcode one\n\tcode two\n", raw)).toBe(crlfRaw);
     });
 
     it("a construct re-inserted by round-trip protection should come back CRLF", () => {
         // The repair path splices SAVED bytes into a serialization that has
         // already been re-emitted with the document's endings; this pins that
         // the two agree, so a protected construct does not arrive as an LF
-        // island. (The blank separators repair invents around it are a
-        // different matter — the merge re-sources blank runs from the saved or
-        // serialized gap, so those bytes are normally discarded again.)
+        // island. (The blank separators repair invents around it are a different
+        // matter — the merge re-sources blank runs from the saved or serialized
+        // gap, so those bytes are normally discarded again.)
         const saved = "alpha\r\n\r\n%%secret%%\r\n\r\nomega\r\n";
         const baseline = "alpha\n\nomega\n"; // the round trip drops the construct
         const protection = computeRoundTripProtection(saved, baseline, plain);
@@ -410,5 +408,65 @@ describe("line endings", () => {
         const merged = applyMinimalChanges(saved, "alpha\n\nomega EDITED\n", plain, protection);
         expect(merged).toBe("alpha\r\n\r\n%%secret%%\r\n\r\nomega EDITED\r\n");
         expect(eols(merged)).toBe("CRLF,CRLF,CRLF,CRLF,CRLF");
+    });
+});
+
+// The final element of a `\n` split is the text AFTER the last ending, not a
+// line — it carries no ending of its own. Both directions of forgetting that
+// reintroduce the very mixed-ending file this mechanism prevents.
+describe("line endings — the unterminated final segment", () => {
+    it("appending to a CRLF file with no trailing newline should not give its last line an LF", () => {
+        const saved = "alpha\r\n\r\nbeta"; // no final newline
+        const merged = applyMinimalChanges(saved, "alpha\n\nbeta\n\ndelta\n", plain);
+        expect(merged).toBe("alpha\r\n\r\nbeta\r\n\r\ndelta\r\n");
+        expect(eols(merged)).toBe("CRLF,CRLF,CRLF,CRLF,CRLF");
+    });
+
+    it("editing that last line AND appending should still terminate it with CRLF", () => {
+        const saved = "alpha\r\n\r\nbeta";
+        const merged = applyMinimalChanges(saved, "alpha\n\nbeta X\n\ndelta\n", plain);
+        expect(eols(merged)).toBe("CRLF,CRLF,CRLF,CRLF,CRLF");
+    });
+
+    it("a CRLF file with no trailing newline should not GAIN one when only edited", () => {
+        const saved = "alpha\r\n\r\nbeta";
+        expect(applyMinimalChanges(saved, "alpha\n\nbeta X\n", plain)).toBe("alpha\r\n\r\nbeta X");
+    });
+
+    it("a trailing CR in the final segment is CONTENT and must not migrate to another line", () => {
+        // An LF document whose last segment happens to end in a bare CR. Reading
+        // that CR as a terminator re-attached it to the FIRST line the merge
+        // emitted, inventing a CRLF in a file that had none.
+        const saved = "# Title\n\nbody one\rbody two\r";
+        const merged = applyMinimalChanges(saved, "# Title\n\nbody one\n\nbody two\n", plain);
+        expect(merged).toBe("# Title\n\nbody one\n\nbody two\n");
+        expect(eols(merged)).toBe("LF,LF,LF,LF,LF");
+    });
+
+    it("a classic-Mac CR-separated file should not sprout a CRLF line", () => {
+        const merged = applyMinimalChanges("alpha\rbeta\rgamma\r", "alpha\n\nbeta\n\ngamma\n", plain);
+        expect(merged).toBe("alpha\n\nbeta\n\ngamma\n");
+        expect(eols(merged)).toBe("LF,LF,LF,LF,LF");
+    });
+});
+
+describe("line endings — dominant-ending edges", () => {
+    // dominantEol is not exported; probe it through the ending an INSERTED line
+    // receives, which is the only thing it decides.
+    const insertedEnding = (saved: string, serialized: string): string => {
+        const merged = applyMinimalChanges(saved, serialized, plain);
+        return merged.split("\n").slice(0, -1).some((l) => l.endsWith("\r")) ? "CRLF" : "LF";
+    };
+
+    it("a document opening with a blank LF line should not count it as CRLF", () => {
+        expect(insertedEnding("\nalpha\n", "\nalpha\n\ndelta\n")).toBe("LF");
+    });
+
+    it("a document with no line ending at all should insert LF", () => {
+        expect(insertedEnding("alpha", "alpha\n\ndelta\n")).toBe("LF");
+    });
+
+    it("an exact tie should resolve to LF", () => {
+        expect(insertedEnding("alpha\r\nbeta\n", "alpha\nbeta\ndelta\n")).toBe("CRLF");
     });
 });

@@ -66,7 +66,10 @@ export interface FormatProfile {
      * line whose neighbours are unchanged. Return the bytes to write instead —
      * the profile's chance to carry source-only facts (indent unit, untouched
      * sub-line parts) that the serializer canonicalized away. MUST return a
-     * single line (no newlines) and MUST default to `serial` unchanged.
+     * single line — no `\n` and no `\r`, since the engine owns line endings and
+     * re-attaches the saved line's own; a return containing either is rejected
+     * and the serializer's line is used instead. MUST default to `serial`
+     * unchanged.
      *
      * This is the philosophy the keys already express — "a difference the
      * profile considers formatting-only is never applied" — extended from
@@ -101,8 +104,18 @@ export interface FormatProfile {
 //   • only lines the engine invents (insertions and the serializer's blank
 //     runs, which have no saved counterpart) need an ending chosen for them,
 //     and they get the document's dominant one.
+//
+// One subtlety runs through all three: a `\n` split's LAST element is not a
+// line, it is the text AFTER the final ending, so it has no ending of its own.
+// Both directions of getting that wrong are real. Treating a `\r` there as a
+// terminator relocates a content CR onto a different line (a classic-Mac file,
+// or a stray CR fragment). Treating the segment as terminated is worse: when
+// the merge emits anything after it — an append to a CRLF file that has no
+// trailing newline — `out.join("\n")` silently gives it an LF, reintroducing
+// exactly the mixed-ending file this whole mechanism exists to prevent.
 
-/** A line's own ending (`"\r"` when the split left one). */
+/** A line's own ending (`"\r"` when the split left one). Never call this for a
+ *  split's final segment — see the note above; it has no ending. */
 function eolOf(line: string): string {
     return line.endsWith("\r") ? "\r" : "";
 }
@@ -145,13 +158,21 @@ function matchEol(serialized: string, eol: "\n" | "\r\n"): string {
  *
  * The profile works on content alone; the SAVED line's own ending is re-attached
  * afterwards, so editing a line never changes which ending that line has.
+ * `savedTerminated` is false for the split's final segment, whose trailing `\r`
+ * (if any) is content rather than an ending.
  */
-function reconcileLine(profile: FormatProfile, saved: string, serial: string): string {
-    const eol = eolOf(saved);
+function reconcileLine(
+    profile: FormatProfile,
+    saved: string,
+    serial: string,
+    savedTerminated: boolean,
+): string {
+    const eol = savedTerminated ? eolOf(saved) : "";
+    const savedContent = savedTerminated ? stripEol(saved) : saved;
     const fallback = stripEol(serial) + eol;
     let out: string;
     try {
-        out = profile.reconcileReplacement(stripEol(saved), stripEol(serial));
+        out = profile.reconcileReplacement(savedContent, stripEol(serial));
     } catch {
         return fallback;
     }
@@ -175,7 +196,8 @@ type Edit =
  * FULL line array (classification context), so it happens here, before blanks
  * are dropped. */
 function analyzeLines(lines: string[], profile: FormatProfile): SigLine[] {
-    const keys = profile.keyLines(lines.map(stripEol));
+    const last = lines.length - 1;
+    const keys = profile.keyLines(lines.map((l, i) => (i === last ? l : stripEol(l))));
     if (keys.length !== lines.length) {
         throw new Error("FormatProfile.keyLines must return exactly one key per line");
     }
@@ -650,6 +672,14 @@ export function applyMinimalChanges(
     let prevSerialIdx = -1; // serialized lineIdx of the last emitted line
     let dirty = false;
 
+    // Where the saved file's UNTERMINATED final segment landed in `out`, if it
+    // was emitted at all (it is blank, and so never a significant line, in the
+    // usual case of a file that ends with a newline). If the merge goes on to
+    // emit anything after it, the join gives it an LF it never had — so it is
+    // patched up with the document's ending once the output is complete.
+    const lastSavedIdx = savedLines.length - 1;
+    let unterminatedAt = -1;
+
     // Both gap slices only ever span blank lines: significant lines are
     // consumed strictly in order on each side, so the region between two
     // consecutively consumed ones contains no significant line.
@@ -711,6 +741,7 @@ export function applyMinimalChanges(
         if (edit.op === "keep") {
             out.push(...gapBefore(edit.saved.lineIdx, edit.serial.lineIdx, edit.saved.text));
             out.push(edit.saved.text);
+            if (edit.saved.lineIdx === lastSavedIdx) unterminatedAt = out.length - 1;
             prevSavedIdx = edit.saved.lineIdx;
             prevSerialIdx = edit.serial.lineIdx;
             prevLineText = edit.saved.text;
@@ -722,13 +753,19 @@ export function applyMinimalChanges(
             // around it is kept (modulo the block-split guard in gapBefore).
             // The profile gets the last word on the BYTES too — it may carry
             // source-only facts the serializer canonicalized away.
-            const text = reconcileLine(profile, edit.saved.text, next.serial.text);
+            const text = reconcileLine(
+                profile,
+                edit.saved.text,
+                next.serial.text,
+                edit.saved.lineIdx !== lastSavedIdx,
+            );
             // Everything downstream must see the line actually written, not
             // the raw serializer line: gapBefore's structure predicates reason
             // about the emitted neighbours, so feeding them a line that was
             // never written would decide the blank run on fiction.
             out.push(...gapBefore(edit.saved.lineIdx, next.serial.lineIdx, text));
             out.push(text);
+            if (edit.saved.lineIdx === lastSavedIdx) unterminatedAt = out.length - 1;
             prevSavedIdx = edit.saved.lineIdx;
             prevSerialIdx = next.serial.lineIdx;
             prevLineText = text;
@@ -752,6 +789,17 @@ export function applyMinimalChanges(
     // Trailing region after the last significant line (blank lines and the
     // final newline — or its absence).
     out.push(...(dirty ? serialLines.slice(prevSerialIdx + 1) : savedLines.slice(prevSavedIdx + 1)));
+
+    // The saved final segment has stopped being final (content was appended
+    // after it), so it now needs the terminator it never carried.
+    if (
+        unterminatedAt !== -1 &&
+        unterminatedAt < out.length - 1 &&
+        eol === "\r\n" &&
+        !out[unterminatedAt].endsWith("\r")
+    ) {
+        out[unterminatedAt] += "\r";
+    }
 
     const result = out.join("\n");
     return result === saved ? saved : result;

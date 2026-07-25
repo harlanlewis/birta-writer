@@ -177,7 +177,15 @@ describe("corpus invariant C — typing inside a block never restructures the do
 
 /** The distinct line-ending styles a text uses, e.g. `["CRLF"]` or
  *  `["CRLF","LF"]`. The final element of a `\n` split is the text after the
- *  last ending, not a line, so it never contributes. */
+ *  last ending, not a line, so it never contributes.
+ *
+ *  Deliberately a SET, which bounds what D can catch: it proves no new style
+ *  was introduced, not that each individual line kept its own. On an
+ *  already-mixed document D would therefore permit endings to be shuffled
+ *  between lines. No fixture is mixed today, and the per-line guarantee is
+ *  pinned directly in the engine's suite (`packages/minimal-diff`, "a document
+ *  with MIXED endings should keep each untouched line's own ending"); tighten
+ *  this if a mixed fixture is ever added. */
 function eolStyles(text: string): string[] {
     const parts = text.split("\n").slice(0, -1);
     return [...new Set(parts.map((l) => (l.endsWith("\r") ? "CRLF" : "LF")))].sort();
