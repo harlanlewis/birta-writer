@@ -1,0 +1,65 @@
+<!doctype html>
+<!-- e2e harness: MAR-215's gutter scroll window. A document long enough that
+     the window covers only part of it, so "chrome appears as you scroll" and
+     "fold state is document-wide" are real, observable behaviors. Mirrors the
+     provider template with acquireVsCodeApi stubbed. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41; --vscode-panel-border: #454545;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  // MAR-215 launch guard: capture how much gutter chrome exists at the EXACT
+  // moment the bundle stamps its first-paint mark. Wrapping performance.mark
+  // (rather than observing it) makes the reading synchronous with the mark, so
+  // the check can't drift by a task.
+  (() => {
+    const origMark = performance.mark.bind(performance);
+    performance.mark = (name, ...rest) => {
+      if (name === "mdw:editor-painted" && window.__atPaint === undefined) {
+        window.__atPaint = {
+          markers: document.querySelectorAll(".heading-fold-marker").length,
+          blocks: document.querySelectorAll(".milkdown .ProseMirror > *").length,
+        };
+      }
+      return origMark(name, ...rest);
+    };
+  })();
+  // The ToC would auto-dock over the gutter column on a doc this heading-heavy.
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 999 };
+  window.__posted = [];
+  const LINES = ["# Windowed document", ""];
+  // A collapsed callout near the very top and another near the very bottom:
+  // whichever end is off screen must still be collapsed.
+  LINES.push("> [!tip]- Top folded callout", "> top hidden body", "");
+  for (let i = 1; i <= 120; i++) {
+    LINES.push(`## Section ${i}`, "", `Paragraph body for section ${i}.`, "",
+               `- item one of ${i}`, `- item two of ${i}`, "");
+  }
+  LINES.push("> [!tip]- Bottom folded callout", "> bottom hidden body", "");
+  LINES.push("Final paragraph.", "");
+  const DOC = LINES.join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC, syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

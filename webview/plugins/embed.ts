@@ -120,6 +120,40 @@ function embedWidget(match: EmbedMatch, sourceUrl: string): () => HTMLElement {
     };
 }
 
+/**
+ * `recognizeProvider` memoized on the URL (MAR-215). The walk below runs on
+ * every doc-changing transaction, and provider recognition — a URL parse plus
+ * a regex per provider, per bare link — was the expensive half: on the
+ * link-heavy typing fixture (360 bare autolinks) it dominated the plugin's
+ * per-keystroke cost, re-deriving the identical answer for every link the
+ * keystroke did not touch.
+ *
+ * A memo rather than a changed-range walk because `recognizeProvider` is a
+ * pure function of its URL: same string, same answer, no document coordinates
+ * involved — so there is nothing to forward-map and no old-vs-new side to get
+ * wrong. Results are treated as immutable (frozen) since callers now share one
+ * object per URL.
+ *
+ * Bounded so a long session that types many distinct URLs can't grow it
+ * without limit; overflowing simply starts a fresh generation (the next walk
+ * repopulates what the document still needs).
+ */
+const RECOGNIZE_CACHE_LIMIT = 512;
+let recognizeCache = new Map<string, EmbedMatch | null>();
+
+function recognizeProviderCached(url: string): EmbedMatch | null {
+    const hit = recognizeCache.get(url);
+    if (hit !== undefined) {
+        return hit;
+    }
+    const match = recognizeProvider(url);
+    if (recognizeCache.size >= RECOGNIZE_CACHE_LIMIT) {
+        recognizeCache = new Map();
+    }
+    recognizeCache.set(url, match ? Object.freeze(match) : null);
+    return match;
+}
+
 /** One recognized bare-link paragraph, cached between doc changes. */
 interface CachedEmbed {
     from: number;
@@ -149,7 +183,7 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         if (!href) {
             return;
         }
-        const match = recognizeProvider(href);
+        const match = recognizeProviderCached(href);
         if (!match) {
             return;
         }

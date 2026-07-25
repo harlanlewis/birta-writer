@@ -40,7 +40,14 @@ export type FoldMeta =
      * document opened with nothing folded (so init's decorations were pure
      * affordance — no content hidden — and safe to defer).
      */
-    | { type: "buildAffordance" };
+    | { type: "buildAffordance" }
+    /**
+     * MAR-215: the scroll window moved (plugins/visibleRange.ts). Carries the
+     * document range whose gutter chrome is materialized, or null for "the
+     * whole document" — the answer with no layout engine, and the pre-windowing
+     * behavior. Rebuilds the decorations for the new window.
+     */
+    | { type: "window"; window: { from: number; to: number } | null };
 
 /** Back-compat alias from when only headings folded. */
 export type HeadingFoldMeta = FoldMeta;
@@ -57,6 +64,20 @@ export interface FoldPluginState {
     readonly enabled: boolean;
     readonly decorations: DecorationSet;
     readonly fingerprint: string;
+    /**
+     * MAR-215: the scroll window the decorations were built for, position-
+     * mapped across edits, or null for "the whole document" (no layout engine,
+     * or before the first measurement). See plugins/visibleRange.ts.
+     */
+    readonly window: { from: number; to: number } | null;
+    /**
+     * The caret's own top-level block, when it sits OUTSIDE `window` — the
+     * keyboard block-menu opens against a rendered marker at the caret
+     * (components/blockMenu/openAtCaret.ts), so that block is materialized
+     * even off screen. Null in the ordinary case (caret on screen), which is
+     * what keeps caret movement free of decoration work.
+     */
+    readonly pinned: { from: number; to: number } | null;
 }
 
 /** Back-compat alias from when only headings folded. */

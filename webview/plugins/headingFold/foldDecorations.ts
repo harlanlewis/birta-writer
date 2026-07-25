@@ -258,22 +258,83 @@ function emitItemGutters(
 }
 
 /**
+ * The slice(s) of the document whose gutter chrome is materialized (MAR-215):
+ * the scroll window, plus the caret's own block when the caret has wandered
+ * outside it. `null` means "the whole document" — the answer with no layout
+ * engine (jsdom) and the behavior every consumer had before windowing.
+ *
+ * Positions are document coordinates and are position-MAPPED by the plugin
+ * across edits, so a window stays anchored to the content it was measured
+ * against. Order and disjointness are irrelevant: the test below is
+ * "overlaps ANY range", and there are at most two.
+ */
+export type ChromeWindows = readonly HeadingFoldRange[] | null;
+
+/**
+ * A cursor over the folded set that answers "does any fold entry live inside
+ * this top-level block?" in amortized O(1) while walking blocks in ascending
+ * order. A block containing a fold entry is ALWAYS materialized, in or out of
+ * window: the `collapsed` class it carries is what hides a callout's or list
+ * item's body (and drives the callout NodeView), so dropping it off-screen
+ * would silently expand the block and change the document's scroll height.
+ */
+function foldCursor(folded: ReadonlySet<number>, enabled: boolean): (from: number, to: number) => boolean {
+    if (!enabled || folded.size === 0) {
+        return () => false;
+    }
+    const sorted = [...folded].sort((a, b) => a - b);
+    let index = 0;
+    return (from, to) => {
+        while (index < sorted.length && sorted[index]! < from) {
+            index++;
+        }
+        return index < sorted.length && sorted[index]! < to;
+    };
+}
+
+/** Whether a top-level block overlaps any materialized window. */
+function inWindows(windows: ChromeWindows, from: number, to: number): boolean {
+    if (windows === null) {
+        return true;
+    }
+    for (const w of windows) {
+        if (to > w.from && from < w.to) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * A cheap structural summary of everything the decorations depend on: per
  * top-level block its rendered identity (glyph, or heading level + collapsed
  * + foldable). While this string is unchanged across an edit, the cached
  * decoration set is merely position-MAPPED — widget DOM survives, nothing is
  * rebuilt. (Positions are deliberately absent: gutterBlockPos derives them at
  * interaction time, so shifted widgets never go stale.)
+ *
+ * Summarizes exactly the blocks `buildHeadingFoldDecorations` materializes for
+ * the same window, so the two can never disagree about what is rendered. That
+ * makes an edit OUTSIDE the window structurally invisible — correct, because
+ * such an edit changes no decoration; the window's own moves force a rebuild
+ * through the plugin's window meta instead.
  */
 export function structureFingerprint(
     doc: any,
     folded: ReadonlySet<number>,
     ranges: Map<number, HeadingFoldRange | null>,
     enabled: boolean,
+    windows: ChromeWindows = null,
 ): string {
     const foldCtx = { folded, enabled };
     const parts: string[] = [enabled ? "E" : "D"];
+    const hasFold = foldCursor(folded, enabled);
     doc.forEach((node: any, offset: number) => {
+        const end = offset + node.nodeSize;
+        const folds = hasFold(offset, end);
+        if (!folds && !inWindows(windows, offset, end)) {
+            return;
+        }
         if (isHeadingNode(node)) {
             const collapsed = enabled && folded.has(offset);
             const foldable = enabled && Boolean(ranges.get(offset));
@@ -296,13 +357,23 @@ export function buildHeadingFoldDecorations(
     doc: any,
     folded: ReadonlySet<number>,
     enabled: boolean,
+    windows: ChromeWindows = null,
 ): DecorationSet {
     const decorations: Decoration[] = [];
     const collapsedSections: { pos: number; node: any; range: HeadingFoldRange }[] = [];
     const ranges = computeFoldRanges(doc);
     const foldCtx = { folded, enabled };
+    const hasFold = foldCursor(folded, enabled);
 
     doc.forEach((node: any, offset: number) => {
+        const end = offset + node.nodeSize;
+        // Out-of-window blocks get no gutter chrome (MAR-215). Blocks that own
+        // a fold entry are never skipped — see foldCursor — and the
+        // content-hiding pass below stays document-wide regardless, so a
+        // collapsed section off screen keeps hiding its body.
+        if (!hasFold(offset, end) && !inWindows(windows, offset, end)) {
+            return;
+        }
         if (!isHeadingNode(node)) {
             // Lists get per-item markers (each item is the grabbable unit,
             // MAR-86); every other non-heading block with a glyph gets the

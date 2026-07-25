@@ -14,6 +14,16 @@ export const SPANS = [
     ["eager", "eval-start", "ready-posted"],
     ["roundtrip", "ready-posted", "init-received"],
     ["create", "create-start", "create-end"],
+    // The INITIAL VIEW RENDER: everything between Milkdown handing back a
+    // created editor and the browser painting the first frame that shows it —
+    // ProseMirror's first DOM build, style/layout/paint, and any work a plugin
+    // schedules from its `view()` onto the frames before that paint. It was
+    // the harness's largest blind spot (on `large`, roughly half of `launch`
+    // was unattributed), which let a change that added a whole extra
+    // decoration pass on the mount path read as "every measured span is flat
+    // or better" while launch regressed. It costs nothing to report: both
+    // marks already existed.
+    ["paint", "create-end", "editor-painted"],
     ["rtp", "rtp-start", "rtp-end"],
     ["toc", "toc-start", "toc-end"],
     ["toolbar", "toolbar-start", "toolbar-end"],

@@ -275,8 +275,15 @@ export const headingStickyPlugin = $prose(() =>
                     activeHeadingPos = headingPos;
                     dispatchStickyActiveChange(headingPos);
                 }
-                const foldable = heading.classList.contains("heading-fold-heading--foldable");
-                const collapsed = headingFoldPluginKey.getState(view.state)?.folded.has(headingPos) ?? false;
+                // Asked of the DOCUMENT, not of the heading's rendered class:
+                // the sticky title's heading is above the viewport by
+                // definition, and since MAR-215 the gutter chrome is only
+                // materialized near the viewport — the class would simply be
+                // missing and the sticky badge would lose its chevron.
+                const foldState = headingFoldPluginKey.getState(view.state);
+                const foldable = (foldState?.enabled ?? false) &&
+                    findHeadingFoldRange(view.state.doc, headingPos) !== null;
+                const collapsed = foldState?.folded.has(headingPos) ?? false;
                 const rect = heading.getBoundingClientRect();
                 sticky.hidden = false;
                 sticky.dataset["headingPos"] = String(headingPos);
