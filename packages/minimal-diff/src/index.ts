@@ -291,14 +291,35 @@ function buildProtectedRegions(
             ? delGroups.map((dg, gi) => ({ delSpan: dg, insSpan: insGroups[gi] }))
             : [{ delSpan: dels.map((d) => d.saved), insSpan: inses.map((i) => i.serial) }];
 
-        for (const sub of subRegions) {
+        for (let gi = 0; gi < subRegions.length; gi++) {
+            const sub = subRegions[gi];
             const first = sub.delSpan[0].lineIdx;
             const last = sub.delSpan[sub.delSpan.length - 1].lineIdx;
+            // Anchors must bound THIS sub-region, not the whole run. Handing
+            // every sub-region the run's outer keeps is wrong the moment a run
+            // splits: the inner sub-regions' real neighbours are the sibling
+            // sub-regions, and anchors are matched against the PRISTINE
+            // serialization (see repairSerialized), where the siblings appear
+            // in their canonical form and adjacent to each other.
+            //
+            // Getting this wrong corrupts documents rather than merely
+            // canonicalizing them. `a * b` + a `~~~` fence share one run (the
+            // blank line between them is insignificant): the fence-open
+            // sub-region inherited the run's `anchorPrev = null` — "document
+            // start" — which cannot match, while its `anchorNext` is the line
+            // the user just edited. Score 0, so the open fence stood down and
+            // was written canonically as ``` while the CLOSE fence, whose
+            // anchor still hit, was repaired back to `~~~`. The mismatched pair
+            // swallowed every following block into the code block on reopen.
+            const prevSub = subRegions[gi - 1];
+            const nextSub = subRegions[gi + 1];
             regions.push({
                 savedSpanLines: savedLines.slice(first, last + 1),
                 insNorms: sub.insSpan.map((s) => s.norm),
-                anchorPrevNorm,
-                anchorNextNorm,
+                anchorPrevNorm: prevSub
+                    ? prevSub.insSpan[prevSub.insSpan.length - 1].norm
+                    : anchorPrevNorm,
+                anchorNextNorm: nextSub ? nextSub.insSpan[0].norm : anchorNextNorm,
             });
         }
     }

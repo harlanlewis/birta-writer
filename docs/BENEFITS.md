@@ -350,7 +350,8 @@ to open and edit, not about matching every tool's feature set.
 > before the editor ever sees content, is verified by the extension-side
 > suites), and the 🔴 rows for MDX
 > and Org are encoded as expected-corruption cases — an untouched save is still
-> byte-identical even for those, but an edit corrupts the edited construct (and
-> for Org, its neighbors too). The fixtures and how to read the suites live in
+> byte-identical even for those, but an edit corrupts the edited construct (for
+> Org, the edited headline and the drawer directly beneath it; the rest of the
+> file, keyword lines included, is left alone). The fixtures and how to read the suites live in
 > `webview/__tests__/fixtures/tools/README.md`; CI runs the same assertions on
 > every PR and push to main, so a claim that stops being true fails the build.

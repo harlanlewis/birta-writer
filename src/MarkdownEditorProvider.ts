@@ -612,7 +612,7 @@ export class MarkdownEditorProvider
                         this._lastSyncedText.set(uriKey, initContent);
                         // Reset the sync version so the webview's baseSyncVersion
                         // starts aligned with the extension.
-                        this._flush.resetVersion(uriKey);
+                        this._flush.resetWebviewBaseline(uriKey);
                         postToWebview(webviewPanel.webview, {
                             type: "init",
                             content: displayContent,

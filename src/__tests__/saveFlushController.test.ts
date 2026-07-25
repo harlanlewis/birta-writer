@@ -34,11 +34,11 @@ describe("SaveFlushController", () => {
             expect(c.isCurrentVersion(URI, 1)).toBe(true);
         });
 
-        it("resetVersion should re-baseline the document at 0", () => {
+        it("resetWebviewBaseline should re-baseline the document at 0", () => {
             const c = new SaveFlushController<string>();
             c.bumpVersion(URI);
             c.bumpVersion(URI);
-            c.resetVersion(URI);
+            c.resetWebviewBaseline(URI);
             expect(c.isCurrentVersion(URI, 0)).toBe(true);
         });
     });
@@ -56,6 +56,25 @@ describe("SaveFlushController", () => {
             const c = new SaveFlushController<string>();
             expect(c.claimSeq(URI, 5)).toBe(true);
             expect(c.claimSeq("file:///other.md", 1)).toBe(true);
+        });
+
+        it("a webview that re-baselines should have its restarted seq accepted, not rejected as stale", () => {
+            // A reloaded webview (renderer crash recovery) restarts its outbound
+            // `seq` at 1 while the panel — and so this controller's state —
+            // survives. Resetting only the version left the high-water mark in
+            // place, and every message from the new context failed the
+            // staleness test: edits never dirtied the document and Cmd+S wrote
+            // stale bytes. The observable is that the FIRST message of the new
+            // context is accepted.
+            const c = new SaveFlushController<string>();
+            expect(c.claimSeq(URI, 1)).toBe(true);
+            expect(c.claimSeq(URI, 2)).toBe(true);
+            expect(c.claimSeq(URI, 3)).toBe(true);
+
+            c.resetWebviewBaseline(URI);
+
+            expect(c.claimSeq(URI, 1), "the reloaded webview's first update was dropped").toBe(true);
+            expect(c.claimSeq(URI, 2)).toBe(true);
         });
     });
 

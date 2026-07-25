@@ -223,19 +223,40 @@ describe("Org — wrong format by design: one edit rewrites org structure broadl
     it("editing a headline should corrupt org syntax well beyond the edited line", async () => {
         const source = fixture("org.org");
         const merged = await saveEditing(source, "Books to read", "Books to read EDITED");
-        // The parser read `* Books to read` as a list; the edit re-emits it
-        // as one, and the churn region around the edit drags neighbors with
-        // it — keyword lines gain escapes, the drawer gains indentation.
-        // This asserted corruption is WHY the table says "don't". A failure
-        // here means the behavior CHANGED (not necessarily improved) —
-        // re-verify what an edit actually does to an .org file before
-        // changing the row or this test.
+        // The parser read `* Books to read` as a bullet list, so the edit
+        // re-emits it as one and the `:PROPERTIES:` drawer beneath it is
+        // absorbed as that item's content, gaining two-space indentation.
+        // Corruption on edit is still the documented outcome — this is WHY the
+        // table says "don't" — but it is now CONFINED to the edited headline
+        // and its own drawer.
         expect(merged).toContain("- Books to read EDITED");
         expect(merged).not.toContain("* Books to read");
-        expect(merged).toContain("\\#+TITLE: Reading queue");
-        const before = source.split("\n");
-        const after = merged.split("\n");
-        const changed = before.filter((line, i) => after[i] !== line);
-        expect(changed.length, "expected the edit's blast radius to exceed one line").toBeGreaterThan(1);
+
+        // Tightened 2026-07-25: the blast radius used to reach the whole file —
+        // `#+TITLE:` came back as `\#+TITLE:` because a split protection
+        // sub-region inherited its RUN's anchors, failed to match, and let the
+        // canonical form win on a line nobody touched. Those keyword lines now
+        // survive byte-for-byte, unescaped.
+        expect(
+            merged.split("\n").slice(0, 3),
+            "untouched org keyword lines corrupted",
+        ).toEqual(["#+TITLE: Reading queue", "#+AUTHOR: Harlan", "#+STARTUP: overview"]);
+        expect(merged).not.toContain("\\#+");
+
+        // Everything below the edited headline's own drawer is untouched.
+        for (const token of [
+            "** TODO How to Take Smart Notes",
+            "SCHEDULED: <2026-08-01 Sat>",
+            "CLOCK: [2026-07-10 Fri 09:00]--[2026-07-10 Fri 09:45] =>  0:45",
+            "#+BEGIN_SRC emacs-lisp",
+            "(setq org-log-done 'time)",
+            "Org links look like [[https://orgmode.org][the org manual]], not Markdown.",
+        ]) {
+            expect(merged, `line beyond the edit's section changed: ${token}`).toContain(token);
+        }
+
+        // Pinned exactly: the headline plus the three drawer lines it swallowed.
+        const changed = changedLineIndices(source, merged);
+        expect(changed, "org blast radius moved — re-verify and re-tighten").toEqual([4, 5, 6, 7]);
     });
 });
