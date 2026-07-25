@@ -79,41 +79,53 @@ edit-once. Birta is already ~70% there: `shared/editorCommands.ts` and `shared/c
 are the definition tables, and `package.json`'s contributions are a hand-authored
 projection reconciled by drift tests — which become *generators* (§14).
 
-**(c) The deliverable is a factory/playbook for many apps — most not VS Code extensions.**
-Birta Writer is app #1. The real asset is the reusable machine: **core editor + format
-modules + a host-adapter contract + a per-app config/brand layer**, such that a new app is
-`{reused host adapter} + {app config: brand tokens, feature/format selection, defaults} +
-{optional new format module}` — not a new editor. Consequences that differ from a plain
-port:
+**(c) "Factory/playbook for many apps" — but NOT a shared editor core.** *(Corrected after
+maintainer input — an earlier draft over-indexed on this; recorded honestly.)* The Birta
+Labs portfolio may include apps with **nothing in common but the parent brand and being web
+apps** — e.g. `harlanlewis/retire-early`, a family retirement calculator that shares no
+ProseMirror, no markdown, no VS Code with Birta Writer. So there are **two different shared
+layers, and we were conflating them:**
 
-- **The reference host must NOT be VS Code.** It is the most idiosyncratic and capable
-  host; generalizing the core contract from it over-fits. Define the `HostAdapter` as *what
-  the simplest app needs* (a bare shell + local files), and let VS Code be a rich adapter
-  that projects its abundance onto that minimal line — never the thing that defines the line.
-- **Validate the factory by building app #2 cheaply and early**, not by designing the
-  perfect adapter up front. "Build two apps, then *harvest* the factory" beats "build the
-  factory, then two apps." The cheapest non-VS-Code app #2 is the Tauri desktop shell — so
-  **desktop-first is reinforced**: it is the least-cost way to prove the factory is real and
-  to extract the adapter from *two* concrete hosts instead of one imagined one.
-- **The factory instinct is already half-built in the code.** `webview/format/` is the
-  "FormatModule seam… markdown is format #1" — the architecture already anticipated being
-  more than one editor. Formats #2+ validate the format seam the same way host #2 validates
-  the adapter seam. The three per-app knobs already exist in embryo: the `birta.*` config
-  schema (feature/defaults), the FormatModule seam (format), and the `--ui-*` + brand token
-  layer (brand).
-- **Edit-once shrinks the QA matrix** (partly answering the maintenance-cost worry): the
-  shared conformance suite (fidelity + editor behavior) proves the writing experience
-  *once*, in core; each host runs only a thin integration suite (its persistence + save
-  invariant). The matrix is `hosts × thin-suites`, not `surfaces × full-suites`.
-- **The factory's own risk is over-engineering it before either app needs it.** Discover it
-  by making VS-Code-Birta and desktop-Birta share code, *then* template it. Top-down factory
-  design is the meta-level version of the same YAGNI trap called out in §13.
+- **Layer 1 — the Birta Writer editor core**, shared across *Writer's own surfaces only*
+  (extension → desktop → maybe cloud web). This is the real, bounded code-sharing target of
+  this whole document. It is **not** portfolio-wide; Birta Writer may be the *only*
+  "markdown-read/write + editor" app that ever exists. The editor-core extraction is
+  therefore justified by **two real consumers (the extension + a desktop shell)** — not by a
+  fleet of hypothetical future editors. That is a *modest* extraction, and the YAGNI
+  discipline in §13 fully applies: don't build a grand "editor factory" for editors that may
+  never come. The `webview/format/` "markdown is format #1" seam is a nice-to-have that
+  *may* pay off if a second format ever appears — treat it as latent optionality, **not** as
+  evidence a multi-format factory should be built now.
+- **Layer 2 — the Birta Labs "how we make a good app" playbook**, shared across the
+  *portfolio* (Writer, retire-early, future apps). This is **format- and domain-agnostic
+  infrastructure/convention, not an editor**: the brand/design-system tokens (`docs/BRAND.md`
+  is already portfolio-tier: company / constant / product naming, a utility glyph for
+  favicons/app-icons), release + code-signing + auto-update templates, a web-app skeleton,
+  CI/testing conventions, hosting/deploy patterns, and (if apps ever need accounts) a shared
+  auth/identity story. This is the lighter, real "factory" the portfolio benefits from — and
+  it is mostly *tooling and taste*, not a big software abstraction.
 
-Net effect on the plan: **desktop (Tauri) is the priority surface *and* the factory's
-reference/validation vehicle; web (cloud) is a later, separate product; the near-term
-architectural work is extracting the core with a deliberately-minimal host contract and
-proving it against a second host.** Local-file hardness largely disappears (desktop fs is
-easy); the real work is the edit-once seam and the shell chrome (§6).
+Consequences (deliberately un-grand):
+- **The editor-core work is scoped to Writer, validated by Writer's own second surface.**
+  The cheapest second surface is the Tauri desktop shell, so **desktop-first still holds** —
+  it proves the extraction against a *second real host* (extension + desktop), which is all
+  the justification the abstraction needs. No claim that it seeds a fleet of editors.
+- **The `HostServices` contract is defined by the simplest of Writer's surfaces**, not by VS
+  Code (which over-fits), and not by imagined other products. Keep it small; let VS Code be a
+  rich adapter above the minimal line (§14).
+- **The portfolio playbook is harvested, never designed top-down.** Extract shared brand/
+  release/CI conventions from Writer + retire-early *as they actually repeat*, into light
+  templates — not a framework. Two data points (Writer, retire-early) is exactly enough to
+  see what genuinely recurs and refuse to abstract what doesn't.
+- **Edit-once is a within-Writer property** (its 2–3 surfaces), not a portfolio property. It
+  still shrinks Writer's QA matrix (shared conformance suite proves the writing experience
+  once; each host runs a thin integration suite) — but it says nothing about retire-early.
+
+Net effect on the plan: **desktop (Tauri) is Writer's priority second surface and the
+validation vehicle for a *modest, Writer-scoped* core extraction; cloud web is a later,
+separate product; the portfolio "factory" is a light brand+tooling playbook harvested across
+independent apps, not a shared editor engine.** Local-file hardness largely disappears on
+desktop; the real work is the edit-once seam and the shell chrome (§6).
 
 ---
 
@@ -474,12 +486,14 @@ harness, ProseMirror typing chords, i18n functions.
 
 ## 11. Recommended sequence (factory-validated, web-last)
 
-Framing: **"the writing experience, everywhere, minted from a factory."** The core is the
-product; VS Code was the first shell; each new app supplies only OS integration + a per-app
-config/brand layer. Desktop is the priority surface *and* the factory's proof; cloud-web is
-a separate, later product. Cheapest-learning-first, not cheapest-to-build-first.
+Framing: **"the Birta Writer editing experience on all of *its* surfaces."** The editor
+core is shared across Writer's own surfaces (extension → desktop → maybe cloud web) — this
+is a *modest, Writer-scoped* extraction, not a portfolio-wide editor factory (§0.5c). VS
+Code was the first shell; each of Writer's surfaces supplies only OS integration. Desktop is
+the priority second surface *and* the validation vehicle for the extraction; cloud-web is a
+separate, later product. Cheapest-learning-first, not cheapest-to-build-first.
 
-**Rung 0 — free/near-free reach (do first, independent of the factory).**
+**Rung 0 — free/near-free reach (do first, independent of the extraction).**
 - **VS Code-family hosts.** Cursor, Windsurf, VSCodium, code-server, Positron already speak
   the extension API. Publishing to **Open VSX** (already Birta's namespace) covers most of
   these for ~zero marginal work — reach expansion with no new shell. Verify nothing relies on
@@ -600,9 +614,10 @@ reuses VS Code's entire shell. Both deliver reach for a fraction of a standalone
 and should be exhausted (or consciously rejected) first.
 
 **On adopting the architecture speculatively, before multi-surface is ratified.**
-Mostly **defer** — with a small, real exception. The factory framing (§0.5c) gives the
-abstraction genuine downstream consumers, but the engineering risk (over-fitting a contract
-extracted from one host) is unchanged, so:
+Mostly **defer** — with a small, real exception. The extraction's justification is *two
+real Writer surfaces* (extension + a desktop shell), not a fleet of imagined editors
+(§0.5c); the engineering risk (over-fitting a contract extracted from one host) is unchanged,
+so:
 - *Do now (pays off with one host):* wrap the `asWebviewUri`/`_imageUriMaps` coupling behind
   `toDisplayUrl`/`toStoredPath`; keep `shared/` pure; keep the protocol typed and funneled;
   keep `_workspaceRootFor` the single root chokepoint. These improve the *extension's* clarity
@@ -613,7 +628,8 @@ extracted from one host) is unchanged, so:
   confidence). Restructuring also risks perturbing the CI-gated eager-bytes/launch-perf
   budgets — a measured cost to the current product for hypothetical benefit.
 - *Rule of thumb:* adopt a refactor only if it improves the extension on its own merits;
-  **design toward the factory, don't build it** until app #2 is actually being made.
+  **design toward the extraction, don't build it** until Writer's desktop surface is
+  actually being made.
 
 ---
 
@@ -762,3 +778,86 @@ protocol) already exist and are mature. Net-new work is bounded: wire a lazy CM6
 build the host raw-edit capability adapter (needed for the multi-surface split anyway), map
 the toggle to serialize/parse with a coalesced undo point. No ProseMirror rework. The
 largest *ongoing* cost is the parity long-tail, which the plan manages by scope + framing.
+
+---
+
+## 16. Gaps register, inconsistencies, and the meta-risk (planning review)
+
+A step-back review of the whole document. Kept explicit so nothing structural hides behind a
+confident tone. **Assessed vs. guessed:** everything below is reasoning over code + research;
+none of it is measured (see the meta-risk).
+
+### The meta-risk (most important)
+**We have breadth, not validation.** Every conclusion — clean seam, ~70%-there, Bucket-2,
+CM6, Tauri — is inference from reading code, not from running anything. The single most
+valuable next act is not more analysis but the **afternoon probe**: stand up `dist/webview.js`
+in a bare page and implement `HostServices` for *one hard capability — save* — end to end. If
+the seam survives contact with real persistence, the thesis largely holds; if not, much
+downstream changes. Guard against over-planning a beautiful architecture on an unmeasured base.
+
+### Gaps that are thin or unexamined (ranked)
+1. **Persistence / save / external-change per host — highest stakes, thinnest.** This is *why
+   Birta exists* (fidelity + never-lose-an-edit), it is Bucket-3 (unshareable), and it's only
+   gestured at. `onWillSave`+`waitUntil` has no host-neutral replacement; each host needs its
+   own atomic-write + crash-safety + dirty-model + external-change strategy (desktop
+   file-watcher vs. the current VS Code document-event model). **Design this before any
+   extraction** — it's where the seam most likely leaks and the one property the product
+   cannot lose. *(Guessed; needs a dedicated design pass — the natural next deep-dive.)*
+2. **Undo ownership + accessibility — editor-quality gaps that could sink a standalone app.**
+   Undo is hand-built today (the CustomEditor API gives nothing); off VS Code the core must
+   own the whole undo stack and its interaction with save, external changes, and the
+   source-toggle. a11y is currently *inherited* through VS Code (`--vscode-*`, focus, screen
+   reader); a standalone contenteditable WYSIWYG surface must own it, which is notoriously
+   hard. Both only name-checked so far.
+3. **Non-document app state + incremental-migration mechanics.** (a) Standalone apps *need*
+   state that doesn't exist today — recent files, window layout, session restore, snapshots;
+   "no `globalState` usage" actually means "no app-state layer to build on," not pure upside.
+   (b) *How* to extract `packages/core` incrementally (strangler-fig) while the extension
+   keeps shipping — never described; the risk is a months-long feature freeze.
+4. **Cross-surface version & release coordination.** "Edit once, deploy everywhere" assumes
+   lockstep, but Writer's surfaces ship as separate artifacts (VSIX / Tauri installer / web
+   deploy) and *will* drift. No semver contract for the core package, no release
+   orchestration, no answer for "a core change that needs a coordinated host change." A real
+   ongoing tax for a solo maintainer.
+5. **Lesser but real:** the cloud image/asset model (object storage); Tauri capability/IPC as
+   a new trust boundary + auto-update key management; where Harper/proofreading sits
+   (core vs. per-app feature module — it's heavy and Node/WASM-coupled); concrete per-surface
+   perf budgets once CM6 + a theming layer + a shell are added; RTL/complex-script editing
+   (untouched).
+
+### Inconsistencies to reconcile (now flagged inline where they live)
+1. **Two web framings coexist.** §0.5(a) says web is cloud-backed and last; §4/§8/§10 still
+   carry the extensive *local*-web (FSA/OPFS/two-tier) analysis. **Reconciliation:** the
+   local-web analysis is now the *PWA/fallback tier*, not the main web product — the main web
+   surface is the cloud service. The §4/§8/§10 findings stay valid but demoted; read them as
+   "if we ever did local-web," not "the web plan."
+2. **"No workspace" (§4) vs. "build a file browser / open folder" (§6).** Both are true only
+   as *"the host defines the root"* — the opened folder becomes the root. Treat that as the
+   canonical phrasing; standalone does have a root, just not VS Code's multi-root model.
+3. **Difficulty ratings vs. "nothing was measured" (§13).** The Low/Medium/Large ratings
+   throughout are directional priors, not estimates. Read as priors; let the probe (and the
+   first desktop build) replace them with data before committing calendar.
+
+### High-level takeaways
+- The architecture is real and well-positioned; one pattern (**Bucket-2**, §14) unifies
+  raw-editing, keybindings, palette, menus, settings. That's the spine.
+- **Cost is front-loaded onto Writer's *first* non-VS-Code surface** (desktop), which pays
+  the full shell tax (raw editor, file browser, keybinding/settings engines, save model).
+  There is no fleet of editors to amortize it against (§0.5c) — so the desktop app must be
+  justified on its own merits (a real audience of "Birta without VS Code"), not as factory seed.
+- **The two hardest things are the two least designed:** the persistence/data-integrity
+  contract, and — now settled — *not* the "what varies across apps" question (answer: the
+  portfolio shares brand + tooling, not an editor; Writer's core is shared only across
+  Writer's own surfaces).
+
+### Go-forward (revised after the factory deflation)
+1. **Design the persistence / save / external-change contract** — the riskiest seam and the
+   reason the product exists. This is the next deep-dive.
+2. **Run the save-capability probe** — validate the seam against the hardest capability, turn
+   priors into measurements.
+3. **In parallel, Rung 0 free reach** (Open VSX + a vscode.dev web-extension scope) — reach +
+   demand-validation, independent of the extraction.
+4. **Only then** extract `packages/core` incrementally (strangler-fig), keeping the extension
+   shipping, justified by the two real surfaces (extension + desktop).
+5. **Harvest — don't design — the portfolio playbook** (brand/release/CI templates) from what
+   actually recurs across Writer and retire-early.
