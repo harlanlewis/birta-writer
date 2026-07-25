@@ -236,10 +236,14 @@ jobs:
   # pays this cost, so it is first-class alongside boot time.
   #
   # Gate discipline, matching launch-perf: only the strong-signal fixtures
-  # (large, xlarge) can fail; a real move needs BOTH ≥10% and ≥0.5 ms; and a
-  # regression must reproduce across two full passes. `block` is reported and
-  # never gated — a null A/B on identical bundles moved it ~15% while the
-  # dispatch medians held within 1.1%, so it is informative, not decidable.
+  # (large, xlarge) can fail — and those are the only ones measured, since the
+  # smaller fixtures sit under the gate's own 0.5 ms absolute floor. A real move
+  # needs BOTH ≥10% and ≥0.5 ms, and must reproduce across two full passes.
+  #
+  # `block` is reported and never gated. Two measurements say it can't be one: a
+  # null A/B on identical bundles moved it ~15% while the dispatch medians held
+  # within 1.1%, and the same xlarge burst reads 679 ms locally vs 15,037 ms
+  # here (22×) because its longtask threshold is a fixed 50 ms.
   typing-perf:
     name: Typing Perf (A/B)
     runs-on: ubuntu-latest
@@ -281,8 +285,10 @@ jobs:
           if [ -n "$TRAILER" ]; then ACCEPT="trailer:$TRAILER"; fi
           echo "value=$ACCEPT" >> "$GITHUB_OUTPUT"
 
-      # ~4 min for the common (neutral) case, ~8 min when a pass-1 regression
-      # triggers the confirming second pass.
+      # Measured here, not extrapolated: the first run (three fixtures) took
+      # 8m30s for one pass. At two fixtures a neutral run is roughly 6 min, and
+      # a confirmed regression pays for a second pass. This runner is ~2× slower
+      # per keystroke than a dev laptop, so never size this from local timings.
       - name: Typing A/B vs merge-base
         env:
           PERF_ACCEPT: ${{ steps.accept.outputs.value }}

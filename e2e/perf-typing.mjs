@@ -47,12 +47,17 @@ import {
 // so every keystroke measures the same "insert one character" transaction.
 const TYPING_TEXT = "The quick brown fox jumps over the lazy dog and keeps going ";
 
-// A/B mode measures a SUBSET of TYPING_FIXTURES: each sample types a full burst
-// (seconds, not milliseconds), so measuring all five interleaved and twice over
-// would put a CI job into the tens of minutes. `tiny` and `link-heavy` are
-// dropped — neither is gated, and both sit near the fixed per-keystroke floor
-// where the delta carries no signal. Stated here rather than silently applied.
-const AB_FIXTURES = ["medium", "large", "xlarge"];
+// A/B mode measures ONLY the gated fixtures. Each sample types a full burst
+// (seconds, not milliseconds) and a CI runner is ~2× slower per keystroke than
+// a dev laptop, so every extra fixture is minutes on a blocking check —
+// measured on the first CI run: three fixtures × 4 pairs took 8m30s per pass.
+//
+// The dropped ones carry no decision: `tiny`, `medium` and `link-heavy` all sit
+// near the fixed per-keystroke floor (`medium` measured 1.8 ms on CI), where a
+// even a large percentage move is a fraction of the gate's own 0.5 ms absolute
+// floor and can never fire. Reporting a number that cannot inform a decision
+// isn't context, it's cost. Stated here rather than silently applied.
+const AB_FIXTURES = [...TYPING_GATED_FIXTURES];
 
 const round = (x) => Math.round(x * 100) / 100;
 const quantile = (sorted, q) => {
@@ -387,7 +392,7 @@ async function abMode(baseDirArg, headDirArg, keys, runs, jsonOut, accept) {
     const skipped = Object.keys(TYPING_FIXTURES).filter((n) => !AB_FIXTURES.includes(n));
     console.log(`\ntyping A/B — merge-base vs head, ${runs - 1} interleaved pairs/fixture × ${keys} keystrokes`);
     console.log(`  base: ${baseDir}\n  head: ${headDir}`);
-    console.log(`  gated: ${[...TYPING_GATED_FIXTURES].join(", ")} (medium report-only; ${skipped.join(", ")} not measured in A/B)`);
+    console.log(`  gated: ${AB_FIXTURES.join(", ")} (${skipped.join(", ")} not measured — below the 0.5 ms floor, see AB_FIXTURES)`);
 
     const pass1 = await runPass();
     printTypingAbTable("pass 1", pass1);

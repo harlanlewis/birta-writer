@@ -152,24 +152,36 @@ instead of `perf.mjs --ab`. That comparer:
 
 - **interleaves** head/base bursts per pair; the first pair is discarded as warmup,
   and durations are **pooled** across pairs before taking the median;
-- gates only `large` and `xlarge`; `medium` is report-only, and `tiny` /
-  `link-heavy` aren't measured in A/B at all (each burst costs seconds, and
-  neither carries signal near the fixed per-keystroke floor);
+- measures **only the gated fixtures** (`large`, `xlarge`). `tiny` / `medium` /
+  `link-heavy` aren't measured in A/B at all: each burst costs seconds, and all
+  three sit near the fixed per-keystroke floor (`medium` reads 1.8 ms on CI)
+  where even a large percentage move is a fraction of the 0.5 ms absolute floor
+  and can never fire the gate;
 - **double-confirms** — a regression must reproduce across two full passes;
-- **reports `block`, never gates it.** A null A/B (identical bundles) moved
-  `block` ~15% on `xlarge` while the dispatch medians held within 1.1%. It is
-  the one metric a shared runner can move on its own, so it informs — including
-  the "median improved but block regressed → work moved, not removed" warning —
-  and never decides. This is a deliberate divergence from `--compare`, which
-  does fail on block.
+- **reports `block`, never gates it.** Two independent measurements say it can't
+  be a gate: a null A/B (identical bundles) moved it ~15% on `xlarge` while the
+  dispatch medians held within 1.1%, and the same `xlarge` burst reads **679 ms
+  locally vs 15,037 ms on a CI runner — 22×**, because its longtask threshold is
+  a fixed 50 ms and a slower machine pushes every sub-threshold task over it. So
+  it informs — including the "median improved but block regressed → work moved,
+  not removed" warning — and never decides. This is a deliberate divergence from
+  `--compare`, which does fail on block; `--compare` runs on a machine you
+  control, CI does not.
 
 **Escape hatch:** the same `perf-accept` PR label / `Perf-Regression-Accepted:
 <reason>` commit trailer as the launch gate, deliberately not a second one.
 
-Cost: ~4 min for the common neutral case, ~8 min when a pass-1 regression
-triggers the confirming second pass. It is a separate CI job from `launch-perf`
-because the two harnesses must not share a runner (see *Run one harness at a
-time* in `AGENTS.md`).
+**Cost — measured on CI, not extrapolated from a laptop.** The first run (three
+fixtures × 4 pairs) took **8m30s for one pass**; dropping to the two gated
+fixtures brings a neutral run to roughly 6 min, and a confirmed regression costs
+two passes. A CI runner is ~2× slower per keystroke than a dev laptop (`xlarge`
+47.5 ms vs 22.8 ms), so *never* size this job from local timings. It is a
+separate CI job from `launch-perf` because the two harnesses must not share a
+runner (see *Run one harness at a time* in `AGENTS.md`).
+
+Reference deltas from that first CI run, for calibrating the thresholds against
+real runner variance: on an unchanged webview, `medium` 0%, `large` +3.8%,
+`xlarge` −3.2% — all comfortably inside the 10% gate.
 
 Reference numbers (2026-07-16, M-series laptop, median of 80 keystrokes):
 `tiny` ~0.7 ms, `medium` (12 KB) ~1.3 ms, `large` (96 KB) ~7 ms, `xlarge`
