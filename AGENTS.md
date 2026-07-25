@@ -19,7 +19,7 @@ The maintainer reads and writes **English only**. This project is being migrated
 
 Birta Writer is a **hard fork** of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) and is now developed fully independently. The `upstream` git remote has been **removed on purpose** — the only live remote is `origin` (`harlanlewis/birta-writer`).
 
-- **Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to `git-xing/md-wysiwyg-editor`.** The fork diverged long ago (hundreds of commits, plus the Chinese→English migration and the rebrand); pulling from it would drag back exactly what this project is moving away from.
+- **Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to `git-xing/md-wysiwyg-editor`.** The fork diverged deliberately and permanently (including the Chinese→English migration and the rebrand); pulling from it would drag back exactly what this project is moving away from.
 - The original is retained as a reference for **attribution and licensing only** — see `README.md` ("Why this fork"), `NOTICE`, and `LICENSE-MIT`. That is the sole reason its name still appears anywhere in the repo (the brand-guard test in `shared/__tests__/noLegacyBrand.test.ts` deliberately allows the `git-xing/...` slug while banning our own former one).
 
 ## Project basics
