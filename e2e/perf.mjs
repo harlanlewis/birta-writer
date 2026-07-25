@@ -14,84 +14,16 @@
  * before.json on clean HEAD, make the change, capture after.json, compare.
  * Absolute numbers drift with machine load; the deltas are what we trust.
  */
-import { createServer } from "node:http";
 import { readFile, stat, writeFile } from "node:fs/promises";
-import { join, dirname, extname, normalize, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { FIXTURES } from "./perf/fixtures.mjs";
+import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // The pure gate logic lives in verdict.mjs so it can be unit-tested (this file
 // runs Playwright/process.exit on import and can't be).
 import {
     SPANS, SUB_SPANS, GATED_FIXTURES,
     median, round, spans, aggregate, abVerdict, confirmRegressions,
 } from "./perf/verdict.mjs";
-
-const repoRoot = dirname(fileURLToPath(new URL(".", import.meta.url)));
-const suiteDir = join(repoRoot, "e2e", "perf");
-
-const MIME = {
-    ".html": "text/html; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".mjs": "text/javascript; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".json": "application/json",
-    ".wasm": "application/wasm",
-    ".map": "application/json",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-};
-
-function serve() {
-    return createServer(async (req, res) => {
-        const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
-        // Chromium auto-requests /favicon.ico on the first page of a context; a
-        // 404 there logs a console error that would abort the strict runner.
-        if (urlPath === "/favicon.ico") { res.writeHead(204); res.end(); return; }
-        const rel = normalize(urlPath).replace(/^([/\\]|\.\.)+/, "");
-        const base = rel.startsWith("dist/") ? repoRoot : suiteDir;
-        const file = join(base, rel === "" || rel === "." ? "index.html" : rel);
-        try {
-            const body = await readFile(file);
-            res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
-            res.end(body);
-        } catch {
-            res.writeHead(404);
-            res.end("not found");
-        }
-    });
-}
-
-// A/B server: serves the SAME perf stub (index.html) at /base/ and /head/, with
-// each variant's bundle under /<variant>/dist/*. The stub's relative asset refs
-// (`dist/webview.js`, `dist/webview.css`) resolve against the /<variant>/ page
-// URL, so no templating is needed — /base/ loads baseDir, /head/ loads headDir.
-function serveAB(variants) {
-    return createServer(async (req, res) => {
-        const urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
-        if (urlPath === "/favicon.ico") { res.writeHead(204); res.end(); return; }
-        const m = urlPath.match(/^\/(base|head)(\/.*)?$/);
-        if (!m) { res.writeHead(404); res.end("not found"); return; }
-        const rest = (m[2] ?? "/").replace(/^\/+/, "");
-        let file;
-        if (rest === "" || rest === "index.html") {
-            file = join(suiteDir, "index.html");
-        } else if (rest.startsWith("dist/")) {
-            const asset = normalize(rest.slice("dist/".length)).replace(/^([/\\]|\.\.)+/, "");
-            file = join(variants[m[1]], asset);
-        } else {
-            file = join(suiteDir, normalize(rest).replace(/^([/\\]|\.\.)+/, ""));
-        }
-        try {
-            const body = await readFile(file);
-            res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
-            res.end(body);
-        } catch {
-            res.writeHead(404);
-            res.end("not found");
-        }
-    });
-}
-
 
 // ── --compare mode: pure stats, no browser ──────────────────
 async function compareMode(beforePath, afterPath) {

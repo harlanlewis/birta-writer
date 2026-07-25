@@ -73,8 +73,30 @@ vi.mock("../editing/rangeIndicator", () => ({
 
 /** Deterministic default; override with MDW_MOVE_SEED=<number>. */
 const SEED = Number(process.env["MDW_MOVE_SEED"] ?? "20260712");
-/** Moves sampled per fixture (and per folded variant). */
-const SAMPLE_SIZE = 12;
+/**
+ * Moves sampled per fixture (and per folded variant).
+ *
+ * The default is deliberately UNCHANGED at 12. It was briefly cut to 6 on the
+ * belief that this file cost 65.7 s — 23% of the unit suite. That number was an
+ * artifact: it came from the JSON reporter's `endTime - startTime`, which in a
+ * parallel run includes time the file spent queued behind 253 others. Measured
+ * in isolation the real cost is 6.8 s at 12 and 4.4 s at 6, so halving the
+ * sample bought ~2.4 s of a 64 s suite — nowhere near enough to justify
+ * thinning a phase-0 fidelity net on every PR.
+ *
+ * What IS worth having, and why the env override exists: the seed is fixed, so
+ * every ordinary run re-tests the same 12 pairs and a repeat carries almost no
+ * new information. `.github/workflows/nightly-fidelity.yml` runs a much larger
+ * sample with a ROTATING seed against `main`, so the pair space is actually
+ * explored over time. That is a coverage win, not a speed one, and it costs
+ * PRs nothing.
+ *
+ * PRs keep the fixed seed on purpose: a rotating seed would surface
+ * pre-existing bugs on whichever unrelated PR happened to draw them, reddening
+ * a build its author did not cause. In the nightly the same find becomes a
+ * ticket instead.
+ */
+const SAMPLE_SIZE = Number(process.env["MDW_MOVE_SAMPLE"] ?? "12");
 
 // This gate holds fixtures to STRICT content conservation under block moves.
 // The exploratory Logseq fixtures (fixtures/logseq/) have a known nested-outline

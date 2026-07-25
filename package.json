@@ -2039,7 +2039,8 @@
         "perf": "node e2e/perf.mjs",
         "perf:ab": "node e2e/perf-ab.mjs",
         "perf:bundle": "node e2e/perf-bundle.mjs",
-        "perf:typing": "node e2e/perf-typing.mjs"
+        "perf:typing": "node e2e/perf-typing.mjs",
+        "perf:typing:ab": "node e2e/perf-ab.mjs --typing"
     },
     "devDependencies": {
         "@types/dompurify": "^3.2.0",

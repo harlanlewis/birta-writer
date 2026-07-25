@@ -1,8 +1,9 @@
 /**
- * Pure launch-A/B decision logic, extracted from e2e/perf.mjs so the gate that
- * blocks every PR is unit-testable (perf.mjs itself is a run-on-import script
- * that touches Playwright / process.exit). No I/O here — just the span math,
- * the per-fixture verdict, and the double-confirm intersection.
+ * Pure A/B decision logic for both perf gates — launch (e2e/perf.mjs) and
+ * per-keystroke typing (e2e/perf-typing.mjs) — extracted from the runners so the
+ * math that blocks every PR is unit-testable (both runners are run-on-import
+ * scripts that touch Playwright / process.exit). No I/O here — just the span
+ * math, the per-fixture verdicts, and the double-confirm intersection they share.
  *
  * Tested by e2e/perf/verdict.test.mjs.
  */
@@ -99,10 +100,81 @@ export function abVerdict(pass) {
  * Double-confirm: a gated regression fails the gate only if it reproduces in
  * BOTH passes — the intersection. A pass-1-only regression is transient runner
  * noise and does not block. This is what makes a browser-timing gate safe to
- * block on.
+ * block on. Shared by both gates.
  */
 export function confirmRegressions(firstRegressed, secondRegressed) {
     const confirmed = new Set();
     for (const f of firstRegressed) { if (secondRegressed.has(f)) { confirmed.add(f); } }
     return confirmed;
+}
+
+// ── typing gate ─────────────────────────────────────────────
+// Same shape as the launch gate above, different metric and floors.
+
+// Only this fixture can FAIL the gate. At ~46 ms per keystroke on a CI runner
+// its dispatch median dwarfs the 0.5 ms floor, so a real move is unambiguous;
+// every smaller fixture sits near the fixed per-keystroke floor where 10% is a
+// fraction of a millisecond and the gate can never fire.
+//
+// `large` was gated too until it was measured against its cost: it is the
+// second most expensive fixture to run and, at ~9 ms, roughly a fifth as
+// sensitive as `xlarge`. Any regression that scales with document size — the
+// shape this gate exists for (MAR-215) — shows on `xlarge` first and larger.
+// Run `pnpm perf:typing` locally for the full fixture spread.
+export const TYPING_GATED_FIXTURES = new Set(["xlarge"]);
+
+// A per-keystroke move counts as real only at ≥10% AND ≥0.5 ms. These are the
+// thresholds `perf-typing.mjs --compare` has always used: medians are single-
+// digit-to-tens of ms, so the launch gate's 10 ms floor would never fire here.
+export const TYPING_MIN_PCT = 10;
+export const TYPING_MIN_MS = 0.5;
+
+// `block` (total longtask ms over the burst) is REPORTED, never gated. Its
+// longtask threshold is a fixed 50 ms, so CPU contention pushes sub-threshold
+// tasks over it and inflates the number super-linearly — the one metric here
+// that a shared CI runner can move on its own. Coarse floors, used only to
+// decide whether the printed note is worth making.
+export const TYPING_BLOCK_MIN_PCT = 25;
+export const TYPING_BLOCK_MIN_MS = 250;
+
+/**
+ * Per-fixture typing verdict for one A/B pass. `pass` maps fixture →
+ * { base:{median,blockMs}, head:{median,blockMs} }. Returns display rows plus
+ * the set of GATED fixtures whose head dispatch median regressed past the floor.
+ *
+ * `row.blockNote` carries the moral hazard the block metric exists to catch:
+ * dispatch median "improved" while total main-thread block grew — work moved
+ * out of the measured span, not removed. It is a warning, never a failure.
+ */
+export function typingAbVerdict(pass) {
+    const rows = [];
+    const regressed = new Set();
+    for (const [name, r] of Object.entries(pass)) {
+        const bm = r.base?.median, am = r.head?.median;
+        if (bm == null || am == null) { rows.push({ name, empty: true }); continue; }
+        const dMs = am - bm, dPct = bm > 0 ? (dMs / bm) * 100 : 0;
+        const real = Math.abs(dPct) >= TYPING_MIN_PCT && Math.abs(dMs) >= TYPING_MIN_MS;
+        const gated = TYPING_GATED_FIXTURES.has(name);
+        let mark = "  neutral";
+        if (real && dMs > 0) { mark = gated ? "✗ REGRESSED" : "✗ slower (ungated)"; if (gated) regressed.add(name); }
+        else if (real && dMs < 0) mark = "✓ faster";
+
+        // Block is optional: a runtime without longtask support records null,
+        // and a null must not be read as a zero baseline.
+        const bb = r.base?.blockMs, ab = r.head?.blockMs;
+        let block = null, blockNote = "";
+        if (typeof bb === "number" && typeof ab === "number") {
+            const dBlock = ab - bb;
+            const dBlockPct = bb > 0 ? (dBlock / bb) * 100 : (ab > 0 ? 100 : 0);
+            const realBlock = Math.abs(dBlockPct) >= TYPING_BLOCK_MIN_PCT && Math.abs(dBlock) >= TYPING_BLOCK_MIN_MS;
+            block = { bb, ab, dBlock, dBlockPct, realBlock };
+            if (realBlock && dBlock > 0 && real && dMs < 0) {
+                blockNote = "⚠ median improved but block regressed — work was moved, not removed";
+            } else if (realBlock && dBlock > 0) {
+                blockNote = "⚠ main-thread block grew (reported, not gated)";
+            }
+        }
+        rows.push({ name, bm, am, dMs, dPct, gated, mark, block, blockNote });
+    }
+    return { rows, regressed };
 }

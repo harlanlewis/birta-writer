@@ -1,0 +1,104 @@
+name: Nightly Fidelity
+
+# The deep half of a tiered fidelity gate.
+#
+# `corpusMoveSampling.test.ts` samples the (source block, target boundary) pair
+# space a drag gesture can express. On every ordinary run it takes a small
+# sample under a FIXED seed, so it is fast and deterministic — but a fixed seed
+# means repeat runs re-test the same slice and stop yielding new information.
+#
+# This job supplies what that trades away: a much larger sample under a seed
+# that ROTATES daily, so the pair space is genuinely explored over time. A month
+# of nightlies covers far more of it than the previous every-PR fixed sample
+# ever did, at zero cost to anyone's PR.
+#
+# It runs on `main`, not on PRs, deliberately. A rotating seed can surface a
+# PRE-EXISTING bug on any given night; that must become a ticket, not a red
+# build on an unrelated author's PR. Every failure prints the seed that found
+# it, so `MDW_MOVE_SEED=<seed> MDW_MOVE_SAMPLE=<n> pnpm test` reproduces it
+# exactly.
+on:
+  schedule:
+    - cron: '0 8 * * *' # 08:00 UTC daily
+  workflow_dispatch: # so a suspicion can be chased immediately
+    inputs:
+      seed:
+        description: 'MDW_MOVE_SEED override (blank = today, YYYYMMDD)'
+        required: false
+      sample:
+        description: 'Moves sampled per fixture'
+        required: false
+        default: '32'
+
+permissions:
+  contents: read
+
+jobs:
+  deep-move-sampling:
+    name: Deep move sampling
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve seed and sample size
+        id: cfg
+        run: |
+          SEED="${{ github.event.inputs.seed }}"
+          if [ -z "$SEED" ]; then SEED=$(date -u +%Y%m%d); fi
+          SAMPLE="${{ github.event.inputs.sample }}"
+          if [ -z "$SAMPLE" ]; then SAMPLE=32; fi
+          echo "seed=$SEED"     >> "$GITHUB_OUTPUT"
+          echo "sample=$SAMPLE" >> "$GITHUB_OUTPUT"
+          echo "Deep sweep: seed=$SEED sample=$SAMPLE"
+
+      # Only the two corpus fidelity suites — this job exists for depth on those,
+      # not to re-run the whole unit suite that every PR already ran.
+      - name: Deep corpus move sampling
+        env:
+          MDW_MOVE_SEED: ${{ steps.cfg.outputs.seed }}
+          MDW_MOVE_SAMPLE: ${{ steps.cfg.outputs.sample }}
+        run: npx vitest run corpusMoveSampling roundTripCorpus
+
+      # A nightly that fails silently is a nightly nobody reads — but this repo
+      # tracks work in Linear, "never GitHub Issues" (AGENTS.md → Issue
+      # tracking), so this must NOT open one. GitHub already emails the
+      # maintainer when a scheduled workflow fails; what that email lacks is the
+      # seed, so write the reproduction into the run summary where the failure
+      # notification lands.
+      #
+      # Filing the Linear ticket is deliberately left to a human: AGENTS.md also
+      # requires that a filed reproduction be one you have RUN yourself, and a
+      # bot cannot satisfy that.
+      - name: Explain the failure in the run summary
+        if: failure()
+        env:
+          SEED: ${{ steps.cfg.outputs.seed }}
+          SAMPLE: ${{ steps.cfg.outputs.sample }}
+        run: |
+          {
+            echo "## Deep move sampling failed"
+            echo
+            echo "This sweep explores move pairs the smaller fixed-seed sample on PRs never"
+            echo "reaches, so this is most likely a **pre-existing** fidelity gap rather than a"
+            echo "regression from a recent commit. Confirm before assuming a culprit."
+            echo
+            echo '**Reproduce exactly:**'
+            echo
+            echo '```bash'
+            echo "MDW_MOVE_SEED=$SEED MDW_MOVE_SAMPLE=$SAMPLE npx vitest run corpusMoveSampling"
+            echo '```'
+            echo
+            echo "Content conservation under moves is \`phase-0-fidelity\`. File it in **Linear**"
+            echo "(team Birta Writer) after reproducing it locally — not as a GitHub issue."
+          } >> "$GITHUB_STEP_SUMMARY"

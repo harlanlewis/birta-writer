@@ -19,7 +19,7 @@ The maintainer reads and writes **English only**. This project is being migrated
 
 Birta Writer is a **hard fork** of [git-xing/md-wysiwyg-editor](https://github.com/git-xing/md-wysiwyg-editor) and is now developed fully independently. The `upstream` git remote has been **removed on purpose** — the only live remote is `origin` (`harlanlewis/birta-writer`).
 
-- **Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to `git-xing/md-wysiwyg-editor`.** The fork diverged long ago (hundreds of commits, plus the Chinese→English migration and the rebrand); pulling from it would drag back exactly what this project is moving away from.
+- **Never re-add an `upstream` remote, and never fetch, merge, cherry-pick, or push to `git-xing/md-wysiwyg-editor`.** The fork diverged deliberately and permanently (including the Chinese→English migration and the rebrand); pulling from it would drag back exactly what this project is moving away from.
 - The original is retained as a reference for **attribution and licensing only** — see `README.md` ("Why this fork"), `NOTICE`, and `LICENSE-MIT`. That is the sole reason its name still appears anywhere in the repo (the brand-guard test in `shared/__tests__/noLegacyBrand.test.ts` deliberately allows the `git-xing/...` slug while banning our own former one).
 
 ## Project basics
@@ -142,6 +142,14 @@ Webview cold-start (open `.md` → editor painted) is a first-class concern — 
 - **The `paint` span (`create-end` → `editor-painted`) is the initial view render** — ProseMirror's first DOM build plus style/layout/paint, and any work a plugin schedules from its `view()` onto the frames before that paint. It was the harness's largest blind spot (roughly half of `large`'s launch was unattributed) until 2026-07-25, when a change that added a whole decoration-render pass to the mount path read as "every measured span flat or better" while launch regressed 3.4%. **If a plugin schedules its own rAF at mount, suspect this span** — work moved in front of first paint is invisible to every other one.
 
 **CI guards launch time automatically.** On every PR the **required, blocking** `launch-perf` job (`pnpm perf:ab` / `e2e/perf-ab.mjs`) builds the merge-base and head, measures both back-to-back on one runner, and gates on the launch delta — catching *time added without bytes* that the eager-bytes backstop can't see. It gates only the `medium`/`large` fixtures and double-confirms a regression across two passes before failing. An intentional launch cost merges via the `perf-accept` PR label or a `Perf-Regression-Accepted: <reason>` commit trailer.
+
+**Typing is gated the same way** (`.github/workflows/typing-perf.yml`, `pnpm perf:typing:ab` — MAR-224). Launch is what a user pays once; per-keystroke dispatch is what they pay *thousands of times* on a large document, and it went unguarded long enough for MAR-215's 2× win to have been silently reversible. Same shared orchestrator, same merge-base interleave, same double-confirm, same accept hatch — gating the `xlarge` dispatch median at ≥10% AND ≥0.5 ms.
+
+Three things about it are deliberate and easy to get wrong:
+
+- **It runs only on PRs touching `webview/`, `packages/` or the perf harness**, in its own workflow behind a `paths` filter, and is **not** a required check. It is the most expensive check in the repo and most PRs cannot move per-keystroke dispatch; paying minutes on every one of those compounds badly across a day of small PRs. (A required check that a `paths` filter skips would leave PRs waiting forever — hence advisory.)
+- **`block` (total longtask ms) is reported, never gated.** Its fixed 50 ms threshold makes it inflate on any slower machine: a null A/B on identical bundles moved it ~15% while dispatch medians held within 1.1%, and the same `xlarge` burst reads 679 ms locally against ~15,000 ms on a CI runner (22×).
+- **Size it from CI timings, never local ones** — the runner is ~2× slower per keystroke (`xlarge` 45.8 ms vs 22.8 ms). And note the cost is dominated by `xlarge` itself (mount + burst), *not* by how many fixtures are in the list: dropping one bought only ~15%. Cut keystrokes or pairs.
 
 ## Issue tracking
 
