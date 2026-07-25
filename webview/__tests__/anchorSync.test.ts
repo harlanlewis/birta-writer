@@ -342,6 +342,55 @@ describe("anchorSync — rename detection and link rewrite", () => {
     });
 });
 
+describe("anchorSync — the cost of a heading keystroke (MAR-181)", () => {
+    /** The doc-mutating steps anchorSync APPENDS to one heading keystroke.
+     *  `applyTransaction` returns every transaction in the round, ours first,
+     *  so anything past index 0 is the plugin's own contribution — the exact
+     *  work the feature costs, counted rather than timed. */
+    function appendedStepCount(view: EditorView): number {
+        let from = -1;
+        view.state.doc.descendants((n, p, parent) => {
+            if (from < 0 && n.isText && parent?.type.name === "heading") from = p + 1;
+        });
+        const { transactions } = view.state.applyTransaction(view.state.tr.insertText("x", from));
+        return transactions.slice(1).reduce((n, tr) => n + tr.steps.length, 0);
+    }
+
+    it("a heading keystroke with no links pointing at that heading should mutate nothing", async () => {
+        // MAR-181 filed this as an O(document) walk per keystroke. Measurement
+        // says otherwise: the walk is ~30µs, and with nothing to rewrite the
+        // plugin appends NO transaction at all — so document size is not what
+        // this feature costs. Pinned as a count of work, not a wall clock.
+        const body = Array.from({ length: 120 }, (_, i) => `Body ${i} with [other](#elsewhere).`);
+        const { view } = await makeEditor(`# Target\n\n${body.join("\n\n")}\n`);
+
+        expect(appendedStepCount(view)).toBe(0);
+    });
+
+    it("a heading keystroke should cost only the links pointing at THAT heading", async () => {
+        // The real cost model: proportional to matching links, independent of
+        // both document size and the document's total link count. Three links
+        // match here and twenty do not, so the appended work must cover three.
+        const decoys = Array.from({ length: 20 }, (_, i) => `Decoy ${i}: [d](#other-${i}).`);
+        const { editor, view } = await makeEditor(
+            `# Target\n\n[a](#target)\n\n[b](#target)\n\n[c](#target)\n\n${decoys.join("\n\n")}\n`,
+        );
+        // Two mark steps per matching link (remove the stale href, add the new).
+        expect(appendedStepCount(view)).toBe(6);
+
+        // And the rewrite itself is correct: the three follow, the twenty don't.
+        let from = -1;
+        view.state.doc.descendants((n, p, parent) => {
+            if (from < 0 && n.isText && parent?.type.name === "heading") from = p + 1;
+        });
+        view.dispatch(view.state.tr.insertText("X", from));
+        const out = serialize(editor);
+        expect(out).toContain("[a](#txarget)");
+        expect(out).toContain("[c](#txarget)");
+        expect(out).toContain("[d](#other-19)");
+    });
+});
+
 describe("headingRangeTouched — the perf guard", () => {
     it("a body-text edit should report NO heading touched (the keystroke fast path)", async () => {
         const { view } = await makeEditor("# Title\n\nbody paragraph here\n");
