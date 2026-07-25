@@ -347,7 +347,11 @@ async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs,
 function printTypingAbTable(label, pass) {
     console.log(`\n${label} — base → head per-keystroke dispatch (median ms)\n`);
     for (const r of typingAbVerdict(pass).rows) {
-        const tag = r.empty ? "" : (r.gated ? "  " : "· "); // '·' marks report-only fixtures
+        // '·' marks a report-only fixture. AB_FIXTURES currently equals the
+        // gated set, so this never renders in A/B — it is kept because the
+        // verdict is generic over any pass (and is unit-tested for it), so
+        // re-adding a report-only fixture needs no display change.
+        const tag = r.empty ? "" : (r.gated ? "  " : "· ");
         if (r.empty) { console.log(`  ${tag}${r.name.padEnd(8)} no data`); continue; }
         const sign = r.dMs >= 0 ? "+" : "";
         let block = "";

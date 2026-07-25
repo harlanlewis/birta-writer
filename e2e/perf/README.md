@@ -183,9 +183,34 @@ Reference deltas from that first CI run, for calibrating the thresholds against
 real runner variance: on an unchanged webview, `medium` 0%, `large` +3.8%,
 `xlarge` −3.2% — all comfortably inside the 10% gate.
 
-Reference numbers (2026-07-16, M-series laptop, median of 80 keystrokes):
-`tiny` ~0.7 ms, `medium` (12 KB) ~1.3 ms, `large` (96 KB) ~7 ms, `xlarge`
-(300 KB) ~47 ms dispatch block (total per-keystroke block ≈ +30% on top). The
-scaling is ProseMirror's per-keystroke view reconciliation (see MAR-137) — at
+Reference numbers — **re-measured 2026-07-25, after MAR-215 roughly halved
+per-keystroke dispatch.** The previous figures here were captured 2026-07-16 and
+had gone stale in exactly the way this file warns about, to the point of
+contradicting the CI numbers above (they put the laptop's `xlarge` at ~47 ms,
+which is now the *CI runner's* number, not the laptop's).
+
+| fixture | M-series laptop | CI runner (ubuntu-latest) |
+| --- | --- | --- |
+| `medium` (12 KB) | 0.9–1.1 ms | 1.8 ms |
+| `large` (96 KB) | 4.7–4.9 ms | 10.6 ms |
+| `xlarge` (300 KB) | 22.6–23.0 ms | 47.5 ms |
+
+Laptop figures are pooled over 4 interleaved pairs × 80 keystrokes; CI figures
+are from the first `typing-perf` run. Total per-keystroke block runs above the
+dispatch median (the span misses the pre-dispatch input path and rAF followers).
+
+Two consequences worth holding onto:
+
+- **The gate is percentage-based, so it is *less* sensitive in absolute terms on
+  the slower machine.** 10% of `xlarge` is ~2.3 ms locally but ~4.8 ms on CI.
+- **A uniform per-keystroke regression below that floor passes silently.** Adding
+  a flat ~2 ms to every keystroke is a real cost this gate cannot see: it is
+  under 10% on `xlarge`, and on the small fixtures it is under the 0.5 ms
+  absolute floor. The floors exist to stop flapping and that is the price they
+  charge — the gate catches *scaling* regressions (work proportional to document
+  size, the MAR-215 shape), not small constant ones. Don't read a green
+  `typing-perf` as "no cost was added."
+
+The scaling is ProseMirror's per-keystroke view reconciliation (see MAR-137) — at
 300 KB every keystroke blows the 16 ms frame budget, which is why MAR-137's
 engine-lane decision exists.
