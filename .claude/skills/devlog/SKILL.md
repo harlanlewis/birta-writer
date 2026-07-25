@@ -1,7 +1,7 @@
 ---
 name: devlog
 description: Record, close, update, or audit Linear issues; triggers: record a bug, known bug, feature request, record a feature request, close an issue, audit the backlog, /devlog
-version: 3.1.0
+version: 3.2.0
 ---
 # Devlog — Linear issue lifecycle skill
 
@@ -37,7 +37,7 @@ Ask all at once:
 
 1. **Title**: a one-line description of the symptom (the issue title)
 2. **Details**: reproduction steps, expected behavior, actual behavior
-3. **Root cause** (optional): the known root cause; write "to be investigated" if unknown
+3. **Root cause** (optional): the cause **and how you know it** — name the observation that established it. If you haven't established it, say `Hypothesis (unverified)` and give the one check that would confirm or kill it. A guess labelled as a guess is useful; a guess labelled as a finding is a trap.
 4. **Severity**: High (feature unusable) / Medium (degrades the experience) / Low (minor defect)
 
 ### Create the issue
@@ -54,15 +54,21 @@ Call `save_issue` with:
 ```markdown
 ## Problem description
 
-<details>
+<the symptom, as observed behavior>
 
 ## Reproduction steps
 
-<steps, or N/A if unknown>
+<steps, plus the OBSERVED output pasted verbatim — not the expected one.
+ If it wasn't reproduced this session, write "Not reproduced — <why>" and
+ say what evidence the report rests on instead.>
 
 ## Root cause analysis
 
-<root cause, or N/A if still to be investigated>
+<the cause AND the observation that established it. If it wasn't
+ established, open with "Hypothesis (unverified):" and name the single
+ check that would confirm or kill it — that check is the first thing the
+ fixer should run. "N/A — to be investigated" is fine; a confident-sounding
+ guess is not.>
 ```
 
 ***
@@ -107,12 +113,28 @@ Call `save_issue` with:
 
 ## Implementation approach
 
-<rough plan and technical points, N/A if none yet>
+<rough plan and technical points — a HYPOTHESIS unless you have actually
+ tried it. Label anything untried, so a later session takes it as a
+ starting point rather than a decision already made. N/A if none yet.>
 
 ## Affected files
 
 <expected list of files to change, N/A if not yet clear>
 ```
+
+***
+
+## Evidence discipline — what makes a ticket safe to act on
+
+A ticket is read weeks later by someone who has **only the ticket**. Everything in it is treated as established unless it says otherwise, so the filer's real job is marking which parts were *observed* and which were *believed*. Get this wrong and the cost lands on a future session, compounded — work built on a false cause looks correct and passes its own tests.
+
+- **Symptom and cause have different reliabilities — label them separately.** A sweep can be rigorous about *what* breaks and wrong about *why*, because the symptom was run and the cause was reasoned. (2026-07-25: one careful fidelity/performance audit filed six tickets. Every **reproduction** held up under later scrutiny; **three causes were false** — MAR-214 blamed round-trip protection for a `<br />` cell it never protected; MAR-219 described two refractor instances that are one object (`bare === core`); MAR-215's headline "91%" was 91% of a plugin-apply slice and 18% of dispatch. All three were fixed anyway, but each cost a session's detour first.)
+- **Never file a reproduction you haven't run.** Paste the **observed** output, not the expected one — they diverge exactly when it matters. If it can't be reproduced in-session, write that in the ticket rather than filing the claim as fact.
+- **A number needs its denominator, its source, and its date.** A ratio without a denominator is not a measurement ("91%" — of what?), and a figure copied from a committed baseline is a *record*, not a reading: `e2e/perf/bundle-baseline.json` had drifted 62,824 B behind `main`, so a ticket's "only 34 KB of headroom" was quoted in good faith and wrong by 3×. Say what was measured, against what, and when — or omit the number.
+- **A prescribed fix is a hypothesis; mark it as one.** A section headed "Fix — and why the obvious one is wrong" reads as settled engineering even when nobody tried it. Label an untried approach. (MAR-219's prescribed fix was in fact correct; its stated *reason* was not — so the fix survived and the justification had to be retracted.)
+- **Findings filed as a batch inherit the batch's blind spot.** If a sweep produced ten tickets and you verified two, the other eight are unverified — mark that in **each ticket**, not once in a summary nobody will read alongside the ticket.
+
+The cheap version of all of this: before saving, reread the description and ask *which sentence here would a reader act on that I did not actually check?* Then either check it or label it.
 
 ***
 
@@ -156,6 +178,14 @@ When the code has outgrown a ticket's premise (e.g. MAR-35's three-zone design a
 - `save_issue` with `id` and a rewritten `description` that opens with a dated `## Status: … — re-scoped <date>` note, states current reality (verified against named files/lines), and narrows the remaining work + acceptance criteria. **Retain the original analysis at the bottom** under a "for history" heading.
 - `save_comment` summarizing what changed and why, citing the commit that made it stale.
 - If a ticket is already correctly scoped to the remaining work, don't rewrite it — just add a confirmation comment that you verified it against current code.
+
+### Correct a ticket whose premise turned out to be wrong
+
+Fixing work is when a false cause finally surfaces — and the discovery dies with the session unless it's written down. **Comment the correction on the ticket, even when you're closing it in the same breath**, and state plainly which claim was wrong and what the evidence is.
+
+This matters for two reasons beyond tidiness: the ticket is what a future reader trusts, and a wrong cause usually implies a wrong *fix direction* that someone will otherwise re-derive. (2026-07-25: MAR-214's "protection was the only thing preserving it" implied two candidate fixes, one of which — sub-line protection granularity — was substantial engine surgery. Once the premise was corrected, **neither** was needed. MAR-219's retraction similarly turned a claimed correctness fix into a bytes-only change, which is what the CHANGELOG then had to say.)
+
+Do it whether the ticket's author was a previous session, an audit, or you.
 
 ***
 
