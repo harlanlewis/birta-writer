@@ -219,18 +219,19 @@ describe("MDX — risky by design: an edit corrupts the edited construct (BENEFI
     });
 });
 
-describe("Org — wrong format by design: one edit rewrites org structure broadly (BENEFITS: 🔴 Wrong format)", () => {
-    it("editing a headline should corrupt org syntax well beyond the edited line", async () => {
+describe("Org — wrong format by design: an edited headline is re-read as a bullet (BENEFITS: 🔴 Wrong format)", () => {
+    it("editing a headline should keep the org file readable but re-typed as Markdown", async () => {
         const source = fixture("org.org");
         const merged = await saveEditing(source, "Books to read", "Books to read EDITED");
-        // The parser read `* Books to read` as a bullet list, so the edit
-        // re-emits it as one and the `:PROPERTIES:` drawer beneath it is
-        // absorbed as that item's content, gaining two-space indentation.
-        // Corruption on edit is still the documented outcome — this is WHY the
-        // table says "don't" — but it is now CONFINED to the edited headline
-        // and its own drawer.
-        expect(merged).toContain("- Books to read EDITED");
-        expect(merged).not.toContain("* Books to read");
+        // The parser reads `* Books to read` as a bullet list, and always did —
+        // what changed (2026-07-25, MAR-218) is that the `*` marker is now
+        // SOURCE-PRESERVED, so the headline no longer comes back as `- Books to
+        // read` and the `:PROPERTIES:` drawer under it is no longer re-indented
+        // as that bullet's content. Org is still the wrong format for this
+        // editor — the headline is a list item to us, so org's own outline
+        // semantics are not modeled — but an edit no longer rewrites bytes
+        // beyond the line you edited.
+        expect(merged).toContain("* Books to read EDITED");
 
         // Tightened 2026-07-25: the blast radius used to reach the whole file —
         // `#+TITLE:` came back as `\#+TITLE:` because a split protection
@@ -243,7 +244,14 @@ describe("Org — wrong format by design: one edit rewrites org structure broadl
         ).toEqual(["#+TITLE: Reading queue", "#+AUTHOR: Harlan", "#+STARTUP: overview"]);
         expect(merged).not.toContain("\\#+");
 
-        // Everything below the edited headline's own drawer is untouched.
+        // The property drawer under the edited headline keeps its own bytes —
+        // it used to be pulled in as bullet content and re-indented by two.
+        expect(
+            merged.split("\n").slice(5, 8),
+            "the edited headline's property drawer was re-indented",
+        ).toEqual([":PROPERTIES:", ":CATEGORY: reading", ":END:"]);
+
+        // Everything below the edited headline is untouched.
         for (const token of [
             "** TODO How to Take Smart Notes",
             "SCHEDULED: <2026-08-01 Sat>",
@@ -255,8 +263,9 @@ describe("Org — wrong format by design: one edit rewrites org structure broadl
             expect(merged, `line beyond the edit's section changed: ${token}`).toContain(token);
         }
 
-        // Pinned exactly: the headline plus the three drawer lines it swallowed.
+        // Pinned exactly: the edited headline, and nothing else. Tightened from
+        // [4, 5, 6, 7] when list markers became source-preserved (MAR-218).
         const changed = changedLineIndices(source, merged);
-        expect(changed, "org blast radius moved — re-verify and re-tighten").toEqual([4, 5, 6, 7]);
+        expect(changed, "org blast radius moved — re-verify and re-tighten").toEqual([4]);
     });
 });

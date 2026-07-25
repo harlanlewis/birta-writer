@@ -70,6 +70,31 @@ import { isListNode, isSameTypeListBoundary } from "../editing/listMerge";
 // design decision rather than an oversight. A recorded gap otherwise travels
 // with its item, so moving an item away and back restores the source bytes.
 
+// ── Source marker style (MAR-218) ───────────────────────────────────────────
+//
+// remark-stringify canonicalizes every list's cosmetic marker choice: bullets
+// become the global `bullet` option, ordered items the global `bulletOrdered`,
+// and numbering always increments. So `+ a`, `* a`, `1) a` and a lazily
+// numbered `1./1./1.` list all came back as `- a` / `1./2./3.`. Protection hid
+// that until an edit landed anywhere in the list — protection is all-or-nothing
+// per region, so one keystroke in item 2 rewrote the markers on items 1 and 3,
+// lines the user never touched.
+//
+// The three facts (bullet character, ordered delimiter, numbering style) are
+// READ from the source by the visitor in plugins/sourceStyle.ts — the only
+// place with access to `file.value` — and land on the mdast list node as
+// `marker` / `incrementMarker`. This file carries them through ProseMirror,
+// because the list schemas are owned here and only one schema per node id wins.
+// The serializer side is `serializeList` in plugins/sourceStyle.ts.
+//
+// Deliberately NOT carried: list INDENT width. Leading whitespace (tab-vs-space
+// unit and width) is owned by the minimal-diff merge layer (MAR-213/214); two
+// layers deciding indentation independently is how they end up fighting.
+//
+// A list with no recorded marker — created in the editor, or any path that
+// doesn't set one — leaves the attrs null and falls back to the serializer
+// defaults (`-`, `1.`, incrementing).
+
 interface ListMdastNode {
     spread?: unknown;
     start?: number;
@@ -78,6 +103,30 @@ interface ListMdastNode {
     position?: { start?: { line?: number }; end?: { line?: number } };
     /** Set by `annotateItemGaps` while parsing the parent list. */
     blankBefore?: boolean;
+    /** Bullet character or ordered delimiter, recorded by sourceStyle. */
+    marker?: unknown;
+    /** `false` when the source repeated ONE number across every item. */
+    incrementMarker?: unknown;
+}
+
+/** Bullet-list marker characters CommonMark allows. */
+const BULLET_MARKERS = new Set(["-", "*", "+"]);
+
+/** The recorded bullet character, or `null` for "no recorded source style". */
+function bulletMarkerAttr(node: ListMdastNode): string | null {
+    return typeof node.marker === "string" && BULLET_MARKERS.has(node.marker)
+        ? node.marker
+        : null;
+}
+
+/** The recorded ordered delimiter, or `null`. */
+function orderedMarkerAttr(node: ListMdastNode): string | null {
+    return node.marker === "." || node.marker === ")" ? node.marker : null;
+}
+
+/** The recorded numbering style, or `null` when the source didn't state one. */
+function incrementMarkerAttr(node: ListMdastNode): boolean | null {
+    return typeof node.incrementMarker === "boolean" ? node.incrementMarker : null;
 }
 
 /** The mdast boolean spread, or the schema's null-fallback, as a real boolean. */
@@ -114,13 +163,40 @@ export const bulletListSpreadBoolSchema = bulletListSchema.extendSchema((prev) =
     const base = prev(ctx);
     return {
         ...base,
+        attrs: {
+            ...base.attrs,
+            // The source bullet character (MAR-218); `null` = editor-created.
+            marker: { default: null },
+        },
         parseMarkdown: {
             match: base.parseMarkdown.match,
             runner: (state, node, type) => {
+                const n = node as ListMdastNode;
                 annotateItemGaps(node.children);
                 state
-                    .openNode(type, { spread: spreadBool(node as ListMdastNode, false) })
+                    .openNode(type, {
+                        spread: spreadBool(n, false),
+                        marker: bulletMarkerAttr(n),
+                    })
                     .next(node.children)
+                    .closeNode();
+            },
+        },
+        // The stock runner passes `spread` through and knows nothing about
+        // `marker`, so it needs replacing now that there is a second fact.
+        toMarkdown: {
+            match: base.toMarkdown.match,
+            runner: (state, node) => {
+                const marker = node.attrs["marker"];
+                state
+                    .openNode("list", undefined, {
+                        ordered: false,
+                        spread: attrSpreadBool(node.attrs["spread"]),
+                        // Absent, not null, when unrecorded — `serializeList`
+                        // then falls back to the configured default.
+                        ...(typeof marker === "string" ? { marker } : {}),
+                    })
+                    .next(node.content)
                     .closeNode();
             },
         },
@@ -131,13 +207,25 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
     const base = prev(ctx);
     return {
         ...base,
+        attrs: {
+            ...base.attrs,
+            // The source delimiter (`.` / `)`) and whether the source numbered
+            // its items or repeated one number (MAR-218). `null` = unrecorded.
+            marker: { default: null },
+            incrementMarker: { default: null },
+        },
         parseMarkdown: {
             match: base.parseMarkdown.match,
             runner: (state, node, type) => {
                 const n = node as ListMdastNode;
                 annotateItemGaps(node.children);
                 state
-                    .openNode(type, { spread: spreadBool(n, true), order: n.start ?? 1 })
+                    .openNode(type, {
+                        spread: spreadBool(n, true),
+                        order: n.start ?? 1,
+                        marker: orderedMarkerAttr(n),
+                        incrementMarker: incrementMarkerAttr(n),
+                    })
                     .next(node.children)
                     .closeNode();
             },
@@ -145,11 +233,17 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
         toMarkdown: {
             match: base.toMarkdown.match,
             runner: (state, node) => {
+                const marker = node.attrs["marker"];
+                const increment = node.attrs["incrementMarker"];
                 state
                     .openNode("list", undefined, {
                         ordered: true,
                         start: node.attrs["order"] ?? 1,
                         spread: attrSpreadBool(node.attrs["spread"]),
+                        ...(typeof marker === "string" ? { marker } : {}),
+                        ...(typeof increment === "boolean"
+                            ? { incrementMarker: increment }
+                            : {}),
                     })
                     .next(node.content)
                     .closeNode();
