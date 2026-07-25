@@ -257,13 +257,18 @@ describe("no bare color literals in webview CSS", () => {
         expect(
             scanCssTextForColorLiterals("a { filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.5)); }"),
         ).toEqual([]);
-        // A shadow-valued token is still a shadow (ui/chrome.css --ui-card-shadow).
+        // A shadow-valued token is still a shadow (ui/chrome.css --ui-card-shadow),
+        // including the multi-layer values the elevation tokens actually hold.
         expect(
-            scanCssTextForColorLiterals(":root { --ui-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }"),
+            scanCssTextForColorLiterals(
+                ":root { --ui-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 5px 14px rgba(0, 0, 0, 0.11); }",
+            ),
         ).toEqual([]);
-        // Tier-suffixed shadow tokens count too (--ui-card-shadow-s).
+        // Tier-suffixed shadow tokens count too (--ui-card-shadow-overlay).
         expect(
-            scanCssTextForColorLiterals(":root { --ui-card-shadow-s: 0 2px 8px rgba(0, 0, 0, 0.3); }"),
+            scanCssTextForColorLiterals(
+                ":root { --ui-card-shadow-overlay: 0 2px 6px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.16); }",
+            ),
         ).toEqual([]);
         // A tinted shadow is a palette choice and stays flagged.
         expect(

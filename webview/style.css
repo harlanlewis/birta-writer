@@ -216,7 +216,7 @@
     background: var(--vscode-editor-foreground);
     color: var(--vscode-editor-background);
     border-radius: var(--ui-radius-m);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--ui-card-shadow);
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: var(--ui-fs-s);
     pointer-events: none;
@@ -1544,7 +1544,7 @@ body.toolbar-hidden::before {
     line-height: 1.4;
     white-space: nowrap;
     pointer-events: none;
-    box-shadow: var(--ui-card-shadow-s);
+    box-shadow: var(--ui-card-shadow);
 }
 
 /* Chip-list editing for list-valued frontmatter keys (tags, related, ...) */

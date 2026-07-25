@@ -2,8 +2,10 @@
  * Guard for the ui-* chrome token system (webview/ui/chrome.css).
  *
  * Every border-radius in webview CSS must compose the radius scale
- * (--ui-radius-s/m/l/xl/pill) instead of minting a new pixel value, and
- * chrome text sizes in the 9–13px band must come from the --ui-fs-* scale.
+ * (--ui-radius-s/m/l/xl/pill) instead of minting a new pixel value, chrome
+ * text sizes in the 9–13px band must come from the --ui-fs-* scale, and a
+ * shadow must take its ink from --ui-card-shadow / -overlay rather than mixing
+ * its own — neither a hand-tuned rgba() nor a per-theme --vscode-*-shadow.
  * This is a ratchet, not a style preference: the pre-token codebase had six
  * radius values and four hand-rolled 12px button families that drifted
  * apart precisely because nothing failed when a new value appeared.
@@ -102,6 +104,44 @@ describe("chrome design tokens (ui/chrome.css)", () => {
                 if (!excepted) {
                     violations.push(`${rel}:${line} — font-size: ${value}`);
                 }
+            }
+        }
+        expect(violations, violations.join("\n")).toEqual([]);
+    });
+
+    it("no shadow should mix its own ink instead of taking it from --ui-card-shadow*", () => {
+        // Two ways a shadow escapes the scale, both of which shipped before:
+        //
+        //   1. A raw rgba()/hsl() ink — tuned by eye, retunable by nobody. That
+        //      is how five one-off alphas (0.25/0.45/0.6) ended up beside the
+        //      tokens while the tokens themselves were far too heavy.
+        //   2. A THEME shadow variable (--vscode-widget-shadow and friends).
+        //      Those invert per theme, so a panel using one lifted to a light
+        //      cast that read as a glow on dark themes — the bug #115 fixed by
+        //      moving four surfaces onto the always-dark tokens. Nothing uses
+        //      one today; this keeps it that way.
+        //
+        // Rings and hairlines drawn WITH box-shadow (focus rings, drop-target
+        // rings, inset 1px lines) are not elevation and pass untouched: their
+        // color comes from a themed var() or color-mix(), never mixed ink — so
+        // this rule needs no exception list. `filter` is scanned too, since
+        // drop-shadow() is the same effect by another property; the one that
+        // existed was shadowing a mermaid diagram's own strokes (drop-shadow
+        // traces the svg's opaque pixels) and was deleted, not excepted.
+        const RAW_INK = /\b(?:rgba?|hsla?)\s*\(/;
+        const THEME_SHADOW_VAR = /var\(\s*--vscode-[\w-]*shadow/i;
+        const violations: string[] = [];
+        for (const file of files) {
+            const rel = relative(WEBVIEW_DIR, file).split(sep).join("/");
+            const scanned = [
+                ...declarations(file, "box-shadow").map((d) => ({ ...d, prop: "box-shadow" })),
+                ...declarations(file, "filter")
+                    .filter((d) => d.value.includes("drop-shadow("))
+                    .map((d) => ({ ...d, prop: "filter" })),
+            ];
+            for (const { line, value, prop } of scanned) {
+                if (!RAW_INK.test(value) && !THEME_SHADOW_VAR.test(value)) continue;
+                violations.push(`${rel}:${line} — ${prop}: ${value}`);
             }
         }
         expect(violations, violations.join("\n")).toEqual([]);
