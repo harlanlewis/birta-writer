@@ -299,10 +299,12 @@ jobs:
           if [ -n "$TRAILER" ]; then ACCEPT="trailer:$TRAILER"; fi
           echo "value=$ACCEPT" >> "$GITHUB_OUTPUT"
 
-      # Measured here, not extrapolated: the first run (three fixtures) took
-      # 8m30s for one pass. At two fixtures a neutral run is roughly 6 min, and
-      # a confirmed regression pays for a second pass. This runner is ~2× slower
-      # per keystroke than a dev laptop, so never size this from local timings.
+      # Measured, after three wrong estimates: one pass is 8m30s at three
+      # fixtures and 7m16s at the current two, so a neutral job is ~8 min and a
+      # confirmed regression ~15 min (it pays for a second pass). Dropping a
+      # fixture is a weak lever — xlarge dominates — so if this needs to get
+      # cheaper, cut its keystrokes or pairs, not the fixture list. This runner
+      # is ~2× slower per keystroke than a dev laptop; never size from local.
       - name: Typing A/B vs merge-base
         env:
           PERF_ACCEPT: ${{ steps.accept.outputs.value }}

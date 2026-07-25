@@ -171,13 +171,30 @@ instead of `perf.mjs --ab`. That comparer:
 **Escape hatch:** the same `perf-accept` PR label / `Perf-Regression-Accepted:
 <reason>` commit trailer as the launch gate, deliberately not a second one.
 
-**Cost — measured on CI, not extrapolated from a laptop.** The first run (three
-fixtures × 4 pairs) took **8m30s for one pass**; dropping to the two gated
-fixtures brings a neutral run to roughly 6 min, and a confirmed regression costs
-two passes. A CI runner is ~2× slower per keystroke than a dev laptop (`xlarge`
-47.5 ms vs 22.8 ms), so *never* size this job from local timings. It is a
-separate CI job from `launch-perf` because the two harnesses must not share a
-runner (see *Run one harness at a time* in `AGENTS.md`).
+**Cost — every figure below is a completed CI job, not an estimate.** Three
+successive estimates of this job's runtime were wrong before it was simply
+measured, so the numbers are tabulated with their source:
+
+| config (4 pairs, 80 keys) | one pass | job total |
+| --- | --- | --- |
+| 3 fixtures (`medium`/`large`/`xlarge`) | 8m30s | 9m23s |
+| 2 fixtures (`large`/`xlarge`, current) | 7m16s | 7m55s |
+
+So a neutral run is **~8 min**, and a confirmed regression pays for a second
+pass (~15 min). One run of the 2-fixture config was still going past 13 min
+before it was cancelled — unexplained runner variance, so treat ~8 min as
+typical rather than guaranteed.
+
+**Dropping a fixture is a weak lever, which is the non-obvious part.** Removing
+`medium` cut only ~15%, because `xlarge` dominates: at 45.8 ms per keystroke on
+CI, one burst is ~3.7 s of dispatch alone, before mounting a 300 KB document.
+If this job ever needs to get materially cheaper, the levers are `xlarge`'s
+keystroke count or the pair count — **not** the fixture list.
+
+A CI runner is ~2× slower per keystroke than a dev laptop (`xlarge` 45.8–47.5 ms
+vs 22.8 ms), so *never* size this job from local timings. It is a separate CI
+job from `launch-perf` because the two harnesses must not share a runner (see
+*Run one harness at a time* in `AGENTS.md`).
 
 Reference deltas from that first CI run, for calibrating the thresholds against
 real runner variance: on an unchanged webview, `medium` 0%, `large` +3.8%,
