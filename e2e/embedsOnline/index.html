@@ -1,10 +1,15 @@
 <!doctype html>
 <!-- e2e harness: URL embeds with the network master switch ON — the path the
      notesFeatures suite deliberately cannot reach (it pins the OFF case). This
-     is where the card actually renders, so it is the only place the click
-     behavior and the play swap can be observed at all. The fixture carries one
-     bare provider link on its own line, one titled link to the same video, and
-     a heading to click away to. -->
+     is where the cards actually render, so it is the only place the click
+     behavior and the activate swap can be observed at all.
+
+     The fixture carries ONE bare link per provider in the table
+     (webview/utils/embedProviders.ts), plus the two shapes that must NOT card:
+     a titled link to the same video, and a bare link to an unknown host. A new
+     provider belongs here as a new line — the checks are written per-kind off
+     `data-embed-kind`, so they grow with the table instead of pinning a count
+     that only ever fit one provider. -->
 <meta charset="utf-8">
 <style>
   :root {
@@ -37,7 +42,15 @@
     "",
     "https://youtu.be/dQw4w9WgXcQ",
     "",
+    "https://www.loom.com/share/0123456789abcdef0123456789abcdef",
+    "",
+    "https://www.figma.com/design/BAZsTPbh6W1r66Bdo9xkQp/Design-System",
+    "",
+    "https://github.com/microsoft/vscode/pull/12345",
+    "",
     "[a titled link](https://youtu.be/dQw4w9WgXcQ)",
+    "",
+    "https://vimeo.com/76979871",
     "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
