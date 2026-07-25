@@ -5,7 +5,10 @@
  * the gated-fixture rule, and the double-confirm intersection directly.
  */
 import { describe, it, expect } from "vitest";
-import { abVerdict, confirmRegressions, spans, aggregate, GATED_FIXTURES } from "./verdict.mjs";
+import {
+    abVerdict, confirmRegressions, spans, aggregate, GATED_FIXTURES,
+    typingAbVerdict, TYPING_GATED_FIXTURES,
+} from "./verdict.mjs";
 
 /** Build a one-fixture pass with base/head launch medians. */
 const pass = (name, baseLaunch, headLaunch) => ({
@@ -52,6 +55,76 @@ describe("abVerdict — the gate's per-fixture launch decision", () => {
         const two = { ...pass("medium", 300, 400), ...pass("large", 1000, 1005) };
         // medium regresses (+33%/+100ms); large does not (+0.5%).
         expect([...abVerdict(two).regressed]).toEqual(["medium"]);
+    });
+});
+
+/** Build a one-fixture typing pass with base/head dispatch medians (+ optional block). */
+const tPass = (name, baseMedian, headMedian, baseBlock, headBlock) => ({
+    [name]: {
+        base: { median: baseMedian, blockMs: baseBlock ?? null },
+        head: { median: headMedian, blockMs: headBlock ?? null },
+    },
+});
+
+describe("typingAbVerdict — the gate's per-fixture per-keystroke decision", () => {
+    it("a gated fixture slower by ≥10% AND ≥0.5ms regresses", () => {
+        // xlarge: the MAR-215 win handed back — 22.3 → 44.6 ms (+100%)
+        expect([...typingAbVerdict(tPass("xlarge", 22.3, 44.6)).regressed]).toEqual(["xlarge"]);
+    });
+
+    it("a move over 10% but under 0.5ms does NOT regress (the ms floor)", () => {
+        // tiny-scale dispatch: 2 → 2.4 = +20% but only +0.4ms
+        expect(typingAbVerdict(tPass("large", 2, 2.4)).regressed.size).toBe(0);
+    });
+
+    it("a move over 0.5ms but under 10% does NOT regress (the % floor)", () => {
+        // xlarge: 22 → 24 = +2ms but only +9.1%
+        expect(typingAbVerdict(tPass("xlarge", 22, 24)).regressed.size).toBe(0);
+    });
+
+    it("an UNGATED typing fixture regressing is reported but never gates", () => {
+        const v = typingAbVerdict(tPass("medium", 3, 9));
+        expect(v.regressed.size).toBe(0);
+        expect(v.rows[0].mark).toContain("ungated");
+        expect(TYPING_GATED_FIXTURES.has("medium")).toBe(false);
+    });
+
+    it("a real improvement is not a regression", () => {
+        const v = typingAbVerdict(tPass("xlarge", 44.6, 22.3));
+        expect(v.regressed.size).toBe(0);
+        expect(v.rows[0].mark).toContain("faster");
+    });
+
+    it("missing data yields an empty row and never regresses", () => {
+        const v = typingAbVerdict({ xlarge: { base: {}, head: {} } });
+        expect(v.rows[0].empty).toBe(true);
+        expect(v.regressed.size).toBe(0);
+    });
+
+    it("gates each gated fixture independently", () => {
+        const two = { ...tPass("large", 8, 20), ...tPass("xlarge", 22, 22.5) };
+        expect([...typingAbVerdict(two).regressed]).toEqual(["large"]);
+    });
+
+    // `block` is the contention-sensitive metric — a shared CI runner can move it
+    // on its own, so it must inform and never fail. These pin that asymmetry.
+    it("a block-only regression is reported but does NOT gate", () => {
+        const v = typingAbVerdict(tPass("xlarge", 22, 22.1, 900, 8000));
+        expect(v.regressed.size).toBe(0);
+        expect(v.rows[0].block.realBlock).toBe(true);
+        expect(v.rows[0].blockNote).toContain("not gated");
+    });
+
+    it("median improved while block grew is flagged as work MOVED, not removed", () => {
+        const v = typingAbVerdict(tPass("xlarge", 44, 22, 900, 8000));
+        expect(v.regressed.size).toBe(0);
+        expect(v.rows[0].blockNote).toContain("moved, not removed");
+    });
+
+    it("a null block (no longtask support) is not read as a zero baseline", () => {
+        const v = typingAbVerdict(tPass("xlarge", 22, 22.1, null, 8000));
+        expect(v.rows[0].block).toBeNull();
+        expect(v.rows[0].blockNote).toBe("");
     });
 });
 

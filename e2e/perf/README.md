@@ -129,10 +129,47 @@ with the launch harness plus `xlarge` (~300 KB — the MAR-137 tail; kept out of
 the launch set so `pnpm perf` runtimes and `baseline.json` stay comparable).
 
 Same A/B discipline as launch: absolute ms drift with machine load, so gate on
-a same-session `--compare`. Per-keystroke medians are small, so the noise gate
+a same-session A/B. Per-keystroke medians are small, so the noise gate
 is **≥10% AND ≥0.5 ms**. The same marks work in the webview devtools against
 any real document (Performance panel → User Timing), which is how to profile a
 user-reported slow file.
+
+## Automated typing gate (`pnpm perf:typing:ab`, CI job `typing-perf`)
+
+`--compare` diffs two JSONs you captured by hand. **`--ab` is the stronger form
+and the one CI runs** — it interleaves both bundles in one browser session, so
+machine drift cancels within each pair rather than across a stash-and-rebuild.
+
+```bash
+pnpm perf:typing:ab                          # vs origin/main: builds merge-base + head, compares
+node e2e/perf-ab.mjs --typing --runs 5 --json typing-ab.json
+PERF_ACCEPT="reason" pnpm perf:typing:ab     # accept an intentional typing cost locally
+```
+
+`e2e/perf-ab.mjs` is shared with the launch gate — same detached-worktree
+merge-base build — and `--typing` points it at `node e2e/perf-typing.mjs --ab`
+instead of `perf.mjs --ab`. That comparer:
+
+- **interleaves** head/base bursts per pair; the first pair is discarded as warmup,
+  and durations are **pooled** across pairs before taking the median;
+- gates only `large` and `xlarge`; `medium` is report-only, and `tiny` /
+  `link-heavy` aren't measured in A/B at all (each burst costs seconds, and
+  neither carries signal near the fixed per-keystroke floor);
+- **double-confirms** — a regression must reproduce across two full passes;
+- **reports `block`, never gates it.** A null A/B (identical bundles) moved
+  `block` ~15% on `xlarge` while the dispatch medians held within 1.1%. It is
+  the one metric a shared runner can move on its own, so it informs — including
+  the "median improved but block regressed → work moved, not removed" warning —
+  and never decides. This is a deliberate divergence from `--compare`, which
+  does fail on block.
+
+**Escape hatch:** the same `perf-accept` PR label / `Perf-Regression-Accepted:
+<reason>` commit trailer as the launch gate, deliberately not a second one.
+
+Cost: ~4 min for the common neutral case, ~8 min when a pass-1 regression
+triggers the confirming second pass. It is a separate CI job from `launch-perf`
+because the two harnesses must not share a runner (see *Run one harness at a
+time* in `AGENTS.md`).
 
 Reference numbers (2026-07-16, M-series laptop, median of 80 keystrokes):
 `tiny` ~0.7 ms, `medium` (12 KB) ~1.3 ms, `large` (96 KB) ~7 ms, `xlarge`

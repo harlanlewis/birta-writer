@@ -143,6 +143,8 @@ Webview cold-start (open `.md` → editor painted) is a first-class concern — 
 
 **CI guards launch time automatically.** On every PR the **required, blocking** `launch-perf` job (`pnpm perf:ab` / `e2e/perf-ab.mjs`) builds the merge-base and head, measures both back-to-back on one runner, and gates on the launch delta — catching *time added without bytes* that the eager-bytes backstop can't see. It gates only the `medium`/`large` fixtures and double-confirms a regression across two passes before failing. An intentional launch cost merges via the `perf-accept` PR label or a `Perf-Regression-Accepted: <reason>` commit trailer.
 
+**Typing is gated the same way** (`typing-perf` job, `pnpm perf:typing:ab` — MAR-224). Launch is what a user pays once; per-keystroke dispatch is what they pay *thousands of times* on a large document, and it went unguarded long enough for MAR-215's 2× win to have been silently reversible. Same shared orchestrator, same merge-base interleave, same double-confirm, same accept hatch — gating `large`/`xlarge` dispatch median at ≥10% AND ≥0.5 ms. One deliberate difference: `block` (total longtask ms) is **reported, never gated**, because its fixed 50 ms threshold makes it inflate under runner contention — a null A/B on identical bundles moved it ~15% while the dispatch medians held within 1.1%. It runs as a **separate job** from `launch-perf` so the two harnesses never share a runner.
+
 ## Issue tracking
 
 All bugs and planned work live in **Linear** (team "Birta Writer", `MAR-` prefix) — never GitHub Issues, and never local files. The `MAR-` prefix predates the rebrand and is unchanged; the team name is what the Linear tools take, and querying a wrong one returns an empty list that reads exactly like an empty queue.

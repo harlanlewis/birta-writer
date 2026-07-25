@@ -1,16 +1,19 @@
 /**
- * Same-session launch A/B orchestrator — the guard behind `pnpm perf:ab` and the
- * CI `launch-perf` job (one script so local and CI run byte-identical logic).
+ * Same-session A/B orchestrator — the shared build half of both perf gates:
+ * `pnpm perf:ab` / CI `launch-perf`, and `pnpm perf:typing:ab` / CI
+ * `typing-perf` (one script so local and CI run byte-identical logic).
  *
  * It builds the PR's merge-base and the current HEAD into two dist dirs and runs
- * `e2e/perf.mjs --ab` to compare their cold-start launch time. Both builds are
- * measured back-to-back on the SAME machine, so the machine-load confound that
- * makes absolute launch ms untrustworthy cancels in the delta (see the header of
+ * a comparer over them — `e2e/perf.mjs --ab` for cold-start launch time, or
+ * `e2e/perf-typing.mjs --ab` with `--typing`. Both builds are measured
+ * back-to-back on the SAME machine, so the machine-load confound that makes
+ * absolute ms untrustworthy cancels in the delta (see the header of
  * e2e/perf.mjs). That is what lets a browser-timing check be a blocking gate.
  *
  * Usage:
- *   node e2e/perf-ab.mjs                       # vs origin/main, 8 pairs/fixture
+ *   node e2e/perf-ab.mjs                       # launch, vs origin/main, 8 pairs/fixture
  *   node e2e/perf-ab.mjs --base origin/main --runs 9 --json ab.json
+ *   node e2e/perf-ab.mjs --typing --runs 5     # per-keystroke typing instead
  *   PERF_ACCEPT="reason" node e2e/perf-ab.mjs  # accept an intended regression
  *
  * Requires the playwright devDependency + `npx playwright install chromium`.
@@ -29,8 +32,12 @@ const arg = (flag, fallback) => {
 };
 
 const baseRef = arg("--base", "origin/main");
-const runs = arg("--runs", "9");
+// Typing bursts are seconds each, launch samples are hundreds of ms — so the
+// two comparers want different pair counts, and the default follows the mode.
+const typing = process.argv.includes("--typing");
+const runs = arg("--runs", typing ? "5" : "9");
 const jsonOut = arg("--json", null);
+const label = typing ? "typing" : "launch";
 
 // The base bundle must be built from the merge-base with the same deps that
 // commit shipped — otherwise a dependency bump in the PR would be attributed to
@@ -46,7 +53,7 @@ const head = git("rev-parse", "HEAD");
 // The head bundle is built from the WORKING TREE, not the HEAD commit — locally
 // that means uncommitted changes are measured (usually what you want), so say so.
 const dirty = git("status", "--porcelain") !== "" ? " + working-tree changes" : "";
-console.log(`launch A/B: base ${base.slice(0, 9)} (merge-base with ${baseRef}) vs head ${head.slice(0, 9)}${dirty}`);
+console.log(`${label} A/B: base ${base.slice(0, 9)} (merge-base with ${baseRef}) vs head ${head.slice(0, 9)}${dirty}`);
 
 const worktree = join(tmpdir(), `birta-perf-base-${process.pid}`);
 const buildProd = (cwd) => execFileSync("node", ["esbuild.mjs", "--production"], { cwd, stdio: "inherit" });
@@ -88,7 +95,12 @@ try {
 }
 
 // ── compare ─────────────────────────────────────────────────
-const abArgs = ["e2e/perf.mjs", "--ab", "dist-base", "dist-head", "--runs", runs];
+const comparer = typing ? "e2e/perf-typing.mjs" : "e2e/perf.mjs";
+const abArgs = [comparer, "--ab", "dist-base", "dist-head", "--runs", runs];
+if (typing) {
+    const keys = arg("--keys", null);
+    if (keys) abArgs.push("--keys", keys);
+}
 if (jsonOut) abArgs.push("--json", jsonOut);
 const res = spawnSync("node", abArgs, { cwd: repoRoot, stdio: "inherit", env: process.env });
 process.exit(res.status ?? 1);
