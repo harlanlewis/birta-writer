@@ -6,6 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+# Supersede a PR's own earlier run when it is pushed again. Without this every
+# push left its predecessor running to completion, which was cheap when the
+# slowest check was ~3 min and is not now: `typing-perf` measures two document
+# fixtures in a real browser, so three stacked runs mean three of it at once —
+# observed on this PR, including one for a commit that no longer existed after
+# an amend. Concurrent runs also make each other's timings unreadable, which
+# matters when two of the jobs here ARE timing measurements.
+#
+# Only PRs cancel. A push to `main` is the record that main is green, so those
+# runs always finish even if another lands behind them.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   unit-test:
     name: Unit Tests
