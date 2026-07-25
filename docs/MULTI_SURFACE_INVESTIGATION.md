@@ -39,6 +39,74 @@ browser-based test/perf harness, and a multi-product brand system all exist *tod
 
 ---
 
+## 0.5 Strategic reframe — the factory, edit-once, and web-last
+
+Three directional decisions (maintainer, 2026-07-25) that reshape the whole analysis:
+
+**(a) Web is last, and it's a different product.** Almost every "genuinely hard on web"
+finding in this document is a *local-files-in-a-browser* problem (no file-watching, no
+sibling-link resolution, no `asWebviewUri` equivalent, sandbox permission friction). A
+**cloud-backed** web app doesn't have those — it has *server* problems instead (sync,
+accounts, hosting, the privacy contract). So the web surface is not "the port, but harder";
+it's **a cloud writing service that reuses the editor**, whose value lives in
+cloud/multi-device/sharing — a separate build, correctly sequenced last. The scary
+web/FSA/OPFS sections below become mostly moot for the near term.
+
+**(b) "Edit once, deploy everywhere" for the writing experience.** Any change to the
+*editing experience* must ship to every surface with zero per-host re-implementation. This
+draws the seam differently than "the current protocol":
+
+> **Core owns the entire writing experience** — the editor, its chrome (main toolbar,
+> selection toolbar, TOC, in-editor menus/context menu), the command registry, keybinding
+> dispatch, and a default command-palette UI. **The host owns only OS integration** —
+> files, windows, persistence, native dialogs/menus, settings storage, asset-URL minting.
+
+This is *more* than lives in core today: the palette, keybindings, and settings UI are
+currently host-side. For edit-once to hold, they move into core, and **the VS Code
+extension gets thinner** — it stops *owning* the palette/keymap and instead *projects* core
+commands into native VS Code surfaces (as an optional adapter affordance). The ~88 editor
+commands are already messages into the webview registry, so that half is portable; the
+missing half is moving dispatch + palette UI into core. A shrinking extension is the
+success signal, not a regression.
+
+**(c) The deliverable is a factory/playbook for many apps — most not VS Code extensions.**
+Birta Writer is app #1. The real asset is the reusable machine: **core editor + format
+modules + a host-adapter contract + a per-app config/brand layer**, such that a new app is
+`{reused host adapter} + {app config: brand tokens, feature/format selection, defaults} +
+{optional new format module}` — not a new editor. Consequences that differ from a plain
+port:
+
+- **The reference host must NOT be VS Code.** It is the most idiosyncratic and capable
+  host; generalizing the core contract from it over-fits. Define the `HostAdapter` as *what
+  the simplest app needs* (a bare shell + local files), and let VS Code be a rich adapter
+  that projects its abundance onto that minimal line — never the thing that defines the line.
+- **Validate the factory by building app #2 cheaply and early**, not by designing the
+  perfect adapter up front. "Build two apps, then *harvest* the factory" beats "build the
+  factory, then two apps." The cheapest non-VS-Code app #2 is the Tauri desktop shell — so
+  **desktop-first is reinforced**: it is the least-cost way to prove the factory is real and
+  to extract the adapter from *two* concrete hosts instead of one imagined one.
+- **The factory instinct is already half-built in the code.** `webview/format/` is the
+  "FormatModule seam… markdown is format #1" — the architecture already anticipated being
+  more than one editor. Formats #2+ validate the format seam the same way host #2 validates
+  the adapter seam. The three per-app knobs already exist in embryo: the `birta.*` config
+  schema (feature/defaults), the FormatModule seam (format), and the `--ui-*` + brand token
+  layer (brand).
+- **Edit-once shrinks the QA matrix** (partly answering the maintenance-cost worry): the
+  shared conformance suite (fidelity + editor behavior) proves the writing experience
+  *once*, in core; each host runs only a thin integration suite (its persistence + save
+  invariant). The matrix is `hosts × thin-suites`, not `surfaces × full-suites`.
+- **The factory's own risk is over-engineering it before either app needs it.** Discover it
+  by making VS-Code-Birta and desktop-Birta share code, *then* template it. Top-down factory
+  design is the meta-level version of the same YAGNI trap called out in §13.
+
+Net effect on the plan: **desktop (Tauri) is the priority surface *and* the factory's
+reference/validation vehicle; web (cloud) is a later, separate product; the near-term
+architectural work is extracting the core with a deliberately-minimal host contract and
+proving it against a second host.** Local-file hardness largely disappears (desktop fs is
+easy); the real work is the edit-once seam and the shell chrome (§6).
+
+---
+
 ## 1. Category map (think about these before any detail)
 
 Grouped into three bands.
@@ -391,44 +459,145 @@ harness, ProseMirror typing chords, i18n functions.
 
 ---
 
-## 11. Recommended sequence (MVP-first)
+## 11. Recommended sequence (factory-validated, web-last)
 
-Framing decision up front: **"the editor, everywhere"** (the WYSIWYG core is the product;
-VS Code was just the first shell; each surface re-provides only the host minimum) — *not*
-"a full standalone app with file browser/sync/accounts" (that risks becoming Obsidian,
-which Birta explicitly isn't). Pick the former as MVP.
+Framing: **"the writing experience, everywhere, minted from a factory."** The core is the
+product; VS Code was the first shell; each new app supplies only OS integration + a per-app
+config/brand layer. Desktop is the priority surface *and* the factory's proof; cloud-web is
+a separate, later product. Cheapest-learning-first, not cheapest-to-build-first.
 
-1. **Extract `packages/core` + `packages/editor` behind the existing message seam.** Keep
-   the VS Code extension green throughout — it's the regression oracle. Add the host-boundary
-   test. Wrap `asWebviewUri`/`_imageUriMaps` as `toDisplayUrl`/`toStoredPath` and inject the
-   root via `_workspaceRootFor` first — those are the two invasive seams.
-2. **Desktop on Tauri v2, second host.** It preserves privacy/offline/local-file with the
-   *least new invention* (no accounts, no CSP-as-security-boundary, no FSA gymnastics; native
-   fs + watcher covers external-change detection). This validates the core extraction against
-   a real second host. Do the theming token set + settings store/UI here (both reused later).
-3. **Web local-only, third.** Reuse the desktop core; add FSA (Chromium) + OPFS + PWA +
-   served-page-privacy work + Harper-in-browser + the two-tier fallback. Accept the Safari/
-   Firefox degradation explicitly.
-4. **Sync / accounts / monetization, last, only if demanded** — this is where brand risk and
-   ongoing cost concentrate.
+**Rung 0 — free/near-free reach (do first, independent of the factory).**
+- **VS Code-family hosts.** Cursor, Windsurf, VSCodium, code-server, Positron already speak
+  the extension API. Publishing to **Open VSX** (already Birta's namespace) covers most of
+  these for ~zero marginal work — reach expansion with no new shell. Verify nothing relies on
+  Marketplace-only APIs.
+- **Scope the "web extension" (vscode.dev / github.dev) path.** A `browser`-field web
+  extension build runs *inside* browser VS Code and reuses **all** of VS Code's shell — you
+  skip the entire §6 rebuild. The blockers are the same Node couplings the standalone port
+  faces anyway (`harper` `file://`, `node:dns` SSRF fetch, `workspace.fs` specifics), but you
+  pay them *without also building a shell*. This is very likely the **cheapest path to
+  "Birta in a browser"** and should be scoped before committing to a standalone web app.
 
-Throughout, apply Birta's existing investment ordering as the surface tie-breaker:
-**fidelity must hold identically on all three before any surface adds a surface-specific
-feature.** A web-only feature that can't preserve byte-fidelity is off-thesis on its face.
+**Rung 1 — extract the core behind a *minimal* host contract.** Keep the VS Code extension
+green throughout (regression oracle; the fidelity corpus proves the core still works).
+- Define `HostAdapter` as *what the simplest app needs*, not what VS Code offers.
+- Wrap the two invasive seams first: `asWebviewUri`/`_imageUriMaps` → `toDisplayUrl`/
+  `toStoredPath`; inject the root via `_workspaceRootFor`. (These pay off in the extension
+  today — see §13.)
+- Move toward edit-once: begin migrating command dispatch + a default palette UI + keybinding
+  handling into core, with the extension *projecting* to native surfaces.
+
+**Rung 2 — desktop on Tauri v2 = app #2 = factory validation.** The cheapest non-VS-Code
+host; preserves privacy/offline/local-file with the least new invention (native fs + watcher
+cover external-change detection; no accounts, no CSP-as-security-boundary, no FSA gymnastics).
+Building it is what forces the adapter to be *right* (extracted from two real hosts, not one).
+Do the synthesized `--vscode-*`/brand token set + the settings store & generated settings UI
+here — all reused by every later app. Decide Linux posture explicitly (full support vs
+"Linux users get the PWA") given the WebKitGTK/contenteditable risk (§13).
+
+**Rung 3 — harvest the factory.** Once two hosts share the core, template the per-app layer
+(brand tokens, feature/format selection, defaults, release automation) so app #3 is a
+config + a host binding, not a project. Optionally prove the FormatModule seam with a
+format #2. *Harvest, don't design top-down.*
+
+**Rung 4 — cloud web, a separate product, only when the cloud story is wanted.** Server +
+sync + accounts + hosting + privacy contract. Reuses the editor core but is otherwise its own
+build. Not on the near-term path.
+
+Throughout, apply Birta's existing investment ordering as the tie-breaker: **fidelity must
+hold identically on every host before any host adds a host-specific feature.**
 
 ---
 
 ## 12. Open decisions for the maintainer
 
-1. **Product framing:** "the editor, everywhere" vs "a standalone app"? (Recommend the former.)
-2. **Surface order:** desktop-first (recommended, cheapest brand-preservation) or web-first
-   (bigger reach, harder promises)?
-3. **Desktop runtime:** commit to Tauri v2 (accept Linux WebKitGTK QA) or play safe on Electron?
-4. **Web sync:** local-only forever, or optional sync backend (and if so, the privacy contract)?
-5. **Accounts:** never / sync-only / required? (Recommend never-or-sync-only.)
-6. **Monetization** in light of the FSL 2-year Apache conversion.
-7. **Server-or-not for web:** accept the two-tier sandbox reality, or run a backend (which
-   restores fs/watch/workspace but changes what Birta *is*)?
-8. **Identity sequencing:** does the drawn wordmark / glyph land before or after the first
-   standalone surface ships?
-```
+1. **Factory vs. surfaces:** commit to "core-as-factory, apps are cheap" (recommended, per
+   §0.5) vs. hand-porting each surface? Determines how much goes into core vs. host.
+2. **Cheap-reach rungs:** pursue Open-VSX/VS-Code-family + a vscode.dev web-extension build
+   *before* the standalone work? (Recommend yes — highest ROI, validates demand.)
+3. **Reference host:** accept that the adapter contract is defined by the *simplest* app, with
+   VS Code as a rich adapter above the line (recommended) vs. letting today's protocol be the
+   contract?
+4. **Desktop runtime + Linux:** Tauri v2 with full Linux support, Tauri with Linux-as-PWA, or
+   Electron for guaranteed rendering parity on the contenteditable-heavy editor?
+5. **Cloud web:** is the cloud/sync product actually wanted, and if so, what's the privacy
+   contract (E2E? what the server sees)? — gate before any web work.
+6. **Accounts / monetization:** never / sync-only / required; and pricing in light of the FSL
+   2-year Apache conversion (any version is freely re-hostable after 24 months).
+7. **Identity sequencing:** the drawn wordmark/glyph (per `docs/BRAND.md`, not yet created) —
+   before or after the first non-extension app? Standalone surfaces front-run it.
+8. **De-risk probe (cheap, reversible):** stand up `dist/webview.js` in a bare HTML page with
+   a stub host for an afternoon to convert the "small-to-moderate prototype" *guess* into a
+   measurement and hit the theming/focus/clipboard walls for real, before committing.
+
+---
+
+## 13. Risks, dissents, and cheaper alternatives (self-critique)
+
+This section red-teams the rest of the document. Read it as a counterweight, not a footnote.
+
+**Methodological caveats.**
+- This investigation was framed entirely as "how to port." No thread red-teamed the premise
+  or costed the cheapest alternative, so the internal agreement across sections is partly an
+  artifact of the framing, not independent corroboration.
+- **Nothing was measured.** Every effort estimate is inferred from reading code. "Small-to-
+  moderate to a first interactive prototype" is a guess; a prototype is not a shippable app,
+  and the gap between "renders and edits in a tab" and "an app people trust with their files"
+  (reliability, per-OS save correctness, focus/IME/clipboard edge cases) is where most of the
+  calendar goes. The §12.8 probe exists to replace the guess with data.
+
+**Where the assessment is soft.**
+- **"The seam is clean" is oversold.** It's clean at the *type* level, but it is VS-Code-
+  *shaped* — an accretion of whatever VS Code needed. Reifying today's protocol as the
+  `HostAdapter` would ossify VS Code assumptions into every app. Hence §0.5's "the simplest
+  app defines the contract, not VS Code."
+- **Single-maintainer sustainability is the likely binding constraint**, not technical
+  feasibility. Each host is a permanent tax (certs, store reviews, crash channels, per-host
+  settings UI, QA). Edit-once + a shared conformance suite is the mitigation (§0.5), but the
+  honest headline is "can one person sustain N apps without the shipping product rotting."
+- **Fidelity does not "port for free."** It holds today partly because VS Code's
+  `TextDocument` normalizes newlines/encoding/BOM/atomic-write. Each host reintroduces those
+  as fresh round-trip hazards the corpus doesn't currently exercise. Re-prove per host.
+- **Harper on web is a real problem**, not a footnote: ~300 MB resident WASM per tab,
+  effectively unusable on mobile web. "Local proofreading everywhere" may not survive web
+  honestly. (Moot while web is deprioritized; relevant when it returns.)
+- **Focus/IME/clipboard/mount** behaviors currently depend on the VS Code webview iframe
+  sandbox; a same-origin page changes all of them subtly, and a WYSIWYG editor is exactly
+  where that bites. Unexamined — flagged for the §12.8 probe.
+
+**Where recommendations deserve challenge.**
+- **Tauri is riskier for *this* app than the generic case.** A ProseMirror WYSIWYG editor is
+  the worst case for webview inconsistency (contenteditable, selection, IME, clipboard), and
+  Linux WebKitGTK is the weak engine — for a *fidelity-first* product, "renders subtly wrong
+  on Linux" is disproportionately damaging. Consider asymmetric support (Tauri on mac/Windows,
+  PWA on Linux) rather than treating WebKitGTK parity as a mere QA item.
+- **"Server backend = brand betrayal" was too binary.** A thin *optional* sync server may be
+  the actual unlock for the web product and reuses the existing conflict-resolution
+  philosophy; it deserves honest costing, not reflexive recoil. (The maintainer has now
+  scoped this as the *point* of the web surface — §0.5(a).)
+- **The positioning contradiction may be the crux, not a bullet.** BENEFITS says the author
+  uses Birta *because* it sits in VS Code beside git/diff/an AI agent. A standalone app
+  deletes the stated reason the product exists for its own creator — which implies the
+  standalone apps serve a *different* user (a new ICP), i.e. new products, not ports. Name
+  that ICP before building for it.
+
+**Cheaper alternatives the main body under-weighted** (now promoted to Rung 0, §11):
+VS-Code-family hosts via Open VSX, and a vscode.dev/github.dev **web-extension** build that
+reuses VS Code's entire shell. Both deliver reach for a fraction of a standalone app's cost
+and should be exhausted (or consciously rejected) first.
+
+**On adopting the architecture speculatively, before multi-surface is ratified.**
+Mostly **defer** — with a small, real exception. The factory framing (§0.5c) gives the
+abstraction genuine downstream consumers, but the engineering risk (over-fitting a contract
+extracted from one host) is unchanged, so:
+- *Do now (pays off with one host):* wrap the `asWebviewUri`/`_imageUriMaps` coupling behind
+  `toDisplayUrl`/`toStoredPath`; keep `shared/` pure; keep the protocol typed and funneled;
+  keep `_workspaceRootFor` the single root chokepoint. These improve the *extension's* clarity
+  and testability today, independent of any second host.
+- *Defer until a concrete second host exists:* the `packages/core`/`editor` split, the full
+  `HostAdapter` interface, host stubs, the monorepo restructure, and "no-host-assumptions"
+  boundary tests (which can only encode guesses while one host exists, manufacturing false
+  confidence). Restructuring also risks perturbing the CI-gated eager-bytes/launch-perf
+  budgets — a measured cost to the current product for hypothetical benefit.
+- *Rule of thumb:* adopt a refactor only if it improves the extension on its own merits;
+  **design toward the factory, don't build it** until app #2 is actually being made.
