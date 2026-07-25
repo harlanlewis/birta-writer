@@ -258,8 +258,7 @@ export type ToExtensionMessage =
     // menu; the extension persists it to the `contentWidth` setting, which
     // round-trips back as a `setContentWidth` message.
     | { type: "setContentWidth"; mode: ContentWidthMode }
-    // Resting block-handle pick from the typography menu's radio rows; the
-    // extension persists it to the `blockHandles` setting, which round-trips
+    // Persisted by the extension (settings write-back), which echoes it
     // back as a `setBlockHandles` message to every open editor.
     | { type: "setBlockHandles"; mode: BlockHandlesMode }
     // Drag-and-drop layout change from customize mode. `item` is set only when
@@ -315,7 +314,7 @@ export type ToExtensionMessage =
 /**
  * Extension → WebView messages.
  *
- * `lineMap` is optional on init/revert/externalUpdate: the extension always
+ * `lineMap` is optional on init/externalUpdate: the extension always
  * sends it, but the webview guards with `?? []` just in case.
  *
  * `syncVersion` is the extension's authoritative version counter. It is bumped
@@ -324,14 +323,13 @@ export type ToExtensionMessage =
  * update/frontmatterUpdate, so the extension can drop content the webview
  * serialized against a state it has since replaced.
  *
- * `externalUpdate` is a cursor-preserving inbound sync: unlike `revert` (a full
+ * `externalUpdate` is a cursor-preserving inbound sync: unlike a full
  * editor rebuild that loses the selection), the webview applies it as a minimal
  * ProseMirror diff so the caret and selection survive edits made elsewhere in
  * the document. The webview falls back to a full rebuild on any diff failure.
  */
 export type ToWebviewMessage =
     | { type: "init"; content: string; lineMap?: number[]; scrollToLine?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
-    | { type: "revert"; content: string; lineMap?: number[]; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode }
     | { type: "externalUpdate"; content: string; lineMap?: number[]; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
     | { type: "scrollToLine"; line: number }
     | { type: "lineMapUpdate"; lineMap: number[] }
@@ -387,6 +385,7 @@ export type ToWebviewMessage =
     // `--editor-max-width` var and the full-width body class); `mode` drives the
     // typography menu's segmented control. Echoed after `contentWidth` changes.
     | { type: "setContentWidth"; cssValue: string; isAuto: boolean; mode: ContentWidthMode }
+    | { type: "setBlockHandles"; mode: BlockHandlesMode }
     // Live TOC updates echoed to every open editor after the matching setting
     // changes (dock side, show/hide, dragged width) — keeps retained webviews in
     // sync with `birta.tocPosition` / `birta.tocVisibility` / `birta.tocWidth`.
@@ -394,7 +393,6 @@ export type ToWebviewMessage =
     | { type: "setTocVisibility"; visibility: TocVisibility }
     | { type: "setTocWidth"; width: number }
     // Live resting block-handle visibility update, after `blockHandles` changes.
-    | { type: "setBlockHandles"; mode: BlockHandlesMode }
     // Live Mermaid theme-mode update, after `birta.mermaid.theme` changes.
     | { type: "setMermaidTheme"; mode: MermaidThemeMode }
     // Live fold-affordance update after `editor.showFoldingControls` /

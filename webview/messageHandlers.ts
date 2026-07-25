@@ -176,18 +176,6 @@ export function createMessageHandlers(
                 }
             }
         },
-        async revert(msg, container) {
-            setMarkdownSource(msg.content);
-            setLineMap(msg.lineMap ?? []);
-            renderFrontmatterPanel(msg.frontmatter);
-            if (msg.imageUriMap) {
-                setImageUriMap(msg.imageUriMap);
-            }
-            if (msg.tableWrap) {
-                applyTableWrap(msg.tableWrap);
-            }
-            await initEditor(container, msg.content);
-        },
         async externalUpdate(msg, container) {
             // Record the version we're syncing to so subsequent outbound edits
             // carry it as baseSyncVersion (stale-update rejection on the

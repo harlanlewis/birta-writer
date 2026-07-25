@@ -79,7 +79,7 @@ describe("every block type has a grabber", () => {
         expect(
             uncovered,
             "Block node types with NO gutter marker. Give each a MarkerSpec in " +
-                "blockMarkerSpec (webview/plugins/headingFold.ts) or add it to " +
+                "blockMarkerSpec (webview/plugins/headingFold/foldGutter.ts) or add it to " +
                 "NO_MARKER_ALLOWLIST here with a reason.",
         ).toEqual([]);
     });
