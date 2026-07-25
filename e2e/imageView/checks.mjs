@@ -165,7 +165,115 @@ export async function run({ page, check, baseUrl }) {
     check("chip-opened editor prefills the path", (await first.locator(".img-path-input").inputValue()) === "img/other.jpeg");
     await page.keyboard.press("Escape");
 
-    // ── 10. Typing in the doc still works (regression) ───────
+    // ── 10. Path suggest dropdown (MAR-220) ──────────────────
+    // The dropdown is the shared suggest list (webview/ui/suggestList.ts).
+    // jsdom can't check what needs real layout and real CSS: that the rows
+    // actually paint through the ui-menu-row primitive, that exactly ONE row
+    // carries the selection wash, and that a list opened near the bottom edge
+    // flips above its field instead of rendering off-screen.
+    const suggestMenu = page.locator(".img-path-complete-menu");
+    const suggestRows = suggestMenu.locator("li");
+
+    await first.locator("img").click();
+    await pencil.dispatchEvent("mousedown");
+    await first.locator(".img-path-input").waitFor({ state: "visible", timeout: 3000 });
+    await first.locator(".img-path-input").fill("img/");
+    await suggestMenu.waitFor({ state: "visible", timeout: 3000 });
+
+    check("typing a path opens the suggest dropdown", await suggestMenu.isVisible());
+    check(
+        "non-image files are filtered out (dir + 2 images)",
+        (await suggestRows.count()) === 3,
+        `${await suggestRows.count()} rows`,
+    );
+    check(
+        "rows compose the ui-menu-row primitive",
+        await suggestRows.evaluateAll((els) =>
+            els.every((el) => el.classList.contains("ui-menu-row")),
+        ),
+    );
+    check(
+        "the directory row shows a folder icon and the image rows thumbnails",
+        (await suggestMenu.locator(".img-complete-icon svg").count()) === 1 &&
+            (await suggestMenu.locator("img.img-complete-thumb").count()) === 2,
+    );
+    check(
+        "the thumbnail composes the radius token, not a raw 2px",
+        (await suggestMenu
+            .locator("img.img-complete-thumb")
+            .first()
+            .evaluate((el) => getComputedStyle(el).borderRadius)) === "3px",
+    );
+
+    /** How many rows currently paint the suggest-widget selection wash. */
+    const washedRows = () =>
+        suggestRows.evaluateAll(
+            (els) =>
+                els.filter(
+                    (el) => getComputedStyle(el).backgroundColor === "rgb(4, 57, 94)",
+                ).length,
+        );
+
+    check("the first row is highlighted when the list opens", (await washedRows()) === 1);
+
+    // Park the pointer on the LAST row, then move the highlight with the
+    // keyboard without moving the mouse. The pointer keeps its CSS :hover on
+    // that row while --focused sits elsewhere — the exact state in which the
+    // old image dropdown painted two rows as selected at once.
+    await suggestRows.nth(2).hover();
+    check("hovering a row moves the highlight to it", (await washedRows()) === 1);
+    await page.keyboard.press("ArrowUp");
+    await page.waitForTimeout(80);
+    check(
+        "keyboard navigation with the pointer parked leaves exactly one row highlighted",
+        (await washedRows()) === 1,
+        `${await washedRows()} rows washed`,
+    );
+    check(
+        "the highlighted row is the one the keyboard moved to",
+        await suggestRows
+            .nth(1)
+            .evaluate((el) => el.classList.contains("fm-suggest-item--focused")),
+    );
+
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // Viewport flip: a short viewport puts the second image's path field near
+    // the bottom edge, where the pre-MAR-220 dropdown rendered off-screen.
+    await page.setViewportSize({ width: 1000, height: 320 });
+    await page.waitForTimeout(200);
+    await second.locator("img").click();
+    await second.locator(".image-toolbar").waitFor({ state: "visible", timeout: 3000 });
+    await second
+        .locator('.image-toolbar button[aria-label="Edit Image Path"]')
+        .dispatchEvent("mousedown");
+    const lowInput = second.locator(".img-path-input");
+    await lowInput.waitFor({ state: "visible", timeout: 3000 });
+    await lowInput.fill("img/");
+    await suggestMenu.waitFor({ state: "visible", timeout: 3000 });
+
+    const menuBox = await suggestMenu.boundingBox();
+    const fieldBox = await lowInput.boundingBox();
+    const vh = page.viewportSize().height;
+    check(
+        "a dropdown near the bottom edge stays fully on screen",
+        menuBox.y >= 0 && menuBox.y + menuBox.height <= vh + 1,
+        `menu ${menuBox.y}..${menuBox.y + menuBox.height} of ${vh}`,
+    );
+    check(
+        "it flips above the field rather than overflowing below it",
+        menuBox.y + menuBox.height <= fieldBox.y + 1,
+        `menu bottom ${menuBox.y + menuBox.height}, field top ${fieldBox.y}`,
+    );
+
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await page.waitForTimeout(200);
+
+    // ── 11. Typing in the doc still works (regression) ───────
     await page.locator(".ProseMirror p").last().click();
     await page.waitForTimeout(150); // let ProseMirror settle the click's text selection
     await page.keyboard.type(" appended");

@@ -7,50 +7,5 @@
     cursor: pointer;
 }
 
-/* ─── Path autocomplete dropdown ─── */
-
-.path-complete-list {
-    position: absolute;
-    z-index: 9999;
-    margin: 2px 0 0;
-    padding: 4px 0;
-    list-style: none;
-    min-width: 200px;
-    max-width: 480px;
-    max-height: 240px;
-    overflow-y: auto;
-    border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-panel-border));
-    border-radius: var(--ui-radius-l);
-    background: var(--vscode-editorSuggestWidget-background, var(--vscode-editor-background));
-    box-shadow: var(--ui-card-shadow);
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-size: var(--ui-fs-m);
-}
-
-/* Composes .ui-menu-row; local: compact rhythm + suggest ink. */
-.path-complete-item {
-    gap: 6px;
-    padding: 3px 10px;
-    color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-editor-foreground));
-}
-
-/* Selection idiom: the suggest-widget tokens; also under the pointer, so
-   hovering the active row never demotes it to the plain hover wash. */
-.path-complete-item--active,
-.path-complete-item--active:hover {
-    background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground));
-    color: var(--vscode-editorSuggestWidget-selectedForeground, var(--vscode-list-activeSelectionForeground));
-}
-
-.path-complete-icon {
-    flex-shrink: 0;
-    line-height: 0;
-    display: flex;
-    align-items: center;
-}
-
-.path-complete-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+/* The path autocomplete dropdown now composes the shared suggest list; its
+   surface rules live in webview/ui/suggestList.css (MAR-220). */

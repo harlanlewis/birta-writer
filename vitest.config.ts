@@ -40,6 +40,9 @@ export default defineConfig({
                 "webview/components/toolbar/hoverMenu.ts",
                 "webview/ui/dom.ts",
                 "webview/ui/tooltip.ts",
+                "webview/ui/suggestList.ts",
+                "webview/components/imageView/imgPathComplete.ts",
+                "webview/components/pathLink/pathComplete.ts",
             ],
             thresholds: {
                 lines: 70,

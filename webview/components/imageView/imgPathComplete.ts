@@ -1,5 +1,20 @@
+/**
+ * components/imageView/imgPathComplete.ts
+ *
+ * Image-path autocompletion for the image toolbar's path field: typing a
+ * path-looking fragment offers the directories and IMAGE files under it, with
+ * a live thumbnail per row. Render, keyboard highlight, and viewport placement
+ * come from the shared dropdown (`ui/suggestList.ts`); what stays here is what
+ * is genuinely image-specific — the `webviewUri` filter and the
+ * `dataset.imgWebviewUri` handoff that lets confirm() render the picked file
+ * without a second resolve roundtrip.
+ */
 import { notifyGetPathSuggestions, notifyResolveImagePath } from "@/messaging";
 import { onOutsideClick } from "@/ui/outsideClick";
+import {
+    createSuggestMenuFromRows,
+    type LinkSuggestMenu,
+} from "@/ui/suggestList";
 import { getFileIcon } from "../pathLink/fileIcons";
 import type { PathSuggestionItem } from "../../../shared/messages";
 
@@ -45,6 +60,11 @@ export function dispatchImgPathSuggestions(id: string, items: PathSuggestionItem
     }
 }
 
+/** The name a row shows: the last segment, without a trailing slash. */
+function lastSegment(path: string): string {
+    return path.replace(/\/$/, "").split("/").pop() ?? path;
+}
+
 /**
  * Attach image-path autocompletion to an <input> element.
  * @param onEnter  called on Enter when the dropdown is closed (i.e. confirm)
@@ -56,35 +76,24 @@ export function attachImgPathComplete(
     onEnter?: () => void,
     onEscape?: () => void,
 ): () => void {
-    let dropdown: HTMLUListElement | null = null;
-    let activeIndex = -1;
+    let menu: LinkSuggestMenu | null = null;
     let lastItems: PathSuggestionItem[] = [];
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let suppressMouseover = false;
     let isDestroyed = false;
     // After an autocomplete selection, skip clearing the dataset on the next onInput
     let skipDatasetClear = false;
+    // Bumped on every deliberate close (Escape, blur, outside click, pick):
+    // replies to requests issued before the last close are stale and must not
+    // re-open a dropdown the user already dismissed.
+    let closeGeneration = 0;
 
     // ── Dropdown management ─────────────────────────────────────
 
     function closeDropdown(): void {
-        if (dropdown) {
-            dropdown.remove();
-            dropdown = null;
-        }
-        activeIndex = -1;
+        closeGeneration++;
+        menu?.destroy();
+        menu = null;
         lastItems = [];
-    }
-
-    function updateActiveItem(): void {
-        if (!dropdown) { return; }
-        Array.from(dropdown.children).forEach((li, i) => {
-            const isActive = i === activeIndex;
-            li.classList.toggle("img-path-complete-item--active", isActive);
-            if (isActive) {
-                (li as HTMLElement).scrollIntoView({ block: "nearest" });
-            }
-        });
     }
 
     function applySelection(item: PathSuggestionItem): void {
@@ -100,14 +109,13 @@ export function attachImgPathComplete(
         if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
         input.focus();
 
-        if (item.isDir) {
+        const wasDir = item.isDir;
+        closeDropdown();
+        if (wasDir) {
             // A directory was selected: auto-expand the next level
-            closeDropdown();
             setTimeout(() => {
-                triggerSuggest();
+                if (!isDestroyed) { triggerSuggest(); }
             }, 50);
-        } else {
-            closeDropdown();
         }
     }
 
@@ -118,59 +126,47 @@ export function attachImgPathComplete(
         if (filtered.length === 0) { return; }
         lastItems = filtered;
 
+        // Viewport coordinates (the shell's menu is position:fixed); flipTop
+        // lets a field near the bottom edge drop its list upward instead of
+        // off-screen.
         const rect = input.getBoundingClientRect();
-        const ul = document.createElement("ul");
-        ul.className = "img-path-complete-list";
-        // position: fixed, so use viewport coordinates directly
-        ul.style.top = `${rect.bottom + 2}px`;
-        ul.style.left = `${rect.left}px`;
-        ul.style.minWidth = `${rect.width}px`;
-
-        filtered.forEach((item, i) => {
-            const li = document.createElement("li");
-            li.className = "img-path-complete-item";
-
-            // Left: a thumbnail (image) or folder icon (directory)
-            if (item.webviewUri) {
-                const thumb = document.createElement("img");
-                thumb.className = "img-complete-thumb";
-                thumb.src = item.webviewUri;
-                thumb.alt = "";
-                li.appendChild(thumb);
-            } else {
-                const iconEl = document.createElement("span");
-                iconEl.className = "img-complete-icon";
-                iconEl.innerHTML = getFileIcon(item.path, item.isDir);
-                li.appendChild(iconEl);
-            }
-
-            // Right: the file name (without a trailing slash; the full path is the title)
-            const lastSeg = item.path.replace(/\/$/, "").split("/").pop() ?? item.path;
-            const label = document.createElement("span");
-            label.className = "img-complete-label";
-            label.textContent = lastSeg;
-            li.title = item.path;
-            li.appendChild(label);
-
-            li.addEventListener("mousedown", (e) => {
-                e.preventDefault();
-                activeIndex = i;
-                applySelection(item);
-            });
-            li.addEventListener("mousemove", () => { suppressMouseover = false; });
-            li.addEventListener("mouseover", () => {
-                if (suppressMouseover) { return; }
-                activeIndex = i;
-                updateActiveItem();
-            });
-
-            ul.appendChild(li);
-        });
-
-        document.body.appendChild(ul);
-        dropdown = ul;
-        activeIndex = 0;
-        updateActiveItem();
+        menu = createSuggestMenuFromRows(
+            filtered.map((item) => ({
+                // The picked value is the FULL path while the row shows only
+                // its last segment, so the row owns its own content.
+                text: item.path,
+                title: item.path,
+                render: (li) => {
+                    // Left: a thumbnail (image) or folder icon (directory)
+                    if (item.webviewUri) {
+                        const thumb = document.createElement("img");
+                        thumb.className = "img-complete-thumb";
+                        thumb.src = item.webviewUri;
+                        thumb.alt = "";
+                        li.appendChild(thumb);
+                    } else {
+                        const iconEl = document.createElement("span");
+                        iconEl.className = "img-complete-icon";
+                        iconEl.innerHTML = getFileIcon(item.path, item.isDir);
+                        li.appendChild(iconEl);
+                    }
+                    const label = document.createElement("span");
+                    label.className = "img-complete-label";
+                    label.textContent = lastSegment(item.path);
+                    li.appendChild(label);
+                },
+            })),
+            {
+                left: rect.left,
+                top: rect.bottom + 2,
+                flipTop: rect.top - 2,
+                minWidth: rect.width,
+            },
+            // By INDEX, not text: one directory listing can hold a folder
+            // `foo/` and a file `foo`, which render the same segment.
+            (_text, i) => applySelection(lastItems[i]),
+            { className: "img-path-complete-menu", initialActive: 0 },
+        );
     }
 
     // ── Trigger a completion request ────────────────────────────
@@ -183,8 +179,11 @@ export function attachImgPathComplete(
         }
 
         const id = `ips_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+        const requestGeneration = closeGeneration;
         _pendingImgSuggestions.set(id, (items) => {
-            if (!isDestroyed) {
+            // Ignore replies to requests issued before the last close: the
+            // user dismissed the dropdown while this one was in flight.
+            if (!isDestroyed && requestGeneration === closeGeneration) {
                 showDropdown(items);
             }
         });
@@ -213,56 +212,44 @@ export function attachImgPathComplete(
     }
 
     function onKeydown(e: KeyboardEvent): void {
-
+        // Never interrupt an IME composition — the candidate window owns
+        // Enter and the arrow keys while it is open.
         if (e.isComposing) { return; }
 
         // ── Enter / Escape: handle the dropdown first when open, otherwise delegate to the callbacks ──
         if (e.key === "Enter") {
             e.preventDefault();
             e.stopPropagation();
-            if (dropdown && activeIndex >= 0 && activeIndex < lastItems.length) {
-                applySelection(lastItems[activeIndex]);
-            } else {
-                onEnter?.();
-            }
+            if (!menu?.pickActive()) { onEnter?.(); }
             return;
         }
 
         if (e.key === "Escape") {
             e.preventDefault();
             e.stopPropagation();
-            if (dropdown) {
-                closeDropdown();
-            } else {
-                onEscape?.();
-            }
+            // Close unconditionally: even with no dropdown up this invalidates
+            // any in-flight request, so a reply can't drop a dropdown onto a
+            // field the user just cancelled. Escape only reaches the caller's
+            // cancel handler when there was nothing to dismiss first.
+            const hadMenu = menu !== null;
+            closeDropdown();
+            if (!hadMenu) { onEscape?.(); }
             return;
         }
 
-        if (!dropdown) { return; }
+        if (!menu) { return; }
 
         // ── Dropdown arrow-key navigation ─────────────────────────
-        if (e.key === "ArrowDown") {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
             e.stopPropagation();
-            suppressMouseover = true;
-            activeIndex = activeIndex >= lastItems.length - 1 ? 0 : activeIndex + 1;
-            updateActiveItem();
-            return;
-        }
-        if (e.key === "ArrowUp") {
-            e.preventDefault();
-            e.stopPropagation();
-            suppressMouseover = true;
-            activeIndex = activeIndex <= 0 ? lastItems.length - 1 : activeIndex - 1;
-            updateActiveItem();
+            menu.moveActive(e.key === "ArrowDown" ? 1 : -1);
             return;
         }
         if (e.key === "Tab") {
-            if (activeIndex >= 0 && activeIndex < lastItems.length) {
+            if (menu.pickActive()) {
                 e.preventDefault();
                 e.stopPropagation();
-                applySelection(lastItems[activeIndex]);
             }
             return;
         }
@@ -281,8 +268,8 @@ export function attachImgPathComplete(
     // The dropdown is rebuilt per suggestion reply, hence the getter; the
     // no-dropdown guard mirrors the original handler (nothing to close).
     const outsideOff = onOutsideClick(
-        () => [dropdown, input],
-        () => { if (dropdown) { closeDropdown(); } },
+        () => [menu?.el, input],
+        () => { if (menu) { closeDropdown(); } },
     );
 
     // ── cleanup ────────────────────────────────────────────────
