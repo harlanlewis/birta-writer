@@ -56,19 +56,30 @@ async function saveEditing(find: string, replace: string): Promise<string> {
 }
 
 describe("Logseq round-trip — editing one block leaves every other line byte-intact (MAR-131)", () => {
-    it("editing a tab-indented block keeps every untouched sibling's tabs", async () => {
-        const merged = await saveEditing("A nested child block", "An EDITED nested child block");
-        // The edited line itself re-emits with the serializer's space
-        // indentation — its own byte style is the cosmetic remainder
-        // (MAR-132's Logseq flag, someday). Depth is preserved either way.
-        expect(merged).toContain("- An EDITED nested child block");
+    it("editing a tab-indented block keeps its own tab and every untouched sibling's", async () => {
+        // Deliberately a block that HAS a deeper child. The original version
+        // of this test edited "A nested child block", which is childless, and
+        // so could claim "the edited line re-emits with space indentation;
+        // depth is preserved either way" — false for any edited block with a
+        // subtree. A tab is 4 columns and the serializer's indent is 2 spaces,
+        // so writing the edited line with spaces while its untouched
+        // grandchild keeps its two tabs pushed the grandchild 4+ columns
+        // inside the edited item's content: it stopped being a list item at
+        // all (MAR-213). The edited line now keeps its own tab bytes too.
+        const merged = await saveEditing(
+            "A child that carries block properties.",
+            "An EDITED child that carries block properties.",
+        );
+        expect(merged).toContain("\t- An EDITED child that carries block properties.");
         // Every UNTOUCHED line keeps its tab bytes — the edit's blast radius
         // is exactly the edited line, not its contiguous churn region
         // (normLineForCompare treats a leading tab as two spaces, so
         // tab-indented lines are keeps and no region forms around them).
-        expect(merged).toContain("\t- A child that carries block properties.");
+        expect(merged).toContain("\t- A nested child block, one tab deeper.");
         expect(merged).toContain("\t\t- A grandchild, two tabs deep.");
         expect(merged).toContain("\t- > A blockquote nested inside a bullet.");
+        // …and the edited block's own continuation lines are untouched keeps.
+        expect(merged).toContain("\t  collapsed:: true");
     });
 
     it("editing an org-cookie line keeps the cookie unescaped", async () => {

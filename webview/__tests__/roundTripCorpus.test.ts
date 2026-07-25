@@ -110,27 +110,21 @@ async function reparsedShape(md: string): Promise<string[]> {
 }
 
 /**
- * Fixtures invariant C fails on TODAY, each with the ticket that owns it. These
- * are real, reproducible structure losses that the gate found the moment it was
- * written — not flakes and not acceptable behaviour. They are listed rather than
- * fixed because each needs a design decision in the merge layer, and listing
- * them is strictly better than the alternative the gate replaced (no in-place
- * edit coverage at all, which is how they survived this long).
+ * Fixtures invariant C fails on TODAY, each with the ticket that owns it. An
+ * entry is a real, reproducible structure loss awaiting a design decision in
+ * the merge layer — never a flake, and never acceptable behaviour.
+ *
+ * Currently EMPTY, and that is the goal state. The three founding entries
+ * (`logseq/journal.md`, `logseq/page.md`, `table-cell-breaks.md`) were all one
+ * bug — an in-place replacement committed the serializer's whole line, so an
+ * edited line's untouched parts (its outline indent unit, its other table
+ * cells) were canonicalized while its neighbours kept their saved bytes. Closed
+ * by `FormatProfile.reconcileReplacement` (MAR-213 / MAR-214).
  *
  * DELETE a line here the moment its ticket lands — an entry that stops failing
  * is a gate silently doing nothing.
  */
-const INVARIANT_C_KNOWN_FAILURES: Record<string, string> = {
-    // MAR-213: the edited line re-indents to the serializer's 2 spaces while its
-    // untouched children keep their tab bytes; mixing the two units breaks the
-    // outline tree and a child stops being a list item.
-    "logseq/journal.md": "MAR-213",
-    "logseq/page.md": "MAR-213",
-    // MAR-214: protection granularity is a LINE, but a table row is one line —
-    // editing any cell unprotects the whole row, and a `<br />`-only cell the
-    // serializer cannot round-trip is emitted empty, losing content.
-    "table-cell-breaks.md": "MAR-214",
-};
+const INVARIANT_C_KNOWN_FAILURES: Record<string, string> = {};
 
 describe("corpus invariant C — typing inside a block never restructures the document", () => {
     for (const { name, content } of fixtures) {

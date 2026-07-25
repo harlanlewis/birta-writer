@@ -437,3 +437,74 @@ describe("applyMinimalChanges — line classification (MAR-161): keys never cros
         expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
     });
 });
+
+describe("applyMinimalChanges — an edited line keeps the parts the user didn't touch (MAR-213/MAR-214)", () => {
+    it("editing a tab-indented outline block should keep its tab so the subtree survives", () => {
+        // MAR-213. The edited line used to be written with the serializer's
+        // 2-space indent while its untouched grandchild kept its tabs — and a
+        // tab is 4 columns to 2 spaces' 2, so the grandchild landed 4+ columns
+        // inside the edited item's content and stopped being a list item at
+        // all (absorbed as an escaped literal `\- grand`).
+        const saved = "- parent\n\t- child\n\t\t- grand\n";
+        const serialized = "- parent\n  - childQ\n    - grand\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "- parent\n\t- childQ\n\t\t- grand\n",
+        );
+    });
+
+    it("outdenting a nested item should still register as a real edit", () => {
+        // The guard on the indent carry: `\t` and `` do NOT key equal, so this
+        // is a genuine depth change and the serializer's indent must win.
+        const saved = "- parent\n\t- child\n";
+        const serialized = "- parent\n- childQ\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe("- parent\n- childQ\n");
+    });
+
+    it("indenting a top-level item deeper should still register as a real edit", () => {
+        const saved = "- parent\n- child\n";
+        const serialized = "- parent\n  - childQ\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe("- parent\n  - childQ\n");
+    });
+
+    it("editing one table cell should keep an untouched sibling cell's `<br />` bytes", () => {
+        // MAR-214. `<br />` keys equal to an empty cell (older saves wrote
+        // empty cells that way), so a zero-edit save is a plain `keep` and no
+        // protection region ever forms — the loss is purely that editing ANY
+        // cell re-emitted the whole row, emptying a cell the user never
+        // visited.
+        const saved = "| a | b |\n| --- | --- |\n| <br /> | note |\n";
+        const serialized = "| a | b |\n| --- | --- |\n|  | noteQ |\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "| a | b |\n| --- | --- |\n| <br /> | noteQ |\n",
+        );
+    });
+
+    it("editing one table cell should keep a sibling cell's `<br/>` spelling", () => {
+        const saved = "| a | b |\n| --- | --- |\n| x<br/>y | note   |\n";
+        const serialized = "| a | b |\n| --- | --- |\n| x<br />y | noteQ |\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "| a | b |\n| --- | --- |\n| x<br/>y | noteQ |\n",
+        );
+    });
+
+    it("the edited cell's own new bytes should land (salvage never overrides a real change)", () => {
+        const saved = "| a | b |\n| --- | --- |\n| keep | old |\n";
+        const serialized = "| a | b |\n| --- | --- |\n| keep | new |\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "| a | b |\n| --- | --- |\n| keep | new |\n",
+        );
+    });
+
+    it("a column alignment change should land (separator rows are never salvaged)", () => {
+        const saved = "| a | b |\n| --- | --- |\n| 1 | 2 |\n";
+        const serialized = "| a | b |\n| :-: | ---: |\n| 1 | 2 |\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
+    });
+});

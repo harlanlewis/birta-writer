@@ -78,6 +78,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Editing a tab-indented outline block no longer detaches the blocks nested under it** — in a file whose nesting is written with tabs (a Logseq graph, or any hand-written outline), typing into a block that had children rewrote *that* line with space indentation while its untouched children kept their tabs. Because a tab is a wider indent than the two spaces that replaced it, the children ended up indented too far relative to their parent and stopped being list items at all — a child could reopen as literal text (`\- child`) inside the block above it, one keystroke after touching an unrelated word. An edited line now keeps the exact indentation it was written with, so the outline around it is unchanged; genuinely indenting or outdenting a block still saves as the real change it is.
+
+- **Editing one table cell no longer empties a line break in another cell of the same row** — a table row is a single line, so typing in any cell re-wrote the whole row on save. A cell containing only a line break (`<br />`) came back empty, and `<br/>` / `<br>` spellings elsewhere in that row were rewritten — content lost from cells the cursor never visited. Every cell you didn't edit now keeps its own bytes.
+
 - **Typing inside a `~~~` code fence no longer swallows the rest of the file** — when a fence sat just after a line the editor rewrites on save (say a paragraph containing a literal `*`), a single keystroke inside the fence could save its opening line as ``` ``` ``` while leaving the closing `~~~` untouched. The mismatched pair meant everything below the fence reopened *as code*, silently. Fences now keep the marker style they were written with, whatever is around them.
 
 - **A file you just created is offered as a link target right away** — link autocomplete and the frontmatter value suggestions worked from a workspace scan refreshed on a timer, so a newly added file could take up to ten seconds to become suggestible and a deleted one kept being offered until the timer lapsed. Both now refresh the moment a file is created, deleted, or renamed.
