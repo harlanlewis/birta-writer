@@ -81,6 +81,15 @@ product wordmarks that might run fluid, structural, humanist-serif, geometric, c
 dynamic, a shared palette and brand system carry the family read far more reliably than any
 typographic thread could.
 
+**Palette — decided: inherit `harlanlewis.com`.** Birta adopts Harlan's existing site
+palette wholesale rather than inventing one: warm neutral grounds (cream in light, deep
+drab-olive in dark), warm-grey secondary text, and a single accent that shifts by mode
+(magenta in light, warm orange in dark). It is already a cohesive, warm-not-cold world that
+works across both themes — exactly the cross-product connective tissue this system leans on.
+Source of truth: `harlanlewis.com`. **Consequence for this effort:** the active work is now
+just the **wordmark and logo layers**; colour is handled, so exploration runs in black and
+white and the resolved wordmarks drop into the inherited palette at the end.
+
 **On a unifying thread *between the wordmarks themselves*: punt — deliberately.** The
 choice is to either find a nuanced shared touch across every product wordmark or let them
 be genuinely diverse and let the other layers unify them. **Working decision: the latter —
@@ -291,26 +300,24 @@ construction) applies; these are the Birta-specific sharpenings:
 ## Open decisions & next actions
 
 **Decided (recorded above, not reopened):** the three-tier wordmark model with no
-monogram; the utility glyph is a required functional deliverable; and coherence across
-product wordmarks is punted to the other system layers (palette first) rather than a forced
-typographic thread.
+monogram; the utility glyph is a required functional deliverable; coherence across product
+wordmarks is punted to the other system layers rather than a forced typographic thread; and
+the **palette is inherited from `harlanlewis.com`** — so the active effort is the wordmark
+and logo layers only. The first-draft concept round is briefed in
+[`docs/brand-brief.md`](brand-brief.md).
 
 Still open:
 
 1. **The app-icon lockup** — how "Birta [Product]" occupies a square with no symbol to
    anchor it (stacked? cropped? the product word dominant with "Birta" as a small
    endorsement?). The central layout problem of this system.
-2. **The other system layers** — palette above all (the primary cohesion carrier), plus the
-   supporting body/UI typeface, compositional grammar, motion, voice. This doc is
-   wordmark-forward so far; these need their own exploration and are where the family read
-   is won or lost.
-3. **The "Birta Labs" corporate lockup** — how the plain "Labs" suffix is set so it reads
+2. **The "Birta Labs" corporate lockup** — how the plain "Labs" suffix is set so it reads
    corporate, not as a product voice.
-4. **The product-voice playbook** — the axes a product word may move along
+3. **The product-voice playbook** — the axes a product word may move along
    (weight · structure · contrast · fluidity), so each product is *developed* deliberately
    even though products aren't *unified* typographically.
-5. **Who executes** — maintainer, a hired designer, or agent-assisted exploration; this
-   doc is the brief either way.
-6. **Track it** — the *identity design* is planned work distinct from the MAR-134 rebrand
+4. **Who executes** — a hired designer, a concept-artist crew (first-draft brief ready), or
+   agent-assisted exploration; this doc plus the brief are the input either way.
+5. **Track it** — the *identity design* is planned work distinct from the MAR-134 rebrand
    residual; worth its own Linear issue (via `/devlog`) referencing this doc, so the design
    effort and the legal/publishing tasks stay linked but separate.
