@@ -1,4 +1,5 @@
 import "./footnote.css";
+import { bindActivate } from "@/ui/dom";
 import type { Node as PMNode } from "@/pm";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
@@ -274,9 +275,7 @@ export function createFootnoteDefinitionView(
     backlink.type = "button";
     backlink.textContent = "↩";
     backlink.title = t("Go to reference");
-    backlink.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    bindActivate(backlink, () => {
         jumpToFirstReference(view, (node.attrs["label"] as string) ?? "");
     });
 

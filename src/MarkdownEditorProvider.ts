@@ -244,6 +244,31 @@ export class MarkdownEditorProvider
         this._wordCountView = view;
     }
 
+    /**
+     * The workspace folder that owns `document` — the base every `@/…` path in
+     * that file resolves against.
+     *
+     * The single source of truth for this, deliberately (MAR-216). Six call
+     * sites used to answer it two different ways: `getWorkspaceFolder`, and a
+     * hand-rolled `workspaceFolders.find(f => fsPath.startsWith(f.fsPath + sep))`.
+     * Those disagree whenever one workspace folder is nested inside another —
+     * `.find` returns the FIRST folder that is a prefix, `getWorkspaceFolder`
+     * returns the MOST SPECIFIC one. With `/repo` and `/repo/docs` both open, a
+     * file in `/repo/docs` resolved to `/repo` on some paths and `/repo/docs`
+     * on others, so the same `@/img.png` pointed at two different files
+     * depending on whether it went through link resolution or image rewriting.
+     *
+     * `getWorkspaceFolder` is the correct one: it is what VS Code itself means
+     * by "the containing folder", including its own multi-root tie-breaking.
+     * The `?? [0]` fallback keeps files outside any folder working.
+     */
+    private _workspaceRootFor(document: vscode.TextDocument): string | undefined {
+        return (
+            vscode.workspace.getWorkspaceFolder(document.uri)
+            ?? vscode.workspace.workspaceFolders?.[0]
+        )?.uri.fsPath;
+    }
+
     /** Render the cached counts for `uriKey`, or hide the readout if none exist. */
     private _renderWordCount(uriKey: string): void {
         const counts = this._wordCounts.get(uriKey);
@@ -1397,12 +1422,7 @@ export class MarkdownEditorProvider
         wiki: boolean,
     ): Promise<string | null> {
         const docFsPath = document.uri.fsPath;
-        const containingFolder = vscode.workspace.workspaceFolders?.find(
-            f => docFsPath.startsWith(f.uri.fsPath + path.sep),
-        );
-        const workspaceRoot =
-            containingFolder?.uri.fsPath ??
-            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
+        const workspaceRoot = this._workspaceRootFor(document) ?? null;
 
         const smartLinks = readBirtaSetting("smartLinks", document.uri);
 
@@ -1447,10 +1467,7 @@ export class MarkdownEditorProvider
 
         let resolved: string | null = null;
         if (absPath) {
-            const docFsPath = document.uri.fsPath;
-            const root = (vscode.workspace.workspaceFolders?.find(
-                f => docFsPath.startsWith(f.uri.fsPath + path.sep),
-            ) ?? vscode.workspace.workspaceFolders?.[0])?.uri.fsPath;
+            const root = this._workspaceRootFor(document);
             if (root) {
                 const rel = path.relative(root, absPath);
                 resolved = rel.startsWith("..") || path.isAbsolute(rel)
@@ -1583,8 +1600,7 @@ export class MarkdownEditorProvider
 
         if (document.uri.scheme !== 'file') { return content; }
         const mdDir = path.dirname(document.uri.fsPath);
-        const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
-            ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const workspaceRoot = this._workspaceRootFor(document);
         const uriMap = this._imageUriMaps.get(uriKey) ?? new Map<string, string>();
         this._imageUriMaps.set(uriKey, uriMap);
         return content.replace(/!\[([^\]]*)\]\(([^)\s"]+)/g, (match, alt, src) => {
@@ -1867,10 +1883,7 @@ export class MarkdownEditorProvider
         const docFsPath = document.uri.fsPath;
         const docDir = path.dirname(docFsPath);
         const sep = path.sep;
-        const workspaceFolder = vscode.workspace.workspaceFolders?.find(
-            f => docFsPath.startsWith(f.uri.fsPath + sep),
-        ) ?? vscode.workspace.workspaceFolders?.[0];
-        const workspaceRoot = workspaceFolder?.uri.fsPath;
+        const workspaceRoot = this._workspaceRootFor(document);
 
         // Split at the last "/" into a directory part and a name prefix
         const lastSlash = q.lastIndexOf('/');
@@ -1958,8 +1971,7 @@ export class MarkdownEditorProvider
             post([]);
             return;
         }
-        const workspaceRoot = (vscode.workspace.getWorkspaceFolder(document.uri)
-            ?? vscode.workspace.workspaceFolders?.[0])?.uri.fsPath;
+        const workspaceRoot = this._workspaceRootFor(document);
         if (!workspaceRoot) {
             post([]);
             return;
@@ -2002,8 +2014,7 @@ export class MarkdownEditorProvider
     ): void {
         if (document.uri.scheme !== 'file') { return; }
         const mdDir = path.dirname(document.uri.fsPath);
-        const workspaceRoot = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath
-            ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const workspaceRoot = this._workspaceRootFor(document);
         try {
             let absPath: string;
             if (relPath.startsWith('@/')) {

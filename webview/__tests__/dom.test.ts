@@ -5,7 +5,9 @@
  * never covers.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { createButton, setupApplyOnBlur } from "../ui/dom";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { bindActivate, createButton, setupApplyOnBlur } from "../ui/dom";
 
 describe("createButton onClick", () => {
     beforeEach(() => {
@@ -138,4 +140,82 @@ describe("setupApplyOnBlur", () => {
         expect(revert).not.toHaveBeenCalled();
         expect(e.defaultPrevented).toBe(false);
     });
+});
+
+/**
+ * MAR-217. Chrome buttons must act on mousedown (a click landing after the
+ * browser's focus shift would steal the editor selection the button is about
+ * to operate on) — but Enter/Space synthesize a `click` with `detail === 0`
+ * and never fire mousedown. Binding only mousedown makes a button reachable
+ * by Tab and completely inert once you get there, silently: nothing throws.
+ * 15 buttons across 6 chrome surfaces shipped that way.
+ */
+describe("bindActivate — mouse and keyboard reach the same handler", () => {
+    beforeEach(() => { document.body.innerHTML = ""; });
+
+    it("a mouse press should run the handler once and claim the event", () => {
+        const handler = vi.fn();
+        const el = document.createElement("button");
+        bindActivate(el, handler);
+        document.body.appendChild(el);
+
+        const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        el.dispatchEvent(down);
+        // The real browser sequence: mousedown THEN click with detail >= 1.
+        el.dispatchEvent(new MouseEvent("click", { detail: 1, bubbles: true, cancelable: true }));
+
+        expect(handler, "a mouse press must not double-fire").toHaveBeenCalledTimes(1);
+        expect(down.defaultPrevented).toBe(true);
+    });
+
+    it("a keyboard activation (detail 0, no mousedown) should run the handler", () => {
+        const handler = vi.fn();
+        const el = document.createElement("button");
+        bindActivate(el, handler);
+        document.body.appendChild(el);
+
+        el.dispatchEvent(new MouseEvent("click", { detail: 0, bubbles: true, cancelable: true }));
+
+        expect(handler, "Enter/Space left the button inert").toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("chrome surfaces bind activation, not bare mousedown (MAR-217)", () => {
+    // A source-level guard: the defect is invisible at runtime (the button
+    // just does nothing), so the cheapest durable check is that no chrome
+    // surface hand-rolls the mousedown-only pattern again. Any new button
+    // must go through createButton or bindActivate.
+    const SURFACES = [
+        "components/toc/index.ts",
+        "components/toc/reviewList.ts",
+        "components/linkPopup/index.ts",
+        "components/footnote/index.ts",
+        "components/blockMenu/menu.ts",
+        "components/networkOptIn/index.ts",
+    ];
+
+    for (const rel of SURFACES) {
+        it(`${rel} should not hand-roll a mousedown-only action handler`, () => {
+            const src = readFileSync(join(__dirname, "..", rel), "utf8");
+            // Only <button> elements matter: they are focusable, so Tab reaches
+            // them and Enter/Space must work. A mousedown-only listener on a
+            // <span> or a NodeView's document content is legitimate — there is
+            // no keyboard path to it in the first place.
+            const buttons = new Set(
+                [...src.matchAll(/(?:const|let)\s+(\w+)\s*=\s*document\.createElement\("button"\)/g)]
+                    .map((m) => m[1]),
+            );
+            const handRolled = [
+                ...src.matchAll(
+                    /(\w+)\.addEventListener\(\s*["']mousedown["']\s*,\s*\((\w+)\)\s*=>\s*\{\s*\n\s*\2\.preventDefault\(\);\s*\n\s*\2\.stopPropagation\(\);\s*\n(?!\s*\}\))/g,
+                ),
+            ]
+                .map((m) => m[1])
+                .filter((name) => buttons.has(name));
+            expect(
+                handRolled,
+                "use bindActivate (webview/ui/dom.ts) — mousedown alone is keyboard-dead",
+            ).toEqual([]);
+        });
+    }
 });

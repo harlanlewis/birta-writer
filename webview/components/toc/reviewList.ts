@@ -20,6 +20,7 @@
  * An adapter calls `render(result)` each refresh; producing the `result` (the
  * scan / finding read) is the adapter's job.
  */
+import { bindActivate } from "@/ui/dom";
 import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { revealRange } from "./navigate";
@@ -127,9 +128,7 @@ export function initReviewList(
         btn.className = "ui-btn review-seg";
         btn.textContent = label;
         btn.tabIndex = -1;
-        btn.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+        bindActivate(btn, () => {
             setMode(grouped, true);
         });
         return btn;
@@ -222,9 +221,7 @@ export function initReviewList(
         name.textContent = tag;
         header.append(caret, name);
 
-        header.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+        bindActivate(header, () => {
             if (collapsed.has(tag)) { collapsed.delete(tag); } else { collapsed.add(tag); }
             renderedSignature = null;
             renderInto(lastResult);
@@ -238,9 +235,7 @@ export function initReviewList(
         btn.className = "review-more";
         btn.tabIndex = -1;
         btn.textContent = expanded.has(tag) ? t("Show less") : t("Show N more").replace("N", String(hidden));
-        btn.addEventListener("mousedown", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+        bindActivate(btn, () => {
             if (expanded.has(tag)) { expanded.delete(tag); } else { expanded.add(tag); }
             renderedSignature = null;
             renderInto(lastResult);
