@@ -301,11 +301,26 @@ export async function run({ page, check, baseUrl }) {
     // accent bar). Both invariants are asserted at 100% AND 200% content
     // font scale: the paddings the calibrations compensate are em-based, so
     // px-constant calibrations drift off the line as the font grows.
-    const measureNested = () => page.evaluate(() => {
-        const out = [];
+    //
+    // The sweep SCROLLS the document (MAR-215): gutter chrome is materialized
+    // near the viewport, so at 200% the fixture is taller than the window and
+    // its lower blocks only get their markers once reached. Entries are keyed
+    // by the host's absolute document offset — layout is scroll-invariant, so
+    // that identity is stable — which keeps the check exhaustive (all 9) while
+    // measuring each marker at a scroll position where it exists.
+    const measureNested = () => page.evaluate(async () => {
+        const settle = async () => {
+            await new Promise((r) => setTimeout(r, 120));
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            await new Promise((r) => setTimeout(r, 120));
+        };
+        const byOffset = new Map();
+        const collect = () => {
         for (const el of document.querySelectorAll(".block-gutter-host--child")) {
             const m = el.querySelector(".heading-fold-marker--block");
             if (!m) continue;
+            const offsetKey = Math.round(el.getBoundingClientRect().top + window.scrollY);
+            if (byOffset.has(offsetKey)) continue;
             const mr = m.getBoundingClientRect();
             let lineCenter;
             if (/^H[1-6]$/.test(el.tagName)) {
@@ -336,10 +351,20 @@ export async function run({ page, check, baseUrl }) {
                     clearance = Math.min(clearance, Math.round((anc.getBoundingClientRect().left - mr.right) * 10) / 10);
                 }
             }
-            out.push({ pill: m.dataset.pill, tag: el.tagName, clearance,
+            byOffset.set(offsetKey, { pill: m.dataset.pill, tag: el.tagName, clearance,
                        dy: Math.round((mr.y + mr.height / 2 - lineCenter) * 10) / 10 });
         }
-        return out;
+        };
+        const step = Math.round(window.innerHeight * 0.75);
+        const maxY = document.documentElement.scrollHeight;
+        for (let y = 0; y <= maxY; y += step) {
+            window.scrollTo({ top: y, behavior: "instant" });
+            await settle();
+            collect();
+        }
+        window.scrollTo({ top: 0, behavior: "instant" });
+        await settle();
+        return [...byOffset.values()];
     });
     for (const scale of [1, 2]) {
         await page.evaluate((sc) => {

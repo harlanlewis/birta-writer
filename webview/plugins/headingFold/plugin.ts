@@ -44,6 +44,7 @@ import {
 } from "./foldAnchors";
 import { buildHeadingFoldDecorations, structureFingerprint } from "./foldDecorations";
 import { requestIdle } from "../../utils/idle";
+import { observeVisibleWindow } from "../visibleRange";
 
 /**
  * MAR-189: whether we can defer the affordance decoration build off the mount
@@ -67,6 +68,43 @@ function getHeadingGutter(heading: HTMLElement | null): HTMLElement | null {
 function getHeadingElementAtPos(view: EditorView, pos: number): HTMLElement | null {
     const dom = view.nodeDOM(pos);
     return isHeadingElement(dom as Element | null) ? dom as HTMLElement : null;
+}
+
+type Span = { from: number; to: number };
+
+/**
+ * MAR-215: the window(s) the decoration build materializes — the scroll window
+ * plus, only when the caret has left it, the caret's own block. Null (the
+ * whole document) whenever no window has been measured.
+ */
+function chromeWindows(scrollWindow: Span | null, pinned: Span | null): readonly Span[] | null {
+    if (!scrollWindow) {
+        return null;
+    }
+    return pinned ? [scrollWindow, pinned] : [scrollWindow];
+}
+
+/**
+ * The caret's top-level block, or null when the caret sits inside the scroll
+ * window already (the ordinary case — ProseMirror keeps the caret scrolled into
+ * view). Only that case is tracked, so ordinary caret movement changes
+ * nothing and the selection-only early-return still does zero work.
+ */
+function caretPin(state: { selection: { $head: any } }, scrollWindow: Span | null): Span | null {
+    if (!scrollWindow) {
+        return null;
+    }
+    const $head = state.selection.$head;
+    if ($head.depth < 1) {
+        return null;
+    }
+    const from = $head.before(1);
+    const to = $head.after(1);
+    return to > scrollWindow.from && from < scrollWindow.to ? null : { from, to };
+}
+
+function sameSpan(a: Span | null, b: Span | null): boolean {
+    return a === b || (!!a && !!b && a.from === b.from && a.to === b.to);
 }
 
 export const headingFoldPlugin = $prose(() =>
@@ -94,10 +132,20 @@ export const headingFoldPlugin = $prose(() =>
                 // first paint. When folds ARE present the content-hiding
                 // decorations must exist at first paint or folded content would
                 // flash, so build synchronously.
-                const deferAffordance = enabled && folded.size === 0 && canDeferAffordance();
+                // Nothing folded is the deferrable case — including the whole
+                // layer being OFF, where the chrome is pure block gutter and
+                // there is by definition nothing to hide (the `enabled &&`
+                // this once read made `editor.folding: false` the one
+                // configuration that paid the full build synchronously).
+                const deferAffordance = folded.size === 0 && canDeferAffordance();
                 return {
                     folded,
                     enabled,
+                    // The window is measured after first paint (see view()), so
+                    // any build before that is document-wide, exactly as it was
+                    // before MAR-215.
+                    window: null,
+                    pinned: null,
                     decorations: deferAffordance
                         ? DecorationSet.empty
                         : buildHeadingFoldDecorations(state.doc, folded, enabled),
@@ -107,18 +155,54 @@ export const headingFoldPlugin = $prose(() =>
             apply(tr, value, oldState, newState) {
                 const meta = tr.getMeta(foldPluginKey) as FoldMeta | undefined;
 
+                // MAR-215: the scroll window moved. Rebuild for the new window
+                // (the build is windowed too, so this is O(visible blocks));
+                // handled before the early-return, which would otherwise drop
+                // this no-op transaction.
+                if (meta?.type === "window") {
+                    const nextWindow = meta.window;
+                    const pinned = caretPin(newState, nextWindow);
+                    if (sameSpan(nextWindow, value.window) && sameSpan(pinned, value.pinned)) {
+                        return value;
+                    }
+                    const windows = chromeWindows(nextWindow, pinned);
+                    return {
+                        ...value,
+                        window: nextWindow,
+                        pinned,
+                        decorations: buildHeadingFoldDecorations(newState.doc, value.folded, value.enabled, windows),
+                        fingerprint: structureFingerprint(
+                            newState.doc, value.folded, computeFoldRanges(newState.doc), value.enabled, windows,
+                        ),
+                    };
+                }
+
                 // MAR-189: the deferred post-paint affordance build. No fold/doc
                 // state change — just materialize the decorations init skipped.
                 // Handled before the selection-only early-return below (which
                 // would otherwise drop this no-op transaction and never build).
                 if (meta?.type === "buildAffordance") {
+                    const windows = chromeWindows(value.window, value.pinned);
                     return {
                         ...value,
-                        decorations: buildHeadingFoldDecorations(newState.doc, value.folded, value.enabled),
+                        decorations: buildHeadingFoldDecorations(
+                            newState.doc, value.folded, value.enabled, windows,
+                        ),
+                        fingerprint: structureFingerprint(
+                            newState.doc, value.folded, computeFoldRanges(newState.doc), value.enabled, windows,
+                        ),
                     };
                 }
                 let folded: ReadonlySet<number> = value.folded;
                 let enabled = value.enabled;
+                // The window is measured in layout coordinates but stored in
+                // DOCUMENT coordinates, so it must travel with the content it
+                // was measured against — otherwise an insertion above the
+                // viewport slides the decorated band off the reader's screen
+                // until the next scroll recommit.
+                const scrollWindow = tr.docChanged && value.window
+                    ? { from: tr.mapping.map(value.window.from, -1), to: tr.mapping.map(value.window.to, 1) }
+                    : value.window;
 
                 if (tr.docChanged) {
                     const move = meta?.type === "move" ? meta : null;
@@ -213,21 +297,35 @@ export const headingFoldPlugin = $prose(() =>
                         break;
                 }
 
-                // Selection-only transaction, nothing folded/unfolded: the
-                // state is untouched — zero decoration work per caret move.
-                if (!tr.docChanged && folded === value.folded && enabled === value.enabled) {
+                // MAR-215: the keyboard block menu opens against a rendered
+                // marker at the caret, so a caret that has left the scroll
+                // window pins its own block into the build. Tracked only while
+                // it IS outside — on screen (the ordinary case) this stays
+                // null, so the early-return below still fires for every
+                // ordinary caret move.
+                const pinned = caretPin(newState, scrollWindow);
+
+                // Selection-only transaction, nothing folded/unfolded, caret
+                // still inside the materialized region: the state is untouched
+                // — zero decoration work per caret move.
+                if (
+                    !tr.docChanged && folded === value.folded && enabled === value.enabled &&
+                    sameSpan(pinned, value.pinned)
+                ) {
                     return value;
                 }
 
+                const windows = chromeWindows(scrollWindow, pinned);
                 const fingerprint = structureFingerprint(
                     newState.doc,
                     folded,
                     computeFoldRanges(newState.doc),
                     enabled,
+                    windows,
                 );
-                if (fingerprint === value.fingerprint) {
+                if (fingerprint === value.fingerprint && sameSpan(pinned, value.pinned)) {
                     if (!tr.docChanged) {
-                        return { folded, enabled, fingerprint, decorations: value.decorations };
+                        return { ...value, folded, enabled, window: scrollWindow, pinned, fingerprint };
                     }
                     // Structure (and therefore every rendered gutter) is
                     // unchanged — just map positions; widget DOM survives.
@@ -238,14 +336,16 @@ export const headingFoldPlugin = $prose(() =>
                     // identical structure implies an identical count.
                     const mapped = value.decorations.map(tr.mapping, newState.doc);
                     if (mapped.find().length === value.decorations.find().length) {
-                        return { folded, enabled, fingerprint, decorations: mapped };
+                        return { folded, enabled, window: scrollWindow, pinned, fingerprint, decorations: mapped };
                     }
                 }
                 return {
                     folded,
                     enabled,
+                    window: scrollWindow,
+                    pinned,
                     fingerprint,
-                    decorations: buildHeadingFoldDecorations(newState.doc, folded, enabled),
+                    decorations: buildHeadingFoldDecorations(newState.doc, folded, enabled, windows),
                 };
             },
         },
@@ -319,7 +419,7 @@ export const headingFoldPlugin = $prose(() =>
             let deferredBuild: { cancel: () => void } | null = null;
             const st = foldPluginKey.getState(view.state);
             const deferredPending =
-                !!st && st.enabled && st.folded.size === 0 &&
+                !!st && st.folded.size === 0 &&
                 st.decorations.find().length === 0 && canDeferAffordance();
             if (deferredPending) {
                 deferredBuild = requestIdle(() => {
@@ -331,6 +431,20 @@ export const headingFoldPlugin = $prose(() =>
                     );
                 }, 500);
             }
+
+            // MAR-215: keep the gutter chrome scoped to what is (nearly) on
+            // screen. The first measurement lands on the next animation frame
+            // — never synchronously here, which is the mount path — so the
+            // deferred build above already gets a window, and a document that
+            // opened with folds simply narrows one frame later.
+            const visibleWindow = observeVisibleWindow(view, (next) => {
+                if (disposed || view.isDestroyed) { return; }
+                view.dispatch(
+                    view.state.tr
+                        .setMeta(foldPluginKey, { type: "window", window: next })
+                        .setMeta("addToHistory", false),
+                );
+            });
 
             // Multi-block selection discoverability: while the selection
             // spans several top-level blocks, their markers surface at
@@ -464,6 +578,7 @@ export const headingFoldPlugin = $prose(() =>
                 destroy() {
                     disposed = true;
                     deferredBuild?.cancel();
+                    visibleWindow.destroy();
                     view.dom.removeEventListener("mousemove", handleMouseMove);
                     view.dom.removeEventListener("mouseleave", clearHoveredGutter);
                     view.dom.removeEventListener("keydown", handleKeyDown);
