@@ -2,6 +2,13 @@
 
 **Status:** investigation / gap analysis only. No implementation. Written 2026-07-25.
 
+**Tracking:** Linear **MAR-225** (epic, `phase-5-surfaces`) is the tracking home for this work.
+Near-term children: MAR-226 (persistence/save host contract), MAR-227 (standalone save probe),
+MAR-228 (Open VSX + VS Code-family reach), MAR-229 (vscode.dev web-extension scoping). Related:
+MAR-40 (multi-format — the format axis, not this surface work). Later rungs (core extraction,
+Tauri desktop, cloud web) are intentionally unfiled until the probe + persistence design
+green-light them.
+
 **Question:** what is the gap between Birta today (a VS Code extension) and shipping it
 as (1) a standalone **web app** and (2) a standalone **installable desktop app**, with
 maximum code sharing?
