@@ -111,11 +111,17 @@ export function confirmRegressions(firstRegressed, secondRegressed) {
 // ── typing gate ─────────────────────────────────────────────
 // Same shape as the launch gate above, different metric and floors.
 
-// Only these typing fixtures can FAIL the gate. Their dispatch medians are tens
-// of ms, so a real move clears the 0.5 ms floor unambiguously; `tiny`/`medium`
-// sit near the fixed per-keystroke floor where 10% is a fraction of a
-// millisecond, and are reported only.
-export const TYPING_GATED_FIXTURES = new Set(["large", "xlarge"]);
+// Only this fixture can FAIL the gate. At ~46 ms per keystroke on a CI runner
+// its dispatch median dwarfs the 0.5 ms floor, so a real move is unambiguous;
+// every smaller fixture sits near the fixed per-keystroke floor where 10% is a
+// fraction of a millisecond and the gate can never fire.
+//
+// `large` was gated too until it was measured against its cost: it is the
+// second most expensive fixture to run and, at ~9 ms, roughly a fifth as
+// sensitive as `xlarge`. Any regression that scales with document size — the
+// shape this gate exists for (MAR-215) — shows on `xlarge` first and larger.
+// Run `pnpm perf:typing` locally for the full fixture spread.
+export const TYPING_GATED_FIXTURES = new Set(["xlarge"]);
 
 // A per-keystroke move counts as real only at ≥10% AND ≥0.5 ms. These are the
 // thresholds `perf-typing.mjs --compare` has always used: medians are single-

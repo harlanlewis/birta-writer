@@ -1,0 +1,148 @@
+name: Typing Perf
+
+# Same-session per-keystroke A/B: builds the PR's merge-base and its head,
+# types into both back-to-back in headless Chromium, and gates on the DISPATCH
+# delta. Safe to block on for the same reason as `launch-perf` — it never
+# asserts an absolute time, only the delta between two builds on one runner.
+#
+# What it protects: MAR-215 took xlarge per-keystroke dispatch from 44.6 ms to
+# 22.3 ms and nothing in CI held the win. Every keystroke on a large document
+# pays this cost.
+#
+# ── Why this is a SEPARATE workflow with a paths filter ────────────────────
+# It is the most expensive check in the repo, and the overwhelming majority of
+# PRs cannot possibly move per-keystroke dispatch — docs, extension-side src/,
+# CI config, release tooling. Paying minutes on every one of those is a bad
+# trade that compounds across a day of small PRs.
+#
+# GitHub supports `paths` only at workflow level, not per job, so the job lives
+# here rather than in ci.yml. The filter is deliberately WIDER than "the files
+# that could regress typing" — it includes the whole webview and the shared
+# packages, because narrowing it to specific plugins is how a gate silently
+# stops covering the thing it was built for.
+#
+# It is intentionally NOT in branch protection's required set. A required check
+# that is skipped by a paths filter leaves a PR waiting on a status that will
+# never arrive; keeping it advisory avoids that failure mode entirely, and it
+# still comments its result on every PR that runs it.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'webview/**'
+      - 'packages/**'
+      - 'e2e/perf/**'
+      - 'e2e/perf-typing.mjs'
+      - 'e2e/perf-ab.mjs'
+      - '.github/workflows/typing-perf.yml'
+      - 'pnpm-lock.yaml'
+
+concurrency:
+  group: typing-perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typing-perf:
+    name: Typing Perf (A/B)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # to upsert the result comment
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the merge-base commit + its tree
+
+      - run: git fetch --tags --force origin
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Playwright
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The SAME escape hatch as launch-perf, deliberately not a second one.
+      - name: Resolve perf-accept
+        id: accept
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          ACCEPT=""
+          if echo "$LABELS" | grep -q '"perf-accept"'; then ACCEPT="label:perf-accept"; fi
+          TRAILER=$(git log "${{ github.event.pull_request.base.sha }}..HEAD" \
+            --format='%(trailers:key=Perf-Regression-Accepted,valueonly)' | grep -v '^$' | head -1 || true)
+          if [ -n "$TRAILER" ]; then ACCEPT="trailer:$TRAILER"; fi
+          echo "value=$ACCEPT" >> "$GITHUB_OUTPUT"
+
+      # Sized from measured CI cost, not estimated (three estimates were wrong
+      # before it was simply run). Per-sample cost on this runner is dominated
+      # by `xlarge`: ~13 s mount + ~16 s for an 80-key burst, so the levers that
+      # matter are the fixture, the pair count and the keystroke count — NOT the
+      # number of fixtures, which is why dropping `medium` earlier bought only
+      # ~15%. At xlarge-only / 2 measured pairs / 60 keys this is ~3 min,
+      # against ~8 min for the first shipped configuration.
+      - name: Typing A/B vs merge-base
+        env:
+          PERF_ACCEPT: ${{ steps.accept.outputs.value }}
+        run: node e2e/perf-ab.mjs --typing --base "${{ github.event.pull_request.base.sha }}" --runs 3 --keys 60 --json typing-ab.json
+
+      - name: Comment typing A/B result
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let r;
+            try { r = JSON.parse(fs.readFileSync('typing-ab.json', 'utf8')); }
+            catch { return; } // build/abort failed before JSON was written — the job status carries it
+            const round = (x) => (x == null ? '–' : Math.round(x * 100) / 100);
+            const line = (name, p) => {
+              const b = p[name]?.base?.median, a = p[name]?.head?.median;
+              if (b == null || a == null) return `| ${name} | – | – | – | – |`;
+              const d = a - b, pct = b > 0 ? (d / b) * 100 : 0, s = d >= 0 ? '+' : '';
+              const gated = r.gated.includes(name);
+              const bb = p[name]?.base?.blockMs, ab = p[name]?.head?.blockMs;
+              const block = (typeof bb === 'number' && typeof ab === 'number')
+                ? `${round(bb)} → ${round(ab)} ms` : '–';
+              return `| ${gated ? '**' + name + '**' : name} | ${round(b)} | ${round(a)} | ${s}${round(d)} ms (${s}${round(pct)}%) | ${block} |`;
+            };
+            const rows = Object.keys(r.pass1).map((n) => line(n, r.pass1)).join('\n');
+            const confirmed = r.confirmedRegressions ?? [];
+            const status = confirmed.length === 0
+              ? '✅ **NEUTRAL** — no confirmed typing regression'
+              : (r.accepted
+                  ? `🟡 **REGRESSED but ACCEPTED** (${confirmed.join(', ')})`
+                  : `❌ **TYPING REGRESSED** (${confirmed.join(', ')}) — confirmed across two passes`);
+            const body = [
+              '<!-- typing-perf-ab -->',
+              '### Typing A/B — merge-base vs head',
+              '',
+              status,
+              '',
+              `Per-keystroke dispatch median, ${r.pairsPerFixture} interleaved pairs/fixture × ${r.keys} keystrokes `,
+              `(**bold** = gated; ≥10% AND ≥0.5 ms counts as a real move).`,
+              '',
+              '`block` is total main-thread longtask ms over the burst — **reported, never gated**: its 50 ms',
+              'threshold makes it inflate on a slower machine (679 ms locally vs ~15,000 ms here). A median that',
+              'improves while block grows means work MOVED out of dispatch rather than being removed.',
+              '',
+              '| fixture | base ms | head ms | Δ | block |',
+              '| --- | --- | --- | --- | --- |',
+              rows,
+              '',
+              '<sub>Runs only on PRs touching `webview/`, `packages/` or the perf harness. Advisory, not a required check.</sub>',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const prev = comments.find((c) => c.body?.includes('<!-- typing-perf-ab -->'));
+            if (prev) await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });

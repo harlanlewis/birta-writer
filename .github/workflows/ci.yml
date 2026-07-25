@@ -7,12 +7,10 @@ on:
     branches: [main]
 
 # Supersede a PR's own earlier run when it is pushed again. Without this every
-# push left its predecessor running to completion, which was cheap when the
-# slowest check was ~3 min and is not now: `typing-perf` measures two document
-# fixtures in a real browser, so three stacked runs mean three of it at once —
-# observed on this PR, including one for a commit that no longer existed after
-# an amend. Concurrent runs also make each other's timings unreadable, which
-# matters when two of the jobs here ARE timing measurements.
+# push left its predecessor running to completion — observed on PR #130 with
+# three runs live at once, one of them for a commit that no longer existed
+# after an amend. Concurrent runs also make each other's timings unreadable,
+# which matters when `launch-perf` IS a timing measurement.
 #
 # Only PRs cancel. A push to `main` is the record that main is green, so those
 # runs always finish even if another lands behind them.
@@ -236,131 +234,6 @@ jobs:
             if (prev) await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
             else await github.rest.issues.createComment({ owner, repo, issue_number, body });
 
-  # Same-session typing A/B: the per-keystroke twin of launch-perf, and safe to
-  # block on for the same reason — it never asserts an absolute time, only the
-  # delta between two builds measured back-to-back on one runner.
-  #
-  # It is a SEPARATE job on purpose. The two perf harnesses must not share a
-  # runner: they compete for the same cores, and `block` in particular inflates
-  # super-linearly under contention because its longtask threshold is a fixed
-  # 50 ms (AGENTS.md, 'Run one harness at a time').
-  #
-  # What it protects: MAR-215 took xlarge per-keystroke dispatch from 44.6 ms to
-  # 22.3 ms and nothing in CI held the win. Every keystroke on a large document
-  # pays this cost, so it is first-class alongside boot time.
-  #
-  # Gate discipline, matching launch-perf: only the strong-signal fixtures
-  # (large, xlarge) can fail — and those are the only ones measured, since the
-  # smaller fixtures sit under the gate's own 0.5 ms absolute floor. A real move
-  # needs BOTH ≥10% and ≥0.5 ms, and must reproduce across two full passes.
-  #
-  # `block` is reported and never gated. Two measurements say it can't be one: a
-  # null A/B on identical bundles moved it ~15% while the dispatch medians held
-  # within 1.1%, and the same xlarge burst reads 679 ms locally vs 15,037 ms
-  # here (22×) because its longtask threshold is a fixed 50 ms.
-  typing-perf:
-    name: Typing Perf (A/B)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-      pull-requests: write # to upsert the result comment
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # need the merge-base commit + its tree
-
-      - run: git fetch --tags --force origin
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Chromium for Playwright
-        run: pnpm exec playwright install --with-deps chromium
-
-      # The SAME escape hatch as launch-perf, deliberately not a second one.
-      - name: Resolve perf-accept
-        id: accept
-        env:
-          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
-        run: |
-          ACCEPT=""
-          if echo "$LABELS" | grep -q '"perf-accept"'; then ACCEPT="label:perf-accept"; fi
-          TRAILER=$(git log "${{ github.event.pull_request.base.sha }}..HEAD" \
-            --format='%(trailers:key=Perf-Regression-Accepted,valueonly)' | grep -v '^$' | head -1 || true)
-          if [ -n "$TRAILER" ]; then ACCEPT="trailer:$TRAILER"; fi
-          echo "value=$ACCEPT" >> "$GITHUB_OUTPUT"
-
-      # Measured, after three wrong estimates: one pass is 8m30s at three
-      # fixtures and 7m16s at the current two, so a neutral job is ~8 min and a
-      # confirmed regression ~15 min (it pays for a second pass). Dropping a
-      # fixture is a weak lever — xlarge dominates — so if this needs to get
-      # cheaper, cut its keystrokes or pairs, not the fixture list. This runner
-      # is ~2× slower per keystroke than a dev laptop; never size from local.
-      - name: Typing A/B vs merge-base
-        env:
-          PERF_ACCEPT: ${{ steps.accept.outputs.value }}
-        run: node e2e/perf-ab.mjs --typing --base "${{ github.event.pull_request.base.sha }}" --runs 5 --json typing-ab.json
-
-      - name: Comment typing A/B result
-        if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            let r;
-            try { r = JSON.parse(fs.readFileSync('typing-ab.json', 'utf8')); }
-            catch { return; } // build/abort failed before JSON was written — the job status carries it
-            const round = (x) => (x == null ? '–' : Math.round(x * 100) / 100);
-            const line = (name, p) => {
-              const b = p[name]?.base?.median, a = p[name]?.head?.median;
-              if (b == null || a == null) return `| ${name} | – | – | – | – |`;
-              const d = a - b, pct = b > 0 ? (d / b) * 100 : 0, s = d >= 0 ? '+' : '';
-              const gated = r.gated.includes(name);
-              const bb = p[name]?.base?.blockMs, ab = p[name]?.head?.blockMs;
-              const block = (typeof bb === 'number' && typeof ab === 'number')
-                ? `${round(bb)} → ${round(ab)} ms` : '–';
-              return `| ${gated ? '**' + name + '**' : name} | ${round(b)} | ${round(a)} | ${s}${round(d)} ms (${s}${round(pct)}%) | ${block} |`;
-            };
-            const rows = Object.keys(r.pass1).map((n) => line(n, r.pass1)).join('\n');
-            const confirmed = r.confirmedRegressions ?? [];
-            const status = confirmed.length === 0
-              ? '✅ **NEUTRAL** — no confirmed typing regression'
-              : (r.accepted
-                  ? `🟡 **REGRESSED but ACCEPTED** (${confirmed.join(', ')})`
-                  : `❌ **TYPING REGRESSED** (${confirmed.join(', ')}) — confirmed across two passes`);
-            const body = [
-              '<!-- typing-perf-ab -->',
-              '### Typing A/B — merge-base vs head',
-              '',
-              status,
-              '',
-              `Per-keystroke dispatch median, ${r.pairsPerFixture} interleaved pairs/fixture × ${r.keys} keystrokes `,
-              `(**bold** = gated; ≥10% AND ≥0.5 ms counts as a real move).`,
-              '',
-              '`block` is total main-thread longtask ms over the burst — **reported, never gated**: its 50 ms',
-              'threshold makes it inflate under runner contention. A median that improves while block grows',
-              'means work MOVED out of dispatch rather than being removed.',
-              '',
-              '| fixture | base ms | head ms | Δ | block |',
-              '| --- | --- | --- | --- | --- |',
-              rows,
-            ].join('\n');
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
-            const prev = comments.find((c) => c.body?.includes('<!-- typing-perf-ab -->'));
-            if (prev) await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
-            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
-
 # The e2e suite (real bundle in headless Chromium) is a LOCAL pre-push gate,
 # run with `pnpm test:e2e`, not a CI job. Its layout-geometry and input-timing
 # assertions are calibrated to a real desktop browser and are flaky in GitHub's
@@ -371,7 +244,7 @@ jobs:
 # webview changes (the /verify skill drives it); re-add a CI job only once the
 # suite is stabilized against a pinned-font headless environment.
 #
-# The `launch-perf` and `typing-perf` jobs above are the exception that proves
-# this rule: they are safe to block on precisely because they never assert an
-# absolute time — each compares two builds measured back-to-back on one runner
-# and gates on their delta.
+# The `launch-perf` job above is the exception that proves this rule (as is
+# `typing-perf`, in .github/workflows/typing-perf.yml): they are safe to block
+# on precisely because they never assert an absolute time — each compares two
+# builds measured back-to-back on one runner and gates on their delta.

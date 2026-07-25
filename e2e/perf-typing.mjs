@@ -47,16 +47,23 @@ import {
 // so every keystroke measures the same "insert one character" transaction.
 const TYPING_TEXT = "The quick brown fox jumps over the lazy dog and keeps going ";
 
-// A/B mode measures ONLY the gated fixtures. Each sample types a full burst
-// (seconds, not milliseconds) and a CI runner is ~2× slower per keystroke than
-// a dev laptop, so every extra fixture is minutes on a blocking check —
-// measured on the first CI run: three fixtures × 4 pairs took 8m30s per pass.
+// A/B mode measures ONLY the gated fixtures — currently just `xlarge`.
 //
-// The dropped ones carry no decision: `tiny`, `medium` and `link-heavy` all sit
-// near the fixed per-keystroke floor (`medium` measured 1.8 ms on CI), where a
-// even a large percentage move is a fraction of the gate's own 0.5 ms absolute
-// floor and can never fire. Reporting a number that cannot inform a decision
-// isn't context, it's cost. Stated here rather than silently applied.
+// This is a cost decision made from measurement. Per sample on a dev laptop,
+// `xlarge` costs ~6.4 s to mount + ~8 s for an 80-key burst; `large` ~1.3 s +
+// ~3.5 s. A CI runner is ~2× slower again. Every fixture in this list is that
+// cost × 2 sides × (pairs + 1 warmup), twice over if a regression needs
+// confirming — which is how the first shipped configuration reached ~8 min of
+// CI on every PR.
+//
+// The smaller fixtures cannot inform the decision anyway: `medium` measured
+// 1.8 ms per keystroke on CI, so even a large percentage move is a fraction of
+// the gate's own 0.5 ms absolute floor. A number that cannot fire the gate is
+// not context, it is cost. `large` was dropped on the same reasoning at the
+// margin — ~1/5 the sensitivity of `xlarge` for a third of the runtime, and a
+// regression that scales with document size shows on `xlarge` first.
+//
+// Run `pnpm perf:typing` for the full fixture spread when investigating.
 const AB_FIXTURES = [...TYPING_GATED_FIXTURES];
 
 const round = (x) => Math.round(x * 100) / 100;
@@ -396,7 +403,7 @@ async function abMode(baseDirArg, headDirArg, keys, runs, jsonOut, accept) {
     const skipped = Object.keys(TYPING_FIXTURES).filter((n) => !AB_FIXTURES.includes(n));
     console.log(`\ntyping A/B — merge-base vs head, ${runs - 1} interleaved pairs/fixture × ${keys} keystrokes`);
     console.log(`  base: ${baseDir}\n  head: ${headDir}`);
-    console.log(`  gated: ${AB_FIXTURES.join(", ")} (${skipped.join(", ")} not measured — below the 0.5 ms floor, see AB_FIXTURES)`);
+    console.log(`  gated: ${AB_FIXTURES.join(", ")} (not measured here: ${skipped.join(", ")} — see AB_FIXTURES; run \`pnpm perf:typing\` for the full spread)`);
 
     const pass1 = await runPass();
     printTypingAbTable("pass 1", pass1);

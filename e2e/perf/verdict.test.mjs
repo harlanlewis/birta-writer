@@ -101,9 +101,17 @@ describe("typingAbVerdict — the gate's per-fixture per-keystroke decision", ()
         expect(v.regressed.size).toBe(0);
     });
 
-    it("gates each gated fixture independently", () => {
+    // `large` is measured locally but no longer gated (it is ~1/5 as sensitive
+    // as xlarge for most of the cost). A regression there must not leak into
+    // the gated verdict, and xlarge's verdict must not be masked by it.
+    it("an ungated fixture regressing beside a neutral gated one does not gate", () => {
         const two = { ...tPass("large", 8, 20), ...tPass("xlarge", 22, 22.5) };
-        expect([...typingAbVerdict(two).regressed]).toEqual(["large"]);
+        expect([...typingAbVerdict(two).regressed]).toEqual([]);
+    });
+
+    it("the gated fixture is judged on its own numbers, not a neighbour's", () => {
+        const two = { ...tPass("large", 8, 8), ...tPass("xlarge", 22, 44) };
+        expect([...typingAbVerdict(two).regressed]).toEqual(["xlarge"]);
     });
 
     // `block` is the contention-sensitive metric — a shared CI runner can move it

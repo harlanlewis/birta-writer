@@ -152,11 +152,11 @@ instead of `perf.mjs --ab`. That comparer:
 
 - **interleaves** head/base bursts per pair; the first pair is discarded as warmup,
   and durations are **pooled** across pairs before taking the median;
-- measures **only the gated fixtures** (`large`, `xlarge`). `tiny` / `medium` /
-  `link-heavy` aren't measured in A/B at all: each burst costs seconds, and all
-  three sit near the fixed per-keystroke floor (`medium` reads 1.8 ms on CI)
-  where even a large percentage move is a fraction of the 0.5 ms absolute floor
-  and can never fire the gate;
+- measures **only the gated fixture** (`xlarge`). The others can't inform the
+  decision: `medium` reads 1.8 ms per keystroke on CI, so even a large
+  percentage move is a fraction of the 0.5 ms absolute floor. `large` was
+  dropped on the same reasoning at the margin — ~1/5 the sensitivity for a
+  third of the runtime. Use `pnpm perf:typing` for the full spread;
 - **double-confirms** — a regression must reproduce across two full passes;
 - **reports `block`, never gates it.** Two independent measurements say it can't
   be a gate: a null A/B (identical bundles) moved it ~15% on `xlarge` while the
@@ -171,25 +171,44 @@ instead of `perf.mjs --ab`. That comparer:
 **Escape hatch:** the same `perf-accept` PR label / `Perf-Regression-Accepted:
 <reason>` commit trailer as the launch gate, deliberately not a second one.
 
-**Cost — every figure below is a completed CI job, not an estimate.** Three
-successive estimates of this job's runtime were wrong before it was simply
-measured, so the numbers are tabulated with their source:
+### When it runs, and what it costs
 
-| config (4 pairs, 80 keys) | one pass | job total |
+**It does not run on most PRs.** It lives in its own workflow
+(`.github/workflows/typing-perf.yml`) behind a `paths` filter, so a PR touching
+only docs, `src/`, or CI config skips it entirely. It fires on `webview/**`,
+`packages/**` and the perf harness itself — deliberately wider than "the files
+that could regress typing", because narrowing a gate to specific plugins is how
+it silently stops covering what it was built for.
+
+It is also **not** in branch protection's required set, on purpose: a required
+check that a `paths` filter skips leaves a PR waiting forever on a status that
+never arrives.
+
+**Every figure below is a completed CI job, not an estimate** — three successive
+estimates of this runtime were wrong before it was simply run and read:
+
+| config | one pass | job total |
 | --- | --- | --- |
-| 3 fixtures (`medium`/`large`/`xlarge`) | 8m30s | 9m23s |
-| 2 fixtures (`large`/`xlarge`, current) | 7m16s | 7m55s |
+| 3 fixtures, 4 pairs, 80 keys | 8m30s | 9m23s |
+| 2 fixtures, 4 pairs, 80 keys | 7m16s | 7m55s |
+| **1 fixture, 2 pairs, 60 keys** (current) | — | **~3 min** |
 
-So a neutral run is **~8 min**, and a confirmed regression pays for a second
-pass (~15 min). One run of the 2-fixture config was still going past 13 min
-before it was cancelled — unexplained runner variance, so treat ~8 min as
-typical rather than guaranteed.
+One run of the 2-fixture config was still going past 13 min before being
+cancelled — unexplained runner variance, so treat these as typical, not
+guaranteed.
 
-**Dropping a fixture is a weak lever, which is the non-obvious part.** Removing
-`medium` cut only ~15%, because `xlarge` dominates: at 45.8 ms per keystroke on
-CI, one burst is ~3.7 s of dispatch alone, before mounting a 300 KB document.
-If this job ever needs to get materially cheaper, the levers are `xlarge`'s
-keystroke count or the pair count — **not** the fixture list.
+**Fixture count is a weak lever, which is the non-obvious part.** Dropping
+`medium` cut only ~15%, because `xlarge` dominates everything. Per sample on a
+dev laptop (CI ≈ 2× that):
+
+| fixture | mount | settle+warmup | 80-key burst | total |
+| --- | --- | --- | --- | --- |
+| `large` | 1.3s | 1.7s | 3.5s | 6.4s |
+| `xlarge` | 6.4s | 2.4s | 8.0s | 16.7s |
+
+So if this needs to get cheaper again, the levers are **`xlarge`'s keystroke
+count and the pair count** — and, if it ever matters more, mounting the document
+once per side instead of once per sample (mount is ~38% of `xlarge`).
 
 A CI runner is ~2× slower per keystroke than a dev laptop (`xlarge` 45.8–47.5 ms
 vs 22.8 ms), so *never* size this job from local timings. It is a separate CI
