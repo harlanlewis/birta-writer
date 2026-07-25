@@ -49,6 +49,30 @@ function copyHarperWasm() {
     );
 }
 
+/**
+ * Rebind the bare `refractor` specifier to our core singleton shim.
+ *
+ * `@milkdown/plugin-prism` does `import { refractor } from "refractor"`, whose
+ * package entry is `refractor/lib/common.js`: the same singleton `refractor/core`
+ * exports, but with 35 grammars registered onto it at import time. refractor
+ * lists that file in `sideEffects`, so esbuild cannot tree-shake the
+ * registrations — ~82 KB of grammars landed in the eager launch bundle,
+ * duplicating a subset of the lazy chunk in webview/highlighterLanguages.ts.
+ * The shim keeps the instance and drops the payload; highlighterLanguages.ts
+ * registers a superset of common so no language loses coverage.
+ *
+ * This must be an exact-match `onResolve` rather than an `alias` entry: esbuild
+ * aliases also match subpaths, which would rewrite `refractor/core` and the 60+
+ * `refractor/<lang>` imports the lazy grammar chunk is built from.
+ */
+const refractorSingletonPlugin = {
+    name: 'refractor-singleton',
+    setup(build) {
+        const shim = path.resolve('./webview/refractorSingleton.ts');
+        build.onResolve({ filter: /^refractor$/ }, () => ({ path: shim }));
+    },
+};
+
 // WebView frontend (Browser) - ESM + code splitting, lazy-loads Mermaid etc.
 const webviewBuild = {
     ...commonOptions,
@@ -72,6 +96,7 @@ const webviewBuild = {
     alias: {
         '@': path.resolve('./webview'),
     },
+    plugins: [refractorSingletonPlugin],
     metafile: withMetafile,
 };
 

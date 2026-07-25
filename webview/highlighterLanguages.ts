@@ -1,7 +1,7 @@
 /**
  * Refractor language grammars, split into their own lazily-loaded chunk.
  *
- * These ~66 Prism grammars total ~155 KB and were previously imported and
+ * These ~68 Prism grammars total ~155 KB and were previously imported and
  * registered synchronously at boot from highlighter.ts, so every editor launch
  * paid to parse them even for documents with no code. They now live behind
  * `ensureGrammars()` (see highlighter.ts): loaded before editor creation only
@@ -9,9 +9,22 @@
  * block is added later.
  *
  * refractor's exports map "./*" → "./lang/*.js", so import paths omit "lang/".
+ *
+ * This set is deliberately a strict SUPERSET of refractor's own `common` set
+ * (`refractor/lib/common.js`), and `highlighterLanguages.test.ts` fails if it
+ * ever stops being one: the webview rebinds the bare `refractor` specifier to
+ * `refractor/core` (see esbuild.mjs) so nothing preloads common's 35 grammars
+ * into the eager bundle, which means every language common used to give us for
+ * free has to be in this list instead. `arduino`, `basic`, `regex` and `vbnet`
+ * are here only for that reason — they are not offered in the code-block
+ * language picker. Dependencies self-register (arduino → cpp,
+ * vbnet → basic, php → markup-templating, the clike family → clike), and
+ * `markup` covers html/xml/svg/mathml/ssml/atom/rss via its aliases.
  */
 import type { Refractor } from "refractor/core";
+import arduino from "refractor/arduino";
 import bash from "refractor/bash";
+import basic from "refractor/basic";
 import batch from "refractor/batch";
 import c from "refractor/c";
 import clojure from "refractor/clojure";
@@ -61,6 +74,7 @@ import properties from "refractor/properties";
 import protobuf from "refractor/protobuf";
 import python from "refractor/python";
 import r from "refractor/r";
+import regex from "refractor/regex";
 import ruby from "refractor/ruby";
 import rust from "refractor/rust";
 import sass from "refractor/sass";
@@ -71,6 +85,7 @@ import sql from "refractor/sql";
 import swift from "refractor/swift";
 import toml from "refractor/toml";
 import typescript from "refractor/typescript";
+import vbnet from "refractor/vbnet";
 import vim from "refractor/vim";
 import wasm from "refractor/wasm";
 import wgsl from "refractor/wgsl";
@@ -80,12 +95,13 @@ import zig from "refractor/zig";
 /** Register every bundled grammar on the shared refractor instance (idempotent). */
 export function registerGrammars(refractor: Refractor): void {
     [
-        bash, batch, c, clojure, cmake, coffeescript, cpp, csharp, css, csv,
-        dart, diff, docker, elixir, erlang, fsharp, git, glsl, go, gradle,
-        graphql, groovy, haskell, hcl, markup, http, ini, java, javascript,
-        jq, json, json5, kotlin, latex, less, log, lua, makefile, markdown,
-        matlab, nginx, objectivec, perl, php, plantUml, powershell, properties,
-        protobuf, python, r, ruby, rust, sass, scala, scss, solidity, sql,
-        swift, toml, typescript, vim, wasm, wgsl, yaml, zig,
+        arduino, bash, basic, batch, c, clojure, cmake, coffeescript, cpp,
+        csharp, css, csv, dart, diff, docker, elixir, erlang, fsharp, git,
+        glsl, go, gradle, graphql, groovy, haskell, hcl, markup, http, ini,
+        java, javascript, jq, json, json5, kotlin, latex, less, log, lua,
+        makefile, markdown, matlab, nginx, objectivec, perl, php, plantUml,
+        powershell, properties, protobuf, python, r, regex, ruby, rust, sass,
+        scala, scss, solidity, sql, swift, toml, typescript, vbnet, vim, wasm,
+        wgsl, yaml, zig,
     ].forEach((lang) => refractor.register(lang));
 }

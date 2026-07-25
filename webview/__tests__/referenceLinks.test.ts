@@ -118,10 +118,12 @@ describe("HTML comments should be visible as chips", () => {
         expect(view.dom.textContent).toBe("<!-- editorial note -->");
     });
 
-    it("a non-comment html node should keep the sanitized rendering path", () => {
+    it("a non-comment html node should keep the sanitized rendering path", async () => {
         const view = createHtmlView({ attrs: { value: "<sub>x</sub>" } });
 
         expect(view.dom.className).not.toContain("html-comment");
+        // The sanitizer is code-split, so the fill lands just after mount.
+        await view.ready;
         expect(view.dom.innerHTML).toContain("<sub>x</sub>");
     });
 

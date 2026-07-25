@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- e2e harness: code blocks stay highlighted across an edit (MAR-219).
+     The bundle stopped eagerly registering refractor's `common` grammars, so
+     every language now arrives via the lazy grammar chunk. The fixture mixes a
+     language that used to come from common (html), one only we ship (zig), and
+     the mermaid grammar highlighter.ts defines itself — checked both on mount
+     (plugin-prism's `init`) and after typing (its `apply`). -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-editorLineNumber-foreground: #858585;
+    --vscode-panel-border: #444444;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const DOC = [
+    "# Code highlighting",
+    "",
+    "```html",
+    '<div class="greeting">hello</div>',
+    "```",
+    "",
+    "```zig",
+    'const std = @import("std");',
+    "```",
+    "",
+    "```mermaid",
+    "graph TD",
+    "  A[Start] --> B[End]",
+    "```",
+    "",
+    "after prose",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

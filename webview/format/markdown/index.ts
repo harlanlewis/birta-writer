@@ -10,7 +10,6 @@
  * the wiring that lets editor.ts consume "the format" as one injected object
  * (see format/types.ts for the seam's charter).
  */
-import DOMPurify from "dompurify";
 import { createCalloutView, createNotionCalloutView } from "../../components/callout";
 import { createCodeBlockView } from "../../components/codeBlock";
 import { createDirectiveView } from "../../components/directive";
@@ -23,6 +22,7 @@ import { createMathInlineView } from "../../components/math";
 import { createTableView } from "../../components/table/tableView";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../../serialization";
 import { markdownProfile } from "../../utils/minimalDiff";
+import { sanitizeInto } from "../../utils/sanitizeLoader";
 import type { FormatModule } from "../types";
 
 // ── HTML inline NodeView ───────────────────────────────────────────────────
@@ -31,23 +31,30 @@ import type { FormatModule } from "../types";
 // read-only preview. HTML comments would be sanitized away entirely — making
 // them invisible and impossible to reason about in the editor — so they are
 // rendered as a dimmed chip showing the raw comment text instead.
+//
+// The sanitizer is loaded lazily (see utils/sanitizeLoader.ts), so the tag's
+// rendered form lands just after mount rather than during it. The comment
+// branch needs no sanitizer and stays fully synchronous. `ready` resolves once
+// the fill has happened — a handle for tests, ignored by ProseMirror.
 export function createHtmlView(node: { attrs: Record<string, string> }) {
     const dom = document.createElement("span");
     dom.dataset["type"] = "html";
     const raw = node.attrs["value"] ?? "";
+    let ready = Promise.resolve();
     if (/^<!--[\s\S]*?-->$/.test(raw.trim())) {
         dom.className = "html-inline html-comment";
         dom.textContent = raw.trim();
         dom.title = "HTML comment — preserved in the file, hidden in rendered output";
     } else {
         dom.className = "html-inline";
-        dom.innerHTML = DOMPurify.sanitize(raw, {
+        ready = sanitizeInto(dom, raw, {
             USE_PROFILES: { html: true },
             ADD_ATTR: ["align", "width", "height"],
         });
     }
     return {
         dom,
+        ready,
         ignoreMutation: () => true,
         stopEvent: () => false,
     };
