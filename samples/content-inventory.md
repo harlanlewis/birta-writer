@@ -121,6 +121,20 @@ above it — and the number updates in place. Editing the answer itself is your
 override; the editor never fights it. Try it: change `rent = 1500` above after
 accepting a result below.
 
+Maintenance stops at the editor's own edits, and where it stops you get a
+**cue** instead of a silent wrong number. Move an answer above its definition,
+edit the file in the raw editor or a `git checkout`, or just open a file whose
+answers no longer hold, and the result span picks up a faint warning tint —
+**stale** when the expression now computes something different, tint plus a
+strikethrough for **broken** when it no longer computes at all (a vanished
+definition, `1/0`, an impossible conversion). Click the cue for **Update**,
+**Remove answer**, or **Ignore**; nothing touches the file until you pick one,
+and each is a single undo step. Only answers whose premises live outside their
+own text are ever cued — a plain `=` result or a constant-only arrow like
+`2+3 => 5` is your prose, and the editor doesn't second-guess it. To see one:
+accept an answer below, then change `budget = 5000` from the raw editor
+(Cmd+Shift+P → "Edit Raw Markdown") and switch back.
+
 Both inline forms live under `birta.calc.enabled`. Fragments are never
 computed: `1,000 + 2 =>` offers nothing rather than answering the digits after
 the comma, and results display at most 6 decimals — an answer, not noise.
@@ -168,6 +182,22 @@ the link in place. Edits **save on blur**; there is no confirm button.
 External links open through VS Code's own trusted-domains prompt, or
 Cmd/Ctrl+click the link itself.
 
+Pasting a bare URL inserts `[url](url)` immediately — one history step,
+offline-safe, and the final answer if you want nothing more. Paste-unfurl
+(`birta.pasteUnfurl.enabled`, on by default but inert until the master network
+switch is on) then fetches the page title in the background and **offers** it in
+a small pill near the link: take it to swap the link text for the title, or
+ignore it and it fades on its own. The document is never touched until you
+accept — `birta.pasteUnfurl.autoApply` opts into the silent upgrade, the same
+shape as `birta.calc.autoInsert`. With the master switch off the paste still
+inserts the plain link, makes no request, and quietly offers to turn the switch
+on.
+
+A URL that would render as a card (see **URL embeds** below) is never unfurled:
+the card is the better answer, and carding requires the link text to still equal
+its href — which is exactly what a fetched title would overwrite. The two
+features are deliberately exclusive.
+
 ### Smart local links
 
 With `birta.smartLinks` (default on) local links resolve the way a
@@ -183,6 +213,33 @@ repo when clicked:
 - Heading fragment (scrolls after opening): [README → Features](../README.md#features)
 - Line-number fragment: [README line 24](../README.md#24)
 - A miss shows a quiet warning: [no such page](/write/nonexistent)
+
+---
+
+### Section links
+
+A bare `#slug` target jumps to a heading in **this** document — the standard
+GitHub anchor form, resolved against the same slugs the TOC uses. Two ways to
+insert one without hand-typing the slug, both listing every heading in the file:
+
+- **With nothing selected** — type `#` after a space anywhere in prose, or run
+  **Link to Section** (`birta.editor.insertSectionLink`, also the section-link
+  button in the floating toolbar). Pick a heading and you get
+  `[Heading title](#slug)`, link text filled in from the title.
+- **With text selected** — the same command opens a picker that turns *your
+  selection* into the link, so the text you wrote is kept and only the target
+  is chosen.
+
+- Jump to a section: [the Tables section](#tables)
+- Any heading level works: [Living calculations](#living-calculations-)
+- The link text is yours to change; only the target has to match a slug: [skip ahead](#footnotes)
+
+Rename a heading and every inbound `#slug` link in the file is rewritten to
+match, **in the same undo step** as the rename — so one Cmd+Z restores both the
+title and the links. Set `birta.autoUpdateAnchors` to `false` to leave the links
+exactly as authored instead. Duplicate heading titles are disambiguated the way
+GitHub does it (`foo`, `foo-1`), including when a *new* heading collides with an
+existing one.
 
 ---
 
@@ -212,23 +269,35 @@ cell:
 
 A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
 
-A YouTube link gets a player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it:
+A YouTube link gets a player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The short host and the mobile/music hosts are the same card:
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
+
+https://youtu.be/dQw4w9WgXcQ
 
 A Loom link gets the same click-to-load player behind a quiet branded facade (no thumbnail is fetched — nothing loads until you press play):
 
 https://www.loom.com/share/0123456789abcdef0123456789abcdef
 
-A Figma link — design files, FigJam boards, slides, or prototypes — gets a taller frame that loads the live Figma embed on click:
+A Figma link gets a taller frame that loads the live Figma embed on click. Every Embed Kit surface cards the same way — `/design/`, `/board/` (FigJam), `/slides/`, `/deck/`, and `/proto/` — and the legacy `/file/` form is normalized to `/design/`:
 
 https://www.figma.com/design/BAZsTPbh6W1r66Bdo9xkQp/Design-System
 
-A GitHub repo, pull request, issue, or file link gets a compact info card built **from the URL alone** — zero network, so it renders even with the network switch off:
+https://www.figma.com/board/BAZsTPbh6W1r66Bdo9xkQp/FigJam-Board
+
+https://www.figma.com/proto/BAZsTPbh6W1r66Bdo9xkQp/Prototype
+
+https://www.figma.com/file/BAZsTPbh6W1r66Bdo9xkQp/Legacy-File-URL
+
+A GitHub link gets a compact info card built **from the URL alone** — zero network, so it renders even with the network switch off. Four shapes are recognized — repo, pull request, issue, and file:
 
 https://github.com/harlanlewis/birta-writer
 
 https://github.com/microsoft/vscode/pull/12345
+
+https://github.com/microsoft/vscode/issues/12345
+
+https://github.com/microsoft/vscode/blob/main/README.md
 
 Only known providers embed (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
 
@@ -236,7 +305,13 @@ https://vimeo.com/76979871
 
 [watch this](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
 
-The player cards are network features and are **off by default** — with `birta.network.enabled` off, only the GitHub cards above render and every other line is an ordinary link; turn the master switch on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
+Unrecognized *shapes* of a known provider stay ordinary links too — the match is deliberately narrow, so a URL that isn't one of the shapes above never gets a card that misdescribes it:
+
+https://github.com/microsoft/vscode/tree/main/src
+
+https://gist.github.com/harlanlewis/0123456789abcdef0123456789abcdef
+
+Two switches govern all of this. `birta.embeds.enabled` is the feature itself — turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the GitHub cards still render (they fetch nothing) while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
 
 ---
 
@@ -275,6 +350,28 @@ The player cards are network features and are **off by default** — with `birta
 - [ ] Incomplete task
 - [x] Completed task
 - [ ] Task with **formatting** and a [link](https://example.com)
+
+### Tight, loose, and partly-loose
+
+Blank lines between items make a list *loose* — every item renders as its own
+paragraph, with the extra vertical spacing that implies. Without them it is
+*tight*. Both are preserved exactly as authored, including the **partly-loose**
+case where only some items are separated (the Bullet list above is one: there's
+a blank line before its third item and none before its second).
+
+Tight:
+
+- alpha
+- beta
+- gamma
+
+Loose:
+
+- alpha
+
+- beta
+
+- gamma
 
 ---
 
@@ -462,6 +559,25 @@ Plain fenced block (no language):
 no highlighting here
 ```
 
+Tilde fences are equally valid CommonMark and keep their own marker on save —
+this really is a `~~~` block in the raw file, and it stays one:
+
+~~~js
+const fence = "tildes";
+~~~
+
+A tilde fence is also how you show backtick fences *inside* a code block:
+
+~~~markdown
+```js
+nested in a tilde fence
+```
+~~~
+
+An indented (four-space) code block keeps its indented form too:
+
+    indented code, not a fence
+
 ### Diagrams (Mermaid)
 
 Fenced [Mermaid](https://mermaid.js.org) diagrams rendered with view controls.
@@ -484,10 +600,19 @@ total = rent + food
 left = income - total
 share = rent / income * 100
 
-# misc
+// misc — either comment marker works
 typo * 2
 log(400+π^2)
+3 km in mi
+180 lb to kg
 ```
+
+Every line is resolved against the definitions **above** it, like a page you
+read down: a definition enters scope, an expression shows its value, a line
+that reads as a formula but can't compute is flagged, and blank/comment lines
+pass through. Unit conversions work here too — same offline catalog as `=>`.
+Blocks have their own switch, `birta.calc.blocks.enabled`, independent of the
+inline forms' `birta.calc.enabled`.
 
 ---
 
