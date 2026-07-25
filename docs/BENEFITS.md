@@ -144,7 +144,9 @@ the raw text editor for good. Birta is built so that never happens.
   for emphasis, `***`/`___`/`---` for a divider, ATX or underlined headings,
   `-`/`*`/`+` bullets, `.` or `)` after an ordered item's number, and whether a
   numbered list counts up or repeats `1.`. Birta reads which one your file used
-  and writes that one back. **Why it matters:** this is the difference between a
+  and writes that one back. The same holds for the file's line endings: a
+  document written with Windows CRLF endings stays CRLF, down to the lines an
+  edit passes through. **Why it matters:** this is the difference between a
   choice *surviving* and a choice being *restored*. Protection (below) works per
   region, so editing one item in a list would otherwise re-canonicalize every
   other item in it; reproducing the style means an edit changes only what you
