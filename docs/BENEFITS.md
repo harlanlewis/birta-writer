@@ -139,12 +139,23 @@ the raw text editor for good. Birta is built so that never happens.
   formatting choices survive, your git diffs stay small and readable, and
   editing one paragraph never reflows the rest of the document.
 
+- **Cosmetic style is reproduced, not just protected.** Markdown offers the same
+  construct several spellings, and a serializer normally picks one: `*` or `_`
+  for emphasis, `***`/`___`/`---` for a divider, ATX or underlined headings,
+  `-`/`*`/`+` bullets, `.` or `)` after an ordered item's number, and whether a
+  numbered list counts up or repeats `1.`. Birta reads which one your file used
+  and writes that one back. **Why it matters:** this is the difference between a
+  choice *surviving* and a choice being *restored*. Protection (below) works per
+  region, so editing one item in a list would otherwise re-canonicalize every
+  other item in it; reproducing the style means an edit changes only what you
+  edited, however much of the document the construct spans.
+
 - **Syntax it can't perfectly reproduce is protected, not rewritten.** When
   Birta opens a file, it records every region it couldn't round-trip on its own
-  (an unusual reference-link layout, a setext heading, hand-escaped text) and
-  restores those regions to their original bytes on save — and lines the round
-  trip would *add* (like a closing fence for a deliberately unclosed one) are
-  withheld the same way. **Why it matters:** the editor can't silently
+  (an unusual reference-link layout, a closed `## heading ##`, hand-escaped
+  text) and restores those regions to their original bytes on save — and lines
+  the round trip would *add* (like a closing fence for a deliberately unclosed
+  one) are withheld the same way. **Why it matters:** the editor can't silently
   "correct" Markdown you wrote deliberately — an edit elsewhere in the document
   can never leak into syntax it doesn't fully model.
 
@@ -351,7 +362,7 @@ to open and edit, not about matching every tool's feature set.
 > suites), and the 🔴 rows for MDX
 > and Org are encoded as expected-corruption cases — an untouched save is still
 > byte-identical even for those, but an edit corrupts the edited construct (for
-> Org, the edited headline and the drawer directly beneath it; the rest of the
-> file, keyword lines included, is left alone). The fixtures and how to read the suites live in
+> Org, the edited headline itself, which Birta reads as a bullet; its property
+> drawer and the rest of the file, keyword lines included, are left alone). The fixtures and how to read the suites live in
 > `webview/__tests__/fixtures/tools/README.md`; CI runs the same assertions on
 > every PR and push to main, so a claim that stops being true fails the build.
