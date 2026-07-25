@@ -1,10 +1,10 @@
 {
   "note": "Eager-bytes BUDGET for the CI gate (`pnpm perf:bundle --check`): the gate fails only when `eagerTotal` exceeds `eagerBudget` — a deliberate ceiling with headroom, NOT a per-commit ratchet to current bytes. Normal feature growth flows under it silently. Raise the ceiling consciously at a milestone: `node esbuild.mjs --production --metafile && node e2e/perf-bundle.mjs --set-budget`, then commit this file and say why. The remaining fields are the last measured snapshot (informational), refreshed with `--write-baseline`.",
   "eagerBudget": 1245184,
-  "eagerJs": 1043224,
+  "eagerJs": 1047130,
   "eagerCss": 109512,
-  "eagerTotal": 1152736,
+  "eagerTotal": 1156642,
   "eagerChunkCount": 9,
-  "totalJs": 4273288,
+  "totalJs": 4277194,
   "totalCss": 1606232
 }
