@@ -364,6 +364,122 @@ export function unescapeOrgCookies(markdown: string): string {
         .join("\n");
 }
 
+/**
+ * Backslashes inside an angle-bracket autolink, as the serializer prints them
+ * (MAR-218). Deliberately shape-anchored — a CommonMark absolute-URI autolink
+ * (scheme, `:`, then no whitespace or angle brackets) — so an escaped construct
+ * elsewhere can never be false-matched, exactly like `ORG_COOKIE_ESCAPE_RE`.
+ *
+ * The load-bearing invariant is the EVEN RUN. `mdast-util-to-markdown` escapes
+ * every `\` it emits inside an autolink (`escapeBackslashes` in `state.safe`),
+ * so a model backslash run of N always prints as 2N — serializer output can
+ * only ever contain even-length runs there. An odd run therefore proves the
+ * bytes were NOT serializer-produced, and the body pattern (`[^\s<>\\]*` gaps
+ * separated by `\\` pairs) makes the whole match fail on one, leaving
+ * hand-written text alone. Two lookbehinds carve out the rest:
+ *
+ *   - `(?<!\\)` — an escaped literal `\<https://…>` is prose, not an autolink.
+ *   - `(?<!\]\()` — `[x](<url with space\\>)` is a link DESTINATION, where
+ *     CommonMark backslash escapes are live and must keep their doubling.
+ *
+ * Inside an autolink they are inert per CommonMark, so the parser never
+ * unescapes and each save doubled them again: `\` → `\\` → `\\\\` → … without
+ * bound once the line had been edited.
+ */
+const AUTOLINK_BACKSLASH_ESCAPE_RE =
+    /(?<!\\)(?<!\]\()<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>\\]*(?:\\\\[^\s<>\\]*)+)>/g;
+
+/**
+ * Split a line into segments, flagging the ones inside an inline code span.
+ * Code spans are verbatim user bytes, so the autolink pass must not rewrite
+ * them — and fence tracking alone doesn't see `` `<file:C:\\path>` ``.
+ *
+ * A backtick run opens a span that closes at the next run of the SAME length
+ * (CommonMark's rule); an unclosed run is treated as code through end of line,
+ * which is the conservative direction — it can only ever skip a rewrite.
+ */
+function splitCodeSpans(line: string): Array<{ text: string; code: boolean }> {
+    const out: Array<{ text: string; code: boolean }> = [];
+    const runs = /`+/g;
+    let at = 0;
+    let open: { index: number; length: number } | null = null;
+    let match: RegExpExecArray | null;
+    while ((match = runs.exec(line))) {
+        if (!open) {
+            open = { index: match.index, length: match[0].length };
+            continue;
+        }
+        if (match[0].length !== open.length) continue;
+        out.push({ text: line.slice(at, open.index), code: false });
+        out.push({ text: line.slice(open.index, match.index + match[0].length), code: true });
+        at = match.index + match[0].length;
+        open = null;
+    }
+    if (open) {
+        out.push({ text: line.slice(at, open.index), code: false });
+        out.push({ text: line.slice(open.index), code: true });
+    } else {
+        out.push({ text: line.slice(at), code: false });
+    }
+    return out;
+}
+
+/**
+ * Serializer post-pass (MAR-218): halve the backslash runs the serializer
+ * doubled inside `<…>` autolinks, so an edited line settles at a fixed point
+ * instead of growing `\` → `\\` → `\\\\` on every open-and-save cycle.
+ *
+ * Upstream asymmetry: `mdast-util-to-markdown` escapes `\` inside an autolink,
+ * but CommonMark says backslash escapes are INERT there, so the parser never
+ * unescapes — every round trip doubled what the last one wrote. The zero-edit
+ * save was protected by the merge layer, so this only started growing once the
+ * line was touched, and then grew forever.
+ *
+ * Fence-aware and code-span-aware for the same reason `unescapeOrgCookies` is:
+ * verbatim user bytes are never rewritten. Applied at the single point where
+ * the whole serialized string exists (fidelitySerializer's returned closure);
+ * see webview/serialization.ts, which composes the two passes.
+ */
+export function unescapeAutolinkBackslashes(markdown: string): string {
+    // Serializer output always doubles, so a single backslash can't be ours.
+    if (!markdown.includes("\\\\")) {
+        return markdown;
+    }
+    let fence: string | null = null;
+    return markdown
+        .split("\n")
+        .map((line) => {
+            const t = line.trimStart();
+            const f = FENCE_LINE_RE.exec(t);
+            if (fence) {
+                if (
+                    f &&
+                    f[1][0] === fence[0] &&
+                    f[1].length >= fence.length &&
+                    t.slice(f[1].length).trim() === ""
+                ) {
+                    fence = null;
+                }
+                return line; // fence content (and its closer): verbatim
+            }
+            if (f) {
+                fence = f[1];
+                return line;
+            }
+            if (!line.includes("\\\\")) return line;
+            return splitCodeSpans(line)
+                .map(({ text, code }) =>
+                    code
+                        ? text
+                        : text.replace(AUTOLINK_BACKSLASH_ESCAPE_RE, (_whole, body: string) =>
+                              "<" + body.replace(/\\\\/g, "\\") + ">",
+                          ),
+                )
+                .join("");
+        })
+        .join("\n");
+}
+
 function normLineForCompare(line: string, cls: LineClass): string {
     // Verbatim classes: raw bytes behind a class tag, so no amount of
     // byte coincidence can pair them with a prose-normalized key.

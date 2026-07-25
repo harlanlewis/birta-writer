@@ -26,21 +26,32 @@ import {
     sourceStyleReplacedPlugins,
 } from "./plugins/sourceStyle";
 import { tableBreakReplacedPlugins, tableBreaksPlugin } from "./plugins/tableBreaks";
-import { unescapeOrgCookies } from "./utils/minimalDiff";
+import { unescapeAutolinkBackslashes, unescapeOrgCookies } from "./utils/minimalDiff";
 
 type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];
 
 /**
+ * Markdown's whole-document serializer post-pass: the org-cookie unescape
+ * (MAR-131) followed by the autolink backslash unescape (MAR-218). Both need
+ * the WHOLE serialized document — the first to see every `[label]:` definition
+ * and fence, the second to skip fenced content — and both are line-oriented and
+ * independent, so composing them is order-insensitive. The hook takes one pass,
+ * so this is where markdown's passes compose.
+ */
+const postSerialize = (serialized: string): string =>
+    unescapeAutolinkBackslashes(unescapeOrgCookies(serialized));
+
+/**
  * Markdown's fidelity serializer: the vendored, patched `SerializerState`
  * (plugins/fidelitySerializer.ts — a format-agnostic factory) instantiated
- * with markdown's whole-document post-pass, the org-cookie unescape
- * (MAR-131). Bound here, inside the preset, so every construction site —
- * production editor.ts and every test factory — serializes with the pass by
- * construction (the MAR-143 argument). This binding is the SINGLE source of
- * truth for the pass: the FormatModule deliberately declares no separate
- * post-pass member (see the charter in webview/format/types.ts).
+ * with markdown's whole-document post-pass (above). Bound here, inside the
+ * preset, so every construction site — production editor.ts and every test
+ * factory — serializes with the pass by construction (the MAR-143 argument).
+ * This binding is the SINGLE source of truth for the pass: the FormatModule
+ * deliberately declares no separate post-pass member (see the charter in
+ * webview/format/types.ts).
  */
-const fidelitySerializerPlugin = createFidelitySerializerPlugin(unescapeOrgCookies);
+const fidelitySerializerPlugin = createFidelitySerializerPlugin(postSerialize);
 
 /**
  * The commonmark preset minus two of Milkdown's remark transforms, plus our
