@@ -234,6 +234,7 @@ __mocks__/vscode.ts         — Central vscode API mock
 
 #### Before `git push`
 - You **must** run `pnpm test`; push only if everything passes.
+- **Run `pnpm test:e2e` too.** It is the local pre-push gate for webview behavior — CI does **not** run it, so nothing downstream will catch what it catches. Anything touching `webview/` needs it, and jsdom's lack of a layout engine means whole classes of change (positioning, viewport, scroll) are *only* observable here. Run it separately from `pnpm test`, not alongside (see **Run one harness at a time** above).
 - CI's `unit-test` job runs on every push/PR (`.github/workflows/ci.yml`); a failure blocks the build.
 
 ### Handling test failures
