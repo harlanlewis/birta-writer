@@ -57,6 +57,12 @@ function renameHeading(view: EditorView, oldText: string, newText: string): void
     view.dispatch(view.state.tr.replaceWith(from, to, view.state.schema.text(newText)));
 }
 
+/** A detached level-1 heading node — the payload of a "pasted heading" block
+ *  insertion (the MAR-182 path that never goes through a block-type step). */
+function makeHeading(view: EditorView, text: string): ProseNode {
+    return view.state.schema.nodes["heading"].create({ level: 1 }, view.state.schema.text(text));
+}
+
 /** Every `link` mark href present in the document, in order. */
 function linkHrefs(view: EditorView): string[] {
     const hrefs: string[] = [];
@@ -193,6 +199,100 @@ describe("anchorSync — rename detection and link rewrite", () => {
         expect(serialize(editor)).toContain("[toDoomed](#doomed)");
     });
 
+    it("pasting a COLLIDING heading above an existing one should repoint its links to the shifted slug", async () => {
+        // MAR-182. A pure block insertion at a block boundary used to escape the
+        // tier-2 guard entirely. The inserted `Foo` takes the base slug `foo`,
+        // demoting the ORIGINAL heading to `foo-1` — so a link left pointing at
+        // `#foo` silently lands on the newcomer instead of the heading it was
+        // written for. The user loses the destination, with no visible edit.
+        const { editor, view } = await makeEditor("# Foo\n\n[go](#foo)\n");
+        view.dispatch(view.state.tr.insert(0, makeHeading(view, "Foo")));
+
+        const out = serialize(editor);
+        expect(out).toContain("[go](#foo-1)");
+        expect(out).not.toContain("[go](#foo)");
+    });
+
+    it("pasting a colliding heading OVER a selected paragraph should repoint its links too", async () => {
+        // The same escape with a NON-empty old range: the replaced range holds
+        // only the doomed paragraph, so the pre-edit document never sees the
+        // heading either. Only the post-edit range does.
+        const { editor, view } = await makeEditor("filler\n\n# Foo\n\n[go](#foo)\n");
+        let target: { from: number; to: number } | null = null;
+        view.state.doc.forEach((node, offset) => {
+            if (!target && node.type.name === "paragraph" && node.textContent === "filler") {
+                target = { from: offset, to: offset + node.nodeSize };
+            }
+        });
+        if (!target) throw new Error("filler paragraph not found");
+        const { from, to } = target as { from: number; to: number };
+        view.dispatch(view.state.tr.replaceWith(from, to, makeHeading(view, "Foo")));
+
+        expect(serialize(editor)).toContain("[go](#foo-1)");
+    });
+
+    it("promoting a paragraph into a COLLIDING heading should repoint the demoted heading's links", async () => {
+        // The same MAR-182 escape via the far more common gesture: the `# `
+        // input rule / gutter promote (setBlockType). The promoted "Foo" takes
+        // the base slug, demoting the real heading below it to `foo-1`.
+        const { editor, view } = await makeEditor("Foo\n\n# Foo\n\n[go](#foo)\n");
+        let para: { from: number; to: number } | null = null;
+        view.state.doc.forEach((node, offset) => {
+            if (!para && node.type.name === "paragraph" && node.textContent === "Foo") {
+                para = { from: offset, to: offset + node.nodeSize };
+            }
+        });
+        if (!para) throw new Error("paragraph not found");
+        const { from, to } = para as { from: number; to: number };
+        view.dispatch(
+            view.state.tr.setBlockType(from + 1, to - 1, view.state.schema.nodes["heading"], {
+                level: 1,
+            }),
+        );
+
+        expect(serialize(editor)).toContain("[go](#foo-1)");
+    });
+
+    it("duplicating a section should leave the COPY's self-link pointing at the copy", async () => {
+        // The widened guard fires on the insertion, but a link the edit just
+        // INSERTED has no pre-edit href to follow: the duplicate's own
+        // `[go](#foo)` must keep targeting the duplicate (which holds `foo`),
+        // while the ORIGINAL heading's demotion to `foo-1` moves only the link
+        // that was already in the document.
+        const { editor, view } = await makeEditor("# Foo\n\nSee [go](#foo) here.\n");
+        // Duplicate the whole section ABOVE itself, the Shift+Alt+Up shape.
+        const section = [] as ProseNode[];
+        view.state.doc.forEach((node) => section.push(node));
+        view.dispatch(view.state.tr.insert(0, section));
+
+        const out = serialize(editor);
+        // Exactly one link per section: the copy keeps #foo, the original's
+        // link follows its demoted heading to #foo-1.
+        expect(out).toBe("# Foo\n\nSee [go](#foo) here.\n\n# Foo\n\nSee [go](#foo-1) here.");
+    });
+
+    it("deleting the FIRST of two duplicate headings should promote the survivor's inbound link", async () => {
+        // The old-side half of the guard, asserted on the slug shift it exists
+        // for rather than on a dangling link (which survives either way): the
+        // survivor inherits the base slug, so #foo-1 must become #foo.
+        const { editor, view } = await makeEditor(
+            "# Foo\n\n[a](#foo)\n\n# Foo\n\n[b](#foo-1)\n",
+        );
+        let first: { pos: number; size: number } | null = null;
+        view.state.doc.forEach((node, offset) => {
+            if (!first && node.type.name === "heading") {
+                first = { pos: offset, size: node.nodeSize };
+            }
+        });
+        const { pos, size } = first as unknown as { pos: number; size: number };
+        view.dispatch(view.state.tr.delete(pos, pos + size));
+
+        const out = serialize(editor);
+        expect(out).toContain("[b](#foo)");
+        // The deleted heading's own link is left exactly as typed, never repointed.
+        expect(out).toContain("[a](#foo)");
+    });
+
     it("an external-sync rename should NOT trigger a link rewrite (on-disk truth wins)", async () => {
         // A heading rename arriving FROM the file (git checkout, side-by-side
         // text editor) is tagged EXTERNAL_SYNC_META. The file legitimately
@@ -242,6 +342,55 @@ describe("anchorSync — rename detection and link rewrite", () => {
     });
 });
 
+describe("anchorSync — the cost of a heading keystroke (MAR-181)", () => {
+    /** The doc-mutating steps anchorSync APPENDS to one heading keystroke.
+     *  `applyTransaction` returns every transaction in the round, ours first,
+     *  so anything past index 0 is the plugin's own contribution — the exact
+     *  work the feature costs, counted rather than timed. */
+    function appendedStepCount(view: EditorView): number {
+        let from = -1;
+        view.state.doc.descendants((n, p, parent) => {
+            if (from < 0 && n.isText && parent?.type.name === "heading") from = p + 1;
+        });
+        const { transactions } = view.state.applyTransaction(view.state.tr.insertText("x", from));
+        return transactions.slice(1).reduce((n, tr) => n + tr.steps.length, 0);
+    }
+
+    it("a heading keystroke with no links pointing at that heading should mutate nothing", async () => {
+        // MAR-181 filed this as an O(document) walk per keystroke. Measurement
+        // says otherwise: the walk is ~30µs, and with nothing to rewrite the
+        // plugin appends NO transaction at all — so document size is not what
+        // this feature costs. Pinned as a count of work, not a wall clock.
+        const body = Array.from({ length: 120 }, (_, i) => `Body ${i} with [other](#elsewhere).`);
+        const { view } = await makeEditor(`# Target\n\n${body.join("\n\n")}\n`);
+
+        expect(appendedStepCount(view)).toBe(0);
+    });
+
+    it("a heading keystroke should cost only the links pointing at THAT heading", async () => {
+        // The real cost model: proportional to matching links, independent of
+        // both document size and the document's total link count. Three links
+        // match here and twenty do not, so the appended work must cover three.
+        const decoys = Array.from({ length: 20 }, (_, i) => `Decoy ${i}: [d](#other-${i}).`);
+        const { editor, view } = await makeEditor(
+            `# Target\n\n[a](#target)\n\n[b](#target)\n\n[c](#target)\n\n${decoys.join("\n\n")}\n`,
+        );
+        // Two mark steps per matching link (remove the stale href, add the new).
+        expect(appendedStepCount(view)).toBe(6);
+
+        // And the rewrite itself is correct: the three follow, the twenty don't.
+        let from = -1;
+        view.state.doc.descendants((n, p, parent) => {
+            if (from < 0 && n.isText && parent?.type.name === "heading") from = p + 1;
+        });
+        view.dispatch(view.state.tr.insertText("X", from));
+        const out = serialize(editor);
+        expect(out).toContain("[a](#txarget)");
+        expect(out).toContain("[c](#txarget)");
+        expect(out).toContain("[d](#other-19)");
+    });
+});
+
 describe("headingRangeTouched — the perf guard", () => {
     it("a body-text edit should report NO heading touched (the keystroke fast path)", async () => {
         const { view } = await makeEditor("# Title\n\nbody paragraph here\n");
@@ -261,6 +410,37 @@ describe("headingRangeTouched — the perf guard", () => {
         });
         const tr = view.state.tr.insertText("x", from + 1);
         expect(headingRangeTouched([tr], view.state.doc)).toBe(true);
+    });
+
+    it("inserting a heading block at a block boundary should report a heading touched", async () => {
+        // MAR-182: `fromA === toA` at a boundary, so the PRE-edit document
+        // visits nothing — only the post-edit range sees the new heading.
+        const { view } = await makeEditor("# Title\n\nbody\n");
+        const tr = view.state.tr.insert(0, makeHeading(view, "Inserted"));
+        expect(headingRangeTouched([tr], view.state.doc)).toBe(true);
+    });
+
+    it("a heading inserted by an EARLIER step of a multi-step transaction should still be seen", async () => {
+        // Pins `docs[i + 1] ?? tr.doc` rather than `tr.doc`: step 0's new
+        // coordinates are only valid in the doc right AFTER step 0, and step 1
+        // shifts everything before it. Reading the transaction's FINAL doc for
+        // step 0's range looks somewhere else entirely and misses the heading.
+        const { view } = await makeEditor("# Title\n\nbody\n");
+        const tr = view.state.tr.insert(0, makeHeading(view, "Inserted"));
+        tr.insert(0, view.state.schema.nodes["paragraph"].create(null, view.state.schema.text("x".repeat(200))));
+        expect(headingRangeTouched([tr], view.state.doc)).toBe(true);
+    });
+
+    it("inserting a paragraph block at a block boundary should still report NO heading touched", async () => {
+        // The widened guard must not degrade into "any block insertion is a
+        // heading edit" — a pasted paragraph still takes the cheap bail.
+        const { view } = await makeEditor("# Title\n\nbody\n");
+        const para = view.state.schema.nodes["paragraph"].create(
+            null,
+            view.state.schema.text("pasted"),
+        );
+        const tr = view.state.tr.insert(0, para);
+        expect(headingRangeTouched([tr], view.state.doc)).toBe(false);
     });
 
     it("a selection-only transaction should report no heading touched", async () => {

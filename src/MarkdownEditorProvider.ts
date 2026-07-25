@@ -444,6 +444,37 @@ export class MarkdownEditorProvider
         flushTimeoutMs: number = 1000,
     ) {
         this._flush = new SaveFlushController<vscode.TextEdit>(flushTimeoutMs);
+        this._watchWorkspaceIndex();
+    }
+
+    /**
+     * Drop the two workspace-index caches the moment the FILE SET changes
+     * (MAR-208). Both are keyed only by a TTL, so nothing about them captures
+     * what is on disk: a file created a moment ago would not autocomplete for
+     * up to 10s, and a deleted one kept being offered — the TTL was the only
+     * thing bounding staleness.
+     *
+     * Create/delete only, which is also what a rename fires. A content EDIT can
+     * change a file's frontmatter values but not the file set, so it stays on
+     * the coarse TTL backstop rather than invalidating a 500-file scan on every
+     * save of any `.md` in the workspace.
+     *
+     * Clearing is O(1) — the slot is rebuilt lazily on the next menu open — so
+     * a noisy workspace costs nothing. The watcher honours `files.watcherExclude`.
+     */
+    private _watchWorkspaceIndex(): void {
+        const watcher = vscode.workspace.createFileSystemWatcher("**/*");
+        const invalidate = (uri: vscode.Uri): void => {
+            this._linkFileCache = undefined;
+            if (uri.fsPath.endsWith(".md")) {
+                this._fmScanCache = undefined;
+            }
+        };
+        this.context.subscriptions.push(
+            watcher,
+            watcher.onDidCreate(invalidate),
+            watcher.onDidDelete(invalidate),
+        );
     }
 
     async resolveCustomTextEditor(

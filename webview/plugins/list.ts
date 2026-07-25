@@ -35,16 +35,74 @@ import { isListNode, isSameTypeListBoundary } from "../editing/listMerge";
 // override-by-registration-order pattern math.ts uses for `code_block`);
 // list_item registers after gfm — see its schema doc below.
 
+// ── Per-gap tightness (MAR-194) ─────────────────────────────────────────────
+//
+// mdast cannot represent a PARTLY loose list: `spread` is one boolean for the
+// whole list, so `- a\n- b\n\n- c` and `- a\n\n- b\n- c` parse to identical
+// trees (list.spread true, every item spread false) and both re-emit fully
+// loose — a blank line between EVERY item. Until an edit, minimal-diff hides
+// this by keeping untouched bytes; but an edit that adds or removes a line in
+// the list marks the region dirty, and then the loosened canonical form wins
+// and gaps the author never wrote appear on disk.
+//
+// The gap is not actually lost at parse time, though — only `spread` is. Each
+// mdast listItem still carries its source `position`, so a blank line between
+// two items is exactly `next.start.line - prev.end.line > 1`. We read that on
+// the way in, store it per item as `blankBefore`, and emit it on the way out
+// through the `join` extension in serialization.ts. `spread` keeps its existing
+// meaning and ownership (see the block above); this rides alongside it and only
+// decides the separator BETWEEN two items.
+//
+// Items with no recorded value (editor-created, or any path that doesn't set
+// it) leave `blankBefore` undefined on the mdast node, and the join defers to
+// mdast's default.
+//
+// KNOWN LIMITATION — deferring is not neutral (MAR-210). The default it falls
+// back to is the LIST-level `spread`, which for a partly-loose list is `true`.
+// The first item never has a gap recorded (there is nothing before it), so if a
+// reorder lands it mid-list its gap is drawn from that default and a blank line
+// appears that the author never wrote: `- a\n- b\n- c\n\n- d` with `a` moved
+// down one emits `- b\n\n- a\n- c\n\n- d`. This is strictly better than the
+// pre-fix behaviour (which loosened every gap) and re-parses stably, but it is
+// the same class of bug. There is no obviously correct value to record for the
+// first item — `false` would wrongly tighten a real gap in a fully loose list —
+// so the fix needs a rule for what a MOVED item's gap should be, which is a
+// design decision rather than an oversight. A recorded gap otherwise travels
+// with its item, so moving an item away and back restores the source bytes.
+
 interface ListMdastNode {
     spread?: unknown;
     start?: number;
     label?: unknown;
     children?: unknown;
+    position?: { start?: { line?: number }; end?: { line?: number } };
+    /** Set by `annotateItemGaps` while parsing the parent list. */
+    blankBefore?: boolean;
 }
 
 /** The mdast boolean spread, or the schema's null-fallback, as a real boolean. */
 function spreadBool(node: ListMdastNode, fallback: boolean): boolean {
     return node.spread != null ? Boolean(node.spread) : fallback;
+}
+
+/**
+ * Record, on each of a list's item children, whether a blank line separated it
+ * from the previous item in the SOURCE (MAR-194). Only the parent sees the
+ * sibling geometry, so the annotation is written here and read by the list_item
+ * parse runner. The first item has no preceding gap inside the list, and an
+ * item without usable position info is left undefined (→ mdast's default).
+ */
+function annotateItemGaps(children: unknown): void {
+    if (!Array.isArray(children)) {
+        return;
+    }
+    for (let i = 1; i < children.length; i++) {
+        const prevEnd = (children[i - 1] as ListMdastNode)?.position?.end?.line;
+        const start = (children[i] as ListMdastNode)?.position?.start?.line;
+        if (typeof prevEnd === "number" && typeof start === "number") {
+            (children[i] as ListMdastNode).blankBefore = start - prevEnd > 1;
+        }
+    }
 }
 
 /** A PM `spread` attr as a real boolean, tolerating the legacy string form. */
@@ -59,6 +117,7 @@ export const bulletListSpreadBoolSchema = bulletListSchema.extendSchema((prev) =
         parseMarkdown: {
             match: base.parseMarkdown.match,
             runner: (state, node, type) => {
+                annotateItemGaps(node.children);
                 state
                     .openNode(type, { spread: spreadBool(node as ListMdastNode, false) })
                     .next(node.children)
@@ -76,6 +135,7 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
             match: base.parseMarkdown.match,
             runner: (state, node, type) => {
                 const n = node as ListMdastNode;
+                annotateItemGaps(node.children);
                 state
                     .openNode(type, { spread: spreadBool(n, true), order: n.start ?? 1 })
                     .next(node.children)
@@ -123,6 +183,11 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
             attrs: {
                 ...base.attrs,
                 spread: { default: false, validate: "boolean" },
+                // Whether the SOURCE put a blank line before this item (MAR-194).
+                // `null` = unknown (editor-created); the serializer's join then
+                // defers to mdast's list-level default instead of pinning a gap
+                // this item never had one recorded for.
+                blankBefore: { default: null },
             },
             parseMarkdown: {
                 match: base.parseMarkdown.match,
@@ -131,10 +196,12 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                     const label = n.label != null ? `${n.label}.` : "•";
                     const listType = n.label != null ? "ordered" : "bullet";
                     const spread = spreadBool(n, true);
+                    // Written by the parent list's runner (annotateItemGaps).
+                    const blankBefore = typeof n.blankBefore === "boolean" ? n.blankBefore : null;
                     const attrs =
                         n.checked == null
-                            ? { label, listType, spread }
-                            : { label, listType, spread, checked: Boolean(n.checked) };
+                            ? { label, listType, spread, blankBefore }
+                            : { label, listType, spread, blankBefore, checked: Boolean(n.checked) };
                     state.openNode(type, attrs).next(node.children).closeNode();
                 },
             },
@@ -142,8 +209,13 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                 match: base.toMarkdown.match,
                 runner: (state, node) => {
                     const spread = attrSpreadBool(node.attrs["spread"]);
+                    const blankBefore = node.attrs["blankBefore"];
+                    // Only pass a real boolean through; anything else leaves the
+                    // prop absent so `listItemGapJoin` defers (MAR-194).
+                    const gap =
+                        typeof blankBefore === "boolean" ? { blankBefore } : undefined;
                     if (node.attrs["checked"] == null) {
-                        state.openNode("listItem", undefined, { spread })
+                        state.openNode("listItem", undefined, { spread, ...gap })
                             .next(node.content)
                             .closeNode();
                     } else {
@@ -152,6 +224,7 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                                 label: node.attrs["label"],
                                 listType: node.attrs["listType"],
                                 spread,
+                                ...gap,
                                 checked: node.attrs["checked"],
                             })
                             .next(node.content)
@@ -575,8 +648,19 @@ export function setListTreeSpread(view: any, listPos: number, loose: boolean): b
         let offset = pos + 1;
         node.forEach((item: any) => {
             const itemLoose = loose || itemRequiresSpread(item);
-            if (item.attrs.spread !== itemLoose) {
-                tr.setNodeMarkup(offset, undefined, { ...item.attrs, spread: itemLoose });
+            // Drop a source-recorded gap that CONTRADICTS the requested spacing
+            // (MAR-194): the user has explicitly overridden the file, so a
+            // parsed `blankBefore` must not outvote this action. A gap that
+            // already agrees is left alone, so a no-op call stays a no-op.
+            const gapContradicts =
+                typeof item.attrs.blankBefore === "boolean" &&
+                item.attrs.blankBefore !== itemLoose;
+            if (item.attrs.spread !== itemLoose || gapContradicts) {
+                tr.setNodeMarkup(offset, undefined, {
+                    ...item.attrs,
+                    spread: itemLoose,
+                    blankBefore: gapContradicts ? null : item.attrs.blankBefore,
+                });
             }
             if (itemLoose) {
                 anyItemLoose = true;

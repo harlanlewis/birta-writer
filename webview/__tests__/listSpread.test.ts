@@ -17,6 +17,8 @@
  * as defense for the string form written by Milkdown's edit-time plugins.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import type { Node as ProseNode } from "../pm";
@@ -120,6 +122,63 @@ describe("loose lists stay loose on a raw round trip (no over-correction)", () =
     it("a list item with two paragraphs should keep the inner blank line", async () => {
         const doc = "- first paragraph\n\n  second paragraph\n\n- next item\n";
         expect(await roundTrip(doc)).toBe(doc);
+    });
+});
+
+describe("partly-loose lists keep each gap as authored (MAR-194)", () => {
+    // mdast has ONE `spread` boolean per list, so a list with a single interior
+    // blank line parses as fully loose and used to re-emit a blank line between
+    // EVERY item. The gap survives parsing as each item's source `position`,
+    // which plugins/list.ts records per item and the serializer's join reads
+    // back. These take the RAW serializer output, so they prove the gaps are
+    // right BY CONSTRUCTION rather than pinned by minimal-diff at save time.
+
+    it("a list with one interior blank line should round-trip byte-identically", async () => {
+        const doc = "- foo\n- bar\n- baz\n\n- bingo\n- wingo\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("two lists differing ONLY in where the blank line sits should stay distinct", async () => {
+        // The sharpest form of the bug: these parse to identical mdast trees
+        // (list.spread true, every item spread false), so before the per-gap
+        // fix they serialized to the same fully-loose bytes and one of the two
+        // files was silently rewritten into the other.
+        const blankEarly = "- a\n\n- b\n- c\n";
+        const blankLate = "- a\n- b\n\n- c\n";
+        expect(await roundTrip(blankEarly)).toBe(blankEarly);
+        expect(await roundTrip(blankLate)).toBe(blankLate);
+    });
+
+    it("the partly-loose corpus fixture should serialize back byte-identically", async () => {
+        // The corpus gates (roundTripCorpus / corpusMoveSampling) do NOT catch
+        // this class: invariant A is a zero-edit save, which minimal-diff's
+        // round-trip protection absorbs, and invariant B only checks that
+        // significant lines survive — never where a blank line sits. So the
+        // fixture is held to the RAW serializer here, which is the layer the
+        // bug actually lives in. Verified to fail without the per-gap join.
+        const fixture = readFileSync(
+            join(__dirname, "fixtures", "partly-loose-lists.md"),
+            "utf8",
+        );
+        expect(await roundTrip(fixture)).toBe(fixture);
+    });
+
+    it("a partly-loose ordered list should keep its gap in place", async () => {
+        const doc = "1. one\n2. two\n\n3. three\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a partly-loose nested list should keep the nested gap too", async () => {
+        // The sub-list needs THREE items to be partly loose: a two-item list has
+        // a single gap, which list-level `spread` already describes exactly.
+        const doc = "- parent\n  - child one\n  - child two\n\n  - child three\n- sibling\n";
+        expect(await roundTrip(doc)).toBe(doc);
+    });
+
+    it("a fully tight and a fully loose list should still round-trip unchanged", async () => {
+        // The per-gap join must not disturb the uniform cases it now also owns.
+        expect(await roundTrip("- a\n- b\n- c\n")).toBe("- a\n- b\n- c\n");
+        expect(await roundTrip("- a\n\n- b\n\n- c\n")).toBe("- a\n\n- b\n\n- c\n");
     });
 });
 

@@ -98,3 +98,53 @@ describe("tight nested lists stay tight (MAR-87 net)", () => {
         expect(md(e)).not.toContain("\n\n");
     });
 });
+
+/**
+ * MAR-194: a list with ONE interior blank line. Before the per-gap fix these
+ * edits wrote blank lines into gaps the author never had — the raw serializer
+ * loosened every gap, and minimal-diff only protected the file while nothing
+ * in the list changed. An edit that adds or removes a LINE marks the region
+ * dirty, and from there the loosened canonical form reached disk.
+ */
+const PARTLY_LOOSE = "- foo\n- bar\n- baz\n\n- bingo\n- wingo\n";
+
+describe("partly-loose lists survive edits inside them (MAR-194)", () => {
+    it("splitting an item keeps every other gap exactly as authored", async () => {
+        const e = await makeEditor(PARTLY_LOOSE);
+        const v = view(e);
+        let mid = -1;
+        v.state.doc.descendants((n, p) => {
+            if (mid < 0 && n.isText && n.text === "bar") mid = p + 1;
+        });
+        v.dispatch(v.state.tr.split(mid, 2));
+        // The new item joins the TIGHT run; the one authored blank line stays
+        // where it was, before "bingo".
+        expect(md(e)).toBe("- foo\n- b\n- ar\n- baz\n\n- bingo\n- wingo\n");
+    });
+
+    it("deleting an item from the tight run keeps the authored gap", async () => {
+        const e = await makeEditor(PARTLY_LOOSE);
+        const v = view(e);
+        let from = -1;
+        let to = -1;
+        v.state.doc.descendants((n, p) => {
+            if (from < 0 && n.type.name === "list_item" && n.textContent === "baz") {
+                from = p;
+                to = p + n.nodeSize;
+            }
+        });
+        v.dispatch(v.state.tr.delete(from, to));
+        expect(md(e)).toBe("- foo\n- bar\n\n- bingo\n- wingo\n");
+    });
+
+    it("typing in an item does not disturb any gap", async () => {
+        const e = await makeEditor(PARTLY_LOOSE);
+        const v = view(e);
+        let at = -1;
+        v.state.doc.descendants((n, p) => {
+            if (at < 0 && n.isText && n.text === "bar") at = p + 3;
+        });
+        v.dispatch(v.state.tr.insertText("XX", at));
+        expect(md(e)).toBe("- foo\n- barXX\n- baz\n\n- bingo\n- wingo\n");
+    });
+});

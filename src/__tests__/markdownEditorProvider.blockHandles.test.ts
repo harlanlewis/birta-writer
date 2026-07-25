@@ -14,6 +14,7 @@ const makeContext = () =>
     ({
         extensionUri: vscode.Uri.file("/ext"),
         globalState: { get: vi.fn(() => undefined), update: vi.fn() },
+        subscriptions: [],
     }) as unknown as vscode.ExtensionContext;
 
 const makePanel = () => ({
