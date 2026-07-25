@@ -1,0 +1,84 @@
+/* ─── Suggest-list surfaces (ui/suggestList.ts) ───────────────────────────
+ *
+ * The shell itself paints as .fm-suggest-menu / -list / -item (style.css);
+ * this file carries only what individual surfaces add on top, plus the one
+ * rule below that applies to every menu the shell renders.
+ *
+ * Imported from webview/index.ts AFTER style.css — never from suggestList.ts.
+ * esbuild orders CSS by module evaluation, and a module reachable earlier in
+ * the graph would lose the specificity tie against the ui-* primitives.
+ */
+
+/* The shell drives the highlight in JS: mouseover moves it, and keyboard
+   navigation SUPPRESSES mouseover so a scrollIntoView-triggered event can't
+   yank the highlight off the row the user just arrowed to. During that
+   suppressed window the pointer still sits over some other row, and since
+   .fm-suggest-menu maps --ui-menu-hover-bg to the suggest-selection token,
+   the primitive's CSS :hover would paint that row identically to the real
+   one — two rows selected at once (the bug MAR-220 fixed in the image path
+   list). Silencing the raw hover leaves --focused as the single highlight.
+
+   Do NOT "simplify" this to `--ui-menu-hover-bg: transparent` on the
+   container, the slash menu's idiom: .fm-suggest-item--focused reads that
+   same variable, so zeroing it would remove the keyboard highlight too. */
+.link-target-menu .ui-menu-row:hover:not(.fm-suggest-item--focused) {
+    background: transparent;
+}
+
+/* ─── Inline-code path completion (components/pathLink/pathComplete.ts) ─── */
+
+.path-complete-menu {
+    min-width: 200px;
+    /* Paths read as code, matching the inline `code` span being completed. */
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.path-complete-icon {
+    flex-shrink: 0;
+    line-height: 0;
+    display: flex;
+    align-items: center;
+}
+
+.path-complete-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ─── Image path completion (components/imageView/imgPathComplete.ts) ───── */
+
+/* Rows carry a 32px thumbnail, so they need more vertical room than the
+   shell's text rhythm. */
+.img-path-complete-menu .fm-suggest-item {
+    padding: 3px 8px;
+}
+
+.img-complete-thumb {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: var(--ui-radius-s);
+    flex-shrink: 0;
+    background: var(--vscode-editor-background);
+}
+
+.img-complete-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.img-complete-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.img-complete-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}

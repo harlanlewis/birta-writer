@@ -1,19 +1,37 @@
+/**
+ * components/pathLink/pathComplete.ts
+ *
+ * Path autocompletion for inline `code` spans: typing a path-looking fragment
+ * inside inline code (`img/`, `./notes`, `@/docs/`) offers the matching
+ * workspace entries, and picking one rewrites the code span.
+ *
+ * Unlike its two siblings this is a DOCUMENT-LEVEL singleton, not a per-input
+ * attachment: there is no field to attach to, so it listens on `document` and
+ * finds the active code span from the selection. That difference is why the
+ * ProseMirror `replaceRangeWith` + `savedRange` snapshot lives here and not in
+ * the shared shell — everything else (render, keyboard highlight, viewport
+ * placement) comes from `ui/suggestList.ts`.
+ */
 import { notifyGetPathSuggestions } from "@/messaging";
 import { getFileIcon } from "./fileIcons";
 import { onOutsideClick } from "@/ui/outsideClick";
+import {
+    createSuggestMenuFromRows,
+    type LinkSuggestMenu,
+} from "@/ui/suggestList";
 import type { EditorView } from "@/pm";
+import type { PathSuggestionItem } from "../../../shared/messages";
 
 // Path-prefix detection that triggers completion
 const PATH_PREFIX_REGEX = /^(@\/|\.{1,2}\/|[a-zA-Z0-9_-][a-zA-Z0-9._-]*\/)/;
 
-type SuggestionItem = { path: string; isDir: boolean };
-type SuggestCallback = (items: SuggestionItem[]) => void;
+type SuggestCallback = (items: PathSuggestionItem[]) => void;
 
 // Path-completion callback map: id → resolve
 const _pendingSuggestions = new Map<string, SuggestCallback>();
 
 /** Called from outside to dispatch a pathSuggestions message */
-export function dispatchPathSuggestions(id: string, items: SuggestionItem[]): void {
+export function dispatchPathSuggestions(id: string, items: PathSuggestionItem[]): void {
     const cb = _pendingSuggestions.get(id);
     if (cb) {
         _pendingSuggestions.delete(id);
@@ -59,38 +77,33 @@ function getCodeNodeRangeFromSelection(view: EditorView): { from: number; to: nu
     return from !== undefined && to !== undefined ? { from, to } : null;
 }
 
-export function initPathComplete(getEditorViewFn: () => EditorView | null): void {
-    let dropdown: HTMLUListElement | null = null;
-    let activeIndex = -1;
-    let lastItems: SuggestionItem[] = [];
+/** The name a row shows: the last segment, without a trailing slash. */
+function lastSegment(path: string): string {
+    return path.replace(/\/$/, "").split("/").pop() ?? path;
+}
+
+/**
+ * Installs the inline-code path completion. Returns a detach function that
+ * removes every document/window listener and closes any open dropdown — the
+ * listeners used to be attached for the editor's whole lifetime with no way
+ * back off (MAR-220).
+ */
+export function initPathComplete(getEditorViewFn: () => EditorView | null): () => void {
+    let menu: LinkSuggestMenu | null = null;
+    let lastItems: PathSuggestionItem[] = [];
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     // Snapshot the code mark range in showDropdown, since the caret position may be unreliable on click
     let savedRange: { from: number; to: number } | null = null;
-    // Suppress mouseover after keyboard navigation, so scrollIntoView-triggered mouseover doesn't override activeIndex
-    let suppressMouseover = false;
+    let isDestroyed = false;
 
     function closeDropdown(): void {
-        if (dropdown) {
-            dropdown.remove();
-            dropdown = null;
-        }
-        activeIndex = -1;
+        menu?.destroy();
+        menu = null;
         lastItems = [];
         savedRange = null;
     }
 
-    function updateActiveItem(): void {
-        if (!dropdown) { return; }
-        Array.from(dropdown.children).forEach((li, i) => {
-            const isActive = i === activeIndex;
-            li.classList.toggle("path-complete-item--active", isActive);
-            if (isActive) {
-                (li as HTMLElement).scrollIntoView({ block: "nearest" });
-            }
-        });
-    }
-
-    function applySelection(item: SuggestionItem): void {
+    function applySelection(item: PathSuggestionItem): void {
         const view = getEditorViewFn();
         if (!view) {
             closeDropdown();
@@ -117,6 +130,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
             // A folder was chosen: after replacing the content, enter that directory automatically (50ms wait for the ProseMirror DOM to update)
             closeDropdown();
             setTimeout(() => {
+                if (isDestroyed) { return; }
                 const newCode = getActiveInlineCode();
                 if (newCode) { triggerSuggest(newCode); }
             }, 50);
@@ -125,7 +139,7 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         }
     }
 
-    function showDropdown(code: HTMLElement, items: SuggestionItem[]): void {
+    function showDropdown(code: HTMLElement, items: PathSuggestionItem[]): void {
         closeDropdown();
         if (items.length === 0) { return; }
 
@@ -135,48 +149,32 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         const view = getEditorViewFn();
         if (view) { savedRange = getCodeNodeRangeFromSelection(view); }
 
+        // Viewport coordinates: the shell's menu is position:fixed, so no
+        // scroll offsets. `flipTop` lets it flip above a code span sitting
+        // near the bottom edge instead of rendering off-screen.
         const rect = code.getBoundingClientRect();
-        const ul = document.createElement("ul");
-        ul.className = "path-complete-list";
-        ul.style.top = `${rect.bottom + window.scrollY + 2}px`;
-        ul.style.left = `${rect.left + window.scrollX}px`;
-
-        items.forEach((item, i) => {
-            const li = document.createElement("li");
-            li.className = "ui-menu-row path-complete-item";
-
-            // Icon
-            const iconEl = document.createElement("span");
-            iconEl.className = "path-complete-icon";
-            iconEl.innerHTML = getFileIcon(item.path, item.isDir);
-
-            // Show only the last file/directory name segment; the full path is the title
-            const lastSeg = item.path.replace(/\/$/, '').split('/').pop() ?? item.path;
-            const label = document.createElement("span");
-            label.className = "path-complete-label";
-            label.textContent = lastSeg;
-            li.title = item.path;
-
-            li.append(iconEl, label);
-
-            li.addEventListener("mousedown", (e) => {
-                e.preventDefault();
-                activeIndex = i;
-                applySelection(item);
-            });
-            li.addEventListener("mousemove", () => { suppressMouseover = false; });
-            li.addEventListener("mouseover", () => {
-                if (suppressMouseover) { return; }
-                activeIndex = i;
-                updateActiveItem();
-            });
-            ul.appendChild(li);
-        });
-
-        document.body.appendChild(ul);
-        dropdown = ul;
-        activeIndex = 0;
-        updateActiveItem();
+        menu = createSuggestMenuFromRows(
+            items.map((item) => ({
+                // The picked value is the FULL path while the row shows only
+                // its last segment, so the row owns its own content.
+                text: item.path,
+                title: item.path,
+                render: (li) => {
+                    const iconEl = document.createElement("span");
+                    iconEl.className = "path-complete-icon";
+                    iconEl.innerHTML = getFileIcon(item.path, item.isDir);
+                    const label = document.createElement("span");
+                    label.className = "path-complete-label";
+                    label.textContent = lastSegment(item.path);
+                    li.append(iconEl, label);
+                },
+            })),
+            { left: rect.left, top: rect.bottom + 2, flipTop: rect.top - 2 },
+            // By INDEX, not text: one directory listing can hold a folder
+            // `foo/` and a file `foo`, which render the same segment.
+            (_text, i) => applySelection(lastItems[i]),
+            { className: "path-complete-menu", initialActive: 0 },
+        );
     }
 
     function triggerSuggest(code: HTMLElement): void {
@@ -188,8 +186,10 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
 
         const id = `ps_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
         _pendingSuggestions.set(id, (items) => {
-            const currentCode = getActiveInlineCode();
-            if (currentCode === code) {
+            // The caret must still be in the SAME code span: the reply is
+            // async and the user may have moved on since the request.
+            if (isDestroyed) { return; }
+            if (getActiveInlineCode() === code) {
                 showDropdown(code, items);
             }
         });
@@ -204,8 +204,12 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
     }
 
     // Keyboard navigation (capture phase, takes priority over the editor)
-    document.addEventListener("keydown", (e) => {
-        if (!dropdown) { return; }
+    function onKeydown(e: KeyboardEvent): void {
+        // Never touch an IME composition. This listener is on `document` in
+        // the CAPTURE phase, so without the guard a CJK/Japanese candidate
+        // window's Enter or arrow key was swallowed from the whole editor
+        // whenever the dropdown happened to be open (MAR-220).
+        if (e.isComposing || !menu) { return; }
 
         if (e.key === "Escape") {
             e.preventDefault();
@@ -214,34 +218,24 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
             return;
         }
 
-        if (e.key === "ArrowDown") {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
-            suppressMouseover = true;
-            activeIndex = activeIndex >= lastItems.length - 1 ? 0 : activeIndex + 1;
-            updateActiveItem();
-            return;
-        }
-
-        if (e.key === "ArrowUp") {
-            e.preventDefault();
-            suppressMouseover = true;
-            activeIndex = activeIndex <= 0 ? lastItems.length - 1 : activeIndex - 1;
-            updateActiveItem();
+            menu.moveActive(e.key === "ArrowDown" ? 1 : -1);
             return;
         }
 
         if (e.key === "Enter" || e.key === "Tab") {
-            if (activeIndex >= 0 && activeIndex < lastItems.length) {
+            // pickActive routes through applySelection, which closes the menu.
+            if (menu.pickActive()) {
                 e.preventDefault();
                 e.stopPropagation();
-                applySelection(lastItems[activeIndex]);
             }
             return;
         }
-    }, true);
+    }
 
     // Trigger completion on input (debounced 200ms)
-    document.addEventListener("keyup", (e) => {
+    function onKeyup(e: KeyboardEvent): void {
         if (["Escape", "ArrowDown", "ArrowUp", "Enter", "Tab"].includes(e.key)) { return; }
 
         const code = getActiveInlineCode();
@@ -253,21 +247,32 @@ export function initPathComplete(getEditorViewFn: () => EditorView | null): void
         if (debounceTimer) { clearTimeout(debounceTimer); }
         debounceTimer = setTimeout(() => {
             debounceTimer = null;
-            triggerSuggest(code);
+            if (!isDestroyed) { triggerSuggest(code); }
         }, 200);
-    });
+    }
 
+    function onWindowBlur(): void {
+        closeDropdown();
+    }
+
+    document.addEventListener("keydown", onKeydown, true);
+    document.addEventListener("keyup", onKeyup);
+    window.addEventListener("blur", onWindowBlur);
     // Click elsewhere to close the dropdown. The dropdown is rebuilt per
     // suggestion reply, hence the getter; the no-dropdown guard mirrors the
-    // original handler (nothing to close). Attached for the editor's
-    // lifetime, like the keydown/keyup listeners above — never detached.
-    onOutsideClick(
-        () => [dropdown],
-        () => { if (dropdown) { closeDropdown(); } },
+    // original handler (nothing to close).
+    const outsideOff = onOutsideClick(
+        () => [menu?.el],
+        () => { if (menu) { closeDropdown(); } },
     );
 
-    // Close on blur
-    window.addEventListener("blur", () => {
+    return function detach(): void {
+        isDestroyed = true;
+        if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
         closeDropdown();
-    });
+        document.removeEventListener("keydown", onKeydown, true);
+        document.removeEventListener("keyup", onKeyup);
+        window.removeEventListener("blur", onWindowBlur);
+        outsideOff();
+    };
 }

@@ -3,8 +3,7 @@
  *
  * Anchored autocompletion for link URL inputs — the link hover popup's URL
  * field and the toolbar's insert-link prompt. Typing a local path surfaces
- * matching workspace files in a dropdown styled like the frontmatter suggest
- * menu (.fm-suggest-* classes).
+ * matching workspace files in the shared suggest dropdown (ui/suggestList.ts).
  *
  * Files are offered in the form matching what the user is reaching for:
  * document-relative ("../notion/index.md") by default, workspace-root-based
@@ -34,8 +33,12 @@ import {
     collectHeadingSuggestions,
     filterHeadingSuggestions,
 } from "@/utils/headingSuggest";
-import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
 import { onOutsideClick } from "@/ui/outsideClick";
+import {
+    createSuggestMenuFromRows,
+    type LinkSuggestMenu,
+    type SuggestMenuAnchor,
+} from "@/ui/suggestList";
 import type { LinkTargetSuggestionItem } from "../../../shared/messages";
 import {
     isLocalPathQuery,
@@ -140,34 +143,19 @@ export function requestPickLinkTarget(cb: PickCallback): void {
     setTimeout(() => { _pendingPicks.delete(id); }, 300_000);
 }
 
-/** A rendered suggestion dropdown (see createLinkSuggestMenu). */
-export interface LinkSuggestMenu {
-    /** The menu root, appended to document.body. */
-    el: HTMLDivElement;
-    /** Display texts of the rendered rows (the exact strings picked). */
-    rows: string[];
-    /** Moves the keyboard highlight down (+1) or up (-1), wrapping. */
-    moveActive(delta: 1 | -1): void;
-    /** Applies onPick to the highlighted row; false when none is highlighted. */
-    pickActive(): boolean;
-    /** Removes the menu DOM. */
-    destroy(): void;
-}
-
-/** Anchor geometry shared by every suggest-menu placement. */
-export interface SuggestMenuAnchor {
-    left: number;
-    /** Menu top (viewport y) when placed below the anchor. */
-    top: number;
-    /**
-     * Viewport y the menu's BOTTOM edge should sit at when flipped above
-     * the anchor (the anchor's top edge minus the gap). When provided,
-     * the menu flips above whenever it would overflow the viewport
-     * bottom and there is more room above the anchor than below it.
-     */
-    flipTop?: number;
-    minWidth?: number;
-}
+/**
+ * The dropdown widget itself now lives in `ui/suggestList.ts` (MAR-220) —
+ * it backs the two path completions as well. Re-exported here so its six
+ * existing consumers, and the caret-suggest controller that imports its
+ * types, keep their import path.
+ */
+export { createSuggestMenuFromRows };
+export type {
+    LinkSuggestMenu,
+    SuggestMenuAnchor,
+    SuggestMenuOptions,
+    SuggestRowDef,
+} from "@/ui/suggestList";
 
 /**
  * Renders the anchored workspace-file dropdown shared by the link URL
@@ -193,155 +181,6 @@ export function createLinkSuggestMenu(
         anchor,
         onPick,
     );
-}
-
-/**
- * The DOM half of the suggest menu, decoupled from path ranking so callers
- * with their own row shapes (the wikilink caret autocomplete) can reuse the
- * exact widget. Rows start with no highlight so plain Enter keeps its normal
- * meaning until an arrow key or hover selects a row.
- */
-export function createSuggestMenuFromRows(
-    rowDefs: ReadonlyArray<{
-        text: string;
-        title?: string;
-        /** Right-aligned dimmed hint (e.g. the confirm key, "Tab"). */
-        hint?: string;
-        /** Styled as a secondary action row (top border, dimmer text). */
-        action?: boolean;
-    }>,
-    anchor: SuggestMenuAnchor,
-    onPick: (text: string) => void,
-    opts?: {
-        /**
-         * One dimmed, non-interactive teaching line under the rows (the slash
-         * menu's footer pattern): never picked, never highlighted, aria-hidden
-         * — the keyboard model is entirely the rows above it.
-         */
-        footer?: string;
-    },
-): LinkSuggestMenu | null {
-    const rows = rowDefs.map((r) => r.text);
-    if (rows.length === 0) { return null; }
-
-    let activeIndex = -1;
-    // Stable per-menu id prefix so each option gets a unique, referenceable id
-    // (the ARIA listbox/option model, mirroring blockMenu/menu.ts's combobox).
-    const menuId = `fm-suggest-${++suggestMenuSeq}`;
-
-    const div = document.createElement("div");
-    div.className = "fm-suggest-menu link-target-menu";
-    div.addEventListener("mousedown", (e) => {
-        // preventDefault keeps focus where it is (a blur would close the
-        // menu before the pick applies); stopPropagation keeps the hosting
-        // popup/prompt's outside-click handlers from closing themselves.
-        e.preventDefault();
-        e.stopPropagation();
-    });
-
-    const list = document.createElement("ul");
-    list.className = "fm-suggest-list";
-    // Assistive-tech model: the list is a listbox, each row an option, and the
-    // focused option carries aria-selected in lockstep with its visual
-    // highlight (see updateActive). This backs calc, section-link, and the
-    // link/wikilink autocompletes — every consumer of this widget.
-    list.setAttribute("role", "listbox");
-    div.appendChild(list);
-
-    div.style.top = `${anchor.top}px`;
-    div.style.left = `${anchor.left}px`;
-    if (anchor.minWidth !== undefined) {
-        div.style.minWidth = `${anchor.minWidth}px`;
-    }
-
-    function updateActive(): void {
-        list.querySelectorAll("li").forEach((li, i) => {
-            const isActive = i === activeIndex;
-            li.classList.toggle("fm-suggest-item--focused", isActive);
-            // aria-selected tracks the visual highlight so screen readers
-            // announce the focused option as the row moves.
-            li.setAttribute("aria-selected", isActive ? "true" : "false");
-            // Optional call: jsdom (unit tests) does not implement scrollIntoView.
-            if (isActive) { li.scrollIntoView?.({ block: "nearest" }); }
-        });
-    }
-
-    rows.forEach((text, i) => {
-        const li = document.createElement("li");
-        li.className = "ui-menu-row fm-suggest-item";
-        if (rowDefs[i].action) { li.classList.add("fm-suggest-item--action"); }
-        li.id = `${menuId}-opt-${i}`;
-        li.setAttribute("role", "option");
-        li.setAttribute("aria-selected", "false");
-        if (rowDefs[i].hint) {
-            // Label + right-aligned hint spans; textContent-only rows stay
-            // plain so existing consumers (and their tests) are unaffected.
-            const label = document.createElement("span");
-            label.className = "fm-suggest-item__label";
-            label.textContent = text;
-            const hint = document.createElement("span");
-            hint.className = "fm-suggest-item__hint";
-            hint.setAttribute("aria-hidden", "true");
-            hint.textContent = rowDefs[i].hint ?? "";
-            li.append(label, hint);
-        } else {
-            li.textContent = text;
-        }
-        if (rowDefs[i].title) { li.title = rowDefs[i].title; }
-        li.addEventListener("mousedown", () => onPick(text));
-        li.addEventListener("mouseover", () => {
-            activeIndex = i;
-            updateActive();
-        });
-        list.appendChild(li);
-    });
-
-    if (opts?.footer) {
-        const footer = document.createElement("div");
-        footer.className = "fm-suggest-footer";
-        footer.setAttribute("aria-hidden", "true");
-        footer.textContent = opts.footer;
-        div.appendChild(footer);
-    }
-
-    document.body.appendChild(div);
-
-    // Viewport-bottom clamp: measured after appending (the height depends on
-    // the rendered rows). Flip above the anchor when the menu would overflow
-    // the bottom edge and the space above the anchor is larger than below —
-    // the drop point (`top`) and flip line (`flipTop`) form a zero-gap rect.
-    // Horizontal is untouched: the menu is min-width-pinned to its input.
-    if (anchor.flipTop !== undefined) {
-        const rect = div.getBoundingClientRect();
-        const placed = computeAnchoredPosition(
-            { left: anchor.left, right: anchor.left, top: anchor.flipTop, bottom: anchor.top },
-            { width: rect.width, height: rect.height },
-            viewportSize(),
-            { gap: 0, fitSlack: 0 },
-        );
-        if (placed.above) {
-            div.style.top = `${Math.max(0, placed.top)}px`;
-        }
-    }
-
-    return {
-        el: div,
-        rows,
-        moveActive(delta: 1 | -1): void {
-            activeIndex = delta > 0
-                ? (activeIndex >= rows.length - 1 ? 0 : activeIndex + 1)
-                : (activeIndex <= 0 ? rows.length - 1 : activeIndex - 1);
-            updateActive();
-        },
-        pickActive(): boolean {
-            if (activeIndex < 0 || activeIndex >= rows.length) { return false; }
-            onPick(rows[activeIndex]);
-            return true;
-        },
-        destroy(): void {
-            div.remove();
-        },
-    };
 }
 
 /**

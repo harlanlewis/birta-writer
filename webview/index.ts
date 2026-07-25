@@ -24,6 +24,7 @@ import "./perfBoot"; // MUST stay first: stamps mdw:eval-start before any other 
 import "./ui/chrome.css"; // shared ui-* chrome tokens (radius/spacing/type) + button/menu primitives
 import "./ui/typography.css"; // shared ui-* chrome type scale (menus, panels, sidebars)
 import "./style.css";
+import "./ui/suggestList.css"; // suggest-dropdown surface deltas (must follow style.css, which owns the .fm-suggest-* base)
 import { installCrashReporter } from "./crashReporter";
 
 // Crash boundary (MAR-169): install before any component initializes, so an
@@ -396,6 +397,9 @@ if (editorContainer) {
     setupLinkPopup(editorContainer, () => getEditorView());
     setupPathLink(editorContainer);
     initHeadingIds(editorContainer);
+    // Returns a detach function; nothing disposes it here because the webview
+    // is torn down wholesale with its panel. It exists so the listeners are
+    // removable at all — and so the behavior is unit-testable (MAR-220).
     initPathComplete(() => getEditorView());
     // Table row/column affordances (grips, insert bars, drag-reorder) now live
     // inside the table NodeView overlay — see components/table/tableView.ts.

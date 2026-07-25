@@ -21,6 +21,13 @@
     --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
     --vscode-list-activeSelectionBackground: #094771;
     --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-hoverBackground: #2a2d2e;
+    /* The path-suggest dropdown paints from the suggest-widget family. */
+    --vscode-editorSuggestWidget-background: #252526;
+    --vscode-editorSuggestWidget-border: #454545;
+    --vscode-editorSuggestWidget-foreground: #cccccc;
+    --vscode-editorSuggestWidget-selectedBackground: #04395e;
+    --vscode-editorSuggestWidget-selectedForeground: #ffffff;
     --vscode-errorForeground: #f48771;
   }
   body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
@@ -52,8 +59,12 @@
           type: "pathSuggestions",
           id: msg.id,
           items: [
+            // A directory (folder icon) plus two images (thumbnails), and a
+            // non-image file the dropdown must filter out.
+            { path: "img/nested/", isDir: true },
             { path: "img/cats.jpeg", isDir: false, webviewUri: ORIGIN + "/img/cats.jpeg" },
             { path: "img/other.jpeg", isDir: false, webviewUri: ORIGIN + "/img/other.jpeg" },
+            { path: "img/readme.md", isDir: false },
           ],
         }, "*");
       }
