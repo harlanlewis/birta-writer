@@ -147,8 +147,8 @@ universal.
    gradient is not.)
 6. **Humanist, not cold.** *(Birta's signature.)* The word is warm. The default
    "Icelandic = cold minimal blue-white" move is not just generic, it *misreads the
-   word*. Curves, optical warmth, a humanist hand — closer to the wordmark sketches
-   (ARIA / FLOW / CURVE / STRUCTURAL) than to a cold geometric grotesk. A product wordmark
+   word*. Curves, optical warmth, a humanist hand — closer to a warm humanist voice than to
+   a cold geometric grotesk. A product wordmark
    may run colder or more structured if the product calls for it (a *Budget* reading
    serious and solid is appropriate); the constant "Birta" stays humanist and carries the
    warmth for the family.
@@ -195,8 +195,8 @@ universal.
 Two typographic problems, both worked in black and white. *Exploration space, not chosen
 answers.*
 
-**A — The constant: drawing "Birta".** A humanist wordmark (the direction the ARIA /
-FLOW / CURVE / STRUCTURAL sketches point at), where the word's meaning can live as a quiet
+**A — The constant: drawing "Birta".** A humanist wordmark, where the word's meaning can
+live as a quiet
 letterform detail — a **lit counter** in the *B* or *a*, a **value** split, a
 **negative-space reveal** as light spilling from a counter — never as a separate symbol.
 These are the light ideas worth carrying, relocated from "monogram" to "wordmark detail."
