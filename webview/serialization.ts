@@ -271,15 +271,43 @@ function serializeTableNoAlign(node: any, _parent: any, state: any): string {
 }
 
 /**
+ * Emit the blank line between two list items that the SOURCE actually had
+ * (MAR-194), rather than the one `spread` implies for the whole list.
+ *
+ * mdast has a single `spread` boolean per list, so a list with one errant blank
+ * line in the middle parses as fully loose and mdast-util-to-markdown's default
+ * join puts a blank between EVERY pair of items. The source gap survives parsing
+ * as each item's `position`, though, and plugins/list.ts records it per item as
+ * `blankBefore`; this reads it back.
+ *
+ * Returning `0`/`1` overrides the separator for that ONE gap. Returning
+ * `undefined` — for any item without a recorded boolean, i.e. anything the
+ * editor created — defers to mdast's default, so this can only ever pin a gap
+ * the author wrote and never invents tightness for new content.
+ */
+function listItemGapJoin(left: unknown, right: unknown, parent: unknown): number | undefined {
+    const l = left as { type?: string } | null;
+    const r = right as { type?: string; blankBefore?: unknown } | null;
+    if ((parent as { type?: string } | null)?.type !== "list") {
+        return undefined;
+    }
+    if (l?.type !== "listItem" || r?.type !== "listItem") {
+        return undefined;
+    }
+    return typeof r.blankBefore === "boolean" ? (r.blankBefore ? 1 : 0) : undefined;
+}
+
+/**
  * Apply the stringify options that keep serializer output close to the
- * original file formatting: `-` bullets, `---` rules (instead of `***`), and
- * the natural-width table handler.
+ * original file formatting: `-` bullets, `---` rules (instead of `***`), the
+ * natural-width table handler, and the per-gap list join.
  */
 export function configureSerialization(ctx: EditorCtx): void {
     ctx.update(remarkStringifyOptionsCtx, (prev) => ({
         ...prev,
         bullet: "-" as const,
         rule: "-" as const,
+        join: [...(prev.join ?? []), listItemGapJoin],
         handlers: {
             ...(prev.handlers ?? {}),
             ...sourceStyleHandlers,
