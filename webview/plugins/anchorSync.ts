@@ -55,21 +55,61 @@ function autoUpdateEnabled(): boolean {
 
 export const anchorSyncKey = new PluginKey("birta-anchor-sync");
 
+/** Does `[from, to]` of `doc` contain a `heading` node? Clamps the range to the
+ *  document first, since a step's map coordinates are only valid in the doc that
+ *  side of the step. */
+function hasHeadingInRange(doc: ProseNode, rawFrom: number, rawTo: number): boolean {
+    const size = doc.content.size;
+    const from = Math.max(0, Math.min(rawFrom, size));
+    const to = Math.max(from, Math.min(rawTo, size));
+    let found = false;
+    doc.nodesBetween(from, to, (node) => {
+        if (found) {
+            return false;
+        }
+        if (node.type.name === "heading") {
+            found = true;
+            return false;
+        }
+        return true; // keep descending containers toward any heading
+    });
+    return found;
+}
+
 /**
  * TIER-2 PERF GUARD (exported for direct unit testing): did any changed range
- * of these transactions intersect a `heading` node in the pre-edit document?
+ * of these transactions intersect a `heading` node — on EITHER side of the edit?
  *
- * Walks the mapped ranges of every step against the doc that step applied to
+ * Walks the mapped ranges of every step against the doc that side of the step
  * (`tr.docs[i]` is the document BEFORE step `i`, so the map's OLD coordinates
- * resolve in it). `nodesBetween` over a step's changed range descends only into
+ * resolve in it; `docs[i + 1] ?? tr.doc` is the document AFTER it, for the NEW
+ * coordinates). `nodesBetween` over a step's changed range descends only into
  * that range — a body-text edit resolves inside a paragraph and never reaches a
  * heading, so this is O(steps · changed-range), never an O(document) walk.
+ *
+ * BOTH sides are required, because each is blind to one kind of edit (MAR-182):
+ *   - the OLD side alone misses an APPEARING heading. A pure insertion at a block
+ *     boundary maps to `fromA === toA`, and `nodesBetween(p, p, …)` only visits
+ *     children that STRICTLY contain `p` — at a boundary that is nothing, so the
+ *     inserted heading is invisible on the old side. Two other gestures escape the
+ *     same way with a non-empty old range that holds only the doomed PARAGRAPH:
+ *     pasting a heading over a selection, and — much more common — promoting a
+ *     paragraph with `# ` or the gutter (`setBlockType`). When the heading that
+ *     appears COLLIDES with an existing one, GitHub dedup shifts the older
+ *     heading's slug (`foo` → `foo-1`), so skipping the diff silently repoints
+ *     every existing `[…](#foo)` at the newcomer — a phase-0 fidelity violation.
+ *   - the NEW side alone misses a DELETED heading, whose slug shift is equally
+ *     real: deleting the first of two `Foo`s promotes the survivor `foo-1` → `foo`.
+ *
+ * We ask the two real documents rather than inspecting `step.slice`: the base
+ * `Step` type exposes no slice, and a document that already exists answers the
+ * question directly instead of predicting it from the edit that produced it.
  *
  * Deliberately conservative: a false POSITIVE (an edit next to a heading that
  * flags true) only costs one wasted slug diff that then finds no rename and
  * returns null. A false NEGATIVE would miss a real rename, so the test errs
  * toward "touched" — a heading deletion, whose whole node sits in the deleted
- * range, is correctly caught here even though it produces no rename (its links
+ * range, is correctly caught here even when it produces no rename (its own links
  * are meant to be left dangling).
  */
 export function headingRangeTouched(
@@ -83,27 +123,21 @@ export function headingRangeTouched(
         const { steps, docs } = tr;
         for (let i = 0; i < steps.length; i++) {
             const docBefore = docs[i];
+            const docAfter = docs[i + 1] ?? tr.doc;
             if (!docBefore) {
                 continue;
             }
-            const size = docBefore.content.size;
             let touched = false;
-            steps[i].getMap().forEach((fromA, toA) => {
+            steps[i].getMap().forEach((fromA, toA, fromB, toB) => {
                 if (touched) {
                     return;
                 }
-                const from = Math.max(0, Math.min(fromA, size));
-                const to = Math.max(from, Math.min(toA, size));
-                docBefore.nodesBetween(from, to, (node) => {
-                    if (touched) {
-                        return false;
-                    }
-                    if (node.type.name === "heading") {
-                        touched = true;
-                        return false;
-                    }
-                    return true; // keep descending containers toward any heading
-                });
+                if (
+                    hasHeadingInRange(docBefore, fromA, toA) ||
+                    hasHeadingInRange(docAfter, fromB, toB)
+                ) {
+                    touched = true;
+                }
             });
             if (touched) {
                 return true;
@@ -134,14 +168,10 @@ export function headingRangeTouched(
  *     positional collision.
  */
 function pairOldToNew(
-    transactions: readonly Transaction[],
+    mapping: Mapping,
     oldHeadings: readonly { pos: number; level: number }[],
     newHeadings: readonly { pos: number; level: number }[],
 ): number[] {
-    const mapping = new Mapping();
-    for (const tr of transactions) {
-        mapping.appendMapping(tr.mapping);
-    }
     const inverse = mapping.invert();
     const newByPos = new Map<number, number>();
     newHeadings.forEach((h, j) => newByPos.set(h.pos, j));
@@ -163,16 +193,24 @@ function pairOldToNew(
 }
 
 /**
- * Rewrite every `link` mark whose href is `#<oldSlug>` to `#<newSlug>`, in one
- * transaction on `state`. Reads each link's CURRENT href and looks it up in the
- * rename map exactly once, so `foo → bar` never chains into a later `bar → …`
- * substitution. Positions from the walk stay valid because mark edits never
- * change document size (only `removeMark`/`addMark`), so no re-mapping is
- * needed as edits accumulate on the transaction.
+ * Rewrite every PRE-EXISTING `link` mark whose href is `#<oldSlug>` to
+ * `#<newSlug>`, in one transaction on `state`. Reads each link's CURRENT href
+ * and looks it up in the rename map exactly once, so `foo → bar` never chains
+ * into a later `bar → …` substitution. Positions from the walk stay valid
+ * because mark edits never change document size (only `removeMark`/`addMark`),
+ * so no re-mapping is needed as edits accumulate on the transaction.
+ *
+ * Links inside content this edit INSERTED are skipped (`inverse.mapResult`
+ * reports no pre-edit preimage). They were never pointing at the old slug, so
+ * "following the rename" would be an uncommanded rewrite of bytes the user just
+ * introduced. The concrete case is duplicating a section (Shift+Alt+Up) whose
+ * body links to its own heading: the copy's self-link must keep targeting the
+ * copy, not be dragged onto the original because the original's slug shifted.
  */
 function rewriteLinks(
     state: EditorState,
     renames: Map<string, string>,
+    inverse: Mapping,
 ): Transaction | null {
     const linkType = state.schema.marks["link"];
     if (!linkType) {
@@ -183,6 +221,9 @@ function rewriteLinks(
     state.doc.descendants((node, pos) => {
         if (!node.isText) {
             return; // marks live on text nodes; keep descending containers
+        }
+        if (inverse.mapResult(pos).deleted) {
+            return; // inserted by this edit — no pre-edit href to follow
         }
         const linkMark = node.marks.find((m) => m.type === linkType);
         if (!linkMark) {
@@ -247,7 +288,14 @@ export const anchorSyncPlugin = $prose(
                     return null; // nothing could have been renamed FROM
                 }
 
-                const oldToNew = pairOldToNew(transactions, oldHeadings, newHeadings);
+                // One accumulated mapping serves both the heading pairing and
+                // the "was this link already here?" test below.
+                const mapping = new Mapping();
+                for (const tr of transactions) {
+                    mapping.appendMapping(tr.mapping);
+                }
+
+                const oldToNew = pairOldToNew(mapping, oldHeadings, newHeadings);
                 const renames = computeSlugRenames(
                     oldHeadings.map((h) => h.text),
                     newHeadings.map((h) => h.text),
@@ -256,7 +304,7 @@ export const anchorSyncPlugin = $prose(
                 if (renames.size === 0) {
                     return null; // heading edit that changed no slug (e.g. a move)
                 }
-                return rewriteLinks(newState, renames);
+                return rewriteLinks(newState, renames, mapping.invert());
             },
         }),
 );
