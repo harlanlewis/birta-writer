@@ -508,3 +508,31 @@ describe("applyMinimalChanges — an edited line keeps the parts the user didn't
         expect(applyMinimalChanges(saved, serialized)).toBe(serialized);
     });
 });
+
+describe("applyMinimalChanges — construct classification on CRLF files (MAR-223)", () => {
+    // A consequence of the engine handing the profile ending-stripped lines
+    // that is worth pinning on its own: several markdown normalizers are
+    // `$`-anchored against the raw line (`THEMATIC_BREAK_RE`, `SETEXT_DASH_RE`,
+    // the dash arm of `glueChangesConstruct`). A trailing `\r` defeated every
+    // one of them, so on a CRLF file a thematic break was never recognized as
+    // a thematic break at all — it keyed as ordinary prose, which means its
+    // style was NOT protected and the serializer's spelling won.
+    it("a thematic break's style should survive an edit elsewhere in a CRLF file", () => {
+        const saved = "alpha\r\n\r\n- - -\r\n\r\nomega\r\n";
+        // The serializer canonicalizes the divider to `---` and the user edits
+        // an unrelated line. The divider must keep the spelling it was written
+        // with, exactly as it does in an LF file.
+        const serialized = "alpha\n\n---\n\nomega EDITED\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe(
+            "alpha\r\n\r\n- - -\r\n\r\nomega EDITED\r\n",
+        );
+    });
+
+    it("the same document written with LF should behave identically", () => {
+        const saved = "alpha\n\n- - -\n\nomega\n";
+        const serialized = "alpha\n\n---\n\nomega EDITED\n";
+
+        expect(applyMinimalChanges(saved, serialized)).toBe("alpha\n\n- - -\n\nomega EDITED\n");
+    });
+});

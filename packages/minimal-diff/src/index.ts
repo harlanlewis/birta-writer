@@ -43,7 +43,8 @@ export interface FormatProfile {
      * per input line (enforced): out-of-range lookups would yield `undefined`
      * keys, which pair with each other as `keep`s and silently swallow real
      * edits. Keys returned for blank (whitespace-only) lines are ignored —
-     * blanks never participate in the diff.
+     * blanks never participate in the diff. Lines arrive WITHOUT their line
+     * ending (see "Line endings" below) — a profile never sees a `\r`.
      */
     keyLines(lines: string[]): string[];
     /**
@@ -65,7 +66,10 @@ export interface FormatProfile {
      * line whose neighbours are unchanged. Return the bytes to write instead —
      * the profile's chance to carry source-only facts (indent unit, untouched
      * sub-line parts) that the serializer canonicalized away. MUST return a
-     * single line (no newlines) and MUST default to `serial` unchanged.
+     * single line — no `\n` and no `\r`, since the engine owns line endings and
+     * re-attaches the saved line's own; a return containing either is rejected
+     * and the serializer's line is used instead. MUST default to `serial`
+     * unchanged.
      *
      * This is the philosophy the keys already express — "a difference the
      * profile considers formatting-only is never applied" — extended from
@@ -79,20 +83,100 @@ export interface FormatProfile {
     reconcileReplacement(saved: string, serial: string): string;
 }
 
+// ─── Line endings ───────────────────────────────────────────────────────────
+//
+// A line ending is a property of the FILE, not of a line's content, so the
+// ENGINE owns it and the profile never sees one. Without that, a CRLF document
+// keys every line differently from the serializer's LF output and a zero-edit
+// round trip diffs as a whole-file rewrite: round-trip protection — meant for
+// constructs the parser cannot reproduce — gets spent entirely on holding the
+// `\r`s, and editing anything unprotects its whole region and writes it back
+// LF-only, leaving the file with mixed endings (MAR-223).
+//
+// Three rules, which together preserve invariant A (a zero-edit save is
+// byte-identical) even for a file whose endings are ALREADY mixed:
+//   • keys and the structure predicates run on ending-stripped lines, so
+//     CRLF↔LF is a formatting-only difference the merge never applies and an
+//     odd-ending line stays a `keep` instead of becoming a replacement;
+//   • every line that comes from the SAVED file — `keep`s, and the saved side
+//     of an in-place replacement — keeps its own ending verbatim, so a mixed
+//     file is never silently normalized;
+//   • only lines the engine invents (insertions and the serializer's blank
+//     runs, which have no saved counterpart) need an ending chosen for them,
+//     and they get the document's dominant one.
+//
+// One subtlety runs through all three: a `\n` split's LAST element is not a
+// line, it is the text AFTER the final ending, so it has no ending of its own.
+// Both directions of getting that wrong are real. Treating a `\r` there as a
+// terminator relocates a content CR onto a different line (a classic-Mac file,
+// or a stray CR fragment). Treating the segment as terminated is worse: when
+// the merge emits anything after it — an append to a CRLF file that has no
+// trailing newline — `out.join("\n")` silently gives it an LF, reintroducing
+// exactly the mixed-ending file this whole mechanism exists to prevent.
+
+/** A line's own ending (`"\r"` when the split left one). Never call this for a
+ *  split's final segment — see the note above; it has no ending. */
+function eolOf(line: string): string {
+    return line.endsWith("\r") ? "\r" : "";
+}
+
+/** Line CONTENT — what the profile is allowed to see. */
+function stripEol(line: string): string {
+    return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
+/**
+ * The ending invented lines should get: whichever the saved file uses for most
+ * of its lines, LF on a tie and for a file with no line ending at all. Only
+ * invented lines consult this — untouched ones keep their own bytes.
+ */
+function dominantEol(saved: string): "\n" | "\r\n" {
+    let crlf = 0;
+    let lf = 0;
+    for (let i = saved.indexOf("\n"); i !== -1; i = saved.indexOf("\n", i + 1)) {
+        if (i > 0 && saved[i - 1] === "\r") crlf++;
+        else lf++;
+    }
+    return crlf > lf ? "\r\n" : "\n";
+}
+
+/**
+ * Re-emit the serializer's output (always LF) with `eol`, so every
+ * serializer-sourced line is already correct by the time the merge picks lines
+ * from it. A no-op for an LF document, which is why this whole mechanism is
+ * invisible outside CRLF files.
+ */
+function matchEol(serialized: string, eol: "\n" | "\r\n"): string {
+    return eol === "\r\n" ? serialized.replace(/\r?\n/g, "\r\n") : serialized;
+}
+
 /**
  * Call `profile.reconcileReplacement` defensively. The merge's line accounting
  * is one-line-in / one-line-out, so a profile that throws or hands back a
  * multi-line string degrades to the serializer's line (the behaviour before
  * the hook existed) instead of corrupting the output.
+ *
+ * The profile works on content alone; the SAVED line's own ending is re-attached
+ * afterwards, so editing a line never changes which ending that line has.
+ * `savedTerminated` is false for the split's final segment, whose trailing `\r`
+ * (if any) is content rather than an ending.
  */
-function reconcileLine(profile: FormatProfile, saved: string, serial: string): string {
+function reconcileLine(
+    profile: FormatProfile,
+    saved: string,
+    serial: string,
+    savedTerminated: boolean,
+): string {
+    const eol = savedTerminated ? eolOf(saved) : "";
+    const savedContent = savedTerminated ? stripEol(saved) : saved;
+    const fallback = stripEol(serial) + eol;
     let out: string;
     try {
-        out = profile.reconcileReplacement(saved, serial);
+        out = profile.reconcileReplacement(savedContent, stripEol(serial));
     } catch {
-        return serial;
+        return fallback;
     }
-    return typeof out === "string" && !out.includes("\n") ? out : serial;
+    return typeof out === "string" && !/[\n\r]/.test(out) ? out + eol : fallback;
 }
 
 interface SigLine {
@@ -112,7 +196,8 @@ type Edit =
  * FULL line array (classification context), so it happens here, before blanks
  * are dropped. */
 function analyzeLines(lines: string[], profile: FormatProfile): SigLine[] {
-    const keys = profile.keyLines(lines);
+    const last = lines.length - 1;
+    const keys = profile.keyLines(lines.map((l, i) => (i === last ? l : stripEol(l))));
     if (keys.length !== lines.length) {
         throw new Error("FormatProfile.keyLines must return exactly one key per line");
     }
@@ -245,6 +330,10 @@ export function computeRoundTripProtection(
     baselineSerialized: string,
     profile: FormatProfile,
 ): RoundTripProtection | null {
+    // No EOL handling here: keys are ending-blind and a region records the
+    // serializer side only as keys, so an LF baseline against a CRLF file
+    // yields the same regions either way. `applyMinimalChanges` — including
+    // the self-check below — remains the single place endings are reconciled.
     const { edits, savedLines } = computeEditScript(saved, baselineSerialized, profile);
     if (!edits.some((e) => e.op !== "keep")) return null;
 
@@ -379,6 +468,9 @@ function repairSerialized(
     serialized: string,
     protection: RoundTripProtection,
     profile: FormatProfile,
+    /** Ending for the blank separators below — the only lines this function
+     *  invents rather than copying from the saved or serialized side. */
+    eol: "\n" | "\r\n",
 ): string {
     // Every region is matched against ONE analysis of the pristine
     // serialized text. Repairs swap serializer-canonical lines for saved
@@ -493,9 +585,10 @@ function repairSerialized(
             // splice only ever swaps a span for the saved bytes, and both
             // span endpoints are significant lines either way, so the
             // blank-or-not answer is the same.
+            const blank = eol === "\r\n" ? "\r" : "";
             const insertion = [...region.savedSpanLines];
-            if (rawAt > 0 && pristine[rawAt - 1].trim() !== "") insertion.unshift("");
-            if (rawAt < pristine.length && pristine[rawAt].trim() !== "") insertion.push("");
+            if (rawAt > 0 && pristine[rawAt - 1].trim() !== "") insertion.unshift(blank);
+            if (rawAt < pristine.length && pristine[rawAt].trim() !== "") insertion.push(blank);
             lines = [
                 ...lines.slice(0, rawAt + offset),
                 ...insertion,
@@ -559,7 +652,11 @@ export function applyMinimalChanges(
     profile: FormatProfile,
     protection?: RoundTripProtection | null,
 ): string {
-    const effective = protection ? repairSerialized(serialized, protection, profile) : serialized;
+    // Give the serializer's output the document's endings BEFORE anything else,
+    // so repair splices saved bytes among lines that already agree with them.
+    const eol = dominantEol(saved);
+    const matched = matchEol(serialized, eol);
+    const effective = protection ? repairSerialized(matched, protection, profile, eol) : matched;
     const { edits, savedLines, serialLines } = computeEditScript(saved, effective, profile);
 
     if (!edits.some((e) => e.op !== "keep")) return saved;
@@ -574,6 +671,14 @@ export function applyMinimalChanges(
     let prevSavedIdx = -1; // saved lineIdx of the last emitted keep/replacement
     let prevSerialIdx = -1; // serialized lineIdx of the last emitted line
     let dirty = false;
+
+    // Where the saved file's UNTERMINATED final segment landed in `out`, if it
+    // was emitted at all (it is blank, and so never a significant line, in the
+    // usual case of a file that ends with a newline). If the merge goes on to
+    // emit anything after it, the join gives it an LF it never had — so it is
+    // patched up with the document's ending once the output is complete.
+    const lastSavedIdx = savedLines.length - 1;
+    let unterminatedAt = -1;
 
     // Both gap slices only ever span blank lines: significant lines are
     // consumed strictly in order on each side, so the region between two
@@ -609,7 +714,7 @@ export function applyMinimalChanges(
         if (
             prevLineText !== null &&
             hasBlank(saved) &&
-            profile.blankSplitsBlock(prevLineText, nextText)
+            profile.blankSplitsBlock(stripEol(prevLineText), stripEol(nextText))
         ) {
             const serial = serialGap(serialTo);
             if (!hasBlank(serial)) {
@@ -619,7 +724,7 @@ export function applyMinimalChanges(
         if (
             prevLineText !== null &&
             !hasBlank(saved) &&
-            profile.glueChangesConstruct(prevLineText, nextText)
+            profile.glueChangesConstruct(stripEol(prevLineText), stripEol(nextText))
         ) {
             const serial = serialGap(serialTo);
             if (hasBlank(serial)) {
@@ -636,6 +741,7 @@ export function applyMinimalChanges(
         if (edit.op === "keep") {
             out.push(...gapBefore(edit.saved.lineIdx, edit.serial.lineIdx, edit.saved.text));
             out.push(edit.saved.text);
+            if (edit.saved.lineIdx === lastSavedIdx) unterminatedAt = out.length - 1;
             prevSavedIdx = edit.saved.lineIdx;
             prevSerialIdx = edit.serial.lineIdx;
             prevLineText = edit.saved.text;
@@ -647,13 +753,19 @@ export function applyMinimalChanges(
             // around it is kept (modulo the block-split guard in gapBefore).
             // The profile gets the last word on the BYTES too — it may carry
             // source-only facts the serializer canonicalized away.
-            const text = reconcileLine(profile, edit.saved.text, next.serial.text);
+            const text = reconcileLine(
+                profile,
+                edit.saved.text,
+                next.serial.text,
+                edit.saved.lineIdx !== lastSavedIdx,
+            );
             // Everything downstream must see the line actually written, not
             // the raw serializer line: gapBefore's structure predicates reason
             // about the emitted neighbours, so feeding them a line that was
             // never written would decide the blank run on fiction.
             out.push(...gapBefore(edit.saved.lineIdx, next.serial.lineIdx, text));
             out.push(text);
+            if (edit.saved.lineIdx === lastSavedIdx) unterminatedAt = out.length - 1;
             prevSavedIdx = edit.saved.lineIdx;
             prevSerialIdx = next.serial.lineIdx;
             prevLineText = text;
@@ -677,6 +789,17 @@ export function applyMinimalChanges(
     // Trailing region after the last significant line (blank lines and the
     // final newline — or its absence).
     out.push(...(dirty ? serialLines.slice(prevSerialIdx + 1) : savedLines.slice(prevSavedIdx + 1)));
+
+    // The saved final segment has stopped being final (content was appended
+    // after it), so it now needs the terminator it never carried.
+    if (
+        unterminatedAt !== -1 &&
+        unterminatedAt < out.length - 1 &&
+        eol === "\r\n" &&
+        !out[unterminatedAt].endsWith("\r")
+    ) {
+        out[unterminatedAt] += "\r";
+    }
 
     const result = out.join("\n");
     return result === saved ? saved : result;

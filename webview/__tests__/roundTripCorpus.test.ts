@@ -11,6 +11,8 @@
  *      comments, escaping — nothing is silently dropped or rewritten).
  *   C. Typing INSIDE a block never changes the document's structure: the
  *      merged bytes reparse to the same node tree, modulo the edited text.
+ *   D. An edit never introduces a line-ending style the saved file did not
+ *      already use.
  *
  * Why C exists (2026-07-25): A and B between them never performed an in-place
  * text edit — B only inserts a fresh paragraph at position 0 — so the entire
@@ -86,8 +88,11 @@ describe("corpus invariant B — an edit keeps every original line intact", () =
                 at = found + 1;
             }
             // The inserted paragraph must sit at the very top, above all
-            // original content.
-            expect(mergedSig[0]).toBe("Corpus edit marker paragraph.");
+            // original content. Compared without its line ending: in a CRLF
+            // fixture the new line correctly arrives CRLF (invariant D owns
+            // that), while `sig` above stays byte-exact so the surviving
+            // original lines are still checked down to their endings.
+            expect(mergedSig[0].replace(/\r$/, "")).toBe("Corpus edit marker paragraph.");
             await editor.destroy();
         });
     }
@@ -166,6 +171,60 @@ describe("corpus invariant C — typing inside a block never restructures the do
                     `typing at ${at} restructured the document — the saved bytes reparse differently`,
                 ).toEqual(before);
             }
+        });
+    }
+});
+
+/** The distinct line-ending styles a text uses, e.g. `["CRLF"]` or
+ *  `["CRLF","LF"]`. The final element of a `\n` split is the text after the
+ *  last ending, not a line, so it never contributes.
+ *
+ *  Deliberately a SET, which bounds what D can catch: it proves no new style
+ *  was introduced, not that each individual line kept its own. On an
+ *  already-mixed document D would therefore permit endings to be shuffled
+ *  between lines. No fixture is mixed today, and the per-line guarantee is
+ *  pinned directly in the engine's suite (`packages/minimal-diff`, "a document
+ *  with MIXED endings should keep each untouched line's own ending"); tighten
+ *  this if a mixed fixture is ever added. */
+function eolStyles(text: string): string[] {
+    const parts = text.split("\n").slice(0, -1);
+    return [...new Set(parts.map((l) => (l.endsWith("\r") ? "CRLF" : "LF")))].sort();
+}
+
+describe("corpus invariant D — an edit never introduces a line ending the file did not use", () => {
+    // Why D exists (MAR-223): A and B and C are all blind to line endings. A
+    // passed on the CRLF fixture only because round-trip protection was
+    // holding every line — the serializer emits LF, the `\r` sat inside the
+    // comparison key, so a zero-edit round trip read as a whole-file rewrite.
+    // Editing anything unprotected its region and wrote it back LF-only,
+    // leaving a file that is neither CRLF nor LF. B could not see it (the
+    // original lines all survived, elsewhere in the file) and C could not
+    // either (line endings are not document shape).
+    for (const { name, content } of fixtures) {
+        it(`${name} should keep its line-ending style when a character is typed`, async () => {
+            const before = eolStyles(content);
+
+            const editor = await makeEditor(content);
+            const serialized0 = editor.action(getMarkdown());
+            const protection = computeRoundTripProtection(content, serialized0);
+            let at = -1;
+            editor.action((ctx) => {
+                const view = ctx.get(editorViewCtx);
+                view.state.doc.descendants((node, pos, parent) => {
+                    if (at === -1 && node.isText && (node.text?.length ?? 0) > 2
+                        && parent?.type.name === "paragraph") { at = pos + 1; }
+                    return true;
+                });
+                if (at !== -1) view.dispatch(view.state.tr.insertText("Z", at));
+            });
+            const merged = applyMinimalChanges(content, editor.action(getMarkdown()), protection);
+            await editor.destroy();
+
+            if (at === -1) return; // no editable paragraph in this fixture
+            expect(
+                eolStyles(merged),
+                "typing introduced a line-ending style the saved file did not use",
+            ).toEqual(before);
         });
     }
 });
