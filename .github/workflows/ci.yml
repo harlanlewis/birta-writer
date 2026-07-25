@@ -137,23 +137,53 @@ jobs:
       # handled in release.yml).
       - run: git fetch --tags --force origin
 
+      # This job is REQUIRED, so it can't use a workflow-level `paths` filter:
+      # a required check that never runs leaves the PR waiting on a status that
+      # will never arrive. Instead the job always runs and always reports — it
+      # just skips the expensive two-build measurement when the PR cannot have
+      # moved launch time at all (docs, extension-side src/, CI config). That
+      # turns ~2m4s into ~20s on those PRs while keeping the check satisfied.
+      #
+      # The list is deliberately wider than "files that provably affect boot":
+      # narrowing a gate to specific modules is how it silently stops covering
+      # what it was built for.
+      - name: Does this PR touch anything that can move launch time?
+        id: relevant
+        run: |
+          # Three-dot: compare against the MERGE BASE, so unrelated commits that
+          # landed on main after this branch forked don't count as changes here.
+          CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}...HEAD")
+          echo "changed files:"; echo "$CHANGED" | sed 's/^/  /'
+          if echo "$CHANGED" | grep -qE '^(webview/|packages/|shared/|esbuild\.mjs|pnpm-lock\.yaml|e2e/perf)'; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+            echo "→ launch-relevant; running the full A/B"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+            echo "→ nothing launch-relevant changed; skipping the measurement"
+          fi
+
       - uses: pnpm/action-setup@v4
+        if: steps.relevant.outputs.value == 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.relevant.outputs.value == 'true'
         with:
           node-version: '20'
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.relevant.outputs.value == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Install Chromium for Playwright
+        if: steps.relevant.outputs.value == 'true'
         run: pnpm exec playwright install --with-deps chromium
 
       # Escape hatch for an intentional, justified launch cost: a `perf-accept`
       # PR label or a `Perf-Regression-Accepted: <reason>` trailer on any PR
       # commit makes the gate report the regression but not block.
       - name: Resolve perf-accept
+        if: steps.relevant.outputs.value == 'true'
         id: accept
         env:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
@@ -169,12 +199,13 @@ jobs:
           echo "value=$ACCEPT" >> "$GITHUB_OUTPUT"
 
       - name: Launch A/B vs merge-base
+        if: steps.relevant.outputs.value == 'true'
         env:
           PERF_ACCEPT: ${{ steps.accept.outputs.value }}
         run: node e2e/perf-ab.mjs --base "${{ github.event.pull_request.base.sha }}" --runs 9 --json ab.json
 
       - name: Comment launch A/B result
-        if: always()
+        if: always() && steps.relevant.outputs.value == 'true'
         uses: actions/github-script@v7
         with:
           script: |

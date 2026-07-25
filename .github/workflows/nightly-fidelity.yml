@@ -1,0 +1,114 @@
+name: Nightly Fidelity
+
+# The deep half of a tiered fidelity gate.
+#
+# `corpusMoveSampling.test.ts` samples the (source block, target boundary) pair
+# space a drag gesture can express. On every ordinary run it takes a small
+# sample under a FIXED seed, so it is fast and deterministic — but a fixed seed
+# means repeat runs re-test the same slice and stop yielding new information.
+#
+# This job supplies what that trades away: a much larger sample under a seed
+# that ROTATES daily, so the pair space is genuinely explored over time. A month
+# of nightlies covers far more of it than the previous every-PR fixed sample
+# ever did, at zero cost to anyone's PR.
+#
+# It runs on `main`, not on PRs, deliberately. A rotating seed can surface a
+# PRE-EXISTING bug on any given night; that must become a ticket, not a red
+# build on an unrelated author's PR. Every failure prints the seed that found
+# it, so `MDW_MOVE_SEED=<seed> MDW_MOVE_SAMPLE=<n> pnpm test` reproduces it
+# exactly.
+on:
+  schedule:
+    - cron: '0 8 * * *' # 08:00 UTC daily
+  workflow_dispatch: # so a suspicion can be chased immediately
+    inputs:
+      seed:
+        description: 'MDW_MOVE_SEED override (blank = today, YYYYMMDD)'
+        required: false
+      sample:
+        description: 'Moves sampled per fixture'
+        required: false
+        default: '32'
+
+permissions:
+  contents: read
+  issues: write # to file a ticket when the deep sweep finds something
+
+jobs:
+  deep-move-sampling:
+    name: Deep move sampling
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve seed and sample size
+        id: cfg
+        run: |
+          SEED="${{ github.event.inputs.seed }}"
+          if [ -z "$SEED" ]; then SEED=$(date -u +%Y%m%d); fi
+          SAMPLE="${{ github.event.inputs.sample }}"
+          if [ -z "$SAMPLE" ]; then SAMPLE=32; fi
+          echo "seed=$SEED"     >> "$GITHUB_OUTPUT"
+          echo "sample=$SAMPLE" >> "$GITHUB_OUTPUT"
+          echo "Deep sweep: seed=$SEED sample=$SAMPLE"
+
+      # Only the two corpus fidelity suites — this job exists for depth on those,
+      # not to re-run the whole unit suite that every PR already ran.
+      - name: Deep corpus move sampling
+        env:
+          MDW_MOVE_SEED: ${{ steps.cfg.outputs.seed }}
+          MDW_MOVE_SAMPLE: ${{ steps.cfg.outputs.sample }}
+        run: npx vitest run corpusMoveSampling roundTripCorpus
+
+      # A nightly that fails silently is a nightly nobody reads. Open one issue,
+      # carrying the exact reproduction command.
+      - name: File an issue when the deep sweep finds something
+        if: failure()
+        uses: actions/github-script@v7
+        env:
+          SEED: ${{ steps.cfg.outputs.seed }}
+          SAMPLE: ${{ steps.cfg.outputs.sample }}
+        with:
+          script: |
+            const { SEED, SAMPLE } = process.env;
+            const title = `Nightly fidelity: deep move sampling failed (seed ${SEED})`;
+            const body = [
+              'The nightly deep move-sampling sweep failed. This explores move pairs that the',
+              'smaller fixed-seed sample on PRs does not reach, so this is most likely a',
+              '**pre-existing** fidelity gap rather than a regression from a specific commit.',
+              '',
+              '**Reproduce exactly:**',
+              '```bash',
+              `MDW_MOVE_SEED=${SEED} MDW_MOVE_SAMPLE=${SAMPLE} npx vitest run corpusMoveSampling`,
+              '```',
+              '',
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Triage against the roadmap spine — content conservation under moves is',
+              '`phase-0-fidelity`. Confirm the reproduction locally before filing anything',
+              'downstream from it.',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            // Don't pile up one issue per night for the same standing failure.
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner, repo, state: 'open', labels: 'nightly-fidelity', per_page: 20,
+            });
+            if (open.length) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: open[0].number,
+                body: `Still failing on the ${SEED} sweep (sample ${SAMPLE}).`,
+              });
+              return;
+            }
+            await github.rest.issues.create({ owner, repo, title, body, labels: ['nightly-fidelity'] });
