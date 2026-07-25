@@ -53,21 +53,31 @@ cloud/multi-device/sharing — a separate build, correctly sequenced last. The s
 web/FSA/OPFS sections below become mostly moot for the near term.
 
 **(b) "Edit once, deploy everywhere" for the writing experience.** Any change to the
-*editing experience* must ship to every surface with zero per-host re-implementation. This
-draws the seam differently than "the current protocol":
+*editing experience* must ship to every surface with zero per-host re-implementation. The
+naive version of this — "move keybindings/commands/settings into core" — is **wrong**, and
+worth stating why: when Birta runs *as a VS Code extension it must behave like one*.
+Keybindings must resolve through and be rebindable in VS Code's Keyboard Shortcuts UI, be
+`when`-gated, appear in the native palette, and settings must live in the native Settings
+UI with real user/workspace scopes. You cannot move that into core and keep the extension
+feeling native.
 
-> **Core owns the entire writing experience** — the editor, its chrome (main toolbar,
-> selection toolbar, TOC, in-editor menus/context menu), the command registry, keybinding
-> dispatch, and a default command-palette UI. **The host owns only OS integration** —
-> files, windows, persistence, native dialogs/menus, settings storage, asset-URL minting.
+The resolution (detailed in **§14**): separate a command's **definition + behavior**
+(edit-once core) from its **binding + surfacing** (a host capability). VS Code provides
+binding/surfacing natively and the core's defaults stand down there; a standalone host uses
+a core-shipped default keybinding/palette/settings engine. This is exactly Monaco's own
+pattern — it ships `StandaloneKeybindingService`/`StandaloneCommandService`/standalone
+config that the VS Code workbench overrides via DI and never constructs. So the seam is:
 
-This is *more* than lives in core today: the palette, keybindings, and settings UI are
-currently host-side. For edit-once to hold, they move into core, and **the VS Code
-extension gets thinner** — it stops *owning* the palette/keymap and instead *projects* core
-commands into native VS Code surfaces (as an optional adapter affordance). The ~88 editor
-commands are already messages into the webview registry, so that half is portable; the
-missing half is moving dispatch + palette UI into core. A shrinking extension is the
-success signal, not a regression.
+> **Core owns command *definitions and behaviors*, the editing surface, and *default*
+> engines for binding/palette/menus/settings/raw-editing. The host owns binding &
+> surfacing (natively when it can — VS Code — else via the core defaults) plus all OS
+> integration** (files, windows, persistence, dialogs, asset-URL minting).
+
+Under this model the VS Code extension does **not** surrender native feel — its own
+keybinding/palette/settings services stay in use; only the shared command *table* is
+edit-once. Birta is already ~70% there: `shared/editorCommands.ts` and `shared/config.ts`
+are the definition tables, and `package.json`'s contributions are a hand-authored
+projection reconciled by drift tests — which become *generators* (§14).
 
 **(c) The deliverable is a factory/playbook for many apps — most not VS Code extensions.**
 Birta Writer is app #1. The real asset is the reusable machine: **core editor + format
@@ -276,7 +286,8 @@ Four **LARGE** surfaces dominate, then a bounded MEDIUM tier, then SMALL plumbin
 2. **Raw / source Markdown editor** — Birta has *none*; "Edit Raw Markdown" literally hands
    the file to VS Code's text editor (`vscode.openWith(uri, "default")`). A standalone app
    needs a whole second editing surface (syntax highlight, line numbers, cursor↔WYSIWYG
-   line sync). This directly affects the "safety net, not a wall" north star.
+   line sync). This directly affects the "safety net, not a wall" north star. **Detailed
+   design in §15** (CodeMirror 6, serialize↔parse toggle, fidelity companion positioning).
 3. **Multi-document + file browser + local-link navigation** — Birta edits exactly one file
    and asks VS Code to open any other. Needs a tab model, a file-explorer tree,
    "open folder," and in-app link-follow.
@@ -284,7 +295,9 @@ Four **LARGE** surfaces dominate, then a bounded MEDIUM tier, then SMALL plumbin
    87 palette entries, 149 `when` clauses, 88 generated editor-actions
    (`shared/editorCommands.ts`). Needs a command registry, palette UI, a rebindable-keymap
    engine with context evaluation, and a shortcuts-editor UI. (ProseMirror typing chords
-   port for free; the *command surface* invoking them does not.)
+   port for free; the *command surface* invoking them does not.) **Resolved by the
+   capability taxonomy in §14** — definitions stay core/edit-once; only the standalone
+   binding+surfacing engine is net-new, and it's generated from the shared tables.
 
 Plus **find-in-files → editor navigation** is a build-from-scratch feature (today it's
 `revealLine` interception glue over VS Code's search).
@@ -601,3 +614,151 @@ extracted from one host) is unchanged, so:
   budgets — a measured cost to the current product for hypothetical benefit.
 - *Rule of thumb:* adopt a refactor only if it improves the extension on its own merits;
   **design toward the factory, don't build it** until app #2 is actually being made.
+
+---
+
+## 14. The capability taxonomy — the edit-once seam, precisely
+
+The single most important architectural output of this investigation. It resolves the
+"edit-once vs. behave-like-a-native-extension" tension that the naive "move it all into
+core" framing got wrong. Every capability sorts into one of three buckets. The canonical
+precedent is **Monaco**: it ships standalone `StandaloneKeybindingService` /
+`StandaloneCommandService` / standalone configuration services, and the VS Code workbench
+**overrides them via dependency injection and never constructs them** — "core ships a
+default; a native host overrides it and the default goes dormant."
+
+**Principle (one sentence):** *A command's identity and behavior are edit-once core; a
+command's binding and surfacing are a host capability for which the core ships a default
+engine that a native host (VS Code) overrides and puts to sleep; OS integration is
+host-only.*
+
+### Bucket 1 — Core-only (truly edit-once, no host variation)
+The ProseMirror/Milkdown editing surface: composition root, plugins, NodeViews,
+serialization/fidelity, and the **typing-level keys that must be handled synchronously
+inside contenteditable** (bold/italic/code, undo/redo, Tab, block/selection chords — the
+frozen `CLAIMED_SHORTCUTS` set in `keyboardShortcuts.ts`). These keys are the *one* place a
+key lives in core rather than the host binding layer, and the reason is technical
+(their default action must be suppressed at the event itself — an async command round-trip
+is too late), not policy. They are intentionally un-rebindable on every host.
+
+### Bucket 2 — Core-default-with-native-override (the resolution)
+Split every such capability into **definition** (core, edit-once) and **binding/surfacing**
+(a host service — native in VS Code, core-default engine in standalone hosts).
+
+| Capability | Definition (core, edit-once) | Binding / surfacing (host service) |
+|---|---|---|
+| Commands | `shared/editorCommands.ts` (id, title, palette flag, menu section/group) | VS Code: `contributes.commands` + `registerCommand` loop. Standalone: core command registry |
+| Keybindings | a *default* chord per command (a new `defaultKeybinding?` on the table) | VS Code: `contributes.keybindings` + native Keyboard Shortcuts UI. Standalone: core keymap resolver + rebinding UI |
+| Palette | `palette: boolean` per entry | VS Code: `menus.commandPalette`. Standalone: core palette component |
+| Menus | `sections` + `menuGroup` per entry | VS Code: `menus.webview/context`, `editor/title`. Standalone: core context menu from the same fields |
+| when/context | the *predicate meaning* ("webview focused", "in a table") | VS Code: `when` strings + `setContext`. Standalone: a core context-key store evaluating the same predicates |
+| Settings | `shared/config.ts` (key, type, default, scope) | VS Code: `contributes.configuration` + native Settings UI + scopes. Standalone: core settings store + generated settings UI |
+| **Raw/source editor** | the parse/serialize pipeline + line anchoring (all core) | **VS Code: delegate to VS Code's text editor. Standalone: a core-shipped CM6 source editor** (see §15) |
+
+**Why the extension still feels 100% native:** in VS Code the host services *are* VS Code's
+own — keybindings resolve through and are rebindable in the real Shortcuts UI, commands
+appear in the real palette, settings in the real Settings UI with real scopes. The core's
+default engines are **never constructed** (Monaco's pattern exactly). Only command
+*definitions and behaviors* are shared across hosts — which is all edit-once ever needed.
+
+**The concrete edit-once win — turn drift-tests into generators.** Today `package.json`'s
+`commands`/`keybindings`/`menus` and `configuration` are hand-authored projections of the
+shared tables, kept honest by `editorCommandsContributions.test.ts` /
+`configDefaultsContributions.test.ts`. Flip those tests into **generators**: emit the
+VS Code manifest contributions *from* the tables, and feed the *same* tables to the
+standalone engine. Hand-authoring 87 palette entries + 29 keybindings + 149 when-clauses +
+90 settings becomes deriving them from one source. The seam that carries this is the one
+Birta already has (`webview/messaging.ts` + the `editorCommand` protocol), generalized into
+a small **`HostServices` override interface** (command dispatch, keybinding resolution,
+context-key get/set, settings read/subscribe, menu presentation) — Monaco's
+`IEditorOverrideServices` in Birta's vocabulary.
+
+### Bucket 3 — Host-only (cannot be edit-once; authored per host)
+File persistence + dirty state + save flush; windowing / tab model / editor swapping
+(`switchToTextEditor`, `switchToPreview`, `gotoSymbol` are host *orchestration*, not editor
+behavior); OS focus tracking (the *source* of focus truth, even though the predicate it
+feeds is shared); clipboard flavors, image save/upload, native notifications.
+
+### What genuinely cannot be edit-once (flag list)
+1. The concrete keybinding/settings **store and UI** per host (only the schema is shared).
+2. The `when`-clause **syntax** (VS Code-specific); share the predicate *intent*, compile per host.
+3. **Default bindings may diverge per host/platform** (some already do — `joinLines` Ctrl+J
+   is macOS-only; Cmd+K is reserved for `insertLink`). Model defaults as host-overridable
+   per entry, not one global map.
+4. Host-orchestration commands (editor swapping, symbol picker) — Bucket 3, not Bucket 2.
+5. The typing-level claimed keys (Bucket 1) — edit-once but un-rebindable everywhere.
+
+---
+
+## 15. The raw / source Markdown editor (a Bucket-2 capability)
+
+**The gap:** Birta has *no* source editor of its own. "Edit Raw Markdown" is pure
+delegation — the extension closes the WYSIWYG tab and calls
+`vscode.window.showTextDocument` / `openWith(uri, "default")`. Every non-IDE surface
+(Tauri, web) inherits **zero** of this and must ship a source-editing mode. It is a large,
+previously-unscoped piece and a first-class part of the writing experience (the "safety
+net, not a wall" north star depends on a credible raw view existing off VS Code).
+
+**It's a Bucket-2 capability.** VS Code delegates to its own text editor (and must keep
+doing so — never ship a source editor *into* the VS Code webview and compete, worse, with
+the IDE's own editor at a launch-bytes cost). Standalone hosts mount a **core-shipped
+default source editor**, reached through the *same* `editRawMarkdown` / `switchToTextEditor`
+intent, so the UI is identical across surfaces and the host decides delegate-vs-mount.
+
+**Engine: CodeMirror 6, lazy-loaded as its own chunk** (gated out of the VS Code eager
+graph to respect the `perf:bundle` budget). Rationale: CM6 is ~50–135 KB gz vs Monaco's
+2–5 MB (~10–40× lighter — decisive for a low-footprint Tauri/web app that *already* ships a
+heavy ProseMirror graph); it is mobile-/touch-first and IME-first (relevant given Birta's
+CJK history); it is plain tree-shakeable ESM with **no web-worker requirement** and a
+CSP-friendly build (Monaco's worker-loader + AMD baggage fights Tauri's CSP); and it has an
+official Lezer `@codemirror/lang-markdown` (the same parser family Obsidian trusts). Monaco
+*is* essentially VS Code's editor — shipping it standalone re-implements, worse, what VS
+Code gives for free. (A `<textarea>` + Shiki overlay is a last-resort fallback only, losing
+robust find/IME/folding.)
+
+**Dual-mode architecture: Pattern 1 (serialize↔parse on toggle).** On a ProseMirror base
+this is the natural fit and reuses Birta's mature stack. The alternatives are worse fits:
+Pattern 2 (live split-pane, both editable) is a bidirectional-model problem, and Pattern 3
+(Obsidian's CM6-with-decorations, one document, perfect cursor/undo) **requires *replacing*
+ProseMirror** — the NodeViews, table/image editing, block drag-reorder — i.e. "the thing
+Birta deliberately did not build." Birta's ProseMirror foundation buys richer structural
+editing at the unavoidable price of a source↔rich duality that Obsidian/Typora sidestep by
+construction; the right move is to *accept the duality and manage the seam*, not pretend it
+away.
+
+**Fidelity (the source view is canonical; WYSIWYG is the projection):**
+1. Same pipeline both ways — reuse the existing serializer (WYSIWYG→raw) and the same
+   `pureCommonmark`/`gfmFidelity` transformer (raw→WYSIWYG). No second markdown dialect.
+2. Raw→raw is trivially byte-exact (editing canonical text, like Obsidian/iA). The only
+   lossy risk is WYSIWYG→raw serialization, which the existing minimal-diff + round-trip
+   protection (`webview/utils/minimalDiff.ts`) already governs — a mode switch is just an
+   extra flush point on the save path Birta already has.
+3. **Cursor across the switch is line-level only.** The line map (`shared/lineMap.ts`) is
+   *block-granular* (block start lines, code fences as one unit) — it lands the caret on the
+   right line/block but gives no character-column correspondence. Accept line-level; don't
+   over-invest in character-exact mapping the line map can't provide.
+4. **Undo across the boundary:** treat a mode toggle as a single coalesced, undoable
+   restore-point ("undo reverses the toggle") rather than merging two histories.
+
+**Reusable today (strong):** the transformer (parse/serialize), the `FormatModule` seam
+(`webview/format/` — a source-editor language config is a natural sibling member), the
+minimal-diff round-trip engine, `computeLineMap` for switch-in anchoring, the messaging/
+sync-seq protocol, and the lazy-chunk discipline. **Missing:** the editor engine itself off
+VS Code; precise cursor↔offset mapping (only block-level exists); find/replace, line
+numbers, folding, multi-cursor as Birta-owned features; the host raw-edit capability
+adapter.
+
+**MVP vs. the parity trap.** MVP = CM6 + `lang-markdown` highlighting + `@codemirror/search`
+find/replace + line numbers + line anchoring (matches iA Writer / StackEdit's source side —
+genuinely shippable). But the power users most likely to try the desktop app will measure it
+against VS Code's *full* text editor (multi-cursor, regex, folding, extensions, git gutter)
+and it will fall short for a long time. **Mitigation is positioning, not building:** frame
+Birta's raw mode as a *fidelity-preserving companion to the WYSIWYG view* (iA-Writer-style),
+not a VS Code text-editor replacement — and on VS Code, keep delegating. Set the parity
+expectation deliberately instead of letting users set it for you.
+
+**Effort: Medium.** The hard parts (byte-safe round-trip, parse/serialize, format seam, sync
+protocol) already exist and are mature. Net-new work is bounded: wire a lazy CM6 chunk,
+build the host raw-edit capability adapter (needed for the multi-surface split anyway), map
+the toggle to serialize/parse with a coalesced undo point. No ProseMirror rework. The
+largest *ongoing* cost is the parity long-tail, which the plan manages by scope + framing.
