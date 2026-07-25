@@ -20,6 +20,22 @@
   .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
+  // MAR-215 launch guard: capture how much gutter chrome exists at the EXACT
+  // moment the bundle stamps its first-paint mark. Wrapping performance.mark
+  // (rather than observing it) makes the reading synchronous with the mark, so
+  // the check can't drift by a task.
+  (() => {
+    const origMark = performance.mark.bind(performance);
+    performance.mark = (name, ...rest) => {
+      if (name === "mdw:editor-painted" && window.__atPaint === undefined) {
+        window.__atPaint = {
+          markers: document.querySelectorAll(".heading-fold-marker").length,
+          blocks: document.querySelectorAll(".milkdown .ProseMirror > *").length,
+        };
+      }
+      return origMark(name, ...rest);
+    };
+  })();
   // The ToC would auto-dock over the gutter column on a doc this heading-heavy.
   window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, tocAutoHideThreshold: 999 };
   window.__posted = [];

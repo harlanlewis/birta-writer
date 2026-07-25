@@ -8,7 +8,7 @@
  * guesswork — on the pre-windowing behavior instead of silently dropping chrome.
  */
 import { describe, it, expect, vi } from "vitest";
-import { measureVisibleWindow } from "../plugins/visibleRange";
+import { measureVisibleWindow, observeVisibleWindow } from "../plugins/visibleRange";
 
 type Rect = { top: number; bottom: number; left: number; width: number; height: number };
 
@@ -90,5 +90,81 @@ describe("measureVisibleWindow", () => {
         });
 
         expect(measureVisibleWindow(view)).toEqual({ from: 0, to: 900 });
+    });
+});
+
+/**
+ * The mount-path contract (MAR-215, second round). The observer must be
+ * completely inert until `start()`: no listeners, no measurement, no
+ * `onChange`. Scheduling its first measurement independently — on its own
+ * animation frame from the plugin's `view()` — is what regressed launch by
+ * 13 ms on the 12 KB fixture and 45 ms on the 96 KB one, because the window it
+ * committed pulled the gutter chrome's DOM insertion, layout, and paint in
+ * front of `editor-painted`. Cheap to compute, expensive to render; the caller
+ * starts it from its post-paint idle callback instead.
+ */
+describe("observeVisibleWindow start gating", () => {
+    function liveView(): any {
+        const dom = document.createElement("div");
+        document.body.appendChild(dom);
+        // jsdom reports a zero rect, so a measurement here answers null — the
+        // point of these tests is WHETHER it runs, not what it returns.
+        return { dom, isDestroyed: false, state: { doc: { content: { size: 100 } } }, posAtCoords: () => null };
+    }
+
+    it("before start() the observer should register no listeners and report nothing", () => {
+        const view = liveView();
+        const onChange = vi.fn();
+        const addWindow = vi.spyOn(window, "addEventListener");
+        const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame");
+
+        const handle = observeVisibleWindow(view, onChange);
+
+        expect(onChange).not.toHaveBeenCalled();
+        expect(rafSpy).not.toHaveBeenCalled();
+        expect(addWindow.mock.calls.map(([type]) => type)).not.toContain("scroll");
+        handle.destroy();
+        addWindow.mockRestore();
+        rafSpy.mockRestore();
+    });
+
+    it("start() should register the scroll listener and measure synchronously", () => {
+        const view = liveView();
+        const onChange = vi.fn();
+        const measured: string[] = [];
+        view.posAtCoords = () => { measured.push("hit"); return null; };
+        const addWindow = vi.spyOn(window, "addEventListener");
+
+        const handle = observeVisibleWindow(view, onChange);
+        handle.start();
+
+        expect(addWindow.mock.calls.map(([type]) => type)).toContain("scroll");
+        handle.destroy();
+        addWindow.mockRestore();
+    });
+
+    it("a second start() should be a no-op", () => {
+        const view = liveView();
+        const handle = observeVisibleWindow(view, vi.fn());
+        const addWindow = vi.spyOn(window, "addEventListener");
+
+        handle.start();
+        const afterFirst = addWindow.mock.calls.length;
+        handle.start();
+
+        expect(addWindow.mock.calls.length).toBe(afterFirst);
+        handle.destroy();
+        addWindow.mockRestore();
+    });
+
+    it("destroy() before start() should leave nothing behind", () => {
+        const view = liveView();
+        const onChange = vi.fn();
+        const handle = observeVisibleWindow(view, onChange);
+
+        handle.destroy();
+        handle.start();
+
+        expect(onChange).not.toHaveBeenCalled();
     });
 });

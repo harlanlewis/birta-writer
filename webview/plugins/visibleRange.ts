@@ -104,9 +104,22 @@ function sameWindow(a: VisibleWindow | null, b: VisibleWindow | null): boolean {
 
 /**
  * Watch the scroll position and call `onChange` whenever the visible window
- * moves far enough to matter. The first measurement is taken on the next
- * animation frame — never synchronously during `view()`, which runs on the
- * mount path.
+ * moves far enough to matter.
+ *
+ * NOTHING happens until `start()` is called — no listeners, no measurement, no
+ * `onChange`. That is deliberate and load-bearing (MAR-215): the caller runs on
+ * the mount path, and a window arriving before first paint pulls the whole
+ * gutter chrome's DOM insertion, layout, and paint in FRONT of the paint mark.
+ * Measured on the 96 KB fixture that cost 36 ms of launch even though the
+ * measurement itself is 0.4 ms and the rebuild 0.6 ms — the price is the
+ * rendering the new decorations force, not the computing. MAR-189 already
+ * keeps that DOM off the mount path by deferring the affordance build to an
+ * idle callback after first paint; `start()` exists so this observer joins
+ * that deferral instead of defeating it.
+ *
+ * `start()` measures SYNCHRONOUSLY, so the caller's post-paint idle callback
+ * gets its window in the same task and builds once, rather than a frame later
+ * and twice.
  *
  * The scroll container is the webview's `window` (the editor is not itself a
  * scroller), mirroring plugins/headingSticky.ts.
@@ -114,8 +127,9 @@ function sameWindow(a: VisibleWindow | null, b: VisibleWindow | null): boolean {
 export function observeVisibleWindow(
     view: EditorView,
     onChange: (next: VisibleWindow | null) => void,
-): { refresh: () => void; destroy: () => void } {
+): { start: () => void; refresh: () => void; destroy: () => void } {
     let frame: number | null = null;
+    let started = false;
     let committedScrollY = Number.NaN;
     let committedViewportHeight = Number.NaN;
     let committedDocHeight = Number.NaN;
@@ -124,7 +138,7 @@ export function observeVisibleWindow(
 
     const run = (): void => {
         frame = null;
-        if (destroyed || view.isDestroyed) {
+        if (!started || destroyed || view.isDestroyed) {
             return;
         }
         const scrollY = window.scrollY;
@@ -161,7 +175,7 @@ export function observeVisibleWindow(
     };
 
     const schedule = (): void => {
-        if (frame === null && !destroyed) {
+        if (started && frame === null && !destroyed) {
             frame = requestAnimationFrame(run);
         }
     };
@@ -176,16 +190,26 @@ export function observeVisibleWindow(
     // Reflow inside the editor only SCHEDULES a tick; the height test in
     // `run` decides whether it is big enough to recommit, so a keystroke's
     // reflow costs one comparison rather than a rebuild.
-    const resizeObserver = typeof ResizeObserver === "function"
-        ? new ResizeObserver(() => { schedule(); })
-        : null;
-    resizeObserver?.observe(view.dom);
+    let resizeObserver: ResizeObserver | null = null;
 
-    window.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", onResize);
-    schedule();
+    const start = (): void => {
+        if (started || destroyed || view.isDestroyed) {
+            return;
+        }
+        started = true;
+        resizeObserver = typeof ResizeObserver === "function"
+            ? new ResizeObserver(() => { schedule(); })
+            : null;
+        resizeObserver?.observe(view.dom);
+        window.addEventListener("scroll", schedule, { passive: true });
+        window.addEventListener("resize", onResize);
+        // Synchronous, not scheduled: the caller is already in its post-paint
+        // idle window and wants to build once, now.
+        run();
+    };
 
     return {
+        start,
         refresh,
         destroy() {
             destroyed = true;

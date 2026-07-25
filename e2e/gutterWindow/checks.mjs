@@ -42,6 +42,27 @@ export async function run({ page, check, baseUrl }) {
     const blocks = await page.$$eval(".milkdown .ProseMirror > *", (els) => els.length);
     check("the fixture is long enough to exercise a window", blocks > 300, `blocks=${blocks}`);
 
+    // ── 0. The scroll window must not reach first paint ──
+    // The window is measured from a post-paint idle callback, joining MAR-189's
+    // deferral rather than defeating it. Committing it from its own animation
+    // frame instead put the whole chrome's DOM insertion, layout and paint in
+    // FRONT of `editor-painted` — cheap to compute (~1 ms), costly to render
+    // (+13 ms launch on the 12 KB fixture, +45 ms on the 96 KB one), and
+    // invisible to every span the harness measured at the time.
+    //
+    // Two states are legitimate at the paint mark, and a windowed set is
+    // neither: NOTHING (MAR-189 defers a pure-affordance build off the mount
+    // path), or EVERY block (this fixture opens with collapsed callouts, so the
+    // content-hiding decorations must exist at first paint or folded content
+    // flashes). A window would show as a count far BELOW the block count —
+    // which is what makes this assertion free of magic numbers.
+    const atPaint = await page.evaluate(() => window.__atPaint);
+    check(
+        "the scroll window is not applied before the first-paint mark",
+        !!atPaint && (atPaint.markers === 0 || atPaint.markers >= atPaint.blocks),
+        JSON.stringify(atPaint),
+    );
+
     // ── 1. Only a slice of the document carries chrome ──
     await scrollTo(page, 0);
     const atTop = await markerCount(page);

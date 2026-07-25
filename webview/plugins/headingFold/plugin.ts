@@ -416,35 +416,49 @@ export const headingFoldPlugin = $prose(() =>
             // have been dropped by then (the apply paths don't carry it),
             // leaving the build unscheduled — chevrons that never appear.
             let disposed = false;
-            let deferredBuild: { cancel: () => void } | null = null;
             const st = foldPluginKey.getState(view.state);
             const deferredPending =
                 !!st && st.folded.size === 0 &&
                 st.decorations.find().length === 0 && canDeferAffordance();
-            if (deferredPending) {
-                deferredBuild = requestIdle(() => {
-                    if (disposed) { return; }
-                    view.dispatch(
-                        view.state.tr
-                            .setMeta(foldPluginKey, { type: "buildAffordance" })
-                            .setMeta("addToHistory", false),
-                    );
-                }, 500);
-            }
 
             // MAR-215: keep the gutter chrome scoped to what is (nearly) on
-            // screen. The first measurement lands on the next animation frame
-            // — never synchronously here, which is the mount path — so the
-            // deferred build above already gets a window, and a document that
-            // opened with folds simply narrows one frame later.
+            // screen. The observer is inert until start() — see its header for
+            // why. Both it and MAR-189's deferred build run in ONE post-paint
+            // idle callback, in that order, so the window is already known when
+            // the affordance is built: one windowed build, and not a single
+            // decoration rendered before `editor-painted`.
+            //
+            // Scheduling the observer independently (its own animation frame)
+            // was the launch regression MAR-215 shipped and CI caught: measuring
+            // and rebuilding cost ~1 ms, but the chrome's DOM insertion and
+            // paint moved in front of the paint mark — +13 ms on the 12 KB
+            // fixture, +45 ms on the 96 KB one, all of it in the previously
+            // unattributed create-end → editor-painted gap (now the `paint`
+            // span in e2e/perf/verdict.mjs).
+            let windowCommitted = false;
             const visibleWindow = observeVisibleWindow(view, (next) => {
                 if (disposed || view.isDestroyed) { return; }
+                windowCommitted = true;
                 view.dispatch(
                     view.state.tr
                         .setMeta(foldPluginKey, { type: "window", window: next })
                         .setMeta("addToHistory", false),
                 );
             });
+            const deferredBuild = requestIdle(() => {
+                if (disposed || view.isDestroyed) { return; }
+                // A committed window rebuilds the decorations itself, so it IS
+                // the deferred affordance build; the explicit meta is only
+                // needed when no window could be measured (no layout engine).
+                visibleWindow.start();
+                if (deferredPending && !windowCommitted) {
+                    view.dispatch(
+                        view.state.tr
+                            .setMeta(foldPluginKey, { type: "buildAffordance" })
+                            .setMeta("addToHistory", false),
+                    );
+                }
+            }, 500);
 
             // Multi-block selection discoverability: while the selection
             // spans several top-level blocks, their markers surface at
