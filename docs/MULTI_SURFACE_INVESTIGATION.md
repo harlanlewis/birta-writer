@@ -9,6 +9,16 @@ MAR-40 (multi-format — the format axis, not this surface work). Later rungs (c
 Tauri desktop, cloud web) are intentionally unfiled until the probe + persistence design
 green-light them.
 
+> **Later re-examination (2026-07-26):** this document's *prioritization* — desktop-first,
+> web-last, mobile essentially not considered — is deliberately re-opened by
+> [`docs/SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md), which adds three evidence streams this
+> investigation lacked: the standalone-writing-app **competitive landscape**
+> ([`docs/research/writing-app-landscape.md`](research/writing-app-landscape.md)), a **mobile/web
+> technical-feasibility** pass, and the **2026 AI opening** ([`docs/AI_ASSISTANCE.md`](AI_ASSISTANCE.md)).
+> Its finding: the market gap is *mobile-shaped*, not desktop-shaped. The **engineering** below (the
+> capability taxonomy, the `HostServices` seam, the save-contract work) still stands; only the surface
+> *ordering* is under review.
+
 **Question:** what is the gap between Birta today (a VS Code extension) and shipping it
 as (1) a standalone **web app** and (2) a standalone **installable desktop app**, with
 maximum code sharing?
