@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
     applyMinimalChanges,
     computeRoundTripProtection,
+    type BaselineLinePair,
     type FormatProfile,
 } from "../index";
 
@@ -179,6 +180,98 @@ describe("reconcileReplacement — the profile's say over an in-place replacemen
         expect(applyMinimalChanges("alpha\nbeta old\n", "alpha\nbeta new\n", thrower)).toBe(
             "alpha\nbeta new\n",
         );
+    });
+});
+
+describe("baselineFacts — what the zero-edit round trip teaches about a file (MAR-222)", () => {
+    /** A profile that records every pairing it is offered. */
+    function recorder() {
+        const seen: BaselineLinePair[][] = [];
+        const profile: FormatProfile = {
+            ...plain,
+            baselineFacts: (pairs) => {
+                seen.push(pairs.map((p) => ({ ...p })));
+                return null;
+            },
+        };
+        return { profile, pairs: () => seen[0] ?? [] };
+    }
+
+    it("a keep should pair the saved line with the bytes the serializer emitted for it", () => {
+        // The whole point: `alpha` and `  alpha  ` key EQUAL under this
+        // profile, so the pair records a difference the diff itself hides.
+        const { profile, pairs } = recorder();
+        computeRoundTripProtection("  alpha  \nBETA\n", "alpha\nbeta rewritten\n", profile);
+
+        expect(pairs()).toContainEqual({ saved: "  alpha  ", serial: "alpha" });
+    });
+
+    it("an isolated del/ins couple should pair the two lines", () => {
+        const { profile, pairs } = recorder();
+        computeRoundTripProtection("alpha\nBETA\ngamma\n", "alpha\nbeta rewritten\ngamma\n", profile);
+
+        expect(pairs()).toContainEqual({ saved: "BETA", serial: "beta rewritten" });
+    });
+
+    it("a multi-line del/ins run should contribute no pairs at all", () => {
+        // The LCS emits a run's dels first and its inses after, so "a del
+        // followed by an ins" pairs the LAST saved line with the FIRST
+        // serialized one. Here that would claim `TWO` became `one rewritten`.
+        const { profile, pairs } = recorder();
+        computeRoundTripProtection(
+            "alpha\nONE\nTWO\ngamma\n",
+            "alpha\none rewritten\ntwo rewritten\ngamma\n",
+            profile,
+        );
+
+        expect(pairs().map((p) => p.saved)).toEqual(["alpha", "gamma"]);
+    });
+
+    it("a construct the serializer drops should contribute no pair", () => {
+        const { profile, pairs } = recorder();
+        computeRoundTripProtection("alpha\nDROPPED\ngamma\n", "alpha\ngamma\n", profile);
+
+        expect(pairs().map((p) => p.saved)).toEqual(["alpha", "gamma"]);
+    });
+
+    it("the distilled value should be handed back to reconcileReplacement", () => {
+        const token = { distilled: true };
+        const received: unknown[] = [];
+        const profile: FormatProfile = {
+            ...plain,
+            baselineFacts: () => token,
+            reconcileReplacement: (_saved, serial, facts) => {
+                received.push(facts);
+                return serial;
+            },
+        };
+        const saved = "alpha\nBETA\ngamma\n";
+        const protection = computeRoundTripProtection(saved, "alpha\nbeta rewritten\ngamma\n", profile);
+        received.length = 0; // ignore the protection self-check's own merge
+
+        applyMinimalChanges(saved, "alpha\nBETA edited\ngamma\n", profile, protection);
+
+        expect(received).toEqual([token]);
+    });
+
+    it("a merge with no protection should hand the hook null rather than undefined", () => {
+        const received: unknown[] = [];
+        const profile: FormatProfile = {
+            ...plain,
+            reconcileReplacement: (_saved, serial, facts) => {
+                received.push(facts);
+                return serial;
+            },
+        };
+
+        applyMinimalChanges("alpha\nBETA\n", "alpha\nBETA edited\n", profile);
+
+        expect(received).toEqual([null]);
+    });
+
+    it("a profile without the optional hook should still merge", () => {
+        expect(computeRoundTripProtection("alpha\nBETA\n", "alpha\nbeta rewritten\n", plain))
+            .not.toBeUndefined();
     });
 });
 
