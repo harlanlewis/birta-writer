@@ -153,18 +153,28 @@ resolving it across multiple destinations is not (§8).
 
 ---
 
-## 7. The cheaper, in-scope sibling — exhaust this first
+## 7. The cheaper, in-scope sibling — exhaust this first (mostly already tracked)
 
 The founding grievance is **"copy-pasting across apps, losing all formatting and semantics."** The
 publish *loop* (stateful, bidirectional, cloud-backed, account-bearing) is a large swing at it. But
 the same grievance is hit — more cheaply and entirely *within the document-editor scope* — by
-**lossless export / smart paste** into the systems the maintainer actually pipes into:
+**lossless export / paste fidelity** into the systems the maintainer actually pipes into. And most of
+this is **already on the backlog**, so the honest recommendation is *lean on those*, not open a new
+epic:
 
-- copy-as-Confluence-storage-format, paste-into-Substack-intact, export-to-Google-Docs-with-semantics;
-- `birta.copyFormat` already ships (markdown vs richText, rich HTML always included), and **smart
-  paste is already named as next-up** (README "Why this fork" §4 — "with smart paste still ahead").
+- **MAR-32** — "Export: PDF / styled HTML from the rendered document" (`phase-4-differentiators`,
+  Backlog). The outbound-artifact track.
+- **MAR-21** — "Smart paste: URL-on-selection → link, HTML → markdown, paste-as-plain" (`phase-3`,
+  partially shipped). The *inbound* direction (other apps → Birta).
+- **`birta.copyFormat`** — already ships (markdown vs richText, with the rich-HTML flavor always on
+  the clipboard), so pasting Birta content into a rich editor already carries formatting today.
 
-This sibling:
+The one piece **not** yet tracked is **outbound fidelity to a specific target rich editor** —
+copy-as-Confluence-storage-format, paste-into-Substack-intact, Google-Docs-with-semantics — i.e.
+faithful *translation to another app's model*, not just PDF/HTML rendering. That is a natural
+**extension of MAR-32's scope** (or a sibling under it), not grounds for a new epic.
+
+This sibling family:
 
 - stays inside *a document editor* (no platform creep, no PKM drift);
 - needs **no** cloud, accounts, sync ledger, or privacy reconfiguration;
@@ -173,8 +183,9 @@ This sibling:
 - and directly answers the pain the maintainer actually wrote down.
 
 **This is the publish-loop analog of MAR-225's "Rung 0" lesson:** exhaust the cheap, in-scope reach
-before committing to the big surface. If lossless export satisfies the grievance, the stateful loop
-may never need to exist. Worth its own ticket, ranked ahead of this one.
+(here, MAR-32 + MAR-21 + `copyFormat`, plus an outbound-target-fidelity extension of MAR-32) before
+committing to the big stateful surface. If lossless export satisfies the grievance, the loop may
+never need to exist.
 
 ---
 
