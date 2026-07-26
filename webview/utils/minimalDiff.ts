@@ -32,6 +32,7 @@ import {
     computeRoundTripProtection as computeRoundTripProtectionCore,
     type BaselineLinePair,
     type FormatProfile,
+    type InsertedLine,
     type RoundTripProtection,
 } from "@birta/minimal-diff";
 
@@ -561,6 +562,163 @@ function baselineIndents(pairs: readonly BaselineLinePair[]): Map<string, string
     return canonical;
 }
 
+/**
+ * A line's indent together with the ROLE that indent plays: `m` for a line that
+ * opens a list item, `c` for one that continues (or sits outside) one. The two
+ * roles are indented to different widths at the same depth — a marker sits at
+ * the item's own indent, its continuation lines align past the marker — so they
+ * collide at every second depth and must be kept apart. `mergeIndents` files
+ * spellings under this, and `reconcileInsertion` looks them up under it.
+ */
+function indentFamily(line: string): string {
+    return (LIST_MARKER_RE.test(line) ? "m" : "c") + indentOf(line);
+}
+
+/**
+ * Markdown's `FormatProfile.mergeFacts` (MAR-230): how THIS file spells each
+ * canonical outline indent, read off the keep pairs of the merge in progress —
+ * `baselineIndents` inverted, and re-derived from the live document instead of
+ * the load-time baseline.
+ *
+ * Both directions are needed because the two hooks face opposite ways. An
+ * EDITED line arrives with its saved indent in hand and only has to decide
+ * whether that indent still means what it meant (source → canonical). An
+ * INSERTED line has no saved indent at all: it arrives spelled canonically and
+ * has to be told what this file would have written (canonical → source).
+ *
+ * Two properties make this safe where inverting the BASELINE map would not be:
+ *
+ *   - It cannot be stale. Every entry comes from a line this merge is writing
+ *     back verbatim, so a spelling it hands out is one the output already
+ *     contains at that depth. `baselineFacts`' hazard — a fact distilled once
+ *     from a document that has since moved on — cannot arise.
+ *   - It exists exactly when it is needed. A file that round-trips cleanly gets
+ *     NO protection object and therefore no baseline facts at all, yet still
+ *     breaks under a move (`fixtures/logseq/journal.md`: 4 of 22 executable
+ *     moves, with `computeRoundTripProtection` returning null). Keeps are
+ *     available on every merge, protected or not.
+ *
+ * Entries are filed under `indentFamily`, because a canonical indent width does
+ * NOT identify a depth on its own: a marker line and the continuation lines of
+ * the item above it meet at the same width and are spelled differently (a tab
+ * outline writes `\t\t-` for the one and `\t  ` for the other, both rendered as
+ * four spaces). Merging the two families makes every such file ambiguous and
+ * the map empty, and nothing is re-based at all. Pinned by "a marker and a
+ * continuation at the same width should not cancel out" in
+ * `movedBlockIndent.test.ts`, which is the test that reddens if the roles are
+ * merged.
+ *
+ * A canonical indent seen with two different spellings within its own family is
+ * genuinely AMBIGUOUS and is dropped rather than guessed — the discipline
+ * `baselineIndents` already uses, and the reason a stray fact (a verbatim line
+ * whose leading whitespace happens to be content) can only ever cost a
+ * respelling that would have been made, never cause a wrong one.
+ */
+function mergeIndents(pairs: readonly BaselineLinePair[]): Map<string, string> {
+    const spelling = new Map<string, string>();
+    const ambiguous = new Set<string>();
+    for (const pair of pairs) {
+        // A pair whose two sides disagree about being a marker line is not one
+        // line in two spellings of the same thing; it teaches nothing safely.
+        if (LIST_MARKER_RE.test(pair.saved) !== LIST_MARKER_RE.test(pair.serial)) continue;
+        const canonical = indentFamily(pair.serial);
+        if (ambiguous.has(canonical)) continue;
+        const source = indentOf(pair.saved);
+        const prev = spelling.get(canonical);
+        if (prev === undefined) {
+            spelling.set(canonical, source);
+        } else if (prev !== source) {
+            spelling.delete(canonical);
+            ambiguous.add(canonical);
+        }
+    }
+    return spelling;
+}
+
+/**
+ * Markdown's `FormatProfile.reconcileInsertion` (MAR-230): re-base an inserted
+ * block of outline lines onto the indentation this file actually uses.
+ *
+ * A block move is the ordinary way to reach this. The moved lines are
+ * insertions — they have no saved counterpart to carry bytes from — so they
+ * were written with the serializer's two-space indents while the untouched
+ * lines around them kept their tabs. A tab is four columns and two spaces are
+ * two, so the file reparses with different nesting than the document on screen:
+ * on `fixtures/logseq/page.md`, 49 of 247 executable moves damaged the file
+ * before this change and 10 after, with nothing newly broken.
+ *
+ * Each line is re-based by SUBSTITUTING ITS INDENT AS A PREFIX rather than
+ * being rewritten: the canonical indent is looked up, and only exactly that
+ * many leading characters are replaced. Everything past the prefix — the extra
+ * columns that make a line a child, a fence's content offset, an over-indented
+ * code sample — is carried through untouched.
+ *
+ * VERBATIM LINES DO NOT GET A LOOKUP OF THEIR OWN; they repeat the substitution
+ * made for the construct that opened above them. This is the whole reason the
+ * hook takes a run, and it is not a refinement — resolving a nested fence's
+ * body independently of its opening line moved the fence and left its content
+ * behind, so the content reparsed as an indented code block and the fence was
+ * lost. Inside a fence the leading whitespace is user bytes: it may only ever
+ * ride along with the fence, never be looked up. A run that opens inside
+ * verbatim content therefore has nothing to ride on and is left alone, which is
+ * the conservative answer as well as the correct one.
+ *
+ * Two gates on everything else:
+ *
+ *   - ONLY A SPELLING THIS FILE ALREADY USES IN THAT ROLE AT THAT WIDTH. The
+ *     map is a lookup of observed spellings, never a computation. Where it has
+ *     no answer the run carries the substitution already in force rather than
+ *     inventing one — a block re-based half one way and half the other is torn,
+ *     and uniformity within a run matters more than precision on its lines.
+ *   - IT MUST AGREE WITH THE LINE THE RUN LANDS UNDER. A file-wide fact says
+ *     how this document spells a depth; it cannot say whether the neighbour
+ *     directly above is spelled that way, and the two come apart routinely. If
+ *     that neighbour is an in-place replacement whose depth genuinely moved,
+ *     `carrySavedIndent` correctly lets the serializer's canonical indent win —
+ *     and re-basing the insertion beneath it onto the file's tabs then mixes
+ *     two conventions inside ONE parent/child relationship. That is not a
+ *     missed fix, it is fresh corruption: in a plain five-deep tab outline the
+ *     child stopped being a list item and survived only as literal text glued
+ *     into its parent's paragraph. So a substitution is taken only when its
+ *     spelling is prefix-COMPATIBLE with the anchor above it (one indent is a
+ *     prefix of the other — the same convention, at some depth), and the anchor
+ *     advances to each line as it is written so the run stays consistent with
+ *     itself as well as with the document. Refusing costs a respelling that
+ *     would have been made; taking it wrongly costs the user content.
+ */
+function reconcileInsertion(
+    lines: readonly InsertedLine[],
+    preceding: string | null,
+    facts: unknown,
+): readonly string[] {
+    const serial = lines.map((l) => l.serial);
+    if (!(facts instanceof Map)) return serial;
+    const spelling = facts as Map<string, string>;
+    // The substitution in force, carried across verbatim lines and past widths
+    // the file has taught nothing about. Null until a line whose indentation is
+    // structure has resolved one.
+    let carried: { canonical: string; source: string } | null = null;
+    // The indent this run must remain consistent with: the line above it, then
+    // each line as it is written.
+    let anchor = preceding === null ? "" : indentOf(preceding);
+    return serial.map((line, i) => {
+        if (!lines[i].key.startsWith("\x00")) {
+            const source = spelling.get(indentFamily(line));
+            if (typeof source === "string") carried = { canonical: indentOf(line), source };
+        }
+        const sub = carried;
+        const written =
+            sub &&
+            sub.source !== sub.canonical &&
+            line.startsWith(sub.canonical) &&
+            (sub.source.startsWith(anchor) || anchor.startsWith(sub.source))
+                ? sub.source + line.slice(sub.canonical.length)
+                : line;
+        anchor = indentOf(written);
+        return written;
+    });
+}
+
 // Carry the saved line's literal leading whitespace (tabs, widths, and all)
 // onto the serializer's line when the user did not re-indent it and only the
 // serializer's canonicalization moved. Two independent rules say so, and the
@@ -728,6 +886,8 @@ export const markdownProfile: FormatProfile = {
     blankSplitsBlock: (prev, next) => isQuoteLine(prev) && isQuoteLine(next),
     reconcileReplacement,
     baselineFacts: baselineIndents,
+    mergeFacts: mergeIndents,
+    reconcileInsertion,
 };
 
 /** `applyMinimalChanges` with markdown's profile bound (see the engine in

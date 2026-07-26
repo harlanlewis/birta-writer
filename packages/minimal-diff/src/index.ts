@@ -115,6 +115,89 @@ export interface FormatProfile {
      * and is omitted. Lines arrive as content, without their line endings.
      */
     baselineFacts?(pairs: readonly BaselineLinePair[]): unknown;
+    /**
+     * Distill what the merge NOW BEING PERFORMED teaches about how this file is
+     * written, from its own `keep` pairs — each one a saved line beside the
+     * bytes the serializer just emitted for it. Same pair shape as
+     * `baselineFacts`, asking the same question, but answered against the file
+     * as it stands rather than as it loaded.
+     *
+     * That difference is the whole point, and it runs the opposite way from
+     * `baselineFacts`' staleness warning: these facts cannot go stale, because
+     * they are re-derived from the very lines this merge is about to write. A
+     * spelling learned here is in the output by construction.
+     *
+     * Only `keep`s are offered. A kept line's two sides are guaranteed to be one
+     * line in two spellings — the merge is writing the saved bytes back
+     * precisely because the profile keyed them equal. An in-place replacement
+     * would be a weaker witness (the user may have re-indented the line as part
+     * of the edit, in which case its saved and serialized indents describe
+     * different depths), and the whole value of this hook is that its evidence
+     * is beyond doubt.
+     *
+     * Optional; only consulted when `reconcileInsertion` is also implemented.
+     */
+    mergeFacts?(pairs: readonly BaselineLinePair[]): unknown;
+    /**
+     * A RUN of pure insertions — every line the merge is about to write from
+     * the serializer's bytes before the next kept or replaced line — is about
+     * to be committed. Return the bytes to write instead: the profile's chance
+     * to spell them the way THIS file spells them. MUST return exactly one line
+     * per input, none containing `\n` or `\r`, and MUST default to the input
+     * unchanged; any other return is rejected wholesale and the serializer's
+     * lines are used.
+     *
+     * An insertion has no saved counterpart, which is why its bytes have always
+     * come from the serializer verbatim. But it does not land in a vacuum: it
+     * lands BETWEEN saved lines, and the serializer emits one canonical
+     * convention while the file around it may use another. Where the convention
+     * carries meaning, that mismatch is not cosmetic — in markdown an inserted
+     * list line indented with the serializer's two spaces, dropped between kept
+     * lines indented with tabs, sits at a different depth than the one the user
+     * is looking at, and the file reparses into a different tree (MAR-230).
+     *
+     * The RUN, rather than the line, is the unit on purpose. Inserted lines
+     * arrive as a block — a moved list item is its marker line plus everything
+     * beneath it — and within that block the indentation is RELATIVE: an
+     * over-indented line inside a code fence means something only with respect
+     * to the fence that opened above it. Respelling each line by an independent
+     * lookup silently rewrites those relationships (it turned nested fence
+     * content into an indented code block, losing the fence). Handed the whole
+     * run, a profile can re-base it and leave its interior geometry alone.
+     *
+     * `preceding` is the last significant line the merge actually emitted (its
+     * content, without the line ending), or null when the run opens the
+     * document. It is not context for its own sake — it is what makes the hook
+     * SAFE, and omitting it made this engine lose data. A file-wide fact says
+     * how the document spells something; it cannot say whether the specific
+     * line this run lands under is spelled that way. In markdown the two come
+     * apart whenever the neighbour above is an in-place replacement that
+     * legitimately took the serializer's canonical indent: re-basing the
+     * insertion onto the file's tabs beneath a parent now written with the
+     * serializer's spaces mixes two conventions inside ONE parent/child
+     * relationship — the exact damage the hook exists to prevent, and it
+     * destroyed list items five levels deep in a plain tab outline. A profile
+     * must reconcile the run with this line, not merely with the file.
+     *
+     * `facts` is whatever `mergeFacts` distilled from this merge's keeps, or
+     * null when the profile implements no distiller. Each line's `key` is its
+     * own comparison key, exactly as `keyLines` produced it in full document
+     * context — so a profile can consult the classification it has already made
+     * (which lines are verbatim content rather than structure) instead of
+     * re-deriving it from a line in isolation, which it cannot do correctly.
+     */
+    reconcileInsertion?(
+        lines: readonly InsertedLine[],
+        preceding: string | null,
+        facts: unknown,
+    ): readonly string[];
+}
+
+/** One line of an insertion run: the serializer's bytes and its comparison
+ *  key — see `reconcileInsertion`. */
+export interface InsertedLine {
+    serial: string;
+    key: string;
 }
 
 /** One saved line beside its zero-edit serialization — see `baselineFacts`. */
@@ -218,6 +301,51 @@ function reconcileLine(
         return fallback;
     }
     return typeof out === "string" && !/[\n\r]/.test(out) ? out + eol : fallback;
+}
+
+/**
+ * Call `profile.reconcileInsertion` defensively, on the same terms as
+ * `reconcileLine`: the run's line accounting is N in / N out, and any throw,
+ * wrong length, or embedded line ending degrades the WHOLE run to the
+ * serializer's bytes (the behaviour before the hook existed) rather than
+ * corrupting the output. All-or-nothing because the run is re-based as a unit —
+ * keeping some of a profile's answer and discarding the rest would produce a
+ * block indented two different ways, which is the very damage this exists to
+ * prevent.
+ *
+ * The profile works on content alone. An insertion's ending is the
+ * serializer's, already normalized to the document's by `matchEol`, so it is
+ * stripped and re-attached rather than consulted. A line is handed over
+ * stripped unless it is the serial split's FINAL segment, whose trailing `\r`
+ * (if any) is content rather than an ending — the same rule `reconcileLine`
+ * applies to the saved side. (One consequence, benign and shared with that
+ * function: a content `\r` reaching the profile comes back in the returned
+ * string and trips the no-embedded-endings check below, so a run ending in a
+ * stray CR degrades to the serializer's bytes instead of being re-based.)
+ */
+function reconcileInsertedRun(
+    profile: FormatProfile,
+    run: readonly SigLine[],
+    lastSerialIdx: number,
+    preceding: string | null,
+    facts: unknown,
+): string[] {
+    const raw = run.map((l) => l.text);
+    if (!profile.reconcileInsertion) return raw;
+    const eols = run.map((l) => (l.lineIdx !== lastSerialIdx ? eolOf(l.text) : ""));
+    const lines: InsertedLine[] = run.map((l) => ({
+        serial: l.lineIdx !== lastSerialIdx ? stripEol(l.text) : l.text,
+        key: l.norm,
+    }));
+    let out: readonly string[];
+    try {
+        out = profile.reconcileInsertion(lines, preceding, facts);
+    } catch {
+        return raw;
+    }
+    if (!Array.isArray(out) || out.length !== run.length) return raw;
+    if (out.some((line) => typeof line !== "string" || /[\n\r]/.test(line))) return raw;
+    return out.map((line, i) => line + eols[i]);
 }
 
 interface SigLine {
@@ -453,6 +581,28 @@ function pairBaselineLines(edits: Edit[], lastSavedIdx: number): BaselineLinePai
                 serial: stripEol((run[1] as Extract<Edit, { op: "ins" }>).serial.text),
             });
         }
+    }
+    return pairs;
+}
+
+/**
+ * Pair each KEPT line with the bytes the serializer emitted for it in the merge
+ * now being performed — `mergeFacts`' evidence.
+ *
+ * Deliberately narrower than `pairBaselineLines`, which also accepts a lone
+ * del/ins couple: see `mergeFacts` for why only a `keep` is a witness strong
+ * enough to spell an inserted line from.
+ */
+function pairKeptLines(edits: Edit[], lastSavedIdx: number): BaselineLinePair[] {
+    const pairs: BaselineLinePair[] = [];
+    for (const edit of edits) {
+        if (edit.op !== "keep") continue;
+        pairs.push({
+            saved: edit.saved.lineIdx === lastSavedIdx
+                ? edit.saved.text
+                : stripEol(edit.saved.text),
+            serial: stripEol(edit.serial.text),
+        });
     }
     return pairs;
 }
@@ -758,6 +908,17 @@ export function applyMinimalChanges(
 
     if (!edits.some((e) => e.op !== "keep")) return saved;
 
+    // What this file's own untouched lines say about how it spells what the
+    // serializer renders canonically — the evidence an inserted line is written
+    // from (see `mergeFacts` / `reconcileInsertion`). Distilled once per merge,
+    // and only for a profile that can actually use it.
+    const mergeFacts =
+        profile.reconcileInsertion &&
+        profile.mergeFacts &&
+        edits.some((e) => e.op === "ins")
+            ? profile.mergeFacts(pairKeptLines(edits, savedLines.length - 1))
+            : null;
+
     // Rebuild the file. Walk the edit script emitting one significant line at
     // a time, choosing where the blank lines before it come from:
     // - `dirty` false (no structural edit since the last emitted line): copy
@@ -873,14 +1034,38 @@ export function applyMinimalChanges(
             dirty = true;
             e++;
         } else {
-            // Pure insertion: it has no position in the saved file, so its
-            // spacing (before and after) can only come from the serializer.
-            out.push(...serialGap(edit.serial.lineIdx));
-            out.push(edit.serial.text);
-            prevSerialIdx = edit.serial.lineIdx;
-            prevLineText = edit.serial.text;
+            // Pure insertions: they have no position in the saved file, so
+            // their spacing (before and after) can only come from the
+            // serializer. Their BYTES get the profile's last word — inserted
+            // lines land among saved ones, and a convention the serializer
+            // canonicalized can carry meaning there (see `reconcileInsertion`).
+            //
+            // The whole consecutive run goes to the profile at once, because
+            // it is one block of content and its interior indentation is
+            // relative. Blank lines between them are not part of the run: they
+            // are insignificant to the diff and are emitted from the
+            // serializer's gaps, exactly as before.
+            const runStart = e;
+            while (e < edits.length && edits[e].op === "ins") e++;
+            const run = edits
+                .slice(runStart, e)
+                .map((ins) => (ins as Extract<Edit, { op: "ins" }>).serial);
+            const texts = reconcileInsertedRun(
+                profile,
+                run,
+                serialLines.length - 1,
+                prevLineText === null ? null : stripEol(prevLineText),
+                mergeFacts,
+            );
+            for (let r = 0; r < run.length; r++) {
+                // As in the replacement branch, everything downstream must see
+                // the line actually written, not the raw serializer line.
+                out.push(...serialGap(run[r].lineIdx));
+                out.push(texts[r]);
+                prevSerialIdx = run[r].lineIdx;
+                prevLineText = texts[r];
+            }
             dirty = true;
-            e++;
         }
     }
 

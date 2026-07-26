@@ -99,26 +99,35 @@ const SEED = Number(process.env["MDW_MOVE_SEED"] ?? "20260712");
 const SAMPLE_SIZE = Number(process.env["MDW_MOVE_SAMPLE"] ?? "12");
 
 // This gate holds fixtures to STRICT content conservation under block moves.
-// The exploratory Logseq fixtures (fixtures/logseq/) are scoped OUT of it:
-// moving a block within a tab-indented outline reparses to a restructured list.
-// They ARE exercised by the round-trip corpus (invariants A/B in
-// roundTripCorpus.test.ts, which they pass). A deliberate, tracked scoping —
-// not a silenced failure.
 //
-// The blocking ticket is MAR-230, and getting that reference right matters more
-// than it looks. This exclusion was originally written as "until MAR-131 closes
-// the nested-outline gap"; MAR-131 closed on 2026-07-16 and the exclusion stayed,
-// so for ten days the gate skipped these fixtures on a condition that had already
-// been met — a scoping note that reads as current while pointing at finished work
-// is indistinguishable from a live one. MAR-131 was the TYPING half (an edited
-// line's own indent) and did close; the move half was never in its scope.
+// The exclusion used to cover the whole of `fixtures/logseq/`, because moving a
+// block within a tab-indented outline reparsed into a restructured list: the
+// moved line is an INSERTION, so the merge wrote it with the serializer's
+// two-space indent beside kept lines still holding tabs. MAR-230's fix spells an
+// inserted line the way the file itself spells that depth, and the carve-out
+// shrank with it — `logseq/journal.md` now runs in the gate like any other
+// fixture (it was 4 losses in 22 executable moves before the fix, 0 after).
 //
-// Measured 2026-07-26, sweeping every enumerable pair rather than the seeded 12:
-// logseq/page.md loses content under the gate's own fingerprint oracle on 49 of
-// its 247 executable moves. So this is not a hypothetical carve-out — deleting
-// the filter today turns the gate red immediately, which is exactly what should
-// happen once MAR-230 lands. Delete it then, and delete this comment with it.
-const fixtures = loadCorpusFixtures().filter((f) => !f.name.startsWith("logseq/"));
+// What remains excluded is ONE fixture and ONE construct. When a moved item's
+// content is a heading, the serializer re-emits it as an empty marker line plus
+// indented content, and CommonMark derives such an item's content indent from
+// the marker's own position — so a tab-indented empty marker will not hold its
+// content at the sibling continuation indent. That is a parser rule rather than
+// a fact about how the file is written, so the evidence MAR-230's fix works from
+// cannot answer it. Measured 2026-07-26 by sweeping every enumerable pair rather
+// than the seeded 12: `logseq/page.md` went from 49 losses in 247 executable
+// moves to 10, all 10 of them that one construct, and no move that was clean
+// before the fix broke after it.
+//
+// The reference above is load-bearing, and this file has already got it wrong
+// once: the exclusion originally read "until MAR-131 closes the nested-outline
+// gap"; MAR-131 closed on 2026-07-16 and the exclusion stayed, so for ten days
+// the gate skipped these fixtures on a condition already met. A scoping note
+// that reads as current while pointing at finished work is indistinguishable
+// from a live one — which is why the block at the foot of this file asserts the
+// exclusion is still earning its keep instead of trusting this comment.
+const MOVE_GATE_EXCLUDED = ["logseq/page.md"];
+const fixtures = loadCorpusFixtures().filter((f) => !MOVE_GATE_EXCLUDED.includes(f.name));
 
 let editors: Editor[] = [];
 let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -666,30 +675,32 @@ describe("corpus move-sampling gate — folded variant", () => {
     }
 });
 
-// ── The logseq exclusion must expire the moment MAR-230 lands ───────────────
+// ── The exclusion must expire the moment its last construct is fixed ────────
 //
-// The `fixtures/logseq/` filter at the top of this file is correct today and
-// carefully documented — but documentation is exactly what already failed
-// here. It once read "until MAR-131 closes the nested-outline gap"; MAR-131
-// closed on 2026-07-16 and the filter stayed, skipping fixtures on a condition
-// that had already been met for ten days. The fix applied then was a better
-// comment, which is the same kind of artifact that went stale in the first
-// place, and a measurement recorded in a comment ("49 of 247 moves") reads as
-// current forever no matter what the code does.
+// The filter at the top of this file is correct today and carefully documented
+// — but documentation is exactly what already failed here. It once read "until
+// MAR-131 closes the nested-outline gap"; MAR-131 closed on 2026-07-16 and the
+// filter stayed, skipping fixtures on a condition that had already been met for
+// ten days. The fix applied then was a better comment, which is the same kind of
+// artifact that went stale in the first place, and a measurement recorded in a
+// comment ("49 of 247 moves") reads as current forever no matter what the code
+// does — as that one now does, MAR-230's fix having taken it to 10.
 //
 // So the exclusion gets teeth, in the idiom this repo already uses twice
 // (`INVARIANT_C_KNOWN_FAILURES` — "an entry that stops failing is a gate
 // silently doing nothing" — and MAR-231's `it.fails`): assert that the
-// excluded fixtures are STILL broken. When MAR-230 lands this test goes red,
-// which is the reminder to delete the filter, its comment, and this block.
-describe("the logseq move exclusion is still earning its keep (MAR-230)", () => {
-    const excluded = loadCorpusFixtures().filter((f) => f.name.startsWith("logseq/"));
+// excluded fixtures are STILL broken. This test going red is the reminder to
+// delete the filter, its comment, and this block. It has already done its job
+// once: MAR-230's fix cleared `logseq/journal.md` entirely, and the list above
+// shrank to the one fixture that still has a failing construct.
+describe("the move-gate exclusion is still earning its keep (MAR-230)", () => {
+    const excluded = loadCorpusFixtures().filter((f) => MOVE_GATE_EXCLUDED.includes(f.name));
     // Bounded so a passing scan stays cheap: roughly one move in five is
     // expected to break, so the first hit normally arrives within a handful.
     const SCAN_CAP = 60;
 
     it("at least one excluded fixture should still lose content through the save pipeline", async () => {
-        expect(excluded.length, "no logseq fixtures — the filter above is now a no-op").toBeGreaterThan(0);
+        expect(excluded.length, "no excluded fixtures — the filter above is now a no-op").toBeGreaterThan(0);
 
         const breakages: string[] = [];
         for (const fixture of excluded) {
