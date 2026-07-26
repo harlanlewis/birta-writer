@@ -151,6 +151,13 @@ hard ceilings to design around.**
   smallness is a feature, not a limitation.
 - **Precedent:** Obsidian's local-GPT / Ollama plugins already ship "ChatGPT-quality, nothing leaves the
   device, works offline" to a privacy-minded audience — proof of both demand and feasibility.
+- **Surface implication (feeds `SURFACE_STRATEGY.md`):** private on-device AI is *easiest on a native
+  mobile shell*, where Apple's Foundation Models framework hands you a resident model through a native
+  bridge — no browser download, no Harper-in-a-webview OOM. It is *hardest on cloud-web*, where "on-device"
+  either means a big WebLLM download or isn't on-device at all. So the AI posture and a **native mobile**
+  surface reinforce each other, while AI on cloud-web would undercut the privacy claim — a genuine (if not
+  decisive) argument that *if* Birta adds a surface and *if* AI is part of its identity, native mobile fits
+  the AI story better than cloud-web.
 
 ---
 

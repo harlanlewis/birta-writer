@@ -136,6 +136,13 @@ a PKM, and keeps everything local — does not exist.** That is the opening.
 The openings where this whole field falls short of Birta's principles. Ranked by how cleanly they map
 to what Birta already is.
 
+> **Read this list as "gaps," not "opportunities."** This survey was framed to *find* where competitors
+> fall short, so it reliably found shortfalls — but an empty slot in the market is not proof the slot is
+> valuable. Two of these openings (especially #1, mobile WYSIWYG) may be empty partly because they are
+> *hard* (see [`SURFACE_STRATEGY.md`](../SURFACE_STRATEGY.md) §3) or because *demand is thinner than a
+> gap implies* (nobody may want to compose long-form on a phone). Treat the list as hypotheses to test,
+> not a to-do list. The strategy doc's §0 red-teams this framing bias directly.
+
 1. **True WYSIWYG over byte-faithful plain `.md`, on mobile and web, is uncontested.** The fidelity
    camp (Typora, iA) has no mobile/web or isn't WYSIWYG; the WYSIWYG camp (Craft, Bear, Notion) isn't
    plain-file. **This is the biggest single opening**, and it is *mobile/web-shaped*, not desktop-shaped.
