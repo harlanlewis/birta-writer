@@ -66,8 +66,12 @@ async function moveAndSave(
         v.state.doc.descendants((node, pos) => {
             if (found) return false;
             if (node.type.name !== type) return true;
-            const body = type === "list_item" ? node.firstChild?.textContent : node.textContent;
-            if (body?.startsWith(text)) {
+            // An item whose content is a heading opens with an EMPTY paragraph
+            // (`list_item` is `paragraph block*`), so its first child names
+            // nothing — fall back to the item's own text.
+            const first = type === "list_item" ? node.firstChild?.textContent : undefined;
+            const body = first || node.textContent;
+            if (body.startsWith(text)) {
                 found = { from: pos, to: pos + node.nodeSize };
                 return false;
             }
@@ -232,24 +236,42 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(merged).toContain("\n    four-space code line\n");
     });
 
-    // KNOWN GAP — the boundary of this fix, asserted as the DESIRED outcome via
-    // `it.fails` rather than as today's wrong bytes, so it stays visible.
+    // Was the boundary of this fix, pinned as `it.fails`; closed by dropping the
+    // schema-artifact empty paragraph at serialization (plugins/list.ts →
+    // `itemContentForMarkdown`), which is what put the heading back on the
+    // marker line and left the construct with nothing to misparse.
     //
-    // When a moved item's content is a heading (or any block the serializer
-    // cannot put on the marker line) it is re-emitted as an EMPTY marker line
-    // followed by indented content. CommonMark computes such an item's content
-    // indent from the marker's own position, and empirically a tab-indented
-    // empty marker will not hold content at the sibling continuation indent at
-    // all — `\t-` + `\t  # H` reparses the heading as an indented code block,
-    // while `\t-` + `\t# H` is correct. That is a PARSER rule, not a fact about
-    // how this file is written, so no amount of evidence from the file's own
-    // lines answers it; closing it needs the merge to tell the profile which
-    // line an insertion is landing under. All 10 of the moves still damaging
-    // `fixtures/logseq/page.md` are this one construct.
-    it.fails("moving an item whose content is a heading should not restructure it", async () => {
-        const source = "- # Alpha heading\n  alpha body\n\t- beta\n\t- delta\n";
-        const { live, reparsed } = await moveAndSave(source, "beta", "delta");
+    // The `it.fails` it replaces was VACUOUS, and worth naming: it moved `beta`
+    // to the boundary just before `delta` — the two are already adjacent, so
+    // `moveBlocks` correctly refused, and the test "failed" on its own
+    // `expect(moved).toBe(true)` guard without ever reaching a save. It read as
+    // a live pin on the heading construct for as long as it existed. The move
+    // below is a real one: the heading item travels past a sibling.
+    it("moving an item whose content is a heading should not restructure it", async () => {
+        const source = "- alpha\n\t- beta\n\t- # Heading item\n\t- delta\n";
+        const { live, reparsed, merged } = await moveAndSave(source, "Heading item", "beta");
 
+        // Before the fix this wrote a bare `\t-` with `\t  # Heading item`
+        // beneath it, and the reparse kept `# Heading item` only as the TEXT of
+        // an indented code block.
         expect(reparsed).toEqual(live);
+        expect(merged).toContain("\t- # Heading item");
+    });
+
+    it("a heading item nested under a sibling should round-trip with no move at all", async () => {
+        // The same defect without any move: the serializer's own canonical
+        // output for this shape does not survive its own reparse, because a
+        // bare `-` under a paragraph line is a setext heading underline. No
+        // tabs, no mixed units, no insertion path — which is why this is the
+        // test that would have caught the construct first.
+        const source = "- normal\n  - # H\n    body\n";
+        const editor = await makeCorpusEditor(source);
+        const serialized = editor.action(getMarkdown());
+        const reparsed = editor.action((ctx) => ctx.get(parserCtx)(serialized)) as ProseNode;
+
+        // `normal` came back as a heading, and the nested item was gone.
+        expect(shape(reparsed)).toEqual(shape(editorView(editor).state.doc));
+        expect(serialized).toBe(source);
+        await editor.destroy();
     });
 });

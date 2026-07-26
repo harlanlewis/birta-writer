@@ -4,7 +4,7 @@ import {
     orderedListSchema,
 } from "@milkdown/preset-commonmark";
 import { extendListItemSchemaForTask } from "@milkdown/preset-gfm";
-import { canJoin, keymap, Mapping } from "../pm";
+import { canJoin, Fragment, keymap, Mapping } from "../pm";
 import { Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { joinTextblockBackward, liftListItem } from "../pm";
 import { $prose } from "@milkdown/utils";
@@ -253,6 +253,79 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
 });
 
 /**
+ * Drop the empty paragraph that a list item is FORCED to open with when its
+ * real content is not a paragraph (MAR-230).
+ *
+ * `list_item`'s content expression is `paragraph block*`, so an item whose
+ * first block is a heading (or a fence, quote, table, nested list) cannot hold
+ * that block first: the parser fills an empty paragraph in front of it. The
+ * paragraph is a SCHEMA ARTIFACT — it holds nothing, no gesture creates it, and
+ * `- # H` and `-\n  # H` parse to the very same node — but the serializer had no
+ * way to know that and emitted it, producing a bare marker line with the real
+ * content indented beneath:
+ *
+ *     - normal          - normal
+ *       - # H     →       -
+ *         body            # H
+ *                         body
+ *
+ * That output does not survive its own reparse, in two independent ways:
+ *
+ *   - A bare `-` under a paragraph line is a SETEXT HEADING UNDERLINE. `normal`
+ *     came back as a heading and the nesting was gone — and this needs no tabs
+ *     and no unusual indent units; it is what the canonical all-spaces
+ *     serialization does on its own.
+ *   - CommonMark derives such an item's content indent from the marker's own
+ *     position, so once the marker line carries the file's own indentation
+ *     (`\t-`) the content no longer reaches it and the heading reparses as an
+ *     indented CODE BLOCK, keeping `# H` only as literal text.
+ *
+ * Emitting the block on the marker line removes the construct rather than
+ * spelling it more carefully, so neither failure has anything left to bite: the
+ * output above is byte-identical to its input. Only the artifact is dropped —
+ * an item that is genuinely just an empty paragraph (`childCount === 1`) still
+ * serializes as the bare marker it is.
+ *
+ * THREE SHAPES ARE HELD BACK, and each was found by trying to break the rule
+ * rather than by reasoning about it — the general form "hoist whatever is
+ * there" is wrong in all three:
+ *
+ *   1. A FOLLOWING PARAGRAPH means the empty one is not an artifact at all. An
+ *      item may legally begin with a paragraph, so nothing was filled in: the
+ *      empty paragraph is a blank line the author wrote inside the item, and
+ *      dropping it deletes a node the document really has (`-\n\n  world` came
+ *      back as `- world`). This clause is the load-bearing one — it is what
+ *      makes "artifact" a fact about the schema rather than a guess.
+ *   2. A THEMATIC BREAK re-lexes when a marker joins it. The marker character
+ *      runs into the rule's own characters and the whole line becomes ONE
+ *      thematic break — `*` above `***` becomes `* ***` — so the list is gone.
+ *   3. AN EMPTY NESTED LIST is the same collision reached through the markers
+ *      themselves. Hoisting puts its marker on this line too, and three or more
+ *      bullets alone ARE a thematic break: an outline branch whose three lines
+ *      have all been emptied serialized to `- - -` and reopened as a horizontal
+ *      rule, with the branch destroyed. Hoisting an empty list gains nothing in
+ *      the first place — there is no content to bring up — so refusing costs
+ *      the output nothing. A nested list that HAS content (`- - child`) carries
+ *      a non-marker character onto the line and is safe.
+ *
+ * Cases 2 and 3 are one hazard (a line that re-lexes as a rule) and case 1 is a
+ * different one (a node that isn't ours to drop); they are kept as separate
+ * clauses because they answer separate questions and a reader checking one
+ * should not have to reason about the other. All three are pinned in
+ * `listMarkerFidelity.test.ts`.
+ */
+function itemContentForMarkdown(content: Fragment): Fragment {
+    if (content.childCount < 2) return content;
+    const first = content.firstChild;
+    if (first?.type.name !== "paragraph" || first.content.size !== 0) return content;
+    const next = content.child(1);
+    if (next.type.name === "paragraph") return content;
+    if (next.type.name === "hr") return content;
+    if (isListNode(next) && next.textContent === "") return content;
+    return content.cut(first.nodeSize);
+}
+
+/**
  * `list_item` is owned by preset-gfm, not commonmark: gfm's
  * `extendListItemSchemaForTask` re-registers it (adding the task-list `checked`
  * attr) AFTER commonmark, and both its parse and serialize runners stringify /
@@ -308,9 +381,10 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                     // prop absent so `listItemGapJoin` defers (MAR-194).
                     const gap =
                         typeof blankBefore === "boolean" ? { blankBefore } : undefined;
+                    const content = itemContentForMarkdown(node.content);
                     if (node.attrs["checked"] == null) {
                         state.openNode("listItem", undefined, { spread, ...gap })
-                            .next(node.content)
+                            .next(content)
                             .closeNode();
                     } else {
                         state
@@ -321,7 +395,7 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                                 ...gap,
                                 checked: node.attrs["checked"],
                             })
-                            .next(node.content)
+                            .next(content)
                             .closeNode();
                     }
                 },

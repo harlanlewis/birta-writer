@@ -222,10 +222,19 @@ describe("moveBlocks — explicit source fit", () => {
      * The arrangement the source-side clause exists to prevent, reached the
      * way the primitive USED to reach it (deleteRange + insert, no fit check
      * on the vacated parent). This is the "why" pin: it demonstrates that
-     * every other defense passes the corrupt result, so removing the clause
-     * cannot be made safe by leaning on the guard or on doc.check().
+     * neither the schema nor the content guard notices the repair, so removing
+     * the clause cannot be made safe by leaning on either of them.
+     *
+     * The round trip USED to be the third failure here, and no longer is
+     * (MAR-230): the injected filler paragraph is a schema artifact, so the
+     * serializer now drops it and brings the blockquote up to the marker line
+     * instead of emitting a bare `-` that ends the list on reparse. That closes
+     * the silent save+reopen corruption this arrangement caused — but it does
+     * NOT make the arrangement acceptable, which is the point of keeping the
+     * test: an empty paragraph nobody asked for is still in the document, and
+     * the source-fit clause is still what stops the move from creating it.
      */
-    it("stranding a list item's leading paragraph should survive both other defenses yet break round-trip", async () => {
+    it("stranding a list item's leading paragraph should survive both other defenses", async () => {
         const editor = await makeEditor("- item one\n\n  > quoted inside item\n\n- item two");
         const v = view(editor);
         const paraPos = nodePos(v, "item one", "paragraph");
@@ -263,18 +272,18 @@ describe("moveBlocks — explicit source fit", () => {
             ),
         ).toBeNull();
 
-        // Defense 3 — the round trip: FAILS. The empty leading paragraph
-        // serializes to a bare `-` marker line, which on reparse ends the list
-        // and splits the rest into a second one. Silent corruption at
-        // save+reopen — invisible until the file is reopened.
+        // Defense 3 — the round trip: passes since MAR-230. The filler no
+        // longer reaches the file as a bare `-` marker line (which on reparse
+        // ended the list and split the rest into a second one); the blockquote
+        // is written on the marker line and the document survives save+reopen.
         const serialized = editor.action((ctx) => ctx.get(serializerCtx)(stranded));
-        expect(serialized).toMatch(/^-\s*$/m); // the bare, contentless marker
+        expect(serialized).not.toMatch(/^-\s*$/m); // no bare, contentless marker
         const reparsed = editor.action((ctx) => ctx.get(parserCtx)(serialized))!;
         expect(
             formatFingerprintDiff(
                 diffFingerprints(fingerprintDoc(stranded), fingerprintDoc(reparsed)),
             ),
-        ).toBe("lost: (none); gained: count:bullet_list");
+        ).toBe("lost: (none); gained: (none)");
     });
 
     it("a move that would strand its source parent should be refused with NO transaction dispatched", async () => {
