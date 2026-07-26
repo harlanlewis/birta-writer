@@ -691,3 +691,22 @@ describe("applyMinimalChanges — outlines that mix indent units (MAR-222)", () 
         ).toBe("- alpha\n\t- beta\n\t   - gamma\n\n```sh\n    echo hi\n```\n");
     });
 });
+
+describe("applyMinimalChanges — a CRLF file with no trailing newline (MAR-223)", () => {
+    // The corpus fixture ends with a newline, so the whole "unterminated final
+    // segment" class is only covered by the engine's synthetic profile. These
+    // two run the same shapes through the REAL markdown profile.
+    it("appending should terminate the old last line with CRLF, not LF", () => {
+        const saved = "# Title\r\n\r\nalpha\r\n\r\nomega"; // no final newline
+        const merged = applyMinimalChanges(saved, "# Title\n\nalpha\n\nomega\n\ndelta\n");
+
+        expect(merged).toBe("# Title\r\n\r\nalpha\r\n\r\nomega\r\n\r\ndelta\r\n");
+    });
+
+    it("editing the last line should not invent a trailing newline", () => {
+        const saved = "# Title\r\n\r\nalpha\r\n\r\nomega";
+        const merged = applyMinimalChanges(saved, "# Title\n\nalpha\n\nomega X\n");
+
+        expect(merged).toBe("# Title\r\n\r\nalpha\r\n\r\nomega X");
+    });
+});

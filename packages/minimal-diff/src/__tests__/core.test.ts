@@ -544,11 +544,19 @@ describe("line endings — the unterminated final segment", () => {
 });
 
 describe("line endings — dominant-ending edges", () => {
-    // dominantEol is not exported; probe it through the ending an INSERTED line
-    // receives, which is the only thing it decides.
+    // dominantEol is not exported; probe it through the ending the INSERTED
+    // line receives, which is the only thing it decides.
+    //
+    // It must be THAT line's ending, not "does any line in the output carry a
+    // `\r`" — the saved side of a mixed document already does, so the loose
+    // form reports CRLF no matter what dominantEol decided and the assertion
+    // is vacuous. That is exactly how the tie case below came to be written
+    // asserting the opposite of its own name and still passing.
     const insertedEnding = (saved: string, serialized: string): string => {
         const merged = applyMinimalChanges(saved, serialized, plain);
-        return merged.split("\n").slice(0, -1).some((l) => l.endsWith("\r")) ? "CRLF" : "LF";
+        const line = merged.split("\n").find((l) => l.startsWith("delta"));
+        expect(line, "the probe line was not inserted at all").toBeDefined();
+        return line!.endsWith("\r") ? "CRLF" : "LF";
     };
 
     it("a document opening with a blank LF line should not count it as CRLF", () => {
@@ -560,6 +568,11 @@ describe("line endings — dominant-ending edges", () => {
     });
 
     it("an exact tie should resolve to LF", () => {
-        expect(insertedEnding("alpha\r\nbeta\n", "alpha\nbeta\ndelta\n")).toBe("CRLF");
+        // One CRLF, one LF: `crlf > lf` is false, so LF wins.
+        expect(insertedEnding("alpha\r\nbeta\n", "alpha\nbeta\ndelta\n")).toBe("LF");
+    });
+
+    it("a CRLF majority should win over a lone LF line", () => {
+        expect(insertedEnding("a\r\nb\r\nc\n", "a\nb\nc\ndelta\n")).toBe("CRLF");
     });
 });
