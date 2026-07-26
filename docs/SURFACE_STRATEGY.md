@@ -2,10 +2,72 @@
 
 **Status:** strategic thinking / exploration. No implementation, nothing measured. Written 2026-07-26.
 
+**Tracking:** **MAR-234** (demand probe — §6 Probe 3), **MAR-233** (mobile-typing go/no-go — §6
+Probe 1), under the **MAR-225** epic. Rung-0 reach is MAR-228/229; the save probe is MAR-227.
+
+**Where this sits:** [`STRATEGY.md`](STRATEGY.md) indexes all six strategy documents. Read it for
+what's checkable against the tree, what's a working position, and — importantly for this document — **the sequence conflict between
+§6 here and `MULTI_SURFACE_INVESTIGATION.md` §16, which neither document names** (`STRATEGY.md` §4).
+This document's §9 open-decision list is deduplicated into `STRATEGY.md` §3; work that register, not
+the four overlapping per-document lists.
+
+> **Scope gate this document does not close.** `docs/POSITIONING.md` holds anything beyond *a
+> document editor* as an "open question, not committed scope," and `docs/BENEFITS.md` scopes today's
+> product the same way. A mobile companion for ICP A/B is arguably still a document editor; a cloud
+> product is not obviously one. Neither reading is settled here — see `STRATEGY.md` D2/D5.
+
 > **This is broad, pre-commitment exploration.** The maintainer asked to think through a Birta mobile
 > app (or a web app to start) "in a very broad exploratory mode while we plan the future." Nothing here
 > is decided or queued. Its job is to *re-open* a question the earlier surface work had closed, with
 > evidence that work didn't have.
+
+> ## ⚠️ Read this before §1–§9: "mobile" is the wrong unit, and this document uses it throughout
+>
+> **Maintainer correction, 2026-07-26 — the intent is touch, and specifically iPad for composing;
+> phone is quick reference and edit.** This document treats "mobile" as one surface and silently
+> assumes phone-composing. That is wrong in a way that moves several of its conclusions, so read the
+> rest with these substitutions in mind. The sections are left intact rather than rewritten, because
+> the underlying analysis is still useful once re-aimed.
+>
+> **What gets *better* under the correction:**
+> - **§0.2's central untested assumption partly dissolves.** "Do users want to compose long-form
+>   Markdown on a phone?" was the right question aimed at the wrong device. iPad-with-a-keyboard is a
+>   *known* long-form composing surface — Ulysses, iA Writer, and Craft all have real iPad businesses.
+>   The demand question doesn't vanish, it sharpens (§0.3 still holds: no demand evidence exists).
+> - **§3.3's Harper ceiling needs re-measuring, not assuming.** The "~300–450 MB before the webview is
+>   killed" figure is an iOS-phone-class number. iPads carry substantially more RAM and looser jetsam
+>   limits. Offline Harper may be **Yellow on iPad where it is Red on phone** — that is a measurement,
+>   and nobody has taken it.
+> - **§3.1's typing risk shrinks at the hard end.** The worst ProseMirror-mobile failures cluster
+>   around soft-keyboard IME and on-screen composition. An iPad with a hardware keyboard is much closer
+>   to the desktop path that already works. The risk doesn't disappear (touch selection, autocorrect,
+>   the software keyboard remain), but the *primary* composing configuration is the safer one.
+> - **§3's source-first fallback gets weaker as a necessity** — screen area is what made a WYSIWYG
+>   surface implausible on a phone, and the iPad has it.
+>
+> **What gets *worse*, and this is the part the document has no answer for:**
+> - **The competitive gap narrows sharply on iPad.** §1's "the intersection is empty" finding leans on
+>   competitors having *no* mobile story. On iPad that is much less true: Ulysses, iA Writer, Craft and
+>   Obsidian all ship credible iPad apps, and the premium writing-app market is arguably *strongest*
+>   there. Birta's five-legged claim may still hold (none of those is byte-faithful plain-`.md`
+>   WYSIWYG) — but "uncontested" becomes "differentiated in a crowded, well-designed field," which is a
+>   materially harder sell. **§1 overstates the opening for iPad specifically.**
+> - **Touch is an entirely uncosted axis, and it is bigger than the typing question.** Verified against
+>   the tree 2026-07-26: the webview has **387 `mousedown` listeners, 61 hover listeners, 11
+>   `pointerdown`, 1 `touchstart`, and zero `pointer: coarse` / `hover: none` / `touch-action` CSS.**
+>   Birta's entire block-interaction system — the gutter handles that *appear on hover*, drag-to-move,
+>   marquee selection in the margins, the right-click context menu, hover link popups, table grips —
+>   assumes a pointer that hovers and a mouse that right-clicks. **A touch device has neither.** This is
+>   not a port; it is a second interaction design for the product's most distinctive feature set, and no
+>   document in this set has costed it. It is plausibly larger than the ProseMirror typing risk §3 calls
+>   the whole project.
+> - **Two surfaces, not one.** "iPad composes, phone references and quick-edits" is two different
+>   products sharing an engine — a full editing surface and a light reader/editor. §2's ICP table
+>   doesn't model that split, and the phone half may be much closer to *read-mostly* than anything here
+>   assumes.
+>
+> **Consequences already applied:** MAR-233 (the typing probe) is retargeted to iPad-first, with touch
+> interaction — not just IME — as a first-class subject. See [`STRATEGY.md`](STRATEGY.md) D3.
 
 > **Relationship to the existing surface docs (read this first).**
 > [`docs/MULTI_SURFACE_INVESTIGATION.md`](MULTI_SURFACE_INVESTIGATION.md) (MAR-225) is the deep
@@ -272,13 +334,16 @@ first draft missed — is about demand, and it is the cheapest and most decisive
 Samsung keyboard, iOS autocorrect, a CJK IME, selection-drag — and verify the **bytes written back
 through the minimal-diff engine are correct.** This is the go/no-go gate for Option 2 (and for the whole
 "mobile is where the gap is" thesis). Everything else about mobile is known-solvable; *this* is the only
-part that can sink it. It should exist as a Linear issue under MAR-225 — it does not yet.
+part that can sink it. **Filed as MAR-233** under MAR-225. *(An earlier draft of this line said it did
+not exist as a Linear issue; it does — corrected 2026-07-26.)*
 
-**Probe 2 — the standalone save probe (already tracked: MAR-227).** Mount `dist/webview.js` in a bare
+**Probe 2 — the standalone save probe (tracked: MAR-227).** Mount `dist/webview.js` in a bare
 page with a stub `HostServices` implementing *one* hard capability — save — end to end. Validates the
-seam against real persistence for *any* non-VS-Code surface.
+seam against real persistence for *any* non-VS-Code surface. **This is the one probe the two surface
+documents share** — `MULTI_SURFACE_INVESTIGATION.md` §16 makes it *its* highest-value next act, and
+it pays off under every branch below.
 
-**Probe 3 — the demand probe (new; do this *first*, it's the cheapest).** Before either technical probe,
+**Probe 3 — the demand probe (tracked: MAR-234; do this *first*, it's the cheapest).** Before either technical probe,
 spend a week testing whether ICP A/B is real: talk to a dozen Obsidian/Logseq mobile users, or post the
 one-line concept ("a WYSIWYG editor that opens your existing `.md` vault on your phone and never
 corrupts a byte"), and watch for genuine pull — *and ask what they'd pay* (§8). If the desire isn't
@@ -383,6 +448,12 @@ license, and the surface choice.
 ---
 
 ## 9. Open decisions for the maintainer
+
+> **These are deduplicated into [`STRATEGY.md`](STRATEGY.md) §3 — work that register, not this list.**
+> Four documents each ended with an open-decisions section and they overlap heavily: the ICP question
+> (1/3 below) is also `MULTI_SURFACE_INVESTIGATION.md` §13 and `PUBLISH_LOOP.md` §8; pricing (8) is
+> also `MULTI_SURFACE` §12.6; the cloud gate (7) is also `MULTI_SURFACE` §12.5 and `PUBLISH_LOOP` §3.
+> Kept here for the argument's context; resolved decisions should be struck from *both* places.
 
 1. **Run the demand probe (Probe 3) first?** The null-hypothesis test the research skipped: is there real
    pull from ICP A/B, and would they pay? Cheapest and most decisive step; gates everything. (Strongly

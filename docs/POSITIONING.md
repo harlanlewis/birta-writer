@@ -6,7 +6,13 @@ statement of values; it must not restate (and drift from) the canon:
 
 - **Thesis & priorities** → `README.md` § "Why this fork" — the north star (*never leave
   WYSIWYG*) and the 1–4 investment ordering (fidelity › VS Code parity › syntax breadth ›
-  interaction). That ordering is also the tie-breaker when goals conflict.
+  interaction). That list is the **founding rationale**; the live tie-breaker when goals
+  conflict is the `phase-*` roadmap spine in `AGENTS.md` (fidelity › performance › syntax ›
+  interaction › differentiators — VS Code parity shipped in 0.2.3 and its slot was reused).
+- **Where the product might go next** → `docs/STRATEGY.md` — the index over the surface, engine,
+  AI and publishing explorations, and what in them is checkable vs. merely believed. All of it is
+  active exploration, not committed scope — and it deliberately *keeps* the scope question below
+  open rather than closing it.
 - **Scope & why it matters** → `docs/BENEFITS.md` — Birta is *a document editor* ("not a
   knowledge base, not an outliner, not a note graph").
 - **How the UI communicates** → `docs/DESIGN_PRINCIPLES.md`.

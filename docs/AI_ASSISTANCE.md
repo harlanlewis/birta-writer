@@ -2,6 +2,16 @@
 
 **Status:** strategic thinking / posture record. No implementation, nothing measured. Written 2026-07-26.
 
+**Tracking:** **MAR-236** — the §8 "do now, betrays nothing" work (structural-rhythm tell,
+per-writer protect-list, voice-preservation framing). *(This document shipped without a tracking
+line — the only strategy doc that did — and its recommendations went untracked for two days as a
+direct result. Filed 2026-07-26.)* The still-open generative-vs-analytical question (§7, §8) is
+open decision **D7** in [`STRATEGY.md`](STRATEGY.md) §3.
+
+**Where this sits:** [`STRATEGY.md`](STRATEGY.md) indexes all six strategy documents. This one is
+**surface-independent by design** — everything in §3 and §6 is available on the VS Code extension
+today, and none of it waits on the surface question ([`SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md)).
+
 > This document answers one question: *what should Birta's relationship to AI be, in 2026, in a way
 > that fits its principles rather than betraying them?* It is a **posture**, deliberately upstream of
 > any feature. It extends — does not restate — `docs/DESIGN_PRINCIPLES.md` §"Annotation is advisory,
@@ -92,6 +102,15 @@ Two structural advantages Birta gets for free, that incumbents cannot easily cop
    "bring your own OpenAI/Anthropic key" model keeps Birta out of the data path and the billing path.
    Egress is then the user's explicit, per-key choice — consistent with `birta.network.enabled` shipping
    off. (This is a bridge, not the destination; the destination is on-device.)
+   **If it ever ships, reuse MAR-198's key handling rather than inventing a second one** (added
+   2026-07-26): the connector foundation already answers exactly this question — credentials in
+   `SecretStorage`, never `settings.json`, never settings-sync, never the webview; `application`
+   scope so a workspace cannot set them; disconnect deletes the secret; **no hosted auth broker**,
+   because a relay holding secrets would contradict "nothing leaves your machine." A second key
+   store would be a second thing to get wrong. Invariants 7–9 in
+   [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md), where BYO-key is rung 2 — note that **on-device
+   inference is rung 0**, which is precisely why the AI posture and the privacy claim reinforce
+   each other.
 
 ---
 
