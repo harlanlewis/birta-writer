@@ -665,3 +665,72 @@ describe("corpus move-sampling gate — folded variant", () => {
         });
     }
 });
+
+// ── The logseq exclusion must expire the moment MAR-230 lands ───────────────
+//
+// The `fixtures/logseq/` filter at the top of this file is correct today and
+// carefully documented — but documentation is exactly what already failed
+// here. It once read "until MAR-131 closes the nested-outline gap"; MAR-131
+// closed on 2026-07-16 and the filter stayed, skipping fixtures on a condition
+// that had already been met for ten days. The fix applied then was a better
+// comment, which is the same kind of artifact that went stale in the first
+// place, and a measurement recorded in a comment ("49 of 247 moves") reads as
+// current forever no matter what the code does.
+//
+// So the exclusion gets teeth, in the idiom this repo already uses twice
+// (`INVARIANT_C_KNOWN_FAILURES` — "an entry that stops failing is a gate
+// silently doing nothing" — and MAR-231's `it.fails`): assert that the
+// excluded fixtures are STILL broken. When MAR-230 lands this test goes red,
+// which is the reminder to delete the filter, its comment, and this block.
+describe("the logseq move exclusion is still earning its keep (MAR-230)", () => {
+    const excluded = loadCorpusFixtures().filter((f) => f.name.startsWith("logseq/"));
+    // Bounded so a passing scan stays cheap: roughly one move in five is
+    // expected to break, so the first hit normally arrives within a handful.
+    const SCAN_CAP = 60;
+
+    it("at least one excluded fixture should still lose content through the save pipeline", async () => {
+        expect(excluded.length, "no logseq fixtures — the filter above is now a no-op").toBeGreaterThan(0);
+
+        const breakages: string[] = [];
+        for (const fixture of excluded) {
+            const editor = await makeEditor(fixture.content);
+            const v = editorView(editor);
+            const protection = computeRoundTripProtection(
+                fixture.content,
+                editor.action(getMarkdown()),
+            );
+            const baseState = v.state;
+            const rng = mulberry32((SEED ^ hashString(fixture.name)) >>> 0);
+            const pairs = shuffled(enumerateMovePairs(v), rng).slice(0, SCAN_CAP);
+
+            for (const { source, target } of pairs) {
+                if (!moveBlocks(v, { from: source.from, to: source.to }, target)) continue;
+                const merged = applyMinimalChanges(
+                    fixture.content,
+                    editor.action(getMarkdown()),
+                    protection,
+                );
+                const reparsed = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode | null;
+                if (reparsed) {
+                    const delta = formatFingerprintDiff(
+                        diffFingerprints(fingerprintDoc(v.state.doc), fingerprintDoc(reparsed)),
+                    );
+                    if (delta !== "lost: (none); gained: (none)") {
+                        breakages.push(`${fixture.name}: ${delta}`);
+                    }
+                }
+                v.updateState(baseState);
+                if (breakages.length > 0) break;
+            }
+            v.updateState(baseState);
+            if (breakages.length > 0) break;
+        }
+
+        expect(
+            breakages,
+            `MAR-230 appears to be FIXED: no excluded logseq fixture lost content across ` +
+                `${SCAN_CAP} sampled moves. Delete the fixtures/logseq/ filter at the top of ` +
+                `this file, its explanatory comment, and this whole describe block.`,
+        ).not.toEqual([]);
+    });
+});
