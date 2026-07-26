@@ -115,8 +115,9 @@ const SAMPLE_SIZE = Number(process.env["MDW_MOVE_SAMPLE"] ?? "12");
 // READ THIS BEFORE QUOTING THIS GATE AS COVERAGE FOR THAT CONSTRUCT: it is not.
 // The sweep above was a throwaway probe; what runs here is SAMPLE_SIZE=12 pairs
 // at a fixed seed. Re-running this file against the pre-fix serializer, with the
-// filter already deleted, passes 77/77 — the 10 damaging pairs are 4% of
-// `page.md`'s space and the seeded draw misses them every time, deterministically.
+// filter already deleted, passes 77/77 — the 10 damaging pairs are 4% of the 247
+// executable moves (3.4% of the 291 enumerated pairs the sampler actually draws
+// from) and the seeded draw misses them every time, deterministically.
 // So deleting the filter is correct but buys no regression net on its own. The
 // net is two direct repros in `movedBlockIndent.test.ts` ("moving an item whose
 // content is a heading…" and the no-move round-trip beside it), both of which

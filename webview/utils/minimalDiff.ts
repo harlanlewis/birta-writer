@@ -117,7 +117,36 @@ function classifyLines(lines: string[]): LineClass[] {
         }
         let cls: LineClass = "prose";
         const t = line.trimStart();
-        const f = FENCE_LINE_RE.exec(t);
+        let f = FENCE_LINE_RE.exec(t);
+        // A fence may OPEN on a list-marker line (`- ```js`), which the
+        // trimStart'd test above cannot see — the line starts with the marker,
+        // not with backticks. Missing the opener is not a small error: the
+        // scanner then reads the fence's own CLOSING line as an opener and
+        // classifies the entire rest of the document as fence content, so
+        // ordinary outline lines below stop being recognized as structure.
+        //
+        // The shape is legal CommonMark that anyone may hand-write, and since
+        // MAR-230 the serializer emits it too (an item whose content is a fence
+        // now rides the marker line), which is how it started biting: a fence
+        // bullet moved to the top of a tab outline had the lines after it
+        // treated as verbatim, so `reconcileInsertion` skipped their indent
+        // lookup and wrote the serializer's spaces beside kept tabs — the moved
+        // block's neighbour became its child on reopen.
+        //
+        // Only consulted when no fence is open: inside one, a closing run must
+        // be the whole line, so a marker line can never close it.
+        //
+        // The `nested` flag below is deliberately NOT forced on for this case.
+        // Such a fence sits at column 0, so its body indent is the marker's own
+        // content column — always spaces, never the outline tabs that flag
+        // exists to normalize — and no probe could produce different bytes
+        // either way. An unfalsifiable branch is decoration, so there isn't one.
+        if (fence === null && f === null) {
+            const marker = LIST_MARKER_RE.exec(line);
+            if (marker) {
+                f = FENCE_LINE_RE.exec(line.slice(marker[0].length).replace(/^ {0,3}/, ""));
+            }
+        }
         if (fence) {
             const closes =
                 f !== null &&

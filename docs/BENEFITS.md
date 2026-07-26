@@ -333,7 +333,7 @@ to open and edit, not about matching every tool's feature set.
 | **Obsidian** | ✅ vault of `.md` | ✅ directly | Wikilinks, `==highlights==`, `> [!callouts]`, footnotes, math, and YAML frontmatter render or round-trip; `#tags`, `^block-ids`, `![[embeds]]`, `%%comments%%` stay as preserved text | 🟢 Strong |
 | **Foam** | ✅ `.md` (VS Code-native) | ✅ directly | Same wikilink family as Obsidian; its optional CommonMark link-reference-definition shim is preserved, not inlined away | 🟢 Strong |
 | **"Second Brain" / PARA** | ✅ (a folder convention, not a format) | ✅ directly | Nothing tool-specific to preserve — it's just folders of Markdown | 🟢 Strong |
-| **Logseq** | ✅ `.md` | ✅ opens (round-trip tested) | Logseq is an outliner: every block is a bullet and tab indentation encodes the block tree, so a file renders as one big nested list. Untouched lines — tabs, `key:: value` properties, `((block-refs))`, `TODO`/`DOING`/`[#A]` markers, `CLOCK:` timestamps — are byte-preserved through an edit elsewhere, and an edited line keeps its org tokens unescaped and its own tab indentation — so the blocks nested under it stay nested (pinned by a round-trip test suite that types into every block of each fixture and re-parses the result). Block *moves* within a tab-indented outline now keep the file's own indentation too, so a dragged or Alt+moved block lands at the depth you left it at — including a block whose content is a heading, quote, fence or table rather than plain prose — the outliner's own `- # Title` shape among them. The whole-file move gate runs against the Logseq fixtures with no carve-out | 🟡 Text-edit safe; structure renders flat |
+| **Logseq** | ✅ `.md` | ✅ opens (round-trip tested) | Logseq is an outliner: every block is a bullet and tab indentation encodes the block tree, so a file renders as one big nested list. Untouched lines — tabs, `key:: value` properties, `((block-refs))`, `TODO`/`DOING`/`[#A]` markers, `CLOCK:` timestamps — are byte-preserved through an edit elsewhere, and an edited line keeps its org tokens unescaped and its own tab indentation — so the blocks nested under it stay nested (pinned by a round-trip test suite that types into every block of each fixture and re-parses the result). Block *moves* within a tab-indented outline now keep the file's own indentation too, so a dragged or Alt+moved block lands at the depth you left it at — including a block whose content is a heading or a quote rather than plain prose, the outliner's own `- # Title` shape among them. The whole-file move gate runs against the Logseq fixtures with no carve-out. Two shapes are still open and worth knowing if you hit them: a bullet whose content is a **table**, moved within a tab outline, can come back as literal pipe text, and a bullet whose content is a horizontal rule loses its nesting | 🟡 Text-edit safe; structure renders flat |
 | **Quarto** (`.qmd`) | ✅ single `.qmd` file | ⚠️ needs a file association (see below) | Pandoc Markdown doesn't subtract from CommonMark, so untouched content round-trips safely; but executable ` ```{r} ` cells, `::: {.callout}` fenced divs, shortcodes, cross-refs, and citations are preserved as inert text/code, not understood | 🟡 Safe, not fluent |
 | **MDX** (`.mdx`) | ✅ `.mdx` file | ⚠️ not recommended | MDX *changes* CommonMark rules (`<` and `{` become special, indented code and HTML comments behave differently) and adds JSX/`import`/`export`; re-serializing edited regions risks producing invalid MDX | 🔴 Risky |
 | **Roam Research** | ❌ proprietary DB (JSON/EDN) | ❌ only after Markdown export | Moot until exported | 🔴 Not file-based |
@@ -353,10 +353,11 @@ to open and edit, not about matching every tool's feature set.
   outline's own indentation as well, so a moved block re-opens at the depth you
   left it at, carrying its continuation lines and any nested code fence intact.
   That now includes a block whose content is not a plain paragraph — a heading
-  (the Logseq shape `- # Project Atlas`), a quote, a fence, a table — which used
-  to be re-written as an empty bullet with the content indented beneath it, a
-  form that reopens as something else entirely. Typing inside such a block hit
-  the same shape, so it is fixed for edits as well as moves.
+  (the Logseq shape `- # Project Atlas`), a quote, a fence — which used to be
+  re-written as an empty bullet with the content indented beneath it, a form
+  that reopens as something else entirely. Typing inside such a block hit the
+  same shape, so it is fixed for edits as well as moves. A bullet whose content
+  is a *table* or a *horizontal rule* is not covered yet.
 - **Markdown supersets (Quarto, MDX)** are plain files but extend or alter the
   language. Birta registers only `.md` and `.markdown`, so a `.qmd`/`.mdx` file
   won't open in Birta on its own — the reliable way is to rename it to `.md`, or
