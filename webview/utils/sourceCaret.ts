@@ -127,6 +127,38 @@ function docOffsetForText(node: Node, from: number, textOffset: number): number 
     return offset;
 }
 
+/** How many source lines past the contiguous position an anchor may sit. */
+const ANCHOR_LOOKAHEAD = 8;
+
+/**
+ * The source line of each anchor, resolved against the source text.
+ *
+ * A block's lines are only NOMINALLY contiguous from `blockLine`: a loose list
+ * is one node whose items sit blank lines (and nested continuations) apart, so
+ * `blockLine + index` drifts further with every gap. Each anchor with text is
+ * therefore matched forward through the source (the renderer only ever drops a
+ * PREFIX — bullet, hashes, indentation — so the line must end with the text);
+ * an anchor that can't be matched within the lookahead (inline markup changed
+ * the text, a soft-wrapped paragraph) falls back to the contiguous position —
+ * exactly the old behavior, never worse.
+ */
+function anchorLines(anchors: LineAnchor[], blockLine: number, sourceLines: string[]): number[] {
+    const lines: number[] = [];
+    let cursor = blockLine;
+    for (const a of anchors) {
+        let line = cursor;
+        if (a.text) {
+            const limit = Math.min(cursor + ANCHOR_LOOKAHEAD, sourceLines.length);
+            for (let l = cursor; l <= limit; l++) {
+                if (sourceLines[l - 1]?.endsWith(a.text)) { line = l; break; }
+            }
+        }
+        lines.push(line);
+        cursor = line + 1;
+    }
+    return lines;
+}
+
 /**
  * Does a block with these anchors start at source line `blockLine`?
  *
@@ -143,8 +175,22 @@ function anchorsFit(anchors: LineAnchor[], blockLine: number, sourceLines: strin
     return sourceLine !== undefined && sourceLine.endsWith(anchors[probe].text!);
 }
 
-/** How far to look for the real pairing once the nominal one is disproved. */
-const RECONCILE_SPAN = 6;
+/** Minimum reconciliation reach, kept as a floor for maps that undercount. */
+const RECONCILE_FLOOR = 6;
+
+/**
+ * How far to look for the real pairing once the nominal one is disproved.
+ *
+ * Drift comes from nodes that span several source blocks — a loose list is ONE
+ * node but one map entry per item — so at any index it can never exceed the
+ * total surplus of map entries over document nodes. A fixed span silently gave
+ * up on documents whose surplus passed it (an 8-item loose list drifts
+ * everything after it by 7), reporting the nominal (wrong) line as if it were
+ * fine.
+ */
+function reconcileSpan(doc: Node, lineMap: number[]): number {
+    return Math.max(RECONCILE_FLOOR, Math.abs(lineMap.length - doc.childCount));
+}
 
 /**
  * The block index and start line for a source line, reconciled against the
@@ -178,12 +224,29 @@ export function blockIndexForSourceLine(
     if (anchorsFit(lineAnchors(doc.child(nominal), blockStartPos(doc, nominal)), blockLine, sourceLines)) {
         return { index: nominal, blockLine };
     }
-    for (let step = 1; step <= RECONCILE_SPAN; step++) {
+    const span = reconcileSpan(doc, lineMap);
+    for (let step = 1; step <= span; step++) {
         for (const candidate of [nominal - step, nominal + step]) {
             if (candidate < 0 || candidate >= doc.childCount) { continue; }
             if (anchorsFit(lineAnchors(doc.child(candidate), blockStartPos(doc, candidate)), blockLine, sourceLines)) {
                 return { index: candidate, blockLine };
             }
+        }
+    }
+    // No block STARTS at blockLine — the line may sit INSIDE one (a loose
+    // list's later item has its own map entry, but its node began entries
+    // earlier). Find the block whose verified start and resolved anchor lines
+    // contain the target line; earlier candidates first, since a container
+    // starts before the line it contains.
+    for (let step = 0; step <= span; step++) {
+        for (const candidate of step === 0 ? [nominal] : [nominal - step, nominal + step]) {
+            if (candidate < 0 || candidate >= doc.childCount) { continue; }
+            const anchors = lineAnchors(doc.child(candidate), blockStartPos(doc, candidate));
+            if (!anchors.length) { continue; }
+            const start = sourceLineForBlock(doc, lineMap, sourceLines, candidate);
+            if (start === undefined || start > line || !anchorsFit(anchors, start, sourceLines)) { continue; }
+            const lines = anchorLines(anchors, start, sourceLines);
+            if (line <= lines[lines.length - 1]) { return { index: candidate, blockLine: start }; }
         }
     }
     return { index: nominal, blockLine };
@@ -201,7 +264,8 @@ export function sourceLineForBlock(
     const nominal = lineMap[Math.min(index, lineMap.length - 1)];
     if (nominal === undefined) { return undefined; }
     if (anchorsFit(anchors, nominal, sourceLines)) { return nominal; }
-    for (let step = 1; step <= RECONCILE_SPAN; step++) {
+    const span = reconcileSpan(doc, lineMap);
+    for (let step = 1; step <= span; step++) {
         for (const candidate of [index + step, index - step]) {
             const line = lineMap[candidate];
             if (line === undefined) { continue; }
@@ -239,7 +303,7 @@ export function sourceCaretAt(
     if (index === -1) { return { line: blockLine, column: 0 }; }
 
     const anchor = anchors[index];
-    const line = blockLine + index;
+    const line = anchorLines(anchors, blockLine, sourceLines)[index];
     const text = anchor.text ?? "";
     const sourceLine = sourceLines[line - 1];
     if (sourceLine === undefined) { return { line, column: 0 }; }
@@ -268,7 +332,14 @@ export function docPosForSourceCaret(
 
     const anchors = lineAnchors(doc.child(block.index), blockStartPos(doc, block.index));
     if (!anchors.length) { return undefined; }
-    const anchor = anchors[clamp(caret.line - block.blockLine, 0, anchors.length - 1)];
+    // The last anchor at or before the caret's line, by each anchor's RESOLVED
+    // line — in a loose list the anchors are not contiguous from blockLine.
+    const lines = anchorLines(anchors, block.blockLine, sourceLines);
+    let anchorIndex = 0;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i] <= caret.line) { anchorIndex = i; } else { break; }
+    }
+    const anchor = anchors[anchorIndex];
     const lineStart = anchor.contentStart + anchor.offset;
     if (anchor.text === null || caret.column <= 0) { return lineStart; }
 

@@ -229,6 +229,86 @@ describe("reconciling the line map against the document", () => {
         const block = blockIndexForSourceLine(d, computeLineMap(source), source.split("\n"), 3);
         expect(block).toEqual({ index: 1, blockLine: 3 });
     });
+
+    // A long loose list drifts everything after it by (items − 1) — here 7,
+    // one past the old fixed reconciliation span, which silently returned the
+    // nominal (wrong) pairing. The span must scale with the map's surplus.
+    const items = ["one", "two", "three", "four", "five", "six", "seven", "eight"];
+    const longSource = `${items.map((t) => `- ${t}`).join("\n\n")}\n\nAfter the list.\n`;
+    const longDoc = () => doc(list(...items), p("After the list."));
+
+    it("a block drifted past the old fixed span should still report its real line", () => {
+        const d = longDoc();
+        expect(sourceLineForBlock(d, computeLineMap(longSource), longSource.split("\n"), 1)).toBe(17);
+    });
+
+    it("a caret drifted past the old fixed span should still report its real line", () => {
+        const d = longDoc();
+        const pos = inBlock(d, 1, 6);
+        expect(sourceCaretAt(d, computeLineMap(longSource), longSource.split("\n"), pos))
+            .toEqual({ line: 17, column: 6 });
+    });
+
+    // Inside a loose list the anchors are NOT contiguous from the block's
+    // first line — items sit blank lines apart — so each anchor's line must be
+    // resolved against the source, not assumed as blockLine + index.
+
+    /** Doc position `offset` chars into the textblock whose text is `blockText`. */
+    const posIn = (d: ReturnType<typeof doc>, blockText: string, offset: number): number => {
+        let found = -1;
+        d.descendants((node, pos) => {
+            if (found >= 0) { return false; }
+            if (node.isTextblock && node.textContent === blockText) {
+                found = pos + 1 + offset;
+                return false;
+            }
+            return true;
+        });
+        if (found < 0) { throw new Error(`no textblock "${blockText}"`); }
+        return found;
+    };
+
+    it("a caret in a loose list item should report the item's own line, not a contiguous guess", () => {
+        const d = doc(list("alpha", "beta"), p("After the list."));
+        const source = "- alpha\n\n- beta\n\nAfter the list.\n";
+        // Caret 2 chars into "beta": the item lives on source line 3 (line 2 is
+        // the blank between the loose items), and its column includes the bullet.
+        expect(sourceCaretAt(d, computeLineMap(source), source.split("\n"), posIn(d, "beta", 2)))
+            .toEqual({ line: 3, column: 4 });
+    });
+
+    it("a caret in a nested sub-item separated by a blank line should report its real line", () => {
+        const item = schema.node("list_item", null, [p("item head:"), list("sub a", "sub b")]);
+        const d = doc(schema.node("bullet_list", null, [item]), p("Tail."));
+        const source = "- item head:\n\n  - sub a\n  - sub b\n\nTail.\n";
+        // Caret at the start of "sub b" — the fourth source line, behind its
+        // "  - " marker.
+        expect(sourceCaretAt(d, computeLineMap(source), source.split("\n"), posIn(d, "sub b", 0)))
+            .toEqual({ line: 4, column: 4 });
+    });
+
+    it("a caret in a loose list item should survive the round trip", () => {
+        const d = doc(list("alpha", "beta"), p("After the list."));
+        const source = "- alpha\n\n- beta\n\nAfter the list.\n";
+        const lineMap = computeLineMap(source);
+        const lines = source.split("\n");
+        const pos = posIn(d, "beta", 2);
+        const caret = sourceCaretAt(d, lineMap, lines, pos);
+        expect(docPosForSourceCaret(d, lineMap, lines, caret!)).toBe(pos);
+    });
+
+    it("a line drifted past the old fixed span should still resolve to its real block", () => {
+        // Enough paragraphs after the list that the nominal child index is a
+        // real (but wrong) node, so only the search — not the childCount clamp
+        // — can rescue it.
+        const paras = ["p one", "p two", "p three", "p four", "p five", "p six", "p seven", "p eight", "p nine", "p ten"];
+        const source = `${items.map((t) => `- ${t}`).join("\n\n")}\n\n${paras.join("\n\n")}\n`;
+        const d = doc(list(...items), ...paras.map((t) => p(t)));
+        // "p one" starts at source line 17; its node is child 1, but the
+        // nominal pairing says child 8.
+        expect(blockIndexForSourceLine(d, computeLineMap(source), source.split("\n"), 17))
+            .toEqual({ index: 1, blockLine: 17 });
+    });
 });
 
 describe("round trip", () => {
