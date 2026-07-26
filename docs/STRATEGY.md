@@ -22,9 +22,9 @@ today*, the canon wins.
 
 ## 1. The documents, and what each one owns
 
-Six strategy documents landed between 2026-07-24 and 2026-07-26. Each has exactly one question it is
-the authority on; where they overlap, the owner column is who wins. **The seventh row is the hole** —
-an axis with tickets but no document.
+Six strategy documents landed between 2026-07-24 and 2026-07-26; the seventh row was added on 07-26
+to close a hole — an axis that had tickets and no document. Each has exactly one question it is the
+authority on; where they overlap, the owner column is who wins.
 
 | Document | Owns | Status | Tracking |
 |---|---|---|---|
@@ -34,12 +34,12 @@ an axis with tickets but no document.
 | [`AI_ASSISTANCE.md`](AI_ASSISTANCE.md) | **The AI posture** — surface-independent | Posture record | MAR-236 |
 | [`ENGINE_AND_DIALECT_STRATEGY.md`](ENGINE_AND_DIALECT_STRATEGY.md) | **Own vs. rent across the editing stack**, and dialect mapping | Decision framework | MAR-235, MAR-237, MAR-238 |
 | [`research/writing-app-landscape.md`](research/writing-app-landscape.md) | **The evidence base** for the standalone-app market (companion to [`research/markdown-editor-landscape.md`](research/markdown-editor-landscape.md), which covers Markdown *inside VS Code*) | Research; verification gaps flagged inline | — |
-| **— none —** | **Third-party integrations / connectors**: the render ladder, per-provider auth, credential storage, and what any of it means for the privacy contract or a second surface | **Unwritten.** The thinking lives in a *ticket*, not a document — and it is better specified than most of the documents | MAR-198, MAR-186 |
+| [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md) | **What Birta sends, on whose consent, under what invariants** — the rung 0–3 escalation ladder, the consent/data/credential invariants, and the fact that none of the credential machinery ports | **New (2026-07-26), and not exploration** — it records shipped behavior plus MAR-198's directed design. Written because this axis had no owner and three documents each reasoned about a fragment | MAR-198, MAR-186, MAR-179/199 |
 
-**Two things none of them owned, and this file now does:** the *union* — the deduplicated decision
-register (§3) and the reconciled sequence (§4) — and the observation that the **integrations axis has
-no document at all** (§3 D10), despite carrying maintainer direction and colliding with claims three
-of the documents make.
+**What this file owns:** the *union* — the deduplicated register (§3) and the reconciled sequence
+(§4). The integrations axis had no document at all until 2026-07-26; it now has
+[`NETWORK_POSTURE.md`](NETWORK_POSTURE.md), and D10 is reduced to the one question that is genuinely
+open (does any of it port?).
 
 *(Precision note, since this file's job is precision: more than six documents landed in that window —
 `BRAND.md`, `brand-brief.md`, `PROVENANCE.md`, and `research/birta-name-meaning.md` did too, and
@@ -74,7 +74,13 @@ otherwise is starting from a false premise — which has already happened twice 
 - **Byte-fidelity is enforced, not asserted** — round-trip corpus, move-fuzz, `toolFidelity`,
   destructive-save guard, CI perf gates on launch and typing.
 - **Every network capability that ships today is read-or-render only.** Nothing uploads document
-  content.
+  content. Full ladder in [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md).
+- **The interaction model is pointer-and-keyboard, with no touch story at all.** Counted 2026-07-26:
+  **387 `mousedown` listeners, 61 hover listeners, 11 `pointerdown`, 1 `touchstart`, and zero
+  `pointer: coarse` / `hover: none` / `touch-action` CSS.** Gutter handles appear *on hover*; blocks
+  move by *drag*; multi-select is a *marquee in the margins*; the context menu is a *right-click*.
+  Every one of those has no touch equivalent today. This is a fact, not a position, and it is the
+  largest uncosted item in any touch-surface bet.
 
 ### 2b. Working positions currently held — all re-openable
 
@@ -110,43 +116,20 @@ worse than leaving it open.
 |---|---|---|---|---|
 | **D1** | **Who is the user?** *The* crux — raised independently in four documents. The maintainer uses Birta *because* it sits in VS Code beside git and agents; any standalone surface serves someone else, i.e. a new product, not a port. Which ICP — A (Obsidian/Logseq mobile refugee), B (privacy-first writer), C (escape-Notion), D (the maintainer's own phone)? And **companion or new home?** | `SURFACE` §2, §9.3 · `MULTI_SURFACE` §13 · `PUBLISH_LOOP` §8 | Everything below | **MAR-234** (demand probe, ~1 week, no code) |
 | **D2** | **Is expansion wanted at all now**, given the solo-maintainer tax and that phase-0/1 still have runway? "Rung 0 + the proofreader extension, stay VS Code-only" is a complete, defensible answer | `SURFACE` §9.2, §7 · `MULTI_SURFACE` §13 | D3–D6 | D1's outcome |
-| **D3** | **Which second surface** — desktop-Tauri (the extraction-validation vehicle) or Capacitor-mobile (the market-relevant one, which `SURFACE` §6 argues can *be* the validation host, making desktop-first optional)? **This is the live disagreement between the two surface documents** (§4) | `MULTI_SURFACE` §11 Rung 2, §12.1 · `SURFACE` §5, §6, §9.6, §9.10 | The whole extraction plan | D1 + **MAR-233** (mobile-typing go/no-go) |
+| **D3** | **Which second surface, and when.** **Maintainer leaning (2026-07-26): touch — and specifically iPad for composing, phone for quick reference and edit — "but later, maybe."** That is a direction, not a commitment, and it does two things: it partly settles the desktop-vs-mobile disagreement between the two surface documents (§4) in mobile's favour, and it **invalidates the unit both documents reason in** — they say "mobile" and mean phone. See `SURFACE_STRATEGY.md`'s correction banner: the demand question gets easier on iPad, the *competitive* claim gets harder, and **touch interaction becomes the dominant uncosted risk**, ahead of the typing risk | `MULTI_SURFACE` §11 Rung 2, §12.1 · `SURFACE` §5, §6, §9.6, §9.10 + banner | The whole extraction plan | Deferred by the maintainer. When it revives: **MAR-233**, now retargeted iPad-first with touch as a first-class subject |
 | **D4** | **If mobile: local-files (on-brand, Yellow) or own-cloud (easier, off-brand)?** | `SURFACE` §4, §9.5 | Mobile scope | MAR-233 + D1 |
 | **D5** | **Is a cloud/sync product wanted for its own sake?** If no, web stays Chromium-desktop-or-nothing and is deprioritized — for the *measured* reason, not by assumption. This is also the gate `PUBLISH_LOOP` presumes and must not close | `MULTI_SURFACE` §12.5 · `SURFACE` §9.7 · `PUBLISH_LOOP` §3, §8 | The web surface; the whole publish loop | Decide before any web code — it is a one-way door on the privacy claim |
 | **D6** | **Pricing, accounts, and per-surface licensing.** FSL-1.1-ALv2 auto-converts each release to Apache-2.0 after two years, so a hosted service can't rely on code secrecy. One-time vs BYO-sync-free vs subscription — and it constrains which surface even makes sense | `SURFACE` §8 · `MULTI_SURFACE` §9, §12.6 · landscape #10 | Any paid surface; D3/D5 | Fold the price question into MAR-234, don't run a separate probe |
 | **D7** | **Generative or analytical-only AI?** The conservative reading keeps Birta's AI analytical (proofread, tells, structure); the less conservative allows on-request, local, accept-first rewrite. Genuinely open — the §2b floor holds either way | `AI_ASSISTANCE` §7, §8 | What a new surface's headline feature is | Nothing external; a maintainer call. The floor-level work (MAR-236) is safe under both readings |
-| **D8** | **Where does `phase-5-surfaces` rank?** Linear carries the label; `AGENTS.md`'s spine stops at phase-4 and has never been updated, so the rank is *undefined* and the "first High down the spine" rule cannot be evaluated. Four `High` phase-5 items now sit unranked while the ranked spine has no High at all | MAR-141 (board guide) · `AGENTS.md` §"Sequencing signal" | Every future session's pick | A one-line maintainer call, then update `AGENTS.md` — this is the cheapest open item on the board |
+| ~~**D8**~~ | ~~Where does `phase-5-surfaces` rank?~~ **RESOLVED 2026-07-26 (maintainer): it does not rank — phase-5 does not compete.** It is exploration, not queued work; its priorities are internal to the phase and never compel a pick against the ranked spine. Recorded in `AGENTS.md`; the `High` chips on MAR-226/227/233/234 are relative to each other, not to a phase-0 bug | MAR-141 · `AGENTS.md` | — | — |
 | **D9** | **Identity sequencing** — the drawn wordmark/glyph (MAR-209, `BRAND.md` is still a discovery plan) before or after any non-extension surface? Standalone surfaces front-run it | `MULTI_SURFACE` §9, §12.7 | Any public surface launch | Maintainer call; already owner-blocked with MAR-134 |
-| **D10** | **Where do third-party integrations sit in the network posture, and do they port?** MAR-198 is *maintainer-directed* and well-specified — but **no strategy document covers it**, and three of them make claims it complicates (see below) | **MAR-198**, MAR-186 · nothing in `docs/` | The privacy contract; the `HostServices` surface; AI BYO-key | Nothing external — but it needs a *home in the docs*, which it does not have |
+| **D10** | **Does the credential machinery port?** *(Reduced 2026-07-26 — the "where does this live" half is answered: [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md).)* What remains is genuinely open: `SecretStorage`, `registerUriHandler`, `vscode.authentication` and `"scope": "application"` are all VS Code's, and the last has **no obvious reimplementation** anywhere else — "a shared config cannot flip your consent" is a VS Code settings concept | [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md) §3 · MAR-198 | Any second surface; folds into MAR-226 | Nothing until a surface is real — but MAR-226's contract should absorb it rather than discover it late |
 
-**On D10 — the axis the strategy pass missed.** Integrations were named as a review axis and none of
-the five documents addresses them, even though MAR-198 carries maintainer direction (2026-07-23) and
-harder invariants than most of the strategy work. Three specific collisions, none of them fatal, all
-of them unrecorded until now:
-
-1. **`MULTI_SURFACE` §9 says identity/auth is "today: zero, and that's a *stated value*," and biases
-   to "no account, or account for sync only."** True of shipped code; **false of directed work.**
-   MAR-198 specifies OAuth 2.0 + PKCE, `vscode.authentication.getSession`, and per-service token
-   storage. That is not an *account with Birta* — the distinction holds and the value survives — but
-   "zero auth" is no longer an accurate premise to reason from.
-2. **Every mechanism MAR-198 names is VS-Code-only and appears in no capability bucket.**
-   `SecretStorage` (Electron safeStorage), `registerUriHandler` for the
-   `vscode://birtalabs.birta-writer/auth/…` OAuth callback, and VS Code's built-in GitHub auth
-   provider have no analog on Tauri, Capacitor, or the web. **`MULTI_SURFACE` §2's `HostAdapter`
-   list contains "a single network fetch (unfurl)" and nothing about credential storage or an OAuth
-   callback route** — so §14's taxonomy is missing a Bucket-3 capability that is already directed
-   work. Any surface bet inherits it.
-3. **`PUBLISH_LOOP` §8's posture ladder is missing a rung.** It argues the two current network
-   exceptions are "deliberately tiny — unfurl *reads* a title, embeds *render* a card; neither
-   uploads your content," so publishing is a new *class*. Still true — but MAR-198 introduces a
-   third class in between: **outbound requests carrying the user's credentials to third-party
-   APIs.** That strengthens the publish-loop caution rather than weakening it, *and* it means the
-   layered per-capability consent architecture publishing would need is already being designed.
-
-   The same collision has an easy win attached: **`AI_ASSISTANCE` §3.6's "BYO-key" bridge is
-   MAR-198's credential problem again**, and MAR-198 already answers it (keychain-backed, never
-   `settings.json`, never the webview, `application` scope, disconnect deletes the secret). If
-   BYO-key ever ships it should reuse that machinery, not invent a second key store.
+**On D10.** The argument that used to sit here — how MAR-198 collides with `MULTI_SURFACE` §9's
+"identity/auth: today zero", with the `HostAdapter` sketch that has no credential bucket, and with
+`PUBLISH_LOOP` §8's escalation ladder — has moved to [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md),
+which is where it belongs. That also clears §6's one self-acknowledged rule violation: this file is an
+index again.
 
 ---
 
@@ -251,11 +234,11 @@ Recorded so the errors are not re-inherited from the un-corrected text:
   without opening the source* — one or two sentences of *what* — and then points at the document
   that owns the *why*. It is not a summary of the argument.
 
-  **There is currently one deliberate exception, and it is a bug, not a pattern:** D10
-  (integrations) carries several paragraphs of actual argument, because **no document owns that
-  axis** — the index is standing in as the container. The fix is to write the missing document (or
-  fold the axis into an existing one) and cut D10 back to a register entry, not to keep growing it
-  here. Any *other* paragraph in this file that starts explaining *why* has drifted and should move.
+  This rule was violated once on arrival — D10 carried several paragraphs of argument because no
+  document owned the integrations axis. **Discharged 2026-07-26** by writing
+  [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md) and cutting D10 back to a register entry. That is the
+  precedent: when the index starts containing an argument, **the missing document is the fix** — not
+  a longer register.
 - **Every strategy document carries a `Tracking:` line.** `AI_ASSISTANCE.md` shipped without one and
   its recommendations went untracked for two days as a direct result.
 - **Nothing in any of these documents is measured.** Every rating, effort estimate, and market read

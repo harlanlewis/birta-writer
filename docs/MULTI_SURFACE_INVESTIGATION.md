@@ -436,7 +436,8 @@ the footprint gap Tauri closes).
   - **MAR-198's "no hosted auth broker" invariant is the same reasoning as this document's privacy
     section**, arrived at independently — which is corroboration worth keeping, and a reason to
     treat the connector work as a source for the persistence/privacy contract (MAR-226), not a
-    separate concern. See `STRATEGY.md` D10.
+    separate concern. **The axis now has a document: [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md)**,
+    whose §3 is this portability gap stated in full.
 - **Sync & storage** — local-first is the only on-brand posture. **They already built the
   hard half of conflict resolution**: minimal-diff + external-change detection + the
   "surface the collision, you pick the winner, never silently merge" philosophy is exactly

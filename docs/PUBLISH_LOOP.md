@@ -217,8 +217,9 @@ never need to exist.
   three steps, not two, and, more usefully, that **the layered per-capability consent architecture
   this section says publishing would need is already being designed** (master switch → embeds →
   per-provider → per-service connect, each off by default, `application`-scoped so a workspace
-  cannot flip it). If the loop is ever built, extend that ladder rather than inventing one. See
-  `STRATEGY.md` D10 — no strategy document owns the integrations axis.
+  cannot flip it). If the loop is ever built, extend that ladder rather than inventing one.
+  **Full ladder and invariants: [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md)** — publishing is its
+  rung 3.
 - **Who is the user?** (MAR-225 §13's crux.) The maintainer uses Birta *because* it sits in VS Code
   beside git and agents — and he *already publishes* via git and existing pipes. A cloud publish
   loop may serve a *different* ICP than its creator. Name that user before building for them; a

@@ -107,7 +107,10 @@ Two structural advantages Birta gets for free, that incumbents cannot easily cop
    `SecretStorage`, never `settings.json`, never settings-sync, never the webview; `application`
    scope so a workspace cannot set them; disconnect deletes the secret; **no hosted auth broker**,
    because a relay holding secrets would contradict "nothing leaves your machine." A second key
-   store would be a second thing to get wrong. See `STRATEGY.md` D10.
+   store would be a second thing to get wrong. Invariants 7–9 in
+   [`NETWORK_POSTURE.md`](NETWORK_POSTURE.md), where BYO-key is rung 2 — note that **on-device
+   inference is rung 0**, which is precisely why the AI posture and the privacy claim reinforce
+   each other.
 
 ---
 

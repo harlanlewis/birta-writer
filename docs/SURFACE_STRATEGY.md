@@ -21,6 +21,54 @@ the four overlapping per-document lists.
 > is decided or queued. Its job is to *re-open* a question the earlier surface work had closed, with
 > evidence that work didn't have.
 
+> ## ⚠️ Read this before §1–§9: "mobile" is the wrong unit, and this document uses it throughout
+>
+> **Maintainer correction, 2026-07-26 — the intent is touch, and specifically iPad for composing;
+> phone is quick reference and edit.** This document treats "mobile" as one surface and silently
+> assumes phone-composing. That is wrong in a way that moves several of its conclusions, so read the
+> rest with these substitutions in mind. The sections are left intact rather than rewritten, because
+> the underlying analysis is still useful once re-aimed.
+>
+> **What gets *better* under the correction:**
+> - **§0.2's central untested assumption partly dissolves.** "Do users want to compose long-form
+>   Markdown on a phone?" was the right question aimed at the wrong device. iPad-with-a-keyboard is a
+>   *known* long-form composing surface — Ulysses, iA Writer, and Craft all have real iPad businesses.
+>   The demand question doesn't vanish, it sharpens (§0.3 still holds: no demand evidence exists).
+> - **§3.3's Harper ceiling needs re-measuring, not assuming.** The "~300–450 MB before the webview is
+>   killed" figure is an iOS-phone-class number. iPads carry substantially more RAM and looser jetsam
+>   limits. Offline Harper may be **Yellow on iPad where it is Red on phone** — that is a measurement,
+>   and nobody has taken it.
+> - **§3.1's typing risk shrinks at the hard end.** The worst ProseMirror-mobile failures cluster
+>   around soft-keyboard IME and on-screen composition. An iPad with a hardware keyboard is much closer
+>   to the desktop path that already works. The risk doesn't disappear (touch selection, autocorrect,
+>   the software keyboard remain), but the *primary* composing configuration is the safer one.
+> - **§3's source-first fallback gets weaker as a necessity** — screen area is what made a WYSIWYG
+>   surface implausible on a phone, and the iPad has it.
+>
+> **What gets *worse*, and this is the part the document has no answer for:**
+> - **The competitive gap narrows sharply on iPad.** §1's "the intersection is empty" finding leans on
+>   competitors having *no* mobile story. On iPad that is much less true: Ulysses, iA Writer, Craft and
+>   Obsidian all ship credible iPad apps, and the premium writing-app market is arguably *strongest*
+>   there. Birta's five-legged claim may still hold (none of those is byte-faithful plain-`.md`
+>   WYSIWYG) — but "uncontested" becomes "differentiated in a crowded, well-designed field," which is a
+>   materially harder sell. **§1 overstates the opening for iPad specifically.**
+> - **Touch is an entirely uncosted axis, and it is bigger than the typing question.** Verified against
+>   the tree 2026-07-26: the webview has **387 `mousedown` listeners, 61 hover listeners, 11
+>   `pointerdown`, 1 `touchstart`, and zero `pointer: coarse` / `hover: none` / `touch-action` CSS.**
+>   Birta's entire block-interaction system — the gutter handles that *appear on hover*, drag-to-move,
+>   marquee selection in the margins, the right-click context menu, hover link popups, table grips —
+>   assumes a pointer that hovers and a mouse that right-clicks. **A touch device has neither.** This is
+>   not a port; it is a second interaction design for the product's most distinctive feature set, and no
+>   document in this set has costed it. It is plausibly larger than the ProseMirror typing risk §3 calls
+>   the whole project.
+> - **Two surfaces, not one.** "iPad composes, phone references and quick-edits" is two different
+>   products sharing an engine — a full editing surface and a light reader/editor. §2's ICP table
+>   doesn't model that split, and the phone half may be much closer to *read-mostly* than anything here
+>   assumes.
+>
+> **Consequences already applied:** MAR-233 (the typing probe) is retargeted to iPad-first, with touch
+> interaction — not just IME — as a first-class subject. See [`STRATEGY.md`](STRATEGY.md) D3.
+
 > **Relationship to the existing surface docs (read this first).**
 > [`docs/MULTI_SURFACE_INVESTIGATION.md`](MULTI_SURFACE_INVESTIGATION.md) (MAR-225) is the deep
 > **host-adapter / code-sharing** investigation. It reached three conclusions this document
