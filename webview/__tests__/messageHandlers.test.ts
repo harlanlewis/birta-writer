@@ -16,14 +16,15 @@ function stubDeps(): MessageHandlerDeps {
         state: {
             getEditor: () => null,
             setEditor: () => {},
-            getLineMap: () => [],
             setLineMap: () => {},
             getMarkdownSource: () => "",
             setMarkdownSource: () => {},
         },
         actions: {
-            scrollToSourceLine: () => {},
-            getFirstVisibleSourceLine: () => 1,
+            placeCaretAtLine: () => {},
+            scrollToDocumentLine: () => {},
+            getSwitchTarget: () => undefined,
+            setLineOffset: () => {},
             initEditor: async () => {},
             retryScroll: () => {},
             getEditorView: () => null,
@@ -108,16 +109,34 @@ describe("editorCommand handler", () => {
 describe("requestSwitchToTextEditor handler", () => {
     // The ONLY switch path for the contributed (user-rebindable)
     // Cmd/Ctrl+Shift+M keybinding: the extension command posts this message,
-    // the webview answers with switchToTextEditor carrying the first visible
-    // source line so the text editor restores the viewport.
+    // the webview answers with switchToTextEditor carrying the source position
+    // the raw editor should open at. Which position that is (caret vs viewport)
+    // is decided in index.ts, where layout is available; the handler's job is
+    // only to relay it — including the column, when there is one.
     beforeEach(() => vi.clearAllMocks());
 
     const container = document.createElement("div");
 
-    it("with a live editor view it should reply with the first visible source line", () => {
+    it("a switch target with a column should be relayed whole", () => {
         const deps = stubDeps();
-        deps.actions.getEditorView = () => ({} as never);
-        deps.actions.getFirstVisibleSourceLine = () => 42;
+        deps.actions.getSwitchTarget = () => ({ line: 42, column: 7 });
+        const handlers = createMessageHandlers(deps);
+
+        handlers.requestSwitchToTextEditor?.(
+            { type: "requestSwitchToTextEditor" },
+            container,
+        );
+
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "switchToTextEditor",
+            line: 42,
+            column: 7,
+        });
+    });
+
+    it("a switch target without a column should reply with the line alone", () => {
+        const deps = stubDeps();
+        deps.actions.getSwitchTarget = () => ({ line: 42 });
         const handlers = createMessageHandlers(deps);
 
         handlers.requestSwitchToTextEditor?.(
@@ -131,7 +150,7 @@ describe("requestSwitchToTextEditor handler", () => {
         });
     });
 
-    it("without an editor view it should reply without a line", () => {
+    it("without an editor view it should reply without a position", () => {
         const handlers = createMessageHandlers(stubDeps());
 
         handlers.requestSwitchToTextEditor?.(
@@ -142,6 +161,84 @@ describe("requestSwitchToTextEditor handler", () => {
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "switchToTextEditor",
         });
+    });
+});
+
+describe("scrollToLine handler", () => {
+    // Arriving from the raw editor or a search hit moves the CARET too, not
+    // just the scroll position — otherwise typing after a switch lands at the
+    // top of the document (MAR-23).
+    beforeEach(() => vi.clearAllMocks());
+
+    const container = document.createElement("div");
+
+    it("a line with a column should place the caret and scroll to it", () => {
+        const deps = stubDeps();
+        const placeCaretAtLine = vi.fn();
+        const scrollToDocumentLine = vi.fn();
+        deps.actions.getEditorView = () => ({} as never);
+        deps.actions.placeCaretAtLine = placeCaretAtLine;
+        deps.actions.scrollToDocumentLine = scrollToDocumentLine;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.scrollToLine?.({ type: "scrollToLine", line: 12, column: 4 }, container);
+
+        expect(placeCaretAtLine).toHaveBeenCalledWith(12, 4);
+        expect(scrollToDocumentLine).toHaveBeenCalledWith(12);
+    });
+
+    it("a line from a search hit should still place the caret, with no column", () => {
+        const deps = stubDeps();
+        const placeCaretAtLine = vi.fn();
+        deps.actions.getEditorView = () => ({} as never);
+        deps.actions.placeCaretAtLine = placeCaretAtLine;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.scrollToLine?.({ type: "scrollToLine", line: 3 }, container);
+
+        expect(placeCaretAtLine).toHaveBeenCalledWith(3, undefined);
+    });
+
+    it("without an editor view it should not navigate yet", () => {
+        const deps = stubDeps();
+        const placeCaretAtLine = vi.fn();
+        deps.actions.placeCaretAtLine = placeCaretAtLine;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.scrollToLine?.({ type: "scrollToLine", line: 3 }, container);
+
+        expect(placeCaretAtLine).not.toHaveBeenCalled();
+    });
+});
+
+describe("line-offset plumbing", () => {
+    // The line map describes the BODY; every line on the wire is a document
+    // line. The offset between them travels with the map, so a frontmatter edit
+    // can't leave navigation pointing a block off (MAR-23).
+    beforeEach(() => vi.clearAllMocks());
+
+    const container = document.createElement("div");
+
+    it("a lineMapUpdate should record the offset that came with it", () => {
+        const deps = stubDeps();
+        const setLineOffset = vi.fn();
+        deps.actions.setLineOffset = setLineOffset;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.lineMapUpdate?.({ type: "lineMapUpdate", lineMap: [1, 5], lineOffset: 4 }, container);
+
+        expect(setLineOffset).toHaveBeenCalledWith(4);
+    });
+
+    it("a lineMapUpdate without an offset should reset it to zero", () => {
+        const deps = stubDeps();
+        const setLineOffset = vi.fn();
+        deps.actions.setLineOffset = setLineOffset;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.lineMapUpdate?.({ type: "lineMapUpdate", lineMap: [1] }, container);
+
+        expect(setLineOffset).toHaveBeenCalledWith(0);
     });
 });
 

@@ -1,0 +1,282 @@
+/**
+ * sourceCaret.ts
+ *
+ * Maps a caret between the rendered document and the Markdown source, so that
+ * switching modes (Cmd+Shift+M, "Edit Raw Markdown", a global-search hit) lands
+ * the cursor where the user left it rather than at the top of the file.
+ *
+ * The exchange runs through `lineMap` (shared/lineMap.ts), which is **block**
+ * granular: one entry per source paragraph-group, with a fenced code block
+ * counted as a single unit. Entry `i` is *nominally* `doc.child(i)`, the
+ * assumption the scroll path has always made — but it is only nominal, so
+ * `blockIndexForSourceLine` verifies the pairing against the document's own
+ * text before trusting it (see its contract).
+ *
+ * Within a block this module refines the position two ways, and both are
+ * deliberately conservative — a wrong caret is worse than a coarse one:
+ *
+ * - **Line**: a code block's text carries its own newlines, and a block holding
+ *   several textblocks (a tight list) has one per source line, so the anchors
+ *   below enumerate a block's source lines in order.
+ * - **Column**: only claimed when the source line and the rendered text agree
+ *   up to a leading marker (`# `, `- `, `> `, indentation). That covers plain
+ *   prose, headings, list items and code; anything else (inline emphasis, a
+ *   link, an image) fails the check and degrades to column 0 rather than
+ *   guessing a position inside markup the reader can't see.
+ */
+
+import type { Node } from "../pm";
+
+/** A caret in the Markdown source: 1-indexed line, 0-indexed column. */
+export interface SourceCaret {
+    line: number;
+    column: number;
+}
+
+/**
+ * One source line of a block, as the rendered document knows it.
+ *
+ * `text` is null for a line that exists in the source but has no text position
+ * in the document — a code fence. Such a line still needs an anchor so that
+ * source→doc mapping can land somewhere sane, but it can never be the answer
+ * going the other way.
+ */
+interface LineAnchor {
+    text: string | null;
+    /** The textblock this line lives in. */
+    node: Node;
+    /** Doc position of the textblock's content start. */
+    contentStart: number;
+    /** Offset of this line's text within that content. */
+    offset: number;
+}
+
+const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n, lo), hi);
+
+/** Enumerate the source lines a top-level block covers, in document order. */
+function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
+    const anchors: LineAnchor[] = [];
+    const addTextblock = (node: Node, nodeStart: number): void => {
+        const contentStart = nodeStart + 1;
+        if (node.type.spec.code) {
+            // The opening fence occupies the block's first source line and has
+            // no text position; anchor it to the start of the code instead.
+            anchors.push({ text: null, node, contentStart, offset: 0 });
+            let offset = 0;
+            for (const line of node.textContent.split("\n")) {
+                anchors.push({ text: line, node, contentStart, offset });
+                offset += line.length + 1;
+            }
+            return;
+        }
+        // A soft-wrapped paragraph spans several source lines inside ONE
+        // textblock; its rendered text gives no honest way to tell where the
+        // author's newlines were, so it counts as a single line.
+        anchors.push({ text: node.textContent, node, contentStart, offset: 0 });
+    };
+
+    if (block.isTextblock) {
+        addTextblock(block, blockStart);
+        return anchors;
+    }
+    block.descendants((child, relPos) => {
+        if (!child.isTextblock) { return true; }
+        addTextblock(child, blockStart + 1 + relPos);
+        return false;
+    });
+    return anchors;
+}
+
+/** Doc position where `doc.child(index)` starts. */
+function blockStartPos(doc: Node, index: number): number {
+    let pos = 0;
+    for (let i = 0; i < index; i++) {
+        pos += doc.child(i).nodeSize;
+    }
+    return pos;
+}
+
+/**
+ * The leading source-only prefix of `sourceLine` — the list bullet, heading
+ * hashes, blockquote marker or indentation the renderer swallowed. Returns -1
+ * when the rendered text isn't a suffix of the source line, which is the signal
+ * that no column can be claimed honestly.
+ */
+function markerWidth(sourceLine: string, text: string): number {
+    return sourceLine.endsWith(text) ? sourceLine.length - text.length : -1;
+}
+
+/** Doc offset for `textOffset` characters of text following `from` in `node`'s content. */
+function docOffsetForText(node: Node, from: number, textOffset: number): number {
+    let offset = from;
+    let remaining = textOffset;
+    node.forEach((child, childOffset) => {
+        const end = childOffset + child.nodeSize;
+        if (end <= from || remaining <= 0) { return; }
+        const start = Math.max(childOffset, from);
+        if (child.isText) {
+            const take = Math.min(end - start, remaining);
+            offset = start + take;
+            remaining -= take;
+        } else {
+            // An inline leaf (image, math, hard break) carries no text: step
+            // over it so the remaining characters are counted after it.
+            offset = end;
+        }
+    });
+    return offset;
+}
+
+/**
+ * Does a block with these anchors start at source line `blockLine`?
+ *
+ * The probe is the block's first non-empty line of text: everything the
+ * renderer dropped is a PREFIX of the source line (a bullet, hashes, a quote
+ * marker, indentation), so the source line must end with it. A block with
+ * nothing to probe (an image-only paragraph, a horizontal rule) is taken on
+ * trust — there is no evidence either way.
+ */
+function anchorsFit(anchors: LineAnchor[], blockLine: number, sourceLines: string[]): boolean {
+    const probe = anchors.findIndex((a) => a.text);
+    if (probe < 0) { return true; }
+    const sourceLine = sourceLines[blockLine + probe - 1];
+    return sourceLine !== undefined && sourceLine.endsWith(anchors[probe].text!);
+}
+
+/** How far to look for the real pairing once the nominal one is disproved. */
+const RECONCILE_SPAN = 6;
+
+/**
+ * The block index and start line for a source line, reconciled against the
+ * document's own text.
+ *
+ * `lineMap` counts SOURCE blocks and the document counts NODES, and the two
+ * drift apart wherever one node spans several source blocks — a loose list
+ * (blank lines between items) is one node and one entry per item, so every
+ * block after it pairs one entry early, and the drift accumulates. Taking the
+ * index on faith puts the caret (and the scroll) in the wrong block entirely.
+ *
+ * So the nominal pairing is verified, and when it fails, the neighbourhood is
+ * searched for one that holds — nearer blocks first, since drift here runs
+ * that way (the map has more entries than the document has nodes). When
+ * nothing fits, the nominal answer is returned unchanged: no worse than
+ * before, and the column guard downstream still refuses to invent a column.
+ */
+export function blockIndexForSourceLine(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    line: number,
+): { index: number; blockLine: number } | undefined {
+    if (!lineMap.length || !doc.childCount) { return undefined; }
+    let entry = 0;
+    for (let i = 0; i < lineMap.length; i++) {
+        if (lineMap[i] <= line) { entry = i; } else { break; }
+    }
+    const blockLine = lineMap[entry];
+    const nominal = Math.min(entry, doc.childCount - 1);
+    if (anchorsFit(lineAnchors(doc.child(nominal), blockStartPos(doc, nominal)), blockLine, sourceLines)) {
+        return { index: nominal, blockLine };
+    }
+    for (let step = 1; step <= RECONCILE_SPAN; step++) {
+        for (const candidate of [nominal - step, nominal + step]) {
+            if (candidate < 0 || candidate >= doc.childCount) { continue; }
+            if (anchorsFit(lineAnchors(doc.child(candidate), blockStartPos(doc, candidate)), blockLine, sourceLines)) {
+                return { index: candidate, blockLine };
+            }
+        }
+    }
+    return { index: nominal, blockLine };
+}
+
+/** The source line a block index starts at, reconciled the other way round. */
+export function sourceLineForBlock(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    index: number,
+): number | undefined {
+    if (index < 0 || index >= doc.childCount) { return undefined; }
+    const anchors = lineAnchors(doc.child(index), blockStartPos(doc, index));
+    const nominal = lineMap[Math.min(index, lineMap.length - 1)];
+    if (nominal === undefined) { return undefined; }
+    if (anchorsFit(anchors, nominal, sourceLines)) { return nominal; }
+    for (let step = 1; step <= RECONCILE_SPAN; step++) {
+        for (const candidate of [index + step, index - step]) {
+            const line = lineMap[candidate];
+            if (line === undefined) { continue; }
+            if (anchorsFit(anchors, line, sourceLines)) { return line; }
+        }
+    }
+    return nominal;
+}
+
+/**
+ * The source caret for a document position, or undefined when the position
+ * can't be placed in the line map (an empty map, or a doc/map mismatch).
+ */
+export function sourceCaretAt(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    pos: number,
+): SourceCaret | undefined {
+    if (!lineMap.length || !doc.childCount) { return undefined; }
+    const $pos = doc.resolve(clamp(pos, 0, doc.content.size));
+    const blockIndex = clamp($pos.index(0), 0, doc.childCount - 1);
+    const blockLine = sourceLineForBlock(doc, lineMap, sourceLines, blockIndex);
+    if (blockLine === undefined) { return undefined; }
+
+    const anchors = lineAnchors(doc.child(blockIndex), blockStartPos(doc, blockIndex));
+    // The last anchor at or before the caret; fence anchors are skipped because
+    // a caret can never sit on one.
+    let index = -1;
+    for (let i = 0; i < anchors.length; i++) {
+        const a = anchors[i];
+        if (a.text === null) { continue; }
+        if (a.contentStart + a.offset <= pos || index === -1) { index = i; }
+    }
+    if (index === -1) { return { line: blockLine, column: 0 }; }
+
+    const anchor = anchors[index];
+    const line = blockLine + index;
+    const text = anchor.text ?? "";
+    const sourceLine = sourceLines[line - 1];
+    if (sourceLine === undefined) { return { line, column: 0 }; }
+    const marker = markerWidth(sourceLine, text);
+    if (marker < 0) { return { line, column: 0 }; }
+
+    const lineEnd = anchor.offset + text.length;
+    const offsetInContent = clamp(pos - anchor.contentStart, anchor.offset, lineEnd);
+    const textOffset = anchor.node.textBetween(anchor.offset, offsetInContent).length;
+    return { line, column: marker + textOffset };
+}
+
+/**
+ * The document position for a source caret, or undefined when the line falls
+ * outside the map. Column precision is claimed under the same rule as above;
+ * otherwise the caret lands at the start of the line's text.
+ */
+export function docPosForSourceCaret(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    caret: SourceCaret,
+): number | undefined {
+    const block = blockIndexForSourceLine(doc, lineMap, sourceLines, caret.line);
+    if (!block) { return undefined; }
+
+    const anchors = lineAnchors(doc.child(block.index), blockStartPos(doc, block.index));
+    if (!anchors.length) { return undefined; }
+    const anchor = anchors[clamp(caret.line - block.blockLine, 0, anchors.length - 1)];
+    const lineStart = anchor.contentStart + anchor.offset;
+    if (anchor.text === null || caret.column <= 0) { return lineStart; }
+
+    const sourceLine = sourceLines[caret.line - 1];
+    if (sourceLine === undefined) { return lineStart; }
+    const marker = markerWidth(sourceLine, anchor.text);
+    if (marker < 0) { return lineStart; }
+
+    const textOffset = clamp(caret.column - marker, 0, anchor.text.length);
+    return anchor.contentStart + docOffsetForText(anchor.node, anchor.offset, textOffset);
+}

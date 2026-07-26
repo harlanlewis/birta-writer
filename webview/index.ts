@@ -45,6 +45,12 @@ import { mark, measure } from "./perf";
 import type { ToWebviewMessage } from "../shared/messages";
 import { computeLineMap } from "../shared/lineMap";
 import { getTopbarBottom } from "./utils/headingUtils";
+import {
+    sourceCaretAt,
+    docPosForSourceCaret,
+    blockIndexForSourceLine,
+    sourceLineForBlock,
+} from "./utils/sourceCaret";
 import { isTaskCheckboxClick } from "./utils/taskCheckbox";
 import { applyTaskToggle } from "./editing/checklistSink";
 
@@ -81,6 +87,10 @@ import { syncMermaidCanvasClass } from "./components/codeBlock";
 // ── Module-level state ─────────────────────────────────────
 let currentEditor: Editor | null = null;
 let currentLineMap: number[] = [];
+// Source lines the frontmatter occupies. The line map (and everything derived
+// from it) describes the BODY we render; every line on the wire is a document
+// line, so this offset converts between them — see ToWebviewMessage's header.
+let currentLineOffset = 0;
 
 export function getLineMap(): number[] {
     return currentLineMap;
@@ -102,14 +112,18 @@ function scrollToSourceLine(
     if (!lineMap.length) {
         return;
     }
-    let blockIdx = 0;
-    for (let i = 0; i < lineMap.length; i++) {
-        if (lineMap[i] <= targetLine) {
-            blockIdx = i;
-        } else {
-            break;
-        }
+    // Same reconciliation the caret uses, so the two can never disagree about
+    // which block a line is in (see utils/sourceCaret.ts).
+    const block = blockIndexForSourceLine(
+        view.state.doc,
+        lineMap,
+        getMarkdownSource().split("\n"),
+        targetLine,
+    );
+    if (!block) {
+        return;
     }
+    const blockIdx = block.index;
     const children = view.dom.children;
     if (blockIdx >= children.length) {
         return;
@@ -129,9 +143,11 @@ function scrollToSourceLine(
         return;
     }
 
-    const blockStartLine = lineMap[blockIdx];
-    const nextBlockLine =
-        blockIdx + 1 < lineMap.length ? lineMap[blockIdx + 1] : undefined;
+    // The intra-block offset is read off the SOURCE side (which line of the
+    // block was asked for), so it follows the reconciled start line rather than
+    // this block's nominal entry.
+    const blockStartLine = block.blockLine;
+    const nextBlockLine = lineMap.find((l) => l > blockStartLine);
     const blockLineCount = nextBlockLine ? nextBlockLine - blockStartLine : 1;
     const lineOffsetInBlock = targetLine - blockStartLine;
     const offsetRatio =
@@ -160,12 +176,14 @@ function getFirstVisibleSourceLine(
     const viewportHeight = window.innerHeight;
     const viewportCenter = topbarH + (viewportHeight - topbarH) / 2;
 
+    const sourceLines = getMarkdownSource().split("\n");
     for (let i = 0; i < children.length && i < lineMap.length; i++) {
         const rect = (children[i] as HTMLElement).getBoundingClientRect();
         if (rect.top <= viewportCenter && rect.bottom >= viewportCenter) {
-            const blockStartLine = lineMap[i] ?? 1;
-            const nextBlockLine =
-                i + 1 < lineMap.length ? lineMap[i + 1] : undefined;
+            // Reconciled, like every other line the two sides exchange.
+            const blockStartLine =
+                sourceLineForBlock(view.state.doc, lineMap, sourceLines, i) ?? 1;
+            const nextBlockLine = lineMap.find((l) => l > blockStartLine);
             const blockLineCount = nextBlockLine
                 ? nextBlockLine - blockStartLine
                 : 1;
@@ -190,7 +208,77 @@ function getFirstVisibleSourceLine(
             closestIdx = i;
         }
     }
-    return lineMap[closestIdx] ?? 1;
+    return sourceLineForBlock(view.state.doc, lineMap, sourceLines, closestIdx) ?? 1;
+}
+
+// ── Caret handoff across a mode switch (MAR-23) ────────────
+//
+// Both directions of Cmd+Shift+M speak DOCUMENT lines (what the raw editor
+// shows); `currentLineOffset` converts those to the body lines `lineMap`
+// describes. Column fidelity is decided in utils/sourceCaret.ts.
+
+/** Body line (1-indexed) for a document line, or 0 when it precedes the body. */
+function toBodyLine(documentLine: number): number {
+    return documentLine - currentLineOffset;
+}
+
+/** Focus the editor unless the user is typing in the chrome (find bar, metadata panel). */
+function focusEditorIfIdle(view: EditorView): void {
+    const active = document.activeElement;
+    if (active && active !== document.body && !view.dom.contains(active)) {
+        return;
+    }
+    view.focus();
+}
+
+/**
+ * Put the caret at a document line/column. Needs the document only — no
+ * layout — so it can run before the first paint has settled.
+ */
+function placeCaretAtLine(documentLine: number, column?: number): void {
+    const view = getEditorView();
+    const bodyLine = toBodyLine(documentLine);
+    if (!view || bodyLine < 1) { return; }
+    const pos = docPosForSourceCaret(
+        view.state.doc,
+        currentLineMap,
+        getMarkdownSource().split("\n"),
+        { line: bodyLine, column: column ?? 0 },
+    );
+    if (pos === undefined) { return; }
+    const { doc, tr } = view.state;
+    const $pos = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
+    // Selection-only: no doc change, so this never dirties the document or
+    // enters the sync pipeline. `near` snaps to the closest valid text position.
+    view.dispatch(tr.setSelection(TextSelection.near($pos)));
+    focusEditorIfIdle(view);
+}
+
+/**
+ * The source position a switch to the raw editor should carry.
+ *
+ * The caret wins when it is on screen — that is where the user is working, and
+ * it is the only reading that can carry a column. Once they have scrolled away
+ * from it, "take me to what I am looking at" is the honest answer instead.
+ */
+function getSwitchTarget(): { line: number; column?: number } | undefined {
+    const view = getEditorView();
+    if (!view) { return undefined; }
+    const { head } = view.state.selection;
+    let caretVisible = false;
+    try {
+        const coords = view.coordsAtPos(head);
+        caretVisible = coords.bottom >= getTopbarBottom() && coords.top <= window.innerHeight;
+    } catch {
+        caretVisible = false; // A position the view can't measure yet.
+    }
+    const caret = caretVisible
+        ? sourceCaretAt(view.state.doc, currentLineMap, getMarkdownSource().split("\n"), head)
+        : undefined;
+    if (caret) {
+        return { line: caret.line + currentLineOffset, column: caret.column };
+    }
+    return { line: getFirstVisibleSourceLine(view, currentLineMap) + currentLineOffset };
 }
 
 // ── Retry scroll ───────────────────────────────────────────
@@ -294,14 +382,10 @@ const findBar = initFindBar(() => getEditorView(), getMarkdownSource, eventManag
 
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 // "Edit Raw Markdown" (toolbar button AND right-click menu): same switch path
-// as Cmd+Shift+M, carrying the first visible source line to preserve the
-// viewport.
+// as Cmd+Shift+M, carrying the caret (or the viewport, when the caret is off
+// screen) so the raw editor opens where the user was.
 const switchToSource = (): void => {
-    const view = getEditorView();
-    const line = view
-        ? getFirstVisibleSourceLine(view, getLineMap())
-        : undefined;
-    notifySwitchToTextEditor(line);
+    notifySwitchToTextEditor(getSwitchTarget());
 };
 mark("toolbar-start");
 const topbarTb = topbar
@@ -613,7 +697,6 @@ const handlers = createMessageHandlers({
         setEditor: (editor) => {
             currentEditor = editor;
         },
-        getLineMap,
         setLineMap: (lineMap) => {
             currentLineMap = lineMap;
         },
@@ -623,8 +706,15 @@ const handlers = createMessageHandlers({
         },
     },
     actions: {
-        scrollToSourceLine,
-        getFirstVisibleSourceLine,
+        placeCaretAtLine,
+        scrollToDocumentLine: (line) => {
+            const view = getEditorView();
+            if (view) { scrollToSourceLine(view, currentLineMap, toBodyLine(line)); }
+        },
+        getSwitchTarget,
+        setLineOffset: (offset) => {
+            currentLineOffset = offset;
+        },
         initEditor,
         retryScroll,
         getEditorView,

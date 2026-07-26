@@ -194,7 +194,10 @@ export type ToExtensionMessage =
     // heading, never a line number, and bare names resolve by filename
     // across the workspace instead of as document-relative paths.
     | { type: "openFile"; path: string; wiki?: true }
-    | { type: "switchToTextEditor"; line?: number }
+    // The source position the raw editor should open at (MAR-23). `line` is a
+    // DOCUMENT line (frontmatter included); `column` is only present when the
+    // webview could map it honestly — see webview/utils/sourceCaret.ts.
+    | { type: "switchToTextEditor"; line?: number; column?: number }
     // `query` optionally narrows the native Settings UI filter (e.g. to the
     // font settings); it must stay within this extension's namespace.
     | { type: "openSettings"; query?: string }
@@ -317,6 +320,17 @@ export type ToExtensionMessage =
  * `lineMap` is optional on init/externalUpdate: the extension always
  * sends it, but the webview guards with `?? []` just in case.
  *
+ * `lineMap` describes the BODY the webview renders — the document minus its
+ * frontmatter, which lives in its own panel and never enters the ProseMirror
+ * doc. `lineOffset` is how many source lines that frontmatter occupies, and it
+ * is what converts between the two numbering schemes: every `line` on the wire
+ * is a document line (what a text editor shows), while `lineMap` entry `i`
+ * describes `doc.child(i)`. Without it, navigation into a document with
+ * frontmatter lands a block off (MAR-23).
+ *
+ * `column` (scrollToLine/scrollToColumn) is optional throughout: a global
+ * search hit knows only a line, while a mode switch also carries the caret.
+ *
  * `syncVersion` is the extension's authoritative version counter. It is bumped
  * on every externalUpdate push (external text-editor edit, undo/redo, git,
  * hot-exit restore) and echoed back by the webview as `baseSyncVersion` on
@@ -329,10 +343,10 @@ export type ToExtensionMessage =
  * the document. The webview falls back to a full rebuild on any diff failure.
  */
 export type ToWebviewMessage =
-    | { type: "init"; content: string; lineMap?: number[]; scrollToLine?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
-    | { type: "externalUpdate"; content: string; lineMap?: number[]; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
-    | { type: "scrollToLine"; line: number }
-    | { type: "lineMapUpdate"; lineMap: number[] }
+    | { type: "init"; content: string; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
+    | { type: "externalUpdate"; content: string; lineMap?: number[]; lineOffset?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
+    | { type: "scrollToLine"; line: number; column?: number }
+    | { type: "lineMapUpdate"; lineMap: number[]; lineOffset?: number }
     | { type: "setDebugMode"; enabled: boolean }
     | { type: "imageUploaded"; id: string; url: string }
     | { type: "imageUploadError"; id: string; error: string }

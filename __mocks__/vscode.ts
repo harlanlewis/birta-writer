@@ -185,6 +185,7 @@ export interface FakeTextDocument {
     offsetAt(position: Position): number;
     positionAt(offset: number): Position;
     lineAt(line: number): { lineNumber: number; text: string };
+    readonly lineCount: number;
     save(): Promise<boolean>;
     /** Test helper: replace the full text as an EXTERNAL edit (fires the change event) */
     setTextExternally(newText: string): void;
@@ -246,6 +247,9 @@ export function makeFakeTextDocument(
                 }
             }
             return new Position(line, clamped - starts[line]);
+        },
+        get lineCount() {
+            return lineStarts().length;
         },
         lineAt(line: number) {
             const starts = lineStarts();
@@ -429,6 +433,12 @@ function makeFakeStatusBarItem() {
 }
 
 export const window = {
+    /**
+     * Opening a document in the raw text editor. The mode switch passes its
+     * `TextDocumentShowOptions` here, so a test can read back the selection the
+     * switch asked for (MAR-23).
+     */
+    showTextDocument: vi.fn(),
     showErrorMessage: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),

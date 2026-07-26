@@ -90,7 +90,6 @@ export interface ToolbarController {
 export interface EditorStateAccessor {
     getEditor: () => Editor | null;
     setEditor: (editor: Editor | null) => void;
-    getLineMap: () => number[];
     setLineMap: (lineMap: number[]) => void;
     getMarkdownSource: () => string;
     setMarkdownSource: (source: string) => void;
@@ -98,8 +97,17 @@ export interface EditorStateAccessor {
 
 /** Editor actions interface. */
 export interface EditorActions {
-    scrollToSourceLine: (view: EditorView, lineMap: number[], targetLine: number) => void;
-    getFirstVisibleSourceLine: (view: EditorView, lineMap: number[]) => number;
+    /**
+     * Put the caret at a DOCUMENT line (frontmatter included) and, when given, a
+     * column. Needs no layout, so it can run before the first paint settles.
+     */
+    placeCaretAtLine: (line: number, column?: number) => void;
+    /** Scroll the block for a DOCUMENT line to the viewport centre. Needs layout. */
+    scrollToDocumentLine: (line: number) => void;
+    /** The source position (document line, optional column) a mode switch carries out. */
+    getSwitchTarget: () => { line: number; column?: number } | undefined;
+    /** Record how many source lines the frontmatter occupies (MAR-23). */
+    setLineOffset: (offset: number) => void;
     initEditor: (container: HTMLElement, markdown: string) => Promise<void>;
     retryScroll: (fn: () => void) => void;
     getEditorView: () => EditorView | null;
@@ -131,8 +139,8 @@ export function createMessageHandlers(
     deps: MessageHandlerDeps,
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb } = deps;
-    const { getEditor, setEditor, getLineMap, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { scrollToSourceLine, getFirstVisibleSourceLine, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
+    const { getEditor, setEditor, setLineMap, getMarkdownSource, setMarkdownSource } = state;
+    const { placeCaretAtLine, scrollToDocumentLine, getSwitchTarget, setLineOffset, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
 
     /**
      * Rebuild the embed decorations after a gate flip. A no-op before the editor
@@ -150,6 +158,7 @@ export function createMessageHandlers(
             setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
             setLineMap(msg.lineMap ?? []);
+            setLineOffset(msg.lineOffset ?? 0);
             renderFrontmatterPanel(msg.frontmatter);
             if (msg.imageUriMap) {
                 setImageUriMap(msg.imageUriMap);
@@ -160,13 +169,10 @@ export function createMessageHandlers(
             await initEditor(container, msg.content);
             window.focus();
             if (msg.scrollToLine) {
-                retryScroll(() =>
-                    scrollToSourceLine(
-                        getEditorView()!,
-                        getLineMap(),
-                        msg.scrollToLine!,
-                    ),
-                );
+                // The caret needs only the document, so it lands now; the scroll
+                // waits for the first blocks to have a measurable height.
+                placeCaretAtLine(msg.scrollToLine, msg.scrollToColumn);
+                retryScroll(() => scrollToDocumentLine(msg.scrollToLine!));
             } else {
                 const saved = getWebviewState();
                 if (saved?.scrollY) {
@@ -183,6 +189,7 @@ export function createMessageHandlers(
             setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
             setLineMap(msg.lineMap ?? []);
+            setLineOffset(msg.lineOffset ?? 0);
             renderFrontmatterPanel(msg.frontmatter);
             if (msg.imageUriMap) {
                 setImageUriMap(msg.imageUriMap);
@@ -200,19 +207,18 @@ export function createMessageHandlers(
             }
         },
         requestSwitchToTextEditor() {
-            const view = getEditorView();
-            const lineMap = getLineMap();
-            const line = view ? getFirstVisibleSourceLine(view, lineMap) : undefined;
-            notifySwitchToTextEditor(line);
+            notifySwitchToTextEditor(getSwitchTarget());
         },
         scrollToLine(msg) {
-            const lineMap = getLineMap();
-            const scrollLine = msg.line;
             let scrollAttempts = 0;
             const tryScrollNow = () => {
                 const view = getEditorView();
                 if (view) {
-                    scrollToSourceLine(view, lineMap, scrollLine);
+                    // Arriving from the raw editor or a search hit: the caret
+                    // moves too, so typing continues where the user landed
+                    // rather than at the top of the document (MAR-23).
+                    placeCaretAtLine(msg.line, msg.column);
+                    scrollToDocumentLine(msg.line);
                 } else if (scrollAttempts < 8) {
                     scrollAttempts++;
                     setTimeout(tryScrollNow, 250);
@@ -222,6 +228,7 @@ export function createMessageHandlers(
         },
         lineMapUpdate(msg) {
             setLineMap(msg.lineMap);
+            setLineOffset(msg.lineOffset ?? 0);
         },
         flushSave(msg) {
             // A save is imminent: serialize the live document NOW (bypassing the

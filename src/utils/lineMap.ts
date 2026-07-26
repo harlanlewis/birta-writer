@@ -4,4 +4,4 @@
  * locally; this shim keeps existing extension-side imports (and the vitest
  * coverage include path) stable.
  */
-export { computeLineMap } from "../../shared/lineMap";
+export { computeLineMap, sourceLineCount } from "../../shared/lineMap";

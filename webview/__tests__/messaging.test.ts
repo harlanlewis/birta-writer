@@ -74,10 +74,19 @@ describe("messaging — postMessage format", () => {
     });
 
     it("notifySwitchToTextEditor with a line should send the line field", () => {
-        notifySwitchToTextEditor(42);
+        notifySwitchToTextEditor({ line: 42 });
         expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
             type: "switchToTextEditor",
             line: 42,
+        });
+    });
+
+    it("notifySwitchToTextEditor with a caret should send its column too", () => {
+        notifySwitchToTextEditor({ line: 42, column: 7 });
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({
+            type: "switchToTextEditor",
+            line: 42,
+            column: 7,
         });
     });
 

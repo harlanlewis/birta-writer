@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- e2e harness page for the caret handoff across a mode switch (MAR-23).
+     Mirrors the provider template with acquireVsCodeApi stubbed. The init
+     payload is exactly what MarkdownEditorProvider sends: the BODY as content,
+     a body-relative lineMap, and the frontmatter's line count as lineOffset. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-textBlockQuote-background: rgba(128, 128, 128, 0.08);
+    --vscode-textCodeBlock-background: rgba(128, 128, 128, 0.1);
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { min-height: 48px; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  // The document, for reference — DOCUMENT lines are what both sides exchange:
+  //   1 ---            5 # Heading        9 - alpha       13 const a = 1;
+  //   2 title: Note    6 (blank)         10 - beta        14 const b = 2;
+  //   3 ---            7 First paragr…   11 (blank)       15 ```
+  //   4 (blank)        8 (blank)         12 ```js         16 (blank)
+  //                                                       17 Last paragraph.
+  //  19 - loose one   21 - loose two     23 Below the loose list.
+  const FRONTMATTER = "---\ntitle: Note\n---\n";
+  // Filler keeps the page taller than the viewport, so "the caret has been
+  // scrolled off screen" is a state the checks can actually reach. Each filler
+  // paragraph occupies two body lines (text + blank), starting at body line 16.
+  const FILLERS = 30;
+  const filler = Array.from({ length: FILLERS }, (_, i) => `Filler paragraph ${i + 1}.`).join("\n\n");
+  // The LOOSE list (blank line between items) is deliberate: it is several
+  // source blocks but a single document node, so everything after it pairs one
+  // map entry early unless the mapping is reconciled against the text.
+  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\n" + filler + "\n";
+  // computeLineMap(BODY): heading, paragraph, tight list, fence, last
+  // paragraph, the two loose items, the paragraph below them, then fillers.
+  const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, ...Array.from({ length: FILLERS }, (_, i) => 22 + 2 * i)];
+  const LINE_OFFSET = 3; // lines the frontmatter occupies
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: BODY,
+          lineMap: LINE_MAP,
+          lineOffset: LINE_OFFSET,
+          frontmatter: FRONTMATTER,
+          syncVersion: 1,
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
