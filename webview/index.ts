@@ -234,25 +234,41 @@ function focusEditorIfIdle(view: EditorView): void {
 }
 
 /**
- * Put the caret at a document line/column. Needs the document only — no
- * layout — so it can run before the first paint has settled.
+ * Put the caret at a document line/column — or restore a whole selection when
+ * `anchor` carries the other end (a raw-editor selection surviving the mode
+ * switch). Needs the document only — no layout — so it can run before the
+ * first paint has settled.
  */
-function placeCaretAtLine(documentLine: number, column?: number): void {
+function placeCaretAtLine(
+    documentLine: number,
+    column?: number,
+    anchor?: { line: number; column?: number },
+): void {
     const view = getEditorView();
     const bodyLine = toBodyLine(documentLine);
     if (!view || bodyLine < 1) { return; }
-    const pos = docPosForSourceCaret(
+    const sourceLines = getMarkdownSource().split("\n");
+    const headPos = docPosForSourceCaret(
         view.state.doc,
         currentLineMap,
-        getMarkdownSource().split("\n"),
+        sourceLines,
         { line: bodyLine, column: column ?? 0 },
     );
-    if (pos === undefined) { return; }
+    if (headPos === undefined) { return; }
     const { doc, tr } = view.state;
-    const $pos = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
+    const clampPos = (p: number): number => Math.min(Math.max(p, 0), doc.content.size);
+    const $head = doc.resolve(clampPos(headPos));
+    const anchorBody = anchor ? toBodyLine(anchor.line) : 0;
+    const anchorPos = anchor && anchorBody >= 1
+        ? docPosForSourceCaret(doc, currentLineMap, sourceLines, { line: anchorBody, column: anchor.column ?? 0 })
+        : undefined;
     // Selection-only: no doc change, so this never dirties the document or
-    // enters the sync pipeline. `near` snaps to the closest valid text position.
-    view.dispatch(tr.setSelection(TextSelection.near($pos)));
+    // enters the sync pipeline. `near`/`between` snap to valid text positions;
+    // `between` keeps the anchor→head drag direction.
+    const selection = anchorPos !== undefined
+        ? TextSelection.between(doc.resolve(clampPos(anchorPos)), $head)
+        : TextSelection.near($head);
+    view.dispatch(tr.setSelection(selection));
     focusEditorIfIdle(view);
 }
 
@@ -274,10 +290,12 @@ function getSelectionContext(): EditorSelectionContext | null {
  * it is the only reading that can carry a column. Once they have scrolled away
  * from it, "take me to what I am looking at" is the honest answer instead.
  */
-function getSwitchTarget(): { line: number; column?: number } | undefined {
+function getSwitchTarget():
+    | { line: number; column?: number; anchorLine?: number; anchorColumn?: number }
+    | undefined {
     const view = getEditorView();
     if (!view) { return undefined; }
-    const { head } = view.state.selection;
+    const { head, anchor, empty } = view.state.selection;
     let caretVisible = false;
     try {
         const coords = view.coordsAtPos(head);
@@ -285,11 +303,25 @@ function getSwitchTarget(): { line: number; column?: number } | undefined {
     } catch {
         caretVisible = false; // A position the view can't measure yet.
     }
+    const sourceLines = getMarkdownSource().split("\n");
     const caret = caretVisible
-        ? sourceCaretAt(view.state.doc, currentLineMap, getMarkdownSource().split("\n"), head)
+        ? sourceCaretAt(view.state.doc, currentLineMap, sourceLines, head)
         : undefined;
     if (caret) {
-        return { line: caret.line + currentLineOffset, column: caret.column };
+        const target: { line: number; column?: number; anchorLine?: number; anchorColumn?: number } = {
+            line: caret.line + currentLineOffset,
+            column: caret.column,
+        };
+        // A real selection carries its other end too, so the raw editor can
+        // restore the selection instead of a bare caret.
+        if (!empty) {
+            const from = sourceCaretAt(view.state.doc, currentLineMap, sourceLines, anchor);
+            if (from) {
+                target.anchorLine = from.line + currentLineOffset;
+                target.anchorColumn = from.column;
+            }
+        }
+        return target;
     }
     return { line: getFirstVisibleSourceLine(view, currentLineMap) + currentLineOffset };
 }

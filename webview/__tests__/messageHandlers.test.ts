@@ -184,7 +184,7 @@ describe("scrollToLine handler", () => {
 
         handlers.scrollToLine?.({ type: "scrollToLine", line: 12, column: 4 }, container);
 
-        expect(placeCaretAtLine).toHaveBeenCalledWith(12, 4);
+        expect(placeCaretAtLine).toHaveBeenCalledWith(12, 4, undefined);
         expect(scrollToDocumentLine).toHaveBeenCalledWith(12);
     });
 
@@ -197,7 +197,7 @@ describe("scrollToLine handler", () => {
 
         handlers.scrollToLine?.({ type: "scrollToLine", line: 3 }, container);
 
-        expect(placeCaretAtLine).toHaveBeenCalledWith(3, undefined);
+        expect(placeCaretAtLine).toHaveBeenCalledWith(3, undefined, undefined);
     });
 
     it("without an editor view it should not navigate yet", () => {

@@ -198,7 +198,10 @@ export type ToExtensionMessage =
     // The source position the raw editor should open at (MAR-23). `line` is a
     // DOCUMENT line (frontmatter included); `column` is only present when the
     // webview could map it honestly — see webview/utils/sourceCaret.ts.
-    | { type: "switchToTextEditor"; line?: number; column?: number }
+    // `line`/`column` is the caret (the selection's ACTIVE end); when a real
+    // selection exists, `anchorLine`/`anchorColumn` carry its other end so the
+    // raw editor restores the selection, drag direction included (MAR-23).
+    | { type: "switchToTextEditor"; line?: number; column?: number; anchorLine?: number; anchorColumn?: number }
     // `query` optionally narrows the native Settings UI filter (e.g. to the
     // font settings); it must stay within this extension's namespace.
     | { type: "openSettings"; query?: string }
@@ -356,9 +359,12 @@ export type ToExtensionMessage =
  * the document. The webview falls back to a full rebuild on any diff failure.
  */
 export type ToWebviewMessage =
-    | { type: "init"; content: string; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
+    | { type: "init"; content: string; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; scrollToAnchorLine?: number; scrollToAnchorColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
     | { type: "externalUpdate"; content: string; lineMap?: number[]; lineOffset?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
-    | { type: "scrollToLine"; line: number; column?: number }
+    // `line`/`column` is the caret; `anchorLine`/`anchorColumn`, when present,
+    // carry the raw editor's selection anchor so the WYSIWYG editor restores
+    // the whole selection rather than a bare caret (MAR-23).
+    | { type: "scrollToLine"; line: number; column?: number; anchorLine?: number; anchorColumn?: number }
     | { type: "lineMapUpdate"; lineMap: number[]; lineOffset?: number }
     | { type: "setDebugMode"; enabled: boolean }
     | { type: "imageUploaded"; id: string; url: string }

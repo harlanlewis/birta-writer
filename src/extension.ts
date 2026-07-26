@@ -674,15 +674,20 @@ export function activate(context: vscode.ExtensionContext) {
                 // invoked from the explorer's context menu with a uri argument,
                 // the active editor is some other file, whose caret is nothing
                 // to do with this one.
-                const caret =
+                const selection =
                     activeEditor?.document.uri.toString() === target.toString()
-                        ? activeEditor.selection.active
+                        ? activeEditor.selection
                         : undefined;
-                if (caret) {
+                if (selection) {
                     MarkdownEditorProvider.current?.setPendingNavigation(
                         target.fsPath,
-                        caret.line + 1,
-                        caret.character,
+                        selection.active.line + 1,
+                        selection.active.character,
+                        // A real selection rides the switch whole; a bare caret
+                        // carries no anchor.
+                        selection.isEmpty
+                            ? undefined
+                            : { line: selection.anchor.line + 1, column: selection.anchor.character },
                     );
                 }
                 // Read the text editor tab's preview state and column, saving before closing

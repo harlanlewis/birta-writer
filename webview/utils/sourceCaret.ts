@@ -18,11 +18,14 @@
  * - **Line**: a code block's text carries its own newlines, and a block holding
  *   several textblocks (a tight list) has one per source line, so the anchors
  *   below enumerate a block's source lines in order.
- * - **Column**: only claimed when the source line and the rendered text agree
- *   up to a leading marker (`# `, `- `, `> `, indentation). That covers plain
- *   prose, headings, list items and code; anything else (inline emphasis, a
- *   link, an image) fails the check and degrades to column 0 rather than
- *   guessing a position inside markup the reader can't see.
+ * - **Column**: exact when the source line and the rendered text agree up to a
+ *   leading marker (`# `, `- `, `> `, indentation) — plain prose, headings,
+ *   list items, code. When inline markup makes them diverge (emphasis, links,
+ *   inline code), the rendered text is aligned to the source line as a greedy
+ *   subsequence — the renderer only ever DROPS characters, never reorders them
+ *   — and the column is where the caret's character actually sits in the
+ *   source. Only when the rendered text cannot be embedded in the line at all
+ *   (an image's alt text, math) does the column degrade to the line start.
  */
 
 import type { Node } from "../pm";
@@ -254,14 +257,19 @@ export function blockIndexForSourceLine(
     }
     const blockLine = lineMap[entry];
     const nominal = Math.min(entry, doc.childCount - 1);
-    if (anchorsFit(lineAnchors(doc.child(nominal), blockStartPos(doc, nominal)), blockLine, sourceLines)) {
-        return { index: nominal, blockLine };
-    }
+    // Pass 1: positive evidence — a block whose first text line matches at
+    // blockLine. Blocks with nothing to probe (a horizontal rule, an
+    // image-only paragraph) are SKIPPED here rather than taken on trust: in a
+    // drifted document a no-text nominal used to swallow lines that really
+    // belonged to a text block further on, and the caret arrival then found no
+    // text position at all.
     const span = reconcileSpan(doc, lineMap);
-    for (let step = 1; step <= span; step++) {
-        for (const candidate of [nominal - step, nominal + step]) {
+    for (let step = 0; step <= span; step++) {
+        for (const candidate of step === 0 ? [nominal] : [nominal - step, nominal + step]) {
             if (candidate < 0 || candidate >= doc.childCount) { continue; }
-            if (anchorsFit(lineAnchors(doc.child(candidate), blockStartPos(doc, candidate)), blockLine, sourceLines)) {
+            const anchors = lineAnchors(doc.child(candidate), blockStartPos(doc, candidate));
+            if (!anchors.some((a) => a.text)) { continue; }
+            if (anchorsFit(anchors, blockLine, sourceLines)) {
                 return { index: candidate, blockLine };
             }
         }
@@ -340,19 +348,71 @@ export function sourceCaretAt(
     const text = anchor.text ?? "";
     const sourceLine = sourceLines[line - 1];
     if (sourceLine === undefined) { return { line, column: 0 }; }
-    const marker = markerWidth(sourceLine, text);
-    if (marker < 0) { return { line, column: 0 }; }
 
     const lineEnd = anchor.offset + text.length;
     const offsetInContent = clamp(pos - anchor.contentStart, anchor.offset, lineEnd);
     const textOffset = anchor.node.textBetween(anchor.offset, offsetInContent).length;
-    return { line, column: marker + textOffset };
+    return { line, column: sourceColumnForTextOffset(sourceLine, text, textOffset) ?? 0 };
+}
+
+/**
+ * The column in `sourceLine` for a caret `textOffset` characters into that
+ * line's rendered `text`.
+ *
+ * Exact case first: the renderer dropped only a leading marker, so the column
+ * is the marker's width plus the offset. Otherwise the rendered text is
+ * aligned to the source line as a greedy subsequence — markup the renderer
+ * dropped (emphasis asterisks, a link's `](url)` tail, backticks) is skipped
+ * wherever the characters differ — and the column is where the caret's
+ * character landed. If the whole rendered text cannot be embedded in the line,
+ * no column is claimed (the caller degrades to the line start).
+ */
+function sourceColumnForTextOffset(
+    sourceLine: string,
+    text: string,
+    textOffset: number,
+): number | undefined {
+    const marker = markerWidth(sourceLine, text);
+    if (marker >= 0) { return marker + textOffset; }
+    // matched[j] = source index where text[j] matched.
+    const matched: number[] = [];
+    for (let i = 0; i < sourceLine.length && matched.length < text.length; i++) {
+        if (sourceLine[i] === text[matched.length]) { matched.push(i); }
+    }
+    if (matched.length < text.length) { return undefined; }
+    if (textOffset <= 0) { return matched[0] ?? 0; }
+    if (textOffset >= text.length) { return (matched[text.length - 1] ?? -1) + 1; }
+    return matched[textOffset];
+}
+
+/**
+ * The rendered-text offset for a source `column` in `sourceLine` — the inverse
+ * of sourceColumnForTextOffset, under the same exact-then-subsequence rules.
+ * Returns 0 (the line's start) when the text cannot be aligned.
+ */
+function textOffsetForSourceColumn(
+    sourceLine: string,
+    text: string,
+    column: number,
+): number {
+    const marker = markerWidth(sourceLine, text);
+    if (marker >= 0) { return clamp(column - marker, 0, text.length); }
+    const matched: number[] = [];
+    for (let i = 0; i < sourceLine.length && matched.length < text.length; i++) {
+        if (sourceLine[i] === text[matched.length]) { matched.push(i); }
+    }
+    if (matched.length < text.length) { return 0; }
+    // The offset is how many rendered characters sit strictly before the column.
+    let j = 0;
+    while (j < matched.length && matched[j]! < column) { j++; }
+    return j;
 }
 
 /**
  * The document position for a source caret, or undefined when the line falls
- * outside the map. Column precision is claimed under the same rule as above;
- * otherwise the caret lands at the start of the line's text.
+ * outside the map. The column maps under the same exact-then-subsequence rules
+ * as sourceCaretAt; when the text cannot be aligned, the caret lands at the
+ * start of the line's text.
  */
 export function docPosForSourceCaret(
     doc: Node,
@@ -364,7 +424,12 @@ export function docPosForSourceCaret(
     if (!block) { return undefined; }
 
     const anchors = lineAnchors(doc.child(block.index), blockStartPos(doc, block.index));
-    if (!anchors.length) { return undefined; }
+    if (!anchors.length) {
+        // A block with no text position at all (a horizontal rule): land at
+        // its start — the caller's TextSelection.near snaps to the closest
+        // valid spot. Returning undefined here left the arrival with NO caret.
+        return blockStartPos(doc, block.index);
+    }
     // The last anchor at or before the caret's line, by each anchor's RESOLVED
     // line — in a loose list the anchors are not contiguous from blockLine.
     const lines = anchorLines(anchors, block.blockLine, sourceLines);
@@ -378,9 +443,6 @@ export function docPosForSourceCaret(
 
     const sourceLine = sourceLines[caret.line - 1];
     if (sourceLine === undefined) { return lineStart; }
-    const marker = markerWidth(sourceLine, anchor.text);
-    if (marker < 0) { return lineStart; }
-
-    const textOffset = clamp(caret.column - marker, 0, anchor.text.length);
+    const textOffset = textOffsetForSourceColumn(sourceLine, anchor.text, caret.column);
     return anchor.contentStart + docOffsetForText(anchor.node, anchor.offset, textOffset);
 }

@@ -102,11 +102,11 @@ export interface EditorActions {
      * Put the caret at a DOCUMENT line (frontmatter included) and, when given, a
      * column. Needs no layout, so it can run before the first paint settles.
      */
-    placeCaretAtLine: (line: number, column?: number) => void;
+    placeCaretAtLine: (line: number, column?: number, anchor?: { line: number; column?: number }) => void;
     /** Scroll the block for a DOCUMENT line to the viewport centre. Needs layout. */
     scrollToDocumentLine: (line: number) => void;
     /** The source position (document line, optional column) a mode switch carries out. */
-    getSwitchTarget: () => { line: number; column?: number } | undefined;
+    getSwitchTarget: () => { line: number; column?: number; anchorLine?: number; anchorColumn?: number } | undefined;
     /** The live selection context for a coding-agent bridge pull, or null when unmappable. */
     getSelectionContext: () => EditorSelectionContext | null;
     /** Record how many source lines the frontmatter occupies (MAR-23). */
@@ -174,7 +174,13 @@ export function createMessageHandlers(
             if (msg.scrollToLine) {
                 // The caret needs only the document, so it lands now; the scroll
                 // waits for the first blocks to have a measurable height.
-                placeCaretAtLine(msg.scrollToLine, msg.scrollToColumn);
+                placeCaretAtLine(
+                    msg.scrollToLine,
+                    msg.scrollToColumn,
+                    msg.scrollToAnchorLine !== undefined
+                        ? { line: msg.scrollToAnchorLine, column: msg.scrollToAnchorColumn }
+                        : undefined,
+                );
                 retryScroll(() => scrollToDocumentLine(msg.scrollToLine!));
             } else {
                 const saved = getWebviewState();
@@ -227,7 +233,13 @@ export function createMessageHandlers(
                     // Arriving from the raw editor or a search hit: the caret
                     // moves too, so typing continues where the user landed
                     // rather than at the top of the document (MAR-23).
-                    placeCaretAtLine(msg.line, msg.column);
+                    placeCaretAtLine(
+                        msg.line,
+                        msg.column,
+                        msg.anchorLine !== undefined
+                            ? { line: msg.anchorLine, column: msg.anchorColumn }
+                            : undefined,
+                    );
                     scrollToDocumentLine(msg.line);
                 } else if (scrollAttempts < 8) {
                     scrollAttempts++;

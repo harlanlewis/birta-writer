@@ -25,6 +25,7 @@ const schema = new Schema({
         blockquote: { group: "block", content: "block+" },
         bullet_list: { group: "block", content: "list_item+" },
         list_item: { content: "paragraph block*" },
+        horizontal_rule: { group: "block" },
         image: { group: "inline", inline: true, attrs: { src: {} } },
         text: { group: "inline" },
     },
@@ -89,9 +90,11 @@ describe("sourceCaretAt", () => {
         expect(caret).toEqual({ line: 1, column: 5 });
     });
 
-    it("a line whose markup is inline should keep the line but drop to column 0", () => {
-        // The source carries **…**; the rendered text does not, so no column can
-        // be claimed without guessing a position inside invisible markup.
+    it("a line with inline markup should align the column past the invisible markup", () => {
+        // The source carries **…** the rendered text doesn't; the rendered text
+        // is aligned to the source as a subsequence, so a caret 8 chars in
+        // (before the 'o' of "word") maps to source column 12 — past both
+        // closing asterisks.
         const source = "a **bold** word\n";
         const d = doc(schema.node("paragraph", null, [
             schema.text("a "),
@@ -99,6 +102,16 @@ describe("sourceCaretAt", () => {
             schema.text(" word"),
         ]));
         const caret = sourceCaretAt(d, computeLineMap(source), source.split("\n"), inBlock(d, 0, 8));
+        expect(caret).toEqual({ line: 1, column: 12 });
+    });
+
+    it("a rendered text that cannot embed in the source line should degrade to column 0", () => {
+        // Rendered text that is NOT a subsequence of the source line (the
+        // renderer substituted content, e.g. an image's alt text) claims no
+        // column rather than guessing.
+        const source = "zzz\n";
+        const d = doc(p("abc"));
+        const caret = sourceCaretAt(d, computeLineMap(source), source.split("\n"), inBlock(d, 0, 2));
         expect(caret).toEqual({ line: 1, column: 0 });
     });
 
@@ -321,10 +334,50 @@ describe("reconciling the line map against the document", () => {
         );
         // The marked-up tight list starts at source line 9…
         expect(sourceLineForBlock(d, computeLineMap(source), source.split("\n"), 1)).toBe(9);
-        // …and a caret in its second item reports line 10 (column degrades to
-        // 0 as documented — the rendered text is not a suffix of the source).
+        // …and a caret 3 chars into its second item reports line 10 with the
+        // column aligned through the "- " marker (rendered offset 3 = before
+        // the 'T' of Teller = source column 5).
         expect(sourceCaretAt(d, computeLineMap(source), source.split("\n"), posIn(d, 'As Teller put it, "magic is more time than expected." Powerful.', 3)))
-            .toEqual({ line: 10, column: 0 });
+            .toEqual({ line: 10, column: 5 });
+    });
+
+    it("a no-text block must not swallow a drifted line (the arriving caret would vanish)", () => {
+        // The field failure behind "scrolls but no caret": drift pushed a
+        // line's nominal pairing onto a horizontal rule, whose empty anchors
+        // were accepted on trust — and an hr has no text position, so the
+        // caret arrival then had nowhere to land. Evidence must outrank trust.
+        const items = ["one", "two", "three", "four", "five", "six", "seven", "eight"];
+        const paras = Array.from({ length: 16 }, (_, i) => `Para number ${i + 1} here.`);
+        const source =
+            `${items.map((t) => `- ${t}`).join("\n\n")}\n\n${paras.join("\n\n")}\n\n---\n\n---\n\n---\n`;
+        const hr = () => schema.node("horizontal_rule");
+        const d = doc(list(...items), ...paras.map((t) => p(t)), hr(), hr(), hr());
+        const lineMap = computeLineMap(source);
+        const lines = source.split("\n");
+        // "Para number 10 here." starts at source line 35; its entry index is
+        // 17, which nominally pairs with child 17 — the first hr.
+        const target = lines.findIndex((l) => l === "Para number 10 here.") + 1;
+        expect(blockIndexForSourceLine(d, lineMap, lines, target)?.index).toBe(10);
+        const pos = docPosForSourceCaret(d, lineMap, lines, { line: target, column: 3 });
+        expect(pos).toBeDefined();
+        expect(sourceCaretAt(d, lineMap, lines, pos!)).toEqual({ line: target, column: 3 });
+    });
+
+    it("a caret inside inline markup should survive the round trip", () => {
+        // Through the subsequence alignment: rendered offset → source column →
+        // back to the same document position.
+        const source = "a **bold** word\n";
+        const d = doc(schema.node("paragraph", null, [
+            schema.text("a "),
+            schema.text("bold", [schema.mark("strong")]),
+            schema.text(" word"),
+        ]));
+        const lineMap = computeLineMap(source);
+        const lines = source.split("\n");
+        const pos = inBlock(d, 0, 8);
+        const caret = sourceCaretAt(d, lineMap, lines, pos);
+        expect(caret).toEqual({ line: 1, column: 12 });
+        expect(docPosForSourceCaret(d, lineMap, lines, caret!)).toBe(pos);
     });
 
     it("a line drifted past the old fixed span should still resolve to its real block", () => {

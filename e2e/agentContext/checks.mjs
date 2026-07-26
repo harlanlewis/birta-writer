@@ -182,5 +182,41 @@ export async function run({ page, check, baseUrl }) {
     );
     check("a selection carries its plain text", sel?.text === "Intro", JSON.stringify(sel?.text));
 
+    // ── 9. Selection carry, raw → rendered: a scrollToLine bearing an anchor
+    // restores the whole selection, not a bare caret ──
+    await page.evaluate(() =>
+        window.postMessage(
+            { type: "scrollToLine", line: 27, column: 5, anchorLine: 7, anchorColumn: 0 },
+            "*",
+        ),
+    );
+    await page.waitForTimeout(150);
+    const carried = (await requestContext(page))?.context;
+    check(
+        "an arriving selection spans anchor to caret with its text",
+        carried?.isEmpty === false &&
+            carried?.selections?.[0]?.anchor?.line === 7 &&
+            carried?.selections?.[0]?.active?.line === 27 &&
+            (carried?.selections?.[0]?.text?.length ?? 0) > 0,
+        JSON.stringify({ ...carried, selections: carried?.selections?.map((s) => ({ ...s, text: s.text.slice(0, 30) })) }),
+    );
+
+    // ── 10. Selection carry, rendered → raw: the switch target bears the anchor ──
+    await selectWithin(page, ".ProseMirror > p", 0, 5, { nth: 0 }); // "Intro"
+    await page.evaluate(() => window.postMessage({ type: "requestSwitchToTextEditor" }, "*"));
+    await page.waitForTimeout(150);
+    const switchTarget = await page.evaluate(() => {
+        const posted = window.__posted.filter((m) => m.type === "switchToTextEditor");
+        return posted[posted.length - 1] ?? null;
+    });
+    check(
+        "a departing selection carries caret line/column and its anchor",
+        switchTarget?.line === 7 &&
+            switchTarget?.column === 5 &&
+            switchTarget?.anchorLine === 7 &&
+            switchTarget?.anchorColumn === 0,
+        JSON.stringify(switchTarget),
+    );
+
     check("no page errors", errors.length === 0, errors.join(" | "));
 }

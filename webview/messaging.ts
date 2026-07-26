@@ -107,7 +107,9 @@ export function notifyOpenFile(relativePath: string, opts?: { wiki?: true }): vo
  * Leave for the raw editor, carrying the source position it should open at
  * (a document line, plus a column when the caret could be mapped honestly).
  */
-export function notifySwitchToTextEditor(target?: { line: number; column?: number }): void {
+export function notifySwitchToTextEditor(
+    target?: { line: number; column?: number; anchorLine?: number; anchorColumn?: number },
+): void {
     vscode.postMessage({ type: "switchToTextEditor", ...target });
 }
 

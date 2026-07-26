@@ -139,6 +139,9 @@ async function readCappedText(res: Response, maxBytes: number): Promise<string> 
 interface NavTarget {
     line: number;
     column?: number;
+    /** The selection's other end, when a raw-editor selection rides the switch. */
+    anchorLine?: number;
+    anchorColumn?: number;
 }
 
 export class MarkdownEditorProvider
@@ -222,7 +225,7 @@ export class MarkdownEditorProvider
     // editor switch) key: fsPath. `column` is present only when the source of
     // the navigation knew one — a mode switch carries the caret, a search hit
     // knows only its line.
-    private readonly _pendingNavigations = new Map<string, { line: number; column?: number; ts: number }>();
+    private readonly _pendingNavigations = new Map<string, NavTarget & { ts: number }>();
 
     // Global fallback navigation line number (stored when revealLine fires but the active tab hasn't switched)
     private _pendingRevealLine: { line: number; ts: number } | undefined;
@@ -412,8 +415,18 @@ export class MarkdownEditorProvider
     }
 
     /** Called from extension.ts: stash a pending navigation position; if the panel is visible and ready, send it immediately */
-    public setPendingNavigation(fsPath: string, line: number, column?: number): void {
-        this._pendingNavigations.set(fsPath, { line, column, ts: Date.now() });
+    public setPendingNavigation(
+        fsPath: string,
+        line: number,
+        column?: number,
+        anchor?: { line: number; column?: number },
+    ): void {
+        const nav: NavTarget = {
+            line,
+            column,
+            ...(anchor ? { anchorLine: anchor.line, anchorColumn: anchor.column } : {}),
+        };
+        this._pendingNavigations.set(fsPath, { ...nav, ts: Date.now() });
         // Panel already exists and is initialized → send directly, no need to wait for onDidChangeViewState
         const uriKey = vscode.Uri.file(fsPath).toString();
         const initialized = this._initializedPanels.has(uriKey);
@@ -422,7 +435,7 @@ export class MarkdownEditorProvider
             const panel = this._webviewPanels.get(uriKey);
             // Only send immediately when the panel is currently visible (a hidden panel means the user just switched away, so don't send the line number back)
             if (panel && panel.visible) {
-                postToWebview(panel.webview, { type: 'scrollToLine', line, column });
+                postToWebview(panel.webview, { type: 'scrollToLine', ...nav });
                 // Don't delete _pendingNavigations; keep it as a fallback for ready on panel rebuild (valid within TTL 5s)
             }
         }
@@ -449,7 +462,8 @@ export class MarkdownEditorProvider
         this._pendingNavigations.delete(fsPath);
         // Treat anything older than 5 seconds as expired; do not apply
         if (Date.now() - pending.ts > 5000) { return undefined; }
-        return { line: pending.line, column: pending.column };
+        const { ts: _ts, ...nav } = pending;
+        return nav;
     }
 
     public postToAll(msg: ToWebviewMessage): void {
@@ -741,7 +755,13 @@ export class MarkdownEditorProvider
                             tableWrap,
                             syncVersion: 0,
                             ...(nav !== undefined
-                                ? { scrollToLine: nav.line, ...(nav.column !== undefined ? { scrollToColumn: nav.column } : {}) }
+                                ? {
+                                      scrollToLine: nav.line,
+                                      ...(nav.column !== undefined ? { scrollToColumn: nav.column } : {}),
+                                      ...(nav.anchorLine !== undefined
+                                          ? { scrollToAnchorLine: nav.anchorLine, scrollToAnchorColumn: nav.anchorColumn }
+                                          : {}),
+                                  }
                                 : {}),
                         });
                         // Deliver the current disk-drift state now that the webview
@@ -916,22 +936,36 @@ export class MarkdownEditorProvider
                             preview: isPreview,   // Preserve the original tab's italic/non-italic state
                             preserveFocus: false,
                         };
-                        if (message.line && message.line > 0) {
-                            // The column is advisory and can only be trusted for
-                            // the line the webview computed it against, so it is
-                            // clamped to that line's real length here — the
-                            // document is the authority on where a line ends.
-                            const lineIndex = Math.min(message.line - 1, document.lineCount - 1);
-                            const column = Math.min(
-                                message.column ?? 0,
-                                document.lineAt(lineIndex).text.length,
+                        // Columns are advisory and can only be trusted for the
+                        // line the webview computed them against, so both ends
+                        // are clamped to their line's real length here — the
+                        // document is the authority on where a line ends.
+                        const clampedPos = (line: number, column?: number): vscode.Position => {
+                            const lineIndex = Math.min(line - 1, document.lineCount - 1);
+                            return new vscode.Position(
+                                lineIndex,
+                                Math.min(column ?? 0, document.lineAt(lineIndex).text.length),
                             );
-                            const pos = new vscode.Position(lineIndex, column);
-                            opts.selection = new vscode.Range(pos, pos);
+                        };
+                        const active =
+                            message.line && message.line > 0
+                                ? clampedPos(message.line, message.column)
+                                : undefined;
+                        if (active) {
+                            opts.selection = new vscode.Range(active, active);
                         }
 
                         const textDoc = await vscode.workspace.openTextDocument(document.uri);
-                        await vscode.window.showTextDocument(textDoc, opts);
+                        const editor = await vscode.window.showTextDocument(textDoc, opts);
+                        // A carried selection is restored with its drag direction
+                        // (anchor→active); opts.selection above already revealed
+                        // the caret's line.
+                        if (active && message.anchorLine && message.anchorLine > 0) {
+                            editor.selection = new vscode.Selection(
+                                clampedPos(message.anchorLine, message.anchorColumn),
+                                active,
+                            );
+                        }
                         break;
                     }
                     case "openSettings":
