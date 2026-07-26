@@ -100,6 +100,16 @@ export interface FormatProfile {
      * cleanly. The returned value is opaque to the engine, which only stores it
      * on the protection and hands it back.
      *
+     * STALENESS is the profile's problem, and it is not hypothetical. Like the
+     * regions beside it, this is distilled ONCE, from the document as loaded —
+     * but where a stale region merely stops matching (it protects nothing, and
+     * nothing is harmed), a stale FACT keeps being handed to every later
+     * reconcile, including for lines and constructs that did not exist at
+     * baseline. So whatever a profile distills here must be safe to apply to a
+     * line the pairing never saw: prefer facts that can only ever GRANT a
+     * concession the profile would otherwise refuse, and scope them to
+     * something checkable on the line in front of you.
+     *
      * Only lines the round trip PAIRED appear (unchanged lines and in-place
      * rewrites); a construct the serializer drops outright has no counterpart
      * and is omitted. Lines arrive as content, without their line endings.

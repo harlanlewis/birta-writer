@@ -563,35 +563,50 @@ function baselineIndents(pairs: readonly BaselineLinePair[]): Map<string, string
 
 // Carry the saved line's literal leading whitespace (tabs, widths, and all)
 // onto the serializer's line when the user did not re-indent it and only the
-// serializer's canonicalization moved. Two ways to know that, in order:
+// serializer's canonicalization moved. Two independent rules say so, and the
+// carry happens if EITHER does:
 //
-//   1. THE FILE'S OWN TESTIMONY (`baselineIndents`, MAR-222). If the serializer
-//      already rendered this source indent exactly this way before the edit,
-//      the line's depth has not moved and the difference is pure
-//      canonicalization. This is the only rule that can see depth, and it needs
-//      no equivalence of its own — it reads back the one the file demonstrated.
-//   2. KEY EQUALITY, when the file said nothing about this indent (no
-//      protection was computed for it, or the indent renders two ways in one
-//      file). `normalizeOutlineIndent` is the profile's own definition of "the
-//      same depth"; a genuine outdent normalizes differently, so it stays an
-//      honest edit and the serializer's indent wins. Widening THIS rule (say,
-//      calling a 3-space indent "the same depth" as the serializer's 2) would
-//      invent an equivalence the diff does not have and would swallow real
-//      outdents — worse data loss than the bug.
+//   1. KEY EQUALITY. `normalizeOutlineIndent` is the profile's own definition
+//      of "the same depth"; a genuine outdent normalizes differently, so it
+//      stays an honest edit and the serializer's indent wins. Widening THIS
+//      rule (say, calling a 3-space indent "the same depth" as the
+//      serializer's 2) would invent an equivalence the diff does not have and
+//      would swallow real outdents — worse data loss than the bug.
+//   2. THE FILE'S OWN TESTIMONY (`baselineIndents`, MAR-222). If the serializer
+//      already rendered this source indent exactly this way before any edit,
+//      the line's depth has not moved and the difference is canonicalization.
+//      Rule 1 cannot see this: it answers "same column count", and a tab plus
+//      three spaces is five columns against the serializer's four.
 //
-// Rule 1 also declines where rule 2 would wrongly accept: a sibling's ordered
-// marker widening (`9.` → `10.`) moves the serializer's indent for an untouched
-// child, and the child MUST follow it to stay a child.
+// Two constraints on rule 2, both learned the hard way, and both about the same
+// weakness — the facts are distilled ONCE from the load-time baseline, but the
+// saved text keeps changing under them, so the map is consulted for lines it
+// has no evidence about at all:
 //
-// Both are gated on the rest of the line having changed too. If the leading
-// whitespace is the ONLY difference then the whitespace IS the edit, and
-// carrying the saved bytes back would silently discard it: a whitespace-only
-// tab→space edit inside a top-level fence (a Makefile recipe line, compared
-// verbatim as "fence-raw") is exactly such a pair, and dropping it was the
-// MAR-161 data loss — pinned by "a whitespace-only tab→space edit inside a
-// top-level fence should register as an edit" in minimalDiff.test.ts. The hook
-// cannot see the line's class, but it does not need to: "the indent is the only
-// thing that changed" answers the question on its own.
+//   - It may only ever GRANT a carry, never veto one. Making it authoritative
+//     let a fact learned from an unrelated construct switch OFF rule 1: a file
+//     opened as `1. one` + a tab-indented child teaches `\t` → three spaces
+//     (an ordered marker is wider), and if the user later appends a BULLET
+//     outline, editing inside it wrote the serializer's two spaces while the
+//     untouched grandchild kept `\t\t` — landing it 4+ columns in, where it
+//     reparses as indented code. That is precisely the MAR-222 damage, caused
+//     by the MAR-222 fix, in a document the baseline never saw.
+//   - It applies only where indentation means outline DEPTH — both lines must
+//     carry a list marker. An outline's fact must never speak for a line whose
+//     leading whitespace is content: a fence added after load, holding a
+//     `\t   `-indented line, had its indent edit silently swallowed because the
+//     outline above it had taught that `\t   ` renders as four spaces. Fence
+//     content is verbatim user bytes (MAR-161). The hook is handed two bare
+//     strings and cannot classify a line in context, but "does it start with a
+//     list marker" is answerable locally and is exactly the scope rule 2 needs.
+//
+// Both rules are gated on the rest of the line having changed too. If the
+// leading whitespace is the ONLY difference then the whitespace IS the edit,
+// and carrying the saved bytes back would silently discard it: a whitespace-
+// only tab→space edit inside a top-level fence (a Makefile recipe line) is
+// exactly such a pair, and dropping it was the MAR-161 data loss — pinned by "a
+// whitespace-only tab→space edit inside a top-level fence should register as an
+// edit" in minimalDiff.test.ts.
 function carrySavedIndent(
     saved: string,
     serial: string,
@@ -601,11 +616,11 @@ function carrySavedIndent(
     const serialWs = indentOf(serial);
     if (savedWs === serialWs) return serial;
     if (saved.slice(savedWs.length) === serial.slice(serialWs.length)) return serial;
-    const rendered = baseline?.get(savedWs);
     const unmoved =
-        rendered !== undefined
-            ? rendered === serialWs
-            : normalizeOutlineIndent(savedWs) === normalizeOutlineIndent(serialWs);
+        normalizeOutlineIndent(savedWs) === normalizeOutlineIndent(serialWs) ||
+        (LIST_MARKER_RE.test(saved) &&
+            LIST_MARKER_RE.test(serial) &&
+            baseline?.get(savedWs) === serialWs);
     return unmoved ? savedWs + serial.slice(serialWs.length) : serial;
 }
 
@@ -643,8 +658,10 @@ function carrySavedTableCells(saved: string, serial: string): string {
 
 /** Markdown's `FormatProfile.reconcileReplacement`. Pure and total: every
  * branch falls back to the serializer's line, and neither pass can introduce a
- * newline. `facts` is validated rather than trusted — it round-trips through
- * the caller's protection cache, so its shape is not this module's to assume. */
+ * newline. `facts` arrives typed `unknown` because the engine only stores and
+ * returns it, so the shape is checked here rather than asserted — cheap, and it
+ * is what keeps a protection built by some OTHER profile from being read as
+ * this one's map once a second format exists. */
 function reconcileReplacement(saved: string, serial: string, facts: unknown): string {
     const baseline = facts instanceof Map ? (facts as Map<string, string>) : null;
     return carrySavedTableCells(saved, carrySavedIndent(saved, serial, baseline));
