@@ -124,6 +124,81 @@ describe("a list item containing a thematic break stays a list", () => {
     }
 });
 
+// ── An item's first block on the marker line (MAR-230) ─────────────────────
+//
+// `list_item` is `paragraph block*`, so an item whose real content is not a
+// paragraph gets an EMPTY paragraph filled in front of it. Serializing that
+// artifact produced a bare marker line with the content indented beneath —
+// which reparses as something else entirely (a bare `-` under a paragraph is a
+// setext underline; under tab indentation the content falls out of the item and
+// becomes an indented code block). The serializer now writes the real block on
+// the marker line, and these pin both that it does and the three shapes where
+// it deliberately does NOT.
+
+/** Open, delete every text node, and return the bytes a save would write. */
+async function saveWithAllTextDeleted(content: string): Promise<string> {
+    const editor = await makeEditor(content);
+    const v = view(editor);
+    const ranges: Array<[number, number]> = [];
+    v.state.doc.descendants((node, pos) => {
+        if (node.isText) ranges.push([pos, pos + node.nodeSize]);
+        return true;
+    });
+    const tr = v.state.tr;
+    for (const [from, to] of ranges.reverse()) tr.delete(from, to);
+    v.dispatch(tr);
+    const serialized = editor.action(getMarkdown());
+    await editor.destroy();
+    return serialized;
+}
+
+describe("an item's real first block rides on the marker line", () => {
+    const hoisted: Array<[string, string]> = [
+        ["a heading", "- normal\n  - # H\n    body\n"],
+        ["a blockquote", "- normal\n  - > quoted\n"],
+        ["a fence", "- normal\n  - ```js\n    x\n    ```\n"],
+        ["a nested list that has content", "- normal\n  - - deep\n"],
+    ];
+
+    for (const [label, source] of hoisted) {
+        it(`an item whose content is ${label} should round-trip byte-for-byte`, async () => {
+            // Byte equality is the strong form here: the source already writes
+            // the block on the marker line, so anything else is the serializer
+            // inventing the bare-marker construct again.
+            expect(await saveUnedited(source)).toBe(source);
+        });
+    }
+
+    it("an emptied three-deep branch should not collapse into a horizontal rule", async () => {
+        // Hoisting an EMPTY nested list puts its marker on this line too, and
+        // three bare bullets ARE a thematic break: `- - -`. Emptying a branch's
+        // three lines is an ordinary gesture, and the whole branch reopened as
+        // an <hr>. Nothing is gained by hoisting an empty list, so it stays put.
+        const serialized = await saveWithAllTextDeleted("- a\n  - b\n    - c\n");
+
+        const kinds = await reparsedKinds(serialized);
+        expect(kinds).toContain("bullet_list");
+        expect(kinds).not.toContain("hr");
+    });
+
+    it("a blank line the author wrote inside an item should survive the save", async () => {
+        // Here the leading empty paragraph is NOT an artifact — an item may
+        // legally start with a paragraph, so nothing was filled in and the empty
+        // one is a node the document really has. Dropping it deleted a paragraph
+        // the user could see (`-\n\n  world` came back as `- world`).
+        const editor = await makeEditor("- hello\n\n  world\n");
+        const v = view(editor);
+        v.dispatch(v.state.tr.delete(posAfterText(v, "hello") - "hello".length, posAfterText(v, "hello")));
+        const before = v.state.doc.firstChild!.firstChild!.childCount;
+        const serialized = editor.action(getMarkdown());
+        await editor.destroy();
+
+        const kinds = await reparsedKinds(serialized);
+        expect(before).toBe(2); // an empty paragraph and a real one
+        expect(kinds.filter((k) => k === "paragraph")).toHaveLength(2);
+    });
+});
+
 // ── Marker facts (MAR-218) ──────────────────────────────────────────────────
 
 describe("a list's marker style survives a zero-edit save", () => {
