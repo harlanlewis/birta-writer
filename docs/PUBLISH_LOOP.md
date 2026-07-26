@@ -2,190 +2,225 @@
 
 **Status:** design sketch / thinking only. No implementation, nothing measured. Written 2026-07-26.
 
-**Tracking:** Linear **MAR-232** (`phase-5-surfaces`, child of MAR-225). This is a *design
-record* that holds the thinking — it is **gated behind the cloud-web green-light** (Rung 4 of
-MAR-225, deliberately unscheduled) and filed to keep the idea honest, not to queue work.
+> **⚠️ This presumes a strategic gate the maintainer has not decided.** `docs/POSITIONING.md`
+> explicitly holds "linked/structured knowledge" and anything beyond *a document editor* as an
+> **"open question, not committed scope."** This document does not close that question — it exists
+> to *inform* it. Read every "we would…" below as conditional on a decision that hasn't been made.
+> A confident design creates gravity even when filed as gated; the honest framing is "here is what
+> it would look like *if* we went there, and what it would cost the brand," not "here is the plan."
+
+**Tracking:** Linear **MAR-232** (`phase-5-surfaces`, child of MAR-225). A gated *design record*
+that holds the thinking; **not** queued work.
 
 **Relationship to MAR-225 / `MULTI_SURFACE_INVESTIGATION.md`:** that investigation is about
-*running the editor* on new surfaces (desktop, web) — the host-adapter axis. This document is
-the orthogonal axis: the *document's lifecycle* across a local↔cloud boundary. They converge at
-exactly one point — the cloud web product (MAR-225 Rung 4) is the natural publish *destination* —
-and the publish loop is the thing that makes "the local editor" and "the cloud app" one coherent
-product instead of two disconnected editors that happen to share a renderer.
+*running the editor* on new surfaces (desktop, web) — the host-adapter axis. This is the orthogonal
+axis: the *document's lifecycle* across a local↔cloud boundary. They converge at exactly one point —
+the cloud web product (MAR-225 Rung 4) is the natural publish *destination* — and the publish loop
+is what would make "the local editor" and "the cloud app" one product instead of two disconnected
+editors that share a renderer.
 
 ---
 
-## 0. The one structural idea
+## 1. Why this idea has unusually deep roots (the case *for*)
+
+Before the critique, the honest case that this is on-mission — because it is stronger than a
+feature request usually is:
+
+- **The name literally means this.** `POSITIONING.md`: Icelandic *birta* = "to brighten / reveal /
+  **publish**; the source brought into the light and shown plainly (*birting* = a publication)."
+  The product is named for the act of publishing. That is not a bolt-on; it is the etymology.
+- **It targets a *named* founding grievance.** README "Why I made it" is a list of pains about
+  *piping content across systems* — transcripts → repos → Confluence → tickets → PRs → decks — and
+  specifically **"copy-pasting across apps, losing all formatting and semantics."** A faithful
+  publish path attacks that head-on, and does it with the one thing Birta is best at (fidelity).
+- **There is a 15-year precedent.** README "Ancient history": Marlan (2011) was "a web-based local
+  Markdown editor that synced through the Dropbox API." The local↔cloud loop is the maintainer's
+  *original* thread returning with more foundation under it.
+
+So the *mission and values* pull toward this. What follows is where the *current product's scope
+and architecture* pull the other way — and they must be reconciled before any of it is built.
+
+---
+
+## 2. The one structural idea
 
 > **The document is canonical and lives on the user's disk. "Publishing" is an explicit,
 > per-document, reversible act that pushes a copy to a destination. The record of *what was
-> published where* lives inside the document itself, as a block of YAML frontmatter — a sync
-> ledger. The file is self-describing about its own publication state; no external database owns
-> the mapping.**
+> published where* is a sync ledger — and *where that ledger lives is an open design question*
+> (§4), because the obvious answer (in-file frontmatter) collides with a shipped guarantee.**
 
-Everything else follows from that sentence. The loop is closed:
+The loop is a *pull-the-trigger* cycle the user controls, not continuous background sync:
 
 ```
 author locally ──publish──▶ destination(s)
       ▲                          │
       └───────sync back──────────┘
-   (local file stays canonical; the frontmatter ledger records the round-trip)
+   (local file stays canonical; the ledger records the round-trip, auditable after the fact)
 ```
 
-The "loop" is not continuous background sync. It is a *pull-the-trigger* cycle the user controls,
-with the ledger making each edge auditable after the fact.
+---
+
+## 3. The posture change this represents (read before designing anything)
+
+The most important thing to understand is that this is **not a feature addition — it is a change in
+what the app *is*.** Today Birta is trustworthy precisely because it is *passive* toward the outside
+world:
+
+- BENEFITS states, twice, that **"the editor never writes or reverts your document on its own."**
+  Its entire relationship to the outside is *detection*: it notices an external change (git, an
+  agent, cloud sync) and surfaces it for the user to resolve. It initiates nothing.
+- README "Why I use it" already names **"cloud sync"** — but as something Birta *coexists with and
+  reflects*, not something Birta *is*. The committed role is good-citizen-beside-Dropbox, not
+  be-the-sync-engine.
+
+Publishing makes the editor, for the first time, **actively initiate a network write of your
+document content.** That is a categorical shift from passive to agent. Every problem below descends
+from that shift, so it is the thing to decide first: *do we want Birta to be an actor on the
+network, or to stay the calm local citizen that other actors write around?*
 
 ---
 
-## 1. Why this is on-brand (and why frontmatter, specifically)
+## 4. The sync ledger — a mechanism in tension, not a settled choice
 
-Birta's differentiated promises are **fidelity, offline/local-first, privacy, no lock-in**. A
-naive "cloud sync" feature erodes all four. The publish-loop framing preserves them because the
-design choices fall directly out of the brand, not the other way around:
+The proposal's original framing put the ledger *in the document's frontmatter*. That is attractive
+(self-describing, portable, nothing stranded server-side) but it **collides with a shipped fidelity
+guarantee**, so it must be presented as *one candidate*, not the design.
 
-- **Local-first / privacy.** The canonical copy never leaves disk unless the user publishes. There
-  is no ambient sync daemon, no account required to *use* Birta, and no server that silently holds
-  the truth. Publishing is the *one* act that sends content off-device, so it must be explicit,
-  per-document, and revocable — and the ledger makes it the opposite of hidden.
-- **Fidelity.** What gets published is the same byte-exact markdown the user authored. The ledger
-  stores a content hash per destination, so drift between "what's on disk" and "what the remote
-  last received" is *detectable*, not silent. This reuses Birta's existing external-change
-  philosophy verbatim: **surface the collision, let the user pick the winner, never silently
-  merge** (the same posture as `externalChanges.ts` + minimal-diff — see MAR-225 §9). No CRDTs;
-  CRDTs fight byte-fidelity, which is the product.
-- **No lock-in.** Because the publication relationship lives *in the file*, it is portable and
-  inspectable. Deleting the ledger block un-publishes — nothing is stranded in a server-side
-  mapping table the user can't see. Open the `.md` in any editor and the provenance is right there.
-- **The recursion (why frontmatter earns its place).** This very document is a `.md` file that
-  could carry a sync ledger and be published *through the loop it describes*. The mechanism and the
-  content are the same substance. That is the tell that the abstraction is at the right altitude.
+**The collision.** BENEFITS: "YAML frontmatter is handled **out of band** … immune to any editor
+reformatting — key order, comments, and spacing are exactly as you left them." Today the editor
+faithfully *reattaches what the user wrote*; it does **not author** frontmatter. A machine-maintained
+`birta:` block (remote ids, content hashes, timestamps) is the editor **injecting and mutating**
+state the user never typed — which surfaces in every git diff, in the rendered frontmatter table,
+and to every other tool that reads the file. That is a genuinely new editor behavior, at odds with
+the "your metadata is exactly as you left it" promise.
 
-Frontmatter as the ledger is the same split Birta already lives by: the **CHANGELOG records what
-shipped, Linear tracks planned work** — two complementary records, neither a single source of
-truth. Here: **the frontmatter ledger records what was published, the remote holds its own live
-state** — complementary, cross-checkable, neither authoritative alone (see §4, the trust model).
+**The three candidate homes, none free:**
 
----
+| Where the ledger lives | Buys | Costs |
+|---|---|---|
+| **In-file frontmatter** (original proposal) | Self-describing, portable, no server-side mapping, un-publish = delete the block | Editor now authors/mutates frontmatter (breaks the out-of-band guarantee); pollutes diffs + the frontmatter table + every other tool's view |
+| **Sidecar file** (`doc.md.birta.json`) | Keeps the `.md` byte-pure; frontmatter guarantee intact | Breaks "self-describing/portable" — the relationship is now *two* files that can separate; a `.gitignore`'d sidecar loses the record entirely |
+| **Host state** (settings/db, keyed by path) | `.md` fully untouched | Least portable of all; move/rename the file and the mapping dangles; contradicts "the file carries its own provenance" |
 
-## 2. The sync ledger — shape (illustrative, not a spec)
+**The only durable claim is "the publication relationship should be recoverable and lock-in-free,"
+not "it lives in frontmatter."** The trust model in §5 is what makes *any* of these safe; the
+storage location is unresolved and should stay that way until a real destination forces the choice.
 
-A reserved key in the document's frontmatter, one entry per destination:
+Illustrative shape (whichever home wins), one entry per destination — a *thinking aid, not a spec*:
 
 ```yaml
----
-title: My essay
 birta:
   published:
-    - target: birta-cloud            # a named destination (resolved to a URL + token out-of-band)
-      remoteId: doc_abc123           # the destination's id for this document
+    - target: birta-cloud          # a NAME; its URL + token resolve out-of-band (never in the file)
+      remoteId: doc_abc123
       publishedAt: 2026-07-26T12:00:00Z
-      sourceHash: sha256:9f8e…       # hash of the exact bytes last pushed
-      status: clean                  # clean | local-ahead | remote-ahead | diverged
-    - target: my-blog
-      remoteId: post/42
-      publishedAt: 2026-07-20T09:00:00Z
-      sourceHash: sha256:1a2b…
-      status: local-ahead
----
+      sourceHash: sha256:9f8e…     # bytes last pushed → drift is detectable
+      status: clean                # clean | local-ahead | remote-ahead | diverged
 ```
 
-Design constraints on the block:
-- **Advisory, never authoritative.** The ledger is *provenance*, re-verifiable against the remote.
-  A user can hand-edit or corrupt it; the system must degrade to "re-query the destination" rather
-  than trust it blindly (§4).
-- **One reserved namespace.** Everything lives under a single `birta:` key so the rest of the
-  frontmatter stays the user's. The block round-trips through Birta's serializer byte-exactly like
-  any other frontmatter (it must not become a fidelity hazard — it is exercised by the corpus).
-- **Secrets never live here.** `target` is a *name*; the URL + credential for that name resolve
-  out-of-band (a per-destination token in host settings/keychain), because the `.md` is portable
-  and might be committed to git or shared.
+Hard constraint regardless of home: **secrets never live with the ledger.** `target` is a name; the
+URL + credential resolve out-of-band, because the record might be committed to git or shared.
 
 ---
 
-## 3. The four edges of the loop
-
-| Edge | What happens | Reuses |
-|---|---|---|
-| **Publish (local → remote, first time)** | Push bytes, remote mints an id, write a ledger entry with `sourceHash` + `publishedAt`. | The serializer; a new host `publish()` capability. |
-| **Re-publish (local → remote, update)** | Local hash ≠ ledger hash → push, update the entry. If remote also moved since → **diverged**, surface a conflict (don't overwrite). | External-change / conflict UI philosophy. |
-| **Pull (remote → local)** | Remote changed (e.g. a lightweight edit or comment resolved on the cloud) → fetch, present as an *inbound external change* exactly like a disk edit, user accepts/rejects. | `externalChanges.ts` mechanisms; minimal-diff. |
-| **Un-publish** | Remove the destination server-side (best-effort) and delete the ledger entry. The local file is untouched and canonical. | — |
-
-The status field (`clean` / `local-ahead` / `remote-ahead` / `diverged`) is computed by comparing
-three things: the current on-disk hash, the ledger's `sourceHash`, and the remote's current hash.
-It is the same three-way comparison Birta already does for external changes, generalized from
-"disk vs editor" to "disk vs ledger vs remote."
-
----
-
-## 4. Trust model — who owns the truth
+## 5. Trust model — who owns the truth
 
 Three stores, none authoritative alone:
 
 1. **The on-disk file** — canonical *content*. Always wins for "what the document *is*."
-2. **The frontmatter ledger** — canonical *intent* ("this document is meant to be published to X").
-   Advisory about remote state; re-verifiable.
+2. **The ledger** — canonical *intent* ("this document is meant to be published to X"). Advisory
+   about remote state; re-verifiable; deliberately the **weakest** link (a rebuildable cache).
 3. **The remote** — canonical for *its own* live state (id, last-received hash, remote-side edits).
 
-The ledger is the join between (1) and (3), and it is deliberately the *weakest* — it's a cache of
-the relationship that can always be rebuilt by asking the remote. This is what keeps the design
-lock-in-free: the source of truth for content is the file the user holds, and the source of truth
-for the remote is queryable, so the middle record can be lost without losing anything irreversible.
+Because the ledger is a rebuildable cache and the content lives in a file the user holds, nothing
+irreversible is lost if the ledger is corrupted or deleted — which is exactly what keeps the design
+lock-in-free, and is the property that survives no matter which §4 home is chosen.
 
 ---
 
-## 5. What this needs that doesn't exist yet
+## 6. The four edges — and where they reuse vs. invent
 
-Almost all of it is gated behind the cloud-web product (MAR-225 Rung 4), which is itself unscheduled.
-Naming the pieces so the gate is honest:
+| Edge | What happens | Reuse? |
+|---|---|---|
+| **Publish (first time)** | Push bytes, remote mints an id, write a ledger entry. | New host `publish()` capability + the existing serializer. |
+| **Re-publish (update)** | Local hash ≠ ledger hash → push. If remote also moved → **diverged**, surface a conflict, never overwrite. | *Philosophy* reused; the 1:1 disk↔editor conflict UI does **not** cover N remotes (see §8). |
+| **Pull (remote → local)** | Remote changed → fetch, present as an inbound external change, user accepts/rejects. | `externalChanges.ts` + minimal-diff — the strongest reuse. |
+| **Un-publish** | Remove server-side (best-effort) + delete the ledger entry. Local file untouched. | — |
 
-- **A destination abstraction** — `publish() / pull() / unpublish() / remoteHash()` as a host
-  capability, with per-destination credential resolution. This is Bucket-3 host-only work in the
-  MAR-225 taxonomy (it's OS/network integration, not editor behavior).
-- **The cloud endpoint itself** — the server that accepts a publish, mints ids, stores content, and
-  reports its hash. That is the cloud-web product; it does not exist and is deliberately deferred.
-- **A conflict-surfacing UI for the `diverged` case** — reuses the external-change philosophy but
-  needs its own presentation (this is *remote* divergence, not disk divergence).
-- **Ledger read/write in the serializer path** — must be byte-safe and corpus-tested, since it
-  writes into frontmatter (a fidelity-critical region).
-
-Nothing here should be built before the cloud-web green-light. The value of writing it down now is
-to *constrain* that future product: if/when the cloud app is built, it should be built as a
-publish *destination* for local documents, not as a separate editor with its own storage — because
-the latter is what quietly betrays the local-first promise.
+The status field is the same three-way comparison Birta already does (disk vs editor), generalized
+from two stores to three (disk vs ledger vs remote). That generalization is real reuse; the *UI* for
+resolving it across multiple destinations is not (§8).
 
 ---
 
-## 6. Self-critique (red-team)
+## 7. The cheaper, in-scope sibling — exhaust this first
 
-Read this as a counterweight, not a footnote.
+The founding grievance is **"copy-pasting across apps, losing all formatting and semantics."** The
+publish *loop* (stateful, bidirectional, cloud-backed, account-bearing) is a large swing at it. But
+the same grievance is hit — more cheaply and entirely *within the document-editor scope* — by
+**lossless export / smart paste** into the systems the maintainer actually pipes into:
 
-- **This is design-ahead of a product that isn't scheduled.** MAR-225 explicitly refuses to file
-  Rung-4 (cloud web) work to avoid queuing speculation. This document is the same speculation with
-  nicer framing. The mitigation is honesty: it is filed as a *design record*, `Backlog`, gated —
-  not as work. If cloud web never happens, the publish loop never happens, and that's fine.
-- **"Frontmatter as ledger" may not survive contact with real destinations.** A blog (Ghost,
-  a static-site repo, Substack) has its own id/slug/state model that may not map cleanly to one
-  `remoteId` + `sourceHash`. The illustrative schema in §2 is almost certainly too simple; treat it
-  as a thinking aid, not a spec. The one durable claim is *"the relationship lives in the file,"*
-  not the exact keys.
-- **Multiple destinations multiply the conflict surface.** One document published to three places,
-  each of which can diverge independently, is a genuinely harder UX than the single disk↔editor
-  case Birta solves today. "Surface, don't merge" is the right posture but the *presentation* of
-  three simultaneous divergences is unexamined.
-- **Identity leaks in through the back door.** Publishing to a cloud instance implies *some*
-  identity for the destination (a token, at least). The brand's "no account to use Birta" holds for
-  local editing, but the moment you publish you've authenticated to *something*. Keep that scoped to
-  the destination, never to the app — but acknowledge the seam exists.
-- **Nothing is measured.** Same caveat as the whole MAR-225 family: this is reasoning over the
-  existing architecture, not a prototype. The cheapest validating probe (if the cloud product is
-  ever green-lit) is a single publish→edit-remote→pull round-trip against a stub destination, the
-  publish-loop analog of MAR-227's save probe.
+- copy-as-Confluence-storage-format, paste-into-Substack-intact, export-to-Google-Docs-with-semantics;
+- `birta.copyFormat` already ships (markdown vs richText, rich HTML always included), and **smart
+  paste is already named as next-up** (README "Why this fork" §4 — "with smart paste still ahead").
+
+This sibling:
+
+- stays inside *a document editor* (no platform creep, no PKM drift);
+- needs **no** cloud, accounts, sync ledger, or privacy reconfiguration;
+- plays *to* Birta's fidelity strength instead of against it (faithful format translation is the
+  same muscle as faithful round-trips);
+- and directly answers the pain the maintainer actually wrote down.
+
+**This is the publish-loop analog of MAR-225's "Rung 0" lesson:** exhaust the cheap, in-scope reach
+before committing to the big surface. If lossless export satisfies the grievance, the stateful loop
+may never need to exist. Worth its own ticket, ranked ahead of this one.
 
 ---
 
-## 7. The one-line takeaway
+## 8. Self-critique (red-team) — the honest cost sheet
 
-If the cloud web app is ever built, build it as a **publish destination for local-first
-documents** — with the publication record living **in the document** — so that "local" and "cloud"
-are two ends of one loop the user controls, not two editors that lost their shared file.
+- **It presumes an undecided strategic gate** (the banner up top). Publishing/destinations/sync is
+  the feature-space of the platforms the maintainer is *fleeing* (Notion, Confluence, Obsidian
+  Publish). Building it risks becoming the thing he's tired of. `POSITIONING.md` keeps this an open
+  question on purpose; this doc must not quietly close it.
+- **The privacy contract cannot just absorb this.** Privacy is the deepest brand value (security +
+  health-tech background, "nothing leaves your machine," offline by default). The two current
+  network exceptions are deliberately tiny — unfurl *reads* a title, embeds *render* a card;
+  **neither uploads your content.** Publishing uploads the whole document: a new *class* of
+  capability, categorically heavier than anything behind `birta.network.enabled` today. It likely
+  needs its own consent architecture, not a third checkbox under the existing master switch.
+- **Who is the user?** (MAR-225 §13's crux.) The maintainer uses Birta *because* it sits in VS Code
+  beside git and agents — and he *already publishes* via git and existing pipes. A cloud publish
+  loop may serve a *different* ICP than its creator. Name that user before building for them; a
+  feature whose only justification is a hypothetical audience is a different product, not a port.
+- **Every concrete destination is already-solved or a fidelity nightmare.** Static site / git repo →
+  he already has that (the beachhead). Confluence / Substack / Ghost → each has its own storage
+  format that mangles Markdown, so publishing *faithfully* is the inverse of Birta's one strength.
+  The flagship "birta-cloud" destination → doesn't exist. The abstraction floats above every real
+  target; it needs a *first concrete destination* to become honest.
+- **The frontmatter ledger is in tension with a shipped guarantee** (§4) — the mechanism is
+  unresolved, not chosen. The §4 illustrative schema is almost certainly too simple for real
+  destinations anyway; the durable claim is "recoverable + lock-in-free," not the keys.
+- **Multi-destination divergence** multiplies the conflict surface beyond what the elegant 1:1
+  disk↔editor model covers; the *presentation* of several simultaneous divergences is unexamined.
+- **Nothing is measured.** The validating probe (if ever green-lit) is a
+  publish → edit-remote → pull round-trip against a stub destination — the publish-loop analog of
+  MAR-227's save probe.
+
+---
+
+## 9. Where this nets out
+
+- **On mission/values** (local-first, portable, anti-lock-in, anti-copy-paste, *the name itself*):
+  a natural — arguably inevitable — extension.
+- **On the current north star** ("never leave WYSIWYG"; *a document editor*, not a platform/PKM),
+  **the architecture** (passive detection; frontmatter out-of-band; offline-by-default), and
+  **strategic scope** (explicitly undecided): a divergence that must be chosen deliberately, not
+  drifted into.
+
+The one-line recommendation: **if the loop is ever built, build the cloud app as a *publish
+destination for local-first documents* — with a recoverable, lock-in-free ledger — so "local" and
+"cloud" are two ends of one loop the user controls. But exhaust lossless export (§7) first, decide
+the privacy-contract and who-is-the-user questions before any code, and treat the frontmatter ledger
+as one unproven option, not the design.**
