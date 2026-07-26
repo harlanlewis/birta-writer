@@ -1207,12 +1207,12 @@
                 {
                     "command": "birta.copyAgentReference",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'editor'",
-                    "group": "3_copy@4"
+                    "group": "2_agent@1"
                 },
                 {
                     "command": "birta.copyAgentContext",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'editor'",
-                    "group": "3_copy@5"
+                    "group": "2_agent@2"
                 },
                 {
                     "command": "birta.editor.copyAsHtml",
@@ -1941,6 +1941,12 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Floating palette: show the Inline Math button."
+                },
+                "birta.floatingToolbar.items.agentReference": {
+                    "order": 63,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Floating palette: show the Copy Reference for AI Agent button (copies a path#L12-L20 reference to the selection)."
                 },
                 "birta.tocAutoHideThreshold": {
                     "order": 11,

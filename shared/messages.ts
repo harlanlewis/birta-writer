@@ -321,7 +321,11 @@ export type ToExtensionMessage =
     // selection path — so the feature costs the editor nothing until an agent
     // asks. `context` is null when no position can be mapped. See
     // shared/agentContext.ts and src/agentBridge/.
-    | { type: "editorContextResult"; id: string; context: EditorSelectionContext | null };
+    | { type: "editorContextResult"; id: string; context: EditorSelectionContext | null }
+    // The selection palette's @ button: run the same birta.copyAgentReference
+    // command the context menu offers, so the one-click path and the menu path
+    // share behavior (clipboard payload, status-bar feedback) exactly.
+    | { type: "copyAgentReference" };
 
 /**
  * Extension → WebView messages.

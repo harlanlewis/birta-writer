@@ -188,4 +188,29 @@ export async function run({ page, check, baseUrl }) {
         "clicking the grab-menu button opens the block menu",
         await page.locator(".block-menu").isVisible(),
     );
+
+    // ── Agent-reference button: the one-click "copy for my AI agent" path ──
+    await page.keyboard.press("Escape"); // leave block mode
+    await page.waitForTimeout(150);
+    await selectWord("plain");
+    const agentBtn = page.locator(".sel-tb-agent-btn");
+    check(
+        "a text selection shows the agent-reference button",
+        await agentBtn.isVisible(),
+    );
+    // Chrome buttons act on mousedown (see webview/ui/dom.ts); a synthetic
+    // click with detail 0 would read as a keyboard activation and double-fire.
+    await page.evaluate(() => {
+        document.querySelector(".sel-tb-agent-btn")
+            .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    });
+    await page.waitForTimeout(80);
+    const agentPosts = await page.evaluate(() =>
+        window.__posted.filter((m) => m.type === "copyAgentReference").length,
+    );
+    check(
+        "clicking the agent-reference button asks the extension to copy the reference",
+        agentPosts === 1,
+        `copyAgentReference messages: ${agentPosts}`,
+    );
 }

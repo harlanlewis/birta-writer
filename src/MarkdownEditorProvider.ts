@@ -1177,6 +1177,11 @@ export class MarkdownEditorProvider
                         // No-op if the request already timed out and was dropped.
                         this._pendingContext.get(message.id)?.(message.context);
                         break;
+                    case "copyAgentReference":
+                        // The selection palette's @ button: same command as the
+                        // context menu, so payload and feedback stay identical.
+                        vscode.commands.executeCommand("birta.copyAgentReference");
+                        break;
                 }
             },
         );

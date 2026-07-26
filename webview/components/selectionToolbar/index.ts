@@ -26,6 +26,7 @@ import {
     IconMath,
     IconLink,
     IconHash,
+    IconAtSign,
     IconChevronDown,
     IconChevronUp,
     IconCopy,
@@ -50,6 +51,7 @@ import {
     deleteSelectedBlocks,
 } from "@/plugins/blockKeys";
 import { resolveVisible, type FloatingToolbarItems } from "./registry";
+import { notifyCopyAgentReference } from "@/messaging";
 import { computeToolbarActiveState } from "@/components/toolbar/activeState";
 import { trackEditorReflow } from "@/ui/editorReflow";
 import { clampLeft, viewportSize } from "@/ui/anchoredPlacement";
@@ -499,6 +501,19 @@ export function setupSelectionToolbar(
     );
     toolbar.appendChild(clearFmtBtn);
 
+    // ── Agent group: copy a reference for an AI agent ──
+    // The one-click path for "tell my coding agent what I'm looking at": puts
+    // `path.md#L12-L20` on the clipboard via the same extension-side command as
+    // the context menu, so payload and feedback are identical. It reads the
+    // document and writes nothing — separated from the formatting groups.
+    const agentSep = sSep();
+    toolbar.appendChild(agentSep);
+    const agentRefBtn = sBtn(IconAtSign, t("Copy Reference for AI Agent"), () =>
+        notifyCopyAgentReference(),
+    );
+    agentRefBtn.classList.add("sel-tb-agent-btn");
+    toolbar.appendChild(agentRefBtn);
+
     // ── Block-selection elements (shown only for a whole-block range) ──
     // A multi-block BlockRangeSelection has no gutter-menu surface (that menu
     // targets one block); these reuse the keyboard layer's range commands so
@@ -792,6 +807,8 @@ export function setupSelectionToolbar(
         insertSep.style.display = "none";
         clearFmtBtn.style.display = "none";
         mathBtn.style.display = "none";
+        agentSep.style.display = "none";
+        agentRefBtn.style.display = "none";
     }
     function hideAllTable(): void {
         tableSep.style.display = "none";
@@ -914,6 +931,8 @@ export function setupSelectionToolbar(
             insertSep.style.display = "none";
             clearFmtBtn.style.display = "none";
             mathBtn.style.display = "none";
+            agentSep.style.display = "none";
+            agentRefBtn.style.display = "none";
             hideBlockButtons();
 
             // Alignment: shown when a whole column is selected (and not the whole table)
@@ -1004,6 +1023,7 @@ export function setupSelectionToolbar(
         const showSectionLink = visible.has("sectionLink");
         const showClear = visible.has("clearFormatting");
         const showMath = visible.has("math");
+        const showAgentRef = visible.has("agentReference");
         fmtWrap.style.display = showFormat ? "" : "none";
         boldBtn.style.display = showBold ? "" : "none";
         italicBtn.style.display = showItalic ? "" : "none";
@@ -1014,6 +1034,7 @@ export function setupSelectionToolbar(
         sectionLinkBtn.style.display = showSectionLink ? "" : "none";
         clearFmtBtn.style.display = showClear ? "" : "none";
         mathBtn.style.display = showMath ? "" : "none";
+        agentRefBtn.style.display = showAgentRef ? "" : "none";
 
         // A separator only appears between two non-empty groups, so hiding items
         // by config never leaves a leading, trailing, or doubled separator.
@@ -1025,9 +1046,11 @@ export function setupSelectionToolbar(
         textFmtSep.style.display = showFormat && (hasMarks || hasLinks || hasInsert) ? "" : "none";
         linkSep.style.display = hasLinks && (showFormat || hasMarks) ? "" : "none";
         insertSep.style.display = hasInsert && (showFormat || hasMarks || hasLinks) ? "" : "none";
+        agentSep.style.display =
+            showAgentRef && (showFormat || hasMarks || hasLinks || hasInsert) ? "" : "none";
 
         // Nothing to show (every inline item opted out) → don't flash an empty bar.
-        if (!showFormat && !hasMarks && !hasLinks && !hasInsert) {
+        if (!showFormat && !hasMarks && !hasLinks && !hasInsert && !showAgentRef) {
             hideToolbar();
             return;
         }

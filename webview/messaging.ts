@@ -64,6 +64,14 @@ export function notifyEditorContextResult(
     vscode.postMessage({ type: "editorContextResult", id, context });
 }
 
+/**
+ * The selection palette's @ button: ask the extension to run the same
+ * birta.copyAgentReference command the context menu offers.
+ */
+export function notifyCopyAgentReference(): void {
+    vscode.postMessage({ type: "copyAgentReference" });
+}
+
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }

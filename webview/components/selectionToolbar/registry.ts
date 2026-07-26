@@ -28,6 +28,7 @@ export const FLOATING_TOOLBAR_ITEM_IDS = [
     "sectionLink",
     "clearFormatting",
     "math",
+    "agentReference",
 ] as const;
 
 export type FloatingToolbarItemId = (typeof FLOATING_TOOLBAR_ITEM_IDS)[number];
