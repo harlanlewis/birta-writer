@@ -48,7 +48,7 @@ So the shipped adapters are all **explicit or pull-based**:
 
 | Adapter | Reaches | Trigger |
 |---|---|---|
-| `referenceCommand` | every agent | user runs a copy command, pastes the reference |
+| `referenceCommand` | every agent | user picks it from the right-click Copy menu (or palette), pastes the reference |
 | `languageModelTool` | Copilot agent mode, any LM-tool client | the model calls `#birtaSelection` |
 | `publicApi` | any cooperating extension | caller invokes `getActiveEditorContext()` |
 

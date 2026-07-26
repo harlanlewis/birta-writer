@@ -1204,6 +1204,16 @@
                     "group": "3_copy@3"
                 },
                 {
+                    "command": "birta.copyAgentReference",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'editor'",
+                    "group": "3_copy@4"
+                },
+                {
+                    "command": "birta.copyAgentContext",
+                    "when": "webviewId == 'birta.editor' && webviewSection == 'editor'",
+                    "group": "3_copy@5"
+                },
+                {
                     "command": "birta.editor.copyAsHtml",
                     "when": "webviewId == 'birta.editor' && webviewSection == 'table'",
                     "group": "3_copy@1"
