@@ -79,8 +79,48 @@ export interface FormatProfile {
      * cell the user never touched) was canonicalized as collateral damage
      * while its untouched neighbours kept theirs — leaving two conventions
      * mixed inside one construct (MAR-213 / MAR-214).
+     *
+     * `facts` is whatever `baselineFacts` distilled for this file, or null when
+     * no protection was computed. A profile MUST treat it as untrusted (it
+     * round-trips through the caller's cache) and MUST behave correctly without
+     * it.
      */
-    reconcileReplacement(saved: string, serial: string): string;
+    reconcileReplacement(saved: string, serial: string, facts: unknown): string;
+    /**
+     * Distill whatever the zero-edit baseline round trip teaches about how THIS
+     * file is written, for `reconcileReplacement` to consult on every later
+     * save. Each pair is one saved line beside the bytes the serializer emitted
+     * for it before any edit, so a profile can learn the file's own conventions
+     * (markdown uses it to learn which source indent the serializer renders as
+     * which canonical indent — see MAR-222) instead of guessing them from a
+     * single line in isolation.
+     *
+     * Optional, and deliberately whole-file: a convention is only knowable by
+     * looking at every line that shares it, including the ones that round-trip
+     * cleanly. The returned value is opaque to the engine, which only stores it
+     * on the protection and hands it back.
+     *
+     * STALENESS is the profile's problem, and it is not hypothetical. Like the
+     * regions beside it, this is distilled ONCE, from the document as loaded —
+     * but where a stale region merely stops matching (it protects nothing, and
+     * nothing is harmed), a stale FACT keeps being handed to every later
+     * reconcile, including for lines and constructs that did not exist at
+     * baseline. So whatever a profile distills here must be safe to apply to a
+     * line the pairing never saw: prefer facts that can only ever GRANT a
+     * concession the profile would otherwise refuse, and scope them to
+     * something checkable on the line in front of you.
+     *
+     * Only lines the round trip PAIRED appear (unchanged lines and in-place
+     * rewrites); a construct the serializer drops outright has no counterpart
+     * and is omitted. Lines arrive as content, without their line endings.
+     */
+    baselineFacts?(pairs: readonly BaselineLinePair[]): unknown;
+}
+
+/** One saved line beside its zero-edit serialization — see `baselineFacts`. */
+export interface BaselineLinePair {
+    saved: string;
+    serial: string;
 }
 
 // ─── Line endings ───────────────────────────────────────────────────────────
@@ -166,13 +206,14 @@ function reconcileLine(
     saved: string,
     serial: string,
     savedTerminated: boolean,
+    facts: unknown,
 ): string {
     const eol = savedTerminated ? eolOf(saved) : "";
     const savedContent = savedTerminated ? stripEol(saved) : saved;
     const fallback = stripEol(serial) + eol;
     let out: string;
     try {
-        out = profile.reconcileReplacement(savedContent, stripEol(serial));
+        out = profile.reconcileReplacement(savedContent, stripEol(serial), facts);
     } catch {
         return fallback;
     }
@@ -315,6 +356,11 @@ interface ProtectedRegion {
 
 export interface RoundTripProtection {
     regions: ProtectedRegion[];
+    /** `FormatProfile.baselineFacts`' opaque result for this file, if any. It
+     *  rides along here because protection is already computed exactly where
+     *  the baseline serialization exists and is already threaded to every
+     *  merge — see `baselineFacts`. */
+    baselineFacts?: unknown;
 }
 
 /**
@@ -337,6 +383,8 @@ export function computeRoundTripProtection(
     const { edits, savedLines } = computeEditScript(saved, baselineSerialized, profile);
     if (!edits.some((e) => e.op !== "keep")) return null;
 
+    const baselineFacts = profile.baselineFacts?.(pairBaselineLines(edits, savedLines.length - 1));
+
     // Self-check: protection must reproduce the saved bytes exactly when the
     // serializer output is the baseline itself. The per-construct split
     // pairs del/ins adjacency groups positionally, which can mis-pair exotic
@@ -351,13 +399,62 @@ export function computeRoundTripProtection(
         for (const allowSplit of [true, false]) {
             const regions = buildProtectedRegions(edits, savedLines, allowSplit, suppressInsertions);
             if (regions.length === 0) continue;
-            const protection = { regions };
+            const protection = { regions, baselineFacts };
             if (applyMinimalChanges(saved, baselineSerialized, profile, protection) === saved) {
                 return protection;
             }
         }
     }
     return null;
+}
+
+/**
+ * Pair each saved line with the bytes the zero-edit round trip emitted for it.
+ * Two shapes qualify, and only two:
+ *
+ *   - a `keep` — the serializer reproduced the line, possibly in a different
+ *     spelling that keys equal, which is exactly the interesting case;
+ *   - a run consisting of EXACTLY one `del` and one `ins`, the same isolated
+ *     adjacency the merge itself calls an in-place replacement.
+ *
+ * Everything else in a non-keep run is left unpaired on purpose. A `del` with
+ * no `ins` is a construct the serializer dropped outright, so no counterpart
+ * exists. And a LONGER run does not interleave: the LCS emits all its dels and
+ * then all its inses, so "a del immediately followed by an ins" would pair the
+ * run's LAST saved line with its FIRST serialized one — lines that have nothing
+ * to do with each other. Positionally re-pairing such a run is the same
+ * temptation `buildProtectedRegions` resists just below, and the stakes here are
+ * higher: an absent fact costs a profile nothing (it falls back to whatever it
+ * did before), while a WRONG one is a confident lie about the file.
+ *
+ * `lastSavedIdx` is the saved split's final segment, whose trailing `\r` is
+ * content rather than an ending (see "Line endings" above); every other line is
+ * handed over stripped, exactly as `reconcileLine` does.
+ */
+function pairBaselineLines(edits: Edit[], lastSavedIdx: number): BaselineLinePair[] {
+    const pairs: BaselineLinePair[] = [];
+    const savedContent = (line: SigLine): string =>
+        line.lineIdx === lastSavedIdx ? line.text : stripEol(line.text);
+    for (let i = 0; i < edits.length; i++) {
+        const edit = edits[i];
+        if (edit.op === "keep") {
+            pairs.push({ saved: savedContent(edit.saved), serial: stripEol(edit.serial.text) });
+            continue;
+        }
+        // Walk the whole non-keep run, then take it only if it is a lone
+        // del/ins couple.
+        const start = i;
+        while (i < edits.length && edits[i].op !== "keep") i++;
+        const run = edits.slice(start, i);
+        i--; // the outer loop's own increment steps past the run's last edit
+        if (run.length === 2 && run[0].op === "del" && run[1].op === "ins") {
+            pairs.push({
+                saved: savedContent((run[0] as Extract<Edit, { op: "del" }>).saved),
+                serial: stripEol((run[1] as Extract<Edit, { op: "ins" }>).serial.text),
+            });
+        }
+    }
+    return pairs;
 }
 
 /** Build protected regions from a baseline edit script. */
@@ -758,6 +855,7 @@ export function applyMinimalChanges(
                 edit.saved.text,
                 next.serial.text,
                 edit.saved.lineIdx !== lastSavedIdx,
+                protection?.baselineFacts ?? null,
             );
             // Everything downstream must see the line actually written, not
             // the raw serializer line: gapBefore's structure predicates reason

@@ -8,7 +8,7 @@
  * break (formatters then collapse the "paragraphs" into one line).
  */
 import { describe, it, expect } from "vitest";
-import { applyMinimalChanges } from "../utils/minimalDiff";
+import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 
 describe("applyMinimalChanges — paragraph separators (the Enter bug)", () => {
     it("appending a new paragraph should insert its blank separator", () => {
@@ -534,5 +534,160 @@ describe("applyMinimalChanges — construct classification on CRLF files (MAR-22
         const serialized = "alpha\n\n---\n\nomega EDITED\n";
 
         expect(applyMinimalChanges(saved, serialized)).toBe("alpha\n\n- - -\n\nomega EDITED\n");
+    });
+});
+
+describe("applyMinimalChanges — outlines that mix indent units (MAR-222)", () => {
+    // `\t` normalizes to two spaces, which is exactly the serializer's indent
+    // for one list level, so a plain tab keys EQUAL and its line is an
+    // edit-proof `keep`. `\t   ` normalizes to five columns against the
+    // serializer's four, so it keys unequal and is held only by a round-trip
+    // protection region — and editing the construct is precisely what releases
+    // protection. The edited line alone then came back with the serializer's
+    // indent, under a parent still holding a tab, and stopped being its child.
+    //
+    // Every BASELINE string below was captured from the production serializer
+    // rather than imagined. That capture is the only thing making them real:
+    // `computeRoundTripProtection` returns non-null for a WRONG baseline too,
+    // so a non-null assertion is not evidence of anything here. The tests that
+    // would keep passing with `protection = null` (the two guards) are marked
+    // as such. mixedIndentOutline.test.ts is the end-to-end pin and derives its
+    // baseline from the live editor, so it cannot drift at all.
+    const SAVED = "- a\n\t- b\n\t   - c\n";
+    const BASELINE = "- a\n  - b\n    - c\n";
+
+    it("editing the deepest line of a mixed-unit outline should keep its own indent", () => {
+        const protection = computeRoundTripProtection(SAVED, BASELINE);
+        expect(protection).not.toBeNull();
+
+        expect(applyMinimalChanges(SAVED, "- a\n  - b\n    - cQ\n", protection)).toBe(
+            "- a\n\t- b\n\t   - cQ\n",
+        );
+    });
+
+    it("a SECOND edit to that line should keep the indent too", () => {
+        // Protection is computed once at load while the saved text moves on
+        // after every save, so anything the merge learns from the baseline has
+        // to survive the saved bytes drifting out from under it. Keying what
+        // the file taught by INDENT rather than by line content is what makes
+        // that true — the line's text has changed here, its indent has not.
+        const protection = computeRoundTripProtection(SAVED, BASELINE);
+        const once = applyMinimalChanges(SAVED, "- a\n  - b\n    - cQ\n", protection);
+
+        expect(applyMinimalChanges(once, "- a\n  - b\n    - cQQ\n", protection)).toBe(
+            "- a\n\t- b\n\t   - cQQ\n",
+        );
+    });
+
+    it("outdenting that line should still register as a real edit", () => {
+        // A guard, not a fix pin: this also passes with no protection at all,
+        // because key equality declines here too.
+        const protection = computeRoundTripProtection(SAVED, BASELINE);
+
+        expect(applyMinimalChanges(SAVED, "- a\n  - b\n  - cQ\n", protection)).toBe(
+            "- a\n\t- b\n  - cQ\n",
+        );
+    });
+
+    it("indenting that line deeper should still register as a real edit", () => {
+        // Also a guard that passes without protection — see the test above.
+        const protection = computeRoundTripProtection(SAVED, BASELINE);
+
+        expect(applyMinimalChanges(SAVED, "- a\n  - b\n      - cQ\n", protection)).toBe(
+            "- a\n\t- b\n      - cQ\n",
+        );
+    });
+
+    it("an ambiguous indent should fall back to key equality while an unambiguous one is carried", () => {
+        // A tab means one list level in the outline and a literal tab inside a
+        // top-level fence, so `\t` has no single canonical rendering in this
+        // file and is dropped rather than guessed. The outline must still
+        // survive on the older key-equality rule (MAR-213), and `\t   `, which
+        // IS unambiguous, must still be carried.
+        const saved = "- alpha\n\t- beta\n\t   - gamma\n\n```sh\n\techo hi\n```\n";
+        const baseline = "- alpha\n  - beta\n    - gamma\n\n```sh\n\techo hi\n```\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+        expect(protection).not.toBeNull();
+
+        expect(
+            applyMinimalChanges(saved, "- alpha\n  - betaQ\n    - gamma\n\n```sh\n\techo hi\n```\n", protection),
+        ).toBe("- alpha\n\t- betaQ\n\t   - gamma\n\n```sh\n\techo hi\n```\n");
+        expect(
+            applyMinimalChanges(saved, "- alpha\n  - beta\n    - gammaQ\n\n```sh\n\techo hi\n```\n", protection),
+        ).toBe("- alpha\n\t- beta\n\t   - gammaQ\n\n```sh\n\techo hi\n```\n");
+    });
+
+    it("an indent the file renders two ways should be dropped, not guessed", () => {
+        // `\t   ` is a level-2 bullet child in the first outline (the
+        // serializer renders it as four spaces) and a level-1 child of a
+        // five-column `100.` marker in the second (five spaces). One source
+        // indent, two canonical renderings, so the file has NOT taught a rule
+        // and the fact is dropped — the edit falls back to key equality, which
+        // declines, and the serializer's indent wins.
+        //
+        // This is the test that discriminates the ambiguity drop: keeping the
+        // FIRST rendering instead of dropping would carry `\t   ` here, and
+        // every other test in this file passes either way.
+        const saved = "- a\n\t- b\n\t   - c\n\n100. one\n\t   - child\n";
+        const baseline = "- a\n  - b\n    - c\n\n100. one\n     - child\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+
+        expect(
+            applyMinimalChanges(saved, "- a\n  - b\n    - cQ\n\n100. one\n     - child\n", protection),
+        ).toBe("- a\n\t- b\n    - cQ\n\n100. one\n\t   - child\n");
+    });
+
+    // ── The facts are distilled once, at load; the saved text is not ────────
+    //
+    // Both of these are documents the baseline never saw, and both were REAL
+    // regressions introduced by the first cut of MAR-222 (found by review,
+    // reproduced, fixed). They are the reason rule 2 may only grant a carry and
+    // only on list-marker lines — see carrySavedIndent.
+
+    it("a fact learned from an unrelated construct should not disable the tab carry", () => {
+        // Loaded as an ORDERED list, whose wider marker teaches `\t` -> three
+        // spaces. The user then appends a BULLET outline, where a tab means two
+        // spaces instead. Editing inside that outline must still keep its tab:
+        // writing the serializer's two spaces while the untouched grandchild
+        // keeps `\t\t` lands the grandchild 4+ columns in, where it stops being
+        // a list item and reparses as indented code — the MAR-222 damage
+        // itself.
+        const protection = computeRoundTripProtection("1. one\n\t- child\n", "1. one\n   - child\n");
+
+        expect(
+            applyMinimalChanges(
+                "1. one\n\t- child\n\n- a\n\t- b\n\t\t- c\n",
+                "1. one\n   - child\n\n- a\n  - bQ\n    - c\n",
+                protection,
+            ),
+        ).toBe("1. one\n\t- child\n\n- a\n\t- bQ\n\t\t- c\n");
+    });
+
+    it("an outline's fact should not speak for a fence line added after load", () => {
+        // The loaded outline teaches `\t   ` -> four spaces. The user then adds
+        // a fenced block containing a `\t   `-indented line and retypes it,
+        // changing the indent AND the text. Fence content is verbatim user
+        // bytes (MAR-161): the indent change is a real edit and must land.
+        const protection = computeRoundTripProtection(SAVED, BASELINE);
+
+        expect(
+            applyMinimalChanges(
+                "- a\n\t- b\n\t   - c\n\n```sh\n\t   echo hi\n```\n",
+                "- a\n  - b\n    - c\n\n```sh\n    echo bye\n```\n",
+                protection,
+            ),
+        ).toBe("- a\n\t- b\n\t   - c\n\n```sh\n    echo bye\n```\n");
+    });
+
+    it("a whitespace-only tab→space edit inside a fence should still register as an edit", () => {
+        // The gate that outranks both rules: when the indent is the ONLY
+        // difference, the indent IS the edit (MAR-161).
+        const saved = "- alpha\n\t- beta\n\t   - gamma\n\n```sh\n\techo hi\n```\n";
+        const baseline = "- alpha\n  - beta\n    - gamma\n\n```sh\n\techo hi\n```\n";
+        const protection = computeRoundTripProtection(saved, baseline);
+
+        expect(
+            applyMinimalChanges(saved, "- alpha\n  - beta\n    - gamma\n\n```sh\n    echo hi\n```\n", protection),
+        ).toBe("- alpha\n\t- beta\n\t   - gamma\n\n```sh\n    echo hi\n```\n");
     });
 });
