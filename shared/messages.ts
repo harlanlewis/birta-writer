@@ -5,6 +5,7 @@
  */
 
 import type { EditorCommandId } from "./editorCommands";
+import type { EditorSelectionContext } from "./agentContext";
 import type { ContentWidthMode } from "./contentWidth";
 import type { BlockHandlesMode } from "./blockHandles";
 import type { FoldingControlsMode } from "./foldingControls";
@@ -312,7 +313,15 @@ export type ToExtensionMessage =
     // (prefix stripped), so the @vscode/test-electron suite can read real launch
     // timings from a live VS Code webview and validate the headless harness
     // against reality (MAR-191). `id` correlates the request. Never used in production.
-    | { type: "__perfMarks"; id: string; marks: Record<string, number> };
+    | { type: "__perfMarks"; id: string; marks: Record<string, number> }
+    // Reply to `requestEditorContext`: the live file selection, mapped to
+    // document coordinates, so a coding-agent bridge can read what the user has
+    // open/selected in the WYSIWYG editor (which vscode.window.activeTextEditor
+    // cannot see). Pull-only — computed on request, never on the editor's own
+    // selection path — so the feature costs the editor nothing until an agent
+    // asks. `context` is null when no position can be mapped. See
+    // shared/agentContext.ts and src/agentBridge/.
+    | { type: "editorContextResult"; id: string; context: EditorSelectionContext | null };
 
 /**
  * Extension → WebView messages.
@@ -433,6 +442,11 @@ export type ToWebviewMessage =
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).
     | { type: "editorCommand"; command: EditorCommandId; args?: unknown }
+    // A coding-agent bridge asked for the live file selection (src/agentBridge/).
+    // The webview computes it from the current editor state and replies with
+    // `editorContextResult` correlated by `id`. Read-only — never mutates the
+    // document and never runs unless an agent requests it.
+    | { type: "requestEditorContext"; id: string }
     // Disk-drift state for this document: "conflict" while the file on disk has
     // changed since the editor last agreed with it AND the editor has unsaved
     // edits (the toolbar shows a quiet advisory badge — a manual save would hit

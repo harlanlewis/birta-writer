@@ -70,6 +70,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Crashes surface instead of going silent** — if the editor's rendering layer hits an unexpected script error, VS Code now shows an error notification (deduplicated, capped per session) rather than the editor quietly stopping; your document and its native save path are unaffected either way.
 - **Restore Previous Content** — a last-resort recovery command. If a single editor update ever removes a large share of a document's lines (a mass delete, or an editor defect slipping past the other safeguards), the extension quietly keeps the prior text in memory; **Birta Writer: Restore Previous Content** swaps it back — running it again swaps back the other way. The kept text survives closing the editor tab (not a VS Code restart), and nothing is written anywhere or sent off the machine. VS Code undo and hot exit remain the primary recovery paths.
 
+**Coding-agent integration**
+
+- **Share your file and selection with AI coding agents** — a coding agent (Copilot, Cursor, the Claude/Codex sidebars, and others) normally can't see which file you have open or what you've selected while you're in the WYSIWYG editor, because VS Code hides a custom editor from its active-editor API. Three ways to close that gap, so you stop hand-directing the agent to "look at lines 12–20 of note.md":
+  - **Copy Reference for AI Agent** / **Copy Selection + Reference for AI Agent** (command palette, while a Birta editor is active) put a precise `path.md#L12-L20` reference — or the reference plus the selected text — on your clipboard, ready to paste into any agent's chat. Works with every agent.
+  - **A Language Model Tool** (`#birtaSelection`) lets Copilot agent mode (and any tool-using agent) pull your current file, caret, and selection on demand — no copy-paste. Requires VS Code 1.95+.
+  - **A public extension API** (`getActiveEditorContext()`, returned from the extension's `activate()`) lets any cooperating extension read the same live file + selection.
+- **Minimum VS Code is now 1.95** (was 1.80), required by the Language Model Tool integration above.
+
 **Platform**
 
 - **Remote workspaces** — works in Remote-SSH, WSL, and Codespaces.

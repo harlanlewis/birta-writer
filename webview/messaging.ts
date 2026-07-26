@@ -52,6 +52,18 @@ export function notifyPerfMarks(id: string, marks: Record<string, number>): void
     vscode.postMessage({ type: "__perfMarks", id, marks });
 }
 
+/**
+ * Reply to `requestEditorContext` with the live file selection so a coding-agent
+ * bridge (src/agentBridge/) can read what the user has open/selected. `context`
+ * is null when no position can be mapped. Pull-only — see webview/agentContext.ts.
+ */
+export function notifyEditorContextResult(
+    id: string,
+    context: import("../shared/agentContext").EditorSelectionContext | null,
+): void {
+    vscode.postMessage({ type: "editorContextResult", id, context });
+}
+
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }

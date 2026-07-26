@@ -10,7 +10,7 @@
     },
     "license": "FSL-1.1-ALv2",
     "engines": {
-        "vscode": "^1.80.0"
+        "vscode": "^1.95.0"
     },
     "packageManager": "pnpm@10.6.1",
     "extensionKind": [
@@ -55,12 +55,38 @@
                 "priority": "option"
             }
         ],
+        "languageModelTools": [
+            {
+                "name": "birta_getEditorContext",
+                "displayName": "Birta: active markdown selection",
+                "modelDescription": "Returns the file path, caret position, and selected text of the document the user currently has open in the Birta Writer markdown editor. Use this whenever the user refers to their current file, what they have open, or their selection in the markdown editor: VS Code's built-in active-editor APIs cannot see Birta's WYSIWYG editor, so this tool is the only way to read that context.",
+                "toolReferenceName": "birtaSelection",
+                "canBeReferencedInPrompt": true,
+                "icon": "$(edit)",
+                "tags": [
+                    "birta",
+                    "markdown",
+                    "editor",
+                    "selection"
+                ]
+            }
+        ],
         "commands": [
             {
                 "command": "birta.switchToTextEditor",
                 "title": "%command.switchToTextEditor.title%",
                 "category": "Birta Writer",
                 "icon": "$(eye-closed)"
+            },
+            {
+                "command": "birta.copyAgentReference",
+                "title": "%command.copyAgentReference.title%",
+                "category": "Birta Writer"
+            },
+            {
+                "command": "birta.copyAgentContext",
+                "title": "%command.copyAgentContext.title%",
+                "category": "Birta Writer"
             },
             {
                 "command": "birta.switchToPreview",
@@ -749,6 +775,14 @@
                 }
             ],
             "commandPalette": [
+                {
+                    "command": "birta.copyAgentReference",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
+                {
+                    "command": "birta.copyAgentContext",
+                    "when": "activeCustomEditorId == 'birta.editor'"
+                },
                 {
                     "command": "birta.toggleProofreading",
                     "when": "activeCustomEditorId == 'birta.editor'"

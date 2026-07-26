@@ -1,5 +1,7 @@
 {
   "command.switchToTextEditor.title": "Edit Raw Markdown",
+  "command.copyAgentReference.title": "Copy Reference for AI Agent",
+  "command.copyAgentContext.title": "Copy Selection + Reference for AI Agent",
   "command.switchToPreview.title": "Edit Rendered Markdown",
   "config.codeBlockMaxHeight.description": "Maximum display height of code blocks in pixels. A scrollbar appears when content exceeds this height.",
   "config.codeBlockAutoConvert.description": "Automatically convert supported code blocks, such as Mermaid, to a rich preview in the WYSIWYG editor.",

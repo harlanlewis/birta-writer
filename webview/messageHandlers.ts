@@ -24,7 +24,8 @@ import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor"
 import { regateCalcCues, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
-import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks } from "./messaging";
+import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks, notifyEditorContextResult } from "./messaging";
+import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
 import { runEditorCommand } from "./editorCommands";
@@ -106,6 +107,8 @@ export interface EditorActions {
     scrollToDocumentLine: (line: number) => void;
     /** The source position (document line, optional column) a mode switch carries out. */
     getSwitchTarget: () => { line: number; column?: number } | undefined;
+    /** The live selection context for a coding-agent bridge pull, or null when unmappable. */
+    getSelectionContext: () => EditorSelectionContext | null;
     /** Record how many source lines the frontmatter occupies (MAR-23). */
     setLineOffset: (offset: number) => void;
     initEditor: (container: HTMLElement, markdown: string) => Promise<void>;
@@ -140,7 +143,7 @@ export function createMessageHandlers(
 ): { [K in ToWebviewMessage["type"]]?: Handler<K> } {
     const { state, actions, topbarTb } = deps;
     const { getEditor, setEditor, setLineMap, getMarkdownSource, setMarkdownSource } = state;
-    const { placeCaretAtLine, scrollToDocumentLine, getSwitchTarget, setLineOffset, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
+    const { placeCaretAtLine, scrollToDocumentLine, getSwitchTarget, getSelectionContext, setLineOffset, initEditor, retryScroll, getEditorView, refreshToc, setTocPosition, setTocVisibility, setTocWidth, setNotesMarkers, setReviewGroupByType } = actions;
 
     /**
      * Rebuild the embed decorations after a gate flip. A no-op before the editor
@@ -208,6 +211,13 @@ export function createMessageHandlers(
         },
         requestSwitchToTextEditor() {
             notifySwitchToTextEditor(getSwitchTarget());
+        },
+        requestEditorContext(msg) {
+            // A coding-agent bridge (src/agentBridge/) asked for the live file
+            // selection. Compute it from the current editor state and reply. This
+            // is the ONLY driver of the mapping — nothing runs on the editor's own
+            // selection-change path — so the editor pays nothing until an agent asks.
+            notifyEditorContextResult(msg.id, getSelectionContext());
         },
         scrollToLine(msg) {
             let scrollAttempts = 0;

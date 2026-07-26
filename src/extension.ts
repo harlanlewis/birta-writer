@@ -8,6 +8,7 @@ import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
 import { normalizeCopyFormat } from "../shared/config";
 import { WordCountStatusBar } from "./wordCountStatus";
+import { registerAgentBridge, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
 import {
     getBirtaConfiguration,
@@ -101,6 +102,13 @@ export function activate(context: vscode.ExtensionContext) {
     const wordCountStatusBar = new WordCountStatusBar();
     context.subscriptions.push(wordCountStatusBar);
     MarkdownEditorProvider.current?.setWordCountView(wordCountStatusBar);
+
+    // Coding-agent bridge: expose the WYSIWYG editor's live file + selection to
+    // agents that read vscode.window.activeTextEditor (undefined for a custom
+    // editor). Returns the extension's public API. See src/agentBridge/.
+    const agentApi: BirtaApi = registerAgentBridge(context, () =>
+        MarkdownEditorProvider.current?.getActiveEditorContext() ?? Promise.resolve(null),
+    );
 
     // Sync editorAssociations once on activation
     const initialMode = readBirtaSetting("defaultMode");
@@ -793,6 +801,9 @@ export function activate(context: vscode.ExtensionContext) {
             },
         ),
     );
+
+    // The public API other extensions consume via `await ext.activate()`.
+    return agentApi;
 }
 
 export function deactivate() {}

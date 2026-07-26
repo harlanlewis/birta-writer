@@ -24,6 +24,7 @@ function stubDeps(): MessageHandlerDeps {
             placeCaretAtLine: () => {},
             scrollToDocumentLine: () => {},
             getSwitchTarget: () => undefined,
+            getSelectionContext: () => null,
             setLineOffset: () => {},
             initEditor: async () => {},
             retryScroll: () => {},

@@ -33,6 +33,7 @@ import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
 import type { ToExtensionMessage, ToWebviewMessage, TextCount } from "../shared/messages";
+import type { EditorSelectionContext } from "../shared/agentContext";
 import type { WordCountView } from "./wordCountStatus";
 import type { EditorCommandId } from "../shared/editorCommands";
 import { normalizeBlockHandlesMode } from "../shared/blockHandles";
@@ -250,7 +251,21 @@ export class MarkdownEditorProvider
         { doc: TextCount; selection: TextCount | null }
     >();
 
+    // Coding-agent bridge (src/agentBridge/): the document behind the active
+    // panel, and the in-flight requestEditorContext correlations. Tracked
+    // alongside `_activePanel` so getActiveEditorContext can name the file and
+    // route the pull to the right webview.
+    private _activeDocument: vscode.TextDocument | null = null;
+    private _contextReqSeq = 0;
+    private readonly _pendingContext = new Map<
+        string,
+        (context: EditorSelectionContext | null) => void
+    >();
+
     public static current: MarkdownEditorProvider | null = null;
+
+    /** How long getActiveEditorContext waits for the webview's reply before null. */
+    private static readonly CONTEXT_REQUEST_TIMEOUT_MS = 1000;
 
     /** Inject the status bar word-count view (called once from extension.ts). */
     public setWordCountView(view: WordCountView): void {
@@ -290,6 +305,55 @@ export class MarkdownEditorProvider
         } else {
             this._wordCountView?.hide();
         }
+    }
+
+    /**
+     * The file + live selection currently active in a Birta editor, or null when
+     * no Birta editor is active or the webview did not answer in time.
+     *
+     * This is the neutral source the coding-agent bridge (src/agentBridge/) reads
+     * so agents that rely on vscode.window.activeTextEditor — undefined for a
+     * custom editor (microsoft/vscode#102110) — can still see what the user has
+     * open/selected. Pull-only: it asks the active webview on demand, so the
+     * editor's selection path is never touched until an agent requests context.
+     */
+    public async getActiveEditorContext(): Promise<
+        { uri: vscode.Uri; context: EditorSelectionContext } | null
+    > {
+        const panel = this._activePanel;
+        const document = this._activeDocument;
+        if (!panel || !document) { return null; }
+        const context = await this._requestEditorContext(panel);
+        return context ? { uri: document.uri, context } : null;
+    }
+
+    /**
+     * Post a `requestEditorContext` to one webview and resolve with its reply,
+     * or null if the panel is disposed or does not answer within the timeout (a
+     * wedged webview degrades to "no context" rather than hanging the caller).
+     */
+    private _requestEditorContext(
+        panel: vscode.WebviewPanel,
+    ): Promise<EditorSelectionContext | null> {
+        const id = `ctx-${++this._contextReqSeq}`;
+        return new Promise((resolve) => {
+            const finish = (context: EditorSelectionContext | null): void => {
+                clearTimeout(timer);
+                this._pendingContext.delete(id);
+                resolve(context);
+            };
+            const timer = setTimeout(
+                () => finish(null),
+                MarkdownEditorProvider.CONTEXT_REQUEST_TIMEOUT_MS,
+            );
+            this._pendingContext.set(id, finish);
+            try {
+                postToWebview(panel.webview, { type: "requestEditorContext", id });
+            } catch {
+                // Disposed panel: no reply will ever arrive.
+                finish(null);
+            }
+        });
     }
 
     /**
@@ -546,6 +610,7 @@ export class MarkdownEditorProvider
         this._webviewPanels.set(uriKey, webviewPanel);
         // A freshly resolved editor is the active one.
         this._activePanel = webviewPanel;
+        this._activeDocument = document;
         // Show cached counts if we've seen this document before, else clear any
         // stale readout from the previously active editor until the webview
         // reports (MAR-29).
@@ -557,7 +622,7 @@ export class MarkdownEditorProvider
             // (its status bar figures no longer describe anything) (MAR-29).
             this._wordCounts.delete(uriKey);
             if (this._activePanel === webviewPanel) { this._wordCountView?.hide(); }
-            if (this._activePanel === webviewPanel) { this._activePanel = null; }
+            if (this._activePanel === webviewPanel) { this._activePanel = null; this._activeDocument = null; }
             this._pinnedDocuments.delete(uriKey);
             this._imageUriMaps.delete(uriKey);
             this._initializedPanels.delete(uriKey);
@@ -607,12 +672,14 @@ export class MarkdownEditorProvider
                 // dispose handler's guard above.
                 if (this._activePanel === webviewPanel) {
                     this._activePanel = null;
+                    this._activeDocument = null;
                     this._wordCountView?.hide();
                 }
                 return;
             }
             // Track the active panel for command-palette / context-menu routing.
             this._activePanel = p;
+            this._activeDocument = document;
             // Restore this document's cached counts into the status bar (MAR-29).
             this._renderWordCount(uriKey);
             if (!this._initializedPanels.has(uriKey)) { return; }
@@ -1104,6 +1171,11 @@ export class MarkdownEditorProvider
                         if (this._activePanel === webviewPanel) {
                             this._wordCountView?.update(message.doc, message.selection);
                         }
+                        break;
+                    case "editorContextResult":
+                        // Reply to a getActiveEditorContext pull (src/agentBridge/).
+                        // No-op if the request already timed out and was dropped.
+                        this._pendingContext.get(message.id)?.(message.context);
                         break;
                 }
             },

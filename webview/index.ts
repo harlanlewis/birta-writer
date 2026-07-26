@@ -51,6 +51,8 @@ import {
     blockIndexForSourceLine,
     sourceLineForBlock,
 } from "./utils/sourceCaret";
+import { buildSelectionContext } from "./agentContext";
+import type { EditorSelectionContext } from "../shared/agentContext";
 import { isTaskCheckboxClick } from "./utils/taskCheckbox";
 import { applyTaskToggle } from "./editing/checklistSink";
 
@@ -261,6 +263,17 @@ function placeCaretAtLine(documentLine: number, column?: number): void {
  * it is the only reading that can carry a column. Once they have scrolled away
  * from it, "take me to what I am looking at" is the honest answer instead.
  */
+/**
+ * The live selection context for a coding-agent bridge pull (src/agentBridge/),
+ * or null when no editor exists / the position can't be mapped. Called only on
+ * an agent's request — never on the editor's own selection path.
+ */
+function getSelectionContext(): EditorSelectionContext | null {
+    const view = getEditorView();
+    if (!view) { return null; }
+    return buildSelectionContext(view, currentLineMap, getMarkdownSource().split("\n"), currentLineOffset);
+}
+
 function getSwitchTarget(): { line: number; column?: number } | undefined {
     const view = getEditorView();
     if (!view) { return undefined; }
@@ -712,6 +725,7 @@ const handlers = createMessageHandlers({
             if (view) { scrollToSourceLine(view, currentLineMap, toBodyLine(line)); }
         },
         getSwitchTarget,
+        getSelectionContext,
         setLineOffset: (offset) => {
             currentLineOffset = offset;
         },
