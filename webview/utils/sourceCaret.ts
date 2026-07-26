@@ -130,6 +130,37 @@ function docOffsetForText(node: Node, from: number, textOffset: number): number 
 /** How many source lines past the contiguous position an anchor may sit. */
 const ANCHOR_LOOKAHEAD = 8;
 
+/** Letters and digits only — markup, punctuation, and spacing stripped. */
+const normalize = (s: string): string => s.replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** Shortest normalized probe treated as real evidence for a fuzzy match. */
+const MIN_PROBE = 12;
+/** Longest normalized probe compared (a soft-wrapped line carries only a prefix). */
+const MAX_PROBE = 24;
+
+/**
+ * Does this source line render as `text` (or start the block that does)?
+ *
+ * Exact suffix first — the renderer only drops a leading marker — with
+ * trailing whitespace ignored on both sides (a trailing space in the source is
+ * invisible in the rendered text but used to fail the match). When inline
+ * markup makes rendered and source text diverge (a link drops its URL,
+ * emphasis its asterisks), fall back to letters-and-digits-only comparison:
+ * the line matches when its normalized text contains the anchor's normalized
+ * prefix. A probe shorter than MIN_PROBE once normalized gets no fuzzy match —
+ * too little evidence to risk pairing the wrong block.
+ */
+function lineMatchesAnchor(sourceLine: string, text: string): boolean {
+    if (sourceLine.trimEnd().endsWith(text.trimEnd())) { return true; }
+    const anchor = normalize(text);
+    if (anchor.length < MIN_PROBE) { return false; }
+    const line = normalize(sourceLine);
+    // Two probe lengths: the long one is strong evidence; the short one
+    // rescues lines where markup the renderer dropped (a link's URL) sits
+    // inside the long window and breaks adjacency.
+    return line.includes(anchor.slice(0, MAX_PROBE)) || line.includes(anchor.slice(0, MIN_PROBE));
+}
+
 /**
  * The source line of each anchor, resolved against the source text.
  *
@@ -150,7 +181,8 @@ function anchorLines(anchors: LineAnchor[], blockLine: number, sourceLines: stri
         if (a.text) {
             const limit = Math.min(cursor + ANCHOR_LOOKAHEAD, sourceLines.length);
             for (let l = cursor; l <= limit; l++) {
-                if (sourceLines[l - 1]?.endsWith(a.text)) { line = l; break; }
+                const candidate = sourceLines[l - 1];
+                if (candidate !== undefined && lineMatchesAnchor(candidate, a.text)) { line = l; break; }
             }
         }
         lines.push(line);
@@ -172,24 +204,25 @@ function anchorsFit(anchors: LineAnchor[], blockLine: number, sourceLines: strin
     const probe = anchors.findIndex((a) => a.text);
     if (probe < 0) { return true; }
     const sourceLine = sourceLines[blockLine + probe - 1];
-    return sourceLine !== undefined && sourceLine.endsWith(anchors[probe].text!);
+    return sourceLine !== undefined && lineMatchesAnchor(sourceLine, anchors[probe].text!);
 }
 
-/** Minimum reconciliation reach, kept as a floor for maps that undercount. */
-const RECONCILE_FLOOR = 6;
-
 /**
- * How far to look for the real pairing once the nominal one is disproved.
+ * How far to look for the real pairing once the nominal one is disproved: the
+ * whole map.
  *
  * Drift comes from nodes that span several source blocks — a loose list is ONE
- * node but one map entry per item — so at any index it can never exceed the
- * total surplus of map entries over document nodes. A fixed span silently gave
- * up on documents whose surplus passed it (an 8-item loose list drifts
- * everything after it by 7), reporting the nominal (wrong) line as if it were
- * fine.
+ * node but one map entry per item — and it is NOT bounded by the map's net
+ * surplus of entries over nodes, because the map can also undercount (a block
+ * the map skips but the editor renders shifts the ledger the other way; a real
+ * document showed local drift 12 against a net surplus of 10). A fixed span
+ * silently gave up and reported the nominal (wrong) line as if it were fine.
+ * These paths run only on demand (mode switch, scroll-to-line, an agent pull),
+ * so scanning every candidate is cheap; candidates stay ordered nearest-first,
+ * which keeps the conservative preference for the closest fit.
  */
 function reconcileSpan(doc: Node, lineMap: number[]): number {
-    return Math.max(RECONCILE_FLOOR, Math.abs(lineMap.length - doc.childCount));
+    return Math.max(lineMap.length, doc.childCount);
 }
 
 /**

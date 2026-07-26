@@ -232,7 +232,7 @@ describe("reconciling the line map against the document", () => {
 
     // A long loose list drifts everything after it by (items − 1) — here 7,
     // one past the old fixed reconciliation span, which silently returned the
-    // nominal (wrong) pairing. The span must scale with the map's surplus.
+    // nominal (wrong) pairing. The search must reach the whole map.
     const items = ["one", "two", "three", "four", "five", "six", "seven", "eight"];
     const longSource = `${items.map((t) => `- ${t}`).join("\n\n")}\n\nAfter the list.\n`;
     const longDoc = () => doc(list(...items), p("After the list."));
@@ -295,6 +295,36 @@ describe("reconciling the line map against the document", () => {
         const pos = posIn(d, "beta", 2);
         const caret = sourceCaretAt(d, lineMap, lines, pos);
         expect(docPosForSourceCaret(d, lineMap, lines, caret!)).toBe(pos);
+    });
+
+    it("a source line with a trailing space should still verify its block", () => {
+        // The invisible trailing space used to fail the exact suffix match and
+        // derail reconciliation for the whole neighbourhood.
+        const source = "- alpha\n\n- beta\n\nGamma delta. \n";
+        const d = doc(list("alpha", "beta"), p("Gamma delta. "));
+        expect(sourceLineForBlock(d, computeLineMap(source), source.split("\n"), 1)).toBe(5);
+    });
+
+    it("a block whose first line carries inline markup should still verify by its words", () => {
+        // Rendered text drops a link's URL and emphasis asterisks, so the exact
+        // suffix can never match — the normalized letters+digits prefix must.
+        const source =
+            "- one\n\n- two\n\n- three\n\n- four\n\n" +
+            "- Data fidelity: see [FOAM](https://example.com) and *tolerance* rules.\n" +
+            '- As Teller put it, *"magic is more time than expected."* Powerful.\n';
+        const d = doc(
+            list("one", "two", "three", "four"),
+            list(
+                "Data fidelity: see FOAM and tolerance rules.",
+                'As Teller put it, "magic is more time than expected." Powerful.',
+            ),
+        );
+        // The marked-up tight list starts at source line 9…
+        expect(sourceLineForBlock(d, computeLineMap(source), source.split("\n"), 1)).toBe(9);
+        // …and a caret in its second item reports line 10 (column degrades to
+        // 0 as documented — the rendered text is not a suffix of the source).
+        expect(sourceCaretAt(d, computeLineMap(source), source.split("\n"), posIn(d, 'As Teller put it, "magic is more time than expected." Powerful.', 3)))
+            .toEqual({ line: 10, column: 0 });
     });
 
     it("a line drifted past the old fixed span should still resolve to its real block", () => {

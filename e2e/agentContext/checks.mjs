@@ -138,7 +138,39 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(sel),
     );
 
-    // ── 5. A real selection carries its range and plain text ──
+    // ── 5. A paragraph whose SOURCE line ends with a trailing space ──
+    // "Trailing space here. " is document line 33; the invisible trailing
+    // space used to fail the exact suffix match and derail reconciliation.
+    await caretInto(page, ".ProseMirror > p", 3, { nth: 3 });
+    sel = (await requestContext(page))?.context?.selections?.[0];
+    check(
+        "a caret in a paragraph whose source line ends with a space reports its real line",
+        sel?.active?.line === 33,
+        JSON.stringify(sel),
+    );
+
+    // ── 6. A tight ordered list whose items carry inline markup, behind a
+    // cumulative drift of 8 map entries. Rendered text drops the link URL and
+    // the emphasis asterisks, so only the normalized (letters+digits) match
+    // can verify the pairing. "As Teller put it…" is document line 45.
+    await caretInto(page, ".ProseMirror ol li p", 3, { nth: 2 });
+    sel = (await requestContext(page))?.context?.selections?.[0];
+    check(
+        "a caret in a marked-up ordered-list item past two loose lists reports its real line",
+        sel?.active?.line === 45,
+        JSON.stringify(sel),
+    );
+
+    // ── 7. The paragraph after everything — maximum accumulated drift ──
+    await caretInto(page, ".ProseMirror > p", 2, { nth: 4 });
+    sel = (await requestContext(page))?.context?.selections?.[0];
+    check(
+        "a caret in the final paragraph reports its real line",
+        sel?.active?.line === 47,
+        JSON.stringify(sel),
+    );
+
+    // ── 8. A real selection carries its range and plain text ──
     await selectWithin(page, ".ProseMirror > p", 0, 5, { nth: 0 }); // "Intro"
     const ctx = (await requestContext(page))?.context;
     check("a selection is not empty", ctx?.isEmpty === false, JSON.stringify(ctx));
