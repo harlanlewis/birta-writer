@@ -420,9 +420,23 @@ the footprint gap Tauri closes).
 - **Code-sharing architecture** — the seam exists; draw the core boundary at the message
   protocol; keep the VS Code extension as *one of N hosts* and as the regression oracle
   (the fidelity corpus proves the core still works).
-- **Identity/auth** — today: zero, and that's a *stated value*. Anonymous/local-only must
+- **Identity/auth** — no *Birta* account, and that's a *stated value*. Anonymous/local-only must
   stay the default; a login wall contradicts the thesis. Bias to "no account, or account
-  for sync only."
+  for sync only." **Correction (2026-07-26): "today: zero" was true of shipped code and false of
+  directed work.** **MAR-198** (maintainer direction, 2026-07-23) specifies per-service third-party
+  auth — OAuth 2.0 + PKCE, VS Code's built-in GitHub auth provider, tokens in `SecretStorage`. That
+  is not an account *with Birta*, so the value survives intact; but this section reasoned from a
+  premise of zero auth, and two consequences follow that no section of this document covers:
+  - **The `HostAdapter` sketch in §2 and the taxonomy in §14 are missing a capability.** §2 lists
+    "a single network fetch (unfurl)" and nothing about **credential storage** or an **OAuth
+    callback route**. MAR-198's mechanisms — `SecretStorage` (Electron safeStorage),
+    `registerUriHandler` for `vscode://birtalabs.birta-writer/auth/…`, `vscode.authentication` — are
+    **Bucket-3, host-only**, with no analog on Tauri, Capacitor, or the web. Any surface bet
+    inherits that gap; a keychain and a callback-URL scheme per host are real work nobody has costed.
+  - **MAR-198's "no hosted auth broker" invariant is the same reasoning as this document's privacy
+    section**, arrived at independently — which is corroboration worth keeping, and a reason to
+    treat the connector work as a source for the persistence/privacy contract (MAR-226), not a
+    separate concern. See `STRATEGY.md` D10.
 - **Sync & storage** — local-first is the only on-brand posture. **They already built the
   hard half of conflict resolution**: minimal-diff + external-change detection + the
   "surface the collision, you pick the winner, never silently merge" philosophy is exactly

@@ -102,6 +102,12 @@ Two structural advantages Birta gets for free, that incumbents cannot easily cop
    "bring your own OpenAI/Anthropic key" model keeps Birta out of the data path and the billing path.
    Egress is then the user's explicit, per-key choice — consistent with `birta.network.enabled` shipping
    off. (This is a bridge, not the destination; the destination is on-device.)
+   **If it ever ships, reuse MAR-198's key handling rather than inventing a second one** (added
+   2026-07-26): the connector foundation already answers exactly this question — credentials in
+   `SecretStorage`, never `settings.json`, never settings-sync, never the webview; `application`
+   scope so a workspace cannot set them; disconnect deletes the secret; **no hosted auth broker**,
+   because a relay holding secrets would contradict "nothing leaves your machine." A second key
+   store would be a second thing to get wrong. See `STRATEGY.md` D10.
 
 ---
 

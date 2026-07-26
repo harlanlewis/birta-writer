@@ -71,9 +71,12 @@ The most important thing to understand is that this is **not a feature addition 
 what the app *is*.** Today Birta is trustworthy precisely because it is *passive* toward the outside
 world:
 
-- BENEFITS states, twice, that **"the editor never writes or reverts your document on its own."**
-  Its entire relationship to the outside is *detection*: it notices an external change (git, an
-  agent, cloud sync) and surfaces it for the user to resolve. It initiates nothing.
+- BENEFITS states that **"the editor never writes or reverts your document on its own"**
+  (`BENEFITS.md:201`), and `README.md` repeats the idea in different words ("the editor never
+  silently overwrites or merges"). *(Corrected 2026-07-26: an earlier draft said BENEFITS stated it
+  "twice." It states it once. The claim is real and load-bearing; the count was not.)*
+  The editor's entire relationship to the outside is *detection*: it notices an external change
+  (git, an agent, cloud sync) and surfaces it for the user to resolve. It initiates nothing.
 - README "Why I use it" already names **"cloud sync"** — but as something Birta *coexists with and
   reflects*, not something Birta *is*. The committed role is good-citizen-beside-Dropbox, not
   be-the-sync-engine.
@@ -201,11 +204,21 @@ never need to exist.
   Publish). Building it risks becoming the thing he's tired of. `POSITIONING.md` keeps this an open
   question on purpose; this doc must not quietly close it.
 - **The privacy contract cannot just absorb this.** Privacy is the deepest brand value (security +
-  health-tech background, "nothing leaves your machine," offline by default). The two current
+  health-tech background, "nothing leaves your machine," offline by default). The two *shipped*
   network exceptions are deliberately tiny — unfurl *reads* a title, embeds *render* a card;
   **neither uploads your content.** Publishing uploads the whole document: a new *class* of
   capability, categorically heavier than anything behind `birta.network.enabled` today. It likely
   needs its own consent architecture, not a third checkbox under the existing master switch.
+
+  **A rung this ladder was missing (added 2026-07-26):** between "reads a title" and "uploads your
+  document" sits **MAR-198** — maintainer-directed connector work in which outbound requests carry
+  *the user's third-party credentials* to per-provider APIs. It still never uploads document
+  content (render-only, by invariant), so the argument above holds — but it means the escalation is
+  three steps, not two, and, more usefully, that **the layered per-capability consent architecture
+  this section says publishing would need is already being designed** (master switch → embeds →
+  per-provider → per-service connect, each off by default, `application`-scoped so a workspace
+  cannot flip it). If the loop is ever built, extend that ladder rather than inventing one. See
+  `STRATEGY.md` D10 — no strategy document owns the integrations axis.
 - **Who is the user?** (MAR-225 §13's crux.) The maintainer uses Birta *because* it sits in VS Code
   beside git and agents — and he *already publishes* via git and existing pipes. A cloud publish
   loop may serve a *different* ICP than its creator. Name that user before building for them; a
