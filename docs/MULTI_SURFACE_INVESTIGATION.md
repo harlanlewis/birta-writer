@@ -12,7 +12,8 @@ green-light them.
 > **Later re-examination (2026-07-26):** this document's *prioritization* — desktop-first,
 > web-last, mobile essentially not considered — is deliberately re-opened by
 > [`docs/SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md), which adds three evidence streams this
-> investigation lacked: the standalone-writing-app **competitive landscape**
+> investigation lacked (and note the two documents prescribe **different next steps without either
+> naming the conflict** — reconciled in [`STRATEGY.md`](STRATEGY.md) §4): the standalone-writing-app **competitive landscape**
 > ([`docs/research/writing-app-landscape.md`](research/writing-app-landscape.md)), a **mobile/web
 > technical-feasibility** pass, and the **2026 AI opening** ([`docs/AI_ASSISTANCE.md`](AI_ASSISTANCE.md)).
 > Its finding: the market gap is *mobile-shaped*, not desktop-shaped. The **engineering** below (the
@@ -555,6 +556,11 @@ hold identically on every host before any host adds a host-specific feature.**
 
 ## 12. Open decisions for the maintainer
 
+> **Deduplicated into [`STRATEGY.md`](STRATEGY.md) §3 — work that register, not this list.** Decisions
+> 5 (cloud web), 6 (accounts/monetization) and 7 (identity sequencing) are restated almost verbatim in
+> `SURFACE_STRATEGY.md` §9; the ICP question this document raises in §13 is the crux three other
+> documents also raise. Kept here for context; strike from both places when resolved.
+
 1. **Factory vs. surfaces:** commit to "core-as-factory, apps are cheap" (recommended, per
    §0.5) vs. hand-porting each surface? Determines how much goes into core vs. host.
 2. **Cheap-reach rungs:** pursue Open-VSX/VS-Code-family + a vscode.dev web-extension build
@@ -862,14 +868,27 @@ downstream changes. Guard against over-planning a beautiful architecture on an u
   the full shell tax (raw editor, file browser, keybinding/settings engines, save model).
   There is no fleet of editors to amortize it against (§0.5c) — so the desktop app must be
   justified on its own merits (a real audience of "Birta without VS Code"), not as factory seed.
-- **The two hardest things are the two least designed:** the persistence/data-integrity
-  contract, and — now settled — *not* the "what varies across apps" question (answer: the
-  portfolio shares brand + tooling, not an editor; Writer's core is shared only across
-  Writer's own surfaces).
+- **The hardest thing is also the least designed: the persistence/data-integrity contract**
+  (MAR-226). The other candidate for that title — "what varies across apps" — is **now settled**:
+  the portfolio shares brand + tooling, not an editor, and Writer's core is shared only across
+  Writer's own surfaces (§0.5c). *(Rewritten 2026-07-26: the original sentence promised "the two
+  hardest things" and then withdrew one of them mid-clause, which read as self-contradictory.)*
 
 ### Go-forward (revised after the factory deflation)
+
+> **This ordering is contested and the conflict is not resolved here.**
+> [`SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md) §6 (written a day later, with market evidence this
+> document did not have) puts the **demand probe (MAR-234) first** — cheapest, no engineering, and
+> capable of killing the whole thesis before items 1–2 below are worth starting — then the
+> **mobile-typing probe (MAR-233)**. It also argues Capacitor-mobile could *replace* desktop-Tauri as
+> the extraction-validation host, which contradicts item 4. Both orderings now exist as `High` tickets.
+> The agreements and the genuine disagreement are laid out in [`STRATEGY.md`](STRATEGY.md) §4;
+> the choice of second surface is open decision **D3**. Read items 1–5 as this document's view, not
+> as the settled plan.
+
 1. **Design the persistence / save / external-change contract** — the riskiest seam and the
-   reason the product exists. This is the next deep-dive.
+   reason the product exists. This is the next deep-dive. *(Surface-agnostic: it pays off under
+   every branch of D3, which is why it is the least contested item here.)*
 2. **Run the save-capability probe** — validate the seam against the hardest capability, turn
    priors into measurements.
 3. **In parallel, Rung 0 free reach** (Open VSX + a vscode.dev web-extension scope) — reach +

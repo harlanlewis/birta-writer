@@ -2,6 +2,20 @@
 
 **Status:** strategic thinking / exploration. No implementation, nothing measured. Written 2026-07-26.
 
+**Tracking:** **MAR-234** (demand probe — §6 Probe 3), **MAR-233** (mobile-typing go/no-go — §6
+Probe 1), under the **MAR-225** epic. Rung-0 reach is MAR-228/229; the save probe is MAR-227.
+
+**Where this sits:** [`STRATEGY.md`](STRATEGY.md) indexes all six strategy documents. Read it for
+what is decided, what is open, and — importantly for this document — **the sequence conflict between
+§6 here and `MULTI_SURFACE_INVESTIGATION.md` §16, which neither document names** (`STRATEGY.md` §4).
+This document's §9 open-decision list is deduplicated into `STRATEGY.md` §3; work that register, not
+the four overlapping per-document lists.
+
+> **Scope gate this document does not close.** `docs/POSITIONING.md` holds anything beyond *a
+> document editor* as an "open question, not committed scope," and `docs/BENEFITS.md` scopes today's
+> product the same way. A mobile companion for ICP A/B is arguably still a document editor; a cloud
+> product is not obviously one. Neither reading is settled here — see `STRATEGY.md` D2/D5.
+
 > **This is broad, pre-commitment exploration.** The maintainer asked to think through a Birta mobile
 > app (or a web app to start) "in a very broad exploratory mode while we plan the future." Nothing here
 > is decided or queued. Its job is to *re-open* a question the earlier surface work had closed, with
@@ -272,13 +286,16 @@ first draft missed — is about demand, and it is the cheapest and most decisive
 Samsung keyboard, iOS autocorrect, a CJK IME, selection-drag — and verify the **bytes written back
 through the minimal-diff engine are correct.** This is the go/no-go gate for Option 2 (and for the whole
 "mobile is where the gap is" thesis). Everything else about mobile is known-solvable; *this* is the only
-part that can sink it. It should exist as a Linear issue under MAR-225 — it does not yet.
+part that can sink it. **Filed as MAR-233** under MAR-225. *(An earlier draft of this line said it did
+not exist as a Linear issue; it does — corrected 2026-07-26.)*
 
-**Probe 2 — the standalone save probe (already tracked: MAR-227).** Mount `dist/webview.js` in a bare
+**Probe 2 — the standalone save probe (tracked: MAR-227).** Mount `dist/webview.js` in a bare
 page with a stub `HostServices` implementing *one* hard capability — save — end to end. Validates the
-seam against real persistence for *any* non-VS-Code surface.
+seam against real persistence for *any* non-VS-Code surface. **This is the one probe the two surface
+documents share** — `MULTI_SURFACE_INVESTIGATION.md` §16 makes it *its* highest-value next act, and
+it pays off under every branch below.
 
-**Probe 3 — the demand probe (new; do this *first*, it's the cheapest).** Before either technical probe,
+**Probe 3 — the demand probe (tracked: MAR-234; do this *first*, it's the cheapest).** Before either technical probe,
 spend a week testing whether ICP A/B is real: talk to a dozen Obsidian/Logseq mobile users, or post the
 one-line concept ("a WYSIWYG editor that opens your existing `.md` vault on your phone and never
 corrupts a byte"), and watch for genuine pull — *and ask what they'd pay* (§8). If the desire isn't
@@ -383,6 +400,12 @@ license, and the surface choice.
 ---
 
 ## 9. Open decisions for the maintainer
+
+> **These are deduplicated into [`STRATEGY.md`](STRATEGY.md) §3 — work that register, not this list.**
+> Four documents each ended with an open-decisions section and they overlap heavily: the ICP question
+> (1/3 below) is also `MULTI_SURFACE_INVESTIGATION.md` §13 and `PUBLISH_LOOP.md` §8; pricing (8) is
+> also `MULTI_SURFACE` §12.6; the cloud gate (7) is also `MULTI_SURFACE` §12.5 and `PUBLISH_LOOP` §3.
+> Kept here for the argument's context; resolved decisions should be struck from *both* places.
 
 1. **Run the demand probe (Probe 3) first?** The null-hypothesis test the research skipped: is there real
    pull from ICP A/B, and would they pay? Cheapest and most decisive step; gates everything. (Strongly

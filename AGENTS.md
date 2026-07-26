@@ -168,9 +168,17 @@ Keeping the backlog honest is as important as filing it. Close the loop when wor
 - **Verify against the code before closing — not the CHANGELOG alone.** A feature can ship with a different implementation than the ticket described; confirm the actual behavior/settings/files exist in the working tree.
 - **The CHANGELOG and Linear are complementary, not a single source of truth.** The CHANGELOG records what *shipped* (including untracked work); Linear tracks *planned* work and bugs. When you ship a tracked feature, do both: close the issue **and** add the CHANGELOG entry. "Not in Linear" never means "not shipped."
 - **Sequencing signal**: the `phase-*` labels are the roadmap spine (`phase-0-fidelity` is existential — round-trip trust — and comes first; then `phase-1-performance` — speed the user can feel, reusing the slot vacated by `phase-1-vscode-parity` (retired, shipped in 0.2.3) — then `phase-2-syntax`, `phase-3-interaction`, `phase-4-differentiators`). Within a phase, order by `priority`.
+  - **`phase-5-surfaces` exists in Linear and is deliberately UNRANKED.** The multi-surface work (MAR-225 and its children) created the label; where it sits relative to phases 0–4 is a roadmap decision the owner has not made, so the "first High-or-Urgent down the spine" rule **cannot be evaluated for it**. Agents must not treat phase-5 as compelling until it is ranked, and must not silently rank it. Note the live consequence: several `High` phase-5 items are sitting unranked while the ranked spine has no High at all. Tracked as open decision **D8** in [`docs/STRATEGY.md`](docs/STRATEGY.md) and in MAR-141.
+  - **README's "Why this fork" 1–4 list is the founding rationale, not the live spine.** It still names VS Code parity as layer 2, which shipped in 0.2.3. When the two appear to disagree, the `phase-*` labels win.
 - **Periodically reconcile**: when asked what's next or to review the backlog, cross-check open issues against the CHANGELOG and git history, close anything already shipped, and re-scope tickets whose premise the code has outgrown.
 
 Project intent and ordering principles live in `README.md` ("Why this fork"); the brand brief and the Birta Writer naming decision are recorded in `docs/POSITIONING.md` (full candidate/rejection record in Linear MAR-134).
+
+### Strategy documents (exploration, not committed scope)
+
+Six documents explore where the project might go beyond today's VS Code extension. **Start with [`docs/STRATEGY.md`](docs/STRATEGY.md)** — it is the index: which document owns which question, what is actually decided (so it is not re-derived a third time), the deduplicated open-decision register, and the one live sequencing conflict. The others: [`MULTI_SURFACE_INVESTIGATION.md`](docs/MULTI_SURFACE_INVESTIGATION.md) (host-adapter engineering), [`SURFACE_STRATEGY.md`](docs/SURFACE_STRATEGY.md) (which surface, for whom), [`PUBLISH_LOOP.md`](docs/PUBLISH_LOOP.md) (local↔cloud document lifecycle), [`AI_ASSISTANCE.md`](docs/AI_ASSISTANCE.md) (the AI posture), [`ENGINE_AND_DIALECT_STRATEGY.md`](docs/ENGINE_AND_DIALECT_STRATEGY.md) (own vs. rent), plus the two `docs/research/` landscape surveys they rest on.
+
+**None of it is measured, and none of it is committed scope.** Quote these documents as arguments, never as findings, and do not let a confident design in one of them read as a decision — `docs/STRATEGY.md` §2 lists what genuinely is decided.
 
 ---
 

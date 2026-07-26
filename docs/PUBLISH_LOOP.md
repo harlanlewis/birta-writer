@@ -12,6 +12,11 @@
 **Tracking:** Linear **MAR-232** (`phase-5-surfaces`, child of MAR-225). A gated *design record*
 that holds the thinking; **not** queued work.
 
+**Where this sits:** [`STRATEGY.md`](STRATEGY.md) indexes all six strategy documents. The gate this
+record presumes is open decision **D5** ("is a cloud/sync product wanted for its own sake?") and the
+crux in §8 is **D1** ("who is the user?") — the same crux three other documents raise independently.
+[`SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md) is the surface-choice axis this one is orthogonal to.
+
 **Relationship to MAR-225 / `MULTI_SURFACE_INVESTIGATION.md`:** that investigation is about
 *running the editor* on new surfaces (desktop, web) — the host-adapter axis. This is the orthogonal
 axis: the *document's lifecycle* across a local↔cloud boundary. They converge at exactly one point —

@@ -2,11 +2,19 @@
 
 **Status:** strategy / decision framework. No implementation. Written 2026-07-26.
 
-**Tracking:** proposed Linear items in §7 (to be filed under `phase-*` once triaged).
-Related: **MAR-100** (the ProseMirror funnel — the inventory this rests on),
-**MAR-101** (evaluate removing Milkdown — sharpened here), **MAR-40** (multi-format),
-**MAR-41** (the `FormatModule` seam), **MAR-128** (per-tool fidelity fixtures),
-**MAR-225** (multi-surface epic — the collaboration/cloud forcing functions).
+**Tracking:** **MAR-237** (grow the fidelity corpus — §7.1), **MAR-235** (harden
+`@birta/minimal-diff` — §7.2), **MAR-238** (dialect-provenance fields — §7.3).
+Related: **MAR-102** (the stay-on-ProseMirror decision record — §4 corroborates it,
+it does not reopen it), **MAR-100** (the ProseMirror funnel — the inventory this rests
+on), **MAR-101** (own the remark↔PM bridge — sharpened here, §4), **MAR-40**
+(multi-format), **MAR-41** (the `FormatModule` seam), **MAR-128** (per-tool fidelity
+fixtures), **MAR-225** (multi-surface epic — the collaboration/cloud forcing functions).
+
+**Where this sits:** [`STRATEGY.md`](STRATEGY.md) indexes all six strategy documents —
+read it first for what is decided, what is open, and which document owns which question.
+The adjacent axes: [`SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md) (which surface, for whom),
+[`AI_ASSISTANCE.md`](AI_ASSISTANCE.md) (the AI posture), and
+[`PUBLISH_LOOP.md`](PUBLISH_LOOP.md) (the document-lifecycle axis).
 
 **Questions this answers:**
 1. Should Birta carry in-code associations between constructs and the dialects
@@ -99,10 +107,22 @@ as the corpus is broad.
   rich-text engine pays a version of it. "Just virtualize ProseMirror" is *not*
   an easy win — selection/coordinate mapping across un-rendered content is one
   of the hardest, least-solved problems in the whole PM ecosystem.
-- **The escape hatch already exists.** Source mode (CodeMirror) renders by
-  viewport and pays no WYSIWYG reconciliation. **Defaulting very large documents
-  to source mode** is the cheapest large-doc lever we have and needs no new
-  engine. (Typing is gated in CI by `typing-perf` on `xlarge` — MAR-224.)
+- **On VS Code, an escape hatch already exists — but it is the host's, not ours.**
+  *(Corrected 2026-07-26: an earlier draft of this section said "source mode
+  (CodeMirror) renders by viewport" as though Birta had one. **It does not.**
+  Birta ships no source editor and no CodeMirror dependency; "Edit Raw Markdown"
+  delegates to VS Code's own text editor — `vscode.openWith(uri, "default")` —
+  exactly as `MULTI_SURFACE_INVESTIGATION.md` §6 and §15 state. The lever below
+  survives the correction; the premise about who owns it did not.)*
+
+  What survives: **`birta.defaultMode` can open very large documents in VS Code's
+  raw text editor**, which renders by viewport and pays no WYSIWYG reconciliation.
+  That is the cheapest large-doc lever available today and needs no new engine —
+  but it is **VS-Code-only**, inherited from the host, and **no standalone surface
+  gets it for free.** Off VS Code the same lever costs the whole
+  `MULTI_SURFACE_INVESTIGATION.md` §15 CM6 source-editor build (a *raw-source
+  companion*, which MAR-102 does not rule out — see §4). (Typing is gated in CI by
+  `typing-perf` on `xlarge` — MAR-224.)
 
 **Implication:** performance is a weak argument for replacing either engine.
 The strong perf levers are host-side (source-mode default, decoration budgeting,
@@ -111,6 +131,18 @@ lazy NodeView mounting), not a new document model.
 ---
 
 ## 4. Milkdown / ProseMirror — when (not) to replace
+
+> **The ProseMirror half of this question is already answered — cite the record, don't
+> re-derive it.** **MAR-102** is a decision record built on ~45 adversarially verified
+> claims: *stay on ProseMirror; a custom core, Rust/WASM, Lexical, and CodeMirror 6
+> **as the rich-text engine** are ruled out; **Wordgard** (Marijn Haverbeke's PM
+> successor, v0.1) is the only sanctioned watch item, and the re-check trigger is the
+> MAR-41 FormatModule seam.* This section reaches the same conclusion from the
+> own-vs-rent direction, which is corroboration, not a second answer. Note the
+> distinction MAR-102 turns on and that has already been conflated once: **CM6 as the
+> rich-text core is ruled out; CM6 as a *raw-source companion*
+> (`MULTI_SURFACE_INVESTIGATION.md` §15) is not** — different question, different
+> answer. The *Milkdown* half below is genuinely open, and is what MAR-101 tracks.
 
 **Never roll a CommonMark parser or a rich-text view from scratch.** That is the
 second-system trap in its purest form (CommonMark's spec is a 600-case
@@ -234,30 +266,34 @@ machine-readable source — without building either consumer speculatively.
 
 ---
 
-## 7. Recommendations & proposed tracking
+## 7. Recommendations & tracking
 
 **Do now (additive, reversible, high-leverage):**
 
 1. **Grow the fidelity corpus** — more real-world-messy documents and more
-   dialects. This is the moat (§2) and de-risks everything else. *(Proposed:
-   `phase-0-fidelity` improvement.)*
+   dialects. This is the moat (§2) and de-risks everything else.
+   **Filed: MAR-237** (`phase-0-fidelity`).
 2. **Harden `@birta/minimal-diff`'s internal API + README**, leading with the
    novel part — **FormatProfile + round-trip protection**, not "an LCS differ."
    Keep it an in-repo workspace package. **Publish to npm only if external pull
    materializes** — the OSS-maintenance tax (semver, issues, API freeze) is a
-   real liability against a deliberately tight-scope solo project. *(Proposed:
-   `phase-1-performance`/tooling improvement, gated on demand.)*
+   real liability against a deliberately tight-scope solo project.
+   **Filed: MAR-235** (gated on demand; carries no `phase-*` label yet — it is
+   tooling, and the phase that fits it is a judgment call left to the owner).
 3. **Add structured dialect-provenance fields** at dialect-specific registration
    sites, feeding off the existing `toolFidelity` inventory. No new consumer
-   built. *(Proposed: small `phase-2-syntax` improvement.)*
+   built. **Filed: MAR-238** (`phase-2-syntax`).
 
 **Do when a measured trigger fires (not before):**
 
 4. **Sharpen MAR-101** to state its real scope — "own the remark↔PM bridge" —
    and its three trigger conditions (§4). It is a bridge-ownership refactor, not
-   a parser project.
-5. **Large-doc source-mode default** as the first perf lever (§3), ahead of any
-   engine or WASM work.
+   a parser project. **Done 2026-07-26** — MAR-101 retitled and rescoped.
+5. **Default very large documents to the raw editor** as the first perf lever
+   (§3), ahead of any engine or WASM work — but note the correction in §3: this
+   lever is **VS Code's, not Birta's**, so it exists today on the extension and
+   costs a whole source-editor build (`MULTI_SURFACE_INVESTIGATION.md` §15) on
+   any other surface.
 
 **Explicitly do NOT do (absent a hard forcing function):**
 
@@ -273,7 +309,11 @@ machine-readable source — without building either consumer speculatively.
 
 ## Crosslinks
 
-- [`MULTI_SURFACE_INVESTIGATION.md`](MULTI_SURFACE_INVESTIGATION.md) — the surface axis (MAR-225)
+- [`STRATEGY.md`](STRATEGY.md) — **the index**: decided vs. open across all six strategy docs
+- [`MULTI_SURFACE_INVESTIGATION.md`](MULTI_SURFACE_INVESTIGATION.md) — the surface axis (MAR-225); §15 is the raw/source-editor design §3 defers to
+- [`SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md) — which surface, for whom, and whether at all
+- [`AI_ASSISTANCE.md`](AI_ASSISTANCE.md) — the AI posture (surface- and engine-independent)
+- [`PUBLISH_LOOP.md`](PUBLISH_LOOP.md) — the document-lifecycle axis; §6 here is why its dialect mapping would live outside the editor
 - [`research/markdown-editor-landscape.md`](research/markdown-editor-landscape.md) — engine selection rationale
 - [`BENEFITS.md`](BENEFITS.md) — the compatibility table these fixtures back
 - [`../webview/pm.ts`](../webview/pm.ts) — the MAR-100 funnel (the inventory §4 rests on)

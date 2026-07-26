@@ -168,6 +168,10 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 3. **Parser and syntax breadth third.** Math, footnotes, frontmatter, reference links — and anything the schema can't represent must degrade to *visible but safe*, never a silent deletion, so the editor is trustworthy on any file.
 4. **Interaction patterns last.** The polish that makes the editor *preferred* rather than merely tolerated, invested in once the layers beneath it held: slash commands, a full block-interaction system (gutter grabbers on every block, a block menu, drag-to-move, marquee and keyboard block selection) — with smart paste still ahead.
 
+That ordering is the **founding rationale**, and it is history as much as plan: layer 2 (VS Code parity) shipped in 0.2.3, and the live sequencing spine that replaced it is the `phase-*` roadmap in [`AGENTS.md`](AGENTS.md) — fidelity → performance → syntax → interaction → differentiators. Use the phase spine as the tie-breaker when goals conflict; use this list to understand why the fork exists.
+
+Where the project might go beyond the VS Code extension — surfaces, engine ownership, the AI posture, publishing — is explored (not committed) in [`docs/STRATEGY.md`](docs/STRATEGY.md), which indexes those documents and separates what is decided from what is open.
+
 ***
 
 ## Requirements
