@@ -88,11 +88,14 @@ describe("corpus invariant B — an edit keeps every original line intact", () =
                 at = found + 1;
             }
             // The inserted paragraph must sit at the very top, above all
-            // original content. Compared without its line ending: in a CRLF
-            // fixture the new line correctly arrives CRLF (invariant D owns
-            // that), while `sig` above stays byte-exact so the surviving
-            // original lines are still checked down to their endings.
-            expect(mergedSig[0].replace(/\r$/, "")).toBe("Corpus edit marker paragraph.");
+            // original content — and carry the fixture's OWN line ending. An
+            // earlier version stripped a trailing `\r` before comparing, which
+            // let one CRLF fixture pass by weakening the assertion for all 33;
+            // asserting the ending is both stronger and narrower. Every fixture
+            // uses a single style (guarded with invariant D), so the file's
+            // ending and its dominant ending are the same thing here.
+            const eol = content.includes("\r\n") ? "\r" : "";
+            expect(mergedSig[0]).toBe("Corpus edit marker paragraph." + eol);
             await editor.destroy();
         });
     }
@@ -192,6 +195,28 @@ function eolStyles(text: string): string[] {
 }
 
 describe("corpus invariant D — an edit never introduces a line ending the file did not use", () => {
+    // D can only catch anything on a fixture that is NOT plain LF: on an LF
+    // file the serializer's own output already matches, so the assertion holds
+    // no matter what the engine does. Exactly one fixture discriminates today.
+    // Without this guard, deleting or LF-normalizing that one file (a stray
+    // `.gitattributes`, an editor "fixing" line endings on save) would turn D
+    // into 33 green no-ops that still read like coverage.
+    it("at least one fixture must use CRLF, or every case below is vacuous", () => {
+        const crlf = fixtures.filter((f) => f.content.includes("\r\n")).map((f) => f.name);
+        expect(crlf, "no CRLF fixture left in the corpus — invariant D now proves nothing").not.toEqual([]);
+    });
+
+    // The per-fixture cases compare SETS of styles, so they prove no new style
+    // appeared, not that each line kept its own. That is only equivalent while
+    // fixtures are internally uniform. If a deliberately mixed fixture is ever
+    // added, this guard fires — tighten D to a per-line comparison then, and
+    // see the engine's "MIXED endings" case for the guarantee it should assert.
+    it("every fixture should use exactly one line-ending style", () => {
+        for (const { name, content } of fixtures) {
+            expect(eolStyles(content).length, `${name} mixes line-ending styles`).toBeLessThanOrEqual(1);
+        }
+    });
+
     // Why D exists (MAR-223): A and B and C are all blind to line endings. A
     // passed on the CRLF fixture only because round-trip protection was
     // holding every line — the serializer emits LF, the `\r` sat inside the
