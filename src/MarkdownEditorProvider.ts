@@ -2,7 +2,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { computeReplaceRange } from "./utils/textEdit";
 import { saveImageLocally } from "./utils/imageService";
-import { computeLineMap } from "./utils/lineMap";
+import { computeLineMap, sourceLineCount } from "./utils/lineMap";
 import { extractFrontmatter, restoreContentForSave } from "./utils/contentTransform";
 import { extractListValuesByKey, rankListValues } from "./utils/frontmatterSuggestions";
 import { buildLinkTargetItems } from "./utils/linkTargetSuggestions";
@@ -130,6 +130,16 @@ async function readCappedText(res: Response, maxBytes: number): Promise<string> 
     return new TextDecoder("utf-8").decode(merged);
 }
 
+/**
+ * A place in the document a panel should navigate to: a 1-indexed document
+ * line, plus the caret column when the navigation's origin knew one (a mode
+ * switch does; a global-search hit does not).
+ */
+interface NavTarget {
+    line: number;
+    column?: number;
+}
+
 export class MarkdownEditorProvider
     implements vscode.CustomTextEditorProvider {
     public static readonly viewType = "birta.editor";
@@ -207,8 +217,11 @@ export class MarkdownEditorProvider
     /** While switchToTextEditor is in progress, suppress onDidChangeTabs from switching the text tab back to WYSIWYG */
     public static readonly suppressAutoSwitch = new Set<string>();
 
-    // Pending navigation line number (temporarily stored on global-search click / editor switch) key: fsPath
-    private readonly _pendingNavigations = new Map<string, { line: number; ts: number }>();
+    // Pending navigation position (temporarily stored on global-search click /
+    // editor switch) key: fsPath. `column` is present only when the source of
+    // the navigation knew one — a mode switch carries the caret, a search hit
+    // knows only its line.
+    private readonly _pendingNavigations = new Map<string, { line: number; column?: number; ts: number }>();
 
     // Global fallback navigation line number (stored when revealLine fires but the active tab hasn't switched)
     private _pendingRevealLine: { line: number; ts: number } | undefined;
@@ -279,18 +292,32 @@ export class MarkdownEditorProvider
         }
     }
 
+    /**
+     * The line map for `text`, paired with the source lines its frontmatter
+     * occupies (MAR-23).
+     *
+     * The map must describe the BODY, because that — not the whole file — is
+     * what the webview renders: entry `i` has to line up with `doc.child(i)`.
+     * The offset is what keeps the wire in document lines regardless, so a
+     * navigation into a file with frontmatter no longer lands a block early.
+     */
+    private _lineMapFor(text: string): { lineMap: number[]; lineOffset: number } {
+        const { frontmatter, body } = extractFrontmatter(text);
+        return { lineMap: computeLineMap(body), lineOffset: sourceLineCount(frontmatter) };
+    }
+
     /** Called from extension.ts: when revealLine fires but the active tab hasn't switched, store the global fallback */
     public setGlobalRevealLine(line: number): void {
         this._pendingRevealLine = { line, ts: Date.now() };
     }
 
     /** Consume the global fallback navigation line number (valid within 10 seconds; large files init Milkdown more slowly) */
-    private _consumeGlobalRevealLine(): number | undefined {
+    private _consumeGlobalRevealLine(): NavTarget | undefined {
         const p = this._pendingRevealLine;
         if (!p) { return undefined; }
         this._pendingRevealLine = undefined;
         if (Date.now() - p.ts > 10000) { return undefined; }
-        return p.line;
+        return { line: p.line };
     }
 
     /** Returns the list of fsPaths for all currently registered (open) .md panels */
@@ -320,9 +347,9 @@ export class MarkdownEditorProvider
         return this._suppressNavFromTextEditor;
     }
 
-    /** Called from extension.ts: stash a pending navigation line; if the panel is visible and ready, send it immediately */
-    public setPendingNavigation(fsPath: string, line: number): void {
-        this._pendingNavigations.set(fsPath, { line, ts: Date.now() });
+    /** Called from extension.ts: stash a pending navigation position; if the panel is visible and ready, send it immediately */
+    public setPendingNavigation(fsPath: string, line: number, column?: number): void {
+        this._pendingNavigations.set(fsPath, { line, column, ts: Date.now() });
         // Panel already exists and is initialized → send directly, no need to wait for onDidChangeViewState
         const uriKey = vscode.Uri.file(fsPath).toString();
         const initialized = this._initializedPanels.has(uriKey);
@@ -331,7 +358,7 @@ export class MarkdownEditorProvider
             const panel = this._webviewPanels.get(uriKey);
             // Only send immediately when the panel is currently visible (a hidden panel means the user just switched away, so don't send the line number back)
             if (panel && panel.visible) {
-                postToWebview(panel.webview, { type: 'scrollToLine', line });
+                postToWebview(panel.webview, { type: 'scrollToLine', line, column });
                 // Don't delete _pendingNavigations; keep it as a fallback for ready on panel rebuild (valid within TTL 5s)
             }
         }
@@ -352,13 +379,13 @@ export class MarkdownEditorProvider
         }
     }
 
-    private _consumePendingNavigation(fsPath: string): number | undefined {
+    private _consumePendingNavigation(fsPath: string): NavTarget | undefined {
         const pending = this._pendingNavigations.get(fsPath);
         if (!pending) { return undefined; }
         this._pendingNavigations.delete(fsPath);
         // Treat anything older than 5 seconds as expired; do not apply
         if (Date.now() - pending.ts > 5000) { return undefined; }
-        return pending.line;
+        return { line: pending.line, column: pending.column };
     }
 
     public postToAll(msg: ToWebviewMessage): void {
@@ -589,11 +616,11 @@ export class MarkdownEditorProvider
             // Restore this document's cached counts into the status bar (MAR-29).
             this._renderWordCount(uriKey);
             if (!this._initializedPanels.has(uriKey)) { return; }
-            const line = this._consumePendingNavigation(document.uri.fsPath)
+            const nav = this._consumePendingNavigation(document.uri.fsPath)
                 ?? this._consumeGlobalRevealLine();
-            if (line !== undefined) {
-                console.log('[viewState] immediate scrollToLine:', line);
-                postToWebview(p.webview, { type: "scrollToLine", line });
+            if (nav !== undefined) {
+                console.log('[viewState] immediate scrollToLine:', nav.line);
+                postToWebview(p.webview, { type: "scrollToLine", ...nav });
                 return;
             }
             // revealLine may fire after the viewState change (global search timing is unpredictable)
@@ -604,11 +631,11 @@ export class MarkdownEditorProvider
                 } catch {
                     return; // Panel already destroyed (e.g. the preview tab was replaced); ignore
                 }
-                const delayedLine = this._consumePendingNavigation(document.uri.fsPath)
+                const delayed = this._consumePendingNavigation(document.uri.fsPath)
                     ?? this._consumeGlobalRevealLine();
-                if (delayedLine !== undefined) {
-                    console.log('[viewState] delayed scrollToLine:', delayedLine);
-                    postToWebview(p.webview, { type: "scrollToLine", line: delayedLine });
+                if (delayed !== undefined) {
+                    console.log('[viewState] delayed scrollToLine:', delayed.line);
+                    postToWebview(p.webview, { type: "scrollToLine", ...delayed });
                 }
             }, 1000);
         });
@@ -629,9 +656,9 @@ export class MarkdownEditorProvider
                         const initContent = document.getText();
                         const displayContent = this._prepareContentForDisplay(initContent, document, webviewPanel, uriKey);
                         // Consume the pending navigation (set when switching preview / first opening from global search)
-                        const scrollToLine = this._consumePendingNavigation(document.uri.fsPath)
+                        const nav = this._consumePendingNavigation(document.uri.fsPath)
                             ?? this._consumeGlobalRevealLine();
-                        console.log('[ready] scrollToLine:', scrollToLine);
+                        console.log('[ready] scrollToLine:', nav?.line);
                         const tableWrap = readBirtaSetting("tableWrap");
                         // Reset the echo baseline: init hands this exact text to the webview
                         this._lastSyncedText.set(uriKey, initContent);
@@ -641,12 +668,14 @@ export class MarkdownEditorProvider
                         postToWebview(webviewPanel.webview, {
                             type: "init",
                             content: displayContent,
-                            lineMap: computeLineMap(initContent),
+                            ...this._lineMapFor(initContent),
                             frontmatter: this._frontmatterMap.get(uriKey) || undefined,
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
                             tableWrap,
                             syncVersion: 0,
-                            ...(scrollToLine !== undefined ? { scrollToLine } : {}),
+                            ...(nav !== undefined
+                                ? { scrollToLine: nav.line, ...(nav.column !== undefined ? { scrollToColumn: nav.column } : {}) }
+                                : {}),
                         });
                         // Deliver the current disk-drift state now that the webview
                         // is listening. track()'s initial evaluate can set drift
@@ -696,7 +725,7 @@ export class MarkdownEditorProvider
                                 // Identical to the current document (e.g. serializer no-op echo): nothing to do
                                 if (outcome === "noop") { return; }
                                 this._pinTabOnFirstEdit(uriKey);
-                                postToWebview(webviewPanel.webview, { type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
+                                postToWebview(webviewPanel.webview, { type: "lineMapUpdate", ...this._lineMapFor(document.getText()) });
                             });
                         }
                         break;
@@ -732,7 +761,9 @@ export class MarkdownEditorProvider
                             const applied = await vscode.workspace.applyEdit(edit);
                             if (!applied) { return; }
                             this._pinTabOnFirstEdit(uriKey);
-                            postToWebview(webviewPanel.webview, { type: "lineMapUpdate", lineMap: computeLineMap(document.getText()) });
+                            // A frontmatter edit changes how many source lines
+                            // precede the body, so the offset travels with the map.
+                            postToWebview(webviewPanel.webview, { type: "lineMapUpdate", ...this._lineMapFor(document.getText()) });
                         });
                         break;
                     }
@@ -819,7 +850,16 @@ export class MarkdownEditorProvider
                             preserveFocus: false,
                         };
                         if (message.line && message.line > 0) {
-                            const pos = new vscode.Position(message.line - 1, 0);
+                            // The column is advisory and can only be trusted for
+                            // the line the webview computed it against, so it is
+                            // clamped to that line's real length here — the
+                            // document is the authority on where a line ends.
+                            const lineIndex = Math.min(message.line - 1, document.lineCount - 1);
+                            const column = Math.min(
+                                message.column ?? 0,
+                                document.lineAt(lineIndex).text.length,
+                            );
+                            const pos = new vscode.Position(lineIndex, column);
                             opts.selection = new vscode.Range(pos, pos);
                         }
 
@@ -1140,7 +1180,7 @@ export class MarkdownEditorProvider
         postToWebview(panel.webview, {
             type: "externalUpdate",
             content: displayContent,
-            lineMap: computeLineMap(text),
+            ...this._lineMapFor(text),
             frontmatter: this._frontmatterMap.get(uriKey) || undefined,
             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
             tableWrap,

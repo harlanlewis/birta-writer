@@ -6,6 +6,23 @@
  * Shared between the extension host (line sync, scroll mapping) and the
  * webview (local recompute for the find bar's raw-source fallback).
  */
+/**
+ * How many source lines `text` occupies — used for the frontmatter block, whose
+ * lines precede the body the webview renders and therefore offset every
+ * document line the two sides exchange (MAR-23).
+ *
+ * A frontmatter block always ends with its closing `---`, with or without the
+ * trailing newline a file that ends there would lack, so counting line
+ * terminators is exactly the number of lines the BODY is pushed down by.
+ */
+export function sourceLineCount(text: string): number {
+    let count = 0;
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] === "\n") { count++; }
+    }
+    return count;
+}
+
 export function computeLineMap(content: string): number[] {
     const lines = content.split("\n");
     const map: number[] = [];

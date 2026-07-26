@@ -658,10 +658,24 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!target) {
                     return;
                 }
-                // Save the current cursor line number before switching, for positioning when the WYSIWYG panel is activated
-                const currentLine = activeEditor?.selection.active.line ?? -1;
-                if (currentLine >= 0) {
-                    MarkdownEditorProvider.current?.setPendingNavigation(target.fsPath, currentLine + 1);
+                // Carry the caret across the switch (MAR-23): the WYSIWYG panel
+                // places it — not just the scroll — so typing continues where
+                // the user left off. The column is advisory; the webview keeps
+                // it only when it can map it back to rendered text honestly.
+                // Only when the active editor IS the document being switched:
+                // invoked from the explorer's context menu with a uri argument,
+                // the active editor is some other file, whose caret is nothing
+                // to do with this one.
+                const caret =
+                    activeEditor?.document.uri.toString() === target.toString()
+                        ? activeEditor.selection.active
+                        : undefined;
+                if (caret) {
+                    MarkdownEditorProvider.current?.setPendingNavigation(
+                        target.fsPath,
+                        caret.line + 1,
+                        caret.character,
+                    );
                 }
                 // Read the text editor tab's preview state and column, saving before closing
                 let isPreview = false;

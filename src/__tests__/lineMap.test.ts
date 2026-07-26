@@ -5,7 +5,8 @@
  * fallback, so fences, blank-line handling and CRLF must all be exact.
  */
 import { describe, it, expect } from "vitest";
-import { computeLineMap } from "../utils/lineMap";
+import { computeLineMap, sourceLineCount } from "../utils/lineMap";
+import { extractFrontmatter } from "../utils/contentTransform";
 
 describe("computeLineMap basic blocks", () => {
     it("empty content should produce an empty map", () => {
@@ -66,6 +67,42 @@ describe("computeLineMap code fences", () => {
 
     it("a fence longer than three characters should require the same fence to close", () => {
         expect(computeLineMap("````\n```\n````\n\nafter")).toEqual([1, 5]);
+    });
+});
+
+describe("sourceLineCount as the frontmatter offset", () => {
+    // The webview renders the BODY, so its line map starts at the body's first
+    // block; this count is what turns a body line back into the document line a
+    // text editor shows (MAR-23). The invariant asserted here is the one the
+    // navigation paths rely on: body line 1 == document line offset + 1.
+    const documentLineOf = (content: string, bodyLine: number): number => {
+        const { frontmatter } = extractFrontmatter(content);
+        return bodyLine + sourceLineCount(frontmatter);
+    };
+
+    it("content with no frontmatter should have a zero offset", () => {
+        expect(documentLineOf("# Title\n\nbody\n", 1)).toBe(1);
+    });
+
+    it("a frontmatter block should push the body down by its own line count", () => {
+        const content = "---\ntitle: Note\n---\n\n# Title\n\nbody\n";
+        // "# Title" is body line 2 (a blank line follows the closing ---) and
+        // document line 5.
+        expect(extractFrontmatter(content).body.split("\n")[1]).toBe("# Title");
+        expect(documentLineOf(content, 2)).toBe(5);
+    });
+
+    it("a frontmatter block that ends the file should still count its lines", () => {
+        expect(sourceLineCount("---\ntitle: Note\n---")).toBe(2);
+    });
+
+    it("CRLF frontmatter should count the same as LF", () => {
+        const lf = "---\ntitle: Note\ntags: []\n---\n";
+        expect(sourceLineCount(lf.replace(/\n/g, "\r\n"))).toBe(sourceLineCount(lf));
+    });
+
+    it("an empty frontmatter string should count as no lines", () => {
+        expect(sourceLineCount("")).toBe(0);
     });
 });
 
