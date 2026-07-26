@@ -59,6 +59,7 @@
             {
                 "name": "birta_getEditorContext",
                 "displayName": "Birta: active markdown selection",
+                "userDescription": "The file, caret, and selection active in the Birta Writer markdown editor",
                 "modelDescription": "Returns the file path, caret position, and selected text of the document the user currently has open in the Birta Writer markdown editor. Use this whenever the user refers to their current file, what they have open, or their selection in the markdown editor: VS Code's built-in active-editor APIs cannot see Birta's WYSIWYG editor, so this tool is the only way to read that context.",
                 "toolReferenceName": "birtaSelection",
                 "canBeReferencedInPrompt": true,
@@ -2092,7 +2093,7 @@
         "@types/katex": "^0.16.8",
         "@types/mocha": "^10.0.10",
         "@types/node": "^18.0.0",
-        "@types/vscode": "^1.80.0",
+        "@types/vscode": "^1.95.0",
         "@vitest/coverage-v8": "^2.1.0",
         "@vscode/test-electron": "^3.0.0",
         "@vscode/vsce": "^2.32.0",

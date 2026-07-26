@@ -74,8 +74,9 @@ editor's own selection-change path. Consequences:
   message — until an agent actually asks. A disabled/unused feature is free, per
   the launch-perf rules in `AGENTS.md`.
 - The mapping (`sourceCaretAt`) walks only the blocks the caret/anchor sit in
-  and reads the already-cached `lineMap`/`sourceLines`; it never serializes the
-  document.
+  and reads the cached `lineMap` and cached markdown source (re-split into
+  lines per pull, the same pattern as the mode-switch caret); it never
+  serializes the document.
 - A wedged webview degrades to "no context" after a 1s timeout rather than
   hanging the caller.
 

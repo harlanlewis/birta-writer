@@ -257,13 +257,6 @@ function placeCaretAtLine(documentLine: number, column?: number): void {
 }
 
 /**
- * The source position a switch to the raw editor should carry.
- *
- * The caret wins when it is on screen — that is where the user is working, and
- * it is the only reading that can carry a column. Once they have scrolled away
- * from it, "take me to what I am looking at" is the honest answer instead.
- */
-/**
  * The live selection context for a coding-agent bridge pull (src/agentBridge/),
  * or null when no editor exists / the position can't be mapped. Called only on
  * an agent's request — never on the editor's own selection path.
@@ -274,6 +267,13 @@ function getSelectionContext(): EditorSelectionContext | null {
     return buildSelectionContext(view, currentLineMap, getMarkdownSource().split("\n"), currentLineOffset);
 }
 
+/**
+ * The source position a switch to the raw editor should carry.
+ *
+ * The caret wins when it is on screen — that is where the user is working, and
+ * it is the only reading that can carry a column. Once they have scrolled away
+ * from it, "take me to what I am looking at" is the honest answer instead.
+ */
 function getSwitchTarget(): { line: number; column?: number } | undefined {
     const view = getEditorView();
     if (!view) { return undefined; }

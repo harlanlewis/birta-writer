@@ -6,11 +6,12 @@
  * (src/agentBridge/). This is the one place the webview maps its selection into
  * document coordinates for an external consumer.
  *
- * Pull-only and allocation-light: it is called only when an agent asks (never
- * on the editor's own selection-change path), it walks only the two blocks the
- * anchor and head sit in via the existing block-level source-caret machinery
- * (webview/utils/sourceCaret.ts), and it reads the already-cached
- * `lineMap`/`sourceLines` — it never serializes the document.
+ * Pull-only: it is called only when an agent asks (never on the editor's own
+ * selection-change path), it walks only the two blocks the anchor and head sit
+ * in via the existing block-level source-caret machinery
+ * (webview/utils/sourceCaret.ts), and it reads the cached `lineMap` and the
+ * cached markdown source (split into lines per call, the same pattern as the
+ * mode-switch caret) — it never serializes the document.
  */
 
 import type { EditorView } from "./pm";

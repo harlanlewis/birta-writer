@@ -79,7 +79,7 @@ importers:
         specifier: ^18.0.0
         version: 18.19.130
       '@types/vscode':
-        specifier: ^1.80.0
+        specifier: ^1.95.0
         version: 1.110.0
       '@vitest/coverage-v8':
         specifier: ^2.1.0
