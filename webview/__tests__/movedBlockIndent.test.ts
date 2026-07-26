@@ -1,0 +1,255 @@
+/**
+ * A moved block keeps the outline's own indentation (MAR-230) — driven through
+ * the REAL move primitive and the REAL save pipeline, because the failure is
+ * only visible on a reparse.
+ *
+ * This is `mixedIndentOutline.test.ts`'s twin, reached by the other merge path.
+ * There, an EDITED line has a saved counterpart, so the merge can carry its
+ * bytes forward (`reconcileReplacement`). A MOVED line has none: it is a pure
+ * insertion, so its bytes came from the serializer verbatim — two-space indents
+ * dropped between kept lines still holding tabs. A tab is four columns and two
+ * spaces are two, so the file reparses with different nesting than the document
+ * on screen. Unlike MAR-222 this needs no unusual indent units at all: a plain
+ * tab outline, the ordinary Logseq/Obsidian shape, is enough.
+ *
+ * What the merge writes an insertion from is the file's own testimony in the
+ * merge being performed — its `keep` pairs, each a saved line beside the bytes
+ * the serializer just emitted for it (`mergeFacts` / `reconcileInsertion`).
+ * That evidence is fresh by construction and, unlike round-trip protection,
+ * exists even for a file that round-trips cleanly: `fixtures/logseq/journal.md`
+ * gets NO protection object at all, and still broke on 4 of its 22 executable
+ * moves before this change.
+ *
+ * Every test asserts the reparsed TREE against the live one, not the bytes the
+ * fix manipulates: the nesting is what a user would lose, and the merged-bytes
+ * assertions below exist only to say which spelling was chosen, never as the
+ * proof that the document survived.
+ */
+import { describe, it, expect } from "vitest";
+import { getMarkdown } from "@milkdown/utils";
+import { parserCtx } from "@milkdown/core";
+import type { Node as ProseNode } from "../pm";
+import { computeRoundTripProtection, applyMinimalChanges } from "../utils/minimalDiff";
+import { moveBlocks } from "../editing/moveBlocks";
+import { makeCorpusEditor, editorView } from "./helpers/moveFuzz";
+
+/** Every non-text node type in document order — the tree a reader gets back. */
+function shape(doc: ProseNode): string[] {
+    const kinds: string[] = [];
+    doc.descendants((node) => {
+        if (!node.isText) kinds.push(node.type.name);
+        return true;
+    });
+    return kinds;
+}
+
+/**
+ * Move the top-level-or-nested block whose paragraph text starts with `block`
+ * so that it lands at the boundary just before the block whose text starts with
+ * `before`, then run the production save pipeline (serialize → protection →
+ * minimal-diff merge) and reparse the bytes that would land on disk.
+ */
+async function moveAndSave(
+    source: string,
+    block: string,
+    before: string,
+    blockType = "list_item",
+    beforeType = "list_item",
+) {
+    const editor = await makeCorpusEditor(source);
+    const v = editorView(editor);
+    const protection = computeRoundTripProtection(source, editor.action(getMarkdown()));
+
+    /** The block of type `type` whose text starts with `text`. */
+    const locate = (text: string, type = "list_item"): { from: number; to: number } => {
+        let found: { from: number; to: number } | null = null;
+        v.state.doc.descendants((node, pos) => {
+            if (found) return false;
+            if (node.type.name !== type) return true;
+            const body = type === "list_item" ? node.firstChild?.textContent : node.textContent;
+            if (body?.startsWith(text)) {
+                found = { from: pos, to: pos + node.nodeSize };
+                return false;
+            }
+            return true;
+        });
+        expect(found, `no ${type} starting "${text}"`).not.toBeNull();
+        return found as unknown as { from: number; to: number };
+    };
+
+    const source_ = locate(block, blockType);
+    // "START" is the document-start boundary — the only target for a top-level
+    // block, whose slots are not inside any list.
+    const target = before === "START" ? 0 : locate(before, beforeType).from;
+    expect(moveBlocks(v, source_, target), "the move was refused").toBe(true);
+
+    const merged = applyMinimalChanges(source, editor.action(getMarkdown()), protection);
+    const liveDoc = v.state.doc;
+    const reparsedDoc = editor.action((ctx) => ctx.get(parserCtx)(merged)) as ProseNode;
+    const live = shape(liveDoc);
+    const reparsed = shape(reparsedDoc);
+    const liveText = liveDoc.textContent;
+    const reparsedText = reparsedDoc.textContent;
+    await editor.destroy();
+    return { merged, live, reparsed, liveText, reparsedText };
+}
+
+describe("a moved block keeps the outline's indentation (MAR-230)", () => {
+    // A plain tab outline. No mixed units anywhere — every indent is whole tabs,
+    // which is precisely why this case is not MAR-222's.
+    const TABS = "- alpha\n\t- beta\n\t\t- gamma\n\t- delta\n";
+
+    it("moving a block within a tab outline should not restructure it", async () => {
+        const { live, reparsed } = await moveAndSave(TABS, "delta", "beta");
+
+        // Before the fix the inserted `- delta` arrived with the serializer's
+        // two spaces beside a kept `\t- beta` (a tab is four columns), so beta
+        // stopped being delta's SIBLING and became its child: the reparse
+        // gained a bullet_list that the document on screen does not have.
+        expect(reparsed).toEqual(live);
+    });
+
+    it("a moved line should be written with the file's own indent bytes", async () => {
+        const { merged, live, reparsed } = await moveAndSave(TABS, "delta", "beta");
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- alpha\n\t- delta\n\t- beta\n\t\t- gamma\n");
+    });
+
+    it("a run landing under a re-canonicalized line should not be re-based", async () => {
+        // The load-bearing case for anchoring a substitution to the line above
+        // it. Moving `d`'s subtree shallower makes `  - d` an in-place
+        // REPLACEMENT whose depth genuinely moved, so the serializer's
+        // canonical two spaces correctly win there. Re-basing the inserted `e`
+        // beneath it onto the file's tabs — which the file really does use, at
+        // that depth, everywhere else — puts a child eight columns under a
+        // parent whose content indent is four: `e` stops being a list item and
+        // survives only as literal text glued into d's paragraph.
+        //
+        // Found by adversarially probing the first cut of this fix, which
+        // introduced this loss while removing others. A file-wide fact answers
+        // "how does this document spell that depth", never "is the neighbour
+        // above spelled that way".
+        const source = `- a\n\t- b\n\t\t- c\n\t\t\t- d\n\t\t\t\t- e\n\t- z\n`;
+        const { live, reparsed, liveText, reparsedText } = await moveAndSave(source, "d", "z");
+
+        expect(reparsedText).toEqual(liveText);
+        expect(reparsed).toEqual(live);
+    });
+
+    it("a moved block in a CRLF outline should not mix line endings", async () => {
+        // The engine owns line endings and the profile never sees one, so a
+        // re-based insertion must still come back with the document's ending.
+        const source = "- alpha\r\n\t- beta\r\n\t\t- gamma\r\n\t- delta\r\n";
+        const { merged, live, reparsed } = await moveAndSave(source, "delta", "beta");
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toBe("- alpha\r\n\t- delta\r\n\t- beta\r\n\t\t- gamma\r\n");
+        expect(merged.split("\r\n").join("")).not.toContain("\n");
+    });
+
+    it("a move that CHANGES a block's depth should still use the file's indent", async () => {
+        // delta descends a level, so its line is not merely relocated — the
+        // serializer renders it at a canonical depth the saved file never
+        // spelled for it. The spelling still has to come from the file, which
+        // writes that depth as two tabs.
+        const { live, reparsed, merged } = await moveAndSave(TABS, "delta", "gamma");
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toContain("\t\t- delta");
+    });
+
+    it("a moved item's continuation lines should move with its marker", async () => {
+        // The marker line and the lines that continue the item meet at the same
+        // canonical width one level apart (`\t\t-` against `\t  `), so a merge
+        // that files both spellings under the width alone learns nothing and
+        // respells neither. Tearing the two apart is not a cosmetic error: the
+        // marker moves to a tab, its content stays at the serializer's columns,
+        // and the content stops belonging to the item.
+        const source = "- alpha\n\t- beta\n\t  continued beta text\n\t- gamma\n\t- delta\n";
+        const { live, reparsed, merged } = await moveAndSave(source, "beta", "delta");
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toContain("\t  continued beta text");
+    });
+
+    it("a moved item containing a fence should keep the fence's contents", async () => {
+        // Verbatim lines must ride along with the construct that opened above
+        // them rather than resolve an indent of their own. Resolving them
+        // independently moved a nested fence while leaving its body behind, and
+        // the body reparsed as an indented code block with the fence gone —
+        // corruption produced by an earlier cut of this very fix.
+        const source =
+            "- alpha\n\t- beta\n\t  ```js\n\t  const x = 1;\n\t    indented();\n\t  ```\n\t- gamma\n\t- delta\n";
+        const { live, reparsed, merged } = await moveAndSave(source, "beta", "delta");
+
+        expect(reparsed).toEqual(live);
+        // The body keeps its own two-space offset INSIDE the fence: re-basing
+        // substitutes the indent it matched and nothing more.
+        expect(merged).toContain("\t    indented();");
+    });
+
+    it("a marker and a continuation at the same width should not cancel out", async () => {
+        // The load-bearing case for keeping the two indent ROLES apart. Here a
+        // depth-2 marker (`\t\t-`) and a depth-1 continuation (`\t  `) are both
+        // rendered by the serializer at four columns, so filing spellings under
+        // the width alone sees four columns meaning two different things,
+        // calls it ambiguous, and learns NOTHING — leaving the moved line at
+        // the serializer's four columns beside a parent whose tab is four,
+        // where it is a sibling rather than a child.
+        //
+        // Every other document here has only one construct per width, which is
+        // why they cannot see this: they pass with the roles merged.
+        const source =
+            "- alpha\n\t- beta\n\t  continued beta\n\t- gamma\n\t\t- deep\n\t- delta\n";
+        const { live, reparsed, merged } = await moveAndSave(source, "delta", "deep");
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toContain("\t\t- delta");
+    });
+
+    it("moving a top-level fence should not re-indent its body", async () => {
+        // Guards the exclusion of verbatim lines from the lookup. Inside a fence
+        // the leading whitespace is the user's CONTENT, and the outline above
+        // teaches that four columns are written `\t  ` — so a body line that
+        // resolved an indent of its own would have its code silently
+        // re-indented. It may only ever ride along with its fence.
+        //
+        // Note what this test does and does not prove: it passes with the whole
+        // fix reverted (nothing is re-based at all then), so it is not evidence
+        // of the bug being fixed. It is a mutation guard — delete the `\x00`
+        // check in `reconcileInsertion` and it is the test that goes red.
+        const source =
+            "- alpha\n\t- beta\n\t  continued beta\n\t- gamma\n\n```text\n    four-space code line\n```\n\n- delta\n";
+        const { liveText, reparsedText, merged } = await moveAndSave(
+            source,
+            "    four-space",
+            "START",
+            "code_block",
+        );
+
+        expect(reparsedText).toEqual(liveText);
+        expect(merged).toContain("\n    four-space code line\n");
+    });
+
+    // KNOWN GAP — the boundary of this fix, asserted as the DESIRED outcome via
+    // `it.fails` rather than as today's wrong bytes, so it stays visible.
+    //
+    // When a moved item's content is a heading (or any block the serializer
+    // cannot put on the marker line) it is re-emitted as an EMPTY marker line
+    // followed by indented content. CommonMark computes such an item's content
+    // indent from the marker's own position, and empirically a tab-indented
+    // empty marker will not hold content at the sibling continuation indent at
+    // all — `\t-` + `\t  # H` reparses the heading as an indented code block,
+    // while `\t-` + `\t# H` is correct. That is a PARSER rule, not a fact about
+    // how this file is written, so no amount of evidence from the file's own
+    // lines answers it; closing it needs the merge to tell the profile which
+    // line an insertion is landing under. All 10 of the moves still damaging
+    // `fixtures/logseq/page.md` are this one construct.
+    it.fails("moving an item whose content is a heading should not restructure it", async () => {
+        const source = "- # Alpha heading\n  alpha body\n\t- beta\n\t- delta\n";
+        const { live, reparsed } = await moveAndSave(source, "beta", "delta");
+
+        expect(reparsed).toEqual(live);
+    });
+});
