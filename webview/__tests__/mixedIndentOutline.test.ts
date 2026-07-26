@@ -9,13 +9,25 @@
  * file asserts the observable a user would actually lose — the nesting — by
  * serializing, merging, and reparsing exactly as a save does.
  *
- * Why not a corpus fixture (which is where a shape like this belongs, and
- * where an earlier cut of this change put it): the corpus move-sampling gate
- * runs every fixture through block MOVES too, and moves reach this same
- * hazard by a path MAR-222 does not fix — an inserted line has no saved
+ * Why not a corpus fixture, which is where a shape like this belongs and
+ * where an earlier cut of this change put it: the move-sampling gate also
+ * runs every fixture it accepts through block MOVES, and moves reach this
+ * same hazard by a path MAR-222 does not fix — an inserted line has no saved
  * counterpart, so the merge writes it with the serializer's indent next to
- * kept lines holding tabs. That is MAR-230, open. Adding the fixture would
- * have parked a known failure inside a gate that documents having none.
+ * kept lines holding tabs. That is MAR-230, open, and the fixture belongs
+ * with it.
+ *
+ * That gate already carries a fixture-level exclusion for exactly this bug
+ * (fixtures/logseq/ — see corpusMoveSampling.test.ts), so a mixed-indent
+ * fixture could only be a second entry on that list or an immediate failure.
+ * Neither is this ticket's call, hence a plain test file: it pins the typing
+ * fix without taking a position on the move gate.
+ *
+ * NOTE the coverage boundary, which is real and not just caution: the fix
+ * learns a file's indent conventions from lines the zero-edit round trip
+ * paired one-to-one, so two NEIGHBOURING lines sharing an unusual indent
+ * teach it nothing and editing one of them still shifts it. The last test
+ * here pins that, so the gap is visible rather than assumed closed.
  */
 import { describe, it, expect } from "vitest";
 import { getMarkdown } from "@milkdown/utils";
@@ -84,6 +96,25 @@ describe("mixed indent units in one outline (MAR-222)", () => {
         expect(merged).toBe(
             "- alpha parent\n\t- beta child\n\t   - gZamma grandchild\n\t- delta child\n",
         );
+    });
+
+    // KNOWN GAP (MAR-231). Asserted as the DESIRED outcome via `it.fails`, not
+    // as the current one: a test that asserts today's wrong bytes would certify
+    // the bug, which is exactly how logseqRoundTrip's old "blast radius is
+    // LOCAL" assertion kept MAR-131 alive. When this starts passing, delete the
+    // `.fails` — do not weaken the assertion.
+    //
+    // The fix learns an indent's meaning only from lines the zero-edit round
+    // trip paired ONE-TO-ONE. Two neighbouring lines that share an unusual
+    // indent form a single multi-line run instead, which pairs nothing, so the
+    // file teaches nothing about `\t   ` and the edited line still shifts.
+    it.fails("typing into one of TWO adjacent mixed-unit lines should not restructure", async () => {
+        const { live, reparsed } = await typeAndSave(
+            "- a\n\t- b\n\t   - c\n\t   - d\n",
+            "c",
+        );
+
+        expect(reparsed).toEqual(live);
     });
 
     it("typing into a plain-tab item should not restructure it either", async () => {

@@ -99,13 +99,25 @@ const SEED = Number(process.env["MDW_MOVE_SEED"] ?? "20260712");
 const SAMPLE_SIZE = Number(process.env["MDW_MOVE_SAMPLE"] ?? "12");
 
 // This gate holds fixtures to STRICT content conservation under block moves.
-// The exploratory Logseq fixtures (fixtures/logseq/) have a known nested-outline
-// serialization gap: moving a block within a tab-indented outline reparses to a
-// restructured list (an extra bullet_list) — the same class of Logseq round-trip
-// fidelity gap tracked in MAR-131. They ARE exercised by the round-trip corpus
-// (invariants A/B in roundTripCorpus.test.ts, which they pass); they are scoped
-// out of the strict move gate until MAR-131 closes the nested-outline gap. This
-// is a deliberate, tracked scoping — not a silenced failure.
+// The exploratory Logseq fixtures (fixtures/logseq/) are scoped OUT of it:
+// moving a block within a tab-indented outline reparses to a restructured list.
+// They ARE exercised by the round-trip corpus (invariants A/B in
+// roundTripCorpus.test.ts, which they pass). A deliberate, tracked scoping —
+// not a silenced failure.
+//
+// The blocking ticket is MAR-230, and getting that reference right matters more
+// than it looks. This exclusion was originally written as "until MAR-131 closes
+// the nested-outline gap"; MAR-131 closed on 2026-07-16 and the exclusion stayed,
+// so for ten days the gate skipped these fixtures on a condition that had already
+// been met — a scoping note that reads as current while pointing at finished work
+// is indistinguishable from a live one. MAR-131 was the TYPING half (an edited
+// line's own indent) and did close; the move half was never in its scope.
+//
+// Measured 2026-07-26, sweeping every enumerable pair rather than the seeded 12:
+// logseq/page.md loses content under the gate's own fingerprint oracle on 49 of
+// its 247 executable moves. So this is not a hypothetical carve-out — deleting
+// the filter today turns the gate red immediately, which is exactly what should
+// happen once MAR-230 lands. Delete it then, and delete this comment with it.
 const fixtures = loadCorpusFixtures().filter((f) => !f.name.startsWith("logseq/"));
 
 let editors: Editor[] = [];
