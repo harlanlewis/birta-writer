@@ -299,20 +299,35 @@ export const orderedListSpreadBoolSchema = orderedListSchema.extendSchema((prev)
  *   2. A THEMATIC BREAK re-lexes when a marker joins it. The marker character
  *      runs into the rule's own characters and the whole line becomes ONE
  *      thematic break — `*` above `***` becomes `* ***` — so the list is gone.
- *   3. AN EMPTY NESTED LIST is the same collision reached through the markers
- *      themselves. Hoisting puts its marker on this line too, and three or more
- *      bullets alone ARE a thematic break: an outline branch whose three lines
- *      have all been emptied serialized to `- - -` and reopened as a horizontal
- *      rule, with the branch destroyed. Hoisting an empty list gains nothing in
- *      the first place — there is no content to bring up — so refusing costs
- *      the output nothing. A nested list that HAS content (`- - child`) carries
- *      a non-marker character onto the line and is safe.
+ *   3. A NESTED LIST WITH NO TEXT is the same collision reached through the
+ *      markers themselves. Hoisting puts its marker on this line too, and three
+ *      or more bullets alone ARE a thematic break: an outline branch whose
+ *      three lines have all been emptied serialized to `- - -` and reopened as
+ *      a horizontal rule, with the branch destroyed. A nested list that carries
+ *      text (`- - child`) puts a non-marker character on the line and is safe.
+ *
+ * Read clause 3's predicate literally — `textContent === ""` is "no TEXT", not
+ * "empty". A sublist holding only an image, a rule, an empty fence or an empty
+ * quote has real content and no text, so it is refused too, and refusing leaves
+ * the bare marker line in place with its original hazard intact (`- normal`
+ * above `  - - ![](a.png)` still loses the nesting on reopen). That is a
+ * deliberate under-reach, not an oversight: it is the pre-existing behaviour, so
+ * it costs nothing that was working, and narrowing the predicate to a genuinely
+ * empty list would need a rule for which of those contents can safely ride a
+ * marker line — the same question clause 2 answers "no" to for rules.
  *
  * Cases 2 and 3 are one hazard (a line that re-lexes as a rule) and case 1 is a
  * different one (a node that isn't ours to drop); they are kept as separate
  * clauses because they answer separate questions and a reader checking one
  * should not have to reason about the other. All three are pinned in
  * `listMarkerFidelity.test.ts`.
+ *
+ * ONE CONSEQUENCE OF HOISTING, worth knowing before you touch this: a fence can
+ * now OPEN on a marker line (`- ```js`). `classifyLines` in
+ * `webview/utils/minimalDiff.ts` had to learn that shape — it was testing its
+ * fence regex against the trimStart'd line, so it missed the opener, read the
+ * fence's own closing line as an opener, and classified the rest of the document
+ * as fence content.
  */
 function itemContentForMarkdown(content: Fragment): Fragment {
     if (content.childCount < 2) return content;

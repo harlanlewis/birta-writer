@@ -236,6 +236,27 @@ describe("a moved block keeps the outline's indentation (MAR-230)", () => {
         expect(merged).toContain("\n    four-space code line\n");
     });
 
+    it("moving a fence item to the top of a tab outline should not re-nest its siblings", async () => {
+        // The MAR-230 follow-up, and a regression this file's own fix caused.
+        //
+        // Putting an item's content on the marker line means a fence can now
+        // OPEN there (`- ```js`) — legal CommonMark, but a shape the serializer
+        // never emitted before. `classifyLines` tested its fence regex against
+        // the trimStart'd line, so the opener was invisible; the scanner then
+        // read the fence's own CLOSING line as an opener and classified every
+        // line below it as fence content. `reconcileInsertion` skips a lookup
+        // for verbatim lines, so the inserted `- one` kept the serializer's two
+        // spaces beside a kept `\t- plain`, and `plain` came back as `one`'s
+        // CHILD. Measured over every enumerable move of this shape: 3 losses in
+        // 12 executable moves, against 2 before MAR-230 — the one pair the fix
+        // made worse.
+        const source = "- root\n\t- one\n\t- ```js\n\t  x\n\t  ```\n\t- plain\n";
+        const { live, reparsed, merged } = await moveAndSave(source, "x", "root");
+
+        expect(reparsed).toEqual(live);
+        expect(merged).toContain("\t- one");
+    });
+
     // Was the boundary of this fix, pinned as `it.fails`; closed by dropping the
     // schema-artifact empty paragraph at serialization (plugins/list.ts →
     // `itemContentForMarkdown`), which is what put the heading back on the
