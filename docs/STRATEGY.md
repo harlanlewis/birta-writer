@@ -1,10 +1,18 @@
-# Strategy map — what is decided, what is open, and which document owns it
+# Strategy map — what's checkable, what's believed, what's open, and who owns it
 
-**Status:** reconciliation index. Written 2026-07-26, after five independent strategy documents
-landed in two days from separate branches. **This file decides nothing new.** It exists because the
-thinking is sound but arrived unreconciled: the same crux is argued in four places, two documents
-prescribe different next steps without either naming the conflict, and several recommendations have
-no ticket. This is the map that makes them one body of work.
+**Status:** reconciliation index for an **active discovery phase**. Written 2026-07-26, after five
+independent strategy documents landed in two days from separate branches.
+
+> **Nothing in this body of work is ratified, and nothing here ratifies anything.** The project is in
+> open strategy discovery, exploration and pressure-testing — **every document, ticket and position
+> from the last few days is deliberately re-openable, including the ones that read most confidently
+> and including the ones a maintainer voiced while thinking out loud.** Re-litigating is the point
+> right now, not a failure mode.
+>
+> This file's job is therefore **not** to lock anything down. It is to make pressure-testing cheaper:
+> show where the arguments actually collide, separate claims that are *checkable against the tree*
+> from claims that are *asserted*, and stop the same question being re-derived in a fourth document
+> by someone who could not see the first three.
 
 **Read this before any of the strategy documents below.** Read `README.md` ("Why this fork") and
 `docs/BENEFITS.md` before this — where they and any strategy document disagree about what Birta *is
@@ -40,57 +48,49 @@ from `POSITIONING.md`; the table above is the strategy set only.)*
 
 ---
 
-## 2. What is settled — and by whom
+## 2. Checkable facts vs. working positions
 
-**These are two different grades of "decided," and collapsing them is how a strategy document
-manufactures a commitment nobody made.** `PUBLISH_LOOP.md`'s own banner names the mechanism: *"a
-confident design creates gravity even when filed as gated."* An index that stamps
-**decided — do not re-litigate** on an argument the owner never ratified does exactly that, at
-greater range, because a summary is what later readers actually read.
+**Nothing below is a decision.** The useful distinction in a discovery phase is not
+decided-vs-open — it is **what can be checked against the tree** versus **what is currently
+believed**. The first constrains every option; the second is what you are pressure-testing, and all
+of it is fair game.
 
-### 2a. Ratified — a maintainer decision exists, with a record
+An earlier draft of this section split these into "ratified" and "converged," and filed a
+maintainer's mid-exploration directional calls under *ratified*. That was wrong twice over: it
+hardened thinking-out-loud into commitment, and it is the exact gravity `PUBLISH_LOOP.md`'s banner
+warns about — *"a confident design creates gravity even when filed as gated"* — with an index's
+extra reach, because a summary is what later readers actually read.
 
-- **Stay on ProseMirror.** A custom core, Rust/WASM, Lexical, and CodeMirror 6 *as the rich-text
-  engine* are ruled out — **MAR-102**, a dated decision record over ~45 adversarially verified
-  claims, with a stated re-check trigger. Wordgard is the only sanctioned watch item.
-  `ENGINE_AND_DIALECT_STRATEGY.md` §4 reaches the same conclusion independently; treat MAR-102 as
-  the citable record and §4 as corroboration, not a second answer.
-- **The three directional calls in `MULTI_SURFACE_INVESTIGATION` §0.5** (maintainer, 2026-07-25):
-  web is a *cloud product*, not a port; "edit once, deploy everywhere" applies to the writing
-  experience but **not** by moving keybindings/commands/settings into core; and the extraction is
-  **Writer-scoped, not a portfolio-wide editor factory** (§0.5c — the portfolio shares brand and
-  tooling, not an editor).
-- **Offline by default, and consent belongs to the user, not the repo.** Shipped and enforced:
-  `birta.network.enabled` ships off, and the consent keys are `application`-scoped so a workspace
-  cannot flip them (MAR-179, MAR-199 — both Done).
-- **The connector posture** (maintainer direction, 2026-07-23, **MAR-198**): third-party
-  integrations are API-backed *native cards* with the most ergonomic auth each provider allows;
-  credentials live in `SecretStorage`, never in settings and never in the webview; **no hosted auth
-  broker**; fetched data is render-only and never written to the file. See §3 D10 — this is the
-  axis no strategy document covers.
+### 2a. Facts about the product as it stands
 
-### 2b. Converged across the documents — but never ratified
+Not positions. Checkable in the tree, most of them enforced by tests. An exploration that assumes
+otherwise is starting from a false premise — which has already happened twice this week (§5.1, §5.6).
 
-Every document that reaches a recommendation says these. That is agreement between *arguments*, not
-a decision. They are the strongest candidates for ratification, and they should be *labelled* as
-candidates until someone says yes.
+- **`birta.network.enabled` ships off, and the consent keys are `application`-scoped** so a
+  workspace cannot flip them (MAR-179, MAR-199 — shipped, guarded).
+- **There is no Birta account and no Birta server.** Zero identity infrastructure exists today.
+- **There is no source editor and no CodeMirror dependency.** "Edit Raw Markdown" delegates to VS
+  Code's own text editor. Any "source mode" lever is the host's, not ours.
+- **Byte-fidelity is enforced, not asserted** — round-trip corpus, move-fuzz, `toolFidelity`,
+  destructive-save guard, CI perf gates on launch and typing.
+- **Every network capability that ships today is read-or-render only.** Nothing uploads document
+  content.
 
-- **Never roll a CommonMark parser or a rich-text view.** Rent remark and ProseMirror; own merge
-  semantics and our custom nodes (`ENGINE` §1). Follows from 2a's MAR-102 but is broader than it.
-- **CM6 as a *raw-source companion* is a separate question and is not ruled out** —
-  `MULTI_SURFACE_INVESTIGATION` §15, orthogonal to MAR-102. Be precise about which "CM6" is meant;
-  the two have already been conflated once.
-- **Local-files-in-a-browser is a dead end outside Chromium desktop** (File System Access API is
-  Chromium-desktop-only; Safari and Firefox ship only OPFS). `MULTI_SURFACE` §8's extensive
-  FSA/OPFS analysis is therefore the **PWA/fallback tier**, already self-demoted in its §16.1;
-  `SURFACE_STRATEGY` §3(c) re-derives the same verdict. They agree — and two documents agreeing is
-  not two pieces of evidence, since the second read the first.
-- **Rung 0 reach is free and gated on nothing.** Open VSX (MAR-228) and a vscode.dev web-extension
-  scope (MAR-229). Unanimous across every document; still not a decision — nobody has said "do it."
-- **The AI posture's floor:** no cloud generation, no agent that edits the file, no AI detector, no
-  telemetry-backed style learning, no AI-first branding (`AI_ASSISTANCE` §4). Consistent with
-  everything shipped, and the doc's own §7 flags the line *above* the floor as open (D7) — but the
-  floor itself is a document's assertion, not a ratified boundary.
+### 2b. Working positions currently held — all re-openable
+
+These are where the thinking sits *right now*. Listed with **how much is behind each one**, because
+that is what tells you where pressure is worth applying — not because weight confers authority.
+
+| Position | What's behind it | Where to push |
+|---|---|---|
+| **Stay on ProseMirror** — custom core, Rust/WASM, Lexical, and CM6 *as the rich-text engine* are out; Wordgard is the watch item | The heaviest thing here: **MAR-102**, dated, ~45 adversarially verified claims, with its own re-check trigger (the MAR-41 seam). `ENGINE` §4 agrees independently | Its own trigger. Wordgard reaching 1.0 with a markdown story would genuinely reopen it |
+| **Never roll a CommonMark parser or a rich-text view** | `ENGINE` §1's own-vs-rent argument; broader than MAR-102 | Weakest if the remark↔PM *bridge* cost (MAR-101) turns out higher than assumed |
+| **CM6 as a *raw-source companion* is a different question and is not ruled out** | `MULTI_SURFACE` §15; orthogonal to MAR-102 | Not a position so much as a distinction — but it has already been conflated once, so keep it explicit |
+| **Web = a cloud product, not a port** — local-files-in-a-browser is dead outside Chromium desktop | An external platform fact (FSA is Chromium-desktop-only) plus a maintainer directional call made mid-exploration (`MULTI_SURFACE` §0.5a) | The platform fact is solid; **"therefore cloud" is the inference, and that's the soft part** |
+| **The extraction is Writer-scoped, not a portfolio-wide editor factory** | `MULTI_SURFACE` §0.5c — a mid-exploration correction, explicitly recorded as reversing an earlier draft | Reversed once already; treat it as live |
+| **Rung 0 reach is free and gated on nothing** (MAR-228/229) | Unanimous across every document — but unanimity among documents that read each other is one opinion, not four | Nobody has actually said "do it." The cheapest thing here, and still not chosen |
+| **The connector posture** — native cards, per-provider auth, `SecretStorage`, **no hosted auth broker**, render-only (MAR-198) | Maintainer direction 2026-07-23 + a hardened invariant list. Better specified than most of the docs — and **still exploration** | No document owns it at all (D10). Its VS-Code-only mechanisms are the unexamined part |
+| **The AI posture's floor** — no cloud generation, no file-editing agent, no AI detector, no telemetry style-learning, no AI-first branding | `AI_ASSISTANCE` §4's argument, consistent with everything shipped | The floor is a document's assertion. The line *above* it is flagged open (D7); the floor itself is no more settled |
 
 ---
 
@@ -98,8 +98,13 @@ candidates until someone says yes.
 
 Every genuinely open question, once. Four documents each ended with an "open decisions" list; those
 lists overlap heavily and the same crux appears in four of them. The per-document lists remain for
-context, but **this table is the one that should be worked** — a decision resolved here should be
-struck from the source document, not maintained in two places.
+context, but **this table is the one to work from** — one question, one place.
+
+**"Decision" here means a question that will eventually need answering, not one that is being asked
+for an answer now.** In a discovery phase most of these should stay open on purpose; the value of
+the register is seeing which are *load-bearing for others* (D1 gates nearly everything) and which are
+cheap to close (D8 is one line and is currently blocking board sequencing). Closing a row early is
+worse than leaving it open.
 
 | # | Decision | Argued in | Gates | Cheapest thing that would settle it |
 |---|---|---|---|---|
@@ -213,22 +218,35 @@ Recorded so the errors are not re-inherited from the un-corrected text:
    merges"). The claim is real and the argument built on it is unaffected — but the count was
    checkable and wrong, in a document arguing about the reliability of a shipped guarantee.
    Corrected in both the doc and MAR-232.
-7. **Corrections to *this* file, second pass (2026-07-26).** §2 originally presented one flat list of
-   things "decided — do not re-litigate," mixing a dated maintainer decision record (MAR-102) with
-   unanimous-but-unratified document recommendations (Rung 0, the AI floor). That is the exact
-   gravity-manufacturing failure `PUBLISH_LOOP` warns about, committed by the file whose job is to
-   prevent it. Split into §2a/§2b. Separately, §6's "index, not a container" rule was violated by
-   §3 D10 on arrival — now stated as a known, named exception with a fix, rather than a rule the
-   file quietly breaks.
+7. **Corrections to *this* file, twice over (2026-07-26).** First pass, §2 presented one flat list of
+   things "decided — do not re-litigate," mixing a dated decision record (MAR-102) with unanimous
+   document recommendations (Rung 0, the AI floor) — the exact gravity-manufacturing failure
+   `PUBLISH_LOOP` warns about, committed by the file whose job is to prevent it. Second pass split
+   that into "ratified vs. converged" — **also wrong**, because it filed a maintainer's
+   mid-exploration directional calls (`MULTI_SURFACE` §0.5, MAR-198) under *ratified*, hardening
+   thinking-out-loud into commitment during an explicitly non-ratifying phase. Now split by
+   **evidence type** instead: §2a is checkable against the tree, §2b is currently believed and fully
+   re-openable. *Two passes to stop turning arguments into decisions is itself the finding:* a
+   summary document's default gravity is toward premature settlement, and it has to be pushed back
+   deliberately, more than once.
+8. **`AGENTS.md`, `README.md` and `POSITIONING.md`** now say plainly that none of this is measured or
+   committed scope, so the framing survives outside this file.
+9. Separately, §6's "index, not a container" rule was violated by §3 D10 on arrival — now a known,
+   named exception with a fix, rather than a rule the file quietly breaks.
 
 ---
 
 ## 6. Keeping this honest
 
-- **A decision resolved goes in §2a and is struck from §3** — and from the source document's own
-  list. Two copies of an open question is how the same crux ended up argued in four places. And
-  **put it in §2a only if someone actually decided it**; §2b is where "all the documents agree" goes,
-  and the two must not merge quietly.
+- **§2a is for things you can check; §2b is for things people currently believe.** The line between
+  them is *evidence type*, not confidence. A position does not graduate into §2a by being argued
+  well or repeated often — only by becoming true of the tree. Nothing graduates by being asserted
+  loudly in a document, and nothing graduates because a maintainer said it while thinking aloud.
+- **When something genuinely is decided, it will need a third home** — a dated record with a
+  re-check trigger, the way MAR-102 is written. Do not add that section speculatively, and do not
+  quietly promote §2b entries into it. Until then, a question resolved gets struck from §3 *and*
+  from the source document's own list; two copies of an open question is how one crux ended up
+  argued in four places.
 - **This file is an index, not a container.** A register entry states enough to be *recognizable
   without opening the source* — one or two sentences of *what* — and then points at the document
   that owns the *why*. It is not a summary of the argument.

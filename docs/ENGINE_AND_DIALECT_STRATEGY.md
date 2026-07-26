@@ -11,7 +11,9 @@ on), **MAR-101** (own the remark↔PM bridge — sharpened here, §4), **MAR-40*
 fixtures), **MAR-225** (multi-surface epic — the collaboration/cloud forcing functions).
 
 **Where this sits:** [`STRATEGY.md`](STRATEGY.md) indexes all six strategy documents —
-read it first for what is decided, what is open, and which document owns which question.
+read it first for what's checkable, what's a working position, and which document owns which
+question. Nothing in this body of work is ratified — it is active exploration, this document
+included.
 The adjacent axes: [`SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md) (which surface, for whom),
 [`AI_ASSISTANCE.md`](AI_ASSISTANCE.md) (the AI posture), and
 [`PUBLISH_LOOP.md`](PUBLISH_LOOP.md) (the document-lifecycle axis).

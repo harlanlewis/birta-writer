@@ -178,7 +178,7 @@ Project intent and ordering principles live in `README.md` ("Why this fork"); th
 
 Six documents explore where the project might go beyond today's VS Code extension. **Start with [`docs/STRATEGY.md`](docs/STRATEGY.md)** — it is the index: which document owns which question, what is actually decided (so it is not re-derived a third time), the deduplicated open-decision register, and the one live sequencing conflict. The others: [`MULTI_SURFACE_INVESTIGATION.md`](docs/MULTI_SURFACE_INVESTIGATION.md) (host-adapter engineering), [`SURFACE_STRATEGY.md`](docs/SURFACE_STRATEGY.md) (which surface, for whom), [`PUBLISH_LOOP.md`](docs/PUBLISH_LOOP.md) (local↔cloud document lifecycle), [`AI_ASSISTANCE.md`](docs/AI_ASSISTANCE.md) (the AI posture), [`ENGINE_AND_DIALECT_STRATEGY.md`](docs/ENGINE_AND_DIALECT_STRATEGY.md) (own vs. rent), plus the two `docs/research/` landscape surveys they rest on.
 
-**None of it is measured, and none of it is committed scope.** Quote these documents as arguments, never as findings, and do not let a confident design in one of them read as a decision — `docs/STRATEGY.md` §2 lists what genuinely is decided.
+**None of it is measured, none of it is ratified, and none of it is committed scope.** This is an open discovery phase: every position in these documents — including ones a maintainer voiced while thinking aloud, and including ones that read as settled — is deliberately re-openable. Quote them as arguments, never as findings, and never let a confident design read as a decision. `docs/STRATEGY.md` §2a lists the short set of things that are checkable against the tree; §2b lists what is currently *believed*, and the two must not be conflated.
 
 ---
 

@@ -883,7 +883,8 @@ downstream changes. Guard against over-planning a beautiful architecture on an u
   There is no fleet of editors to amortize it against (§0.5c) — so the desktop app must be
   justified on its own merits (a real audience of "Birta without VS Code"), not as factory seed.
 - **The hardest thing is also the least designed: the persistence/data-integrity contract**
-  (MAR-226). The other candidate for that title — "what varies across apps" — is **now settled**:
+  (MAR-226). The other candidate for that title — "what varies across apps" — currently has an
+  answer, though like everything here it is a working position and not a ratified one:
   the portfolio shares brand + tooling, not an editor, and Writer's core is shared only across
   Writer's own surfaces (§0.5c). *(Rewritten 2026-07-26: the original sentence promised "the two
   hardest things" and then withdrew one of them mid-clause, which read as self-contradictory.)*

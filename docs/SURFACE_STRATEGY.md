@@ -6,7 +6,7 @@
 Probe 1), under the **MAR-225** epic. Rung-0 reach is MAR-228/229; the save probe is MAR-227.
 
 **Where this sits:** [`STRATEGY.md`](STRATEGY.md) indexes all six strategy documents. Read it for
-what is decided, what is open, and — importantly for this document — **the sequence conflict between
+what's checkable against the tree, what's a working position, and — importantly for this document — **the sequence conflict between
 §6 here and `MULTI_SURFACE_INVESTIGATION.md` §16, which neither document names** (`STRATEGY.md` §4).
 This document's §9 open-decision list is deduplicated into `STRATEGY.md` §3; work that register, not
 the four overlapping per-document lists.
