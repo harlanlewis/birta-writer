@@ -276,7 +276,21 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(content.split("\n").filter((l) => l.includes("finally"))),
     );
 
-    // ── 10. A selection whose head is off screen still carries the range ──
+    // ── 10. Arriving far down the document lands scrolled, not top-then-jump ──
+    // The raw editor opens at the right place; the WYSIWYG side must too. The
+    // scroll is applied synchronously in the init handler, so it must already
+    // hold well before the 300ms fallback retry could have fired.
+    await page.goto(`${baseUrl}/index.html?arrive=61`);
+    await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
+    await page.waitForTimeout(120);
+    const arrivedScroll = await page.evaluate(() => window.scrollY);
+    check(
+        "an init-carried line is scrolled to before the fallback timers",
+        arrivedScroll > 200,
+        `scrollY=${arrivedScroll}`,
+    );
+
+    // ── 11. A selection whose head is off screen still carries the range ──
     // The user's explicit range beats "what the viewport shows": scrolling
     // away must not silently downgrade a selection to a bare viewport line.
     await freshPage(page, baseUrl);

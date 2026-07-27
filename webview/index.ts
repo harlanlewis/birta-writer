@@ -348,6 +348,14 @@ function retryScroll(fn: () => void): void {
         fn();
         done = true;
     };
+    // First attempt is synchronous: by the time the init handler runs, the
+    // editor DOM is attached and measurable (getBoundingClientRect forces
+    // layout), so an arriving scroll lands BEFORE the first visible paint —
+    // the raw editor opens at the right place, and so should we. The timers
+    // remain as the fallback for a document whose first block isn't
+    // measurable yet.
+    tryFn();
+    if (done) return;
     for (const delay of [300, 600, 1100, 2000]) {
         setTimeout(tryFn, delay);
     }

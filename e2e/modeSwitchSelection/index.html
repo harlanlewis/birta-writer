@@ -52,6 +52,10 @@
   // paragraph, then fillers.
   const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, 22, ...Array.from({ length: FILLERS }, (_, i) => 26 + 2 * i)];
   const LINE_OFFSET = 3; // lines the frontmatter occupies
+  // `?arrive=<docLine>` puts a scrollToLine in the init payload — the shape a
+  // mode switch arrives with — so the checks can assert the scroll lands
+  // before the first paint rather than as a visible jump afterwards.
+  const arrive = Number(new URLSearchParams(location.search).get("arrive")) || undefined;
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {
       window.__posted.push(msg);
@@ -63,6 +67,7 @@
           lineOffset: LINE_OFFSET,
           frontmatter: FRONTMATTER,
           syncVersion: 1,
+          ...(arrive ? { scrollToLine: arrive } : {}),
         }, "*");
       }
     },

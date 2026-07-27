@@ -29,6 +29,7 @@ const schema = new Schema({
         list_item: { content: "paragraph block*" },
         horizontal_rule: { group: "block" },
         hardbreak: { group: "inline", inline: true },
+        math_inline: { group: "inline", inline: true, content: "text*" },
         image: { group: "inline", inline: true, attrs: { src: {} } },
         text: { group: "inline" },
     },
@@ -571,5 +572,33 @@ describe("wrapped paragraphs (source newlines as break leaves)", () => {
             anchor: { line: 1, column: 8 },
             head: { line: 2, column: "continues **bold** ".length },
         });
+    });
+});
+
+describe("wrapped lines containing an inline node with text content", () => {
+    // Inline math stores its LaTeX as literal text CONTENT: textBetween counts
+    // those characters, so the segment text must too, or every column after
+    // the math on a wrapped line skews (the segment used to accumulate only
+    // direct text children).
+    const source = "sum $E=mc^2$ done\nnext line\n";
+    const d = () =>
+        doc(schema.node("paragraph", null, [
+            schema.text("sum "),
+            schema.node("math_inline", null, [schema.text("E=mc^2")]),
+            schema.text(" done"),
+            schema.node("hardbreak"),
+            schema.text("next line"),
+        ]));
+    // Content offsets: "sum " 0–4, math 4–12 (its text at 5–11), " done"
+    // 12–17, break 17–18, "next line" 18–27.
+
+    it("a caret after the math should count its LaTeX and align past the $ markers", () => {
+        const caret = sourceCaretAt(d(), computeLineMap(source), source.split("\n"), 1 + 13);
+        expect(caret).toEqual({ line: 1, column: "sum $E=mc^2$ ".length });
+    });
+
+    it("the second wrapped line should still map to its own line", () => {
+        const caret = sourceCaretAt(d(), computeLineMap(source), source.split("\n"), 1 + 18 + 4);
+        expect(caret).toEqual({ line: 2, column: 4 });
     });
 });

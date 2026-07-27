@@ -83,19 +83,20 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
         // A wrapped paragraph spans several source lines inside ONE textblock,
         // with the author's newlines preserved as inline break leaves: each
         // run between them is its own source line. A textblock with no breaks
-        // is a single line.
+        // is a single line. Segment text MUST come from the same textBetween
+        // the offset mapping uses, so nested text content (inline math's
+        // LaTeX) counts identically in both.
         let segOffset = 0;
-        let segText = "";
+        const flush = (end: number): void => {
+            anchors.push({ text: node.textBetween(segOffset, end), node, contentStart, offset: segOffset });
+        };
         node.forEach((child, childOffset) => {
             if (isLineBreak(child)) {
-                anchors.push({ text: segText, node, contentStart, offset: segOffset });
+                flush(childOffset);
                 segOffset = childOffset + child.nodeSize;
-                segText = "";
-            } else if (child.isText) {
-                segText += child.text ?? "";
             }
         });
-        anchors.push({ text: segText, node, contentStart, offset: segOffset });
+        flush(node.content.size);
     };
 
     if (block.isTextblock) {
