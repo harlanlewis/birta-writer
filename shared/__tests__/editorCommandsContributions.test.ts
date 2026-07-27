@@ -127,6 +127,17 @@ describe("editor command contributions", () => {
 
     it("every webview/context item should belong to a table entry that declares that section", () => {
         for (const entry of webviewContext) {
+            if (!entry.command.startsWith(EDITOR_COMMAND_PREFIX)) {
+                // Extension-side commands (the agent-bridge copy commands) live
+                // outside the shared table by design — they never dispatch into
+                // the webview registry. They must still be real contributed
+                // commands, so a menu item can't reference a typo.
+                expect(
+                    contributedCommands.some((c) => c.command === entry.command),
+                    `context item ${entry.command} is not a contributed command`,
+                ).toBe(true);
+                continue;
+            }
             const meta = EDITOR_COMMANDS.find((m) => editorCommandName(m.id) === entry.command);
             expect(meta, `context item ${entry.command} has no table entry`).toBeDefined();
             const section = meta!.sections.find((s) => entry.when?.includes(`webviewSection == '${s}'`));

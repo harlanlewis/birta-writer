@@ -549,6 +549,45 @@ describe("selection toolbar per-item visibility", () => {
         expect(linkButton().style.display).not.toBe("none");
     });
 
+    it("a text selection should show the agent-reference button by default", async () => {
+        // Arrange
+        editor = await makeEditor("hello world\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn());
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)),
+        );
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert
+        const btn = document.querySelector(".sel-tb-agent-btn") as HTMLElement;
+        expect(btn).not.toBeNull();
+        expect(btn.style.display).not.toBe("none");
+    });
+
+    it("agentReference: false should hide the agent-reference button", async () => {
+        // Arrange
+        editor = await makeEditor("hello world\n");
+        const v = view(editor);
+        const selTb = setupSelectionToolbar(() => v, () => editor, vi.fn(), {
+            agentReference: false,
+        });
+        v.dispatch(
+            v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)),
+        );
+
+        // Act
+        setPendingToolbarPos(100, 100);
+        selTb.onSelectionChange(v);
+
+        // Assert
+        const btn = document.querySelector(".sel-tb-agent-btn") as HTMLElement;
+        expect(btn.style.display).toBe("none");
+    });
+
     it("a text selection with every inline item hidden should not show an empty bar", async () => {
         // Arrange — opt every inline item out; the bar would otherwise be empty
         editor = await makeEditor("hello world\n");
@@ -564,6 +603,7 @@ describe("selection toolbar per-item visibility", () => {
             sectionLink: false,
             clearFormatting: false,
             math: false,
+            agentReference: false,
         });
         v.dispatch(
             v.state.tr.setSelection(TextSelection.create(v.state.doc, 1, 6)),

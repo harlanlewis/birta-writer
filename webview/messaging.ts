@@ -52,6 +52,26 @@ export function notifyPerfMarks(id: string, marks: Record<string, number>): void
     vscode.postMessage({ type: "__perfMarks", id, marks });
 }
 
+/**
+ * Reply to `requestEditorContext` with the live file selection so a coding-agent
+ * bridge (src/agentBridge/) can read what the user has open/selected. `context`
+ * is null when no position can be mapped. Pull-only — see webview/agentContext.ts.
+ */
+export function notifyEditorContextResult(
+    id: string,
+    context: import("../shared/agentContext").EditorSelectionContext | null,
+): void {
+    vscode.postMessage({ type: "editorContextResult", id, context });
+}
+
+/**
+ * The selection palette's @ button: ask the extension to run the same
+ * birta.copyAgentReference command the context menu offers.
+ */
+export function notifyCopyAgentReference(): void {
+    vscode.postMessage({ type: "copyAgentReference" });
+}
+
 export function notifyOpenUrl(url: string): void {
     vscode.postMessage({ type: "openUrl", url });
 }
@@ -87,7 +107,9 @@ export function notifyOpenFile(relativePath: string, opts?: { wiki?: true }): vo
  * Leave for the raw editor, carrying the source position it should open at
  * (a document line, plus a column when the caret could be mapped honestly).
  */
-export function notifySwitchToTextEditor(target?: { line: number; column?: number }): void {
+export function notifySwitchToTextEditor(
+    target?: { line: number; column?: number; anchorLine?: number; anchorColumn?: number },
+): void {
     vscode.postMessage({ type: "switchToTextEditor", ...target });
 }
 

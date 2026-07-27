@@ -377,6 +377,10 @@ export const calloutSchema = $nodeSchema(calloutId, () => ({
     content: "block+",
     group: "block",
     defining: true,
+    // The `> [!NOTE]` marker line has no text position in the document —
+    // declared for the source-line mapping (utils/sourceCaret.ts), which
+    // anchors it like a code fence's opener. No closing marker line.
+    markerLines: { closer: false },
     attrs: {
         marker: { default: "[!NOTE]" },
         kind: { default: "note" },

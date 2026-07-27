@@ -5,6 +5,7 @@
  */
 
 import type { EditorCommandId } from "./editorCommands";
+import type { EditorSelectionContext } from "./agentContext";
 import type { ContentWidthMode } from "./contentWidth";
 import type { BlockHandlesMode } from "./blockHandles";
 import type { FoldingControlsMode } from "./foldingControls";
@@ -197,7 +198,10 @@ export type ToExtensionMessage =
     // The source position the raw editor should open at (MAR-23). `line` is a
     // DOCUMENT line (frontmatter included); `column` is only present when the
     // webview could map it honestly — see webview/utils/sourceCaret.ts.
-    | { type: "switchToTextEditor"; line?: number; column?: number }
+    // `line`/`column` is the caret (the selection's ACTIVE end); when a real
+    // selection exists, `anchorLine`/`anchorColumn` carry its other end so the
+    // raw editor restores the selection, drag direction included (MAR-23).
+    | { type: "switchToTextEditor"; line?: number; column?: number; anchorLine?: number; anchorColumn?: number }
     // `query` optionally narrows the native Settings UI filter (e.g. to the
     // font settings); it must stay within this extension's namespace.
     | { type: "openSettings"; query?: string }
@@ -312,7 +316,19 @@ export type ToExtensionMessage =
     // (prefix stripped), so the @vscode/test-electron suite can read real launch
     // timings from a live VS Code webview and validate the headless harness
     // against reality (MAR-191). `id` correlates the request. Never used in production.
-    | { type: "__perfMarks"; id: string; marks: Record<string, number> };
+    | { type: "__perfMarks"; id: string; marks: Record<string, number> }
+    // Reply to `requestEditorContext`: the live file selection, mapped to
+    // document coordinates, so a coding-agent bridge can read what the user has
+    // open/selected in the WYSIWYG editor (which vscode.window.activeTextEditor
+    // cannot see). Pull-only — computed on request, never on the editor's own
+    // selection path — so the feature costs the editor nothing until an agent
+    // asks. `context` is null when no position can be mapped. See
+    // shared/agentContext.ts and src/agentBridge/.
+    | { type: "editorContextResult"; id: string; context: EditorSelectionContext | null }
+    // The selection palette's @ button: run the same birta.copyAgentReference
+    // command the context menu offers, so the one-click path and the menu path
+    // share behavior (clipboard payload, status-bar feedback) exactly.
+    | { type: "copyAgentReference" };
 
 /**
  * Extension → WebView messages.
@@ -343,9 +359,12 @@ export type ToExtensionMessage =
  * the document. The webview falls back to a full rebuild on any diff failure.
  */
 export type ToWebviewMessage =
-    | { type: "init"; content: string; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
+    | { type: "init"; content: string; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; scrollToAnchorLine?: number; scrollToAnchorColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
     | { type: "externalUpdate"; content: string; lineMap?: number[]; lineOffset?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
-    | { type: "scrollToLine"; line: number; column?: number }
+    // `line`/`column` is the caret; `anchorLine`/`anchorColumn`, when present,
+    // carry the raw editor's selection anchor so the WYSIWYG editor restores
+    // the whole selection rather than a bare caret (MAR-23).
+    | { type: "scrollToLine"; line: number; column?: number; anchorLine?: number; anchorColumn?: number }
     | { type: "lineMapUpdate"; lineMap: number[]; lineOffset?: number }
     | { type: "setDebugMode"; enabled: boolean }
     | { type: "imageUploaded"; id: string; url: string }
@@ -433,6 +452,11 @@ export type ToWebviewMessage =
     // Command-palette / context-menu action forwarded to the active editor; the
     // webview dispatches `command` into the editor-command registry (MAR-9).
     | { type: "editorCommand"; command: EditorCommandId; args?: unknown }
+    // A coding-agent bridge asked for the live file selection (src/agentBridge/).
+    // The webview computes it from the current editor state and replies with
+    // `editorContextResult` correlated by `id`. Read-only — never mutates the
+    // document and never runs unless an agent requests it.
+    | { type: "requestEditorContext"; id: string }
     // Disk-drift state for this document: "conflict" while the file on disk has
     // changed since the editor last agreed with it AND the editor has unsaved
     // edits (the toolbar shows a quiet advisory badge — a manual save would hit

@@ -50,7 +50,11 @@ import {
     docPosForSourceCaret,
     blockIndexForSourceLine,
     sourceLineForBlock,
+    sourceSelectionEnds,
+    sourceColumnForTextOffset,
 } from "./utils/sourceCaret";
+import { buildSelectionContext } from "./agentContext";
+import type { EditorSelectionContext } from "../shared/agentContext";
 import { isTaskCheckboxClick } from "./utils/taskCheckbox";
 import { applyTaskToggle } from "./editing/checklistSink";
 
@@ -232,39 +236,191 @@ function focusEditorIfIdle(view: EditorView): void {
 }
 
 /**
- * Put the caret at a document line/column. Needs the document only — no
- * layout — so it can run before the first paint has settled.
+ * Put the caret at a document line/column — or restore a whole selection when
+ * `anchor` carries the other end (a raw-editor selection surviving the mode
+ * switch). Needs the document only — no layout — so it can run before the
+ * first paint has settled.
  */
-function placeCaretAtLine(documentLine: number, column?: number): void {
+function placeCaretAtLine(
+    documentLine: number,
+    column?: number,
+    anchor?: { line: number; column?: number },
+): void {
     const view = getEditorView();
     const bodyLine = toBodyLine(documentLine);
     if (!view || bodyLine < 1) { return; }
-    const pos = docPosForSourceCaret(
+    const sourceLines = getMarkdownSource().split("\n");
+    const headPos = docPosForSourceCaret(
         view.state.doc,
         currentLineMap,
-        getMarkdownSource().split("\n"),
+        sourceLines,
         { line: bodyLine, column: column ?? 0 },
     );
-    if (pos === undefined) { return; }
+    if (headPos === undefined) { return; }
     const { doc, tr } = view.state;
-    const $pos = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
+    const clampPos = (p: number): number => Math.min(Math.max(p, 0), doc.content.size);
+    const $head = doc.resolve(clampPos(headPos));
+    const anchorBody = anchor ? toBodyLine(anchor.line) : 0;
+    const anchorPos = anchor && anchorBody >= 1
+        ? docPosForSourceCaret(doc, currentLineMap, sourceLines, { line: anchorBody, column: anchor.column ?? 0 })
+        : undefined;
     // Selection-only: no doc change, so this never dirties the document or
-    // enters the sync pipeline. `near` snaps to the closest valid text position.
-    view.dispatch(tr.setSelection(TextSelection.near($pos)));
+    // enters the sync pipeline. `near`/`between` snap to valid text positions;
+    // `between` keeps the anchor→head drag direction.
+    const selection = anchorPos !== undefined
+        ? TextSelection.between(doc.resolve(clampPos(anchorPos)), $head)
+        : TextSelection.near($head);
+    view.dispatch(tr.setSelection(selection));
     focusEditorIfIdle(view);
+}
+
+/**
+ * The live selection context for a coding-agent bridge pull (src/agentBridge/),
+ * or null when no editor exists / the position can't be mapped. Called only on
+ * an agent's request — never on the editor's own selection path.
+ */
+function getSelectionContext(): EditorSelectionContext | null {
+    const view = getEditorView();
+    if (!view) { return null; }
+    return buildSelectionContext(view, currentLineMap, getMarkdownSource().split("\n"), currentLineOffset);
 }
 
 /**
  * The source position a switch to the raw editor should carry.
  *
- * The caret wins when it is on screen — that is where the user is working, and
- * it is the only reading that can carry a column. Once they have scrolled away
- * from it, "take me to what I am looking at" is the honest answer instead.
+ * A selection is the user's explicit statement of what matters, so it is
+ * carried whole — both ends, in drag order — even when scrolled off screen. A
+ * selection whose ends sit on depth-0 boundaries (a block-range, node, or
+ * select-all) covers whole blocks, so it maps to whole source lines; mapping
+ * its trailing boundary as a caret would land in the NEXT block and
+ * over-select.
+ *
+ * A bare caret wins only while it is on screen — that is where the user is
+ * working, and it is the only reading that can carry a column. Once they have
+ * scrolled away from it, "take me to what I am looking at" is the honest
+ * answer instead.
  */
-function getSwitchTarget(): { line: number; column?: number } | undefined {
+/**
+ * A switch target read from the DOM selection when it sits in read-only
+ * preview chrome INSIDE the editor — the calc ledger, a rendered diagram or
+ * formula, a NodeView's title bar. Those surfaces deliberately keep
+ * ProseMirror's own selection parked elsewhere (and stale), so the DOM
+ * selection is the only honest record of where the user is. The calc ledger
+ * maps precisely — its rows mirror the fence's interior source lines
+ * one-to-one and a row's source cell IS the source line — and any other
+ * chrome maps to its block's first line. Returns BODY lines (no frontmatter
+ * offset).
+ */
+function domChromeTarget(
+    view: EditorView,
+    sourceLines: string[],
+): { line: number; column?: number; anchorLine?: number; anchorColumn?: number } | undefined {
+    const sel = document.getSelection();
+    if (!sel || !sel.anchorNode) { return undefined; }
+    const toElement = (n: globalThis.Node | null): Element | null =>
+        n instanceof Element ? n : n?.parentElement ?? null;
+    const anchorEl = toElement(sel.anchorNode);
+    if (!anchorEl || !view.dom.contains(anchorEl)) { return undefined; }
+    const chrome = anchorEl.closest('[contenteditable="false"]');
+    if (!chrome || !view.dom.contains(chrome)) { return undefined; }
+    // The top-level block element owning the chrome → its block index.
+    let el: Element = chrome;
+    while (el.parentElement && el.parentElement !== view.dom) { el = el.parentElement; }
+    const index = Array.prototype.indexOf.call(view.dom.children, el);
+    if (index < 0 || index >= view.state.doc.childCount) { return undefined; }
+    const blockLine = sourceLineForBlock(view.state.doc, currentLineMap, sourceLines, index);
+    if (blockLine === undefined) { return undefined; }
+    // Calc ledger: row index = interior line offset (the fence opener is
+    // blockLine); a position in the source cell carries its exact column.
+    const rowCaret = (n: globalThis.Node | null, offset: number): { line: number; column?: number } | undefined => {
+        const rowEl = toElement(n)?.closest(".calc-row");
+        if (!rowEl?.parentElement) { return undefined; }
+        const line = blockLine + 1 +
+            Array.prototype.indexOf.call(rowEl.parentElement.children, rowEl);
+        const srcEl = rowEl.querySelector(".calc-row-src");
+        const column = n && srcEl?.contains(n) && n.nodeType === 3
+            ? Math.min(offset, (srcEl.textContent ?? "").length)
+            : undefined;
+        return { line, column };
+    };
+    const anchor = rowCaret(sel.anchorNode, sel.anchorOffset);
+    const head = rowCaret(sel.focusNode, sel.focusOffset) ?? anchor;
+    if (head && anchor) {
+        return sel.isCollapsed
+            ? { line: head.line, column: head.column }
+            : {
+                line: head.line, column: head.column,
+                anchorLine: anchor.line, anchorColumn: anchor.column,
+            };
+    }
+    // An editable title island (a callout's or directive's role="textbox"
+    // span): the title lives ON the block's marker line, so offsets in it
+    // align into that source line under the same subsequence rules as any
+    // rendered-vs-source divergence. Mid-edit text not yet committed to the
+    // source simply fails alignment and degrades to the line.
+    const titleEl = anchorEl.closest('[role="textbox"]');
+    if (titleEl && chrome.contains(titleEl)) {
+        const sourceLine = sourceLines[blockLine - 1] ?? "";
+        const text = titleEl.textContent ?? "";
+        const titleCaret = (n: globalThis.Node | null, offset: number): { line: number; column?: number } => {
+            let column: number | undefined;
+            if (n && titleEl.contains(n) && n.nodeType === 3) {
+                // Offset within the WHOLE title text (an edited span can
+                // hold several text nodes).
+                let before = 0;
+                const walker = document.createTreeWalker(titleEl, NodeFilter.SHOW_TEXT);
+                for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+                    if (t === n) {
+                        column = sourceColumnForTextOffset(
+                            sourceLine, text, Math.min(before + offset, text.length));
+                        break;
+                    }
+                    before += t.textContent?.length ?? 0;
+                }
+            }
+            return { line: blockLine, ...(column !== undefined ? { column } : {}) };
+        };
+        const a = titleCaret(sel.anchorNode, sel.anchorOffset);
+        const h = titleCaret(sel.focusNode, sel.focusOffset);
+        return sel.isCollapsed || a.column === undefined || h.column === undefined
+            ? { line: h.line, column: h.column }
+            : { line: h.line, column: h.column, anchorLine: a.line, anchorColumn: a.column };
+    }
+    return { line: blockLine };
+}
+
+function getSwitchTarget():
+    | { line: number; column?: number; anchorLine?: number; anchorColumn?: number }
+    | undefined {
     const view = getEditorView();
     if (!view) { return undefined; }
-    const { head } = view.state.selection;
+    const { doc, selection } = view.state;
+    const { head, empty } = selection;
+    const sourceLines = getMarkdownSource().split("\n");
+    // A DOM selection in preview chrome outranks the editor selection — the
+    // chrome parks the editor, so its selection is stale by construction.
+    const chromeTarget = domChromeTarget(view, sourceLines);
+    if (chromeTarget) {
+        return {
+            ...chromeTarget,
+            line: chromeTarget.line + currentLineOffset,
+            ...(chromeTarget.anchorLine !== undefined
+                ? { anchorLine: chromeTarget.anchorLine + currentLineOffset }
+                : {}),
+        };
+    }
+    if (!empty) {
+        const ends = sourceSelectionEnds(doc, currentLineMap, sourceLines, selection);
+        if (ends) {
+            return {
+                line: ends.head.line + currentLineOffset,
+                column: ends.head.column,
+                anchorLine: ends.anchor.line + currentLineOffset,
+                anchorColumn: ends.anchor.column,
+            };
+        }
+        // An unmappable range falls through to the caret path below.
+    }
     let caretVisible = false;
     try {
         const coords = view.coordsAtPos(head);
@@ -273,7 +429,7 @@ function getSwitchTarget(): { line: number; column?: number } | undefined {
         caretVisible = false; // A position the view can't measure yet.
     }
     const caret = caretVisible
-        ? sourceCaretAt(view.state.doc, currentLineMap, getMarkdownSource().split("\n"), head)
+        ? sourceCaretAt(doc, currentLineMap, sourceLines, head)
         : undefined;
     if (caret) {
         return { line: caret.line + currentLineOffset, column: caret.column };
@@ -294,6 +450,14 @@ function retryScroll(fn: () => void): void {
         fn();
         done = true;
     };
+    // First attempt is synchronous: by the time the init handler runs, the
+    // editor DOM is attached and measurable (getBoundingClientRect forces
+    // layout), so an arriving scroll lands BEFORE the first visible paint —
+    // the raw editor opens at the right place, and so should we. The timers
+    // remain as the fallback for a document whose first block isn't
+    // measurable yet.
+    tryFn();
+    if (done) return;
     for (const delay of [300, 600, 1100, 2000]) {
         setTimeout(tryFn, delay);
     }
@@ -346,10 +510,14 @@ async function initEditor(
             currentLineMap = computeLineMap(updated);
             notifyUpdate(updated);
         },
-        // The outline is a view of the document, so it refreshes on document
-        // changes — NOT on the save/serialize cadence this callback rides
-        // (see _onDocChange in editor.ts for what that coupling cost).
-        scheduleTocRefresh,
+        // Views of the document refresh on document changes — NOT on the
+        // save/serialize cadence the callback above rides (see _onDocChange
+        // in editor.ts for what that coupling cost). The find bar's note is
+        // O(1) when the bar is closed or empty.
+        () => {
+            scheduleTocRefresh();
+            findBar.noteDocChanged();
+        },
     );
     toc.refresh();
     // Seed the status-bar word count for the freshly loaded document (MAR-29):
@@ -712,6 +880,7 @@ const handlers = createMessageHandlers({
             if (view) { scrollToSourceLine(view, currentLineMap, toBodyLine(line)); }
         },
         getSwitchTarget,
+        getSelectionContext,
         setLineOffset: (offset) => {
             currentLineOffset = offset;
         },

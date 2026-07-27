@@ -241,6 +241,9 @@ export const notionCalloutSchema = $nodeSchema(notionCalloutId, () => ({
     content: "block+",
     group: "block",
     defining: true,
+    // The `<aside>` and `</aside>` lines have no text position — declared for
+    // the source-line mapping (utils/sourceCaret.ts).
+    markerLines: { closer: true },
     attrs: {
         icon: { default: "" },
         kind: { default: "note" },

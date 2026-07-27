@@ -60,7 +60,7 @@ It's not a wiki, knowledge base, or [PKM](https://en.wikipedia.org/wiki/Personal
 
 - Open an existing Obsidian vault in VS Code and use the file explorer and command palette to view your full repository of knowledge.
 - Markdown files open automatically in Birta Writer. Crosslink them. Click to navigate across pages. View files side by side in a window.
-- Open Github Copilot, Claude Code, or other AI assistant in a VS Code sidebar to chat with and modify your documents live.
+- Open Github Copilot, Claude Code, or other AI assistant in a VS Code sidebar to chat with and modify your documents live — and let it see what you're looking at. VS Code hides a custom editor from the active-editor API agents read, so Birta bridges the gap: copy a precise `file.md#L12-L20` reference (or the reference plus the selected lines, quoted as real markdown) to paste into any agent, or let a tool-using agent pull your current file, caret, and selection directly (a Language Model Tool for Copilot agent mode; a public API for any extension). No more hand-directing the agent to the lines you mean.
 
 Use Birta Writer as a knowledge base complement when you want a more enjoyable and helpful writing tool, or lean on VS Code and fully replace your other systems.
 
@@ -243,11 +243,13 @@ That only holds if the editor does the things you expect from VS Code:
 - **Folding and go-to-heading** for navigating long documents — neither touches
   the file. **Why it matters:** structure you can move through without
   scrolling, and without it leaking into what's saved.
-- **The switch to raw Markdown carries your cursor.** Cmd+Shift+M opens the
-  other editor at the line — and, where the mapping is unambiguous, the exact
-  column — you were working at, in both directions, so you can switch
-  mid-sentence and keep typing. Scrolled away from your cursor, it takes you to
-  what's on screen instead. **Why it matters:** the raw editor is the escape
+- **The switch to raw Markdown carries your cursor — and your selection.**
+  Cmd+Shift+M opens the other editor at the line — and, where the mapping is
+  unambiguous, the exact column — you were working at, in both directions, so
+  you can switch mid-sentence and keep typing. A selection survives the trip
+  whole (drag direction included, block selections arriving as whole source
+  lines), and the arriving cursor is centered on screen. Scrolled away from a
+  bare cursor, it takes you to what's on screen instead. **Why it matters:** the raw editor is the escape
   hatch, and an escape hatch that dumps you at the top of a long file is one you
   hesitate to use. Nothing about the document changes on the way through — the
   switch moves you, not your text.

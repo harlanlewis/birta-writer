@@ -7,7 +7,7 @@
  * scrolling) are exercised through their guards: domAtPos throws and
  * nodeDOM returns null, as they would for unmapped decoration widgets.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { EditorView } from "../pm";
 import { Schema, type Node as PmNode, type Mark } from "../pm";
 import { EditorState, TextSelection, type Transaction } from "../pm";
@@ -1345,5 +1345,59 @@ describe("initFindBar Escape layering (editor-focused Esc)", () => {
         expect(e.defaultPrevented).toBe(true);
         // The close dropped the layer entry too.
         expect(closeTopmostLayer()).toBe(false);
+    });
+});
+
+describe("initFindBar staleness after document edits", () => {
+    // Matches hold absolute positions into the doc they were computed from.
+    // An edit between search and action used to leave the count stale and
+    // send navigation (and worse, replace) to shifted — wrong — positions.
+    beforeEach(() => {
+        vi.clearAllMocks();
+        window.scrollTo = vi.fn();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("deleting a match should refresh the count shortly after the edit", () => {
+        vi.useFakeTimers();
+        const s = setup(mkDoc(p("one match two match end")));
+        s.findBar.open("match");
+        expect(s.count.textContent).toBe("1/2");
+
+        // Delete the second occurrence (an out-of-band edit, not a replace).
+        s.view.dispatch(s.getState().tr.delete(15, 20));
+        s.findBar.noteDocChanged();
+        vi.advanceTimersByTime(150);
+
+        expect(s.count.textContent).toBe("1/1");
+    });
+
+    it("find-next after an edit should land on the live position, not the stale one", () => {
+        const s = setup(mkDoc(p("one match two match end")));
+        s.findBar.open("match");
+        click(s.btnNext); // caret at the end of a match (pos 20)
+
+        // Delete "one " ahead of everything: every later position shifts by 4.
+        s.view.dispatch(s.getState().tr.delete(1, 5));
+
+        click(s.btnNext);
+        const sel = s.getState().selection;
+        const d = s.getState().doc;
+        // The caret must sit at the END of a real, live "match" occurrence.
+        expect(d.textBetween(sel.to - 5, sel.to)).toBe("match");
+    });
+
+    it("replace-all after an edit must rewrite the live matches, never stale positions", () => {
+        const s = setup(mkDoc(p("xx match yy match zz")));
+        s.findBar.open("match");
+
+        // Shift everything left by 3 before replacing.
+        s.view.dispatch(s.getState().tr.delete(1, 4));
+
+        s.replaceInput.value = "M";
+        click(s.btnReplaceAll);
+        expect(s.docText()).toBe("M yy M zz");
     });
 });

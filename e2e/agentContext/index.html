@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- e2e harness for the coding-agent bridge's selection context
+     (requestEditorContext → editorContextResult). Mirrors the provider init:
+     BODY as content, body-relative lineMap, frontmatter line count as
+     lineOffset. The document deliberately mirrors the field shape that broke
+     the mapping in the wild: a long LOOSE list (blank lines between items,
+     nested sub-items after a blank line) is ONE document node but EIGHT map
+     entries, so everything at and after it drifts unless the mapping is
+     reconciled against the source text. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-textBlockQuote-background: rgba(128, 128, 128, 0.08);
+    --vscode-textCodeBlock-background: rgba(128, 128, 128, 0.1);
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { min-height: 48px; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  // DOCUMENT lines (frontmatter takes 1–3; body line = document line − 3).
+  // First half: the loose list with nested sub-items (8 map entries, ONE
+  // node). Second half: a second loose list, a paragraph whose source line
+  // ends with a TRAILING SPACE, and a tight ordered list whose items carry
+  // inline markup (a link, emphasis) — rendered text ≠ source text, which
+  // used to defeat the exact-suffix reconciliation entirely.
+  //    5 # Heading             23 - item five            37 - loose beta
+  //    7 Intro paragraph.      25 - item six             39 - loose gamma
+  //    9 - item one            27 After the list.        41 ### Numbered principles
+  //   11 - item two            29 Final paragraph.       43 1. Data fidelity … [FOAM](…) …
+  //   13 - item three:         31 ## Second section      44 2. Support the *Markdown* …
+  //   15 "  - sub a"           33 "Trailing space here. "45 3. As Teller put it, *"…"* …
+  //   16 "  - sub b"           35 - loose alpha          47 Below the numbered list.
+  //   18 - item four
+  //   20 "  - sub c"
+  //   21 "  - sub d"
+  const FRONTMATTER = "---\ntitle: Note\n---\n";
+  const BODY =
+    "\n# Heading\n\nIntro paragraph.\n\n- item one\n\n- item two\n\n- item three:\n\n" +
+    "  - sub a\n  - sub b\n\n- item four\n\n  - sub c\n  - sub d\n\n- item five\n\n" +
+    "- item six\n\nAfter the list.\n\nFinal paragraph.\n\n## Second section\n\n" +
+    "Trailing space here. \n\n- loose alpha\n\n- loose beta\n\n- loose gamma\n\n" +
+    "### Numbered principles\n\n1. Data fidelity first: see [FOAM](https://example.com/foam) and *tolerance*.\n2. Support the *Markdown* people actually write.\n3. As Teller put it, *\"Sometimes magic is just more time than anyone expects.\"* Powerful stuff.\n\nBelow the numbered list.\n";
+  // computeLineMap(BODY): 20 entries over 11 document nodes — the ordered
+  // list sits behind a cumulative drift of 8 entries.
+  const LINE_MAP = [2, 4, 6, 8, 10, 12, 15, 17, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 44];
+  const LINE_OFFSET = 3; // lines the frontmatter occupies
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: BODY,
+          lineMap: LINE_MAP,
+          lineOffset: LINE_OFFSET,
+          frontmatter: FRONTMATTER,
+          syncVersion: 1,
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

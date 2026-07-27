@@ -28,25 +28,42 @@ export const FLOATING_TOOLBAR_ITEM_IDS = [
     "sectionLink",
     "clearFormatting",
     "math",
+    "agentReference",
 ] as const;
 
 export type FloatingToolbarItemId = (typeof FLOATING_TOOLBAR_ITEM_IDS)[number];
 
-/** Per-item visibility map (birta.floatingToolbar.items.*); default true. */
+/** Per-item visibility map (birta.floatingToolbar.items.*). */
 export type FloatingToolbarItems = Partial<Record<FloatingToolbarItemId, boolean>>;
 
 /**
+ * Items the palette ships HIDDEN: available, but opt-in via their
+ * `birta.floatingToolbar.items.<id>` setting. The palette earns its place by
+ * being small — these four are reachable from the toolbar, block menu, or
+ * command palette, and cost more in width than they return in reach. Kept in
+ * lockstep with the package.json `default` values by
+ * floatingToolbarDefaultsContributions.test.ts.
+ */
+export const FLOATING_TOOLBAR_DEFAULT_OFF: ReadonlySet<FloatingToolbarItemId> = new Set([
+    "math",
+    "highlight",
+    "sectionLink",
+    "clearFormatting",
+]);
+
+/**
  * The set of inline items to show, from a (possibly partial or malformed)
- * config. An item is visible unless its flag is exactly `false`, so a newly
- * registered item is shown until a user opts it out — the same "default on"
- * contract the package.json defaults declare.
+ * config. An explicit flag always wins; a missing flag falls back to the
+ * item's shipped default (on, unless listed in FLOATING_TOOLBAR_DEFAULT_OFF)
+ * — the same contract the package.json defaults declare.
  */
 export function resolveVisible(
     items: FloatingToolbarItems | undefined,
 ): Set<FloatingToolbarItemId> {
     const visible = new Set<FloatingToolbarItemId>();
     for (const id of FLOATING_TOOLBAR_ITEM_IDS) {
-        if (items?.[id] !== false) {
+        const flag = items?.[id];
+        if (flag === true || (flag === undefined && !FLOATING_TOOLBAR_DEFAULT_OFF.has(id))) {
             visible.add(id);
         }
     }

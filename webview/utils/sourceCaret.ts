@@ -18,14 +18,17 @@
  * - **Line**: a code block's text carries its own newlines, and a block holding
  *   several textblocks (a tight list) has one per source line, so the anchors
  *   below enumerate a block's source lines in order.
- * - **Column**: only claimed when the source line and the rendered text agree
- *   up to a leading marker (`# `, `- `, `> `, indentation). That covers plain
- *   prose, headings, list items and code; anything else (inline emphasis, a
- *   link, an image) fails the check and degrades to column 0 rather than
- *   guessing a position inside markup the reader can't see.
+ * - **Column**: exact when the source line and the rendered text agree up to a
+ *   leading marker (`# `, `- `, `> `, indentation) — plain prose, headings,
+ *   list items, code. When inline markup makes them diverge (emphasis, links,
+ *   inline code), the rendered text is aligned to the source line as a greedy
+ *   subsequence — the renderer only ever DROPS characters, never reorders them
+ *   — and the column is where the caret's character actually sits in the
+ *   source. Only when the rendered text cannot be embedded in the line at all
+ *   (an image's alt text, math) does the column degrade to the line start.
  */
 
-import type { Node } from "../pm";
+import type { Node, NodeType } from "../pm";
 
 /** A caret in the Markdown source: 1-indexed line, 0-indexed column. */
 export interface SourceCaret {
@@ -43,15 +46,54 @@ export interface SourceCaret {
  */
 interface LineAnchor {
     text: string | null;
-    /** The textblock this line lives in. */
+    /** The node this line lives in — a textblock, or a whole table row. */
     node: Node;
-    /** Doc position of the textblock's content start. */
+    /** Doc position of the node's content start. */
     contentStart: number;
-    /** Offset of this line's text within that content. */
+    /** Offset of this line's content within that content. */
     offset: number;
+    /**
+     * Offset where this line's content ends. For plain text this equals
+     * `offset + text.length`, but where structure sits between the characters
+     * (a row's cells, an inline leaf) content offsets outgrow text length —
+     * clamping to text length would cut real positions off the line.
+     */
+    end: number;
+    /** True when `text` is a WHOLE source line (a table row), not a suffix. */
+    wholeLine?: boolean;
 }
 
 const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n, lo), hi);
+
+/**
+ * An inline leaf that stands for a source line break — Milkdown renders BOTH
+ * a hard break and a soft wrap (a plain newline inside a paragraph) as its
+ * `hardbreak` node, so these are exactly where the author's newlines sit.
+ */
+export const isLineBreak = (type: NodeType): boolean =>
+    type.isLeaf && type.isInline && /break/i.test(type.name);
+
+/** A table row (header or body) — one GFM source line per row. */
+export const isTableRow = (type: NodeType): boolean =>
+    type.spec.tableRole === "row" || /^table(_header)?_row$/.test(type.name);
+
+/**
+ * A container whose MARKER lines live in attrs, not content: the opening
+ * marker (`> [!NOTE]`, `:::name title`, `<aside>`) always occupies the
+ * block's first source line, and some also close with a marker line (`:::`,
+ * `</aside>`). Without anchors for those lines, every body anchor pairs one
+ * (or more, nested) lines early — and verification never fits.
+ *
+ * Declared by the NODE SPEC (`markerLines: { closer: boolean }`, the
+ * tableRole precedent), at the definition site of each such node — never by
+ * name here. sourceLineCoverage.test.ts sweeps the schema so a new container
+ * type cannot ship without either declaring its shape or being consciously
+ * allowlisted.
+ */
+export function containerMarkerLines(type: NodeType): { closer: boolean } | null {
+    const spec = type.spec.markerLines as { closer?: unknown } | undefined;
+    return spec ? { closer: spec.closer === true } : null;
+}
 
 /** Enumerate the source lines a top-level block covers, in document order. */
 function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
@@ -61,29 +103,80 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
         if (node.type.spec.code) {
             // The opening fence occupies the block's first source line and has
             // no text position; anchor it to the start of the code instead.
-            anchors.push({ text: null, node, contentStart, offset: 0 });
+            anchors.push({ text: null, node, contentStart, offset: 0, end: 0 });
             let offset = 0;
             for (const line of node.textContent.split("\n")) {
-                anchors.push({ text: line, node, contentStart, offset });
+                anchors.push({ text: line, node, contentStart, offset, end: offset + line.length });
                 offset += line.length + 1;
             }
             return;
         }
-        // A soft-wrapped paragraph spans several source lines inside ONE
-        // textblock; its rendered text gives no honest way to tell where the
-        // author's newlines were, so it counts as a single line.
-        anchors.push({ text: node.textContent, node, contentStart, offset: 0 });
+        // A wrapped paragraph spans several source lines inside ONE textblock,
+        // with the author's newlines preserved as inline break leaves: each
+        // run between them is its own source line. A textblock with no breaks
+        // is a single line. Segment text MUST come from the same textBetween
+        // the offset mapping uses, so nested text content (inline math's
+        // LaTeX) counts identically in both.
+        let segOffset = 0;
+        const flush = (end: number): void => {
+            anchors.push({ text: node.textBetween(segOffset, end), node, contentStart, offset: segOffset, end });
+        };
+        node.forEach((child, childOffset) => {
+            if (isLineBreak(child.type)) {
+                flush(childOffset);
+                segOffset = childOffset + child.nodeSize;
+            }
+        });
+        flush(node.content.size);
+    };
+    // A table row is ONE source line (`| a | b |`), not one line per cell:
+    // per-cell anchors could never be verified against the source (a cell's
+    // text is a fragment of its row's line), and their false line count
+    // dragged every mapping in and around a table to the wrong place. The
+    // row's concatenated cell text normalizes to exactly its source line —
+    // pipes and spacing strip away — so rows verify like any other line.
+    const addRow = (row: Node, rowStart: number): void => {
+        anchors.push({
+            text: row.textContent,
+            node: row,
+            contentStart: rowStart + 1,
+            offset: 0,
+            end: row.content.size,
+            wholeLine: true,
+        });
     };
 
-    if (block.isTextblock) {
-        addTextblock(block, blockStart);
-        return anchors;
-    }
-    block.descendants((child, relPos) => {
-        if (!child.isTextblock) { return true; }
-        addTextblock(child, blockStart + 1 + relPos);
-        return false;
-    });
+    // Recursive walk (not `descendants`) so a marker-line container can emit
+    // its opener anchor BEFORE its children and its closer anchor AFTER them
+    // — the order the source lines actually have, nesting included. Marker
+    // anchors are text-null like a code fence's opener: they occupy their
+    // source line but can never be a caret's answer; a source caret landing
+    // on one resolves to the container's nearest content edge.
+    const addNode = (node: Node, nodeStart: number): void => {
+        if (isTableRow(node.type)) {
+            addRow(node, nodeStart);
+            return;
+        }
+        if (node.isTextblock) {
+            addTextblock(node, nodeStart);
+            return;
+        }
+        const marker = containerMarkerLines(node.type);
+        if (marker) {
+            anchors.push({ text: null, node, contentStart: nodeStart + 1, offset: 0, end: 0 });
+        }
+        node.forEach((child, childOffset) => addNode(child, nodeStart + 1 + childOffset));
+        if (marker?.closer) {
+            anchors.push({
+                text: null,
+                node,
+                contentStart: nodeStart + 1,
+                offset: node.content.size,
+                end: node.content.size,
+            });
+        }
+    };
+    addNode(block, blockStart);
     return anchors;
 }
 
@@ -106,25 +199,112 @@ function markerWidth(sourceLine: string, text: string): number {
     return sourceLine.endsWith(text) ? sourceLine.length - text.length : -1;
 }
 
-/** Doc offset for `textOffset` characters of text following `from` in `node`'s content. */
+/**
+ * Doc offset for `textOffset` characters of text following `from` in `node`'s
+ * content — biased INTO the deepest node holding the character that follows.
+ * The bias matters at structural seams: a caret at the start of a table
+ * cell's text must land inside that cell, not on the boundary between cells,
+ * or a restored same-cell selection reads as cross-cell (and becomes a cell
+ * selection instead of the text range that was carried).
+ */
 function docOffsetForText(node: Node, from: number, textOffset: number): number {
-    let offset = from;
     let remaining = textOffset;
+    let lastEnd = from;
+    let result = -1;
     node.forEach((child, childOffset) => {
+        if (result >= 0) { return; }
         const end = childOffset + child.nodeSize;
-        if (end <= from || remaining <= 0) { return; }
+        if (end <= from) { return; }
         const start = Math.max(childOffset, from);
         if (child.isText) {
-            const take = Math.min(end - start, remaining);
-            offset = start + take;
-            remaining -= take;
-        } else {
-            // An inline leaf (image, math, hard break) carries no text: step
-            // over it so the remaining characters are counted after it.
-            offset = end;
+            const len = end - start;
+            if (remaining < len) { result = start + remaining; return; }
+            remaining -= len;
+            lastEnd = end;
+        } else if (!child.isLeaf) {
+            // A child with content of its own (a table row's cell, inline
+            // math): its nested text counts, and a position can land inside.
+            const innerFrom = clamp(start - (childOffset + 1), 0, child.content.size);
+            const len = child.textBetween(innerFrom, child.content.size).length;
+            if (remaining < len) {
+                result = childOffset + 1 + docOffsetForText(child, innerFrom, remaining);
+                return;
+            }
+            remaining -= len;
+            if (len > 0) { lastEnd = childOffset + 1 + docOffsetForText(child, innerFrom, len); }
         }
+        // An inline leaf (image, hard break) carries no text: stepped over.
     });
-    return offset;
+    return result >= 0 ? result : lastEnd;
+}
+
+/** How many source lines past the contiguous position an anchor may sit. */
+const ANCHOR_LOOKAHEAD = 8;
+
+/** Letters and digits only — markup, punctuation, and spacing stripped. */
+const normalize = (s: string): string => s.replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** Shortest normalized probe treated as real evidence for a fuzzy match. */
+const MIN_PROBE = 12;
+/** Longest normalized probe compared (a soft-wrapped line carries only a prefix). */
+const MAX_PROBE = 24;
+
+/**
+ * Does this source line render as `text` (or start the block that does)?
+ *
+ * Exact suffix first — the renderer only drops a leading marker — with
+ * trailing whitespace ignored on both sides (a trailing space in the source is
+ * invisible in the rendered text but used to fail the match). When inline
+ * markup makes rendered and source text diverge (a link drops its URL,
+ * emphasis its asterisks), fall back to letters-and-digits-only comparison:
+ * the line matches when its normalized text contains the anchor's normalized
+ * prefix. A probe shorter than MIN_PROBE once normalized gets no fuzzy match —
+ * too little evidence to risk pairing the wrong block.
+ */
+function lineMatchesAnchor(sourceLine: string, text: string, wholeLine = false): boolean {
+    if (sourceLine.trimEnd().endsWith(text.trimEnd())) { return true; }
+    const anchor = normalize(text);
+    // A whole-line anchor (a table row) is never a soft-wrapped prefix, and
+    // its cell text strips to exactly the source row's characters — pipes and
+    // spacing normalize away — so equality is decisive at ANY length. Without
+    // this, a table with short cells could never be verified at all.
+    if (wholeLine && anchor.length > 0 && normalize(sourceLine) === anchor) { return true; }
+    if (anchor.length < MIN_PROBE) { return false; }
+    const line = normalize(sourceLine);
+    // Two probe lengths: the long one is strong evidence; the short one
+    // rescues lines where markup the renderer dropped (a link's URL) sits
+    // inside the long window and breaks adjacency.
+    return line.includes(anchor.slice(0, MAX_PROBE)) || line.includes(anchor.slice(0, MIN_PROBE));
+}
+
+/**
+ * The source line of each anchor, resolved against the source text.
+ *
+ * A block's lines are only NOMINALLY contiguous from `blockLine`: a loose list
+ * is one node whose items sit blank lines (and nested continuations) apart, so
+ * `blockLine + index` drifts further with every gap. Each anchor with text is
+ * therefore matched forward through the source (the renderer only ever drops a
+ * PREFIX — bullet, hashes, indentation — so the line must end with the text);
+ * an anchor that can't be matched within the lookahead (inline markup changed
+ * the text, a soft-wrapped paragraph) falls back to the contiguous position —
+ * exactly the old behavior, never worse.
+ */
+function anchorLines(anchors: LineAnchor[], blockLine: number, sourceLines: string[]): number[] {
+    const lines: number[] = [];
+    let cursor = blockLine;
+    for (const a of anchors) {
+        let line = cursor;
+        if (a.text) {
+            const limit = Math.min(cursor + ANCHOR_LOOKAHEAD, sourceLines.length);
+            for (let l = cursor; l <= limit; l++) {
+                const candidate = sourceLines[l - 1];
+                if (candidate !== undefined && lineMatchesAnchor(candidate, a.text, a.wholeLine)) { line = l; break; }
+            }
+        }
+        lines.push(line);
+        cursor = line + 1;
+    }
+    return lines;
 }
 
 /**
@@ -140,11 +320,26 @@ function anchorsFit(anchors: LineAnchor[], blockLine: number, sourceLines: strin
     const probe = anchors.findIndex((a) => a.text);
     if (probe < 0) { return true; }
     const sourceLine = sourceLines[blockLine + probe - 1];
-    return sourceLine !== undefined && sourceLine.endsWith(anchors[probe].text!);
+    return sourceLine !== undefined && lineMatchesAnchor(sourceLine, anchors[probe].text!, anchors[probe].wholeLine);
 }
 
-/** How far to look for the real pairing once the nominal one is disproved. */
-const RECONCILE_SPAN = 6;
+/**
+ * How far to look for the real pairing once the nominal one is disproved: the
+ * whole map.
+ *
+ * Drift comes from nodes that span several source blocks — a loose list is ONE
+ * node but one map entry per item — and it is NOT bounded by the map's net
+ * surplus of entries over nodes, because the map can also undercount (a block
+ * the map skips but the editor renders shifts the ledger the other way; a real
+ * document showed local drift 12 against a net surplus of 10). A fixed span
+ * silently gave up and reported the nominal (wrong) line as if it were fine.
+ * These paths run only on demand (mode switch, scroll-to-line, an agent pull),
+ * so scanning every candidate is cheap; candidates stay ordered nearest-first,
+ * which keeps the conservative preference for the closest fit.
+ */
+function reconcileSpan(doc: Node, lineMap: number[]): number {
+    return Math.max(lineMap.length, doc.childCount);
+}
 
 /**
  * The block index and start line for a source line, reconciled against the
@@ -175,15 +370,37 @@ export function blockIndexForSourceLine(
     }
     const blockLine = lineMap[entry];
     const nominal = Math.min(entry, doc.childCount - 1);
-    if (anchorsFit(lineAnchors(doc.child(nominal), blockStartPos(doc, nominal)), blockLine, sourceLines)) {
-        return { index: nominal, blockLine };
-    }
-    for (let step = 1; step <= RECONCILE_SPAN; step++) {
-        for (const candidate of [nominal - step, nominal + step]) {
+    // Pass 1: positive evidence — a block whose first text line matches at
+    // blockLine. Blocks with nothing to probe (a horizontal rule, an
+    // image-only paragraph) are SKIPPED here rather than taken on trust: in a
+    // drifted document a no-text nominal used to swallow lines that really
+    // belonged to a text block further on, and the caret arrival then found no
+    // text position at all.
+    const span = reconcileSpan(doc, lineMap);
+    for (let step = 0; step <= span; step++) {
+        for (const candidate of step === 0 ? [nominal] : [nominal - step, nominal + step]) {
             if (candidate < 0 || candidate >= doc.childCount) { continue; }
-            if (anchorsFit(lineAnchors(doc.child(candidate), blockStartPos(doc, candidate)), blockLine, sourceLines)) {
+            const anchors = lineAnchors(doc.child(candidate), blockStartPos(doc, candidate));
+            if (!anchors.some((a) => a.text)) { continue; }
+            if (anchorsFit(anchors, blockLine, sourceLines)) {
                 return { index: candidate, blockLine };
             }
+        }
+    }
+    // No block STARTS at blockLine — the line may sit INSIDE one (a loose
+    // list's later item has its own map entry, but its node began entries
+    // earlier). Find the block whose verified start and resolved anchor lines
+    // contain the target line; earlier candidates first, since a container
+    // starts before the line it contains.
+    for (let step = 0; step <= span; step++) {
+        for (const candidate of step === 0 ? [nominal] : [nominal - step, nominal + step]) {
+            if (candidate < 0 || candidate >= doc.childCount) { continue; }
+            const anchors = lineAnchors(doc.child(candidate), blockStartPos(doc, candidate));
+            if (!anchors.length) { continue; }
+            const start = sourceLineForBlock(doc, lineMap, sourceLines, candidate);
+            if (start === undefined || start > line || !anchorsFit(anchors, start, sourceLines)) { continue; }
+            const lines = anchorLines(anchors, start, sourceLines);
+            if (line <= lines[lines.length - 1]) { return { index: candidate, blockLine: start }; }
         }
     }
     return { index: nominal, blockLine };
@@ -201,7 +418,8 @@ export function sourceLineForBlock(
     const nominal = lineMap[Math.min(index, lineMap.length - 1)];
     if (nominal === undefined) { return undefined; }
     if (anchorsFit(anchors, nominal, sourceLines)) { return nominal; }
-    for (let step = 1; step <= RECONCILE_SPAN; step++) {
+    const span = reconcileSpan(doc, lineMap);
+    for (let step = 1; step <= span; step++) {
         for (const candidate of [index + step, index - step]) {
             const line = lineMap[candidate];
             if (line === undefined) { continue; }
@@ -209,6 +427,82 @@ export function sourceLineForBlock(
         }
     }
     return nominal;
+}
+
+/**
+ * The source caret at the END of a block's last source line — what a selection
+ * end sitting on the block's outer boundary means in the source. A boundary
+ * position resolves INTO the next block under sourceCaretAt, so a block-range
+ * selection mapped that way over-selected past its own blocks (blank
+ * separator lines, the next block's marker); this maps it to the covered
+ * block's own extent instead.
+ */
+export function sourceEndOfBlock(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    index: number,
+): SourceCaret | undefined {
+    const start = sourceLineForBlock(doc, lineMap, sourceLines, index);
+    if (start === undefined) { return undefined; }
+    const anchors = lineAnchors(doc.child(index), blockStartPos(doc, index));
+    const lines = anchorLines(anchors, start, sourceLines);
+    let line = lines.length ? lines[lines.length - 1] : start;
+    // The closing fence has no anchor (no text position); when the block ends
+    // in code and the next source line closes a fence — including a math
+    // block's `$$` — it belongs to the block. Blockquote markers are part of
+    // the closer's line (`> ```` ``` ``).
+    if (anchors[anchors.length - 1]?.node.type.spec.code) {
+        const closer = sourceLines[line];
+        if (closer !== undefined && /^\s*(?:>\s*)*(`{3,}|~{3,}|\$\$)\s*$/.test(closer)) { line += 1; }
+    }
+    // Anchors resolved against unmatchable text (a table's cells) can drift
+    // past the block; never claim a trailing blank separator line.
+    line = clamp(line, start, sourceLines.length);
+    while (line > start && (sourceLines[line - 1] ?? "").trim() === "") { line -= 1; }
+    return { line, column: sourceLines[line - 1]?.length ?? 0 };
+}
+
+/**
+ * Both ends of a selection in source coordinates, drag roles preserved, or
+ * undefined when either end can't be mapped.
+ *
+ * The one selection→source mapping shared by every consumer of a whole
+ * selection (the mode switch, the agent bridge), so they cannot disagree. An
+ * end sitting on a depth-0 boundary — a block-range, node, or select-all
+ * selection — covers whole blocks: mapped as a caret it would resolve INTO
+ * the neighbouring block and over-select, so the leading boundary maps to its
+ * first block's line start and the trailing boundary to the last covered
+ * block's line end (sourceEndOfBlock). An empty selection maps its caret once
+ * and reports it as both ends.
+ */
+export function sourceSelectionEnds(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    selection: { from: number; to: number; head: number; anchor: number; empty: boolean },
+): { anchor: SourceCaret; head: SourceCaret } | undefined {
+    const { from, to, head, anchor, empty } = selection;
+    if (empty) {
+        const caret = sourceCaretAt(doc, lineMap, sourceLines, head);
+        return caret && { anchor: caret, head: caret };
+    }
+    const endCaret = (pos: number, side: "from" | "to"): SourceCaret | undefined => {
+        const $pos = doc.resolve(clamp(pos, 0, doc.content.size));
+        if ($pos.depth === 0) {
+            if (side === "from") {
+                const index = Math.min($pos.index(0), doc.childCount - 1);
+                const line = sourceLineForBlock(doc, lineMap, sourceLines, index);
+                return line === undefined ? undefined : { line, column: 0 };
+            }
+            return sourceEndOfBlock(doc, lineMap, sourceLines, Math.max($pos.index(0) - 1, 0));
+        }
+        return sourceCaretAt(doc, lineMap, sourceLines, pos);
+    };
+    const start = endCaret(from, "from");
+    const end = endCaret(to, "to");
+    if (!start || !end) { return undefined; }
+    return head >= anchor ? { anchor: start, head: end } : { anchor: end, head: start };
 }
 
 /**
@@ -239,23 +533,74 @@ export function sourceCaretAt(
     if (index === -1) { return { line: blockLine, column: 0 }; }
 
     const anchor = anchors[index];
-    const line = blockLine + index;
+    const line = anchorLines(anchors, blockLine, sourceLines)[index];
     const text = anchor.text ?? "";
     const sourceLine = sourceLines[line - 1];
     if (sourceLine === undefined) { return { line, column: 0 }; }
-    const marker = markerWidth(sourceLine, text);
-    if (marker < 0) { return { line, column: 0 }; }
 
-    const lineEnd = anchor.offset + text.length;
-    const offsetInContent = clamp(pos - anchor.contentStart, anchor.offset, lineEnd);
+    const offsetInContent = clamp(pos - anchor.contentStart, anchor.offset, anchor.end);
     const textOffset = anchor.node.textBetween(anchor.offset, offsetInContent).length;
-    return { line, column: marker + textOffset };
+    return { line, column: sourceColumnForTextOffset(sourceLine, text, textOffset) ?? 0 };
+}
+
+/**
+ * The column in `sourceLine` for a caret `textOffset` characters into that
+ * line's rendered `text`.
+ *
+ * Exact case first: the renderer dropped only a leading marker, so the column
+ * is the marker's width plus the offset. Otherwise the rendered text is
+ * aligned to the source line as a greedy subsequence — markup the renderer
+ * dropped (emphasis asterisks, a link's `](url)` tail, backticks) is skipped
+ * wherever the characters differ — and the column is where the caret's
+ * character landed. If the whole rendered text cannot be embedded in the line,
+ * no column is claimed (the caller degrades to the line start).
+ */
+export function sourceColumnForTextOffset(
+    sourceLine: string,
+    text: string,
+    textOffset: number,
+): number | undefined {
+    const marker = markerWidth(sourceLine, text);
+    if (marker >= 0) { return marker + textOffset; }
+    // matched[j] = source index where text[j] matched.
+    const matched: number[] = [];
+    for (let i = 0; i < sourceLine.length && matched.length < text.length; i++) {
+        if (sourceLine[i] === text[matched.length]) { matched.push(i); }
+    }
+    if (matched.length < text.length) { return undefined; }
+    if (textOffset <= 0) { return matched[0] ?? 0; }
+    if (textOffset >= text.length) { return (matched[text.length - 1] ?? -1) + 1; }
+    return matched[textOffset];
+}
+
+/**
+ * The rendered-text offset for a source `column` in `sourceLine` — the inverse
+ * of sourceColumnForTextOffset, under the same exact-then-subsequence rules.
+ * Returns 0 (the line's start) when the text cannot be aligned.
+ */
+function textOffsetForSourceColumn(
+    sourceLine: string,
+    text: string,
+    column: number,
+): number {
+    const marker = markerWidth(sourceLine, text);
+    if (marker >= 0) { return clamp(column - marker, 0, text.length); }
+    const matched: number[] = [];
+    for (let i = 0; i < sourceLine.length && matched.length < text.length; i++) {
+        if (sourceLine[i] === text[matched.length]) { matched.push(i); }
+    }
+    if (matched.length < text.length) { return 0; }
+    // The offset is how many rendered characters sit strictly before the column.
+    let j = 0;
+    while (j < matched.length && matched[j]! < column) { j++; }
+    return j;
 }
 
 /**
  * The document position for a source caret, or undefined when the line falls
- * outside the map. Column precision is claimed under the same rule as above;
- * otherwise the caret lands at the start of the line's text.
+ * outside the map. The column maps under the same exact-then-subsequence rules
+ * as sourceCaretAt; when the text cannot be aligned, the caret lands at the
+ * start of the line's text.
  */
 export function docPosForSourceCaret(
     doc: Node,
@@ -267,16 +612,25 @@ export function docPosForSourceCaret(
     if (!block) { return undefined; }
 
     const anchors = lineAnchors(doc.child(block.index), blockStartPos(doc, block.index));
-    if (!anchors.length) { return undefined; }
-    const anchor = anchors[clamp(caret.line - block.blockLine, 0, anchors.length - 1)];
+    if (!anchors.length) {
+        // A block with no text position at all (a horizontal rule): land at
+        // its start — the caller's TextSelection.near snaps to the closest
+        // valid spot. Returning undefined here left the arrival with NO caret.
+        return blockStartPos(doc, block.index);
+    }
+    // The last anchor at or before the caret's line, by each anchor's RESOLVED
+    // line — in a loose list the anchors are not contiguous from blockLine.
+    const lines = anchorLines(anchors, block.blockLine, sourceLines);
+    let anchorIndex = 0;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i] <= caret.line) { anchorIndex = i; } else { break; }
+    }
+    const anchor = anchors[anchorIndex];
     const lineStart = anchor.contentStart + anchor.offset;
     if (anchor.text === null || caret.column <= 0) { return lineStart; }
 
     const sourceLine = sourceLines[caret.line - 1];
     if (sourceLine === undefined) { return lineStart; }
-    const marker = markerWidth(sourceLine, anchor.text);
-    if (marker < 0) { return lineStart; }
-
-    const textOffset = clamp(caret.column - marker, 0, anchor.text.length);
+    const textOffset = textOffsetForSourceColumn(sourceLine, anchor.text, caret.column);
     return anchor.contentStart + docOffsetForText(anchor.node, anchor.offset, textOffset);
 }

@@ -66,6 +66,12 @@ export interface FindBarController {
      * from Replace All.
      */
     selectAllOccurrences(): void;
+    /**
+     * The document changed (called from the doc-change hook): schedule a
+     * debounced rescan so the count and highlights stay true. Display-only —
+     * actions rescan synchronously themselves. O(1) when closed or empty.
+     */
+    noteDocChanged(): void;
 }
 
 /** Document-order sort position of a match. */
@@ -312,6 +318,15 @@ export function initFindBar(
     let currentIdx = 0;
     let debounceTimer = 0;
     /**
+     * The doc the current `matches` were computed against. Matches hold
+     * absolute positions into THAT doc; any doc change shifts everything
+     * after the edit, so acting on them against a newer doc navigates to the
+     * wrong place — or, for replace, corrupts text. Identity comparison is
+     * O(1): ProseMirror reuses the doc node when only the selection changed.
+     */
+    let scannedDoc: unknown = null;
+    let staleRescanTimer: ReturnType<typeof setTimeout> | null = null;
+    /**
      * Editor selection observed after the last search/navigation. While the
      * selection stays here, next/prev step through matches in order; once it
      * moves (the user clicked or typed elsewhere), navigation re-seeks from
@@ -479,6 +494,7 @@ export function initFindBar(
     function search(query: string) {
         matches = [];
         currentIdx = 0;
+        scannedDoc = null;
         bar.classList.remove("find-bar--invalid");
 
         if (!query) {
@@ -527,6 +543,7 @@ export function initFindBar(
         matches = [...segMatches, ...blockMatches].sort(
             (a, b) => sortPos(a) - sortPos(b) || sortSub(a) - sortSub(b),
         );
+        scannedDoc = doc;
 
         // Drop matches inside code blocks that are showing their rendered
         // preview (diagram/LaTeX) rather than their source — both tier-1 text
@@ -627,7 +644,53 @@ export function initFindBar(
         lastNavSel = { from: sel.from, to: sel.to };
     }
 
+    /**
+     * Re-run the search if the document has changed since `matches` was
+     * computed. Everything that ACTS on a match (navigation, occurrence
+     * cycling, replace) must call this first: stale positions navigate to the
+     * wrong spot, and a stale replace would rewrite the wrong text. Cheap when
+     * fresh — a single identity check. Returns true when a rescan ran, so the
+     * caller re-anchors at the caret instead of stepping a stale index.
+     */
+    function rescanIfStale(): boolean {
+        const view = getEditorView();
+        if (!view || !input.value || scannedDoc === view.state.doc) {
+            return false;
+        }
+        search(input.value);
+        lastNavSel = null;
+        return true;
+    }
+
+    /**
+     * The document changed while the bar shows results: refresh the scan
+     * shortly after the burst settles, so the count and highlights stay true
+     * (delete a match, watch 15 become 14). A trailing debounce is safe HERE
+     * because it is display-only — anything that ACTS on a match rescans
+     * synchronously first (rescanIfStale), so navigation and replace never
+     * wait on this timer. O(1) when the bar is closed or empty.
+     */
+    function noteDocChanged(): void {
+        if (!visible || !input.value) { return; }
+        if (staleRescanTimer !== null) { clearTimeout(staleRescanTimer); }
+        staleRescanTimer = setTimeout(() => {
+            staleRescanTimer = null;
+            const view = getEditorView();
+            if (!visible || !input.value || !view || scannedDoc === view.state.doc) { return; }
+            search(input.value);
+            // Keep the reading anchored at the caret rather than resetting a
+            // mid-session count to 1/N.
+            if (matches.length) {
+                currentIdx = seekFromCaret(view.state.selection, 1);
+                count.textContent = `${currentIdx + 1}/${matches.length}`;
+                updateHighlights();
+            }
+            lastNavSel = null;
+        }, 150);
+    }
+
     function navigate(dir: 1 | -1) {
+        const rescanned = rescanIfStale();
         if (!matches.length) {
             return;
         }
@@ -637,7 +700,7 @@ export function initFindBar(
             sel !== undefined &&
             lastNavSel !== null &&
             (sel.from !== lastNavSel.from || sel.to !== lastNavSel.to);
-        const idx = moved
+        const idx = sel !== undefined && (moved || rescanned)
             ? seekFromCaret(sel, dir)
             : (currentIdx + dir + matches.length) % matches.length;
         scrollToMatch(idx);
@@ -740,6 +803,7 @@ export function initFindBar(
      * following press, so repeated Cmd+D naturally cycles.
      */
     function cycleOccurrence() {
+        const rescanned = rescanIfStale();
         const view = getEditorView();
         if (!view) { return; }
         const sel = view.state.selection;
@@ -786,7 +850,7 @@ export function initFindBar(
         const moved =
             lastNavSel !== null &&
             (sel.from !== lastNavSel.from || sel.to !== lastNavSel.to);
-        const idx = moved ? seekCurrent(sel) : (currentIdx + 1) % matches.length;
+        const idx = moved || rescanned ? seekCurrent(sel) : (currentIdx + 1) % matches.length;
         selectMatch(idx);
     }
 
@@ -874,6 +938,7 @@ export function initFindBar(
     }
 
     function replaceCurrent() {
+        rescanIfStale();
         const view = getEditorView();
         if (!view || !matches.length) {
             return;
@@ -913,6 +978,7 @@ export function initFindBar(
     }
 
     function replaceAll() {
+        rescanIfStale();
         const view = getEditorView();
         if (!view || !matches.length) {
             return;
@@ -1190,6 +1256,10 @@ export function initFindBar(
         bar.classList.remove("find-bar--visible");
         bar.classList.remove("find-bar--no-results");
         bar.classList.remove("find-bar--invalid");
+        if (staleRescanTimer !== null) {
+            clearTimeout(staleRescanTimer);
+            staleRescanTimer = null;
+        }
         clearHighlights();
         matches = [];
         count.textContent = "";
@@ -1212,5 +1282,6 @@ export function initFindBar(
         findPrev: () => findFrom(-1),
         cycleOccurrence,
         selectAllOccurrences,
+        noteDocChanged,
     };
 }

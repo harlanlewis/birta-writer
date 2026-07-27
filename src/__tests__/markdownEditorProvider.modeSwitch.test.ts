@@ -129,6 +129,40 @@ describe("mode switch: where the raw editor opens", () => {
         expect(shownSelection()).toBeUndefined();
     });
 
+    it("a carried selection should be restored with its anchor→active drag direction", async () => {
+        const { handler } = await setup("# Title\n\nsome body text\n");
+        await handler({
+            type: "switchToTextEditor",
+            line: 3, column: 9, anchorLine: 1, anchorColumn: 2,
+        });
+        const editor = await vi.mocked(vscode.window.showTextDocument).mock.results.at(-1)!
+            .value as { selection: vscode.Selection };
+        expect(editor.selection.anchor.line).toBe(0);
+        expect(editor.selection.anchor.character).toBe(2);
+        expect(editor.selection.active.line).toBe(2);
+        expect(editor.selection.active.character).toBe(9);
+    });
+
+    it("the arriving caret should be centered, not left at the viewport edge", async () => {
+        const { handler } = await setup("# Title\n\nbody\n");
+        await handler({ type: "switchToTextEditor", line: 3, column: 2 });
+        const editor = await vi.mocked(vscode.window.showTextDocument).mock.results.at(-1)!
+            .value as { revealRange: ReturnType<typeof vi.fn> };
+        expect(editor.revealRange).toHaveBeenCalledTimes(1);
+        const [range, revealType] = editor.revealRange.mock.calls[0] as [vscode.Range, number];
+        expect(range.start.line).toBe(2);
+        expect(revealType).toBe(vscode.TextEditorRevealType.InCenter);
+    });
+
+    it("a switch with no position should not reveal or move the selection", async () => {
+        const { handler } = await setup("# Title\n\nbody\n");
+        await handler({ type: "switchToTextEditor" });
+        const editor = await vi.mocked(vscode.window.showTextDocument).mock.results.at(-1)!
+            .value as { revealRange: ReturnType<typeof vi.fn>; selection: unknown };
+        expect(editor.revealRange).not.toHaveBeenCalled();
+        expect(editor.selection).toBeUndefined();
+    });
+
     it("a line past the end of the document should clamp to its last line", async () => {
         const { handler } = await setup("# Title\n");
         await handler({ type: "switchToTextEditor", line: 999, column: 0 });

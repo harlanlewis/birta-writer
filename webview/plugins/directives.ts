@@ -368,6 +368,9 @@ export const directiveSchema = $nodeSchema(directiveId, () => ({
     content: "block+",
     group: "block",
     defining: true,
+    // Both fence lines (`:::name title` … `:::`) live in attrs with no text
+    // position — declared for the source-line mapping (utils/sourceCaret.ts).
+    markerLines: { closer: true },
     attrs: {
         openFence: { default: ":::note" },
         closeFence: { default: ":::" },

@@ -80,6 +80,29 @@ export class Range {
     }
 }
 
+/** Mirrors vscode.Selection (anchor→active order preserved, like the real one) */
+export class Selection extends Range {
+    public readonly anchor: Position;
+    public readonly active: Position;
+
+    constructor(anchor: Position, active: Position) {
+        const reversed =
+            active.line < anchor.line ||
+            (active.line === anchor.line && active.character < anchor.character);
+        super(reversed ? active : anchor, reversed ? anchor : active);
+        this.anchor = anchor;
+        this.active = active;
+    }
+}
+
+/** Mirrors vscode.TextEditorRevealType (values match the real enum) */
+export enum TextEditorRevealType {
+    Default = 0,
+    InCenter = 1,
+    InCenterIfOutsideViewport = 2,
+    AtTop = 3,
+}
+
 export interface RecordedReplacement {
     uri: URI;
     range: Range;
@@ -436,9 +459,14 @@ export const window = {
     /**
      * Opening a document in the raw text editor. The mode switch passes its
      * `TextDocumentShowOptions` here, so a test can read back the selection the
-     * switch asked for (MAR-23).
+     * switch asked for (MAR-23). Returns a fake editor whose `selection` and
+     * `revealRange` calls a test can read back — the switch restores a carried
+     * selection and centers the arriving caret on it.
      */
-    showTextDocument: vi.fn(),
+    showTextDocument: vi.fn(async () => ({
+        selection: undefined as Selection | undefined,
+        revealRange: vi.fn(),
+    })),
     showErrorMessage: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),

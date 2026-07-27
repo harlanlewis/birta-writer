@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- e2e harness page for SELECTION round trips across a mode switch — the
+     range half of the caret handoff (same fixture as modeSwitchCaret).
+     Mirrors the provider template with acquireVsCodeApi stubbed. The init
+     payload is exactly what MarkdownEditorProvider sends: the BODY as content,
+     a body-relative lineMap, and the frontmatter's line count as lineOffset. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-textBlockQuote-background: rgba(128, 128, 128, 0.08);
+    --vscode-textCodeBlock-background: rgba(128, 128, 128, 0.1);
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { min-height: 48px; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  // The document, for reference — DOCUMENT lines are what both sides exchange:
+  //   1 ---            5 # Heading        9 - alpha       13 const a = 1;
+  //   2 title: Note    6 (blank)         10 - beta        14 const b = 2;
+  //   3 ---            7 First paragr…   11 (blank)       15 ```
+  //   4 (blank)        8 (blank)         12 ```js         16 (blank)
+  //                                                       17 Last paragraph.
+  //  19 - loose one   21 - loose two     23 Below the loose list.
+  const FRONTMATTER = "---\ntitle: Note\n---\n";
+  // Filler keeps the page taller than the viewport, so "the caret has been
+  // scrolled off screen" is a state the checks can actually reach.
+  const FILLERS = 30;
+  const filler = Array.from({ length: FILLERS }, (_, i) => `Filler paragraph ${i + 1}.`).join("\n\n");
+  // The LOOSE list (blank line between items) is deliberate: it is several
+  // source blocks but a single document node, so everything after it pairs one
+  // map entry early unless the mapping is reconciled against the text. The
+  // WRAPPED paragraph (body lines 22-24, document 25-27) is one textblock over
+  // three source lines — the shape where selections used to collapse to the
+  // paragraph's first line at column 0. The TABLE (body lines 26-29, document
+  // 29-32) is one node whose rows are one source line each — the shape whose
+  // per-cell mapping used to land selections wildly away from the table.
+  // The CALLOUT (body 31-32), DIRECTIVE (body 34-36) and CALC block (body
+  // 38-41) all carry marker lines with no text position — `> [!NOTE]`,
+  // `:::tip`, the fences — the shape whose body anchors used to pair a line
+  // early; the calc ledger additionally holds its selection in read-only DOM
+  // chrome while the editor's own selection is parked stale.
+  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\nWrapped first line here\ncontinues with **bold** middle words\nand finally ends.\n\n| Tool | Note |\n| --- | --- |\n| Alpha | works well |\n| Beta | mostly fine |\n\n> [!NOTE] Titled words inline\n> Callout unique words here.\n\n:::tip Fancy\nDirective middle words tonight.\n:::\n\n```calc\nincome = 5000\nshare = income * 2\n```\n\n" + filler + "\n";
+  // computeLineMap(BODY): heading, paragraph, tight list, fence, last
+  // paragraph, the two loose items, the paragraph below them, the wrapped
+  // paragraph, the table, the callout, the directive, the calc fence, then
+  // fillers.
+  const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, 22, 26, 31, 34, 38, ...Array.from({ length: FILLERS }, (_, i) => 43 + 2 * i)];
+  const LINE_OFFSET = 3; // lines the frontmatter occupies
+  // `?arrive=<docLine>` puts a scrollToLine in the init payload — the shape a
+  // mode switch arrives with — so the checks can assert the scroll lands
+  // before the first paint rather than as a visible jump afterwards.
+  const arrive = Number(new URLSearchParams(location.search).get("arrive")) || undefined;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: BODY,
+          lineMap: LINE_MAP,
+          lineOffset: LINE_OFFSET,
+          frontmatter: FRONTMATTER,
+          syncVersion: 1,
+          ...(arrive ? { scrollToLine: arrive } : {}),
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
