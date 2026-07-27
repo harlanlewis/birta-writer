@@ -10,6 +10,7 @@ import { normalizeCopyFormat } from "../shared/config";
 import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
+import { registerSendFeedback } from "./feedback/sendFeedback";
 import {
     getBirtaConfiguration,
     readBirtaSetting,
@@ -285,6 +286,12 @@ export function activate(context: vscode.ExtensionContext) {
             );
         }),
     );
+
+    // "Send Feedback" — palette-only by design. It is a channel the user
+    // opens, never one the editor solicits (no prompt, no nag, no rating
+    // toast), and Birta itself makes no request: it composes text and hands a
+    // URL to the host. Rung 0, see src/feedback/sendFeedback.ts.
+    registerSendFeedback(context);
 
     // Palette toggles for the boolean feature gates. Each flips the persisted
     // setting (Global; the config-change listener broadcasts the fresh value

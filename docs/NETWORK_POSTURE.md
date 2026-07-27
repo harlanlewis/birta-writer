@@ -27,6 +27,7 @@ things" becomes an argument for something categorically heavier.
 | Rung | What leaves | Status | Examples |
 |---|---|---|---|
 | **0 — nothing** | No outbound request at all | **Shipped, and the default.** `birta.network.enabled` ships `false`; with it off the editor makes no outbound request | Everything, out of the box |
+| **0b — a URL you send yourself** | Nothing, *from Birta*. It composes text and hands a URL to the host; the request is the user's browser or mail client, under their identity, against a form they can still edit | **Shipped** (2026-07-27) | **Send Feedback** (`birta.sendFeedback`); following a link in a document |
 | **1 — a URL you typed** | The URL, to its own host | **Shipped** | Paste-unfurl (fetches a page title, *offers* it); URL embeds (renders a card, and — 2026-07-27 — asks the provider's **own oEmbed endpoint** for the title shown on the card's caption: extension-side, request URL rebuilt from validated parts, session-cached, render-only) |
 | **2 — a URL + your credential** | The URL and a per-provider token, to that provider's pinned hosts | **Directed, not built** (MAR-198) | Jira/Asana/Figma/private-GitHub cards |
 | **3 — your document content** | The document itself | **Not decided, not designed** — gated on an open scope question | The publish loop (MAR-232), any cloud/sync surface |
@@ -39,6 +40,37 @@ Two things this ladder makes visible that the per-document treatments did not:
 - **Rung 2 is where identity enters.** Not a Birta account — a *third-party* one. The distinction is
   real and worth defending, but "Birta has no auth" stopped being true the moment MAR-198 was
   directed.
+- **Rung 0b is a rung, not a footnote.** It looks like network activity to a user watching their
+  browser open, and it is *not* network activity by Birta. Keeping it separate is what lets the
+  claim stay literally true: with `birta.network.enabled` off, **the extension makes no outbound
+  request**, and a feedback report or a followed link does not falsify that. It also names the line
+  that must not be crossed — the moment Birta itself `fetch`es the report instead of composing a URL,
+  it is a different product with a different promise.
+
+**Telemetry, and why the feedback command is not it.** The distinction is not consent, it is *who
+makes the request and who can see what it says*:
+
+| | Telemetry | Rung 0b (Send Feedback) |
+|---|---|---|
+| Initiates | The software, continuously | The user, once, deliberately |
+| Payload | Whatever the vendor chose | Exactly what they typed, and they read all of it |
+| Visible before sending | No | It **is** the form they are looking at |
+| Identity | Install or device ID | None — or their own GitHub account, by their choice |
+| Default | On, with an opt-out | Absent until invoked |
+| Network actor | The software | The user's browser |
+
+Three invariants keep it on that side of the line, and all three are enforced in
+`src/feedback/sendFeedback.ts` and pinned by `src/__tests__/sendFeedback.test.ts`:
+
+10. **It never solicits.** No prompt, no nag, no after-N-days toast, no rating request. The command
+    is reachable from the palette and nowhere else. Solicitation is what turns opt-in back into
+    telemetry, and a "quick survey?" popup would breach this rung as surely as a `fetch` would.
+11. **Document content, file paths, and workspace names never enter the payload** — by construction,
+    because the composer is never given them. Settings are reported by key; a *value* is included
+    only when its shape proves it cannot carry a path or a sentence (`compose.ts`
+    `isReportableValue`), and anything else reads "customized".
+12. **The clipboard is always offered**, so the whole feature works with no browser, no account, and
+    no network of any kind.
 
 ---
 
