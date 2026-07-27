@@ -391,10 +391,14 @@ async function initEditor(
             currentLineMap = computeLineMap(updated);
             notifyUpdate(updated);
         },
-        // The outline is a view of the document, so it refreshes on document
-        // changes — NOT on the save/serialize cadence this callback rides
-        // (see _onDocChange in editor.ts for what that coupling cost).
-        scheduleTocRefresh,
+        // Views of the document refresh on document changes — NOT on the
+        // save/serialize cadence the callback above rides (see _onDocChange
+        // in editor.ts for what that coupling cost). The find bar's note is
+        // O(1) when the bar is closed or empty.
+        () => {
+            scheduleTocRefresh();
+            findBar.noteDocChanged();
+        },
     );
     toc.refresh();
     // Seed the status-bar word count for the freshly loaded document (MAR-29):
