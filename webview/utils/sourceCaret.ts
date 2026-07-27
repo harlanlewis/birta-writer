@@ -317,6 +317,38 @@ export function sourceLineForBlock(
 }
 
 /**
+ * The source caret at the END of a block's last source line — what a selection
+ * end sitting on the block's outer boundary means in the source. A boundary
+ * position resolves INTO the next block under sourceCaretAt, so a block-range
+ * selection mapped that way over-selected past its own blocks (blank
+ * separator lines, the next block's marker); this maps it to the covered
+ * block's own extent instead.
+ */
+export function sourceEndOfBlock(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    index: number,
+): SourceCaret | undefined {
+    const start = sourceLineForBlock(doc, lineMap, sourceLines, index);
+    if (start === undefined) { return undefined; }
+    const anchors = lineAnchors(doc.child(index), blockStartPos(doc, index));
+    const lines = anchorLines(anchors, start, sourceLines);
+    let line = lines.length ? lines[lines.length - 1] : start;
+    // The closing fence has no anchor (no text position); when the block ends
+    // in code and the next source line closes a fence, it belongs to the block.
+    if (anchors[anchors.length - 1]?.node.type.spec.code) {
+        const closer = sourceLines[line];
+        if (closer !== undefined && /^\s*(`{3,}|~{3,})\s*$/.test(closer)) { line += 1; }
+    }
+    // Anchors resolved against unmatchable text (a table's cells) can drift
+    // past the block; never claim a trailing blank separator line.
+    line = clamp(line, start, sourceLines.length);
+    while (line > start && (sourceLines[line - 1] ?? "").trim() === "") { line -= 1; }
+    return { line, column: sourceLines[line - 1]?.length ?? 0 };
+}
+
+/**
  * The source caret for a document position, or undefined when the position
  * can't be placed in the line map (an empty map, or a doc/map mismatch).
  */

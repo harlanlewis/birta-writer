@@ -243,11 +243,13 @@ That only holds if the editor does the things you expect from VS Code:
 - **Folding and go-to-heading** for navigating long documents — neither touches
   the file. **Why it matters:** structure you can move through without
   scrolling, and without it leaking into what's saved.
-- **The switch to raw Markdown carries your cursor.** Cmd+Shift+M opens the
-  other editor at the line — and, where the mapping is unambiguous, the exact
-  column — you were working at, in both directions, so you can switch
-  mid-sentence and keep typing. Scrolled away from your cursor, it takes you to
-  what's on screen instead. **Why it matters:** the raw editor is the escape
+- **The switch to raw Markdown carries your cursor — and your selection.**
+  Cmd+Shift+M opens the other editor at the line — and, where the mapping is
+  unambiguous, the exact column — you were working at, in both directions, so
+  you can switch mid-sentence and keep typing. A selection survives the trip
+  whole (drag direction included, block selections arriving as whole source
+  lines), and the arriving cursor is centered on screen. Scrolled away from a
+  bare cursor, it takes you to what's on screen instead. **Why it matters:** the raw editor is the escape
   hatch, and an escape hatch that dumps you at the top of a long file is one you
   hesitate to use. Nothing about the document changes on the way through — the
   switch moves you, not your text.

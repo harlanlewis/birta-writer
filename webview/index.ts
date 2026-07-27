@@ -50,6 +50,8 @@ import {
     docPosForSourceCaret,
     blockIndexForSourceLine,
     sourceLineForBlock,
+    sourceEndOfBlock,
+    type SourceCaret,
 } from "./utils/sourceCaret";
 import { buildSelectionContext } from "./agentContext";
 import type { EditorSelectionContext } from "../shared/agentContext";
@@ -286,16 +288,53 @@ function getSelectionContext(): EditorSelectionContext | null {
 /**
  * The source position a switch to the raw editor should carry.
  *
- * The caret wins when it is on screen — that is where the user is working, and
- * it is the only reading that can carry a column. Once they have scrolled away
- * from it, "take me to what I am looking at" is the honest answer instead.
+ * A selection is the user's explicit statement of what matters, so it is
+ * carried whole — both ends, in drag order — even when scrolled off screen. A
+ * selection whose ends sit on depth-0 boundaries (a block-range, node, or
+ * select-all) covers whole blocks, so it maps to whole source lines; mapping
+ * its trailing boundary as a caret would land in the NEXT block and
+ * over-select.
+ *
+ * A bare caret wins only while it is on screen — that is where the user is
+ * working, and it is the only reading that can carry a column. Once they have
+ * scrolled away from it, "take me to what I am looking at" is the honest
+ * answer instead.
  */
 function getSwitchTarget():
     | { line: number; column?: number; anchorLine?: number; anchorColumn?: number }
     | undefined {
     const view = getEditorView();
     if (!view) { return undefined; }
-    const { head, anchor, empty } = view.state.selection;
+    const { doc, selection } = view.state;
+    const { head, anchor, empty, from, to } = selection;
+    const sourceLines = getMarkdownSource().split("\n");
+    if (!empty) {
+        const endCaret = (pos: number, side: "from" | "to"): SourceCaret | undefined => {
+            const $pos = doc.resolve(pos);
+            if ($pos.depth === 0) {
+                if (side === "from") {
+                    const index = Math.min($pos.index(0), doc.childCount - 1);
+                    const line = sourceLineForBlock(doc, currentLineMap, sourceLines, index);
+                    return line === undefined ? undefined : { line, column: 0 };
+                }
+                const index = Math.max($pos.index(0) - 1, 0);
+                return sourceEndOfBlock(doc, currentLineMap, sourceLines, index);
+            }
+            return sourceCaretAt(doc, currentLineMap, sourceLines, pos);
+        };
+        const start = endCaret(from, "from");
+        const end = endCaret(to, "to");
+        if (start && end) {
+            const [headCaret, anchorCaret] = head >= anchor ? [end, start] : [start, end];
+            return {
+                line: headCaret.line + currentLineOffset,
+                column: headCaret.column,
+                anchorLine: anchorCaret.line + currentLineOffset,
+                anchorColumn: anchorCaret.column,
+            };
+        }
+        // An unmappable range falls through to the caret path below.
+    }
     let caretVisible = false;
     try {
         const coords = view.coordsAtPos(head);
@@ -303,25 +342,11 @@ function getSwitchTarget():
     } catch {
         caretVisible = false; // A position the view can't measure yet.
     }
-    const sourceLines = getMarkdownSource().split("\n");
     const caret = caretVisible
-        ? sourceCaretAt(view.state.doc, currentLineMap, sourceLines, head)
+        ? sourceCaretAt(doc, currentLineMap, sourceLines, head)
         : undefined;
     if (caret) {
-        const target: { line: number; column?: number; anchorLine?: number; anchorColumn?: number } = {
-            line: caret.line + currentLineOffset,
-            column: caret.column,
-        };
-        // A real selection carries its other end too, so the raw editor can
-        // restore the selection instead of a bare caret.
-        if (!empty) {
-            const from = sourceCaretAt(view.state.doc, currentLineMap, sourceLines, anchor);
-            if (from) {
-                target.anchorLine = from.line + currentLineOffset;
-                target.anchorColumn = from.column;
-            }
-        }
-        return target;
+        return { line: caret.line + currentLineOffset, column: caret.column };
     }
     return { line: getFirstVisibleSourceLine(view, currentLineMap) + currentLineOffset };
 }

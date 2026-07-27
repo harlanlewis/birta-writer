@@ -957,13 +957,22 @@ export class MarkdownEditorProvider
 
                         const textDoc = await vscode.workspace.openTextDocument(document.uri);
                         const editor = await vscode.window.showTextDocument(textDoc, opts);
-                        // A carried selection is restored with its drag direction
-                        // (anchor→active); opts.selection above already revealed
-                        // the caret's line.
-                        if (active && message.anchorLine && message.anchorLine > 0) {
-                            editor.selection = new vscode.Selection(
-                                clampedPos(message.anchorLine, message.anchorColumn),
-                                active,
+                        if (editor && active) {
+                            // A carried selection is restored with its drag
+                            // direction (anchor→active).
+                            if (message.anchorLine && message.anchorLine > 0) {
+                                editor.selection = new vscode.Selection(
+                                    clampedPos(message.anchorLine, message.anchorColumn),
+                                    active,
+                                );
+                            }
+                            // opts.selection reveals with minimal scrolling,
+                            // which parks the arriving caret at the viewport
+                            // edge; center it, matching what the WYSIWYG side
+                            // does for an arriving line.
+                            editor.revealRange(
+                                new vscode.Range(active, active),
+                                vscode.TextEditorRevealType.InCenter,
                             );
                         }
                         break;

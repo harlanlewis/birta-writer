@@ -14,6 +14,7 @@ import {
     docPosForSourceCaret,
     blockIndexForSourceLine,
     sourceLineForBlock,
+    sourceEndOfBlock,
 } from "../utils/sourceCaret";
 
 const schema = new Schema({
@@ -412,4 +413,41 @@ describe("round trip", () => {
             expect(docPosForSourceCaret(d, lineMap, lines, caret!)).toBe(pos);
         });
     }
+});
+
+describe("sourceEndOfBlock", () => {
+    it("a paragraph should end at its own line's last column", () => {
+        const source = "First paragraph.\n\nSecond paragraph.\n";
+        const d = doc(p("First paragraph."), p("Second paragraph."));
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 1, column: "First paragraph.".length });
+    });
+
+    it("a tight list should end at its LAST item's line", () => {
+        const source = "- alpha\n- beta\n\nafter\n";
+        const d = doc(list("alpha", "beta"), p("after"));
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 2, column: "- beta".length });
+    });
+
+    it("a loose list should end at its last item's RESOLVED line, past the gaps", () => {
+        const source = "- one\n\n- two\n\n- three tail words\n\nafter\n";
+        const d = doc(list("one", "two", "three tail words"), p("after"));
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 5, column: "- three tail words".length });
+    });
+
+    it("a fenced code block should include its closing fence line", () => {
+        const source = "```js\nlet x = 1;\nlet y = 2;\n```\n\nafter\n";
+        const d = doc(code("let x = 1;\nlet y = 2;"), p("after"));
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 4, column: 3 });
+    });
+
+    it("a heading directly above another block should not swallow the blank separator", () => {
+        const source = "## Title\n\nbody\n";
+        const d = doc(h(2, "Title"), p("body"));
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 1, column: "## Title".length });
+    });
 });
