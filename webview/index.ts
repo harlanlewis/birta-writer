@@ -50,8 +50,7 @@ import {
     docPosForSourceCaret,
     blockIndexForSourceLine,
     sourceLineForBlock,
-    sourceEndOfBlock,
-    type SourceCaret,
+    sourceSelectionEnds,
 } from "./utils/sourceCaret";
 import { buildSelectionContext } from "./agentContext";
 import type { EditorSelectionContext } from "../shared/agentContext";
@@ -306,31 +305,16 @@ function getSwitchTarget():
     const view = getEditorView();
     if (!view) { return undefined; }
     const { doc, selection } = view.state;
-    const { head, anchor, empty, from, to } = selection;
+    const { head, empty } = selection;
     const sourceLines = getMarkdownSource().split("\n");
     if (!empty) {
-        const endCaret = (pos: number, side: "from" | "to"): SourceCaret | undefined => {
-            const $pos = doc.resolve(pos);
-            if ($pos.depth === 0) {
-                if (side === "from") {
-                    const index = Math.min($pos.index(0), doc.childCount - 1);
-                    const line = sourceLineForBlock(doc, currentLineMap, sourceLines, index);
-                    return line === undefined ? undefined : { line, column: 0 };
-                }
-                const index = Math.max($pos.index(0) - 1, 0);
-                return sourceEndOfBlock(doc, currentLineMap, sourceLines, index);
-            }
-            return sourceCaretAt(doc, currentLineMap, sourceLines, pos);
-        };
-        const start = endCaret(from, "from");
-        const end = endCaret(to, "to");
-        if (start && end) {
-            const [headCaret, anchorCaret] = head >= anchor ? [end, start] : [start, end];
+        const ends = sourceSelectionEnds(doc, currentLineMap, sourceLines, selection);
+        if (ends) {
             return {
-                line: headCaret.line + currentLineOffset,
-                column: headCaret.column,
-                anchorLine: anchorCaret.line + currentLineOffset,
-                anchorColumn: anchorCaret.column,
+                line: ends.head.line + currentLineOffset,
+                column: ends.head.column,
+                anchorLine: ends.anchor.line + currentLineOffset,
+                anchorColumn: ends.anchor.column,
             };
         }
         // An unmappable range falls through to the caret path below.

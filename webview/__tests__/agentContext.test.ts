@@ -71,6 +71,19 @@ describe("buildSelectionContext", () => {
         expect(ctx.selections[0].text).toBe("Hello");
     });
 
+    it("a block-range selection should report its blocks' whole lines, not the next block", () => {
+        // Depth-0 boundaries around block 0 — what Escape's block selection
+        // produces. Mapped as carets these resolve INTO block 1 and an agent
+        // would be told #L1-L3 for a one-line selection.
+        const source = "First paragraph.\n\nSecond paragraph.\n";
+        const d = doc(p("First paragraph."), p("Second paragraph."));
+        const ctx = buildSelectionContext(
+            view(d, 0, d.child(0).nodeSize), computeLineMap(source), source.split("\n"), 0)!;
+        expect(ctx.selections[0].anchor).toEqual({ line: 1, column: 0 });
+        expect(ctx.selections[0].active).toEqual({ line: 1, column: "First paragraph.".length });
+        expect(ctx.selections[0].text).toBe("First paragraph.");
+    });
+
     it("should add the frontmatter line offset to the reported document line", () => {
         const source = "Body line.\n";
         const d = doc(p("Body line."));

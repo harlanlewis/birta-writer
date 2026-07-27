@@ -28,37 +28,62 @@ async function requestContext(page) {
     }, id);
 }
 
-/** Put a collapsed caret `offset` characters into the block matching `selector`. */
+/**
+ * Put a collapsed caret `offset` characters into the block matching `selector`.
+ *
+ * The click's own ProseMirror handling is asynchronous and can land AFTER the
+ * programmatic range below, snapping the caret back to the click point — rare
+ * on an idle machine, reproducible at the tail of a full e2e run. So the
+ * placement is verified against the live DOM selection and re-applied until it
+ * sticks.
+ */
 async function caretInto(page, selector, offset, { nth = 0 } = {}) {
     await page.locator(selector).nth(nth).click();
-    const placed = await page.evaluate(
-        ({ selector, nth, offset }) => {
-            const el = document.querySelectorAll(selector)[nth];
-            if (!el) { return -1; }
-            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-                acceptNode: (n) =>
-                    n.parentElement?.closest("[contenteditable='false'], .ProseMirror-widget")
-                        ? NodeFilter.FILTER_REJECT
-                        : NodeFilter.FILTER_ACCEPT,
-            });
-            let remaining = offset;
-            let node = walker.nextNode();
-            while (node && remaining > node.length) {
-                remaining -= node.length;
-                node = walker.nextNode();
-            }
-            if (!node) { return -1; }
-            const range = document.createRange();
-            range.setStart(node, remaining);
-            range.collapse(true);
-            const selection = getSelection();
-            selection.removeAllRanges();
-            selection.addRange(range);
-            return remaining;
-        },
-        { selector, nth, offset },
-    );
-    if (placed < 0) { throw new Error(`caretInto: no text node at ${selector}[${nth}]+${offset}`); }
+    /** Walk to the text node `offset` chars into the block; set or verify. */
+    const domCaret = (mode) =>
+        page.evaluate(
+            ({ selector, nth, offset, mode }) => {
+                const el = document.querySelectorAll(selector)[nth];
+                if (!el) { return -1; }
+                const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+                    acceptNode: (n) =>
+                        n.parentElement?.closest("[contenteditable='false'], .ProseMirror-widget")
+                            ? NodeFilter.FILTER_REJECT
+                            : NodeFilter.FILTER_ACCEPT,
+                });
+                let remaining = offset;
+                let node = walker.nextNode();
+                while (node && remaining > node.length) {
+                    remaining -= node.length;
+                    node = walker.nextNode();
+                }
+                if (!node) { return -1; }
+                const selection = getSelection();
+                if (mode === "verify") {
+                    return selection.isCollapsed &&
+                        selection.anchorNode === node &&
+                        selection.anchorOffset === remaining
+                        ? remaining
+                        : -1;
+                }
+                const range = document.createRange();
+                range.setStart(node, remaining);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                return remaining;
+            },
+            { selector, nth, offset, mode },
+        );
+    let placed = -1;
+    for (let attempt = 0; attempt < 5; attempt++) {
+        placed = await domCaret("set");
+        if (placed < 0) { break; }
+        await page.waitForTimeout(100);
+        if ((await domCaret("verify")) >= 0) { break; }
+        placed = -1;
+    }
+    if (placed < 0) { throw new Error(`caretInto: caret would not place at ${selector}[${nth}]+${offset}`); }
     await page.waitForTimeout(80);
 }
 

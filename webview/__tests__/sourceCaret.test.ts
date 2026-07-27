@@ -15,6 +15,7 @@ import {
     blockIndexForSourceLine,
     sourceLineForBlock,
     sourceEndOfBlock,
+    sourceSelectionEnds,
 } from "../utils/sourceCaret";
 
 const schema = new Schema({
@@ -444,10 +445,78 @@ describe("sourceEndOfBlock", () => {
             .toEqual({ line: 4, column: 3 });
     });
 
+    it("a fence inside a blockquote should include its '> '-marked closing line", () => {
+        const source = "> ```js\n> let x = 1;\n> ```\n\nafter\n";
+        const d = doc(schema.node("blockquote", null, [code("let x = 1;")]), p("after"));
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 3, column: "> ```".length });
+    });
+
     it("a heading directly above another block should not swallow the blank separator", () => {
         const source = "## Title\n\nbody\n";
         const d = doc(h(2, "Title"), p("body"));
         expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
             .toEqual({ line: 1, column: "## Title".length });
+    });
+});
+
+describe("sourceSelectionEnds", () => {
+    const source = "First paragraph.\n\n- alpha\n- beta\n\nlast\n";
+    const build = () => doc(p("First paragraph."), list("alpha", "beta"), p("last"));
+
+    it("a text selection should map both ends as carets, drag roles preserved", () => {
+        const d = build();
+        const ends = sourceSelectionEnds(d, computeLineMap(source), source.split("\n"), {
+            from: inBlock(d, 0, 2), to: inBlock(d, 0, 8),
+            anchor: inBlock(d, 0, 8), head: inBlock(d, 0, 2), empty: false,
+        });
+        expect(ends).toEqual({
+            head: { line: 1, column: 2 },
+            anchor: { line: 1, column: 8 },
+        });
+    });
+
+    it("a block-boundary selection should cover its blocks' whole source lines", () => {
+        // Blocks 0..1 selected as a block range: depth-0 boundaries.
+        const d = build();
+        const to = d.child(0).nodeSize + d.child(1).nodeSize;
+        const ends = sourceSelectionEnds(d, computeLineMap(source), source.split("\n"), {
+            from: 0, to, anchor: 0, head: to, empty: false,
+        });
+        expect(ends).toEqual({
+            anchor: { line: 1, column: 0 },
+            head: { line: 4, column: "- beta".length },
+        });
+    });
+
+    it("a BACKWARD block-boundary selection should keep the head at the top", () => {
+        const d = build();
+        const to = d.child(0).nodeSize + d.child(1).nodeSize;
+        const ends = sourceSelectionEnds(d, computeLineMap(source), source.split("\n"), {
+            from: 0, to, anchor: to, head: 0, empty: false,
+        });
+        expect(ends).toEqual({
+            head: { line: 1, column: 0 },
+            anchor: { line: 4, column: "- beta".length },
+        });
+    });
+
+    it("an empty selection should report its caret as both ends", () => {
+        const d = build();
+        const pos = inBlock(d, 0, 5);
+        const ends = sourceSelectionEnds(d, computeLineMap(source), source.split("\n"), {
+            from: pos, to: pos, anchor: pos, head: pos, empty: true,
+        });
+        expect(ends).toEqual({
+            anchor: { line: 1, column: 5 },
+            head: { line: 1, column: 5 },
+        });
+    });
+
+    it("an empty line map should map to undefined, not a guess", () => {
+        const d = build();
+        expect(sourceSelectionEnds(d, [], source.split("\n"), {
+            from: 0, to: 2, anchor: 0, head: 2, empty: false,
+        })).toBeUndefined();
     });
 });

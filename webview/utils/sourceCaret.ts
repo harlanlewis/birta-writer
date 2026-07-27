@@ -336,16 +336,59 @@ export function sourceEndOfBlock(
     const lines = anchorLines(anchors, start, sourceLines);
     let line = lines.length ? lines[lines.length - 1] : start;
     // The closing fence has no anchor (no text position); when the block ends
-    // in code and the next source line closes a fence, it belongs to the block.
+    // in code and the next source line closes a fence, it belongs to the
+    // block. Blockquote markers are part of the closer's line (`> ```` ``` ``).
     if (anchors[anchors.length - 1]?.node.type.spec.code) {
         const closer = sourceLines[line];
-        if (closer !== undefined && /^\s*(`{3,}|~{3,})\s*$/.test(closer)) { line += 1; }
+        if (closer !== undefined && /^\s*(?:>\s*)*(`{3,}|~{3,})\s*$/.test(closer)) { line += 1; }
     }
     // Anchors resolved against unmatchable text (a table's cells) can drift
     // past the block; never claim a trailing blank separator line.
     line = clamp(line, start, sourceLines.length);
     while (line > start && (sourceLines[line - 1] ?? "").trim() === "") { line -= 1; }
     return { line, column: sourceLines[line - 1]?.length ?? 0 };
+}
+
+/**
+ * Both ends of a selection in source coordinates, drag roles preserved, or
+ * undefined when either end can't be mapped.
+ *
+ * The one selection→source mapping shared by every consumer of a whole
+ * selection (the mode switch, the agent bridge), so they cannot disagree. An
+ * end sitting on a depth-0 boundary — a block-range, node, or select-all
+ * selection — covers whole blocks: mapped as a caret it would resolve INTO
+ * the neighbouring block and over-select, so the leading boundary maps to its
+ * first block's line start and the trailing boundary to the last covered
+ * block's line end (sourceEndOfBlock). An empty selection maps its caret once
+ * and reports it as both ends.
+ */
+export function sourceSelectionEnds(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    selection: { from: number; to: number; head: number; anchor: number; empty: boolean },
+): { anchor: SourceCaret; head: SourceCaret } | undefined {
+    const { from, to, head, anchor, empty } = selection;
+    if (empty) {
+        const caret = sourceCaretAt(doc, lineMap, sourceLines, head);
+        return caret && { anchor: caret, head: caret };
+    }
+    const endCaret = (pos: number, side: "from" | "to"): SourceCaret | undefined => {
+        const $pos = doc.resolve(clamp(pos, 0, doc.content.size));
+        if ($pos.depth === 0) {
+            if (side === "from") {
+                const index = Math.min($pos.index(0), doc.childCount - 1);
+                const line = sourceLineForBlock(doc, lineMap, sourceLines, index);
+                return line === undefined ? undefined : { line, column: 0 };
+            }
+            return sourceEndOfBlock(doc, lineMap, sourceLines, Math.max($pos.index(0) - 1, 0));
+        }
+        return sourceCaretAt(doc, lineMap, sourceLines, pos);
+    };
+    const start = endCaret(from, "from");
+    const end = endCaret(to, "to");
+    if (!start || !end) { return undefined; }
+    return head >= anchor ? { anchor: start, head: end } : { anchor: end, head: start };
 }
 
 /**

@@ -16,15 +16,18 @@
 
 import type { EditorView } from "./pm";
 import type { DocSelection, EditorSelectionContext } from "../shared/agentContext";
-import { sourceCaretAt } from "./utils/sourceCaret";
+import { sourceSelectionEnds } from "./utils/sourceCaret";
 
 /**
  * Build the selection context, or null when the position can't be placed (an
  * empty line map before the first sync).
  *
  * `lineOffset` is how many source lines the frontmatter occupies; it converts
- * the BODY lines `sourceCaretAt` returns into the DOCUMENT lines every consumer
- * expects — the same conversion the mode-switch caret handoff makes.
+ * the BODY lines the source mapping returns into the DOCUMENT lines every
+ * consumer expects — the same conversion the mode-switch caret handoff makes.
+ * The mapping itself is shared with that handoff (sourceSelectionEnds), so a
+ * block-range selection reports whole source lines here too instead of
+ * spilling into the neighbouring block.
  */
 export function buildSelectionContext(
     view: EditorView,
@@ -33,9 +36,9 @@ export function buildSelectionContext(
     lineOffset: number,
 ): EditorSelectionContext | null {
     const { doc, selection } = view.state;
-    const anchor = sourceCaretAt(doc, lineMap, sourceLines, selection.anchor);
-    const active = sourceCaretAt(doc, lineMap, sourceLines, selection.head);
-    if (!anchor || !active) { return null; }
+    const ends = sourceSelectionEnds(doc, lineMap, sourceLines, selection);
+    if (!ends) { return null; }
+    const { anchor, head: active } = ends;
 
     // Plain text of the selection (markup stripped, same extraction as the word
     // counter); the line span carries the precise source pointer.
