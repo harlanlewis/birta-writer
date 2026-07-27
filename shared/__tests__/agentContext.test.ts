@@ -48,7 +48,15 @@ describe("selectionLineSpan", () => {
         expect(selectionLineSpan(sel([7, 4], [7, 4]))).toEqual({ startLine: 7, endLine: 7 });
     });
     it("a backward multi-line selection should report ordered start/end lines", () => {
-        expect(selectionLineSpan(sel([12, 0], [8, 2]))).toEqual({ startLine: 8, endLine: 12 });
+        expect(selectionLineSpan(sel([12, 3], [8, 2]))).toEqual({ startLine: 8, endLine: 12 });
+    });
+    it("a selection ending at column 0 should not claim that line", () => {
+        // Nothing of line 12 is selected — the span ends on line 11, the
+        // editor/GitHub convention.
+        expect(selectionLineSpan(sel([8, 2], [12, 0]))).toEqual({ startLine: 8, endLine: 11 });
+    });
+    it("a single-line selection ending at column 0 should keep its line", () => {
+        expect(selectionLineSpan(sel([8, 0], [8, 0]))).toEqual({ startLine: 8, endLine: 8 });
     });
 });
 

@@ -59,18 +59,33 @@ export function fenceMarkdown(content: string): string {
 }
 
 /**
- * The selection's SOURCE lines — the real markdown of the span the reference
- * names, structure intact (headings, list markers, links), which the
- * plain-text `sel.text` has stripped. Whole lines by design: they are exactly
- * what `#L12-L20` addresses. Undefined when the span can't be read (stale
+ * The selection's exact SOURCE fragment — the real markdown of the selected
+ * range, structure intact (headings, list markers, links), which the
+ * plain-text `sel.text` has stripped. Mid-line endpoints trim the first and
+ * last lines: a user selecting three words is pointing AT those words, and
+ * that signal must survive the copy. A column of 0 trims nothing — it means
+ * either "the whole line" or "could not be mapped", and over-sharing a line
+ * beats clipping real content. Undefined when the span can't be read (stale
  * coordinates against a shorter document).
  */
 function sourceSpan(sel: DocSelection, sourceText: string | undefined): string | undefined {
     if (sourceText === undefined) { return undefined; }
+    const { start, end } = orderedRange(sel);
     const { startLine, endLine } = selectionLineSpan(sel);
-    const lines = sourceText.split(/\r?\n/);
-    if (startLine < 1 || startLine > lines.length) { return undefined; }
-    return lines.slice(startLine - 1, endLine).join("\n");
+    const all = sourceText.split(/\r?\n/);
+    if (startLine < 1 || startLine > all.length) { return undefined; }
+    const lines = all.slice(startLine - 1, endLine);
+    if (!lines.length) { return undefined; }
+    const last = lines.length - 1;
+    // End first, then start: both columns index the ORIGINAL lines, and the
+    // end trim only removes a tail the start trim never reaches.
+    if (end.line === startLine + last && end.column > 0) {
+        lines[last] = lines[last]!.slice(0, end.column);
+    }
+    if (start.column > 0) {
+        lines[0] = lines[0]!.slice(start.column);
+    }
+    return lines.join("\n") || undefined;
 }
 
 /** Truncate for the model when a selection is very long. */

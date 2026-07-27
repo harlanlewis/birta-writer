@@ -68,7 +68,11 @@ export function orderedRange(sel: DocSelection): { start: DocPosition; end: DocP
 /** Ordered 1-indexed line span a selection covers (start ≤ end). */
 export function selectionLineSpan(sel: DocSelection): { startLine: number; endLine: number } {
     const { start, end } = orderedRange(sel);
-    return { startLine: start.line, endLine: end.line };
+    // A selection ending at column 0 of a later line selects nothing of that
+    // line, so the span — and the #L reference built from it — ends on the
+    // previous line (the editor/GitHub convention).
+    const endLine = end.line > start.line && end.column === 0 ? end.line - 1 : end.line;
+    return { startLine: start.line, endLine };
 }
 
 /**
