@@ -31,6 +31,20 @@ import {
  * activate() then broadcasts it to every open editor. Exported for unit
  * testing.
  */
+/**
+ * The document behind the FOCUSED pane's custom editor, or undefined when the
+ * focused tab isn't one. Deliberately reads only `activeTabGroup` — scanning
+ * every group for "an active custom tab" finds the leftmost pane first, which
+ * made Cmd+Shift+M switch the wrong editor in a split. Exported for unit
+ * testing.
+ */
+export function activeCustomEditorUri(): vscode.Uri | undefined {
+    const activeTab = vscode.window.tabGroups.activeTabGroup?.activeTab;
+    return activeTab?.input instanceof vscode.TabInputCustom
+        ? (activeTab.input as vscode.TabInputCustom).uri
+        : undefined;
+}
+
 export async function promptBlockHandlesMode(): Promise<void> {
     const current = normalizeBlockHandlesMode(readBirtaSetting("blockHandles"));
     type ModeItem = vscode.QuickPickItem & { mode: BlockHandlesMode };
@@ -595,22 +609,20 @@ export function activate(context: vscode.ExtensionContext) {
     // extension host.
 
     // Close preview: WYSIWYG → text editor
+    //
+    // Target resolution must respect FOCUS: with two panes each showing a
+    // Birta editor, scanning tabGroups.all for the first active custom tab
+    // always found the left pane, so Cmd+Shift+M switched the wrong editor.
+    // The keybinding's when-clause (activeCustomEditorId == 'birta.editor')
+    // guarantees the ACTIVE group's active tab is the editor the user is in.
     context.subscriptions.push(
         vscode.commands.registerCommand(
             "birta.switchToTextEditor",
             async (uri?: vscode.Uri) => {
-                let target =
-                    uri ?? vscode.window.activeTextEditor?.document.uri;
-                if (!target) {
-                    // When the Custom Editor is active, activeTextEditor is undefined; find the active CustomEditor tab from the tab groups
-                    for (const group of vscode.window.tabGroups.all) {
-                        const activeTab = group.activeTab;
-                        if (activeTab?.input instanceof vscode.TabInputCustom) {
-                            target = (activeTab.input as vscode.TabInputCustom).uri;
-                            break;
-                        }
-                    }
-                }
+                const target =
+                    uri ??
+                    vscode.window.activeTextEditor?.document.uri ??
+                    activeCustomEditorUri();
                 if (!target) { return; }
 
                 const provider = MarkdownEditorProvider.current;
