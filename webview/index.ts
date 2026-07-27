@@ -51,6 +51,7 @@ import {
     blockIndexForSourceLine,
     sourceLineForBlock,
     sourceSelectionEnds,
+    sourceColumnForTextOffset,
 } from "./utils/sourceCaret";
 import { buildSelectionContext } from "./agentContext";
 import type { EditorSelectionContext } from "../shared/agentContext";
@@ -351,6 +352,39 @@ function domChromeTarget(
                 line: head.line, column: head.column,
                 anchorLine: anchor.line, anchorColumn: anchor.column,
             };
+    }
+    // An editable title island (a callout's or directive's role="textbox"
+    // span): the title lives ON the block's marker line, so offsets in it
+    // align into that source line under the same subsequence rules as any
+    // rendered-vs-source divergence. Mid-edit text not yet committed to the
+    // source simply fails alignment and degrades to the line.
+    const titleEl = anchorEl.closest('[role="textbox"]');
+    if (titleEl && chrome.contains(titleEl)) {
+        const sourceLine = sourceLines[blockLine - 1] ?? "";
+        const text = titleEl.textContent ?? "";
+        const titleCaret = (n: globalThis.Node | null, offset: number): { line: number; column?: number } => {
+            let column: number | undefined;
+            if (n && titleEl.contains(n) && n.nodeType === 3) {
+                // Offset within the WHOLE title text (an edited span can
+                // hold several text nodes).
+                let before = 0;
+                const walker = document.createTreeWalker(titleEl, NodeFilter.SHOW_TEXT);
+                for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+                    if (t === n) {
+                        column = sourceColumnForTextOffset(
+                            sourceLine, text, Math.min(before + offset, text.length));
+                        break;
+                    }
+                    before += t.textContent?.length ?? 0;
+                }
+            }
+            return { line: blockLine, ...(column !== undefined ? { column } : {}) };
+        };
+        const a = titleCaret(sel.anchorNode, sel.anchorOffset);
+        const h = titleCaret(sel.focusNode, sel.focusOffset);
+        return sel.isCollapsed || a.column === undefined || h.column === undefined
+            ? { line: h.line, column: h.column }
+            : { line: h.line, column: h.column, anchorLine: a.line, anchorColumn: a.column };
     }
     return { line: blockLine };
 }

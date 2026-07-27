@@ -366,6 +366,28 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(target),
     );
 
+    // ── 9d2. A selection in a callout's TITLE island maps onto the marker
+    // line with aligned columns — the title editor is NodeView chrome, so
+    // the editor's own selection is elsewhere and stale ──
+    const inTitle = await page.evaluate(() => {
+        const span = document.querySelector(".callout-title-text");
+        if (!span?.firstChild) { return false; }
+        const idx = (span.textContent ?? "").indexOf("words");
+        if (idx < 0) { return false; }
+        getSelection().setBaseAndExtent(span.firstChild, idx, span.firstChild, idx + "words".length);
+        return true;
+    });
+    check("the callout title island exists", inTitle, "");
+    await page.waitForTimeout(150);
+    target = await requestSwitch(page);
+    check(
+        "a title selection maps onto the callout's marker line, columns aligned",
+        target?.line === 34 && target?.anchorLine === 34 &&
+        target?.anchorColumn === "> [!NOTE] Titled ".length &&
+        target?.column === "> [!NOTE] Titled words".length,
+        JSON.stringify(target),
+    );
+
     // ── 9e. Arriving into a callout body restores the selection there ──
     await page.evaluate(() =>
         window.postMessage(

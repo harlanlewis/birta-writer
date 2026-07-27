@@ -53,7 +53,7 @@
   // `:::tip`, the fences — the shape whose body anchors used to pair a line
   // early; the calc ledger additionally holds its selection in read-only DOM
   // chrome while the editor's own selection is parked stale.
-  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\nWrapped first line here\ncontinues with **bold** middle words\nand finally ends.\n\n| Tool | Note |\n| --- | --- |\n| Alpha | works well |\n| Beta | mostly fine |\n\n> [!NOTE]\n> Callout unique words here.\n\n:::tip Fancy\nDirective middle words tonight.\n:::\n\n```calc\nincome = 5000\nshare = income * 2\n```\n\n" + filler + "\n";
+  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\nWrapped first line here\ncontinues with **bold** middle words\nand finally ends.\n\n| Tool | Note |\n| --- | --- |\n| Alpha | works well |\n| Beta | mostly fine |\n\n> [!NOTE] Titled words inline\n> Callout unique words here.\n\n:::tip Fancy\nDirective middle words tonight.\n:::\n\n```calc\nincome = 5000\nshare = income * 2\n```\n\n" + filler + "\n";
   // computeLineMap(BODY): heading, paragraph, tight list, fence, last
   // paragraph, the two loose items, the paragraph below them, the wrapped
   // paragraph, the table, the callout, the directive, the calc fence, then

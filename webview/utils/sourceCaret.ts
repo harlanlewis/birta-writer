@@ -555,7 +555,7 @@ export function sourceCaretAt(
  * character landed. If the whole rendered text cannot be embedded in the line,
  * no column is claimed (the caller degrades to the line start).
  */
-function sourceColumnForTextOffset(
+export function sourceColumnForTextOffset(
     sourceLine: string,
     text: string,
     textOffset: number,
