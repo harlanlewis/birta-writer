@@ -28,6 +28,7 @@ const schema = new Schema({
         bullet_list: { group: "block", content: "list_item+" },
         list_item: { content: "paragraph block*" },
         horizontal_rule: { group: "block" },
+        hardbreak: { group: "inline", inline: true },
         image: { group: "inline", inline: true, attrs: { src: {} } },
         text: { group: "inline" },
     },
@@ -518,5 +519,57 @@ describe("sourceSelectionEnds", () => {
         expect(sourceSelectionEnds(d, [], source.split("\n"), {
             from: 0, to: 2, anchor: 0, head: 2, empty: false,
         })).toBeUndefined();
+    });
+});
+
+describe("wrapped paragraphs (source newlines as break leaves)", () => {
+    // One paragraph over three source lines: the author's newlines live in the
+    // document as hardbreak leaves — the failure mode where every caret and
+    // selection in a wrapped paragraph collapsed to line start, column 0.
+    const source = "Wrapped first line\ncontinues **bold** here\nand ends.\n";
+    const wrapped = () =>
+        doc(schema.node("paragraph", null, [
+            schema.text("Wrapped first line"),
+            schema.node("hardbreak"),
+            schema.text("continues "),
+            schema.text("bold", [schema.mark("strong")]),
+            schema.text(" here"),
+            schema.node("hardbreak"),
+            schema.text("and ends."),
+        ]));
+    // Content offsets: "Wrapped first line" 0–18, break 18–19, "continues "
+    // 19–29, "bold" 29–33, " here" 33–38, break 38–39, "and ends." 39–48.
+    const beforeHere = 1 + 34; // contentStart + offset of "here"
+
+    it("a caret on the second wrapped line should report ITS line, column aligned past markup", () => {
+        const caret = sourceCaretAt(wrapped(), computeLineMap(source), source.split("\n"), beforeHere);
+        expect(caret).toEqual({ line: 2, column: "continues **bold** ".length });
+    });
+
+    it("a source caret on the second wrapped line should map back to the same position", () => {
+        expect(docPosForSourceCaret(wrapped(), computeLineMap(source), source.split("\n"), {
+            line: 2, column: "continues **bold** ".length,
+        })).toBe(beforeHere);
+    });
+
+    it("a caret on the LAST wrapped line should not be dragged to the paragraph start", () => {
+        const caret = sourceCaretAt(wrapped(), computeLineMap(source), source.split("\n"), 1 + 43);
+        expect(caret).toEqual({ line: 3, column: 4 });
+    });
+
+    it("sourceEndOfBlock should end at the last wrapped line's end", () => {
+        expect(sourceEndOfBlock(wrapped(), computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 3, column: "and ends.".length });
+    });
+
+    it("a selection across wrapped lines should carry each end on its own line", () => {
+        const d = wrapped();
+        const ends = sourceSelectionEnds(d, computeLineMap(source), source.split("\n"), {
+            from: 1 + 8, to: beforeHere, anchor: 1 + 8, head: beforeHere, empty: false,
+        });
+        expect(ends).toEqual({
+            anchor: { line: 1, column: 8 },
+            head: { line: 2, column: "continues **bold** ".length },
+        });
     });
 });

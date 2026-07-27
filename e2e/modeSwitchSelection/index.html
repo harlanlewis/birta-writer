@@ -37,17 +37,20 @@
   //  19 - loose one   21 - loose two     23 Below the loose list.
   const FRONTMATTER = "---\ntitle: Note\n---\n";
   // Filler keeps the page taller than the viewport, so "the caret has been
-  // scrolled off screen" is a state the checks can actually reach. Each filler
-  // paragraph occupies two body lines (text + blank), starting at body line 16.
+  // scrolled off screen" is a state the checks can actually reach.
   const FILLERS = 30;
   const filler = Array.from({ length: FILLERS }, (_, i) => `Filler paragraph ${i + 1}.`).join("\n\n");
   // The LOOSE list (blank line between items) is deliberate: it is several
   // source blocks but a single document node, so everything after it pairs one
-  // map entry early unless the mapping is reconciled against the text.
-  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\n" + filler + "\n";
+  // map entry early unless the mapping is reconciled against the text. The
+  // WRAPPED paragraph (body lines 22-24, document 25-27) is one textblock over
+  // three source lines — the shape where selections used to collapse to the
+  // paragraph's first line at column 0.
+  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\nWrapped first line here\ncontinues with **bold** middle words\nand finally ends.\n\n" + filler + "\n";
   // computeLineMap(BODY): heading, paragraph, tight list, fence, last
-  // paragraph, the two loose items, the paragraph below them, then fillers.
-  const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, ...Array.from({ length: FILLERS }, (_, i) => 22 + 2 * i)];
+  // paragraph, the two loose items, the paragraph below them, the wrapped
+  // paragraph, then fillers.
+  const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, 22, ...Array.from({ length: FILLERS }, (_, i) => 26 + 2 * i)];
   const LINE_OFFSET = 3; // lines the frontmatter occupies
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

@@ -56,6 +56,14 @@ interface LineAnchor {
 
 const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n, lo), hi);
 
+/**
+ * An inline leaf that stands for a source line break — Milkdown renders BOTH
+ * a hard break and a soft wrap (a plain newline inside a paragraph) as its
+ * `hardbreak` node, so these are exactly where the author's newlines sit.
+ */
+const isLineBreak = (node: Node): boolean =>
+    node.isLeaf && node.isInline && /break/i.test(node.type.name);
+
 /** Enumerate the source lines a top-level block covers, in document order. */
 function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
     const anchors: LineAnchor[] = [];
@@ -72,10 +80,22 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
             }
             return;
         }
-        // A soft-wrapped paragraph spans several source lines inside ONE
-        // textblock; its rendered text gives no honest way to tell where the
-        // author's newlines were, so it counts as a single line.
-        anchors.push({ text: node.textContent, node, contentStart, offset: 0 });
+        // A wrapped paragraph spans several source lines inside ONE textblock,
+        // with the author's newlines preserved as inline break leaves: each
+        // run between them is its own source line. A textblock with no breaks
+        // is a single line.
+        let segOffset = 0;
+        let segText = "";
+        node.forEach((child, childOffset) => {
+            if (isLineBreak(child)) {
+                anchors.push({ text: segText, node, contentStart, offset: segOffset });
+                segOffset = childOffset + child.nodeSize;
+                segText = "";
+            } else if (child.isText) {
+                segText += child.text ?? "";
+            }
+        });
+        anchors.push({ text: segText, node, contentStart, offset: segOffset });
     };
 
     if (block.isTextblock) {

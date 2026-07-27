@@ -216,7 +216,67 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(selected),
     );
 
-    // ── 8. A selection whose head is off screen still carries the range ──
+    // ── 8. A WRAPPED paragraph: a selection on a later source line maps to
+    // ITS line, not the paragraph's first (the user-reported collapse) ──
+    // "middle" sits on the wrapped paragraph's second source line (doc 26),
+    // past invisible ** markup: source col 24, rendered text-node offset found
+    // by word.
+    await freshPage(page, baseUrl);
+    const found = await page.evaluate(() => {
+        const el = document.querySelectorAll(".ProseMirror > p")[3];
+        if (!el || !el.textContent.includes("middle")) { return false; }
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+            acceptNode: (n) =>
+                n.parentElement?.closest("[contenteditable='false'], .ProseMirror-widget")
+                    ? NodeFilter.FILTER_REJECT
+                    : NodeFilter.FILTER_ACCEPT,
+        });
+        let node;
+        while ((node = walker.nextNode())) {
+            const idx = node.textContent.indexOf("middle");
+            if (idx >= 0) {
+                getSelection().setBaseAndExtent(node, idx, node, idx + "middle".length);
+                return true;
+            }
+        }
+        return false;
+    });
+    check("the wrapped paragraph and its 'middle' word exist", found, "");
+    await page.waitForTimeout(150);
+    target = await requestSwitch(page);
+    check(
+        "a selection on a wrapped line carries that line and markup-adjusted columns",
+        target?.line === 26 && target?.column === 30 &&
+        target?.anchorLine === 26 && target?.anchorColumn === 24,
+        JSON.stringify(target),
+    );
+
+    // ── 9. Arriving on a wrapped line: range restored, caret typing lands there ──
+    await page.evaluate(() =>
+        window.postMessage(
+            { type: "scrollToLine", line: 26, column: 30, anchorLine: 26, anchorColumn: 24 },
+            "*",
+        ));
+    await page.waitForTimeout(250);
+    selected = await page.evaluate(() => getSelection()?.toString() ?? "");
+    check(
+        "an arriving range on a wrapped line is selected",
+        selected === "middle",
+        JSON.stringify(selected),
+    );
+    await page.evaluate(() =>
+        window.postMessage({ type: "scrollToLine", line: 27, column: 4 }, "*"));
+    await page.waitForTimeout(250);
+    await page.keyboard.type("W");
+    await page.waitForTimeout(400);
+    content = await lastContent(page);
+    check(
+        "a caret arriving on a wrapped paragraph's LAST line types on that line",
+        content.includes("and Wfinally ends."),
+        JSON.stringify(content.split("\n").filter((l) => l.includes("finally"))),
+    );
+
+    // ── 10. A selection whose head is off screen still carries the range ──
     // The user's explicit range beats "what the viewport shows": scrolling
     // away must not silently downgrade a selection to a bare viewport line.
     await freshPage(page, baseUrl);
