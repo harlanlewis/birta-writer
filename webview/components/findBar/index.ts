@@ -66,6 +66,12 @@ export interface FindBarController {
      * from Replace All.
      */
     selectAllOccurrences(): void;
+    /**
+     * The document changed (called from the doc-change hook): schedule a
+     * debounced rescan so the count and highlights stay true. Display-only —
+     * actions rescan synchronously themselves. O(1) when closed or empty.
+     */
+    noteDocChanged(): void;
 }
 
 /** Document-order sort position of a match. */
