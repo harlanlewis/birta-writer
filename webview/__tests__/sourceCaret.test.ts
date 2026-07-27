@@ -28,9 +28,12 @@ const schema = new Schema({
         bullet_list: { group: "block", content: "list_item+" },
         list_item: { content: "paragraph block*" },
         horizontal_rule: { group: "block" },
-        callout: { group: "block", content: "block+" },
-        container_directive: { group: "block", content: "block+" },
-        notion_callout: { group: "block", content: "block+" },
+        // The container contract under test is the SPEC-declared
+        // `markerLines`, not the names — a new container type declares its
+        // shape the same way (see sourceLineCoverage.test.ts).
+        callout: { group: "block", content: "block+", markerLines: { closer: false } },
+        container_directive: { group: "block", content: "block+", markerLines: { closer: true } },
+        notion_callout: { group: "block", content: "block+", markerLines: { closer: true } },
         hardbreak: { group: "inline", inline: true },
         math_inline: { group: "inline", inline: true, content: "text*" },
         image: { group: "inline", inline: true, attrs: { src: {} } },

@@ -28,7 +28,7 @@
  *   (an image's alt text, math) does the column degrade to the line start.
  */
 
-import type { Node } from "../pm";
+import type { Node, NodeType } from "../pm";
 
 /** A caret in the Markdown source: 1-indexed line, 0-indexed column. */
 export interface SourceCaret {
@@ -70,12 +70,12 @@ const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n
  * a hard break and a soft wrap (a plain newline inside a paragraph) as its
  * `hardbreak` node, so these are exactly where the author's newlines sit.
  */
-const isLineBreak = (node: Node): boolean =>
-    node.isLeaf && node.isInline && /break/i.test(node.type.name);
+export const isLineBreak = (type: NodeType): boolean =>
+    type.isLeaf && type.isInline && /break/i.test(type.name);
 
 /** A table row (header or body) — one GFM source line per row. */
-const isTableRow = (node: Node): boolean =>
-    node.type.spec.tableRole === "row" || /^table(_header)?_row$/.test(node.type.name);
+export const isTableRow = (type: NodeType): boolean =>
+    type.spec.tableRole === "row" || /^table(_header)?_row$/.test(type.name);
 
 /**
  * A container whose MARKER lines live in attrs, not content: the opening
@@ -83,14 +83,16 @@ const isTableRow = (node: Node): boolean =>
  * block's first source line, and some also close with a marker line (`:::`,
  * `</aside>`). Without anchors for those lines, every body anchor pairs one
  * (or more, nested) lines early — and verification never fits.
+ *
+ * Declared by the NODE SPEC (`markerLines: { closer: boolean }`, the
+ * tableRole precedent), at the definition site of each such node — never by
+ * name here. sourceLineCoverage.test.ts sweeps the schema so a new container
+ * type cannot ship without either declaring its shape or being consciously
+ * allowlisted.
  */
-function containerMarkerLines(node: Node): { closer: boolean } | null {
-    switch (node.type.name) {
-        case "callout": return { closer: false };
-        case "container_directive": return { closer: true };
-        case "notion_callout": return { closer: true };
-        default: return null;
-    }
+export function containerMarkerLines(type: NodeType): { closer: boolean } | null {
+    const spec = type.spec.markerLines as { closer?: unknown } | undefined;
+    return spec ? { closer: spec.closer === true } : null;
 }
 
 /** Enumerate the source lines a top-level block covers, in document order. */
@@ -120,7 +122,7 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
             anchors.push({ text: node.textBetween(segOffset, end), node, contentStart, offset: segOffset, end });
         };
         node.forEach((child, childOffset) => {
-            if (isLineBreak(child)) {
+            if (isLineBreak(child.type)) {
                 flush(childOffset);
                 segOffset = childOffset + child.nodeSize;
             }
@@ -151,7 +153,7 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
     // source line but can never be a caret's answer; a source caret landing
     // on one resolves to the container's nearest content edge.
     const addNode = (node: Node, nodeStart: number): void => {
-        if (isTableRow(node)) {
+        if (isTableRow(node.type)) {
             addRow(node, nodeStart);
             return;
         }
@@ -159,7 +161,7 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
             addTextblock(node, nodeStart);
             return;
         }
-        const marker = containerMarkerLines(node);
+        const marker = containerMarkerLines(node.type);
         if (marker) {
             anchors.push({ text: null, node, contentStart: nodeStart + 1, offset: 0, end: 0 });
         }
