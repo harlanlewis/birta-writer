@@ -48,11 +48,17 @@
   // paragraph's first line at column 0. The TABLE (body lines 26-29, document
   // 29-32) is one node whose rows are one source line each — the shape whose
   // per-cell mapping used to land selections wildly away from the table.
-  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\nWrapped first line here\ncontinues with **bold** middle words\nand finally ends.\n\n| Tool | Note |\n| --- | --- |\n| Alpha | works well |\n| Beta | mostly fine |\n\n" + filler + "\n";
+  // The CALLOUT (body 31-32), DIRECTIVE (body 34-36) and CALC block (body
+  // 38-41) all carry marker lines with no text position — `> [!NOTE]`,
+  // `:::tip`, the fences — the shape whose body anchors used to pair a line
+  // early; the calc ledger additionally holds its selection in read-only DOM
+  // chrome while the editor's own selection is parked stale.
+  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\nWrapped first line here\ncontinues with **bold** middle words\nand finally ends.\n\n| Tool | Note |\n| --- | --- |\n| Alpha | works well |\n| Beta | mostly fine |\n\n> [!NOTE]\n> Callout unique words here.\n\n:::tip Fancy\nDirective middle words tonight.\n:::\n\n```calc\nincome = 5000\nshare = income * 2\n```\n\n" + filler + "\n";
   // computeLineMap(BODY): heading, paragraph, tight list, fence, last
   // paragraph, the two loose items, the paragraph below them, the wrapped
-  // paragraph, the table, then fillers.
-  const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, 22, 26, ...Array.from({ length: FILLERS }, (_, i) => 31 + 2 * i)];
+  // paragraph, the table, the callout, the directive, the calc fence, then
+  // fillers.
+  const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, 22, 26, 31, 34, 38, ...Array.from({ length: FILLERS }, (_, i) => 43 + 2 * i)];
   const LINE_OFFSET = 3; // lines the frontmatter occupies
   // `?arrive=<docLine>` puts a scrollToLine in the init payload — the shape a
   // mode switch arrives with — so the checks can assert the scroll lands

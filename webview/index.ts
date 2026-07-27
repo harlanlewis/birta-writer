@@ -299,6 +299,62 @@ function getSelectionContext(): EditorSelectionContext | null {
  * scrolled away from it, "take me to what I am looking at" is the honest
  * answer instead.
  */
+/**
+ * A switch target read from the DOM selection when it sits in read-only
+ * preview chrome INSIDE the editor — the calc ledger, a rendered diagram or
+ * formula, a NodeView's title bar. Those surfaces deliberately keep
+ * ProseMirror's own selection parked elsewhere (and stale), so the DOM
+ * selection is the only honest record of where the user is. The calc ledger
+ * maps precisely — its rows mirror the fence's interior source lines
+ * one-to-one and a row's source cell IS the source line — and any other
+ * chrome maps to its block's first line. Returns BODY lines (no frontmatter
+ * offset).
+ */
+function domChromeTarget(
+    view: EditorView,
+    sourceLines: string[],
+): { line: number; column?: number; anchorLine?: number; anchorColumn?: number } | undefined {
+    const sel = document.getSelection();
+    if (!sel || !sel.anchorNode) { return undefined; }
+    const toElement = (n: globalThis.Node | null): Element | null =>
+        n instanceof Element ? n : n?.parentElement ?? null;
+    const anchorEl = toElement(sel.anchorNode);
+    if (!anchorEl || !view.dom.contains(anchorEl)) { return undefined; }
+    const chrome = anchorEl.closest('[contenteditable="false"]');
+    if (!chrome || !view.dom.contains(chrome)) { return undefined; }
+    // The top-level block element owning the chrome → its block index.
+    let el: Element = chrome;
+    while (el.parentElement && el.parentElement !== view.dom) { el = el.parentElement; }
+    const index = Array.prototype.indexOf.call(view.dom.children, el);
+    if (index < 0 || index >= view.state.doc.childCount) { return undefined; }
+    const blockLine = sourceLineForBlock(view.state.doc, currentLineMap, sourceLines, index);
+    if (blockLine === undefined) { return undefined; }
+    // Calc ledger: row index = interior line offset (the fence opener is
+    // blockLine); a position in the source cell carries its exact column.
+    const rowCaret = (n: globalThis.Node | null, offset: number): { line: number; column?: number } | undefined => {
+        const rowEl = toElement(n)?.closest(".calc-row");
+        if (!rowEl?.parentElement) { return undefined; }
+        const line = blockLine + 1 +
+            Array.prototype.indexOf.call(rowEl.parentElement.children, rowEl);
+        const srcEl = rowEl.querySelector(".calc-row-src");
+        const column = n && srcEl?.contains(n) && n.nodeType === 3
+            ? Math.min(offset, (srcEl.textContent ?? "").length)
+            : undefined;
+        return { line, column };
+    };
+    const anchor = rowCaret(sel.anchorNode, sel.anchorOffset);
+    const head = rowCaret(sel.focusNode, sel.focusOffset) ?? anchor;
+    if (head && anchor) {
+        return sel.isCollapsed
+            ? { line: head.line, column: head.column }
+            : {
+                line: head.line, column: head.column,
+                anchorLine: anchor.line, anchorColumn: anchor.column,
+            };
+    }
+    return { line: blockLine };
+}
+
 function getSwitchTarget():
     | { line: number; column?: number; anchorLine?: number; anchorColumn?: number }
     | undefined {
@@ -307,6 +363,18 @@ function getSwitchTarget():
     const { doc, selection } = view.state;
     const { head, empty } = selection;
     const sourceLines = getMarkdownSource().split("\n");
+    // A DOM selection in preview chrome outranks the editor selection — the
+    // chrome parks the editor, so its selection is stale by construction.
+    const chromeTarget = domChromeTarget(view, sourceLines);
+    if (chromeTarget) {
+        return {
+            ...chromeTarget,
+            line: chromeTarget.line + currentLineOffset,
+            ...(chromeTarget.anchorLine !== undefined
+                ? { anchorLine: chromeTarget.anchorLine + currentLineOffset }
+                : {}),
+        };
+    }
     if (!empty) {
         const ends = sourceSelectionEnds(doc, currentLineMap, sourceLines, selection);
         if (ends) {

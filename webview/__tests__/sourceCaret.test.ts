@@ -28,6 +28,9 @@ const schema = new Schema({
         bullet_list: { group: "block", content: "list_item+" },
         list_item: { content: "paragraph block*" },
         horizontal_rule: { group: "block" },
+        callout: { group: "block", content: "block+" },
+        container_directive: { group: "block", content: "block+" },
+        notion_callout: { group: "block", content: "block+" },
         hardbreak: { group: "inline", inline: true },
         math_inline: { group: "inline", inline: true, content: "text*" },
         image: { group: "inline", inline: true, attrs: { src: {} } },
@@ -757,5 +760,85 @@ describe("tables after map drift (short cells)", () => {
         });
         expect(sourceCaretAt(doc2, computeLineMap(source), source.split("\n"), pos))
             .toEqual({ line: 7, column: "| Al | o".length });
+    });
+});
+
+describe("marker-line containers (callouts, directives, asides)", () => {
+    // Their marker lines live in ATTRS, not content — `> [!NOTE]`, `:::name`,
+    // `<aside>`, and the `:::`/`</aside>` closers — so without marker anchors
+    // every body anchor paired one line early (more when nested) and
+    // verification never fit the block at its own line.
+    const callout = (...blocks: ReturnType<typeof p>[]) => schema.node("callout", null, blocks);
+    const directive = (...blocks: ReturnType<typeof p>[]) => schema.node("container_directive", null, blocks);
+    const aside = (...blocks: ReturnType<typeof p>[]) => schema.node("notion_callout", null, blocks);
+
+    it("a caret in a callout body should land on ITS line, past the marker line", () => {
+        const source = "> [!NOTE]\n> Callout body words.\n\nafter\n";
+        const d = doc(callout(p("Callout body words.")), p("after"));
+        const pos = inBlock(d, 0, 0) + 1 + 8; // 8 chars into the body paragraph
+        expect(sourceCaretAt(d, computeLineMap(source), source.split("\n"), pos))
+            .toEqual({ line: 2, column: "> ".length + 8 });
+        expect(docPosForSourceCaret(d, computeLineMap(source), source.split("\n"), {
+            line: 2, column: "> ".length + 8,
+        })).toBe(pos);
+    });
+
+    it("a nested directive body should land on its own line through both markers", () => {
+        const source = ":::danger Nesting\nOuter body.\n::note Inner\nFewer colons inside.\n::\n:::\n\nafter\n";
+        const d = doc(
+            directive(p("Outer body."), directive(p("Fewer colons inside."))),
+            p("after"),
+        );
+        let pos = -1;
+        d.descendants((node, p2) => {
+            if (node.isText && node.text === "Fewer colons inside.") { pos = p2 + 6; }
+            return true;
+        });
+        expect(sourceCaretAt(d, computeLineMap(source), source.split("\n"), pos))
+            .toEqual({ line: 4, column: 6 });
+        expect(docPosForSourceCaret(d, computeLineMap(source), source.split("\n"), {
+            line: 4, column: 6,
+        })).toBe(pos);
+    });
+
+    it("a directive's block end should claim its closing ::: line", () => {
+        const source = ":::tip Title\nDirective body.\n:::\n\nafter\n";
+        const d = doc(directive(p("Directive body.")), p("after"));
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 3, column: 3 });
+    });
+
+    it("a notion aside should map its body and claim its closing </aside> line", () => {
+        const source = "<aside>\nAside body text.\n</aside>\n\nafter\n";
+        const d = doc(aside(p("Aside body text.")), p("after"));
+        const pos = inBlock(d, 0, 0) + 1 + 3;
+        expect(sourceCaretAt(d, computeLineMap(source), source.split("\n"), pos))
+            .toEqual({ line: 2, column: 3 });
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 3, column: "</aside>".length });
+    });
+
+    it("a callout after map drift should still be found for an arriving line", () => {
+        const source = "- loose a\n\n- loose b\n\n> [!TIP]\n> Tip body words here.\n\nAfter paragraph.\n";
+        const d = doc(
+            list("loose a", "loose b"),
+            callout(p("Tip body words here.")),
+            p("After paragraph."),
+        );
+        let pos = -1;
+        d.descendants((node, p2) => {
+            if (node.isText && node.text === "Tip body words here.") { pos = p2 + 4; }
+            return true;
+        });
+        expect(docPosForSourceCaret(d, computeLineMap(source), source.split("\n"), {
+            line: 6, column: "> ".length + 4,
+        })).toBe(pos);
+    });
+
+    it("a math block's end should claim its closing $$ line", () => {
+        const source = "$$\nE = mc^2\n$$\n\nafter\n";
+        const d = doc(code("E = mc^2"), p("after"));
+        expect(sourceEndOfBlock(d, computeLineMap(source), source.split("\n"), 0))
+            .toEqual({ line: 3, column: 2 });
     });
 });

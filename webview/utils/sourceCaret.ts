@@ -77,6 +77,22 @@ const isLineBreak = (node: Node): boolean =>
 const isTableRow = (node: Node): boolean =>
     node.type.spec.tableRole === "row" || /^table(_header)?_row$/.test(node.type.name);
 
+/**
+ * A container whose MARKER lines live in attrs, not content: the opening
+ * marker (`> [!NOTE]`, `:::name title`, `<aside>`) always occupies the
+ * block's first source line, and some also close with a marker line (`:::`,
+ * `</aside>`). Without anchors for those lines, every body anchor pairs one
+ * (or more, nested) lines early — and verification never fits.
+ */
+function containerMarkerLines(node: Node): { closer: boolean } | null {
+    switch (node.type.name) {
+        case "callout": return { closer: false };
+        case "container_directive": return { closer: true };
+        case "notion_callout": return { closer: true };
+        default: return null;
+    }
+}
+
 /** Enumerate the source lines a top-level block covers, in document order. */
 function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
     const anchors: LineAnchor[] = [];
@@ -128,19 +144,37 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
         });
     };
 
-    if (block.isTextblock) {
-        addTextblock(block, blockStart);
-        return anchors;
-    }
-    block.descendants((child, relPos) => {
-        if (isTableRow(child)) {
-            addRow(child, blockStart + 1 + relPos);
-            return false;
+    // Recursive walk (not `descendants`) so a marker-line container can emit
+    // its opener anchor BEFORE its children and its closer anchor AFTER them
+    // — the order the source lines actually have, nesting included. Marker
+    // anchors are text-null like a code fence's opener: they occupy their
+    // source line but can never be a caret's answer; a source caret landing
+    // on one resolves to the container's nearest content edge.
+    const addNode = (node: Node, nodeStart: number): void => {
+        if (isTableRow(node)) {
+            addRow(node, nodeStart);
+            return;
         }
-        if (!child.isTextblock) { return true; }
-        addTextblock(child, blockStart + 1 + relPos);
-        return false;
-    });
+        if (node.isTextblock) {
+            addTextblock(node, nodeStart);
+            return;
+        }
+        const marker = containerMarkerLines(node);
+        if (marker) {
+            anchors.push({ text: null, node, contentStart: nodeStart + 1, offset: 0, end: 0 });
+        }
+        node.forEach((child, childOffset) => addNode(child, nodeStart + 1 + childOffset));
+        if (marker?.closer) {
+            anchors.push({
+                text: null,
+                node,
+                contentStart: nodeStart + 1,
+                offset: node.content.size,
+                end: node.content.size,
+            });
+        }
+    };
+    addNode(block, blockStart);
     return anchors;
 }
 
@@ -413,11 +447,12 @@ export function sourceEndOfBlock(
     const lines = anchorLines(anchors, start, sourceLines);
     let line = lines.length ? lines[lines.length - 1] : start;
     // The closing fence has no anchor (no text position); when the block ends
-    // in code and the next source line closes a fence, it belongs to the
-    // block. Blockquote markers are part of the closer's line (`> ```` ``` ``).
+    // in code and the next source line closes a fence — including a math
+    // block's `$$` — it belongs to the block. Blockquote markers are part of
+    // the closer's line (`> ```` ``` ``).
     if (anchors[anchors.length - 1]?.node.type.spec.code) {
         const closer = sourceLines[line];
-        if (closer !== undefined && /^\s*(?:>\s*)*(`{3,}|~{3,})\s*$/.test(closer)) { line += 1; }
+        if (closer !== undefined && /^\s*(?:>\s*)*(`{3,}|~{3,}|\$\$)\s*$/.test(closer)) { line += 1; }
     }
     // Anchors resolved against unmatchable text (a table's cells) can drift
     // past the block; never claim a trailing blank separator line.

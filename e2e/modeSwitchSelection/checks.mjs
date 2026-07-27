@@ -325,6 +325,86 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(selected),
     );
 
+    // ── 9d. Marker-line containers: callout and directive bodies map to
+    // their OWN lines, not one early (the marker line has no text position) ──
+    await freshPage(page, baseUrl);
+    const selectEditorWord = (word) =>
+        page.evaluate((w) => {
+            const pm = document.querySelector(".milkdown .ProseMirror");
+            const walker = document.createTreeWalker(pm, NodeFilter.SHOW_TEXT, {
+                acceptNode: (n) =>
+                    n.parentElement?.closest("[contenteditable='false'], .ProseMirror-widget")
+                        ? NodeFilter.FILTER_REJECT
+                        : NodeFilter.FILTER_ACCEPT,
+            });
+            let node;
+            while ((node = walker.nextNode())) {
+                const idx = node.textContent.indexOf(w);
+                if (idx >= 0) {
+                    getSelection().setBaseAndExtent(node, idx, node, idx + w.length);
+                    return true;
+                }
+            }
+            return false;
+        }, word);
+    check("the callout body exists", await selectEditorWord("unique"), "");
+    await page.waitForTimeout(150);
+    target = await requestSwitch(page);
+    check(
+        "a callout-body selection maps past the > [!NOTE] marker line",
+        target?.line === 35 && target?.anchorLine === 35 &&
+        target?.anchorColumn === "> Callout ".length && target?.column === "> Callout unique".length,
+        JSON.stringify(target),
+    );
+    check("the directive body exists", await selectEditorWord("tonight"), "");
+    await page.waitForTimeout(150);
+    target = await requestSwitch(page);
+    check(
+        "a directive-body selection maps past the :::tip marker line",
+        target?.line === 38 && target?.anchorLine === 38 &&
+        target?.anchorColumn === "Directive middle words ".length,
+        JSON.stringify(target),
+    );
+
+    // ── 9e. Arriving into a callout body restores the selection there ──
+    await page.evaluate(() =>
+        window.postMessage(
+            { type: "scrollToLine", line: 35, column: 16, anchorLine: 35, anchorColumn: 10 },
+            "*",
+        ));
+    await page.waitForTimeout(250);
+    selected = await page.evaluate(() => getSelection()?.toString() ?? "");
+    check(
+        "an arriving range lands inside the callout body",
+        selected === "unique",
+        JSON.stringify(selected),
+    );
+
+    // ── 9f. The calc ledger: a DOM selection in the rendered rows maps to
+    // the row's source line, though the editor's own selection is parked ──
+    await freshPage(page, baseUrl);
+    await page.waitForSelector(".calc-row", { timeout: 10000 });
+    const inLedger = await page.evaluate(() => {
+        const rows = document.querySelectorAll(".calc-row .calc-row-src");
+        for (const src of rows) {
+            const idx = src.textContent.indexOf("income * 2");
+            if (idx >= 0 && src.firstChild) {
+                getSelection().setBaseAndExtent(src.firstChild, idx, src.firstChild, idx + "income".length);
+                return true;
+            }
+        }
+        return false;
+    });
+    check("the calc ledger rendered its rows", inLedger, "");
+    await page.waitForTimeout(150);
+    target = await requestSwitch(page);
+    check(
+        "a ledger selection maps to its row's source line and columns",
+        target?.line === 43 && target?.anchorLine === 43 &&
+        target?.anchorColumn === "share = ".length && target?.column === "share = income".length,
+        JSON.stringify(target),
+    );
+
     // ── 10. Arriving far down the document lands scrolled, not top-then-jump ──
     // The raw editor opens at the right place; the WYSIWYG side must too. The
     // scroll is applied synchronously in the init handler, so it must already
