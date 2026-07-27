@@ -32,7 +32,14 @@
   .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script>
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  // The default-off items (math, highlight, sectionLink, clearFormatting) are
+  // opted IN here so the suite keeps covering the full palette anatomy —
+  // grouping, separators, active states. The shipped defaults themselves are
+  // pinned by resolveVisible's unit tests and the defaults drift guard.
+  window.__i18n = {
+    translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
+    floatingToolbar: { items: { math: true, highlight: true, sectionLink: true, clearFormatting: true } },
+  };
   window.__posted = [];
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

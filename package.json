@@ -1915,7 +1915,7 @@
                 "birta.floatingToolbar.items.highlight": {
                     "order": 59,
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Floating palette: show the Highlight button."
                 },
                 "birta.floatingToolbar.items.link": {
@@ -1927,19 +1927,19 @@
                 "birta.floatingToolbar.items.sectionLink": {
                     "order": 60.5,
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Floating palette: show the Link to Section button (anchor link to a heading)."
                 },
                 "birta.floatingToolbar.items.clearFormatting": {
                     "order": 61,
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Floating palette: show the Clear Formatting button."
                 },
                 "birta.floatingToolbar.items.math": {
                     "order": 62,
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Floating palette: show the Inline Math button."
                 },
                 "birta.floatingToolbar.items.agentReference": {

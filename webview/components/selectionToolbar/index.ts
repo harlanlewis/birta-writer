@@ -26,7 +26,7 @@ import {
     IconMath,
     IconLink,
     IconHash,
-    IconAtSign,
+    IconAgentChat,
     IconChevronDown,
     IconChevronUp,
     IconCopy,
@@ -508,7 +508,7 @@ export function setupSelectionToolbar(
     // document and writes nothing — separated from the formatting groups.
     const agentSep = sSep();
     toolbar.appendChild(agentSep);
-    const agentRefBtn = sBtn(IconAtSign, t("Copy Reference for AI Agent"), () =>
+    const agentRefBtn = sBtn(IconAgentChat, t("Copy Reference for AI Agent"), () =>
         notifyCopyAgentReference(),
     );
     agentRefBtn.classList.add("sel-tb-agent-btn");

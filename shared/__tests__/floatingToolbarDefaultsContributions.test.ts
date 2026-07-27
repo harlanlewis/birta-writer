@@ -1,10 +1,11 @@
 /**
  * Drift guard: the floating selection toolbar's per-item visibility is declared
- * in TWO places — FLOATING_TOOLBAR_ITEM_IDS in the selection-toolbar registry
- * (what the editor gates on) and the `birta.floatingToolbar.items.*` setting
- * defaults in package.json (what the Settings UI shows). Every registered item
- * must have a matching boolean setting defaulting to true ("default all on"),
- * and no orphan settings may exist.
+ * in TWO places — the selection-toolbar registry (FLOATING_TOOLBAR_ITEM_IDS +
+ * FLOATING_TOOLBAR_DEFAULT_OFF, what the editor gates on) and the
+ * `birta.floatingToolbar.items.*` setting defaults in package.json (what the
+ * Settings UI shows). Every registered item must have a matching boolean
+ * setting whose default agrees with the registry's shipped default, and no
+ * orphan settings may exist.
  */
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
@@ -13,7 +14,10 @@ import * as path from "path";
 // package.json contribution defaults against the webview registry, which is
 // verified DOM-free. The only place the extension test project reads webview
 // source.
-import { FLOATING_TOOLBAR_ITEM_IDS } from "../../webview/components/selectionToolbar/registry";
+import {
+    FLOATING_TOOLBAR_ITEM_IDS,
+    FLOATING_TOOLBAR_DEFAULT_OFF,
+} from "../../webview/components/selectionToolbar/registry";
 
 const root = path.resolve(__dirname, "../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -30,12 +34,14 @@ describe("floating toolbar default visibility", () => {
         expect(master!.default).toBe(true);
     });
 
-    it("every registry item should have a boolean setting defaulting to true", () => {
+    it("every registry item should have a boolean setting matching its shipped default", () => {
         for (const id of FLOATING_TOOLBAR_ITEM_IDS) {
             const prop = props[`${SETTING_PREFIX}${id}`];
             expect(prop, `missing setting for floating item "${id}"`).toBeDefined();
             expect(prop!.type, `type for "${id}"`).toBe("boolean");
-            expect(prop!.default, `default for "${id}" drifted`).toBe(true);
+            expect(prop!.default, `default for "${id}" drifted`).toBe(
+                !FLOATING_TOOLBAR_DEFAULT_OFF.has(id),
+            );
         }
     });
 
