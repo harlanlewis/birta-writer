@@ -276,6 +276,55 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(content.split("\n").filter((l) => l.includes("finally"))),
     );
 
+    // ── 9b. A selection in a table cell maps to its ROW's source line ──
+    // "mostly" lives in the second body row (doc line 32) of the fixture
+    // table; the old per-cell mapping failed verification and sent table
+    // carets to wildly wrong lines.
+    await freshPage(page, baseUrl);
+    const inCell = await page.evaluate(() => {
+        const cells = document.querySelectorAll(".ProseMirror td");
+        for (const cellEl of cells) {
+            const walker = document.createTreeWalker(cellEl, NodeFilter.SHOW_TEXT, {
+                acceptNode: (n) =>
+                    n.parentElement?.closest("[contenteditable='false'], .ProseMirror-widget")
+                        ? NodeFilter.FILTER_REJECT
+                        : NodeFilter.FILTER_ACCEPT,
+            });
+            let node;
+            while ((node = walker.nextNode())) {
+                const idx = node.textContent.indexOf("mostly");
+                if (idx >= 0) {
+                    getSelection().setBaseAndExtent(node, idx, node, idx + "mostly".length);
+                    return true;
+                }
+            }
+        }
+        return false;
+    });
+    check("the fixture table's 'mostly' cell exists", inCell, "");
+    await page.waitForTimeout(150);
+    target = await requestSwitch(page);
+    check(
+        "a cell selection carries its row's line and pipe-adjusted columns",
+        target?.line === 32 && target?.column === "| Beta | mostly".length &&
+        target?.anchorLine === 32 && target?.anchorColumn === "| Beta | ".length,
+        JSON.stringify(target),
+    );
+
+    // ── 9c. Arriving into a table row restores the cell selection ──
+    await page.evaluate(() =>
+        window.postMessage(
+            { type: "scrollToLine", line: 32, column: 15, anchorLine: 32, anchorColumn: 9 },
+            "*",
+        ));
+    await page.waitForTimeout(250);
+    selected = await page.evaluate(() => getSelection()?.toString() ?? "");
+    check(
+        "an arriving range lands inside the right cell",
+        selected === "mostly",
+        JSON.stringify(selected),
+    );
+
     // ── 10. Arriving far down the document lands scrolled, not top-then-jump ──
     // The raw editor opens at the right place; the WYSIWYG side must too. The
     // scroll is applied synchronously in the init handler, so it must already

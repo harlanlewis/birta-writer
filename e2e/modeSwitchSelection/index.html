@@ -45,12 +45,14 @@
   // map entry early unless the mapping is reconciled against the text. The
   // WRAPPED paragraph (body lines 22-24, document 25-27) is one textblock over
   // three source lines — the shape where selections used to collapse to the
-  // paragraph's first line at column 0.
-  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\nWrapped first line here\ncontinues with **bold** middle words\nand finally ends.\n\n" + filler + "\n";
+  // paragraph's first line at column 0. The TABLE (body lines 26-29, document
+  // 29-32) is one node whose rows are one source line each — the shape whose
+  // per-cell mapping used to land selections wildly away from the table.
+  const BODY = "\n# Heading\n\nFirst paragraph with some words.\n\n- alpha\n- beta\n\n```js\nconst a = 1;\nconst b = 2;\n```\n\nLast paragraph.\n\n- loose one\n\n- loose two\n\nBelow the loose list.\n\nWrapped first line here\ncontinues with **bold** middle words\nand finally ends.\n\n| Tool | Note |\n| --- | --- |\n| Alpha | works well |\n| Beta | mostly fine |\n\n" + filler + "\n";
   // computeLineMap(BODY): heading, paragraph, tight list, fence, last
   // paragraph, the two loose items, the paragraph below them, the wrapped
-  // paragraph, then fillers.
-  const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, 22, ...Array.from({ length: FILLERS }, (_, i) => 26 + 2 * i)];
+  // paragraph, the table, then fillers.
+  const LINE_MAP = [2, 4, 6, 9, 14, 16, 18, 20, 22, 26, ...Array.from({ length: FILLERS }, (_, i) => 31 + 2 * i)];
   const LINE_OFFSET = 3; // lines the frontmatter occupies
   // `?arrive=<docLine>` puts a scrollToLine in the init payload — the shape a
   // mode switch arrives with — so the checks can assert the scroll lands

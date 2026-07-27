@@ -46,12 +46,21 @@ export interface SourceCaret {
  */
 interface LineAnchor {
     text: string | null;
-    /** The textblock this line lives in. */
+    /** The node this line lives in — a textblock, or a whole table row. */
     node: Node;
-    /** Doc position of the textblock's content start. */
+    /** Doc position of the node's content start. */
     contentStart: number;
-    /** Offset of this line's text within that content. */
+    /** Offset of this line's content within that content. */
     offset: number;
+    /**
+     * Offset where this line's content ends. For plain text this equals
+     * `offset + text.length`, but where structure sits between the characters
+     * (a row's cells, an inline leaf) content offsets outgrow text length —
+     * clamping to text length would cut real positions off the line.
+     */
+    end: number;
+    /** True when `text` is a WHOLE source line (a table row), not a suffix. */
+    wholeLine?: boolean;
 }
 
 const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n, lo), hi);
@@ -64,6 +73,10 @@ const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n
 const isLineBreak = (node: Node): boolean =>
     node.isLeaf && node.isInline && /break/i.test(node.type.name);
 
+/** A table row (header or body) — one GFM source line per row. */
+const isTableRow = (node: Node): boolean =>
+    node.type.spec.tableRole === "row" || /^table(_header)?_row$/.test(node.type.name);
+
 /** Enumerate the source lines a top-level block covers, in document order. */
 function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
     const anchors: LineAnchor[] = [];
@@ -72,10 +85,10 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
         if (node.type.spec.code) {
             // The opening fence occupies the block's first source line and has
             // no text position; anchor it to the start of the code instead.
-            anchors.push({ text: null, node, contentStart, offset: 0 });
+            anchors.push({ text: null, node, contentStart, offset: 0, end: 0 });
             let offset = 0;
             for (const line of node.textContent.split("\n")) {
-                anchors.push({ text: line, node, contentStart, offset });
+                anchors.push({ text: line, node, contentStart, offset, end: offset + line.length });
                 offset += line.length + 1;
             }
             return;
@@ -88,7 +101,7 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
         // LaTeX) counts identically in both.
         let segOffset = 0;
         const flush = (end: number): void => {
-            anchors.push({ text: node.textBetween(segOffset, end), node, contentStart, offset: segOffset });
+            anchors.push({ text: node.textBetween(segOffset, end), node, contentStart, offset: segOffset, end });
         };
         node.forEach((child, childOffset) => {
             if (isLineBreak(child)) {
@@ -98,12 +111,32 @@ function lineAnchors(block: Node, blockStart: number): LineAnchor[] {
         });
         flush(node.content.size);
     };
+    // A table row is ONE source line (`| a | b |`), not one line per cell:
+    // per-cell anchors could never be verified against the source (a cell's
+    // text is a fragment of its row's line), and their false line count
+    // dragged every mapping in and around a table to the wrong place. The
+    // row's concatenated cell text normalizes to exactly its source line —
+    // pipes and spacing strip away — so rows verify like any other line.
+    const addRow = (row: Node, rowStart: number): void => {
+        anchors.push({
+            text: row.textContent,
+            node: row,
+            contentStart: rowStart + 1,
+            offset: 0,
+            end: row.content.size,
+            wholeLine: true,
+        });
+    };
 
     if (block.isTextblock) {
         addTextblock(block, blockStart);
         return anchors;
     }
     block.descendants((child, relPos) => {
+        if (isTableRow(child)) {
+            addRow(child, blockStart + 1 + relPos);
+            return false;
+        }
         if (!child.isTextblock) { return true; }
         addTextblock(child, blockStart + 1 + relPos);
         return false;
@@ -130,25 +163,43 @@ function markerWidth(sourceLine: string, text: string): number {
     return sourceLine.endsWith(text) ? sourceLine.length - text.length : -1;
 }
 
-/** Doc offset for `textOffset` characters of text following `from` in `node`'s content. */
+/**
+ * Doc offset for `textOffset` characters of text following `from` in `node`'s
+ * content — biased INTO the deepest node holding the character that follows.
+ * The bias matters at structural seams: a caret at the start of a table
+ * cell's text must land inside that cell, not on the boundary between cells,
+ * or a restored same-cell selection reads as cross-cell (and becomes a cell
+ * selection instead of the text range that was carried).
+ */
 function docOffsetForText(node: Node, from: number, textOffset: number): number {
-    let offset = from;
     let remaining = textOffset;
+    let lastEnd = from;
+    let result = -1;
     node.forEach((child, childOffset) => {
+        if (result >= 0) { return; }
         const end = childOffset + child.nodeSize;
-        if (end <= from || remaining <= 0) { return; }
+        if (end <= from) { return; }
         const start = Math.max(childOffset, from);
         if (child.isText) {
-            const take = Math.min(end - start, remaining);
-            offset = start + take;
-            remaining -= take;
-        } else {
-            // An inline leaf (image, math, hard break) carries no text: step
-            // over it so the remaining characters are counted after it.
-            offset = end;
+            const len = end - start;
+            if (remaining < len) { result = start + remaining; return; }
+            remaining -= len;
+            lastEnd = end;
+        } else if (!child.isLeaf) {
+            // A child with content of its own (a table row's cell, inline
+            // math): its nested text counts, and a position can land inside.
+            const innerFrom = clamp(start - (childOffset + 1), 0, child.content.size);
+            const len = child.textBetween(innerFrom, child.content.size).length;
+            if (remaining < len) {
+                result = childOffset + 1 + docOffsetForText(child, innerFrom, remaining);
+                return;
+            }
+            remaining -= len;
+            if (len > 0) { lastEnd = childOffset + 1 + docOffsetForText(child, innerFrom, len); }
         }
+        // An inline leaf (image, hard break) carries no text: stepped over.
     });
-    return offset;
+    return result >= 0 ? result : lastEnd;
 }
 
 /** How many source lines past the contiguous position an anchor may sit. */
@@ -174,9 +225,14 @@ const MAX_PROBE = 24;
  * prefix. A probe shorter than MIN_PROBE once normalized gets no fuzzy match —
  * too little evidence to risk pairing the wrong block.
  */
-function lineMatchesAnchor(sourceLine: string, text: string): boolean {
+function lineMatchesAnchor(sourceLine: string, text: string, wholeLine = false): boolean {
     if (sourceLine.trimEnd().endsWith(text.trimEnd())) { return true; }
     const anchor = normalize(text);
+    // A whole-line anchor (a table row) is never a soft-wrapped prefix, and
+    // its cell text strips to exactly the source row's characters — pipes and
+    // spacing normalize away — so equality is decisive at ANY length. Without
+    // this, a table with short cells could never be verified at all.
+    if (wholeLine && anchor.length > 0 && normalize(sourceLine) === anchor) { return true; }
     if (anchor.length < MIN_PROBE) { return false; }
     const line = normalize(sourceLine);
     // Two probe lengths: the long one is strong evidence; the short one
@@ -206,7 +262,7 @@ function anchorLines(anchors: LineAnchor[], blockLine: number, sourceLines: stri
             const limit = Math.min(cursor + ANCHOR_LOOKAHEAD, sourceLines.length);
             for (let l = cursor; l <= limit; l++) {
                 const candidate = sourceLines[l - 1];
-                if (candidate !== undefined && lineMatchesAnchor(candidate, a.text)) { line = l; break; }
+                if (candidate !== undefined && lineMatchesAnchor(candidate, a.text, a.wholeLine)) { line = l; break; }
             }
         }
         lines.push(line);
@@ -228,7 +284,7 @@ function anchorsFit(anchors: LineAnchor[], blockLine: number, sourceLines: strin
     const probe = anchors.findIndex((a) => a.text);
     if (probe < 0) { return true; }
     const sourceLine = sourceLines[blockLine + probe - 1];
-    return sourceLine !== undefined && lineMatchesAnchor(sourceLine, anchors[probe].text!);
+    return sourceLine !== undefined && lineMatchesAnchor(sourceLine, anchors[probe].text!, anchors[probe].wholeLine);
 }
 
 /**
@@ -445,8 +501,7 @@ export function sourceCaretAt(
     const sourceLine = sourceLines[line - 1];
     if (sourceLine === undefined) { return { line, column: 0 }; }
 
-    const lineEnd = anchor.offset + text.length;
-    const offsetInContent = clamp(pos - anchor.contentStart, anchor.offset, lineEnd);
+    const offsetInContent = clamp(pos - anchor.contentStart, anchor.offset, anchor.end);
     const textOffset = anchor.node.textBetween(anchor.offset, offsetInContent).length;
     return { line, column: sourceColumnForTextOffset(sourceLine, text, textOffset) ?? 0 };
 }

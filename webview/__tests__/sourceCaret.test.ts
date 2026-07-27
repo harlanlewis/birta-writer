@@ -602,3 +602,160 @@ describe("wrapped lines containing an inline node with text content", () => {
         expect(caret).toEqual({ line: 2, column: 4 });
     });
 });
+
+describe("tables (one source line per row)", () => {
+    // Node names mirror Milkdown's GFM preset. A row is ONE source line; the
+    // old per-cell anchors could never be verified against `| a | b |` rows,
+    // and the failed verification sent carets in and around tables to wildly
+    // wrong lines.
+    const tableSchema = new Schema({
+        nodes: {
+            doc: { content: "block+" },
+            paragraph: { group: "block", content: "inline*" },
+            table: { group: "block", content: "table_header_row table_row*" },
+            table_header_row: { content: "table_header+" },
+            table_row: { content: "table_cell+" },
+            table_header: { content: "paragraph" },
+            table_cell: { content: "paragraph" },
+            text: { group: "inline" },
+        },
+    });
+    const tp = (t: string) => tableSchema.node("paragraph", null, t ? [tableSchema.text(t)] : []);
+    const cell = (t: string) => tableSchema.node("table_cell", null, [tp(t)]);
+    const hcell = (t: string) => tableSchema.node("table_header", null, [tp(t)]);
+    const source = "before\n\n| Tool | Note |\n| --- | --- |\n| Alpha | works well |\n| Beta | mostly fine |\n\nafter\n";
+    const table = () =>
+        tableSchema.node("table", null, [
+            tableSchema.node("table_header_row", null, [hcell("Tool"), hcell("Note")]),
+            tableSchema.node("table_row", null, [cell("Alpha"), cell("works well")]),
+            tableSchema.node("table_row", null, [cell("Beta"), cell("mostly fine")]),
+        ]);
+    const d = () => tableSchema.node("doc", null, [tp("before"), table(), tp("after")]);
+    // Positions: doc → p("before") size 8, table starts at 8. Row content
+    // starts at rowStart+1; each cell is cell(1)+p(1) around its text.
+
+    it("a caret in a body-row cell should report the ROW's source line, column past the pipes", () => {
+        // Second body row, second cell, before "fine": table 8, header row
+        // size = 2 + 2*(2 + 2 + 4|4) …computed from the doc itself instead.
+        const doc2 = d();
+        let pos = -1;
+        doc2.descendants((node, p2) => {
+            if (node.isText && node.text === "mostly fine") { pos = p2 + "mostly ".length; }
+            return true;
+        });
+        expect(pos).toBeGreaterThan(0);
+        const caret = sourceCaretAt(doc2, computeLineMap(source), source.split("\n"), pos);
+        expect(caret).toEqual({ line: 6, column: "| Beta | mostly ".length });
+    });
+
+    it("a source caret inside a row should map back into the right cell", () => {
+        const doc2 = d();
+        let pos = -1;
+        doc2.descendants((node, p2) => {
+            if (node.isText && node.text === "mostly fine") { pos = p2 + "mostly ".length; }
+            return true;
+        });
+        expect(docPosForSourceCaret(doc2, computeLineMap(source), source.split("\n"), {
+            line: 6, column: "| Beta | mostly ".length,
+        })).toBe(pos);
+    });
+
+    it("the header row should sit on the table's first line, body rows past the delimiter", () => {
+        const doc2 = d();
+        let headerPos = -1;
+        doc2.descendants((node, p2) => {
+            if (node.isText && node.text === "Tool") { headerPos = p2 + 2; }
+            return true;
+        });
+        expect(sourceCaretAt(doc2, computeLineMap(source), source.split("\n"), headerPos))
+            .toEqual({ line: 3, column: "| To".length });
+    });
+
+    it("a selection across cells should carry both ends on their own rows", () => {
+        const doc2 = d();
+        let from = -1, to = -1;
+        doc2.descendants((node, p2) => {
+            if (node.isText && node.text === "Alpha") { from = p2; }
+            if (node.isText && node.text === "mostly fine") { to = p2 + "mostly".length; }
+            return true;
+        });
+        const ends = sourceSelectionEnds(doc2, computeLineMap(source), source.split("\n"), {
+            from, to, anchor: from, head: to, empty: false,
+        });
+        expect(ends).toEqual({
+            anchor: { line: 5, column: "| ".length },
+            head: { line: 6, column: "| Beta | mostly".length },
+        });
+    });
+
+    it("sourceEndOfBlock should end at the LAST row's line", () => {
+        expect(sourceEndOfBlock(d(), computeLineMap(source), source.split("\n"), 1))
+            .toEqual({ line: 6, column: "| Beta | mostly fine |".length });
+    });
+});
+
+describe("tables after map drift (short cells)", () => {
+    // A loose list is one node with one map entry PER ITEM, so the table's
+    // nominal pairing is off by one — and short cells ("Tool", "Note") are
+    // under the fuzzy floor, so only whole-line normalized equality can
+    // verify the table at its own line. Without it, an arriving caret for a
+    // row line fell through to the block AFTER the table.
+    const tableSchema = new Schema({
+        nodes: {
+            doc: { content: "block+" },
+            paragraph: { group: "block", content: "inline*" },
+            bullet_list: { group: "block", content: "list_item+" },
+            list_item: { content: "paragraph" },
+            table: { group: "block", content: "table_header_row table_row*" },
+            table_header_row: { content: "table_header+" },
+            table_row: { content: "table_cell+" },
+            table_header: { content: "paragraph" },
+            table_cell: { content: "paragraph" },
+            text: { group: "inline" },
+        },
+    });
+    const tp = (t: string) => tableSchema.node("paragraph", null, t ? [tableSchema.text(t)] : []);
+    const source = "- loose one\n\n- loose two\n\n| Tool | Note |\n| --- | --- |\n| Al | ok |\n\nAfterward paragraph.\n";
+    const d = () =>
+        tableSchema.node("doc", null, [
+            tableSchema.node("bullet_list", null, [
+                tableSchema.node("list_item", null, [tp("loose one")]),
+                tableSchema.node("list_item", null, [tp("loose two")]),
+            ]),
+            tableSchema.node("table", null, [
+                tableSchema.node("table_header_row", null, [
+                    tableSchema.node("table_header", null, [tp("Tool")]),
+                    tableSchema.node("table_header", null, [tp("Note")]),
+                ]),
+                tableSchema.node("table_row", null, [
+                    tableSchema.node("table_cell", null, [tp("Al")]),
+                    tableSchema.node("table_cell", null, [tp("ok")]),
+                ]),
+            ]),
+            tp("Afterward paragraph."),
+        ]);
+
+    it("a source caret on a short-celled row should land in the drifted table, not past it", () => {
+        const doc2 = d();
+        let pos = -1;
+        doc2.descendants((node, p2) => {
+            if (node.isText && node.text === "ok") { pos = p2; }
+            return true;
+        });
+        // Line 7 is "| Al | ok |"; column after "| Al | " is the 'o'.
+        expect(docPosForSourceCaret(doc2, computeLineMap(source), source.split("\n"), {
+            line: 7, column: "| Al | ".length,
+        })).toBe(pos);
+    });
+
+    it("a caret in a short cell should still report its row's line", () => {
+        const doc2 = d();
+        let pos = -1;
+        doc2.descendants((node, p2) => {
+            if (node.isText && node.text === "ok") { pos = p2 + 1; }
+            return true;
+        });
+        expect(sourceCaretAt(doc2, computeLineMap(source), source.split("\n"), pos))
+            .toEqual({ line: 7, column: "| Al | o".length });
+    });
+});
