@@ -32,6 +32,10 @@ export function registerEditorContextTool(
                 ? describeForModel(
                       vscode.workspace.asRelativePath(active.uri, false),
                       active.context,
+                      // The span's real source lines (the backing TextDocument
+                      // is already open), so the model sees markdown structure,
+                      // not stripped plain text.
+                      (await vscode.workspace.openTextDocument(active.uri)).getText(),
                   )
                 : "No Birta markdown editor is currently active.";
             return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);

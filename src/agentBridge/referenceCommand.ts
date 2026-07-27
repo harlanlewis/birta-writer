@@ -28,10 +28,18 @@ export function registerReferenceCommands(
             return;
         }
         const relPath = vscode.workspace.asRelativePath(active.uri, false);
+        // The quoted content is the span's REAL source lines, read from the
+        // backing document (already open — this is the custom editor's own
+        // TextDocument), so structure survives where the webview's plain text
+        // would not.
+        const sourceText =
+            mode === "context"
+                ? (await vscode.workspace.openTextDocument(active.uri)).getText()
+                : undefined;
         const payload =
             mode === "reference"
                 ? buildReference(relPath, active.context)
-                : buildContextBlock(relPath, active.context);
+                : buildContextBlock(relPath, active.context, sourceText);
         await vscode.env.clipboard.writeText(payload);
         vscode.window.setStatusBarMessage(
             vscode.l10n.t("Copied {0} — paste it into your AI agent", relPath),

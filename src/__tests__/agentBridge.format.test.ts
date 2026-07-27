@@ -62,20 +62,43 @@ describe("buildContextBlock", () => {
     it("a caret should copy the reference alone", () => {
         expect(buildContextBlock("a.md", caret(3, 0))).toBe("a.md#L3");
     });
-    it("a selection should copy the reference followed by the selected text", () => {
+    it("a selection should quote the selected text in a markdown fence", () => {
         expect(buildContextBlock("a.md", range([3, 0], [4, 5], "hello\nworld"))).toBe(
-            "a.md#L3-L4\n\nhello\nworld",
+            "a.md#L3-L4\n\n```markdown\nhello\nworld\n```",
+        );
+    });
+    it("with the document text, the quoted content should be the span's real source lines", () => {
+        const doc = "# Title\n\n## Section\n\n- item *one*\n- item [two](x.md)\n";
+        expect(buildContextBlock("a.md", range([5, 0], [6, 3], "item one\nitem two"), doc)).toBe(
+            "a.md#L5-L6\n\n```markdown\n- item *one*\n- item [two](x.md)\n```",
+        );
+    });
+    it("content containing a backtick fence should get a longer outer fence", () => {
+        const doc = "text\n```js\ncode\n```\nmore\n";
+        const out = buildContextBlock("a.md", range([1, 0], [5, 4], "x"), doc);
+        expect(out).toContain("````markdown\n");
+        expect(out.endsWith("\n````")).toBe(true);
+        expect(out).toContain("```js\ncode\n```");
+    });
+    it("stale coordinates past the document's end should fall back to the selection's plain text", () => {
+        expect(buildContextBlock("a.md", range([90, 0], [91, 0], "plain"), "one\ntwo\n")).toBe(
+            "a.md#L90-L91\n\n```markdown\nplain\n```",
         );
     });
 });
 
 describe("describeForModel", () => {
-    it("a selection should name the file, the line range, and the selected text", () => {
+    it("a selection should name the file, the line range, and quote the selected text", () => {
         const out = describeForModel("docs/note.md", range([12, 0], [14, 3], "picked text"));
         expect(out).toContain("File: docs/note.md");
         expect(out).toContain("lines 12–14 selected");
         expect(out).toContain("reference: docs/note.md#L12-L14");
-        expect(out).toContain("picked text");
+        expect(out).toContain("```markdown\npicked text\n```");
+    });
+    it("with the document text, the model should see the span's real source lines", () => {
+        const doc = "# T\n\n- a [link](y.md)\n";
+        const out = describeForModel("a.md", range([3, 0], [3, 6], "a link"), doc);
+        expect(out).toContain("- a [link](y.md)");
     });
     it("a caret should describe the caret line and omit selected text", () => {
         const out = describeForModel("a.md", caret(9, 0));
