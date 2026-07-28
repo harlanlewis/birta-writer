@@ -267,27 +267,27 @@ cell:
 
 ### URL embeds
 
-A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte, and clicking into the line reveals the raw URL to edit.
+A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte. Cards are first-class blocks: **arrow keys stop at each card** (a selection ring appears — sequential cards are each their own stop), and selecting opens a small **palette** with the editable URL plus open / copy / show-as-link / delete. Press **Enter** on a selected card to edit its URL in place; **Backspace selects before it deletes**, so a second press removes the card's paragraph cleanly. Every player card carries a resident **identity strip** just below the frame — the **page title** (fetched from the provider when the network is on) over the **URL** — visible at all times, playing included; the edit palette takes its place while open. Branded facades name their service in the frame's upper-left corner. Click semantics split by surface: **the media area — anywhere on the facade — loads the player**, and **the identity strip selects the card** and raises the palette.
 
-A YouTube link gets a player card — a static thumbnail with a play button that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it. The short host and the mobile/music hosts are the same card:
+A YouTube link gets a player card — a static thumbnail that loads the actual player (privacy-mode `youtube-nocookie.com`) only when you click it; press the player's own play button to start it (the editor never forces autoplay). The corner controls survive playback: **⨯ stops the player and restores the facade**, and ↗ always opens the provider page. The short host and the mobile/music hosts are the same card:
 
 https://www.youtube.com/watch?v=dQw4w9WgXcQ
 
-https://youtu.be/dQw4w9WgXcQ
+A Vimeo link cards the same way behind a branded facade, and its player loads with `dnt=1` — Vimeo's do-not-track flag, this provider's `youtube-nocookie`:
+
+https://vimeo.com/1084537
 
 A Loom link gets the same click-to-load player behind a quiet branded facade (no thumbnail is fetched — nothing loads until you press play):
 
-https://www.loom.com/share/0123456789abcdef0123456789abcdef
+https://www.loom.com/share/e41353f2fe1c43eba6c6829693e0f2c5
 
-A Figma link gets a taller frame that loads the live Figma embed on click. Every Embed Kit surface cards the same way — `/design/`, `/board/` (FigJam), `/slides/`, `/deck/`, and `/proto/` — and the legacy `/file/` form is normalized to `/design/`:
+A Figma link gets a taller frame that loads the live Figma embed on click. Every Embed Kit surface cards the same way — `/design/`, `/board/` (FigJam), `/slides/`, `/deck/`, and `/proto/` — and the legacy `/file/` form is normalized to `/design/`. This is Figma's own public Embed Kit examples file, so the preview genuinely loads:
 
-https://www.figma.com/design/BAZsTPbh6W1r66Bdo9xkQp/Design-System
+https://www.figma.com/design/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 
-https://www.figma.com/board/BAZsTPbh6W1r66Bdo9xkQp/FigJam-Board
+The same file through the legacy `/file/` form (watch it normalize):
 
-https://www.figma.com/proto/BAZsTPbh6W1r66Bdo9xkQp/Prototype
-
-https://www.figma.com/file/BAZsTPbh6W1r66Bdo9xkQp/Legacy-File-URL
+https://www.figma.com/file/nrPSsILSYjesyc5UHjYYa4/Embed-Kit-2-0-examples
 
 A GitHub link gets a compact info card built **from the URL alone** — zero network, so it renders even with the network switch off. Four shapes are recognized — repo, pull request, issue, and file:
 
@@ -301,7 +301,7 @@ https://github.com/microsoft/vscode/blob/main/README.md
 
 Only known providers embed (more are tracked in Linear). Anything else stays an ordinary link, even on its own line, and a labeled `[text](url)` link is never carded:
 
-https://vimeo.com/76979871
+https://www.twitch.tv/videos/1234567890
 
 [watch this](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
 
@@ -310,6 +310,41 @@ Unrecognized *shapes* of a known provider stay ordinary links too — the match 
 https://github.com/microsoft/vscode/tree/main/src
 
 https://gist.github.com/harlanlewis/0123456789abcdef0123456789abcdef
+
+**Expected failures and edge states** — this section is a fixture for the error
+handling, so these are *supposed* to look broken in a controlled way, never as
+a silent blank:
+
+A valid-shaped YouTube id that points at no real video: the card renders and
+YouTube serves its own gray placeholder artwork (the id is well-formed, so the
+thumbnail request succeeds). If the thumbnail request *fails outright* —
+offline CDN, deleted asset — the facade degrades to the branded fallback
+instead of a blank frame; either way, never silence:
+
+https://www.youtube.com/watch?v=aaaaaaaaaaa
+
+A Vimeo video whose owner disabled embedding: the card renders (the URL shape
+is valid), no title arrives (Vimeo's oEmbed refuses), and pressing play shows
+Vimeo's own restriction notice inside the frame — the ↗ button remains the way
+through:
+
+https://vimeo.com/76979871
+
+A Loom link with a synthetic id: the card and click-to-load player render
+normally, and Loom itself serves its 404 page *inside* the frame — a
+provider-side failure our chrome survives (stop and open-external stay
+available in the corner):
+
+https://www.loom.com/share/0123456789abcdef0123456789abcdef
+
+Figma links with a synthetic key (a FigJam board and a prototype here): after
+you press **Load Figma preview**, an auth-walled or missing file comes up
+blank — a clickable notice inside the frame says so and opens the file in
+Figma directly (the sandbox blocks in-frame sign-in by design):
+
+https://www.figma.com/board/BAZsTPbh6W1r66Bdo9xkQp/FigJam-Board
+
+https://www.figma.com/proto/BAZsTPbh6W1r66Bdo9xkQp/Prototype
 
 Two switches govern all of this. `birta.embeds.enabled` is the feature itself — turn it off and every line above is an ordinary link. `birta.network.enabled` is the master network switch, and it gates **requests, not rendering**: with it off, the GitHub cards still render (they fetch nothing) while the player cards stay plain links. Turn it on (Cmd+Shift+P → "Toggle Network Features", or accept the inline prompt) to see them all.
 

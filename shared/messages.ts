@@ -224,6 +224,18 @@ export type ToExtensionMessage =
     // so the link text can be upgraded to the real title. `id` correlates the
     // `unfurlResult` reply; `url` is the fetched target (http(s) only).
     | { type: "unfurlUrl"; id: string; url: string }
+    // Embed-card metadata (rung 1, render-only): ask the provider's own oEmbed
+    // endpoint for the page title of a RECOGNIZED provider URL. The extension
+    // re-recognizes `url` itself and rebuilds the request from validated parts
+    // — the raw string only selects the provider — then ALWAYS replies with
+    // `embedMetaResult` (null title on any failure/gate). Nothing fetched here
+    // is ever written to the document; it decorates the card's caption.
+    | { type: "resolveEmbedMeta"; id: string; url: string }
+    // The webview's per-document view-state bag (fold anchors, scroll,
+    // frontmatter collapse), mirrored to the extension so it survives the
+    // raw-editor round trip (see the init message's viewState note). Never
+    // touches settings or disk — an in-memory, per-URI, session-scoped echo.
+    | { type: "viewState"; state: Record<string, unknown> }
     // Just-in-time opt-in (MAR-179): the user accepted the "Enable" affordance
     // that appears when they do something requiring the network while the master
     // switch is off. The extension persists `birta.network.enabled = enabled`
@@ -359,7 +371,13 @@ export type ToExtensionMessage =
  * the document. The webview falls back to a full rebuild on any diff failure.
  */
 export type ToWebviewMessage =
-    | { type: "init"; content: string; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; scrollToAnchorLine?: number; scrollToAnchorColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
+    // `viewState` carries the per-document VIEW state (fold anchors, scroll,
+    // frontmatter collapse — the webview state bag) across webview recreation:
+    // switching to the raw editor CLOSES the custom tab, so VS Code's own
+    // per-webview state does not survive the round trip. The extension keeps
+    // the last bag per URI (in memory, session-scoped) and hands it back here;
+    // the webview seeds its bag from it only when the bag is empty.
+    | { type: "init"; content: string; lineMap?: number[]; lineOffset?: number; scrollToLine?: number; scrollToColumn?: number; scrollToAnchorLine?: number; scrollToAnchorColumn?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number; viewState?: Record<string, unknown> }
     | { type: "externalUpdate"; content: string; lineMap?: number[]; lineOffset?: number; frontmatter?: string; imageUriMap?: Record<string, string>; tableWrap?: TableWrapMode; syncVersion: number }
     // `line`/`column` is the caret; `anchorLine`/`anchorColumn`, when present,
     // carry the raw editor's selection anchor so the WYSIWYG editor restores
@@ -386,6 +404,11 @@ export type ToWebviewMessage =
     // the un-upgraded bare link. A null `title` means the webview keeps the
     // bare `[url](url)` it already inserted — the graceful, offline-safe default.
     | { type: "unfurlResult"; id: string; url: string; title: string | null }
+    // Reply to `resolveEmbedMeta`: the sanitized oEmbed title, or null on any
+    // failure (gates off, unrecognized URL, offline, non-JSON, timeout). `url`
+    // echoes the request target; `id` correlates. Render-only — the webview
+    // caches it for card captions and never touches the document with it.
+    | { type: "embedMetaResult"; id: string; url: string; title: string | null }
     | { type: "setTableWrap"; wrap: TableWrapMode }
     // Live master-network-switch update (settings UI edit or the just-in-time
     // opt-in accepted in ANOTHER webview): flips `window.__i18n.network` so

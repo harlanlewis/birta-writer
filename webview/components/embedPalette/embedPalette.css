@@ -1,0 +1,50 @@
+/* Embed palette (MAR-187): the selected card's editor chrome. Composes the
+   floating-card recipe (--ui-card-*) and the .ui-btn primitive — same chip
+   family as the link popup and image toolbar. */
+.embed-palette {
+    position: absolute;
+    z-index: 1200;
+    display: none;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    background: var(--ui-card-bg);
+    border: 1px solid var(--ui-card-border);
+    border-radius: var(--ui-radius-l);
+    box-shadow: var(--ui-card-shadow);
+}
+
+.embed-palette--visible {
+    display: flex;
+}
+
+.embed-palette__url {
+    width: 280px;
+    max-width: 50vw;
+    padding: 3px 6px;
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: var(--ui-radius-m);
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--ui-fs-m);
+    outline: none;
+
+    &:focus {
+        border-color: var(--vscode-focusBorder);
+    }
+}
+
+.embed-palette__btn {
+    --ui-btn-size: 24px;
+    color: var(--vscode-foreground);
+}
+
+.embed-palette__btn--danger:hover {
+    color: var(--vscode-errorForeground);
+}
+
+.embed-palette__btn svg {
+    width: 14px;
+    height: 14px;
+}

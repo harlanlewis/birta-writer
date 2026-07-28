@@ -24,7 +24,7 @@ import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor"
 import { regateCalcCues, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
-import { notifySwitchToTextEditor, getWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks, notifyEditorContextResult } from "./messaging";
+import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks, notifyEditorContextResult } from "./messaging";
 import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
 import { dispatchFmSuggestions } from "./components/frontmatter/suggestMenu";
@@ -35,6 +35,7 @@ import {
     handleProjectImagesList,
 } from "./imageUpload";
 import { handleUnfurlResult } from "./unfurl";
+import { handleEmbedMetaResult } from "./embedMeta";
 import { regateEmbeds } from "./plugins/embed";
 
 // ── Global table wrap mode ─────────────────────────────────
@@ -158,6 +159,14 @@ export function createMessageHandlers(
     return {
         async init(msg, container) {
             mark("init-received");
+            // Seed the webview state bag from the extension's per-URI echo
+            // BEFORE anything reads it (frontmatter collapse below, fold
+            // anchors at editor creation, scroll restore). Only into an EMPTY
+            // bag: when VS Code itself restored the webview (tab hide, window
+            // reload) the live bag is fresher than the echo.
+            if (msg.viewState && !getWebviewState()) {
+                setWebviewState(msg.viewState);
+            }
             setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
             setLineMap(msg.lineMap ?? []);
@@ -314,6 +323,11 @@ export function createMessageHandlers(
             // Paste-unfurl reply: upgrade the bare `[url](url)` to `[title](url)`
             // in the live doc (or keep the bare link when title is null).
             handleUnfurlResult(getEditorView(), msg.id, msg.title);
+        },
+        embedMetaResult(msg) {
+            // Embed-card metadata reply: settle the store; subscribed card
+            // captions fill in. Render-only — never touches the document.
+            handleEmbedMetaResult(msg.id, msg.title);
         },
         setTableWrap(msg) {
             applyTableWrap(msg.wrap);

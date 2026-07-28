@@ -10,6 +10,7 @@ import * as path from "path";
 import * as os from "os";
 import * as vscode from "vscode";
 import { getNonce } from "./utils/getNonce";
+import { EMBED_CSP_FRAME_HOSTS, EMBED_CSP_IMG_HOSTS } from "../shared/embedProviders";
 import {
     readBirtaConfig,
     readFoldingConfig,
@@ -216,9 +217,10 @@ export function buildWebviewHtml(
     // URL embeds (MAR-56/MAR-186) need two extra CSP grants: the thumbnail
     // image hosts (img-src — YouTube is the only thumbnail provider) and the
     // provider player iframe hosts (frame-src, since default-src 'none'
-    // otherwise blocks all iframes). Added ADDITIVELY, as specific hosts with
-    // no wildcards; a provider without a player (GitHub's info card) adds
-    // nothing here.
+    // otherwise blocks all iframes). Derived from the shared provider table
+    // (shared/embedProviders.ts) — exact hosts, no wildcards, one source both
+    // sides read; a provider without a player (GitHub's info card) adds
+    // nothing there.
     //
     // Emitted UNCONDITIONALLY, even though embeds may be gated off. CSP is fixed
     // at panel load and cannot change without recreating the webview, so gating
@@ -228,8 +230,8 @@ export function buildWebviewHtml(
     // embeds off, no card is built, no thumbnail element exists, and nothing is
     // fetched: the offline-by-default guarantee lives in the gated code paths,
     // not in the absence of a CSP entry.
-    const embedImgHosts = " https://i.ytimg.com https://img.youtube.com";
-    const embedFrameSrc = "\n             frame-src https://www.youtube-nocookie.com https://www.loom.com https://embed.figma.com;";
+    const embedImgHosts = ` ${EMBED_CSP_IMG_HOSTS.join(" ")}`;
+    const embedFrameSrc = `\n             frame-src ${EMBED_CSP_FRAME_HOSTS.join(" ")};`;
     const checklistSinkChecked = config.checklistSinkChecked;
     const codeBlockWordWrap = resolveCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
     const tocAutoHideThreshold = clampNumberSetting(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);

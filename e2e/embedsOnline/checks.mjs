@@ -32,9 +32,14 @@
 const CARD = ".embed-card";
 const HOST = ".embed-host";
 
+/** Cards per kind the fixture should produce (YouTube: live + dead-thumb). */
+const EXPECTED_COUNTS = { youtube: 2, vimeo: 1, loom: 1, figma: 1, github: 1 };
+const TOTAL_CARDS = Object.values(EXPECTED_COUNTS).reduce((a, b) => a + b, 0);
+
 /** Every kind the fixture carries a bare link for, and what each promises. */
 const PLAYERS = [
     { kind: "youtube", playerHost: "youtube-nocookie.com/embed/", thumbnail: true, aspect: "16 / 9" },
+    { kind: "vimeo", playerHost: "player.vimeo.com/video/", thumbnail: false, aspect: "16 / 9" },
     { kind: "loom", playerHost: "loom.com/embed/", thumbnail: false, aspect: "16 / 9" },
     { kind: "figma", playerHost: "embed.figma.com/design/", thumbnail: false, aspect: "4 / 3" },
 ];
@@ -53,6 +58,9 @@ const cardFor = (kind) => `${CARD}[data-embed-kind="${kind}"]`;
  * URLs still resolving. Requests still leave the editor exactly as in
  * production; they just terminate here.
  */
+/** The fixture's dead-video id: its thumbnail 404s to pin the fallback state. */
+const DEAD_ID = "aaaaaaaaaaa";
+
 async function stubProviderRequests(page) {
     // A 1×1 transparent GIF — enough for an <img> to decode without a network.
     const PIXEL = Buffer.from(
@@ -66,6 +74,13 @@ async function stubProviderRequests(page) {
         }
         const type = route.request().resourceType();
         if (type === "image") {
+            // The dead id's thumbnail fails like a removed video's would. A 200
+            // with undecodable bytes (not a 404) so the <img> fires `error`
+            // without tripping the runner's console-error check — the state
+            // under test is the card's reaction, not the transport.
+            if (url.pathname.includes(`/vi/${DEAD_ID}/`)) {
+                return route.fulfill({ status: 200, contentType: "image/jpeg", body: Buffer.from("dead") });
+            }
             return route.fulfill({ status: 200, contentType: "image/gif", body: PIXEL });
         }
         return route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html>" });
@@ -99,14 +114,16 @@ export async function run({ page, check, baseUrl }) {
 
     // One card per bare provider link and no more: the titled link and the
     // unknown-host link must both stay plain. Counting by kind (not a bare
-    // total) says WHICH line misbehaved when this fails.
+    // total) says WHICH line misbehaved when this fails. YouTube carries two
+    // bare links: the live video and the dead-thumbnail one (fallback state).
     for (const kind of ALL_KINDS) {
         const n = kindsFound.filter((k) => k === kind).length;
-        check(`exactly one ${kind} card renders`, n === 1, `${n} ${kind} cards`);
+        const want = EXPECTED_COUNTS[kind];
+        check(`exactly ${want} ${kind} card(s) render`, n === want, `${n} ${kind} cards`);
     }
     check(
         "a titled [label](url) link and an unknown host render no card",
-        kindsFound.length === ALL_KINDS.length,
+        kindsFound.length === TOTAL_CARDS,
         `${kindsFound.length} cards: ${kindsFound.join(", ")}`,
     );
 
@@ -154,6 +171,75 @@ export async function run({ page, check, baseUrl }) {
         }
     }
 
+    // ── Error state: a dead thumbnail degrades to the branded facade ──
+    // The second YouTube card's thumbnail fails to decode (see
+    // stubProviderRequests); it must show the branded fallback — mark + play —
+    // never a blank frame. The swap is async (image error event): wait for it.
+    const fallbackReady = await page
+        .waitForFunction((sel) => {
+            const dead = [...document.querySelectorAll(sel)][1];
+            return !!dead && !dead.querySelector(".embed-card__thumb") &&
+                !!dead.querySelector(".embed-card__brand");
+        }, cardFor("youtube"), { timeout: 5000 })
+        .then(() => true)
+        .catch(() => false);
+    const fallback = await page.evaluate((sel) => {
+        const dead = [...document.querySelectorAll(sel)][1];
+        return dead ? {
+            hasThumb: !!dead.querySelector(".embed-card__thumb"),
+            hasBrand: !!dead.querySelector(".embed-card__brand"),
+            hasPlay: !!dead.querySelector(".embed-card__play"),
+        } : null;
+    }, cardFor("youtube"));
+    check(
+        "a dead thumbnail degrades to the branded facade with play intact",
+        fallbackReady && !!fallback && fallback.hasBrand && fallback.hasPlay,
+        JSON.stringify(fallback),
+    );
+
+    // ── The identity strip: title + URL resident, no hover required ──
+    const meta = await page.evaluate((sels) => {
+        const [loomSel, ytSel] = sels;
+        const strip = (sel) => {
+            const url = document.querySelector(`${sel} .embed-card__meta-url`);
+            return url ? {
+                urlText: url.textContent,
+                tooltip: url.title,
+                visible: getComputedStyle(url).display !== "none",
+            } : null;
+        };
+        return { loom: strip(loomSel), yt: strip(ytSel) };
+    }, [cardFor("loom"), cardFor("youtube")]);
+    check(
+        "the loom facade shows its URL resident (no hover)",
+        !!meta.loom && meta.loom.visible && meta.loom.urlText.includes("loom.com/share/"),
+        JSON.stringify(meta.loom),
+    );
+    check(
+        "the youtube facade shows its URL resident too",
+        // The strip shows the DOCUMENT's own URL (the fixture uses youtu.be),
+        // not a canonicalized rewrite of it.
+        !!meta.yt && meta.yt.visible && meta.yt.urlText.includes("youtu.be/"),
+        JSON.stringify(meta.yt),
+    );
+
+    // ── Metadata: the title row fills with the resolved oEmbed title ──
+    // The plugin's idle pass asks the (stubbed) extension once per kind:id;
+    // the reply fills the title row ABOVE the URL — both stay visible.
+    const titled = await page
+        .waitForFunction((sel) =>
+            document.querySelector(`${sel} .embed-card__meta-title`)?.textContent === "Stub title",
+            cardFor("loom"), { timeout: 8000 })
+        .then(() => true).catch(() => false);
+    check("the loom title row fills with the resolved title", titled);
+    const urlStillThere = await page.evaluate((sel) =>
+        (document.querySelector(`${sel} .embed-card__meta-url`)?.textContent ?? "").includes("loom.com/share/"),
+        cardFor("loom"));
+    check("the URL row survives the title arriving", urlStillThere);
+    const githubMeta = await page.evaluate((sel) =>
+        !!document.querySelector(`${sel} .embed-card__meta`), cardFor(INFO_KIND));
+    check("the github card asks for no metadata and shows no strip", !githubMeta);
+
     // ── The GitHub info card: request-free, and no path to an iframe ──
     const info = await page.evaluate((sel) => {
         const card = document.querySelector(sel);
@@ -175,17 +261,28 @@ export async function run({ page, check, baseUrl }) {
         String(info.detail),
     );
 
-    // ── The click guard ──
-    // Click a card's facade area, away from either button.
-    const box = await page.locator(`${cardFor("youtube")} .embed-card__frame`).first().boundingBox()
-        .catch(() => null) ?? await page.locator(cardFor("youtube")).first().boundingBox();
-    await page.mouse.click(box.x + 8, box.y + 8);
+    // ── At rest the stop control is really hidden (the [hidden] attribute
+    // must beat the class's display — it didn't, and a do-nothing X showed) ──
+    const stopHiddenAtRest = await page.evaluate((sel) => {
+        const stop = document.querySelector(`${sel} .embed-card__stop`);
+        return stop ? getComputedStyle(stop).display === "none" : null;
+    }, cardFor("loom"));
+    check("the stop control is invisible until something is playing", stopHiddenAtRest === true, String(stopHiddenAtRest));
+
+    // ── Click semantics: the identity strip SELECTS (and destroys nothing) ──
+    // The media area activates (pinned below); the text strip is the edit
+    // surface — clicking it selects the card and raises the palette.
+    await page.locator(`${cardFor("youtube")} .embed-card__meta`).first().click();
     await page.waitForTimeout(250);
-    const survived = await page.evaluate((sel) => document.querySelectorAll(sel).length, CARD);
+    const afterMetaClick = await page.evaluate((sel) => ({
+        cards: document.querySelectorAll(sel).length,
+        selected: document.querySelector(".embed-host--selected .embed-card")?.dataset.embedKind ?? null,
+        playing: !!document.querySelector(`${sel}.embed-card--playing`),
+    }), CARD);
     check(
-        "clicking the card does not destroy it",
-        survived === ALL_KINDS.length,
-        `${survived} cards after click`,
+        "clicking the identity strip selects the card without activating it",
+        afterMetaClick.cards === TOTAL_CARDS && afterMetaClick.selected === "youtube" && !afterMetaClick.playing,
+        JSON.stringify(afterMetaClick),
     );
 
     // ── Activate swaps in that provider's player, and only that card's ──
@@ -208,6 +305,249 @@ export async function run({ page, check, baseUrl }) {
     const infoIframe = await page.evaluate((sel) =>
         !!document.querySelector(`${sel} iframe`), cardFor(INFO_KIND));
     check("the github card never gains an iframe", !infoIframe);
+
+    // ── A playing card survives an edit elsewhere ──
+    // The widget key is position-independent (kind:id:ordinal), so typing above
+    // must not re-key — and therefore not rebuild — the cards below. Before
+    // that, typing one character in the heading reset every playing iframe to
+    // its facade (found 2026-07-27).
+    // Locator click, not raw mouse coords: activating the players scrolled the
+    // page, so the heading's viewport position is stale/off-screen by now.
+    await page.locator(".ProseMirror h1").first().click({ position: { x: 60, y: 10 } });
+    await page.waitForTimeout(150);
+    await page.keyboard.type("x");
+    await page.waitForTimeout(300);
+    const headingText = await page.evaluate(() => document.querySelector(".ProseMirror h1")?.textContent ?? "");
+    check("typing reached the heading (the edit really happened)", headingText.includes("x"), headingText);
+    const playingAfterEdit = await page.evaluate((sel) =>
+        !!document.querySelector(`${sel} .embed-card__iframe`), cardFor("youtube"));
+    check("a playing iframe survives typing in a paragraph above", playingAfterEdit);
+
+    // The identity strip stays visible WHILE playing — below the frame, not an
+    // in-frame overlay the player replaces.
+    const stripWhilePlaying = await page.evaluate((sel) => {
+        const meta = document.querySelector(`${sel} .embed-card__meta`);
+        return meta ? getComputedStyle(meta).display !== "none" && getComputedStyle(meta).visibility === "visible" : false;
+    }, cardFor("youtube"));
+    check("the identity strip stays visible while the player runs", stripWhilePlaying);
+
+    // ── Stop restores the facade, and the external button survived play ──
+    const loomState = await page.evaluate((sel) => {
+        const card = document.querySelector(sel);
+        return {
+            external: !!card?.querySelector(".embed-card__external"),
+            stopHidden: card?.querySelector(".embed-card__stop")?.hidden ?? null,
+        };
+    }, cardFor("loom"));
+    check("the external button survives play", loomState.external, JSON.stringify(loomState));
+    check("the stop button is visible while playing", loomState.stopHidden === false, JSON.stringify(loomState));
+
+    await page.evaluate((sel) => {
+        document.querySelector(`${sel} .embed-card__stop`)?.click();
+    }, cardFor("loom"));
+    await page.waitForTimeout(200);
+    const afterStop = await page.evaluate((sel) => {
+        const card = document.querySelector(sel);
+        return {
+            iframe: !!card?.querySelector("iframe"),
+            brand: !!card?.querySelector(".embed-card__brand"),
+            play: !!card?.querySelector(".embed-card__play"),
+        };
+    }, cardFor("loom"));
+    check(
+        "stop removes the player and restores the facade",
+        !afterStop.iframe && afterStop.brand && afterStop.play,
+        JSON.stringify(afterStop),
+    );
+
+    // ── Keyboard traversal: every card is an arrow stop (MAR-187) ──
+    // Before this model, hidden link text gave the caret nothing to land on
+    // and arrows skipped every embed (sequential cards were unreachable).
+    const selectedKind = () => page.evaluate(() =>
+        document.querySelector(".embed-host--selected .embed-card")?.dataset.embedKind ?? null);
+    await page.locator(".ProseMirror h1").first().click({ position: { x: 60, y: 10 } });
+    await page.keyboard.press("End");
+    await page.waitForTimeout(150);
+    const walk = [];
+    for (let i = 0; i < 6; i++) {
+        await page.keyboard.press("ArrowDown");
+        await page.waitForTimeout(120);
+        walk.push(await selectedKind());
+    }
+    check(
+        "ArrowDown stops at every card in turn",
+        JSON.stringify(walk) === JSON.stringify(["youtube", "youtube", "loom", "figma", "github", "vimeo"]),
+        JSON.stringify(walk),
+    );
+    // One more down exits into the titled-link paragraph; ArrowUp re-selects.
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(120);
+    const exited = await selectedKind();
+    await page.keyboard.press("ArrowUp");
+    await page.waitForTimeout(120);
+    const reentered = await selectedKind();
+    check(
+        "arrows exit past the last card and re-enter it",
+        exited === null && reentered === "vimeo",
+        `exited: ${exited}, reentered: ${reentered}`,
+    );
+
+    // ── Backspace selects the card before deleting ──
+    await page.keyboard.press("ArrowDown"); // caret back into the titled-link paragraph
+    await page.waitForTimeout(120);
+    await page.keyboard.press("Home").catch(() => {});
+    const docBefore = await page.evaluate(() => document.querySelectorAll(".embed-card").length);
+    await page.keyboard.press("Backspace");
+    await page.waitForTimeout(120);
+    const backspaceSelected = await selectedKind();
+    const docAfter = await page.evaluate(() => document.querySelectorAll(".embed-card").length);
+    check(
+        "Backspace after a card selects it without deleting",
+        backspaceSelected === "vimeo" && docAfter === docBefore,
+        `selected: ${backspaceSelected}, cards ${docBefore}→${docAfter}`,
+    );
+
+    // ── The palette: select a card → palette; edit the URL through it ──
+    const paletteVisible = await page
+        .waitForSelector(".embed-palette--visible", { timeout: 5000 })
+        .then(() => true).catch(() => false);
+    check("selecting a card shows the editor palette", paletteVisible);
+    const paletteUrl = await page.evaluate(() =>
+        document.querySelector(".embed-palette__url")?.value ?? null);
+    check(
+        "the palette shows the card's editable URL",
+        paletteUrl === "https://vimeo.com/1084537",
+        String(paletteUrl),
+    );
+
+    // The whole facade is the activate target: a click on the (restored)
+    // loom facade body — nowhere near the play pill — loads the player.
+    await page.locator(`${cardFor("loom")} .embed-card__stage`).first().click({ position: { x: 8, y: 8 } });
+    await page.waitForTimeout(250);
+    const facadeActivated = await page.evaluate((sel) =>
+        !!document.querySelector(`${sel} iframe`), cardFor("loom"));
+    check("clicking anywhere on the facade activates the player", facadeActivated);
+    await page.evaluate((sel) => {
+        document.querySelector(`${sel} .embed-card__stop`)?.click();
+    }, cardFor("loom"));
+    await page.waitForTimeout(200);
+
+    // Click-to-select: the loom card's identity strip.
+    await page.locator(`${cardFor("loom")} .embed-card__meta`).first().click();
+    await page.waitForTimeout(200);
+    check("clicking a card's identity strip selects it", (await selectedKind()) === "loom");
+
+    // Edit the URL via the palette: a new Loom id, applied with Enter.
+    const newLoom = "https://www.loom.com/share/ffffffffffffffffffffffffffffffff";
+    await page.evaluate((url) => {
+        const input = document.querySelector(".embed-palette__url");
+        input.focus();
+        input.value = url;
+    }, newLoom);
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    const editedState = await page.evaluate((url) => ({
+        stillSelected: !!document.querySelector(".embed-host--selected .embed-card[data-embed-kind='loom']"),
+        // The rebuilt card carries the NEW url in its identity strip.
+        tooltipHasNewId: (document.querySelector(".embed-card[data-embed-kind='loom'] .embed-card__meta-url")?.title ?? "").includes("ffff"),
+        posted: (window.__posted ?? []).some((m) => m.type === "update" && typeof m.content === "string" && m.content.includes(url)),
+    }), newLoom);
+    check(
+        "a palette URL edit rewrites the link, keeps the card selected, and serializes",
+        editedState.stillSelected && editedState.tooltipHasNewId && editedState.posted,
+        JSON.stringify(editedState),
+    );
+    // Park the selection in prose so the reveal check below starts clean.
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(150);
+
+    // ── Metadata dedupe held across every edit above ──
+    // The session store asks once per kind:id no matter how many doc changes
+    // re-ran the idle pass; the palette's URL edit added ONE new id (one ask).
+    const metaAsks = await page.evaluate(() =>
+        (window.__posted ?? []).filter((m) => m.type === "resolveEmbedMeta").map((m) => m.url));
+    const duplicates = metaAsks.filter((u, i) => metaAsks.indexOf(u) !== i);
+    check(
+        "each embed URL is asked for metadata exactly once per session",
+        metaAsks.length >= 4 && duplicates.length === 0,
+        `${metaAsks.length} asks, duplicates: ${duplicates.join(", ") || "none"}`,
+    );
+
+    // ── The card's own edit + show-as-link controls ──
+    await page.locator(`${cardFor("figma")} .embed-card__edit`).first().click();
+    await page.waitForTimeout(300);
+    const editState = await page.evaluate(() => ({
+        selected: document.querySelector(".embed-host--selected .embed-card")?.dataset.embedKind ?? null,
+        focusedUrl: document.activeElement?.classList.contains("embed-palette__url") ?? false,
+    }));
+    check(
+        "the card's edit control selects it and focuses the palette URL",
+        editState.selected === "figma" && editState.focusedUrl,
+        JSON.stringify(editState),
+    );
+    // While the palette is open it REPLACES the identity strip (visibility,
+    // not display — the box holds its space so nothing jumps).
+    const stripWhileEditing = await page.evaluate((sel) => {
+        const meta = document.querySelector(`${sel} .embed-card__meta`);
+        return meta ? getComputedStyle(meta).visibility : null;
+    }, cardFor("figma"));
+    check("the palette replaces the identity strip while open", stripWhileEditing === "hidden", String(stripWhileEditing));
+    // The control is a toggle: a second press closes the palette.
+    await page.locator(`${cardFor("figma")} .embed-card__edit`).first().click();
+    await page.waitForTimeout(200);
+    const paletteClosed = await page.evaluate(() =>
+        !document.querySelector(".embed-palette--visible"));
+    check("a second press of the edit control closes the palette", paletteClosed);
+    // Park the caret in prose (Escape would escalate the NodeSelection into a
+    // block-range selection, which rightly reveals the card as raw text).
+    await page.locator(".ProseMirror h1").first().click({ position: { x: 60, y: 10 } });
+    await page.waitForTimeout(150);
+
+    const cardsBeforeConvert = await page.evaluate((sel) => document.querySelectorAll(sel).length, CARD);
+    // Convert the dead-thumbnail youtube card (second of its kind) to a link.
+    await page.evaluate(() => {
+        const dead = [...document.querySelectorAll(".embed-card[data-embed-kind='youtube']")][1];
+        dead?.querySelector(".embed-card__aslink")?.click();
+    });
+    await page.waitForTimeout(400);
+    const convertState = await page.evaluate((sel) => ({
+        cards: document.querySelectorAll(sel).length,
+        posted: (window.__posted ?? []).some((m) => m.type === "update" && typeof m.content === "string" &&
+            m.content.includes("[youtu.be/aaaaaaaaaaa](https://youtu.be/aaaaaaaaaaa)")),
+    }), CARD);
+    check(
+        "the card's show-as-link control converts the embed to a labeled link",
+        convertState.cards === cardsBeforeConvert - 1 && convertState.posted,
+        JSON.stringify(convertState),
+    );
+
+    // ── And back again: the link popup re-embeds an eligible link ──
+    const converted = page.locator("a", { hasText: "youtu.be/aaaaaaaaaaa" }).first();
+    await converted.hover();
+    const popupShown = await page
+        .waitForSelector(".lp-root .lp-btn-embed", { timeout: 5000 })
+        .then(() => true).catch(() => false);
+    const embedBtnVisible = popupShown && await page.evaluate(() => {
+        const btn = document.querySelector(".lp-root .lp-btn-embed");
+        return btn ? getComputedStyle(btn).display !== "none" : false;
+    });
+    check("the link popup offers Show as embed for a whole-paragraph provider link", embedBtnVisible);
+    if (embedBtnVisible) {
+        await page.locator(".lp-root .lp-btn-embed").click();
+        const cardBack = await page
+            .waitForFunction((n) => document.querySelectorAll(".embed-card").length === n,
+                cardsBeforeConvert, { timeout: 5000 })
+            .then(() => true).catch(() => false);
+        const diag = await page.evaluate(() => ({
+            cards: document.querySelectorAll(".embed-card").length,
+            bareRestored: (window.__posted ?? []).some((m) => m.type === "update" && typeof m.content === "string" &&
+                /\n<?https:\/\/youtu\.be\/aaaaaaaaaaa>?\n/.test(m.content)),
+        }));
+        check("Show as embed converts the link back to a card", cardBack, JSON.stringify(diag));
+    }
 
     // ── Reveal-on-caret still works ──
     // Click into the paragraph text region: the card drops and the link shows.

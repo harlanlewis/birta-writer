@@ -2,7 +2,7 @@
  * messageHandlers.ts tests: table-wrap CSS application, plus the editorCommand
  * dispatch path (MAR-9).
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mockVscodeApi } from "./setup";
 import { applyTableWrap, createMessageHandlers, type MessageHandlerDeps } from "../messageHandlers";
 import { applyBlockHandles, currentBlockHandlesMode } from "../utils/blockHandles";
@@ -462,5 +462,71 @@ describe("toolbarConfig handler", () => {
 
         // Assert
         expect(applyConfig).toHaveBeenCalledWith(config);
+    });
+});
+
+describe("init — view-state seeding (survives the raw-editor round trip)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("an EMPTY bag should be seeded from the init echo before consumers read it", async () => {
+        // A recreated webview (the raw-editor switch closes the tab) starts
+        // with a null bag; the extension's per-URI echo restores it.
+        mockVscodeApi.getState.mockReturnValue(null);
+        const handlers = createMessageHandlers(stubDeps());
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        await handlers.init(
+            { type: "init", content: "hello\n", syncVersion: 1, viewState: { fmCollapsed: true } } as never,
+            container,
+        );
+        expect(mockVscodeApi.setState).toHaveBeenCalledWith({ fmCollapsed: true });
+        container.remove();
+    });
+
+    it("a LIVE bag should win over the echo (VS Code restored the webview itself)", async () => {
+        mockVscodeApi.getState.mockReturnValue({ fmCollapsed: false });
+        const handlers = createMessageHandlers(stubDeps());
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        await handlers.init(
+            { type: "init", content: "hello\n", syncVersion: 1, viewState: { fmCollapsed: true } } as never,
+            container,
+        );
+        expect(mockVscodeApi.setState).not.toHaveBeenCalledWith({ fmCollapsed: true });
+        container.remove();
+    });
+});
+
+describe("setWebviewState — the extension echo", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it("should mirror the bag to the extension, debounced to one message per pause", async () => {
+        const { setWebviewState } = await import("../messaging");
+        mockVscodeApi.getState.mockReturnValue({ scrollY: 3 });
+        setWebviewState({ scrollY: 1 });
+        setWebviewState({ scrollY: 2 });
+        setWebviewState({ scrollY: 3 });
+        expect(mockVscodeApi.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "viewState" }),
+        );
+        vi.advanceTimersByTime(300);
+        const echoes = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0]).filter((m) => m.type === "viewState");
+        expect(echoes).toHaveLength(1);
+        expect(echoes[0].state).toEqual({ scrollY: 3 });
     });
 });
