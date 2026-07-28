@@ -1,6 +1,8 @@
 import "./linkPopup.css";
 import { bindActivate } from "@/ui/dom";
+import { copyTextToClipboard } from "@/ui/clipboard";
 import type { EditorView, Slice } from "@/pm";
+import { NodeSelection } from "@/pm";
 import { notifyOpenUrl, notifyOpenFile } from "@/messaging";
 import { collectDocHeadings, scrollElementBelowTopbar } from "@/utils/headingUtils";
 import {
@@ -9,6 +11,7 @@ import {
     IconFileText,
     IconFolderOpen,
     IconHash,
+    IconImage,
     IconLink,
     IconLinkOff,
     IconPencil,
@@ -25,6 +28,7 @@ import {
 import { createLinkFormatSwitch, wikiAllowedFor } from "./formatSwitch";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { attrsFromRaw, wikiLinkId } from "@/plugins/wikiLinks";
+import { recognizeProvider } from "@/utils/embedProviders";
 import { setPendingRange } from "@/plugins/pendingRange";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { trackEditorReflow } from "@/ui/editorReflow";
@@ -346,6 +350,16 @@ export function setupLinkPopup(
     btnRemove.innerHTML = IconLinkOff;
     applyTooltip(btnRemove, t("Remove Link"), { placement: "above" });
 
+    // Show as embed: the reverse of the embed card's "show as text link". Only
+    // offered when it can actually work — a recognized provider URL whose link
+    // spans its whole (top-level) paragraph, since the card trigger is a bare
+    // link alone on its line with text === href.
+    const btnEmbed = document.createElement("button");
+    btnEmbed.className = "ui-btn ui-btn--icon lp-btn lp-btn-embed";
+    btnEmbed.setAttribute("aria-label", t("Show as embed"));
+    btnEmbed.innerHTML = IconImage;
+    applyTooltip(btnEmbed, t("Show as embed"), { placement: "above" });
+
     const btnEdit = document.createElement("button");
     btnEdit.className = "ui-btn ui-btn--icon lp-btn lp-btn-edit";
     btnEdit.innerHTML = IconPencil;
@@ -355,6 +369,7 @@ export function setupLinkPopup(
     // Order: [open][copy][unlink][edit].
     headerActions.appendChild(btnOpen);
     headerActions.appendChild(btnCopy);
+    headerActions.appendChild(btnEmbed);
     headerActions.appendChild(btnRemove);
     headerActions.appendChild(btnEdit);
 
@@ -638,6 +653,7 @@ export function setupLinkPopup(
         // (reference / same-page wiki) also can't be unlinked.
         btnEdit.style.display = link.readOnly ? "none" : "";
         btnRemove.style.display = link.readOnly ? "none" : "";
+        btnEmbed.style.display = embedEligible(link) ? "" : "none";
         btnOpen.style.display = ""; // reset from any prior insert open
         // Copy is available for any link with an href, read-only ones included.
         btnCopy.style.display = link.href.trim() ? "" : "none";
@@ -975,23 +991,10 @@ export function setupLinkPopup(
 
     let copyRestoreTimer: ReturnType<typeof setTimeout> | null = null;
 
-    /** Copy `text` to the clipboard; fall back to a hidden textarea + execCommand. */
-    function copyToClipboard(text: string): void {
-        navigator.clipboard?.writeText(text).catch(() => {
-            const ta = document.createElement("textarea");
-            ta.value = text;
-            ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
-            document.body.appendChild(ta);
-            ta.focus(); ta.select();
-            try { document.execCommand("copy"); } catch { /* ignore */ }
-            document.body.removeChild(ta);
-        });
-    }
-
     bindActivate(btnCopy, () => {
         const href = currentLink?.href?.trim();
         if (!href) return;
-        copyToClipboard(href);
+        copyTextToClipboard(href);
         // Brief "Copied" feedback, then restore the tooltip.
         btnCopyTooltip.setText(t("Copied"));
         if (copyRestoreTimer) clearTimeout(copyRestoreTimer);
@@ -1183,6 +1186,51 @@ export function setupLinkPopup(
     }
 
     // ── Remove button ─────────────────────────────────────────────
+
+    /**
+     * Can this link become an embed card? The card trigger is strict — a bare
+     * link ALONE in a top-level paragraph with text === href — so the offer
+     * appears only where converting the text to the URL would actually card:
+     * a recognized provider URL whose link already spans its whole paragraph.
+     */
+    function embedEligible(link: LinkInfo): boolean {
+        if (link.readOnly || link.wiki) { return false; }
+        if (!(window.__i18n?.embedsEnabled ?? true)) { return false; }
+        if (!recognizeProvider(link.href)) { return false; }
+        const view = liveView();
+        if (!view) { return false; }
+        try {
+            const $from = view.state.doc.resolve(link.from);
+            return $from.depth === 1 &&
+                $from.parent.type.name === "paragraph" &&
+                link.from === $from.start() &&
+                link.to === $from.start() + $from.parent.content.size;
+        } catch {
+            return false;
+        }
+    }
+
+    bindActivate(btnEmbed, () => {
+        const view = getView();
+        if (!view || !currentLink || !embedEligible(currentLink)) { hidePopup(); return; }
+        const linkType = view.state.schema.marks["link"];
+        if (!linkType) { hidePopup(); return; }
+        // text === href is the whole conversion: the paragraph becomes a bare
+        // provider link, and the decoration pass cards it on the next update.
+        // The new CARD is selected in the same transaction — a caret left
+        // inside the paragraph would trigger reveal-on-caret and suppress the
+        // card the user just asked for.
+        const href = currentLink.href;
+        let tr = view.state.tr.replaceWith(
+            currentLink.from,
+            currentLink.to,
+            view.state.schema.text(href, [linkType.create({ href })]),
+        );
+        tr = tr.setSelection(NodeSelection.create(tr.doc, currentLink.from - 1));
+        view.dispatch(tr);
+        view.focus();
+        hidePopup();
+    });
 
     bindActivate(btnRemove, () => {
         const view = getView();

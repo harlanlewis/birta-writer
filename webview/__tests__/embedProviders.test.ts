@@ -17,6 +17,8 @@ import {
     figmaEmbedUrl,
     githubId,
     githubCardParts,
+    vimeoId,
+    vimeoEmbedUrl,
 } from "../utils/embedProviders";
 
 const ID = "dQw4w9WgXcQ"; // a real-shaped 11-char id
@@ -233,8 +235,37 @@ describe("recognizeProvider", () => {
     it("a non-provider URL should resolve to null", () => {
         expect(recognizeProvider("https://example.com/page")).toBeNull();
     });
-    it("a Vimeo URL should resolve to null (provider not shipped)", () => {
-        expect(recognizeProvider("https://vimeo.com/76979871")).toBeNull();
+    it("a Vimeo video URL should resolve to the vimeo provider", () => {
+        expect(recognizeProvider("https://vimeo.com/76979871")).toEqual({ kind: "vimeo", id: "76979871" });
+    });
+});
+
+describe("vimeoId", () => {
+    it.each([
+        ["https://vimeo.com/1084537", "1084537"],
+        ["https://www.vimeo.com/76979871", "76979871"],
+        ["http://vimeo.com/347119375", "347119375"],
+        ["https://player.vimeo.com/video/1084537", "1084537"],
+        ["https://player.vimeo.com/video/1084537?h=abc&dnt=1", "1084537"],
+    ])("should accept %s", (url, id) => {
+        expect(vimeoId(url)).toBe(id);
+    });
+
+    it.each([
+        "https://vimeo.com/channels/staffpicks/1084537", // non-bare shape
+        "https://vimeo.com/1084537/settings", // trailing segment
+        "https://vimeo.com/user12345678", // a profile, not a video
+        "https://vimeo.com/123", // shorter than any real id
+        "https://vimeo.com.evil.com/1084537", // lookalike host
+        "https://player.vimeo.com/1084537", // missing /video/
+        "ftp://vimeo.com/1084537", // wrong scheme
+        "https://vimeo.com/", // no id
+    ])("should reject %s", (url) => {
+        expect(vimeoId(url)).toBeNull();
+    });
+
+    it("the player URL should carry Vimeo's do-not-track flag", () => {
+        expect(vimeoEmbedUrl("1084537")).toBe("https://player.vimeo.com/video/1084537?dnt=1");
     });
 });
 

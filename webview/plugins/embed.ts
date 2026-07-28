@@ -32,11 +32,19 @@
  * no import, no idle pass. (The plugin itself is composed unconditionally in
  * editor.ts — see the comment there — and is inert when gated off.)
  */
-import type { EditorState, EditorView, Node as ProseNode } from "../pm";
-import { Decoration, DecorationSet, Plugin, PluginKey } from "../pm";
+import type { Command, EditorState, EditorView, Node as ProseNode } from "../pm";
+import { Decoration, DecorationSet, keymap, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from "../pm";
 import { $prose } from "@milkdown/utils";
 import { requestIdle } from "../utils/idle";
 import { providerFor, recognizeProvider, type EmbedMatch } from "../utils/embedProviders";
+// messaging is in the eager bundle already; referencing it here adds nothing.
+import { notifyOpenUrl } from "../messaging";
+// The metadata store is eager (messageHandlers routes replies through it);
+// importing it here adds nothing to the launch bundle.
+import { queueEmbedMetaResolution } from "../embedMeta";
+// The component-owned delete primitive (deleteRange + fold meta), via the
+// blockMenu facade — deep imports are guarded by blockMenuFacade.test.ts.
+import { deleteBlockRange } from "../components/blockMenu";
 
 /** Upper bound on how long after first paint the first embed pass may wait. */
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
@@ -93,29 +101,97 @@ function bareLinkHref(node: ProseNode): string | null {
 /**
  * The widget DOM: a host div that fills asynchronously once the card module
  * loads. Returning synchronously (PM calls this at render) keeps the lazy import
- * off the render frame; a failed import or offline thumbnail simply leaves the
- * host empty — the raw link is still reachable by clicking into the paragraph.
+ * off the render frame; a failed import degrades to the inline URL fallback
+ * below — never an empty host.
  */
-function embedWidget(match: EmbedMatch, sourceUrl: string): () => HTMLElement {
-    return () => {
+function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, getPos: () => number | undefined) => HTMLElement {
+    return (view, getPos) => {
         const host = document.createElement("div");
         host.className = "embed-card-host";
         host.setAttribute("contenteditable", "false");
-        // Hardening, not a bug fix: keep the editor caret where it is so a
-        // click on the card is the card's alone. Measured 2026-07-18 (e2e,
-        // headless Chromium): WITHOUT this the card already survives a click
-        // and play still works, because the browser will not put a caret inside
-        // a contenteditable="false" widget, so reveal-on-caret never fires. The
-        // guard makes that independent of the host's caret placement rather
-        // than reliant on it, and matches every other clickable widget in the
-        // tree (ui/foldEllipsis.ts, headingFold/foldGutter.ts, imageView).
+        // Click-to-select (the image model, via horizontalRule.ts's hand-rolled
+        // variant): a mousedown on the card body selects the embed paragraph as
+        // a NodeSelection — ring + palette — instead of being swallowed. The
+        // caret still never lands INSIDE the hidden paragraph (preventDefault),
+        // and clicks on the card's own buttons stop propagation before reaching
+        // here, so play/external/stop keep their clicks.
         host.addEventListener("mousedown", (event) => {
             event.preventDefault();
             event.stopPropagation();
+            // The widget rides at from + 1 (side -1); the paragraph is one
+            // position up. getPos() is undefined during teardown races.
+            const pos = getPos();
+            if (pos === undefined || view.isDestroyed) {
+                return;
+            }
+            const from = pos - 1;
+            const node = view.state.doc.nodeAt(from);
+            if (!node || bareLinkHref(node) === null) {
+                return;
+            }
+            const sel = view.state.selection;
+            const alreadySelected = sel instanceof NodeSelection && sel.from === from;
+            view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, from)));
+            view.focus();
+            if (alreadySelected) {
+                // Re-clicking a selected card: an Escape-dismissed palette
+                // comes back (the dispatch above changes nothing, so no update
+                // fires — resync explicitly).
+                withPalette((m) => m.clearEmbedPaletteDismissal(), true);
+                syncPalette(view);
+            }
         });
+        // The paragraph's live position, re-derived per use (edits move it;
+        // the widget key is position-independent so the DOM survives them).
+        const liveFrom = (): number | undefined => {
+            const pos = getPos();
+            if (pos === undefined || view.isDestroyed) { return undefined; }
+            const from = pos - 1;
+            const node = view.state.doc.nodeAt(from);
+            return node && bareLinkHref(node) !== null ? from : undefined;
+        };
+        // The card's document-touching verbs (it has no view of its own):
+        // edit = select + palette on the URL field; removePreview = convert to
+        // the labeled, never-carded text-link form.
+        const actions = {
+            edit: () => {
+                const from = liveFrom();
+                if (from === undefined) { return; }
+                // A TOGGLE: the second press closes what the first opened —
+                // an open-only button left no way back but Escape.
+                withPalette((m) => {
+                    if (m.isEmbedPaletteOpenFor(from)) {
+                        m.hideEmbedPalette(true);
+                        view.focus();
+                        return;
+                    }
+                    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, from)));
+                    view.focus();
+                    m.clearEmbedPaletteDismissal();
+                    syncPalette(view, true);
+                }, true);
+            },
+            removePreview: () => {
+                const from = liveFrom();
+                if (from === undefined) { return; }
+                withPalette((m) => m.convertEmbedToTextLink(view, from), true);
+            },
+        };
         loadEmbedCard()
-            .then((mod) => host.replaceChildren(mod.renderEmbedCard(match, sourceUrl)))
-            .catch(() => { /* card unavailable; raw link stays reachable */ });
+            .then((mod) => host.replaceChildren(mod.renderEmbedCard(match, sourceUrl, actions)))
+            .catch(() => {
+                // The card chunk failed to load. An empty host reads as "all
+                // clear" while hiding the link (a silent absence) — degrade to
+                // a minimal dependency-free row instead: the URL, clickable
+                // through the extension's external-open flow.
+                const fallback = document.createElement("div");
+                fallback.className = "embed-card-fallback";
+                fallback.textContent = sourceUrl;
+                fallback.title = sourceUrl;
+                fallback.setAttribute("role", "link");
+                fallback.addEventListener("click", () => notifyOpenUrl(sourceUrl));
+                host.replaceChildren(fallback);
+            });
         return host;
     };
 }
@@ -160,6 +236,16 @@ interface CachedEmbed {
     to: number;
     match: EmbedMatch;
     href: string;
+    /**
+     * Occurrence index among embeds sharing this `kind:id`, in doc order. Part
+     * of the widget key INSTEAD of the position: a position-carrying key meant
+     * every edit above an embed re-keyed (and so rebuilt) every card below it —
+     * destroying a playing iframe because someone typed a character two
+     * paragraphs up. The ordinal keeps duplicate links distinct while staying
+     * stable under edits elsewhere; only inserting/removing an EARLIER copy of
+     * the same link shifts it (one rebuild, and a correct one).
+     */
+    ordinal: number;
 }
 
 /**
@@ -178,6 +264,7 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
     }
     const network = networkOn();
     const embeds: CachedEmbed[] = [];
+    const occurrences = new Map<string, number>();
     state.doc.forEach((node, pos) => {
         const href = bareLinkHref(node);
         if (!href) {
@@ -192,9 +279,23 @@ export function collectEmbeds(state: EditorState): CachedEmbed[] {
         if (!network && providerFor(match.kind).needsNetwork) {
             return;
         }
-        embeds.push({ from: pos, to: pos + node.nodeSize, match, href });
+        const identity = `${match.kind}:${match.id}`;
+        const ordinal = occurrences.get(identity) ?? 0;
+        occurrences.set(identity, ordinal + 1);
+        embeds.push({ from: pos, to: pos + node.nodeSize, match, href, ordinal });
     });
     return embeds;
+}
+
+/**
+ * A NodeSelection covering exactly this embed's paragraph — the card's
+ * SELECTED state (ring + palette), the third mode between "card at rest" and
+ * "raw link revealed". Without the carve-out, selecting a card would count as
+ * an overlapping selection and make the card vanish under its own ring.
+ */
+function isEmbedSelection(selection: EditorState["selection"], embed: CachedEmbed): boolean {
+    return selection instanceof NodeSelection &&
+        selection.from === embed.from && selection.to === embed.to;
 }
 
 /**
@@ -208,21 +309,27 @@ function decorationsFor(
 ): DecorationSet {
     const decorations: Decoration[] = [];
     for (const embed of embeds) {
-        // Reveal-on-caret: selection inside this paragraph → show the raw link.
-        if (selection.to > embed.from && selection.from < embed.to) {
+        const selected = isEmbedSelection(selection, embed);
+        // Reveal-on-caret: any OTHER selection touching this paragraph → show
+        // the raw link (a caret placed by shift-selection, a cross-paragraph
+        // range). The exact-cover NodeSelection is the selected card instead.
+        if (!selected && selection.to > embed.from && selection.from < embed.to) {
             continue;
         }
         decorations.push(
-            Decoration.node(embed.from, embed.to, { class: "embed-host" }),
+            Decoration.node(embed.from, embed.to, {
+                class: selected ? "embed-host embed-host--selected" : "embed-host",
+            }),
         );
         decorations.push(
             Decoration.widget(embed.from + 1, embedWidget(embed.match, embed.href), {
                 side: -1,
-                // The position is part of the key: two bare links to the SAME
-                // video are two distinct widgets, and same-key widgets would
-                // make ProseMirror treat them as one during redraw
-                // reconciliation (skipped/misplaced DOM).
-                key: `embed:${embed.match.kind}:${embed.match.id}:${embed.from}`,
+                // The ordinal (not the position) disambiguates two bare links
+                // to the SAME video: same-key widgets would make ProseMirror
+                // treat them as one during redraw reconciliation, while a
+                // position in the key re-keyed every card below any edit —
+                // tearing down a playing iframe on an unrelated keystroke.
+                key: `embed:${embed.match.kind}:${embed.match.id}:${embed.ordinal}`,
             }),
         );
     }
@@ -295,9 +402,37 @@ export const embedPlugin = $prose(() =>
                     }
                 }, FIRST_PASS_IDLE_TIMEOUT_MS);
             }
+            // Metadata resolution rides the cached embeds array BY REFERENCE:
+            // apply() only replaces it on doc-change/arm recomputes (selection
+            // transactions reuse it), so this comparison is free per caret
+            // move, and the queue itself runs on idle — never on a keystroke.
+            // Network-off states never reach the queue: collectEmbeds already
+            // dropped needsNetwork providers, and the store filters the rest
+            // by hasMetadata. Disabled feature → embeds stays [] → nothing.
+            let lastEmbeds: readonly CachedEmbed[] = [];
+            let metaIdle: { cancel: () => void } | null = null;
             return {
+                update(v) {
+                    // Selection tracked here (not in apply): the palette is a
+                    // DOM singleton anchored to the card, exactly the image
+                    // toolbar's show-on-select contract.
+                    syncPalette(v);
+                    const embeds = embedsIn(v.state);
+                    if (embeds !== lastEmbeds && embeds.length > 0 && networkOn()) {
+                        lastEmbeds = embeds;
+                        metaIdle?.cancel();
+                        metaIdle = requestIdle(() => {
+                            metaIdle = null;
+                            queueEmbedMetaResolution(embeds);
+                        }, FIRST_PASS_IDLE_TIMEOUT_MS);
+                    } else if (embeds !== lastEmbeds) {
+                        lastEmbeds = embeds;
+                    }
+                },
                 destroy() {
                     idle?.cancel();
+                    metaIdle?.cancel();
+                    withPalette((m) => m.hideEmbedPalette(), false);
                 },
             };
         },
@@ -321,3 +456,184 @@ export function regateEmbeds(view: EditorView): void {
     if (view.isDestroyed) { return; }
     view.dispatch(view.state.tr.setMeta(embedPluginKey, { type: "arm" } satisfies EmbedMeta));
 }
+
+// ─── Selection + keyboard model (MAR-187) ───────────────────────────────────
+//
+// The card paragraph's text is hidden, so the browser's native caret motion
+// has nothing to land on and skipped the whole paragraph — sequential embeds
+// were unreachable by keyboard entirely (verified 2026-07-27). The keymap
+// below makes the card a first-class stop: arrows select it (a NodeSelection
+// on the paragraph, the codeBlockBackspace precedent), Backspace selects
+// before it deletes, Enter opens the palette.
+
+/** The cached embeds of a state, [] before the arm or with the feature off. */
+function embedsIn(state: EditorState): readonly CachedEmbed[] {
+    return embedPluginKey.getState(state)?.embeds ?? [];
+}
+
+/** The embed whose paragraph is exactly node-selected, or null. */
+function selectedEmbedIn(state: EditorState): CachedEmbed | null {
+    return embedsIn(state).find((e) => isEmbedSelection(state.selection, e)) ?? null;
+}
+
+/**
+ * Is the caret's innermost textblock the LAST (dir=forward) / FIRST leaf of
+ * its top-level block? Guards the arrow handoff: from the middle of a list a
+ * vertical arrow must move within the list, not jump to the embed after it.
+ * Boundary arithmetic: each enclosing depth adds exactly one closing (opening)
+ * token between the textblock's end (start) and the top-level block's.
+ */
+function atTopLevelEdge($pos: { depth: number; start: (d: number) => number; end: (d: number) => number }, forward: boolean): boolean {
+    const d = $pos.depth;
+    if (d === 0) { return false; }
+    return forward
+        ? $pos.end(1) === $pos.end(d) + (d - 1)
+        : $pos.start(1) === $pos.start(d) - (d - 1);
+}
+
+/** Select an embed's paragraph (ring + palette), scrolled into view. */
+function selectEmbedTr(state: EditorState, embed: CachedEmbed): ReturnType<EditorState["tr"]["setSelection"]> {
+    return state.tr.setSelection(NodeSelection.create(state.doc, embed.from)).scrollIntoView();
+}
+
+/**
+ * Arrow handling around embeds, one direction per binding. Two cases:
+ *  - a selected card hands off: to the adjacent embed (sequential cards are
+ *    each their own stop) or to a caret in the neighboring block;
+ *  - a caret at the top-level edge of the block adjacent to an embed enters it
+ *    by selecting the card — never by skipping it.
+ * Plain arrows only: modifiers (incl. shift) keep their native meaning.
+ */
+function embedArrow(dir: "up" | "down" | "left" | "right"): Command {
+    const forward = dir === "down" || dir === "right";
+    return (state, dispatch, view) => {
+        const embeds = embedsIn(state);
+        if (!embeds.length) { return false; }
+
+        const current = selectedEmbedIn(state);
+        if (current) {
+            const boundary = forward ? current.to : current.from;
+            const next = embeds.find((e) => (forward ? e.from === boundary : e.to === boundary));
+            if (next) {
+                if (dispatch) { dispatch(selectEmbedTr(state, next)); }
+                return true;
+            }
+            const $boundary = state.doc.resolve(boundary);
+            const target = Selection.near($boundary, forward ? 1 : -1);
+            // No block on that side: consume the key (the card stays selected)
+            // rather than let the browser guess.
+            if (dispatch && target.from !== state.selection.from) {
+                dispatch(state.tr.setSelection(target).scrollIntoView());
+            }
+            return true;
+        }
+
+        const sel = state.selection;
+        if (!(sel instanceof TextSelection) || !sel.empty) { return false; }
+        const $head = sel.$head;
+        if (!atTopLevelEdge($head, forward)) { return false; }
+        if (dir === "down" || dir === "up") {
+            // Vertical entry only from the last/first visual line — mid-block
+            // vertical motion stays native.
+            if (!view || !view.endOfTextblock(dir)) { return false; }
+        } else if (forward ? $head.parentOffset !== $head.parent.content.size : $head.parentOffset !== 0) {
+            return false;
+        }
+        const boundary = forward ? $head.after(1) : $head.before(1);
+        const target = embeds.find((e) => (forward ? e.from === boundary : e.to === boundary));
+        if (!target) { return false; }
+        if (dispatch) { dispatch(selectEmbedTr(state, target)); }
+        return true;
+    };
+}
+
+/**
+ * Backspace/Delete: a selected card deletes its paragraph (deleteBlockRange —
+ * fold state stays coherent, the schema-required trailing paragraph is
+ * restored). A caret about to eat INTO a card from the adjacent block selects
+ * it first — the codeBlockBackspace select-before-delete contract; the second
+ * press deletes. Without this, Backspace after a card silently merged the
+ * hidden URL into the next paragraph as glued autolink text.
+ */
+function embedDeleteKey(forward: boolean): Command {
+    return (state, dispatch, view) => {
+        const embeds = embedsIn(state);
+        if (!embeds.length) { return false; }
+
+        const current = selectedEmbedIn(state);
+        if (current) {
+            if (dispatch && view) { deleteBlockRange(view, { from: current.from, to: current.to }); }
+            return true;
+        }
+
+        const sel = state.selection;
+        if (!(sel instanceof TextSelection) || !sel.empty) { return false; }
+        const $head = sel.$head;
+        if (!atTopLevelEdge($head, forward)) { return false; }
+        if (forward ? $head.parentOffset !== $head.parent.content.size : $head.parentOffset !== 0) {
+            return false;
+        }
+        const boundary = forward ? $head.after(1) : $head.before(1);
+        const target = embeds.find((e) => (forward ? e.from === boundary : e.to === boundary));
+        if (!target) { return false; }
+        if (dispatch) { dispatch(selectEmbedTr(state, target)); }
+        return true;
+    };
+}
+
+/**
+ * The palette module is lazy (like the card builder) and managed through one
+ * cached import so show/hide calls resolve in dispatch order.
+ */
+let _paletteModule: Promise<typeof import("../components/embedPalette")> | null = null;
+function withPalette(fn: (mod: typeof import("../components/embedPalette")) => void, loadIfNeeded: boolean): void {
+    if (!_paletteModule && !loadIfNeeded) { return; }
+    _paletteModule ??= import("../components/embedPalette");
+    _paletteModule.then(fn).catch(() => { /* palette unavailable; selection still works */ });
+}
+
+/** Show/hide the palette to match the selected embed (idempotent per update). */
+function syncPalette(view: EditorView, focusUrl = false): void {
+    const selected = selectedEmbedIn(view.state);
+    if (selected) {
+        withPalette((m) => m.showEmbedPalette(view, {
+            from: selected.from,
+            to: selected.to,
+            href: selected.href,
+            kind: selected.match.kind,
+            id: selected.match.id,
+        }, focusUrl), true);
+    } else {
+        withPalette((m) => m.hideEmbedPalette(), false);
+    }
+}
+
+export const embedKeymapPlugin = $prose(() =>
+    keymap({
+        ArrowDown: embedArrow("down"),
+        ArrowUp: embedArrow("up"),
+        ArrowRight: embedArrow("right"),
+        ArrowLeft: embedArrow("left"),
+        Backspace: embedDeleteKey(false),
+        Delete: embedDeleteKey(true),
+        Enter: (state, _dispatch, view) => {
+            if (!selectedEmbedIn(state)) { return false; }
+            if (view) { syncPalette(view, true); }
+            return true;
+        },
+        // Keyboard parity for the media verb: Space on a selected card toggles
+        // play/stop by activating the card's own buttons — the DOM closures
+        // own the player lifecycle, so the keymap drives them rather than
+        // duplicating it. Info cards (no player) fall through to typing.
+        " ": (state, _dispatch, view) => {
+            const current = selectedEmbedIn(state);
+            if (!current || !view) { return false; }
+            const host = view.nodeDOM(current.from) as HTMLElement | null;
+            const play = host?.querySelector<HTMLButtonElement>(".embed-card__play");
+            const stop = host?.querySelector<HTMLButtonElement>(".embed-card__stop");
+            if (play) { play.click(); return true; }
+            if (stop && !stop.hidden) { stop.click(); return true; }
+            return false;
+        },
+    }),
+);

@@ -66,6 +66,12 @@ export async function run({ page, check, baseUrl }) {
             document.querySelectorAll(".embed-card--info iframe").length);
         check("the info card never builds an iframe", githubIframes === 0);
     }
+    // Metadata rides the same gate: with the network off, the store must post
+    // no resolveEmbedMeta at all (GitHub has no metadata source; the network
+    // providers never reached the cached embeds array).
+    const metaAsks = await page.evaluate(() =>
+        (window.__posted ?? []).filter((m) => m.type === "resolveEmbedMeta").length);
+    check("no embed metadata request leaves with network off", metaAsks === 0, `${metaAsks} asks`);
 
     // ── Calc: trailing form, Tab confirm ──
     const para = page.locator(".ProseMirror p", { hasText: "some text" }).first();

@@ -612,9 +612,13 @@ export async function createEditor(
     // Re-gating is live in both directions via regateEmbeds (messageHandlers).
     try {
         // A failed chunk load degrades to "no embed cards" — it must not
-        // reject createEditor and take the whole editor down with it.
-        const { embedPlugin } = await import("./plugins/embed");
-        builder = builder.use(embedPlugin);
+        // reject createEditor and take the whole editor down with it. The
+        // keymap (select/enter/delete around cards) composes beside the
+        // decoration plugin: it is inert while the plugin state is empty, and
+        // ordering is safe this late because Milkdown appends the base keymap
+        // after user plugins (see blockKeys.ts).
+        const { embedPlugin, embedKeymapPlugin } = await import("./plugins/embed");
+        builder = builder.use(embedPlugin).use(embedKeymapPlugin);
     } catch (e) {
         console.error("[birta] embed plugin failed to load; continuing without embeds", e);
     }

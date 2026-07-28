@@ -2289,6 +2289,30 @@ body.block-marqueeing .milkdown .editor {
     display: none;
 }
 
+/* The selected card (a NodeSelection on the embed paragraph): the image
+   wrapper's ring recipe — accent border + a soft halo. PM's default
+   .ProseMirror-selectednode outline is globally disabled (imageView.css), so
+   the ring is explicit here. */
+.embed-host--selected .embed-card__frame,
+.embed-host--selected .embed-card--info {
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
+}
+
+/* While selected, the raw link must EXIST in layout (zero-size, invisible):
+   ProseMirror represents the NodeSelection as a DOM range over the paragraph,
+   and Chromium cannot anchor a range in a subtree that is entirely
+   display:none — it collapses the range into a neighboring text node, and the
+   selectionchange readback then dispatches a caret nobody asked for
+   (observed: arrowing onto a card bounced the caret into the heading above). */
+.embed-host--selected > a {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    opacity: 0;
+}
+
 .embed-card-host {
     display: block;
     margin: 0.75em 0;
@@ -2301,6 +2325,24 @@ body.block-marqueeing .milkdown .editor {
     max-width: min(560px, 100%);
 }
 
+/* Player cards are a GRID: the frame, a control column OUTSIDE it to the
+   right (an embedded player owns its own corners — Vimeo's fullscreen/PiP
+   cluster sat exactly under our old overlay), and the identity strip BELOW
+   the frame. The extra width covers the control column. */
+.embed-card--player {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: start;
+    max-width: min(596px, 100%);
+}
+
+.embed-card--player .embed-card__frame {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+}
+
 .embed-card__frame {
     position: relative;
     width: 100%;
@@ -2311,30 +2353,113 @@ body.block-marqueeing .milkdown .editor {
     background: var(--vscode-editorWidget-background);
 }
 
-/* Branded facade (Loom, Figma): a local monochrome mark + name in place of a
-   thumbnail — zero network until the play click. Muted so the play overlay
-   stays the visual verb. */
-.embed-card__brand {
+/* The replaceable layer: facade at rest, iframe while playing. The corner
+   controls live OUTSIDE it so play never destroys them. The whole facade is
+   the activate target (the overlay button is the visual verb, not the only
+   hit area). */
+.embed-card__stage {
     position: absolute;
     inset: 0;
+    cursor: pointer;
+}
+.embed-card--playing .embed-card__stage {
+    cursor: default;
+}
+
+/* The identity strip: resident title + URL BELOW the frame, visible at all
+   times — playing included (the metadata stays useful after the player
+   loads). The title row fills when oEmbed metadata resolves and hides while
+   empty; the URL row is always present. Clicks here bubble to the widget
+   host (select + palette); the palette overlays this strip while open
+   (.embed-card--palette-open, set by the palette itself). */
+.embed-card__meta {
+    grid-column: 1;
+    grid-row: 2;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    /* Leave the center clear for the play overlay. */
-    padding-bottom: 64px;
-    color: var(--vscode-foreground);
-    opacity: 0.6;
+    gap: 1px;
+    padding: 0 2px;
+    cursor: pointer;
+}
+.embed-card--palette-open .embed-card__meta {
+    /* visibility (not display): the palette takes this exact spot; keeping
+       the box avoids a layout jump when it closes again. */
+    visibility: hidden;
+}
 
-    & svg {
-        width: 32px;
-        height: 32px;
+.embed-card__meta-title {
+    font-size: var(--ui-fs-m);
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:empty {
+        display: none;
     }
 }
 
-.embed-card__brand-name {
+.embed-card__meta-url {
     font-size: var(--ui-fs-s);
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* In-frame hint (Figma, while loaded): why a blank frame can be legitimate,
+   and the way out — a persistent, CLICKABLE row within the preview rectangle
+   it explains, opening the page externally. */
+.embed-card__hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    padding: 8px 10px;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--vscode-font-family);
+    font-size: var(--ui-fs-s);
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--vscode-editorWidget-background) 92%, transparent);
+}
+
+.embed-card__hint-action {
+    color: var(--vscode-textLink-foreground);
+}
+
+.embed-card__hint:hover .embed-card__hint-action {
+    text-decoration: underline;
+}
+
+/* The chunk-load failure fallback: never an empty host — the URL, clickable. */
+.embed-card-fallback {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+}
+
+/* Branded facade (Loom, Vimeo, Figma): the service NAME in text — no drawn
+   marks (hand-reduced logos read as generic or invented) — pinned to the
+   frame's upper-left corner; the activate control keeps the center. Zero
+   network until the activate click. */
+.embed-card__brand {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+}
+
+.embed-card__brand-name {
+    font-size: var(--ui-fs-m);
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
 }
 
 .embed-card__thumb,
@@ -2349,13 +2474,21 @@ body.block-marqueeing .milkdown .editor {
     object-fit: cover;
 }
 
-/* "Open on YouTube" — the guaranteed path when in-webview playback is
+/* The persistent control column: stop/restore (only while playing) + the
+   external-open escape hatch — the guaranteed path when in-webview playback is
    refused (YouTube error 153: no acceptable referrer from a webview origin).
-   Quiet corner chrome that brightens on card hover. */
-.embed-card__external {
-    position: absolute;
-    top: 8px;
-    right: 8px;
+   OUTSIDE the frame (see .embed-card--player) so it never covers a player's
+   own controls. */
+.embed-card__controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.embed-card__external,
+.embed-card__stop,
+.embed-card__edit,
+.embed-card__aslink {
     width: 28px;
     height: 28px;
     display: flex;
@@ -2368,13 +2501,19 @@ body.block-marqueeing .milkdown .editor {
     opacity: 0.55;
     cursor: pointer;
 }
-.embed-card__frame:hover .embed-card__external,
-.embed-card__external:focus-visible {
+.embed-card:hover :is(.embed-card__external, .embed-card__stop, .embed-card__edit, .embed-card__aslink),
+:is(.embed-card__external, .embed-card__stop, .embed-card__edit, .embed-card__aslink):focus-visible {
     opacity: 1;
 }
-.embed-card__external svg {
+:is(.embed-card__external, .embed-card__stop, .embed-card__edit, .embed-card__aslink) svg {
     width: 14px;
     height: 14px;
+}
+
+/* The `hidden` attribute must actually hide: our explicit display beat the UA
+   default, so the stop button showed at rest — a visible X that did nothing. */
+:is(.embed-card__external, .embed-card__stop, .embed-card__edit, .embed-card__aslink)[hidden] {
+    display: none;
 }
 
 /* Play overlay: a real button, so it takes the shared focus ring. Neutral,
@@ -2407,6 +2546,19 @@ body.block-marqueeing .milkdown .editor {
     height: 28px;
 }
 
+/* The labeled variant (non-video surfaces): an explicit verb, not a glyph.
+   fit-content, not auto — inside the inset:0 + margin:auto centering trick,
+   auto width stretches the pill across the whole frame. */
+.embed-card__play--label {
+    width: fit-content;
+    height: 36px;
+    padding: 0 16px;
+    font-family: var(--vscode-font-family);
+    font-size: var(--ui-fs-m);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 /* Info card (GitHub): a frameless compact row built from URL parts alone — it
    renders with the network switch off, because it makes no request. Positioned
    so the shared corner external button anchors to the card itself. */
@@ -2420,8 +2572,11 @@ body.block-marqueeing .milkdown .editor {
     border-radius: var(--ui-radius-l);
     background: var(--vscode-editorWidget-background);
 
+    /* No frame here: the external button anchors to the row itself. */
     & .embed-card__external {
+        position: absolute;
         top: 50%;
+        right: 8px;
         transform: translateY(-50%);
     }
 

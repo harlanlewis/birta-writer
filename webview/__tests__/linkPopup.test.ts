@@ -463,7 +463,7 @@ describe("unlink button in the header", () => {
         expect(btnRemove.closest(".lp-body")).toBeNull();
     });
 
-    it("the header actions should be ordered open, copy, unlink, then edit", async () => {
+    it("the header actions should be ordered open, copy, embed, unlink, then edit", async () => {
         await hover(container.querySelector('a[href="notes.md"]')!);
 
         const btns = Array.from(
@@ -471,8 +471,12 @@ describe("unlink button in the header", () => {
         );
         expect(btns[0]?.classList.contains("lp-btn-open")).toBe(true);
         expect(btns[1]?.classList.contains("lp-btn-copy")).toBe(true);
-        expect(btns[2]?.classList.contains("lp-btn-remove")).toBe(true);
-        expect(btns[3]?.classList.contains("lp-btn-edit")).toBe(true);
+        // Present in the DOM order but only DISPLAYED for links that can card
+        // (a whole-paragraph provider URL) — hidden for this local file link.
+        expect(btns[2]?.classList.contains("lp-btn-embed")).toBe(true);
+        expect(btns[2]?.style.display).toBe("none");
+        expect(btns[3]?.classList.contains("lp-btn-remove")).toBe(true);
+        expect(btns[4]?.classList.contains("lp-btn-edit")).toBe(true);
     });
 
     it("the unlink button should use the link-off (slashed) icon", async () => {
@@ -856,5 +860,56 @@ describe("live link-text preview", () => {
         const input = document.querySelector<HTMLInputElement>(".lp-text-input")!;
         input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         expect(editor.action(getMarkdown())).toBe(ORIGINAL);
+    });
+});
+
+describe("link popup — Show as embed (card ⇄ link, the reverse direction)", () => {
+    let editor: Editor;
+    let container: HTMLElement;
+
+    const PROVIDER =
+        "[watch this](https://youtu.be/dQw4w9WgXcQ)\n\n" +
+        "Watch [inline clip](https://youtu.be/dQw4w9WgXcQ) mid-prose.\n\n" +
+        "[plain site](https://example.com/page)\n";
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+        document.body.innerHTML = "";
+        ({ editor, container } = await makeEditor(PROVIDER));
+        vi.useFakeTimers();
+    });
+
+    afterEach(async () => {
+        vi.useRealTimers();
+        await editor.destroy();
+    });
+
+    const anchorByText = (text: string): Element => {
+        const a = [...container.querySelectorAll("a")].find((el) => el.textContent === text);
+        expect(a).toBeTruthy();
+        return a!;
+    };
+
+    it("a whole-paragraph provider link should offer Show as embed, and clicking converts it", async () => {
+        await hover(anchorByText("watch this"));
+        const btn = getPopup().querySelector<HTMLButtonElement>(".lp-btn-embed")!;
+        expect(btn.style.display).not.toBe("none");
+
+        btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        btn.click();
+        const markdown = editor.action(getMarkdown());
+        // text === href now: the bare form the card trigger requires.
+        expect(markdown).not.toContain("watch this");
+        expect(markdown).toContain("<https://youtu.be/dQw4w9WgXcQ>");
+    });
+
+    it("a mid-prose provider link should NOT offer it (converting could never card)", async () => {
+        await hover(anchorByText("inline clip"));
+        expect(getPopup().querySelector<HTMLElement>(".lp-btn-embed")!.style.display).toBe("none");
+    });
+
+    it("a non-provider link should NOT offer it", async () => {
+        await hover(anchorByText("plain site"));
+        expect(getPopup().querySelector<HTMLElement>(".lp-btn-embed")!.style.display).toBe("none");
     });
 });

@@ -29,6 +29,8 @@ import { resolveLinkPath, resolveWikiTarget, type ResolverIo } from "./utils/lin
 import { scanHeadings } from "./utils/headingScan";
 import { extractOgTitle } from "./utils/openGraph";
 import { isPubliclyRoutableUrl } from "./utils/urlGuard";
+import { readCappedText } from "./utils/cappedRead";
+import { fetchEmbedTitle } from "./utils/embedMetaFetcher";
 import { slugify } from "../shared/slug";
 import { isLocalPathQuery, rankLinkTargets } from "../shared/linkTargetSuggest";
 import { lintBlocks } from "./utils/harperService";
@@ -82,54 +84,9 @@ const UNFURL_MAX_BYTES = 1024 * 1024;
 /** Manual-redirect hop budget; each hop re-passes the scheme + SSRF checks. */
 const UNFURL_MAX_REDIRECTS = 5;
 
-/**
- * Read at most `maxBytes` of a fetch Response body as UTF-8 text, then stop.
- * Streaming the body and bailing early bounds the parse cost regardless of the
- * page's real size (a title lives in <head>, near the top). Falls back to a
- * plain `.text()` when the body isn't a readable stream (e.g. a stubbed
- * Response in a unit test), slicing the result to the same budget.
- */
-async function readCappedText(res: Response, maxBytes: number): Promise<string> {
-    const reader = res.body?.getReader?.();
-    if (!reader) {
-        return (await res.text()).slice(0, maxBytes);
-    }
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    // Early stop: titles live in <head>, so once the closing tag streams past
-    // there is nothing left worth reading — typical pages finish in a few KB
-    // even though the cap allows a megabyte. The marker is searched in a small
-    // trailing window of the previous chunk joined to the new one, so a tag
-    // split across a chunk boundary is still seen.
-    const HEAD_END = "</head>";
-    const decoder = new TextDecoder("utf-8");
-    let tailText = "";
-    try {
-        while (total < maxBytes) {
-            const { done, value } = await reader.read();
-            if (done) { break; }
-            if (value) {
-                chunks.push(value);
-                total += value.length;
-                const text = tailText + decoder.decode(value, { stream: true });
-                if (text.includes(HEAD_END)) { break; }
-                tailText = text.slice(-HEAD_END.length);
-            }
-        }
-    } finally {
-        // Stop the transfer once we have enough (or on any read error).
-        try { await reader.cancel(); } catch { /* already closed */ }
-    }
-    const merged = new Uint8Array(Math.min(total, maxBytes));
-    let offset = 0;
-    for (const chunk of chunks) {
-        if (offset >= merged.length) { break; }
-        const take = Math.min(chunk.length, merged.length - offset);
-        merged.set(chunk.subarray(0, take), offset);
-        offset += take;
-    }
-    return new TextDecoder("utf-8").decode(merged);
-}
+// readCappedText lives in utils/cappedRead.ts (shared with the embed-metadata
+// fetcher); unfurl passes "</head>" as its early-stop marker — titles live in
+// <head>, so once the closing tag streams past there is nothing worth reading.
 
 /**
  * A place in the document a panel should navigate to: a 1-indexed document
@@ -208,6 +165,15 @@ export class MarkdownEditorProvider
     // Image webviewUri → relPath mapping (key: docUri.toString())
     private readonly _imageUriMaps = new Map<string, Map<string, string>>();
     private readonly _frontmatterMap = new Map<string, string>(); // uriKey → raw frontmatter string
+    /**
+     * uriKey → the webview's last view-state bag (fold anchors, scroll,
+     * frontmatter collapse). VS Code's own webview state dies with the tab,
+     * and switching to the raw editor CLOSES the tab — this in-memory echo is
+     * what lets the recreated webview restore the user's view. Session-scoped
+     * on purpose: view state is not a setting, and a window reload restores
+     * webviews (bags included) through VS Code itself.
+     */
+    private readonly _viewStateMap = new Map<string, Record<string, unknown>>();
 
     // Workspace-wide frontmatter list-value scan, cached for a short TTL so
     // repeated "+" menu opens stay snappy (fsPath → key → list values).
@@ -754,6 +720,7 @@ export class MarkdownEditorProvider
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
                             tableWrap,
                             syncVersion: 0,
+                            viewState: this._viewStateMap.get(uriKey),
                             ...(nav !== undefined
                                 ? {
                                       scrollToLine: nav.line,
@@ -1034,6 +1001,25 @@ export class MarkdownEditorProvider
                         if (message.id && message.url) {
                             this._handleUnfurl(panel, message.id, message.url)
                                 .catch((err) => reportError("unfurlUrl", err));
+                        }
+                        break;
+                    case "viewState":
+                        // The webview mirrors its state bag here (debounced);
+                        // handed back in `init` so folds/scroll/frontmatter
+                        // collapse survive the raw-editor round trip.
+                        if (message.state && typeof message.state === "object") {
+                            this._viewStateMap.set(uriKey, message.state);
+                        }
+                        break;
+                    case "resolveEmbedMeta":
+                        // Embed-card metadata (rung 1, render-only): resolve the
+                        // provider's oEmbed title. Always replies — a null title
+                        // on any failure or closed gate — so the webview's
+                        // backstop timer rarely fires. The .catch is a backstop
+                        // for a post to a disposed panel.
+                        if (message.id && message.url) {
+                            this._handleResolveEmbedMeta(panel, message.id, message.url)
+                                .catch((err) => reportError("resolveEmbedMeta", err));
                         }
                         break;
                     case "requestFmSuggestions":
@@ -1871,6 +1857,24 @@ export class MarkdownEditorProvider
     }
 
     /**
+     * Embed-card metadata: resolve and ALWAYS reply (null title on failure).
+     * The fetch itself — recognition, endpoint pinning, gates, cache — lives
+     * in utils/embedMetaFetcher.ts; the in-flight opt-in value is passed
+     * through so the just-in-time accept's own cards resolve immediately
+     * (the same bridge _fetchUnfurlTitle reads directly).
+     */
+    private async _handleResolveEmbedMeta(
+        panel: vscode.WebviewPanel,
+        id: string,
+        url: string,
+    ): Promise<void> {
+        const title = await fetchEmbedTitle(url, {
+            networkOverride: this._networkWriteInFlight ?? undefined,
+        });
+        postToWebview(panel.webview, { type: "embedMetaResult", id, url, title });
+    }
+
+    /**
      * Fetch `url` and return its deterministically-parsed title, or null on ANY
      * failure (non-http(s) scheme, bad URL, non-200, network error, timeout, no
      * title in the HTML). Never throws: paste-unfurl is best-effort, so every
@@ -1952,7 +1956,7 @@ export class MarkdownEditorProvider
                 if (contentType && !/^text\/|xhtml/i.test(contentType)) {
                     return null;
                 }
-                const html = await readCappedText(res, UNFURL_MAX_BYTES);
+                const html = await readCappedText(res, UNFURL_MAX_BYTES, "</head>");
                 return extractOgTitle(html);
             }
             return null; // redirect chain too long

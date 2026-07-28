@@ -27,7 +27,7 @@ things" becomes an argument for something categorically heavier.
 | Rung | What leaves | Status | Examples |
 |---|---|---|---|
 | **0 — nothing** | No outbound request at all | **Shipped, and the default.** `birta.network.enabled` ships `false`; with it off the editor makes no outbound request | Everything, out of the box |
-| **1 — a URL you typed** | The URL, to its own host | **Shipped** | Paste-unfurl (fetches a page title, *offers* it); URL embeds (renders a card) |
+| **1 — a URL you typed** | The URL, to its own host | **Shipped** | Paste-unfurl (fetches a page title, *offers* it); URL embeds (renders a card, and — 2026-07-27 — asks the provider's **own oEmbed endpoint** for the title shown on the card's caption: extension-side, request URL rebuilt from validated parts, session-cached, render-only) |
 | **2 — a URL + your credential** | The URL and a per-provider token, to that provider's pinned hosts | **Directed, not built** (MAR-198) | Jira/Asana/Figma/private-GitHub cards |
 | **3 — your document content** | The document itself | **Not decided, not designed** — gated on an open scope question | The publish loop (MAR-232), any cloud/sync surface |
 
@@ -67,7 +67,12 @@ once so no future capability re-derives them, and so a new surface knows what it
    Birta talks to" short and legible.
 6. **No confused-deputy fetches.** A URL in a document must never cause a credential-bearing request
    to an arbitrary host. Provider recognition is pure and unit-tested; unrecognized URLs get nothing;
-   credentials are not carried across redirects.
+   credentials are not carried across redirects. The embed-metadata fetch goes further: the
+   document's URL string only *selects* a provider — the outgoing request is rebuilt entirely from
+   validated parts (`shared/embedProviders.ts`: kind + extracted id → canonical URL → pinned oEmbed
+   endpoint), redirects are never followed (`redirect: "manual"`, any 3xx fails), and the same
+   shared table generates the webview CSP's host grants, so the allowlist cannot drift from the
+   recognizer.
 
 **Credentials** (rung 2)
 

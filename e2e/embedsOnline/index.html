@@ -42,15 +42,21 @@
     "",
     "https://youtu.be/dQw4w9WgXcQ",
     "",
+    // Valid shape, dead video: the request stub 404s this id's thumbnail, so
+    // this card pins the branded-fallback error state (never a blank frame).
+    "https://youtu.be/aaaaaaaaaaa",
+    "",
     "https://www.loom.com/share/0123456789abcdef0123456789abcdef",
     "",
     "https://www.figma.com/design/BAZsTPbh6W1r66Bdo9xkQp/Design-System",
     "",
     "https://github.com/microsoft/vscode/pull/12345",
     "",
+    "https://vimeo.com/1084537",
+    "",
     "[a titled link](https://youtu.be/dQw4w9WgXcQ)",
     "",
-    "https://vimeo.com/76979871",
+    "https://www.twitch.tv/videos/1234567890",
     "",
   ].join("\n");
   window.acquireVsCodeApi = () => ({
@@ -58,6 +64,12 @@
       window.__posted.push(msg);
       if (msg.type === "ready")
         window.postMessage({ type: "init", content: DOC + "\n", frontmatter: "", syncVersion: 1 }, "*");
+      // The extension's oEmbed resolver, stubbed: always replies (the real
+      // handler's contract), async like the real round trip. checks.mjs
+      // asserts both the requests (window.__posted) and the caption render.
+      if (msg.type === "resolveEmbedMeta")
+        setTimeout(() => window.postMessage(
+          { type: "embedMetaResult", id: msg.id, url: msg.url, title: "Stub title" }, "*"), 20);
     },
     getState: () => undefined,
     setState: () => {},

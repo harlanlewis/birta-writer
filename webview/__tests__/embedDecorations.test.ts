@@ -14,12 +14,12 @@
  *  - Decorations never touch state.doc: serialization with the plugin active is
  *    byte-identical to the source (the round-trip proof).
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { getMarkdown } from "@milkdown/utils";
-import { TextSelection } from "../pm";
+import { NodeSelection, TextSelection } from "../pm";
 import type { DecorationSet } from "../pm";
 import { makeCorpusEditor, editorView } from "./helpers/moveFuzz";
-import { computeEmbedDecorations, embedPlugin, regateEmbeds } from "../plugins/embed";
+import { computeEmbedDecorations, embedPlugin, embedKeymapPlugin, regateEmbeds } from "../plugins/embed";
 import { renderEmbedCard } from "../utils/embedCard";
 
 const ID = "dQw4w9WgXcQ";
@@ -172,16 +172,33 @@ describe("renderEmbedCard — branded facades (Loom, Figma)", () => {
         expect(iframe!.src).toBe(`https://embed.figma.com/design/${FKEY}?embed-host=birta-writer`);
     });
 
-    it("Figma's overlay should be the preview glyph, not a play triangle", () => {
+    it("Figma's overlay should be an explicit labeled pill, not a glyph", () => {
         // A play triangle promises video playback; a design canvas loads a
-        // preview. Video providers keep the triangle.
+        // preview — and a bare glyph (the old eye) promised nothing specific,
+        // so the non-video surface states its verb in words. Video providers
+        // keep the triangle.
         const figma = renderEmbedCard({ kind: "figma", id: `design/${FKEY}` });
         const loom = renderEmbedCard({ kind: "loom", id: LOOM });
-        const figmaGlyph = figma.querySelector(".embed-card__play")!.innerHTML;
-        const loomGlyph = loom.querySelector(".embed-card__play")!.innerHTML;
-        expect(figmaGlyph).not.toContain("M8 5v14l11-7z"); // the play triangle path
-        expect(figmaGlyph).toContain("circle"); // the eye glyph's pupil
-        expect(loomGlyph).toContain("M8 5v14l11-7z");
+        const figmaBtn = figma.querySelector<HTMLElement>(".embed-card__play")!;
+        expect(figmaBtn.classList.contains("embed-card__play--label")).toBe(true);
+        expect(figmaBtn.textContent).toBe("Load Figma preview");
+        expect(figmaBtn.querySelector("svg")).toBeNull();
+        expect(loom.querySelector(".embed-card__play")!.innerHTML).toContain("M8 5v14l11-7z");
+    });
+
+    it("a Vimeo card should show the branded facade and load the dnt player on click", () => {
+        const card = renderEmbedCard({ kind: "vimeo", id: "1084537" });
+        expect(card.querySelector("img")).toBeNull();
+        expect(card.querySelector(".embed-card__brand-name")!.textContent).toBe("Vimeo");
+        expect(card.querySelector("iframe")).toBeNull();
+
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        const iframe = card.querySelector<HTMLIFrameElement>("iframe")!;
+        // dnt=1 (Vimeo's do-not-track) rides every player load. NO autoplay:
+        // a webview's activation never delegates into a fresh cross-origin
+        // iframe, so requested autoplay just blocks and spins — the provider's
+        // own play button is the reliable gesture.
+        expect(iframe.src).toBe("https://player.vimeo.com/video/1084537?dnt=1");
     });
 
     it("without a source URL the external button should fall back to the canonical page", async () => {
@@ -195,6 +212,192 @@ describe("renderEmbedCard — branded facades (Loom, Figma)", () => {
             type: "openUrl",
             url: `https://www.loom.com/share/${LOOM}`,
         });
+    });
+});
+
+describe("renderEmbedCard — persistent controls, captions, and error states", () => {
+    it("the external button should survive the play click", () => {
+        // It used to live inside the replaced facade, so playing destroyed the
+        // one guaranteed escape hatch (user report, 2026-07-27).
+        const card = renderEmbedCard({ kind: "youtube", id: ID });
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        expect(card.querySelector("iframe")).not.toBeNull();
+        expect(card.querySelector(".embed-card__external")).not.toBeNull();
+    });
+
+    it("stop should appear on play and restore the facade when clicked", () => {
+        const card = renderEmbedCard({ kind: "loom", id: LOOM });
+        const stop = card.querySelector<HTMLButtonElement>(".embed-card__stop")!;
+        expect(stop.hidden).toBe(true);
+
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        expect(stop.hidden).toBe(false);
+
+        stop.click();
+        expect(card.querySelector("iframe")).toBeNull();
+        expect(card.querySelector(".embed-card__brand")).not.toBeNull();
+        expect(card.querySelector(".embed-card__play")).not.toBeNull();
+        expect(stop.hidden).toBe(true);
+    });
+
+    it("a failed thumbnail should degrade to the branded facade, keeping play", () => {
+        const card = renderEmbedCard({ kind: "youtube", id: ID });
+        const thumb = card.querySelector<HTMLImageElement>(".embed-card__thumb")!;
+        thumb.dispatchEvent(new Event("error"));
+        expect(card.querySelector(".embed-card__thumb")).toBeNull();
+        expect(card.querySelector(".embed-card__brand")).not.toBeNull();
+        expect(card.querySelector(".embed-card__play")).not.toBeNull();
+    });
+
+    it("every player facade should carry a RESIDENT identity strip with the URL", () => {
+        // No hover required — glanceable identity was the point (user
+        // direction 2026-07-27; the previous hover-reveal on thumbnails hid
+        // exactly the information the feature fetches).
+        const source = `https://www.loom.com/share/${LOOM}`;
+        const loom = renderEmbedCard({ kind: "loom", id: LOOM }, source);
+        const loomUrl = loom.querySelector<HTMLElement>(".embed-card__meta-url")!;
+        expect(loomUrl.textContent).toContain("loom.com/share/");
+        expect(loomUrl.title).toBe(source);
+
+        const yt = renderEmbedCard({ kind: "youtube", id: ID });
+        const ytUrl = yt.querySelector<HTMLElement>(".embed-card__meta-url")!;
+        // No source URL given: falls back to the canonical page.
+        expect(ytUrl.textContent).toContain("youtube.com/watch");
+        // The title row exists, empty until metadata resolves (hidden by :empty).
+        expect(yt.querySelector(".embed-card__meta-title")!.textContent).toBe("");
+    });
+
+    it("clicking the facade (not just the button) should activate the player", () => {
+        const card = renderEmbedCard({ kind: "loom", id: LOOM });
+        expect(card.querySelector("iframe")).toBeNull();
+        card.querySelector<HTMLElement>(".embed-card__stage")!.click();
+        expect(card.querySelector("iframe")).not.toBeNull();
+        expect(card.classList.contains("embed-card--playing")).toBe(true);
+    });
+
+    it("clicking the identity strip should NOT activate — it selects (bubbles to the host)", () => {
+        const card = renderEmbedCard({ kind: "loom", id: LOOM });
+        card.querySelector<HTMLElement>(".embed-card__meta")!.click();
+        expect(card.querySelector("iframe")).toBeNull();
+    });
+
+    it("the controls should live OUTSIDE the frame — a player owns its own corners", () => {
+        // Vimeo's fullscreen/PiP cluster sat exactly under our old overlay
+        // controls; the collision recurs for arbitrary embeds, so our chrome
+        // sits in a column beside the frame, never inside it.
+        const card = renderEmbedCard({ kind: "youtube", id: ID });
+        const controls = card.querySelector(".embed-card__controls")!;
+        expect(card.querySelector(".embed-card__frame")!.contains(controls)).toBe(false);
+        expect(card.classList.contains("embed-card--player")).toBe(true);
+    });
+
+    it("branded facades should pin the text-only name to the corner, clear of the control", () => {
+        const card = renderEmbedCard({ kind: "figma", id: `design/${FKEY}` });
+        const brand = card.querySelector<HTMLElement>(".embed-card__brand")!;
+        // No invented logo glyphs; the service name is the identity.
+        expect(brand.querySelector("svg")).toBeNull();
+        expect(brand.querySelector(".embed-card__brand-name")!.textContent).toBe("Figma");
+        // The name is a corner bug, a SIBLING of the centered activate control
+        // — separate corners, so overlap is structurally impossible.
+        const play = card.querySelector(".embed-card__play")!;
+        expect(brand.contains(play)).toBe(false);
+        expect(brand.parentElement).toBe(play.parentElement);
+    });
+
+    it("the identity strip should live BELOW the frame, outside it", () => {
+        // The metadata stays useful while the player runs, so the strip is a
+        // sibling under the frame — never an in-frame overlay the iframe
+        // replaces or the provider's chrome fights.
+        const card = renderEmbedCard({ kind: "loom", id: LOOM });
+        const meta = card.querySelector(".embed-card__meta")!;
+        expect(card.querySelector(".embed-card__frame")!.contains(meta)).toBe(false);
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        // Still present (and un-hidden) while the player runs.
+        expect(card.querySelector(".embed-card__meta")).not.toBeNull();
+    });
+
+    it("the sign-in hint should be a persistent clickable open-externally row", async () => {
+        const { mockVscodeApi } = await import("./setup");
+        mockVscodeApi.postMessage.mockClear();
+        const source = `https://www.figma.com/design/${FKEY}/My-File`;
+        const card = renderEmbedCard({ kind: "figma", id: `design/${FKEY}` }, source);
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+
+        const hint = card.querySelector<HTMLButtonElement>(".embed-card__hint")!;
+        expect(hint.hidden).toBe(false);
+        expect(hint.textContent).toContain("Open in Figma");
+        hint.click();
+        expect(mockVscodeApi.postMessage).toHaveBeenCalledWith({ type: "openUrl", url: source });
+    });
+
+    it("host-supplied actions should render edit + show-as-link controls that invoke them", () => {
+        const edit = vi.fn();
+        const removePreview = vi.fn();
+        const card = renderEmbedCard({ kind: "loom", id: LOOM }, undefined, { edit, removePreview });
+        card.querySelector<HTMLButtonElement>(".embed-card__edit")!.click();
+        expect(edit).toHaveBeenCalledOnce();
+        card.querySelector<HTMLButtonElement>(".embed-card__aslink")!.click();
+        expect(removePreview).toHaveBeenCalledOnce();
+        // Without actions (no host, e.g. these DOM-only tests) the verbs are
+        // simply absent rather than dead.
+        const bare = renderEmbedCard({ kind: "loom", id: LOOM });
+        expect(bare.querySelector(".embed-card__edit")).toBeNull();
+    });
+
+    it("the Figma sign-in hint should show only while the player is loaded", () => {
+        const card = renderEmbedCard({ kind: "figma", id: `design/${FKEY}` });
+        const hint = card.querySelector<HTMLElement>(".embed-card__hint")!;
+        expect(hint.hidden).toBe(true);
+
+        card.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        expect(hint.hidden).toBe(false);
+
+        card.querySelector<HTMLButtonElement>(".embed-card__stop")!.click();
+        expect(hint.hidden).toBe(true);
+        // Video providers never show it — a blank video frame is an error, not
+        // an auth wall.
+        const loom = renderEmbedCard({ kind: "loom", id: LOOM });
+        loom.querySelector<HTMLButtonElement>(".embed-card__play")!.click();
+        expect(loom.querySelector<HTMLElement>(".embed-card__hint")!.hidden).toBe(true);
+    });
+
+    it("a resolved oEmbed title should fill the title row — as literal text only", async () => {
+        const { queueEmbedMetaResolution, _resetEmbedMetaForTests } = await import("../embedMeta");
+        const { mockVscodeApi } = await import("./setup");
+        _resetEmbedMetaForTests();
+        mockVscodeApi.postMessage.mockClear();
+
+        const source = `https://www.loom.com/share/${LOOM}`;
+        const card = renderEmbedCard({ kind: "loom", id: LOOM }, source);
+        const title = card.querySelector<HTMLElement>(".embed-card__meta-title")!;
+        const url = card.querySelector<HTMLElement>(".embed-card__meta-url")!;
+        expect(title.textContent).toBe("");
+
+        // The idle pass asks; the reply lands; the title row fills in place.
+        queueEmbedMetaResolution([{ match: { kind: "loom", id: LOOM }, href: source }]);
+        const request = mockVscodeApi.postMessage.mock.calls
+            .map((c) => c[0] as { type: string; id: string })
+            .find((m) => m.type === "resolveEmbedMeta")!;
+        const { handleEmbedMetaResult } = await import("../embedMeta");
+        // A hostile title renders as literal text (textContent, never innerHTML).
+        handleEmbedMetaResult(request.id, `<img src=x onerror=alert(1)> Weekly sync`);
+        expect(title.textContent).toBe("<img src=x onerror=alert(1)> Weekly sync");
+        expect(title.querySelector("img")).toBeNull();
+        // The URL row keeps the URL — both visible, no replacement.
+        expect(url.textContent).toContain("loom.com/share/");
+        expect(url.title).toBe(source);
+        _resetEmbedMetaForTests();
+    });
+
+    it("readableUrl should strip scheme/www and middle-truncate long paths", async () => {
+        const { readableUrl } = await import("../utils/embedCard");
+        expect(readableUrl("https://www.loom.com/share/abc")).toBe("loom.com/share/abc");
+        const long = readableUrl(`https://www.figma.com/design/${FKEY}/A-Very-Long-Design-File-Title-Indeed`, 40);
+        expect(long.length).toBeLessThanOrEqual(40);
+        expect(long).toContain("…");
+        expect(long.startsWith("figma.com/")).toBe(true);
+        // Not a URL at all: shown as-is rather than thrown on.
+        expect(readableUrl("not a url")).toBe("not a url");
     });
 });
 
@@ -264,6 +467,31 @@ describe("computeEmbedDecorations — trigger conditions", () => {
         expect(widgets).toHaveLength(2);
         const keys = widgets.map((d) => (d.spec as { key: string }).key);
         expect(new Set(keys).size).toBe(2);
+        await editor.destroy();
+    });
+
+    it("an edit ABOVE an embed should leave every widget key unchanged", async () => {
+        // The key must be position-independent: ProseMirror reuses widget DOM
+        // only for a matching key, so a key that shifts with the document
+        // tears down (and rebuilds) every card below any edit — including a
+        // playing iframe (found 2026-07-27: typing one character above a
+        // playing video reset it to its facade).
+        const editor = await makeCorpusEditor(
+            `# Title\n\nhttps://youtu.be/${ID}\n\nhttps://www.loom.com/share/${LOOM}\n`,
+        );
+        const view = editorView(editor);
+        caretTo(view, 1);
+        const keysOf = (): string[] =>
+            computeEmbedDecorations(view.state)
+                .find()
+                .filter((d) => d.from === d.to)
+                .map((d) => (d.spec as { key: string }).key)
+                .sort();
+        const before = keysOf();
+        expect(before).toHaveLength(2);
+        // Type into the heading, above both embeds: positions shift, keys must not.
+        view.dispatch(view.state.tr.insertText("x", 1));
+        expect(keysOf()).toEqual(before);
         await editor.destroy();
     });
 
@@ -438,6 +666,224 @@ describe("regateEmbeds — a gate flip takes effect without a doc edit", () => {
         regateEmbeds(view);
 
         expect(pluginDecoCount(view)).toBe(0);
+        await editor.destroy();
+    });
+});
+
+describe("embed selection + keyboard model (MAR-187)", () => {
+    /** Compose the plugin pair, arm the pass, and hand back the view. */
+    async function makeSelectableEditor(source: string) {
+        const editor = await makeCorpusEditor(source, [embedPlugin, embedKeymapPlugin]);
+        const view = editorView(editor);
+        regateEmbeds(view);
+        return { editor, view };
+    }
+
+    /** Run the composed keymaps for one key, as the DOM event path would. */
+    function sendKey(view: ReturnType<typeof editorView>, key: string): boolean {
+        return view.someProp("handleKeyDown", (f) => f(view, new KeyboardEvent("keydown", { key }))) ?? false;
+    }
+
+    /** The embed paragraph's start position (the doc's second top-level child). */
+    function embedFrom(view: ReturnType<typeof editorView>): number {
+        return view.state.doc.child(0).nodeSize;
+    }
+
+    const flushPalette = () => new Promise((r) => setTimeout(r, 20));
+
+    afterEach(async () => {
+        // The palette is a body-level singleton; close it between tests. (The
+        // suite-level afterEach clears document.body; build() re-attaches.)
+        const mod = await import("../components/embedPalette");
+        mod.hideEmbedPalette();
+    });
+
+    it("a NodeSelection covering the embed should keep the card and mark it selected", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, embedFrom(view))));
+
+        const set = computeEmbedDecorations(view.state);
+        const node = set.find().find((d) => d.from < d.to);
+        expect(node).toBeDefined();
+        // Selected: ring class present, card widget still there (a plain
+        // overlapping selection would have dropped both — the reveal mode).
+        expect((node!.spec as { class?: string }).class ?? (node! as unknown as { type: { attrs: { class: string } } }).type.attrs.class).toContain("embed-host--selected");
+        expect(set.find().filter((d) => d.from === d.to)).toHaveLength(1);
+        await editor.destroy();
+    });
+
+    it("ArrowRight at the end of the block before an embed should select the card", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        // Caret at the very end of the heading text.
+        caretTo(view, view.state.doc.child(0).nodeSize - 1);
+
+        expect(sendKey(view, "ArrowRight")).toBe(true);
+        const sel = view.state.selection;
+        expect(sel instanceof NodeSelection).toBe(true);
+        expect(sel.from).toBe(embedFrom(view));
+        await editor.destroy();
+    });
+
+    it("ArrowRight from a selected card should move the caret into the next block", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n\nAfter.\n`);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, embedFrom(view))));
+
+        expect(sendKey(view, "ArrowRight")).toBe(true);
+        const sel = view.state.selection;
+        expect(sel.empty).toBe(true);
+        expect(view.state.doc.resolve(sel.from).parent.textContent).toBe("After.");
+        await editor.destroy();
+    });
+
+    it("sequential embeds should each be their own arrow stop", async () => {
+        const { editor, view } = await makeSelectableEditor(
+            `# Title\n\nhttps://youtu.be/${ID}\n\nhttps://www.loom.com/share/${LOOM}\n`,
+        );
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, embedFrom(view))));
+
+        expect(sendKey(view, "ArrowRight")).toBe(true);
+        const sel = view.state.selection;
+        expect(sel instanceof NodeSelection).toBe(true);
+        // The second embed starts where the first ends.
+        expect(sel.from).toBe(embedFrom(view) + view.state.doc.child(1).nodeSize);
+        await editor.destroy();
+    });
+
+    it("ArrowLeft at the start of the block after an embed should select the card", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n\nAfter.\n`);
+        const afterStart = embedFrom(view) + view.state.doc.child(1).nodeSize + 1;
+        caretTo(view, afterStart);
+
+        expect(sendKey(view, "ArrowLeft")).toBe(true);
+        expect(view.state.selection instanceof NodeSelection).toBe(true);
+        expect(view.state.selection.from).toBe(embedFrom(view));
+        await editor.destroy();
+    });
+
+    it("Backspace after an embed should SELECT it first, and delete on the second press", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n\nAfter.\n`);
+        const afterStart = embedFrom(view) + view.state.doc.child(1).nodeSize + 1;
+        caretTo(view, afterStart);
+        const docBefore = view.state.doc;
+
+        // First press: selection only — the document is untouched (the old
+        // behavior merged the hidden URL into "After." as glued autolink text).
+        expect(sendKey(view, "Backspace")).toBe(true);
+        expect(view.state.doc.eq(docBefore)).toBe(true);
+        expect(view.state.selection instanceof NodeSelection).toBe(true);
+
+        // Second press: the embed paragraph is gone; the neighbours survive.
+        expect(sendKey(view, "Backspace")).toBe(true);
+        const markdown = editor.action(getMarkdown());
+        expect(markdown).not.toContain("youtu.be");
+        expect(markdown).toContain("After.");
+        await editor.destroy();
+    });
+
+    it("Space on a selected card should toggle play and stop", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, embedFrom(view))));
+        // The card widget renders asynchronously (lazy chunk) — wait for it.
+        await vi.waitFor(() => {
+            if (!view.dom.querySelector(".embed-card__play")) { throw new Error("card not ready"); }
+        });
+
+        expect(sendKey(view, " ")).toBe(true);
+        expect(view.dom.querySelector(".embed-card iframe")).not.toBeNull();
+
+        expect(sendKey(view, " ")).toBe(true);
+        expect(view.dom.querySelector(".embed-card iframe")).toBeNull();
+        expect(view.dom.querySelector(".embed-card__play")).not.toBeNull();
+        await editor.destroy();
+    });
+
+    it("the card's show-as-text-link control should convert the embed in place", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        await vi.waitFor(() => {
+            if (!view.dom.querySelector(".embed-card__aslink")) { throw new Error("card not ready"); }
+        });
+        view.dom.querySelector<HTMLButtonElement>(".embed-card__aslink")!.click();
+        await vi.waitFor(() => {
+            const markdown = editor.action(getMarkdown());
+            if (!markdown.includes(`[youtu.be/${ID}](https://youtu.be/${ID})`)) {
+                throw new Error("not converted yet");
+            }
+        });
+        expect(computeEmbedDecorations(view.state).find()).toHaveLength(0);
+        await editor.destroy();
+    });
+
+    it("the card's edit control should TOGGLE the palette — open focused, close on re-press", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        await vi.waitFor(() => {
+            if (!view.dom.querySelector(".embed-card__edit")) { throw new Error("card not ready"); }
+        });
+        const editBtn = view.dom.querySelector<HTMLButtonElement>(".embed-card__edit")!;
+        editBtn.click();
+        await flushPalette();
+        expect(view.state.selection instanceof NodeSelection).toBe(true);
+        const palette = document.querySelector<HTMLElement>(".embed-palette")!;
+        const input = palette.querySelector<HTMLInputElement>(".embed-palette__url")!;
+        expect(palette.classList.contains("embed-palette--visible")).toBe(true);
+        expect(document.activeElement).toBe(input);
+        expect(input.value).toBe(`https://youtu.be/${ID}`);
+
+        // Second press closes what the first opened (an open-only control left
+        // no way back but Escape).
+        editBtn.click();
+        await flushPalette();
+        expect(palette.classList.contains("embed-palette--visible")).toBe(false);
+        await editor.destroy();
+    });
+
+    it("Enter on a selected card should open the palette with the URL editable", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, embedFrom(view))));
+
+        expect(sendKey(view, "Enter")).toBe(true);
+        await flushPalette();
+        const palette = document.querySelector<HTMLElement>(".embed-palette");
+        expect(palette).not.toBeNull();
+        expect(palette!.classList.contains("embed-palette--visible")).toBe(true);
+        const input = palette!.querySelector<HTMLInputElement>(".embed-palette__url")!;
+        expect(input.value).toBe(`https://youtu.be/${ID}`);
+        expect(document.activeElement).toBe(input);
+        await editor.destroy();
+    });
+
+    it("applying a URL edit in the palette should rewrite the bare link in one step", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, embedFrom(view))));
+        sendKey(view, "Enter");
+        await flushPalette();
+
+        const input = document.querySelector<HTMLInputElement>(".embed-palette__url")!;
+        const newUrl = "https://youtu.be/aaaaaaaaaaa";
+        input.value = newUrl;
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+        const markdown = editor.action(getMarkdown());
+        expect(markdown).toContain(newUrl);
+        expect(markdown).not.toContain(ID);
+        // The rewritten paragraph is still a bare link — still a card — and
+        // stays selected under the palette.
+        expect(view.state.selection instanceof NodeSelection).toBe(true);
+        await editor.destroy();
+    });
+
+    it("Show as text link should convert the card to a labeled link (de-carded)", async () => {
+        const { editor, view } = await makeSelectableEditor(`# Title\n\nhttps://youtu.be/${ID}\n`);
+        view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, embedFrom(view))));
+        sendKey(view, "Enter");
+        await flushPalette();
+
+        const asLink = document.querySelectorAll<HTMLButtonElement>(".embed-palette .ui-btn")[2]!;
+        asLink.click();
+
+        const markdown = editor.action(getMarkdown());
+        // A labeled [text](url): text ≠ href, so the paragraph no longer cards.
+        expect(markdown).toContain(`[youtu.be/${ID}](https://youtu.be/${ID})`);
+        expect(computeEmbedDecorations(view.state).find()).toHaveLength(0);
         await editor.destroy();
     });
 });

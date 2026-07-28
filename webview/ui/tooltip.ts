@@ -17,9 +17,14 @@ function getTooltip(): HTMLElement {
     return tooltipEl;
 }
 
+/** Tooltip placements. 'left' centers vertically and opens toward the page
+ * body — for right-edge control columns (the embed card) whose tips would
+ * otherwise clip at the viewport or cover the control below. */
+export type TooltipPlacement = "above" | "below" | "left";
+
 interface TooltipOptions {
-    /** Placement: 'below' (default, used by the toolbar) or 'above' */
-    placement?: "above" | "below";
+    /** Placement: 'below' (default, used by the toolbar), 'above', or 'left' */
+    placement?: TooltipPlacement;
     /** Only show when the text is truncated (an ellipsis appears) */
     truncatedOnly?: boolean;
 }
@@ -41,7 +46,7 @@ interface TooltipHandle {
 function position(
     tip: HTMLElement,
     el: HTMLElement,
-    placement: "above" | "below",
+    placement: TooltipPlacement,
 ): void {
     tip.style.visibility = "hidden";
     tip.style.display = "block";
@@ -52,7 +57,17 @@ function position(
     let x = elRect.left + elRect.width / 2 - tipRect.width / 2;
     let y: number;
 
-    if (placement === "above") {
+    if (placement === "left") {
+        x = elRect.left - tipRect.width - 6;
+        y = elRect.top + elRect.height / 2 - tipRect.height / 2;
+        if (x < 4) {
+            // No room on the left: fall through to the right side.
+            x = elRect.right + 6;
+        }
+        if (y < getTopbarBottom() + 4) {
+            y = getTopbarBottom() + 4;
+        }
+    } else if (placement === "above") {
         y = elRect.top - tipRect.height - 6;
         // The fixed topbar (z 10002) covers the tooltip (z 10000), so "room
         // above" ends at the bar's bottom edge, not the viewport top — chrome
@@ -91,7 +106,7 @@ export function hideTooltip(): void {
 export function showTooltipAt(
     el: Element,
     text: string,
-    placement: "above" | "below" = "above",
+    placement: TooltipPlacement = "above",
 ): void {
     const tip = getTooltip();
     tip.textContent = text;

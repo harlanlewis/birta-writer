@@ -288,11 +288,14 @@ That only holds if the editor does the things you expect from VS Code:
   paste (with nothing selected) to read that page's title — no third-party
   service, no analytics, it refuses local and private-network addresses (and
   re-checks every redirect), and it falls back to the plain link when the page is
-  offline or untitled; and **URL embed players** contact *only* the named
-  provider of a bare link on its own line — a YouTube thumbnail at render, the
-  player (privacy-mode `youtube-nocookie.com`), a Loom video, or a live Figma
-  frame created only when you click — with each provider's exact hosts pinned
-  in the webview's content-security-policy, never a wildcard, never an
+  offline or untitled; and **URL embed cards** contact *only* the named
+  provider of a bare link on its own line — a YouTube thumbnail at render, a
+  title lookup at that provider's own oEmbed endpoint (so the card can name
+  what it embeds), and the player (privacy-mode `youtube-nocookie.com`; Vimeo's
+  always loads with its `dnt=1` do-not-track flag), a Loom or Vimeo video, or a
+  live Figma frame created only when you click — with each
+  provider's exact hosts pinned in one shared table that also generates the
+  webview's content-security-policy, never a wildcard, never an
   aggregation service. You don't have to hunt
   for the setting first: whichever of the two you just triggered offers a quiet,
   dismissable prompt right where you're working, and you decide in place.
@@ -310,9 +313,11 @@ That only holds if the editor does the things you expect from VS Code:
   they touch your file.** Paste-unfurl *writes* — it puts a fetched title into
   your document — so it asks first: the title arrives as an offer at the link and
   nothing changes until you accept it (`birta.pasteUnfurl.autoApply` turns that
-  into an automatic apply once you trust it). URL embeds *never* write: a card is
-  a rendering of the plain link that is already in the file, so turning embeds
-  off simply shows the link again and no byte ever moved. Because a card and a
+  into an automatic apply once you trust it). URL embeds *never* write: a card
+  — its fetched title included — is a rendering of the plain link that is
+  already in the file, so turning embeds off simply shows the link again and no
+  byte ever moved (editing the URL through the card's palette is your explicit
+  edit, applied on Enter like any other). Because a card and a
   fetched title are mutually exclusive ways to present the same link, each URL
   has exactly one owner — a link that can render as a card is never retitled.
   **Why it matters:** "will this change my file?" is the only question that

@@ -10,10 +10,12 @@
  * plugins/contentGuard, plugins/foldState); this module only names the
  * component-facing surface.
  *
- * Duplicate and delete are component-owned (components/blockMenu implements
- * them, dispatching through the fold metas and guard tag exposed here), so
- * they are not wrapped: no component consumes them across a boundary — only
- * the blockKeys plugin does, which is a plugin, not a component.
+ * Duplicate is component-owned (components/blockMenu implements it,
+ * dispatching through the fold metas and guard tag exposed here) and not
+ * wrapped: no component consumes it across a boundary. Delete WAS the same
+ * until the embed palette (a component) needed it, which is exactly the
+ * cross-boundary case this module exists for — so deleteBlockRange is now
+ * published here while its implementation stays with blockMenu.
  *
  * Pure render-time queries (block glyphs, node-kind taxonomy) stay on the
  * plugins/headingFold facade — this surface is for code that MUTATES the
@@ -46,3 +48,8 @@ export { headingFoldPluginKey, type HeadingFoldMeta } from "../plugins/foldState
 // The content-conservation guard's tagging protocol: every structural
 // operation declares its contract on the transaction it dispatches.
 export { tagContentGuard } from "../plugins/contentGuard";
+
+// The delete primitive (deleteRange + fold delete meta; restores the
+// schema-required trailing paragraph). Owned by blockMenu; published for
+// components outside it (the embed palette's Delete verb).
+export { deleteBlockRange } from "../components/blockMenu";

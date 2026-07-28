@@ -172,6 +172,16 @@ export function notifyUnfurl(id: string, url: string): void {
 }
 
 /**
+ * Embed-card metadata (rung 1, render-only): ask the provider's own oEmbed
+ * endpoint for a recognized URL's title. The reply arrives as an
+ * `embedMetaResult` correlated by `id`; the title only ever decorates a card
+ * caption — it is never written to the document.
+ */
+export function notifyResolveEmbedMeta(id: string, url: string): void {
+    vscode.postMessage({ type: "resolveEmbedMeta", id, url });
+}
+
+/**
  * Just-in-time opt-in (MAR-179): the user accepted the "Enable" affordance
  * offered when they did something that would use the network while the master
  * switch (`birta.network.enabled`) was off. The extension persists the setting
@@ -300,6 +310,21 @@ export function getWebviewState(): Record<string, unknown> | null {
     return vscode.getState() as Record<string, unknown> | null;
 }
 
+/** Debounce for the extension-side echo: scroll writes per frame; one message
+ * per pause is plenty for a store that only matters across a mode switch. */
+const VIEW_STATE_ECHO_DELAY_MS = 250;
+let _viewStateEchoTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function setWebviewState(state: Record<string, unknown>): void {
     vscode.setState(state);
+    // Mirror the bag to the extension (per-URI, in-memory): VS Code's own
+    // webview state does not survive the raw-editor round trip — that switch
+    // CLOSES the custom tab — so folds, scroll, and the frontmatter collapse
+    // were silently reset. The extension hands the bag back in `init`.
+    if (_viewStateEchoTimer) { clearTimeout(_viewStateEchoTimer); }
+    _viewStateEchoTimer = setTimeout(() => {
+        _viewStateEchoTimer = null;
+        const latest = getWebviewState();
+        if (latest) { vscode.postMessage({ type: "viewState", state: latest }); }
+    }, VIEW_STATE_ECHO_DELAY_MS);
 }
