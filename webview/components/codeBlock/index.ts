@@ -12,7 +12,18 @@ import {
     IconCode, IconEye,
     IconZoomIn, IconZoomOut, IconMaximize2, IconResetZoom,
     IconAlertCircle, IconX, IconWrapText,
+    IconExpandHorizontal, IconShrinkHorizontal,
 } from "@/ui/icons";
+import {
+    applyBlockWidthClass,
+    codeWidthAnchor,
+    getBlockWidth,
+    getBlockWrap,
+    renameBlockWidthAnchor,
+    renameBlockWrapAnchor,
+    setBlockWidth,
+    setBlockWrap,
+} from "@/blockWidth";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
 import { t } from "@/i18n";
 import { loadMermaid } from "@/utils/mermaidLoader";
@@ -30,6 +41,7 @@ import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
 import { onOutsideClick } from "@/ui/outsideClick";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
+import { createBlockControlsColumn } from "@/ui/blockControls";
 import './codeBlock.css';
 
 const shouldAutoConvertCodeBlock = (): boolean =>
@@ -580,9 +592,15 @@ export function createCodeBlockView(
     const wrapper = document.createElement("div");
     wrapper.className = "code-block-wrapper";
 
-    const header = document.createElement("div");
-    header.className = "code-block-header";
-    header.contentEditable = "false";
+    // The floating chrome row (language pill + fold ellipsis), in-canvas at
+    // the wrapper's top-left — the mermaid-overlay pattern. It replaced the
+    // full-width header bar (maintainer, 2026-07-28): the canvas reserves a
+    // top band via the code/gutter/preview padding, so line 1 never slides
+    // under the pill, and the action buttons live in the shared control
+    // column OUTSIDE the top-right (createBlockControlsColumn below).
+    const floatRow = document.createElement("div");
+    floatRow.className = "code-float-row";
+    floatRow.contentEditable = "false";
 
     const currentLang = (node.attrs["language"] as string) || "";
     const picker = createLangPicker(currentLang, (newLang) => {
@@ -628,7 +646,12 @@ export function createCodeBlockView(
     let lbDismissCleanup: (() => void) | null = null;
     // Element showing the current zoom percentage (center of the overlay)
     let zoomValueDisplay: HTMLButtonElement | null = null;
-    let isWordWrap = shouldWordWrapCodeBlock();
+    // The block's content anchor (blockWidth.ts) — shared by the width AND
+    // word-wrap preferences, declared before either seeds from the store.
+    let widthAnchor = codeWidthAnchor(node.textContent);
+    // A remembered per-block override beats the global setting; absent means
+    // follow birta.codeBlockWordWrap (and keep following it if it changes).
+    let isWordWrap = getBlockWrap(widthAnchor) ?? shouldWordWrapCodeBlock();
 
     function makeMermaidBtn(icon: string, tipText: string, extraClass = ""): HTMLButtonElement {
         return createButton({
@@ -640,40 +663,73 @@ export function createCodeBlockView(
         });
     }
 
-    // ── Header buttons (after the spacer, right-aligned) ────────────────
-    const spacer = document.createElement("div");
-    spacer.style.flex = "1";
-
-    // Code/preview toggle button (shown only for mermaid)
+    // ── Control-column buttons (the shared .bc-btn recipe; tooltips open
+    // LEFT, over the block, like every control column) ────────────────
+    // Code/preview toggle button (shown only for previewable languages)
     const toggleBtn = document.createElement("button");
-    toggleBtn.className = "ui-btn code-view-toggle-btn";
+    toggleBtn.className = "bc-btn code-view-toggle-btn";
     toggleBtn.tabIndex = -1;
     toggleBtn.innerHTML = IconEye;
     toggleBtn.style.display = isPreviewable() ? "inline-flex" : "none";
     const previewTip = (): string =>
         isCalc ? t("Preview Calculations") : isLatex ? t("Preview Formula") : t("Preview Diagram");
-    const toggleTooltip = applyTooltip(toggleBtn, previewTip(), { placement: "above" });
+    const toggleTooltip = applyTooltip(toggleBtn, previewTip(), { placement: "left" });
 
-    // Word-wrap toggle for the current code block (local override, not written to Markdown)
+    // Word-wrap toggle for the current code block — a remembered per-block
+    // override (state bag, never written to Markdown; blockWidth.ts).
     const wordWrapBtn = document.createElement("button");
-    wordWrapBtn.className = "ui-btn code-wrap-toggle-btn";
+    wordWrapBtn.className = "bc-btn code-wrap-toggle-btn";
     wordWrapBtn.tabIndex = -1;
     wordWrapBtn.innerHTML = IconWrapText;
-    const wordWrapTooltip = applyTooltip(wordWrapBtn, t("Toggle Word Wrap"), { placement: "above" });
+    const wordWrapTooltip = applyTooltip(wordWrapBtn, t("Toggle Word Wrap"), { placement: "left" });
+
+    // Per-block width toggle (blockWidth.ts): column width (default) ⇄ full
+    // width — in a Fixed-width page the block breaks out of the column. A
+    // presentation preference like word wrap, never written to the markdown;
+    // both persist in the webview state bag on `widthAnchor` (declared with
+    // the wrap seed above; re-anchored on edits in update()). Top-level
+    // blocks only: a nested block's containing box isn't the content column,
+    // so the toggle would be a dead control there.
+    const widthBtn = document.createElement("button");
+    widthBtn.className = "bc-btn code-width-toggle-btn";
+    widthBtn.tabIndex = -1;
+    const widthTooltip = applyTooltip(widthBtn, "", { placement: "left" });
+    const syncWidthBtn = (): void => {
+        const full = getBlockWidth(widthAnchor) === "full";
+        applyBlockWidthClass(wrapper, full ? "full" : null);
+        widthBtn.innerHTML = full ? IconShrinkHorizontal : IconExpandHorizontal;
+        const label = full ? t("Fixed width") : t("Full width");
+        widthBtn.setAttribute("aria-label", label);
+        widthTooltip.setText(label);
+        widthBtn.classList.toggle("bc-btn--on", full);
+    };
+    {
+        const pos = getPos();
+        const topLevel = pos !== undefined && view.state.doc.resolve(pos).depth === 0;
+        widthBtn.style.display = topLevel ? "" : "none";
+    }
+    syncWidthBtn();
+    widthBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setBlockWidth(widthAnchor, getBlockWidth(widthAnchor) === "full" ? null : "full");
+        syncWidthBtn();
+        hideTooltip();
+    });
 
     // Fullscreen button (always present)
     const fullscreenBtn = document.createElement("button");
-    fullscreenBtn.className = "ui-btn mermaid-zoom-btn code-block-fullscreen-btn";
+    fullscreenBtn.className = "bc-btn code-block-fullscreen-btn";
     fullscreenBtn.tabIndex = -1;
     fullscreenBtn.innerHTML = IconMaximize2;
-    applyTooltip(fullscreenBtn, t("View Fullscreen"), { placement: "above" });
+    applyTooltip(fullscreenBtn, t("View Fullscreen"), { placement: "left" });
 
     // Copy button
     const copyBtn = document.createElement("button");
-    copyBtn.className = "ui-btn copy-btn";
+    copyBtn.className = "bc-btn copy-btn";
     copyBtn.tabIndex = -1;
     copyBtn.innerHTML = IconCopy;
-    const copyTooltip = applyTooltip(copyBtn, t("Copy Code"), { placement: "above" });
+    const copyTooltip = applyTooltip(copyBtn, t("Copy Code"), { placement: "left" });
     let copyRestoreTimer: ReturnType<typeof setTimeout> | null = null;
 
     copyBtn.addEventListener("mousedown", (e) => {
@@ -705,7 +761,7 @@ export function createCodeBlockView(
     function applyWordWrapState(): void {
         wrapper.classList.toggle("code-block-wrapper--word-wrap", isWordWrap);
         wrapper.classList.toggle("code-block-wrapper--no-word-wrap", !isWordWrap);
-        wordWrapBtn.classList.toggle("code-wrap-toggle-btn--active", isWordWrap);
+        wordWrapBtn.classList.toggle("bc-btn--on", isWordWrap);
         wordWrapTooltip.setText(isWordWrap ? t("Disable Word Wrap") : t("Enable Word Wrap"));
     }
 
@@ -713,6 +769,9 @@ export function createCodeBlockView(
         e.preventDefault();
         e.stopPropagation();
         isWordWrap = !isWordWrap;
+        // Remember the choice per block — cleared when it matches the global
+        // setting again, so an un-overridden block keeps following it.
+        setBlockWrap(widthAnchor, isWordWrap === shouldWordWrapCodeBlock() ? null : isWordWrap);
         applyWordWrapState();
         scheduleLineNumberRefresh();
         hideTooltip();
@@ -742,14 +801,17 @@ export function createCodeBlockView(
     );
     foldEllipsis.dom.classList.add("code-fold-ellipsis");
 
-    // header: [picker][…][spacer][toggleBtn][wordWrapBtn][fullscreenBtn][copyBtn]
-    header.appendChild(picker.el);
-    header.appendChild(foldEllipsis.dom);
-    header.appendChild(spacer);
-    header.appendChild(toggleBtn);
-    header.appendChild(wordWrapBtn);
-    header.appendChild(fullscreenBtn);
-    header.appendChild(copyBtn);
+    // float row: [picker][…] — in-canvas, top-left
+    floatRow.appendChild(picker.el);
+    floatRow.appendChild(foldEllipsis.dom);
+
+    // control column (outside top-right): [copy][toggle][wrap][width][fullscreen]
+    const controlsCol = createBlockControlsColumn(wrapper);
+    controlsCol.appendChild(copyBtn);
+    controlsCol.appendChild(toggleBtn);
+    controlsCol.appendChild(wordWrapBtn);
+    controlsCol.appendChild(widthBtn);
+    controlsCol.appendChild(fullscreenBtn);
 
     // ── Code area ─────────────────────────────────────────
     const pre = document.createElement("pre");
@@ -1029,12 +1091,13 @@ export function createCodeBlockView(
         }
     }
 
-    wrapper.appendChild(header);
+    wrapper.appendChild(floatRow);
     wrapper.appendChild(pre);
     wrapper.appendChild(mermaidPreview);
     wrapper.appendChild(latexPreview);
     wrapper.appendChild(calcPreview);
     wrapper.appendChild(resizeHandle);
+    wrapper.appendChild(controlsCol);
     scheduleLineNumberRefresh();
 
     const lineNumberResizeObserver = typeof ResizeObserver !== "undefined"
@@ -1767,6 +1830,17 @@ export function createCodeBlockView(
             node = updatedNode;
             scheduleLineNumberRefresh();
             foldEllipsis.setCount(codeLineCount(updatedNode.textContent));
+
+            // Carry the stored width and wrap preferences across a
+            // first-line edit (codeWidthAnchor scans only to the first
+            // newline — cheap).
+            const newWidthAnchor = codeWidthAnchor(updatedNode.textContent);
+            if (newWidthAnchor !== widthAnchor) {
+                renameBlockWidthAnchor(widthAnchor, newWidthAnchor);
+                renameBlockWrapAnchor(widthAnchor, newWidthAnchor);
+                widthAnchor = newWidthAnchor;
+                syncWidthBtn();
+            }
 
             if (!wasPreviewable && nowPreviewable) {
                 toggleBtn.style.display = "inline-flex";

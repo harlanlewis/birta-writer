@@ -19,6 +19,21 @@
     border-radius: 2px;
 }
 
+/* Per-block width (blockWidth.ts). Default is natural size (above): the
+   image renders at its intrinsic size, capped by the column. bw-fixed fills
+   the column; bw-full additionally breaks out of a fixed-width page (the
+   bw-* geometry in style.css, gated to standalone top-level images). Block
+   display so the wrapper is a box the paragraph's centering doesn't fight. */
+.image-wrapper.bw-fixed,
+.image-wrapper.bw-full {
+    display: block;
+    width: 100%;
+
+    & img.image-node {
+        width: 100%;
+    }
+}
+
 .image-wrapper--selected {
     border-color: var(--vscode-focusBorder);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
@@ -75,14 +90,6 @@
 
 .img-tb-btn svg {
     display: block;
-    flex-shrink: 0;
-}
-
-.img-tb-sep {
-    width: 1px;
-    height: 16px;
-    background: var(--palette-line);
-    margin: 0 2px;
     flex-shrink: 0;
 }
 
@@ -232,12 +239,16 @@
     opacity: 0.7;
 }
 
-/* ─── In-editor image lightbox (click to zoom) ─────────── */
+/* ─── In-editor image lightbox (click to zoom) ───────────
+   Same overlay recipe as the embed fullscreen lightbox (style.css
+   .embed-lightbox): a light theme-aware wash + blur, never an always-dark
+   photo scrim — every fullscreen preview reads as one surface (2026-07-28). */
 .img-editor-lightbox {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.8); /* color-literal-ok: always-dark lightbox scrim (photo-viewer chrome, theme-independent by design) */
+    background: color-mix(in srgb, var(--vscode-editor-background) 25%, transparent);
+    backdrop-filter: blur(2px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -253,24 +264,30 @@
     cursor: default;
 }
 
+/* The embed lightbox's close recipe, verbatim — one fullscreen anatomy. */
 .img-editor-lightbox-close {
     position: absolute;
     top: 16px;
-    right: 20px;
-    background: none;
-    border: none;
-    color: #fff; /* color-literal-ok: white-on-dark close button for the always-dark lightbox scrim */
-    font-size: 22px;
-    cursor: pointer;
-    opacity: 0.8;
-    line-height: 1;
-    padding: 4px 8px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--vscode-editorWidget-border);
     border-radius: var(--ui-radius-m);
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    cursor: pointer;
+
+    & svg {
+        width: 16px;
+        height: 16px;
+    }
 }
 
 .img-editor-lightbox-close:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.1); /* color-literal-ok: hover wash on the always-dark lightbox scrim */
+    background: var(--vscode-toolbar-hoverBackground);
 }
 
 /* The image path autocomplete dropdown now composes the shared suggest

@@ -6,15 +6,24 @@ import type {
     EditorView,
 } from "@/pm";
 import {
-    IconZoomIn,
+    IconExpandHorizontal,
+    IconShrinkHorizontal,
+    IconMaximize2,
     IconPencil,
-    IconTrash2,
     IconX,
     IconImageOff,
 } from "@/ui/icons";
+import {
+    applyBlockWidthClass,
+    getBlockWidth,
+    imageWidthAnchor,
+    renameBlockWidthAnchor,
+    setBlockWidth,
+} from "@/blockWidth";
 import { t } from "@/i18n";
-import { createButton, createSeparator, setupApplyOnBlur } from "@/ui/dom";
+import { setupApplyOnBlur } from "@/ui/dom";
 import { applyTooltip } from "@/ui/tooltip";
+import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockControls";
 import { attachImgPathComplete, resolveToWebviewUri } from './imgPathComplete';
 import { attachInputUndo } from "@/utils/inputUndo";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
@@ -128,15 +137,6 @@ function isolateInput(input: HTMLInputElement): void {
     // the VS Code WebView relies on keydown bubbling to window to trigger native clipboard actions
 }
 
-// ─── Toolbar button factory ────────────────────────────────
-function makeBtn(icon: string, label: string): HTMLButtonElement {
-    return createButton({ className: "ui-btn img-tb-btn", icon, tabIndex: -1, title: label, tooltipPlacement: "above" });
-}
-
-function makeSep(): HTMLElement {
-    return createSeparator("img-tb-sep", "span");
-}
-
 // ─── NodeView factory ──────────────────────────────────────
 export function createImageView(
     node: PMNode,
@@ -248,14 +248,6 @@ export function createImageView(
     const toolbarRow = document.createElement("div");
     toolbarRow.className = "image-toolbar-row";
 
-    // Zoom button
-    const zoomBtn = makeBtn(IconZoomIn, t("View Full Size"));
-    zoomBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        showGlobalLightbox(img.src, img.alt);
-    });
-
     // File-name chip with a pencil: click to edit the image path (src attribute)
     const editPathBtn = document.createElement("button");
     editPathBtn.className = "ui-btn img-tb-btn img-tb-path";
@@ -275,19 +267,62 @@ export function createImageView(
         startSrcEdit();
     });
 
-    // Delete button
-    const deleteBtn = makeBtn(IconTrash2, t("Delete"));
-    deleteBtn.style.color = "var(--vscode-errorForeground)";
-    deleteBtn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const pos = getPos();
-        if (pos === undefined) {
-            return;
-        }
-        view.dispatch(view.state.tr.delete(pos, pos + currentNode.nodeSize));
-        view.focus();
+    // ── The control column (shared block-controls primitive): zoom, then
+    // width — the image's key actions, outside the image's top-right like
+    // every other rich block. Hover-revealed like all columns, pinned open
+    // while the image is selected. No delete button: deletion belongs to the
+    // block menu and the keyboard (Backspace on the selected image).
+    const controlsCol = createBlockControlsColumn(wrapper);
+
+    const zoomControl = makeBlockControlButton({
+        className: "img-bc-zoom",
+        icon: IconMaximize2,
+        label: t("View Fullscreen"),
+        onClick: () => showGlobalLightbox(img.src, img.alt),
     });
+
+    // Width cycle button (blockWidth.ts): Natural size → Fit column width →
+    // Full width → back. Presentation-only — the markdown image syntax has no
+    // width slot, and the store lives in the webview state bag. Anchored on
+    // the DISPLAY path (webview URIs are session-scoped), re-anchored on src
+    // edits in update(). Icon + tooltip name the NEXT state (the word-wrap
+    // toggle's contract).
+    const widthMode = (): "natural" | "fixed" | "full" => getBlockWidth(widthAnchor) ?? "natural";
+    // In FULL-width page mode the cycle's third step (full = break out of a
+    // fixed column) is identical to fit-column, so it drops out: the toggle
+    // never offers a state the user can't see.
+    const pageIsFullWidth = (): boolean => document.body.classList.contains("editor-width-auto");
+    const widthControl = makeBlockControlButton({
+        className: "img-tb-width",
+        icon: IconExpandHorizontal,
+        label: t("Fit Column Width"),
+        onClick: () => {
+            const mode = widthMode();
+            setBlockWidth(
+                widthAnchor,
+                mode === "natural" ? "fixed"
+                : mode === "fixed" && !pageIsFullWidth() ? "full"
+                : null,
+            );
+            syncWidthBtn();
+        },
+    });
+    function syncWidthBtn(): void {
+        const mode = widthMode();
+        applyBlockWidthClass(wrapper, mode === "natural" ? null : mode);
+        widthControl.setVerb(
+            mode === "full" || (mode === "fixed" && pageIsFullWidth())
+                ? IconShrinkHorizontal
+                : IconExpandHorizontal,
+            mode === "natural" ? t("Fit Column Width")
+            : mode === "fixed" && !pageIsFullWidth() ? t("Full Width")
+            : t("Natural Size"),
+        );
+        widthControl.setOn(mode !== "natural");
+    }
+
+    controlsCol.appendChild(zoomControl.button);
+    controlsCol.appendChild(widthControl.button);
 
     function updateInfo(src: string): void {
         const name = src.split("/").pop() ?? src;
@@ -320,12 +355,9 @@ export function createImageView(
         onClose: () => view.focus(),
     });
 
-    // ── Assemble the toolbar ──────────────────────────────────
+    // ── Assemble the toolbar (the EDITORS: path chip + title; the icon
+    // actions live in the control column) ─────────────────────
     toolbarRow.appendChild(editPathBtn);
-    toolbarRow.appendChild(makeSep());
-    toolbarRow.appendChild(zoomBtn);
-    toolbarRow.appendChild(makeSep());
-    toolbarRow.appendChild(deleteBtn);
     toolbar.appendChild(toolbarRow);
     toolbar.appendChild(titleInput);
 
@@ -333,12 +365,15 @@ export function createImageView(
     wrapper.appendChild(errorPlaceholder);
     wrapper.appendChild(caption);
     wrapper.appendChild(toolbar);
+    wrapper.appendChild(controlsCol);
 
-    // ── Initialize the info area, caption, and title row ──────
+    // ── Initialize the info area, caption, title row, and width ──────
     let rawSrc = (node.attrs["src"] as string) ?? "";
+    let widthAnchor = imageWidthAnchor(toDisplayPath(rawSrc));
     updateInfo(rawSrc);
     updateCaption(img.alt);
     updateTitleField(img.title);
+    syncWidthBtn();
 
     // ── Edit the image path (src attribute) ───────────────────
     let isEditingSrc = false;
@@ -462,6 +497,13 @@ export function createImageView(
                     img.style.display = "";
                     errorPlaceholder.style.display = "none";
                 }
+                // Carry a stored width preference across the src edit.
+                const newAnchor = imageWidthAnchor(toDisplayPath(newSrc));
+                if (newAnchor !== widthAnchor) {
+                    renameBlockWidthAnchor(widthAnchor, newAnchor);
+                    widthAnchor = newAnchor;
+                    syncWidthBtn();
+                }
             }
             if (img.alt !== newAlt) {
                 img.alt = newAlt;
@@ -480,6 +522,9 @@ export function createImageView(
         selectNode(): void {
             wrapper.classList.add("image-wrapper--selected");
             toolbar.style.display = "flex";
+            // The hover-revealed control column stays pinned open while the
+            // image is selected.
+            controlsCol.classList.add("bc-col--shown");
 
             // If the toolbar would extend past the top of the viewport, show
             // it below the image instead. Measured, not hardcoded: the
@@ -492,12 +537,22 @@ export function createImageView(
         deselectNode(): void {
             wrapper.classList.remove("image-wrapper--selected");
             toolbar.style.display = "none";
+            controlsCol.classList.remove("bc-col--shown");
         },
 
         stopEvent(e: Event): boolean {
-            // Events inside the toolbar (buttons, inputs) and the caption are kept from ProseMirror
+            // Events inside the toolbar (buttons, inputs), the caption, and
+            // the column's BUTTONS are kept from ProseMirror. The column's
+            // bare hit strip is not: it spans the block's right side as a
+            // hover target, and clicks there should still reach the editor
+            // like any margin click.
             const target = e.target as Node;
-            return toolbar.contains(target) || caption.contains(target);
+            return (
+                toolbar.contains(target) ||
+                caption.contains(target) ||
+                (target instanceof Element && target.closest(".bc-btn") !== null &&
+                    controlsCol.contains(target))
+            );
         },
 
         ignoreMutation(_m: ViewMutationRecord): boolean {

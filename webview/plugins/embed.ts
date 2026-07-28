@@ -45,6 +45,9 @@ import { queueEmbedMetaResolution } from "../embedMeta";
 // The component-owned delete primitive (deleteRange + fold meta), via the
 // blockMenu facade — deep imports are guarded by blockMenuFacade.test.ts.
 import { deleteBlockRange } from "../components/blockMenu";
+// Per-embed width preference (presentation-only, never in the markdown):
+// the widget host carries the bw-full class so the card can span the pane.
+import { embedWidthAnchor, getBlockWidth } from "../blockWidth";
 
 /** Upper bound on how long after first paint the first embed pass may wait. */
 const FIRST_PASS_IDLE_TIMEOUT_MS = 1000;
@@ -107,8 +110,15 @@ function bareLinkHref(node: ProseNode): string | null {
 function embedWidget(match: EmbedMatch, sourceUrl: string): (view: EditorView, getPos: () => number | undefined) => HTMLElement {
     return (view, getPos) => {
         const host = document.createElement("div");
-        host.className = "embed-card-host";
+        // bc-host on the full-width host (not just the centered card): the
+        // whole column-width band right of the card reveals the controls.
+        host.className = "embed-card-host bc-host";
         host.setAttribute("contenteditable", "false");
+        // Stored width preference (the card's own toggle keeps this in sync
+        // on later flips; a rebuilt host re-reads the store here).
+        if (getBlockWidth(embedWidthAnchor(sourceUrl)) === "full") {
+            host.classList.add("bw-full");
+        }
         // Click-to-select (the image model, via horizontalRule.ts's hand-rolled
         // variant): a mousedown on the card body selects the embed paragraph as
         // a NodeSelection — ring + palette — instead of being swallowed. The

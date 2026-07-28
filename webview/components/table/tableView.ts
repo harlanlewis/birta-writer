@@ -45,12 +45,21 @@ import {
     reorderRowRange,
     reorderColumnRange,
 } from "./reorder";
-import { IconPlus } from "@/ui/icons";
+import { IconExpandHorizontal, IconPlus, IconShrinkHorizontal } from "@/ui/icons";
 import { applyTooltip, hideTooltip } from "@/ui/tooltip";
+import { createBlockControlsColumn, makeBlockControlButton } from "@/ui/blockControls";
 import { t } from "@/i18n";
 import { tagContentGuard } from "@/editing/blockOps";
 import { createFoldEllipsis } from "@/ui/foldEllipsis";
 import { foldPluginKey, type FoldMeta } from "@/plugins/foldState";
+import {
+    applyBlockWidthClass,
+    getBlockWidth,
+    onBlockWidthChange,
+    renameBlockWidthAnchor,
+    setBlockWidth,
+    tableWidthAnchor,
+} from "@/blockWidth";
 
 type GetPos = () => number | undefined;
 
@@ -1185,6 +1194,47 @@ export function createTableView(
         overlay,
     );
 
+    // Per-block width (blockWidth.ts): the key action rides the shared
+    // control column at the table's top-right (hover-revealed, matching the
+    // table's own hover-revealed grips); the gutter block menu keeps its
+    // Full Width row as the discoverable home. This view applies the stored
+    // class, listens for changes from either surface, and re-anchors when
+    // the header row is edited. Presentation-only — never serialized.
+    let widthAnchor = tableWidthAnchor(node.firstChild?.textContent ?? "");
+    const widthControl = makeBlockControlButton({
+        className: "mw-bc-width",
+        icon: IconExpandHorizontal,
+        label: t("Full width"),
+        onClick: () => {
+            setBlockWidth(widthAnchor, getBlockWidth(widthAnchor) === "full" ? null : "full");
+        },
+    });
+    const applyWidth = (): void => {
+        const full = getBlockWidth(widthAnchor) === "full";
+        applyBlockWidthClass(wrapper, full ? "full" : null);
+        widthControl.setVerb(
+            full ? IconShrinkHorizontal : IconExpandHorizontal,
+            full ? t("Fixed width") : t("Full width"),
+        );
+        widthControl.setOn(full);
+    };
+    applyWidth();
+    const offWidthChange = onBlockWidthChange((anchor) => {
+        if (anchor === widthAnchor) {
+            applyWidth();
+        }
+    });
+    {
+        // Top-level tables only: a nested table's box isn't the content
+        // column, so the toggle would be a dead control there.
+        const pos = getPos();
+        if (pos !== undefined && view.state.doc.resolve(pos).depth === 0) {
+            const controlsCol = createBlockControlsColumn(wrapper);
+            controlsCol.appendChild(widthControl.button);
+            wrapper.appendChild(controlsCol);
+        }
+    }
+
     return {
         dom: wrapper,
         contentDOM: tbody,
@@ -1196,6 +1246,12 @@ export function createTableView(
             node = newNode;
             controller.setNode(newNode);
             foldEllipsis.setCount(Math.max(0, newNode.childCount - 1));
+            const newWidthAnchor = tableWidthAnchor(newNode.firstChild?.textContent ?? "");
+            if (newWidthAnchor !== widthAnchor) {
+                renameBlockWidthAnchor(widthAnchor, newWidthAnchor);
+                widthAnchor = newWidthAnchor;
+                applyWidth();
+            }
             return true;
         },
 
@@ -1219,6 +1275,7 @@ export function createTableView(
         },
 
         destroy(): void {
+            offWidthChange();
             controller.destroy();
         },
     };

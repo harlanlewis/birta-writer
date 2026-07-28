@@ -82,21 +82,34 @@ export async function run({ page, check, baseUrl }) {
         !(await fmtWrap.isVisible()),
     );
 
-    // The palette is the normal themed hover-widget chip in every theme — NOT
-    // reversed. Its ground is --vscode-editorHoverWidget-background (#252526 in
-    // the harness) whether the body carries vscode-light or vscode-dark.
+    // The palette is an ALTERNATE surface in every theme — the hover-widget
+    // ground nudged 6% toward the ink, never a reversal (many themes paint
+    // editorHoverWidget-background identical to the page, which made the chip
+    // invisible — 2026-07-28). Assert the mix: strictly between the raw
+    // hover-widget ground (#252526 in the harness) and the ink, and CLOSE to
+    // the ground — offset from it, not reversed onto the foreground.
     const bgOf = () =>
-        page.evaluate(() => getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor);
+        page.evaluate(() => {
+            // color-mix computes to `color(srgb r g b)` with 0-1 channels;
+            // normalize either format to 0-255.
+            const raw = getComputedStyle(document.querySelector(".sel-toolbar")).backgroundColor;
+            const nums = raw.match(/[\d.]+/g).map(Number);
+            return nums.slice(0, 3).map((c) => (c <= 1 ? c * 255 : c));
+        });
+    const GROUND = 37; // #252526, the harness hover-widget ground
+    // Each channel a few % past the ground toward the ink (#d4d4d4 = 212) —
+    // never AT the ground (invisible) and nowhere near the ink (reversed).
+    const mixedNotReversed = (rgb) => rgb.every((c) => c > GROUND + 4 && c < GROUND + 40);
     check(
-        "the palette uses the normal hover-widget ground in a light theme (not reversed)",
-        (await bgOf()) === "rgb(37, 37, 38)",
-        await bgOf(),
+        "the palette ground is offset from the hover-widget ground, not reversed (light theme)",
+        mixedNotReversed(await bgOf()),
+        JSON.stringify(await bgOf()),
     );
     await page.evaluate(() => document.body.classList.replace("vscode-light", "vscode-dark"));
     check(
-        "the palette uses the same normal ground in a dark theme",
-        (await bgOf()) === "rgb(37, 37, 38)",
-        await bgOf(),
+        "the palette ground keeps the same alternate mix in a dark theme",
+        mixedNotReversed(await bgOf()),
+        JSON.stringify(await bgOf()),
     );
     await page.evaluate(() => document.body.classList.replace("vscode-dark", "vscode-light"));
 

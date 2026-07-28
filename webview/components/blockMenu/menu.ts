@@ -56,11 +56,13 @@ import {
     IconChevronRight,
     IconChevronUp,
     IconCopy,
+    IconExpandHorizontal,
     IconFileText,
     IconLink,
     IconList,
     IconTrash2,
 } from "../../ui/icons";
+import { getBlockWidth, setBlockWidth, tableWidthAnchor } from "../../blockWidth";
 import {
     isChecklistSinkEnabled,
     setChecklistSinkEnabled,
@@ -914,6 +916,29 @@ export function openBlockMenu(
             icon: IconLink,
             mutates: false,
             action: () => copyHeadingLink(view, blockPos),
+        });
+    }
+    if (
+        anchorNode?.type.name === "table" &&
+        view.state.doc.resolve(blockPos).depth === 0 &&
+        // In FULL-width page mode a table already fills the pane — the row
+        // would be a dead switch (the control column hides its twin too).
+        !document.body.classList.contains("editor-width-auto")
+    ) {
+        // Per-block width (blockWidth.ts): tables have no header chrome, so
+        // the toggle lives here — images/code/embeds carry theirs in their
+        // own chrome. A settings-style toggle, not a doc edit (mutates:
+        // false — the markdown never changes and nothing lands in undo
+        // history); the table NodeView listens and applies the class.
+        // Top-level only: a nested table's box isn't the content column.
+        const widthAnchor = tableWidthAnchor(anchorNode.firstChild?.textContent ?? "");
+        const isFullWidth = getBlockWidth(widthAnchor) === "full";
+        action(t("Full Width"), ["width", "full", "wide", "fixed", "narrow", "size"], {
+            icon: IconExpandHorizontal,
+            check: true,
+            active: isFullWidth,
+            mutates: false,
+            action: () => setBlockWidth(widthAnchor, isFullWidth ? null : "full"),
         });
     }
     if (anchorNode?.type.name === "callout") {

@@ -81,6 +81,7 @@ import {
     insertImageNode,
 } from "./imageUpload";
 import { initScrollPersistence } from "./scrollPersistence";
+import { initPaneWidthVar } from "./blockWidth";
 import { initKeyboardShortcuts } from "./keyboardShortcuts";
 import { createMessageHandlers, type Handler } from "./messageHandlers";
 import { reportWordCount } from "./wordCountReporter";
@@ -857,6 +858,9 @@ eventManager.onDocument(
 // in package.json routed back here through the editorCommand message.
 initKeyboardShortcuts(eventManager);
 initScrollPersistence(eventManager);
+// Publishes --bw-pane (the pane's scrollbar-free width) for the per-block
+// full-width breakout CSS — one rAF-throttled resize listener (blockWidth.ts).
+initPaneWidthVar();
 
 // ── Message handlers ───────────────────────────────────────
 const handlers = createMessageHandlers({

@@ -157,8 +157,11 @@ export async function run({ page, check, baseUrl }) {
     check("chip shows the file name", (await chip.locator(".img-tb-path-name").textContent()) === "other.jpeg");
     check("chip carries a pencil glyph", (await chip.locator(".img-tb-path-pencil svg").count()) === 1);
     check(
-        "controls row has exactly the chip, zoom, and delete buttons",
-        (await first.locator(".image-toolbar-row > button").count()) === 3,
+        "toolbar row keeps only the editors (path chip); zoom+width live in the control column, no delete button",
+        (await first.locator(".image-toolbar-row > button").count()) === 1 &&
+            (await first.locator(".bc-col .img-bc-zoom").count()) === 1 &&
+            (await first.locator(".bc-col .img-tb-width").count()) === 1 &&
+            (await first.locator(".bc-col .img-bc-delete").count()) === 0,
     );
     await chip.dispatchEvent("mousedown");
     check("clicking the file-name chip opens the path editor", await first.locator(".img-path-input").isVisible());
@@ -274,8 +277,12 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(200);
 
     // ── 11. Typing in the doc still works (regression) ───────
-    await page.locator(".ProseMirror p").last().click();
+    // Left-edge click: the second image is still selected, and its toolbar —
+    // centered with the image since standalone images center in the column —
+    // hangs over the tail paragraph's midpoint.
+    await page.locator(".ProseMirror p").last().click({ position: { x: 10, y: 5 } });
     await page.waitForTimeout(150); // let ProseMirror settle the click's text selection
+    await page.keyboard.press("End"); // the edge click lands at line start
     await page.keyboard.type(" appended");
     await page.waitForTimeout(600);
     posted = await updates();

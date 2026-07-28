@@ -60,6 +60,7 @@ export async function run({ page, check, baseUrl }) {
         scale1 !== null && scale1 < 0.999, JSON.stringify(scale1));
 
     // ── The user's repro: toggle to code, edit the definition, toggle back ──
+    await page.hover(".code-block-wrapper");  // reveal the hover column first
     await page.click(".code-view-toggle-btn");
     await page.waitForTimeout(100);
     const endPos = await page.evaluate(() => {
@@ -83,6 +84,7 @@ export async function run({ page, check, baseUrl }) {
     // no label contains an X before the edit, so X marks the re-render).
     await page.keyboard.type("X");
     await page.waitForTimeout(100);
+    await page.hover(".code-block-wrapper");  // reveal the hover column first
     await page.click(".code-view-toggle-btn"); // back to preview → re-render
     await page.waitForFunction(
         () => {

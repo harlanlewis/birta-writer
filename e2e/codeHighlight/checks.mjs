@@ -46,6 +46,9 @@ export async function run({ page, check, baseUrl }) {
     // preview mode, and clicking it drops back to the source view)
     const mermaidToggle = page.locator(".code-block-wrapper .code-view-toggle-btn:visible").first();
     await mermaidToggle.waitFor({ timeout: 10000 });
+    // The control column reveals on host hover (hidden at rest): enter the
+    // block first, the way a mouse user reaches the column.
+    await page.hover(".code-block-wrapper:has(.code-view-toggle-btn:visible)");
     await mermaidToggle.click();
     await page.waitForFunction(
         () => !document.querySelector(".code-pre--preview-hidden"), null, { timeout: 5000 });

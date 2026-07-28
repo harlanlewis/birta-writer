@@ -35,6 +35,7 @@ import type { CalloutKind } from "@/plugins/callouts";
 import { STYLE_CATEGORIES, STYLE_SECTIONS } from "@/utils/styleCategories";
 import { t, kbd, productName } from "@/i18n";
 import { sampleDocPosition } from "@/utils/docPosition";
+import { withScrollAnchor } from "@/utils/scrollAnchor";
 import { notifyOpenSettings, notifyOpenKeybindings, notifySetProofreadOption, notifySetFontPreset, notifySetFontSize, notifySetContentWidth, notifySetToolbarLayout, notifySetToolbarVisible, notifyResolveSyncConflict } from "@/messaging";
 import { getEditorView } from "@/editor";
 import { getProofreadConfig, setProofreadConfig } from "@/plugins";
@@ -864,7 +865,10 @@ export function initToolbar(
             return;
         }
         setContentWidthActive(mode);
-        applyContentWidthLive();
+        // Anchored: the flip rewraps the whole document — keep the top
+        // visible line the top visible line (the settings echo re-applies the
+        // same values a round trip later, an anchored no-op).
+        withScrollAnchor(getEditorView(), applyContentWidthLive);
         notifySetContentWidth(mode);
     }
 
@@ -988,13 +992,14 @@ export function initToolbar(
             fontEntries.push({ preset, item });
         }
 
-        // Assemble top→bottom: font size, content width, the family presets —
-        // each group separated by a divider. (Block handles and the font-stack
-        // settings live in Settings only — the menu holds the frequent moves.)
+        // Assemble top→bottom: content width, font size, the family presets —
+        // each group separated by a divider (width first — maintainer,
+        // 2026-07-28). (Block handles and the font-stack settings live in
+        // Settings only — the menu holds the frequent moves.)
         fontMenu.append(
-            sizeRow,
-            makeSep(),
             widthRow,
+            makeSep(),
+            sizeRow,
             makeSep(),
             ...fontItemEls,
         );

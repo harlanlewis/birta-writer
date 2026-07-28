@@ -171,13 +171,14 @@ export async function run({ page, check, baseUrl }) {
     // Restore the default drawer width for any later assertions.
     await page.evaluate(() => document.documentElement.style.removeProperty("--toc-width"));
 
-    // ── When the content already clears the drawer, it stays VIEWPORT-centered
-    //    and does NOT drift with the drawer's width. This guards the refinement
-    //    (`max(reserve, centered)`) against the earlier over-shift formula
-    //    (`reserve + half the leftover`), which would slide the content further
-    //    right as the drawer widens even when there was room to stay centered.
-    //    We shrink the content so plain centering clears even a wide drawer, then
-    //    check the content's left edge is unchanged across two drawer widths. ──
+    // ── With room to spare, the content centers in the space BESIDE the
+    //    drawer, not the whole viewport (maintainer decision 2026-07-28,
+    //    replacing the old "viewport-centered until collision" nudge): the
+    //    drawer owns its strip, so the content's center tracks the midpoint
+    //    of [drawer edge, pane edge] and therefore DOES drift as the drawer
+    //    widens. We shrink the content so centering clears even a wide
+    //    drawer, then check the center against the leftover midpoint at two
+    //    drawer widths. ──
     const centered = await page.evaluate(() => {
         const html = document.documentElement;
         const editor = document.querySelector("#editor");
@@ -187,7 +188,12 @@ export async function run({ page, check, baseUrl }) {
             html.style.setProperty("--toc-width", `${tocWidth}px`);
             const e = editor.getBoundingClientRect();
             const p = panel.getBoundingClientRect();
-            return { left: Math.round(e.left), panelRight: Math.round(p.right) };
+            const leftoverMid = (tocWidth + html.clientWidth) / 2;
+            return {
+                left: Math.round(e.left),
+                panelRight: Math.round(p.right),
+                centerDelta: Math.abs((e.left + e.right) / 2 - leftoverMid),
+            };
         };
         const narrow = measure(150);
         const wide = measure(250);
@@ -197,7 +203,7 @@ export async function run({ page, check, baseUrl }) {
             narrow,
             wide,
             clearsBoth: narrow.left >= narrow.panelRight && wide.left >= wide.panelRight,
-            sameLeft: Math.abs(narrow.left - wide.left) <= 1,
+            centeredBoth: narrow.centerDelta <= 1.5 && wide.centerDelta <= 1.5,
         };
     });
     check(
@@ -206,9 +212,9 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(centered),
     );
     check(
-        "content stays viewport-centered — its start does not drift with drawer width",
-        centered.sameLeft,
-        `narrowLeft=${centered.narrow.left} wideLeft=${centered.wide.left} (over-shift formula would differ)`,
+        "content centers in the leftover space beside the drawer (center tracks drawer width)",
+        centered.centeredBoth,
+        `narrowΔ=${centered.narrow.centerDelta.toFixed(1)} wideΔ=${centered.wide.centerDelta.toFixed(1)}`,
     );
 
     // ── Click Full Width ──
@@ -220,5 +226,47 @@ export async function run({ page, check, baseUrl }) {
         "Full Width posts setContentWidth mode=full",
         (await lastWidthMsg())?.mode === "full",
         JSON.stringify(await lastWidthMsg()),
+    );
+
+    // ── Width flips keep the top visible line stable (scrollAnchor.ts) ──
+    // Scroll a known short paragraph to the top of the viewport, flip the
+    // width mode both ways, and assert that paragraph's top stays put. A
+    // flip rewraps all 40 paragraphs above it, so without anchoring the
+    // target drifts by hundreds of pixels.
+    await page.setViewportSize({ width: 1000, height: 400 });
+    await page.waitForTimeout(150);
+    const targetTop = () =>
+        page.evaluate(() => {
+            const target = [...document.querySelectorAll(".ProseMirror p")]
+                .find((p) => p.textContent.startsWith("para 30"));
+            return target ? target.getBoundingClientRect().top : null;
+        });
+    await page.evaluate(() => {
+        const target = [...document.querySelectorAll(".ProseMirror p")]
+            .find((p) => p.textContent.startsWith("para 30"));
+        const topbar = document.querySelector(".editor-topbar").getBoundingClientRect().height;
+        window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - topbar - 4 });
+    });
+    await page.waitForTimeout(100);
+    const anchorBefore = await targetTop();
+
+    await fontWrap.dispatchEvent("mouseenter");
+    await page.waitForTimeout(150);
+    await fixedBtn.dispatchEvent("mousedown");
+    await page.waitForTimeout(200);
+    const afterFixed = await targetTop();
+    check(
+        "flipping Full→Fixed keeps the top visible line at the top",
+        afterFixed !== null && Math.abs(afterFixed - anchorBefore) <= 6,
+        `before=${anchorBefore?.toFixed(0)} afterFixed=${afterFixed?.toFixed(0)}`,
+    );
+
+    await fullBtn.dispatchEvent("mousedown");
+    await page.waitForTimeout(200);
+    const afterFull = await targetTop();
+    check(
+        "flipping Fixed→Full keeps it there too",
+        afterFull !== null && Math.abs(afterFull - anchorBefore) <= 6,
+        `before=${anchorBefore?.toFixed(0)} afterFull=${afterFull?.toFixed(0)}`,
     );
 }

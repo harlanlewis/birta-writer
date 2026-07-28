@@ -174,6 +174,10 @@ export async function run({ page, check, baseUrl }) {
     check("arrowing onto a footnote reference → footnote active", refSelected);
 
     // ── 10c. Selected horizontal rule lights HR ──
+    // The block-rhythm spacing can push the hr below the fold; coordinates
+    // for mouse.click are viewport-relative, so bring it on screen first.
+    await page.$eval(".ProseMirror hr", (el) => el.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(100);
     const hrBox = await page.$eval(".ProseMirror hr", (el) => {
         const r = el.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2 };

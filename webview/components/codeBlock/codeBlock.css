@@ -6,18 +6,25 @@
     border-radius: var(--ui-radius-l);
     /* keep overflow visible to avoid clipping the language dropdown menu */
     border: 1px solid var(--vscode-panel-border);
+    /* Positioning context for the floating chrome row and the outside-right
+       control column. Explicit — do NOT rely on the gutter plugin's
+       .block-gutter-host for this. */
+    position: relative;
 }
 
-.code-block-header {
+/* The floating chrome row (language pill + fold ellipsis) at the canvas's
+   top-left — the header bar's replacement (2026-07-28). It must NOT live
+   inside the scrolling <pre> (it would scroll away with long lines); the
+   code/gutter/preview top padding reserves its band so line 1 never slides
+   under it. */
+.code-float-row {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 10;
     display: flex;
     align-items: center;
-    /* dropped justify-content:space-between; use a spacer with flex:1 to push the right-side buttons */
-    padding: 4px 8px;
-    background: var(--vscode-editor-lineHighlightBackground);
-    border-bottom: 1px solid
-        var(--vscode-panel-border);
     gap: 4px;
-    border-radius: var(--ui-radius-l) var(--ui-radius-l) 0 0;
 }
 
 /* ─── lang-picker custom searchable dropdown ─── */
@@ -128,35 +135,12 @@
     opacity: 0.3;
 }
 
-/* Copy button (SVG icon) — composes .ui-btn; local: the header's 26×22 box,
-   editor ink, resting fade, and a visible hover hairline. */
-.copy-btn,
-.code-wrap-toggle-btn {
-    width: 26px;
-    height: 22px;
-    color: var(--vscode-editor-foreground);
-    opacity: 0.6;
-}
-
-.copy-btn:hover,
-.code-wrap-toggle-btn:hover {
-    opacity: 1;
-    border-color: var(--vscode-panel-border);
-}
-
-/* Persistent-on: the canonical quiet "on" pair (see .find-bar__btn--active). */
-.code-wrap-toggle-btn--active {
-    opacity: 1;
-    background: var(--vscode-inputOption-activeBackground);
-    color: var(--vscode-inputOption-activeForeground);
-    border-color: var(--vscode-panel-border);
-}
-
-.code-wrap-toggle-btn svg {
-    width: 16px;
-    height: 16px;
-}
-
+/* The control-column buttons (copy / toggle / wrap / width / fullscreen)
+   compose the shared .bc-btn recipe (ui/blockControls.css); persistent-ON
+   tints ride the shared .bc-btn--on class — and only for toggles whose
+   state isn't visible in the content (width, wrap). The code⇄preview
+   toggle deliberately carries NO tint: its icon and the whole block flip,
+   so a tint read as an unexplained highlight (maintainer, 2026-07-28). */
 .copy-btn--done {
     opacity: 1;
     color: var(--vscode-charts-green);
@@ -170,17 +154,19 @@
     margin: 0;
     padding: 0;
     background: var(--vscode-textCodeBlock-background);
-    /* The resize handle below provides the rounded bottom; keep this square so
-       there's no corner gap between them. */
-    border-radius: 0;
+    /* The resize handle below provides the rounded bottom; the top corners
+       round with the wrapper now that the header bar is gone. */
+    border-radius: var(--ui-radius-l) var(--ui-radius-l) 0 0;
     overflow-x: auto;
     overflow-y: auto;
     max-height: var(--code-block-max-height, 500px);
 }
 
-/* Line-number sidebar */
+/* Line-number sidebar. The 36px top padding (matched by `pre code` below)
+   reserves the floating chrome row's band — line 1 never starts under the
+   language pill. */
 .line-numbers-gutter {
-    padding: 1em 0.75em;
+    padding: 36px 0.75em 1em;
     min-width: 2.5em;
     text-align: right;
     user-select: none;
@@ -200,11 +186,12 @@
     box-sizing: border-box;
 }
 
-/* Higher specificity (overrides .milkdown .editor pre code) to ensure padding:1em and flex:1 take effect */
+/* Higher specificity (overrides .milkdown .editor pre code) to ensure the padding and flex:1 take effect */
 .milkdown .editor .code-block-wrapper pre code {
     flex: 1;
     min-width: 0;
-    padding: 1em;
+    /* Top padding in lockstep with .line-numbers-gutter (the float-row band). */
+    padding: 36px 1em 1em;
     background: none;
     font-size: 0.9em;
     line-height: 1.5; /* keep in sync with .line-numbers-gutter to avoid line-number misalignment */
@@ -342,8 +329,9 @@ body.mermaid-canvas-dark {
     /* Height is set dynamically by JS from the SVG's natural size after rendering; CSS only provides a minimum for the loading placeholder */
     min-height: 300px;
     background: var(--mermaid-canvas);
-    /* Square bottom; the resize handle below provides the rounded corners. */
-    border-radius: 0;
+    /* Rounded top (the header bar is gone); the resize handle below provides
+       the rounded bottom. */
+    border-radius: var(--ui-radius-l) var(--ui-radius-l) 0 0;
     cursor: grab;
     user-select: none;
 }
@@ -406,30 +394,22 @@ body.mermaid-canvas-dark {
     opacity: 0.85;
 }
 
-/* ─── Shared header buttons (zoom overlay / lightbox / toggle / fullscreen) ───
-   Compose .ui-btn; local: the header's 26×22 box, editor ink, resting fade,
-   and a visible hover hairline. */
-.mermaid-zoom-btn,
-.code-view-toggle-btn {
+/* ─── Shared overlay buttons (zoom overlay / lightbox) ───
+   Compose .ui-btn; local: the overlay's 26×22 box, editor ink, resting fade,
+   and a visible hover hairline. (The preview toggle moved to the control
+   column and composes .bc-btn instead.) */
+.mermaid-zoom-btn {
     width: 26px;
     height: 22px;
     color: var(--vscode-editor-foreground);
     opacity: 0.65;
 }
 
-.mermaid-zoom-btn:hover,
-.code-view-toggle-btn:hover {
+.mermaid-zoom-btn:hover {
     opacity: 1;
     border-color: var(--vscode-panel-border);
 }
 
-/* Persistent-on: the canonical quiet "on" pair (see .find-bar__btn--active). */
-.code-view-toggle-btn--active {
-    opacity: 1;
-    background: var(--vscode-inputOption-activeBackground);
-    color: var(--vscode-inputOption-activeForeground);
-    border-color: var(--vscode-panel-border);
-}
 
 /* ─── Top-right zoom overlay (floating over the preview area) ─── */
 .mermaid-zoom-overlay {
@@ -481,7 +461,11 @@ body.mermaid-canvas-dark {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.88); /* color-literal-ok: always-dark lightbox scrim (photo-viewer chrome, theme-independent by design) */
+    /* The shared fullscreen wash (embed + image lightboxes use the same
+       recipe) — one overlay surface across every fullscreen preview. The
+       code editing sheet below stays opaque. */
+    background: color-mix(in srgb, var(--vscode-editor-background) 25%, transparent);
+    backdrop-filter: blur(2px);
     display: flex;
     flex-direction: column;
     animation: lb-open 0.18s ease;
@@ -497,9 +481,11 @@ body.mermaid-canvas-dark {
     align-items: center;
     gap: 4px;
     padding: 8px 12px;
-    background: rgba(0, 0, 0, 0.4); /* color-literal-ok: header bar on the always-dark lightbox scrim */
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1); /* color-literal-ok: hairline on the always-dark lightbox scrim */
-    color: #e0e0e0; /* color-literal-ok: light-on-dark text for the always-dark lightbox chrome */
+    /* Theme-aware chrome — the scrim is the shared translucent wash now,
+       not an always-dark backdrop. */
+    background: var(--vscode-editorWidget-background);
+    border-bottom: 1px solid var(--vscode-editorWidget-border);
+    color: var(--vscode-foreground);
     flex-shrink: 0;
 }
 
@@ -545,14 +531,14 @@ body.mermaid-canvas-dark {
 }
 
 .mermaid-lightbox-header .mermaid-zoom-btn {
-    color: #e0e0e0; /* color-literal-ok: light-on-dark button for the always-dark lightbox chrome */
+    color: var(--vscode-foreground);
     min-width: 38px;
     opacity: 0.8;
 }
 
 .mermaid-lightbox-header .mermaid-zoom-btn:hover {
-    background: rgba(255, 255, 255, 0.12); /* color-literal-ok: hover wash on the always-dark lightbox chrome */
-    border-color: rgba(255, 255, 255, 0.2); /* color-literal-ok: hover border on the always-dark lightbox chrome */
+    background: var(--vscode-toolbar-hoverBackground);
+    border-color: var(--vscode-panel-border);
     opacity: 1;
 }
 
@@ -601,18 +587,11 @@ body.mermaid-canvas-dark {
     opacity: 1;
 }
 
-/* Persistent fullscreen button (right side of the header) */
-.code-block-fullscreen-btn {
-    opacity: 0.5;
-}
-
-.code-block-fullscreen-btn:hover {
-    opacity: 1;
-}
-
 /* ─── Mermaid lightbox dual panels ─── */
 
-/* Preview panel: inherits the original lbBody pan/zoom behavior */
+/* Preview panel: inherits the original lbBody pan/zoom behavior. Carries
+   its own canvas ground so diagram readability never depends on the
+   translucent lightbox wash behind it. */
 .lb-mermaid-preview-pane {
     flex: 1;
     align-self: stretch;
@@ -623,6 +602,7 @@ body.mermaid-canvas-dark {
     position: relative;
     cursor: grab;
     min-height: 0;
+    background: var(--mermaid-canvas);
 }
 
 /* Code panel: reuses the code-lightbox-body flex-row layout */
@@ -777,10 +757,11 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     align-items: center;
     justify-content: center;
     overflow: auto;
-    padding: 20px 16px;
+    /* Top padding clears the floating chrome row (see .code-float-row). */
+    padding: 36px 16px 20px;
     min-height: 80px;
     background: var(--vscode-textCodeBlock-background);
-    border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
+    border-radius: var(--ui-radius-l) var(--ui-radius-l) var(--ui-radius-l) var(--ui-radius-l);
     user-select: none;
 }
 
@@ -811,10 +792,11 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     flex-direction: column;
     align-items: stretch;
     overflow: auto;
-    padding: var(--ui-space-5) var(--ui-space-6);
+    /* Top padding clears the floating chrome row (see .code-float-row). */
+    padding: 36px var(--ui-space-6) var(--ui-space-5);
     min-height: 80px;
     background: var(--vscode-textCodeBlock-background);
-    border-radius: 0 0 var(--ui-radius-l) var(--ui-radius-l);
+    border-radius: var(--ui-radius-l) var(--ui-radius-l) var(--ui-radius-l) var(--ui-radius-l);
     user-select: none;
 }
 
@@ -869,12 +851,19 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     cursor: help;
 }
 
-/* ─── Folded code block (MAR-125): fold to the chrome/header row ────────────
+/* ─── Folded code block (MAR-125): fold to the floating chrome row ──────────
  * The `collapsed` class arrives as a node decoration from the fold plugin.
  * The source `pre` collapses via the preview-mode idiom (visibility, not
  * display — the block's gutter marker lives inside and opts back in); the
  * mermaid/math previews and the resize handle hide outright (`!important`
- * beats their inline display toggles). The header row stays live. */
+ * beats their inline display toggles). With the header bar gone, the
+ * floating row (absolute — no intrinsic height) is what stays visible, so
+ * the collapsed wrapper keeps an explicit band for it. */
+.code-block-wrapper.collapsed {
+    /* 22px pill + 6px top offset + ~6px breathing room. */
+    min-height: 34px;
+    background: var(--vscode-textCodeBlock-background);
+}
 .code-block-wrapper.collapsed > pre {
     visibility: hidden;
     height: 0 !important;
@@ -895,13 +884,13 @@ body.code-block-word-wrap .mermaid-lightbox.code-lightbox-no-word-wrap .code-lig
     display: none !important;
 }
 
-/* The collapsed `…` chip sits in the header beside the lang picker (shared
- * .fold-ellipsis look, style.css); hidden while the block is expanded.
- * Scope matches the base .fold-ellipsis rule's `.milkdown .editor` prefix
- * so this display:none outranks it. */
-.milkdown .editor .code-block-header .code-fold-ellipsis {
+/* The collapsed `…` chip sits in the floating row beside the lang pill
+ * (shared .fold-ellipsis look, style.css); hidden while the block is
+ * expanded. Scope matches the base .fold-ellipsis rule's `.milkdown .editor`
+ * prefix so this display:none outranks it. */
+.milkdown .editor .code-float-row .code-fold-ellipsis {
     display: none;
 }
-.milkdown .editor .code-block-wrapper.collapsed .code-block-header .code-fold-ellipsis {
+.milkdown .editor .code-block-wrapper.collapsed .code-float-row .code-fold-ellipsis {
     display: inline-flex;
 }
