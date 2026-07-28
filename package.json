@@ -116,6 +116,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.sendFeedback",
+                "title": "%command.sendFeedback.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.toggleCalcAutoInsert",
                 "title": "%command.toggleCalcAutoInsert.title%",
                 "category": "Birta Writer"
@@ -2078,7 +2083,7 @@
         "vscode:prepublish": "node esbuild.mjs --production",
         "build": "node esbuild.mjs",
         "watch": "node esbuild.mjs --watch",
-        "package": "vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/birta-writer/blob/main --baseImagesUrl https://github.com/harlanlewis/birta-writer/raw/main && node scripts/check-vsix.mjs",
+        "package": "node -e \"require('node:fs').mkdirSync('releases',{recursive:true})\" && vsce package --no-dependencies --out releases/ --baseContentUrl https://github.com/harlanlewis/birta-writer/blob/main --baseImagesUrl https://github.com/harlanlewis/birta-writer/raw/main && node scripts/check-vsix.mjs",
         "install:local": "node scripts/install-local.mjs",
         "typecheck": "tsc --noEmit -p tsconfig.typecheck.json && tsc --noEmit -p tsconfig.webview.typecheck.json",
         "test": "vitest run",

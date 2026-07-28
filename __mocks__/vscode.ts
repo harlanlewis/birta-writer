@@ -400,7 +400,12 @@ export const workspace = {
 export const env = {
     language: "en",
     openExternal: vi.fn(),
+    /** Clipboard writes (the feedback command's always-available channel). */
+    clipboard: { writeText: vi.fn(async () => undefined) },
 };
+
+/** Host version string, as `vscode.version` reports it. */
+export const version = "1.99.0";
 
 /** Tab input for custom editors (instanceof-checked by command routing). */
 export class TabInputCustom {
@@ -471,7 +476,9 @@ export const window = {
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
     showQuickPick: vi.fn(),
+    showInputBox: vi.fn(),
     showOpenDialog: vi.fn(),
+    setStatusBarMessage: vi.fn(),
     createQuickPick: vi.fn(makeFakeQuickPick),
     createStatusBarItem: vi.fn((_id?: unknown, _alignment?: unknown, _priority?: unknown) =>
         makeFakeStatusBarItem(),
