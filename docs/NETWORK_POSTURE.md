@@ -9,7 +9,9 @@ connector foundation), and three separate strategy documents each reasoned about
 without any of them owning the whole. That produced a wrong premise in one
 (`MULTI_SURFACE_INVESTIGATION.md` §9 reasoned from "identity/auth: today zero"), a missing rung in
 another (`PUBLISH_LOOP.md` §8's escalation ladder), and a duplicated design question in a third
-(`AI_ASSISTANCE.md` §3.6's BYO-key). Tracked as **D10** in [`STRATEGY.md`](STRATEGY.md).
+(`AI_ASSISTANCE.md` §3.6's BYO-key). Tracked as **D10** in the strategy corpus's `STRATEGY.md`.
+*(The strategy documents named in this file live in the private strategy corpus, not in this
+repository; they are cited here by name so the reasoning stays traceable.)*
 
 **Unlike the strategy documents, most of this is checkable.** Where it describes shipped behavior it
 is a fact about the tree; where it describes MAR-198 it is directed-but-unbuilt and says so.
@@ -104,16 +106,16 @@ persistence/host-contract design (MAR-226) rather than a separate concern.
 
 ## 4. Where this bites the other documents
 
-- [`PUBLISH_LOOP.md`](PUBLISH_LOOP.md) §8 — the publish loop is **rung 3**. Its argument that
+- `PUBLISH_LOOP.md` §8 — the publish loop is **rung 3**. Its argument that
   publishing is a categorical change holds; what it gains from this document is that the layered
   consent architecture it says publishing would need is **already designed at rung 2**. Extend that
   ladder; do not invent one.
-- [`AI_ASSISTANCE.md`](AI_ASSISTANCE.md) §3.6 — "BYO-key" is rung 2 with a different provider. Reuse
+- `AI_ASSISTANCE.md` §3.6 — "BYO-key" is rung 2 with a different provider. Reuse
   invariants 7–9 rather than standing up a second key store. Note also that on-device inference is
   **rung 0**, which is exactly why the AI posture and the privacy claim reinforce each other.
-- [`MULTI_SURFACE_INVESTIGATION.md`](MULTI_SURFACE_INVESTIGATION.md) §9 — its identity/auth section
+- `MULTI_SURFACE_INVESTIGATION.md` §9 — its identity/auth section
   reasoned from "today: zero." Corrected in place; §3 above is the portability gap it implies.
-- [`SURFACE_STRATEGY.md`](SURFACE_STRATEGY.md) — a cloud-backed surface is rung 3 by construction,
+- `SURFACE_STRATEGY.md` — a cloud-backed surface is rung 3 by construction,
   which is most of why that document rates it the worst brand fit despite the best feasibility.
 
 ---
@@ -122,5 +124,5 @@ persistence/host-contract design (MAR-226) rather than a separate concern.
 
 **MAR-198** (connector foundation — the rung-2 design), **MAR-186** (provider roadmap),
 **MAR-179** / **MAR-199** (the shipped consent ladder and its application scope, both Done),
-**MAR-232** (rung 3, gated). Open portability question: **D10** in [`STRATEGY.md`](STRATEGY.md),
-feeding **MAR-226**.
+**MAR-232** (rung 3, gated). Open portability question: **D10** in the strategy corpus's
+`STRATEGY.md`, feeding **MAR-226**.

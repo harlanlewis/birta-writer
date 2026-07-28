@@ -170,7 +170,7 @@ Investment follows an ordering the evidence made unambiguous — from a survey o
 
 That ordering is the **founding rationale**, and it is history as much as plan: layer 2 (VS Code parity) shipped in 0.2.3, and the live sequencing spine that replaced it is the `phase-*` roadmap in [`AGENTS.md`](AGENTS.md) — fidelity → performance → syntax → interaction → differentiators. Use the phase spine as the tie-breaker when goals conflict; use this list to understand why the fork exists.
 
-Where the project might go beyond the VS Code extension — surfaces, engine ownership, the AI posture, publishing — is under active exploration — none of it committed scope — and indexed in [`docs/STRATEGY.md`](docs/STRATEGY.md), which separates the few things checkable against the code from the positions still being pressure-tested.
+Where the project might go beyond the VS Code extension — surfaces, engine ownership, the AI posture, publishing — is under active exploration, and none of it is committed scope. That exploration is maintained privately and is deliberately kept out of this repository.
 
 ***
 
