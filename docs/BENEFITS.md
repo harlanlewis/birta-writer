@@ -119,7 +119,6 @@ It's so *fun* to think about this same problem from a new vantage of experience 
 
 - [`README.md`](../README.md)
 - [`DESIGN_PRINCIPLES.md`](DESIGN_PRINCIPLES.md)
-- [POSITIONING.md](POSITIONING.md)
 - [RELEASING.md](RELEASING.md)
 - [../CHANGELOG.md](../CHANGELOG.md)
 

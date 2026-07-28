@@ -1,9 +1,9 @@
 # Provenance — how much of the origin project remains
 
 Birta Writer is a hard fork of [`git-xing/md-wysiwyg-editor`](https://github.com/git-xing/md-wysiwyg-editor).
-`README.md` ("Why this fork") and `docs/research/markdown-editor-landscape.md` §4 cover **why** the
-fork happened. This file covers a different question — **how much of the origin project is still
-here** — and answers it with measurements rather than assertions.
+`README.md` ("Why this fork") covers **why** the fork happened. This file covers a different
+question — **how much of the origin project is still here** — and answers it with measurements
+rather than assertions.
 
 **This is an append-only log, not a refined document.** It is the `CHANGELOG.md` kind of file, not
 the `docs/BENEFITS.md` kind: entries are **never revised in place**. Each snapshot is stamped with
