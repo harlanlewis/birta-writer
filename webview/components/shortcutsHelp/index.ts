@@ -12,8 +12,10 @@
  * inventory of what the shortcuts ARE. Only the FIXED grammar is printed —
  * the typing-level ProseMirror keymap chords (formatKeymap, history,
  * blockKeys, smartSelect, insertParagraph, tab/table keymaps) plus
- * Escape/Tab. These are hardcoded and un-rebindable (see CLAIMED_SHORTCUTS
- * in webview/keyboardShortcuts.ts), so a printed key can never lie.
+ * Escape/Tab. These are hardcoded and therefore un-rebindable (the full
+ * inventory is shared/__tests__/keymapChords.ts; whether the key-leak guard
+ * also CLAIMS one is a separate question answered in
+ * webview/keyboardShortcuts.ts), so a printed key can never lie.
  * Rebindable commands are deliberately NOT inventoried here — a names-only
  * list says nothing about actual keys, and printing defaults could lie —
  * the sticky "Edit Keyboard Shortcuts" footer opens the native Keyboard
@@ -200,9 +202,9 @@ function buildPanel(): HTMLDivElement {
     };
 
     // ── The fixed grammar — every chord below is a hardcoded typing-level
-    // ProseMirror keymap (verified against blockKeys/smartSelect/
-    // insertParagraph/tabKeymap/formatKeymap/history + CLAIMED_SHORTCUTS),
-    // so printing it can never contradict the user's keybindings. ──
+    // ProseMirror keymap (pinned by shared/__tests__/keymapChords.ts, which
+    // the chord-literal scan checks this file against), so printing it can
+    // never contradict the user's keybindings. ──
     addSection(t("Selection"));
     addRow([["Esc"]], t("Select the block; again to collapse back to the caret"),
         t("Esc first closes the open menu, popup, or find bar."));
