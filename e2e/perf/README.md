@@ -1,8 +1,15 @@
 # Performance harnesses
 
 Two runners share this directory's page stub (`index.html`) and fixtures
-(`fixtures.mjs`): the **launch** harness below, and the **typing** harness
-(`e2e/perf-typing.mjs`) at the end.
+(`fixtures.mjs`): the **launch** harness (`e2e/perf.mjs`) and the **typing**
+harness (`e2e/perf-typing.mjs`).
+
+> **This file documents how the harnesses work, not what they last measured.**
+> Absolute timings belong in the commit or ticket that changed them — a figure
+> written here reads as current forever and is wrong the moment anything lands.
+> Thresholds and budgets are the exception: those are configuration, they live in
+> `verdict.mjs` / `bundle-baseline.json`, and the numbers quoted below are meant
+> to match them. If they disagree, the code is right.
 
 # Launch-performance harness
 
@@ -21,7 +28,7 @@ node e2e/perf.mjs medium                   # one fixture
 pnpm perf:bundle                           # zero-variance eager-bytes metric
 ```
 
-## Spans reported (ms, median of runs 2..10)
+## Spans reported (median of runs 2..10)
 
 | span | marks | what it is |
 | --- | --- | --- |
@@ -35,9 +42,15 @@ pnpm perf:bundle                           # zero-variance eager-bytes metric
 `launch` minus the sum of the measured spans is the browser's bundle
 fetch+parse cost (the eager JS/CSS download before `eval-start`).
 
+**`paint` (`create-end` → `editor-painted`) is the easiest span to overlook** —
+it is ProseMirror's first DOM build plus style/layout/paint, *including any work
+a plugin schedules from its `view()` onto the frames before that paint*. Work
+moved in front of first paint is invisible to every other span, so if a plugin
+schedules its own rAF at mount, suspect this one.
+
 ## The A/B gate (how the optimization loop decides)
 
-Absolute ms drift with machine load, so the gate is a **same-session A/B**:
+Absolute timings drift with machine load, so the gate is a **same-session A/B**:
 
 ```bash
 node esbuild.mjs --production --metafile && pnpm perf --json before.json
@@ -49,13 +62,18 @@ pnpm perf --compare before.json after.json            # launch verdict
 node e2e/perf-bundle.mjs --compare bundle-before.json bundle-after.json  # eager-bytes verdict
 ```
 
-- **improved**: median `launch` down ≥3% AND ≥10 ms on ≥1 fixture, nothing up >3%+10 ms.
+- **improved**: median `launch` down ≥3% AND ≥10 ms on ≥1 fixture, nothing up past the same floors.
 - **regressed**: any fixture up >3% AND >10 ms → do not commit.
 - Eager bytes are gated by a **budget ceiling** (`pnpm perf:bundle --check`), not a
   ratchet — see `e2e/perf-bundle.mjs`.
 
-`baseline.json` is a checked-in **historical reference** (not the gate); update it
-only inside an accepted-optimization commit.
+Removing eager bytes therefore produces **no CI signal on its own**: `--check`
+just passes with more room, and the space is immediately re-spendable. Finish a
+bytes win with `--set-budget` so the ratchet sticks.
+
+`baseline.json` is a checked-in historical reference, **not** the gate. It
+records a measurement; it is not one. Rebuild and re-run before quoting anything
+from it, and refresh it whenever you move the ceiling.
 
 ## Automated launch gate (`pnpm perf:ab`, CI job `launch-perf`)
 
@@ -75,8 +93,8 @@ commit's own deps) and the head into `dist-base/` and `dist-head/`, then calls
 `node e2e/perf.mjs --ab dist-base dist-head`, which:
 
 - **interleaves** head/base measurements per pair so slow machine drift cancels;
-- gates only the **strong-signal fixtures** (`medium`, `large`); the small ones
-  are reported but never fail;
+- gates only the **strong-signal fixtures** (`GATED_FIXTURES` in `verdict.mjs`);
+  the small ones are reported but never fail;
 - **double-confirms** — a regression must reproduce on the same fixture across
   two full passes before the job fails, killing transient CI false reds.
 
@@ -84,130 +102,39 @@ commit's own deps) and the head into `dist-base/` and `dist-head/`, then calls
 or a `Perf-Regression-Accepted: <reason>` commit trailer; the gate reports the
 regression but doesn't block (CI passes it through as `PERF_ACCEPT`).
 
+`dist-base/` and `dist-head/` are **left in the working tree** — the runner
+clears them before rebuilding, never after. They are gitignored, and
+`.vscodeignore` does not honour `.gitignore`, so both are listed there *and* in
+`scripts/check-vsix.mjs`'s banned set: without that, running an A/B locally and
+then packaging silently ships two extra copies of the bundle in the VSIX.
+
 ## Fixtures
 
-Generated deterministically (no Date/random) in `fixtures.mjs`: `tiny` (~0.1 KB),
-`medium` (~12 KB mixed), `large` (~96 KB, 141 headings), `code-heavy` (~1 KB,
-many languages + mermaid), `math` (~1 KB, KaTeX), `link-heavy` (~19 KB, 360
-bare autolinks exercising the embed recognizer walk). Injected by the runner as
-`window.__perfInit` before any script runs, so fixture I/O never pollutes the
-`roundtrip` measurement. (Sizes measured from `FIXTURES`, not estimated — they
-read as "how big is the document this row describes", so a wrong one misleads.)
+Generated deterministically (no `Date`/`Math.random`) in `fixtures.mjs`, so a
+run is reproducible: `tiny`, `medium` (mixed prose/lists/tables/code), `large`
+(the same section shape repeated), `code-heavy` (many languages + mermaid),
+`math` (KaTeX), `link-heavy` (bare autolinks exercising the embed recognizer
+walk). Sizes are computed from `FIXTURES` rather than written down, so a table
+can't drift from what the fixture actually holds.
+
+Injected by the runner as `window.__perfInit` before any script runs, so fixture
+I/O never pollutes the `roundtrip` measurement.
+
+**`large` and `xlarge` repeat a section that contains a table and a code block.**
+Worth knowing before designing a probe: a caret walked blindly into one of those
+fixtures lands in a table cell or a code block about as often as in prose, and
+those have very different costs.
 
 # Typing-cost harness (`e2e/perf-typing.mjs`)
 
-Measures **per-keystroke dispatch block** — the dominant slice of MAR-137
-(large-document typing lag). The bundle wraps transaction dispatch
-(`instrumentTransactions` in `webview/perf.ts`) so every doc-changing
-transaction stamps an `mdw:tx-apply` measure: state apply + view DOM
-reconciliation + every plugin view's `update`. The runner types real keystrokes
-(Playwright `keyboard.type`) into each fixture and reports the distribution
-(median / p95 / max) after a discarded warmup burst.
+Measures the **synchronous dispatch block of one edit**. The bundle wraps
+transaction dispatch (`instrumentTransactions` in `webview/perf.ts`) so every
+transaction stamps a User-Timing measure: `mdw:tx-apply` for doc-changing ones,
+`mdw:tx-select` for selection-only ones. Each covers state apply + view DOM
+reconciliation + every plugin view's `update`.
 
-## The `caret` column (selection-only dispatch)
-
-Added in MAR-137, and the reason is a cautionary tale about metric coverage:
-`instrumentTransactions` used to dispatch selection-only transactions
-*unwrapped*, on the stated grounds that they were "not the cost being tracked".
-So caret moves were the one class of transaction **nothing in this repo
-measured** — not `pnpm perf:typing`, not `typing-perf` in CI, not `block`.
-
-`@milkdown/plugin-prism` ran two whole-document walks *above* its own
-`docChanged` test. Every arrow key and every click on the 300 KB fixture paid
-2.4 ms of blocked main thread, and it was invisible by construction for as long
-as that instrumentation gap stood. **A cost no instrument reports is a cost that
-regresses freely.**
-
-So selection transactions now stamp their own span, `mdw:tx-select`, and the
-harness reports the median as `caret`:
-
-- It is a **separate span** from `mdw:tx-apply`, so the headline typing median
-  means exactly what it always did and is never diluted by caret moves.
-- It **is gated**, on the same floors as the typing median (≥10% AND ≥0.5 ms).
-  Unlike `block` it is a clean per-transaction median rather than a
-  threshold-sensitive whole-burst sum, so it does not inflate on a loaded runner
-  — which is precisely why `block` is reported and this one decides.
-- Missing on either side (a merge-base predating the metric) → **skipped, never
-  read as a zero baseline**, which would make every A/B against an older commit
-  a 100% regression.
-- Validated the way MAR-224 validated the typing gate — by reintroducing the
-  regression and watching it fire: `caret 3.45ms → 5.25ms (+52%) ✗ REGRESSED`,
-  confirmed across two passes, while the null A/B against a metric-less
-  merge-base correctly reported no caret row at all.
-
-Two things about how the burst is placed, both learned the hard way:
-
-- It runs on the **already-mounted page**. Mount is ~38% of an `xlarge` sample,
-  so folding the caret burst into the existing sample costs burst time only —
-  **measured at +0.25 s per sample (12.26 s → 12.51 s)**, roughly 2 s across the
-  whole CI job.
-- It runs **after** the typed burst, never before. Arrow keys walk the caret
-  into whatever the fixture holds, and `xlarge` is 440 sections of prose +
-  table + code block. Running it first parked the caret in a code block and the
-  headline typing median read **38.5 ms instead of 5.4** — the ordering silently
-  changed what the benchmark measured.
-
-## Edit shapes the harness does NOT cover
-
-Re-measured on `xlarge` after MAR-137's three fixes. **The first version of this
-table went stale within a day** — it was written after the second fix and the
-third halved two of its rows while it still read as current, which is the exact
-failure this file warns about elsewhere. Re-run the shapes before quoting them.
-
-| shape | median | covered by a gate? |
-| --- | --- | --- |
-| typing in prose | 5.9 ms | ✅ `median` |
-| moving the caret | 3.4 ms | ✅ `caret` |
-| **typing inside a code block** | **8.7 ms** | ❌ |
-| **Enter (structural edit)** | **19.0 ms** | ❌ |
-
-Enter is the largest remaining per-edit cost, and it is **not** our plugin
-state. Attributed 2026-07-29 by instrumenting `config.fields`,
-`appendTransaction` and plugin views separately:
-
-| | `state.apply` | plugin views | ProseMirror DOM/view |
-| --- | --- | --- | --- |
-| `medium` (12 KB) | 0.43 ms | 0.30 ms | **1.69 ms** |
-| `large` (96 KB) | 1.54 ms | 1.37 ms | **5.45 ms** |
-| `xlarge` (303 KB) | 4.63 ms | 3.68 ms | **20.37 ms** |
-
-Typing is ~80% `state.apply`; a structural edit is ~83% `updateState`, and it
-scales with document size on a document that renders **3,524 top-level DOM
-elements** with no windowing. Ruled out along the way: `scrollIntoView` (8.60 vs
-8.50 ms with and without), the fold plugin's window dispatch (2 across 25
-Enters), and forced layout (~1 ms). There is no cheap fix — the only lever is
-rendering fewer elements, i.e. MAR-137's parked lane 2.
-
-### ⚠️ A programmatic dispatch loop is NOT a proxy for real editing
-
-Worth its own heading because it produced a confident, wrong conclusion and
-cost a round trip. Dispatching N transactions in one JS task skips the
-per-frame layout that real input always pays:
-
-| driving the same split | median |
-| --- | --- |
-| 25 dispatches batched in one task | 9.5 ms |
-| same, with a layout flush + rAF between each | 15.1 ms |
-| real keyboard Enter | 21.2 ms |
-
-Measured against the batched loop, keyboard Enter looked 2.2× more expensive
-and the difference was attributed to our own keymap plugins. It was not: the
-transactions are byte-identical (one `ReplaceStep`, same `structure`, same
-slice), and most of the gap was the missing frames. **Drive real keys, or force
-a frame between dispatches.**
-
-**What the span does NOT cover**: ProseMirror's pre-dispatch input path
-(DOM-observer read, input-rule scan) and rAF-coalesced followers (TOC refresh,
-the scheduled serialize) — on `xlarge` this was over half the burst's real
-main-thread block before the TOC fast path landed. The **`block` column**
-closes that blind spot (MAR-163): a buffered longtask observer sums every
-main-thread task ≥50 ms during the measured burst, and `--compare` gates on it
-(≥25% and ≥250 ms) alongside the dispatch median — so work merely *moved* out
-of dispatch into a rAF now shows as a block regression instead of a fake win,
-and work *removed* from a rAF (invisible to the median) shows as the
-improvement it is. Granularity caveat: tasks under 50 ms don't register, so
-`block` reads 0 on the small fixtures and only carries signal where
-keystrokes already blow the frame budget (`large`/`xlarge`).
+The runner drives **real Playwright keystrokes** into each fixture and reports
+the distribution after a discarded warmup burst.
 
 ```bash
 pnpm build && pnpm perf:typing            # all typing fixtures
@@ -216,15 +143,53 @@ node e2e/perf-typing.mjs --keys 150 --json after.json
 node e2e/perf-typing.mjs --compare before.json after.json
 ```
 
-Fixtures are `TYPING_FIXTURES` in `fixtures.mjs`: `tiny`/`medium`/`large` shared
-with the launch harness plus `xlarge` (~300 KB — the MAR-137 tail; kept out of
-the launch set so `pnpm perf` runtimes and `baseline.json` stay comparable).
+The same marks work in the webview devtools against any real document
+(Performance panel → User Timing), which is how to profile a user-reported slow
+file.
 
-Same A/B discipline as launch: absolute ms drift with machine load, so gate on
-a same-session A/B. Per-keystroke medians are small, so the noise gate
-is **≥10% AND ≥0.5 ms**. The same marks work in the webview devtools against
-any real document (Performance panel → User Timing), which is how to profile a
-user-reported slow file.
+## The three columns, and which of them decide
+
+| column | span | gated? |
+| --- | --- | --- |
+| `median` / `p95` / `max` | `mdw:tx-apply` — a doc-changing edit | ✅ ≥10% AND ≥0.5 ms |
+| `caret` | `mdw:tx-select` — a selection-only transaction | ✅ same floors |
+| `block` | buffered longtasks summed over the burst | ❌ reported only |
+
+**`caret` exists because selection-only transactions were once dispatched
+unmeasured**, on the reasoning that they were "not the cost being tracked". That
+left caret movement as the one class of transaction nothing in the repo
+measured — no harness, no CI gate, not `block` — and a plugin doing
+whole-document work on every arrow key sat there unnoticed as long as that held.
+**A cost no instrument reports is a cost that regresses freely.** It is a
+separate span so the headline typing median still means exactly what it did and
+is never diluted by caret moves.
+
+**`block` is reported and never gated.** Its longtask threshold is a fixed
+50 ms, so a slower or loaded machine pushes sub-threshold tasks over it and the
+number inflates super-linearly — a null A/B on identical bundles moves it while
+dispatch medians hold, and the same burst reads more than an order of magnitude
+higher on a CI runner than on a laptop. So it informs — including the "median
+improved but block regressed → work was *moved*, not removed" warning — and
+never decides. (`--compare` does fail on it; that runs on a machine you control,
+CI does not.)
+
+A missing column on either side of an A/B — a merge-base predating the metric —
+is **skipped, never read as a zero baseline**, which would make every comparison
+against an older commit a 100% regression.
+
+## Where the caret burst runs, and why it matters
+
+It runs on the **already-mounted page**, after the typed burst. Both are
+deliberate:
+
+- **Already-mounted**: mount is a large fraction of a big-fixture sample, so
+  folding the caret burst into the existing sample costs burst time only rather
+  than a second mount.
+- **After, never before**: arrow keys walk the caret into whatever the fixture
+  holds. Running the caret burst first parked the caret in a code block, and the
+  headline typing median silently stopped measuring prose typing — it read
+  several times higher and nothing failed. Ordering the two bursts wrongly
+  changes what the benchmark means.
 
 ## Automated typing gate (`pnpm perf:typing:ab`, CI job `typing-perf`)
 
@@ -239,26 +204,17 @@ PERF_ACCEPT="reason" pnpm perf:typing:ab     # accept an intentional typing cost
 ```
 
 `e2e/perf-ab.mjs` is shared with the launch gate — same detached-worktree
-merge-base build — and `--typing` points it at `node e2e/perf-typing.mjs --ab`
-instead of `perf.mjs --ab`. That comparer:
+merge-base build — and `--typing` points it at `node e2e/perf-typing.mjs --ab`.
+That comparer:
 
-- **interleaves** head/base bursts per pair; the first pair is discarded as warmup,
-  and durations are **pooled** across pairs before taking the median;
-- measures **only the gated fixture** (`xlarge`). The others can't inform the
-  decision: `medium` reads 1.8 ms per keystroke on CI, so even a large
-  percentage move is a fraction of the 0.5 ms absolute floor. `large` was
-  dropped on the same reasoning at the margin — ~1/5 the sensitivity for a
-  third of the runtime. Use `pnpm perf:typing` for the full spread;
-- **double-confirms** — a regression must reproduce across two full passes;
-- **reports `block`, never gates it.** Two independent measurements say it can't
-  be a gate: a null A/B (identical bundles) moved it ~15% on `xlarge` while the
-  dispatch medians held within 1.1%, and the same `xlarge` burst reads **679 ms
-  locally vs 15,037 ms on a CI runner — 22×**, because its longtask threshold is
-  a fixed 50 ms and a slower machine pushes every sub-threshold task over it. So
-  it informs — including the "median improved but block regressed → work moved,
-  not removed" warning — and never decides. This is a deliberate divergence from
-  `--compare`, which does fail on block; `--compare` runs on a machine you
-  control, CI does not.
+- **interleaves** head/base bursts per pair; the first pair is discarded as
+  warmup, and durations are **pooled** across pairs before taking the median;
+- measures **only the gated fixture** (`TYPING_GATED_FIXTURES`). The smaller ones
+  cannot inform the decision — a large percentage move on them is still a
+  fraction of the absolute floor, and a regression that scales with document
+  size shows on the largest fixture first and hardest. Use `pnpm perf:typing`
+  for the full spread;
+- **double-confirms** — a regression must reproduce across two full passes.
 
 **Escape hatch:** the same `perf-accept` PR label / `Perf-Regression-Accepted:
 <reason>` commit trailer as the launch gate, deliberately not a second one.
@@ -267,78 +223,61 @@ instead of `perf.mjs --ab`. That comparer:
 
 **It does not run on most PRs.** It lives in its own workflow
 (`.github/workflows/typing-perf.yml`) behind a `paths` filter, so a PR touching
-only docs, `src/`, or CI config skips it entirely. It fires on `webview/**`,
-`packages/**` and the perf harness itself — deliberately wider than "the files
-that could regress typing", because narrowing a gate to specific plugins is how
-it silently stops covering what it was built for.
+only docs, `src/`, or CI config skips it. It fires on `webview/**`, `packages/**`
+and the perf harness itself — deliberately wider than "the files that could
+regress typing", because narrowing a gate to specific plugins is how it silently
+stops covering what it was built for.
 
 It is also **not** in branch protection's required set, on purpose: a required
 check that a `paths` filter skips leaves a PR waiting forever on a status that
 never arrives.
 
-**Every figure below is a completed CI job, not an estimate** — three successive
-estimates of this runtime were wrong before it was simply run and read:
+Three rules about its cost, each learned by getting it wrong first:
 
-| config | one pass | job total |
-| --- | --- | --- |
-| 3 fixtures, 4 pairs, 80 keys | 8m30s | 9m23s |
-| 2 fixtures, 4 pairs, 80 keys | 7m16s | 7m55s |
-| **1 fixture, 2 pairs, 60 keys** (current) | — | **~3 min** |
+- **Size it from a completed CI job, never from a laptop.** Successive estimates
+  of this job's runtime were wrong until it was simply run and read. A CI runner
+  is roughly twice as slow per keystroke as a dev laptop.
+- **Fixture count is a weak lever.** The largest fixture dominates the job, so
+  dropping a smaller one buys little. The real levers are its keystroke count
+  and the pair count — and, if it ever matters more, mounting the document once
+  per side instead of once per sample.
+- **It shares nothing with `launch-perf` by design.** The two harnesses must not
+  share a runner (see *Run one harness at a time* in `AGENTS.md`); concurrent
+  runs produce failures and inflated `block` values that are not real.
 
-One run of the 2-fixture config was still going past 13 min before being
-cancelled — unexplained runner variance, so treat these as typical, not
-guaranteed.
+### What a green `typing-perf` does and does not prove
 
-**Fixture count is a weak lever, which is the non-obvious part.** Dropping
-`medium` cut only ~15%, because `xlarge` dominates everything. Per sample on a
-dev laptop (CI ≈ 2× that):
+The gate is percentage-based with an absolute floor, which makes it **less
+sensitive in absolute terms on the slower machine**, and means **a uniform
+per-keystroke regression below the floor passes silently**. Adding a flat cost to
+every keystroke is a real regression this gate cannot see. It catches *scaling*
+regressions — work proportional to document size — not small constant ones.
+Don't read a green `typing-perf` as "no cost was added".
 
-| fixture | mount | settle+warmup | 80-key burst | total |
-| --- | --- | --- | --- | --- |
-| `large` | 1.3s | 1.7s | 3.5s | 6.4s |
-| `xlarge` | 6.4s | 2.4s | 8.0s | 16.7s |
+# Methodology rules
 
-So if this needs to get cheaper again, the levers are **`xlarge`'s keystroke
-count and the pair count** — and, if it ever matters more, mounting the document
-once per side instead of once per sample (mount is ~38% of `xlarge`).
+Each of these has produced a confident, wrong conclusion here at least once.
 
-A CI runner is ~2× slower per keystroke than a dev laptop (`xlarge` 45.8–47.5 ms
-vs 22.8 ms), so *never* size this job from local timings. It is a separate CI
-job from `launch-perf` because the two harnesses must not share a runner (see
-*Run one harness at a time* in `AGENTS.md`).
-
-Reference deltas from that first CI run, for calibrating the thresholds against
-real runner variance: on an unchanged webview, `medium` 0%, `large` +3.8%,
-`xlarge` −3.2% — all comfortably inside the 10% gate.
-
-Reference numbers — **re-measured 2026-07-25, after MAR-215 roughly halved
-per-keystroke dispatch.** The previous figures here were captured 2026-07-16 and
-had gone stale in exactly the way this file warns about, to the point of
-contradicting the CI numbers above (they put the laptop's `xlarge` at ~47 ms,
-which is now the *CI runner's* number, not the laptop's).
-
-| fixture | M-series laptop | CI runner (ubuntu-latest) |
-| --- | --- | --- |
-| `medium` (12 KB) | 0.9–1.1 ms | 1.8 ms |
-| `large` (96 KB) | 4.7–4.9 ms | 10.6 ms |
-| `xlarge` (300 KB) | 22.6–23.0 ms | 47.5 ms |
-
-Laptop figures are pooled over 4 interleaved pairs × 80 keystrokes; CI figures
-are from the first `typing-perf` run. Total per-keystroke block runs above the
-dispatch median (the span misses the pre-dispatch input path and rAF followers).
-
-Two consequences worth holding onto:
-
-- **The gate is percentage-based, so it is *less* sensitive in absolute terms on
-  the slower machine.** 10% of `xlarge` is ~2.3 ms locally but ~4.8 ms on CI.
-- **A uniform per-keystroke regression below that floor passes silently.** Adding
-  a flat ~2 ms to every keystroke is a real cost this gate cannot see: it is
-  under 10% on `xlarge`, and on the small fixtures it is under the 0.5 ms
-  absolute floor. The floors exist to stop flapping and that is the price they
-  charge — the gate catches *scaling* regressions (work proportional to document
-  size, the MAR-215 shape), not small constant ones. Don't read a green
-  `typing-perf` as "no cost was added."
-
-The scaling is ProseMirror's per-keystroke view reconciliation (see MAR-137) — at
-300 KB every keystroke blows the 16 ms frame budget, which is why MAR-137's
-engine-lane decision exists.
+- **A programmatic dispatch loop is not a proxy for real editing.** Dispatching
+  N transactions in one JS task skips the per-frame layout that real input always
+  pays, which makes any editing gesture look substantially cheaper than it is.
+  Measured that way, a keyboard gesture appeared far more expensive than the
+  "same" programmatic one and the difference was attributed to our own plugins;
+  the transactions were in fact byte-identical. **Drive real keys, or force a
+  layout flush and a frame between dispatches.**
+- **Attribute a cost by removing the suspected work and re-measuring**, never
+  from a profile's self-time column. A profile is for generating the hypothesis.
+- **Instrument the right seam.** ProseMirror binds `spec.state.apply` into a
+  `FieldDesc` at `Configuration` construction, so patching the spec afterwards
+  is a silent no-op; the live surface is `view.state.config.fields`. And
+  `appendTransaction` runs in `applyTransaction`, *outside* the state-field loop,
+  so per-field accounting misses it — it can be most of a span while reading as
+  unattributed.
+- **Split `state.apply` from `updateState` before blaming either.** Different
+  edit shapes have opposite profiles: typing is dominated by plugin state,
+  structural edits by view reconciliation. A conclusion drawn from one does not
+  transfer to the other.
+- **Re-measure before quoting any recorded number**, including from this repo's
+  own JSON baselines. They record a measurement; they are not one.
+- **Give the machine to itself.** A perf capture run alongside anything else is
+  not evidence.
