@@ -148,8 +148,8 @@ Webview cold-start (open `.md` → editor painted) is a first-class concern — 
 Three things about it are deliberate and easy to get wrong:
 
 - **It runs only on PRs touching `webview/`, `packages/` or the perf harness**, in its own workflow behind a `paths` filter, and is **not** a required check. It is the most expensive check in the repo and most PRs cannot move per-keystroke dispatch; paying minutes on every one of those compounds badly across a day of small PRs. (A required check that a `paths` filter skips would leave PRs waiting forever — hence advisory.)
-- **`block` (total longtask ms) is reported, never gated.** Its fixed 50 ms threshold makes it inflate on any slower machine: a null A/B on identical bundles moved it ~15% while dispatch medians held within 1.1%, and the same `xlarge` burst reads 679 ms locally against ~15,000 ms on a CI runner (22×).
-- **Size it from CI timings, never local ones** — the runner is ~2× slower per keystroke (`xlarge` 45.8 ms vs 22.8 ms). And note the cost is dominated by `xlarge` itself (mount + burst), *not* by how many fixtures are in the list: dropping one bought only ~15%. Cut keystrokes or pairs.
+- **`block` (total longtask ms) is reported, never gated.** Its threshold is a fixed 50 ms, so a slower machine pushes sub-threshold tasks over it and the number inflates super-linearly: a null A/B on identical bundles moves it while dispatch medians hold, and the same burst reads more than an order of magnitude higher on a CI runner than on a laptop.
+- **Size it from a completed CI job, never from local timings** — the runner is roughly twice as slow per keystroke. And the cost is dominated by the largest fixture itself (mount + burst), *not* by how many fixtures are in the list: dropping a smaller one buys little. Cut keystrokes or pairs.
 
 ## Issue tracking
 
