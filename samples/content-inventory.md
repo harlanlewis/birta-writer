@@ -1,11 +1,13 @@
 ---
 title: Content inventory
-description: A living showcase of every content type the editor supports. Open it in the editor to eyeball rendering across themes and fonts; add to it as new types land.
-tags: [reference, showcase, regression]
+description: The complete corpus of every content type the editor supports — with the edge cases, rejection forms, and expected-failure states. For the quick human tour, open showcase.md.
+tags: [reference, corpus, regression]
 ---
 # Content inventory
 
-This document is a **living reference** of every content type Birta Writer supports. Open it directly in the editor to eyeball how each type renders across themes and fonts. When we add support for a new content type, add an example here; when we drop or change one, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
+This document is the **complete living corpus** of every content type Birta Writer supports — including the edge cases, deliberate rejection forms, and expected-failure states that make it useful as a regression fixture (the unit-test corpus round-trips this file's body verbatim). For a quick scroll-through — one clean example per type, none of the fine print — open [the showcase](showcase.md) instead.
+
+When support for a new content type lands, add an example here *with its edge cases*; when one changes, update it. Keep the "Not yet supported" section honest — move items up into the body as they land.
 
 ---
 
@@ -35,6 +37,11 @@ A line of content under a Heading 5.
 
 A line of content under a Heading 6.
 
+#### A closed ATX heading ####
+
+The trailing hashes above are the "closed" ATX form — they survive the round
+trip too.
+
 Setext headings round-trip in their original form too (these two are real
 setext source — open the raw file to confirm saving never rewrites them to
 `#` form):
@@ -47,16 +54,52 @@ Setext H2
 
 ---
 
-
-
----
-
-
 ## Inline text
 
 The supported inline text styles are **bold**, _italic_, _**bold italic**_, ~~strikethrough~~, ==highlight==, and `inline code`.
 
 Styles nest: **bold wrapping `code`**, _italic wrapping a [link](https://example.com)_, and ~~struck-through **bold**~~.
+
+### Marker fidelity
+
+The emphasis marker you type is part of the bytes: *single stars*, _single
+underscores_, **double stars**, and __double underscores__ each keep their
+authored marker on save. Intraword star emphasis works — un*bel*ievable — and
+typing arithmetic like `60*60*1000` never italicizes it (the star input rule
+is math-aware; the expression stays in backticks here because as raw source
+bytes CommonMark would read those stars as emphasis).
+
+### Highlight
+
+`==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict — each of these stays plain text, byte-preserved:
+
+- spaces at the edges: == spaced ==
+- an `=` inside: ==a=b==
+- no closer: 2==2
+
+(One rejected form per line: adjacent forms on a single line can
+legitimately cross-match, the tail `==` of one pairing with the head of the
+next — the same behavior as any paired-delimiter syntax.) Nested formatting
+inside a highlight renders literally.
+
+### Hard line breaks
+
+All three hard-break spellings work. The `<br>` and backslash forms keep
+their authored bytes outright; the two-trailing-spaces form is kept on lines
+you don't touch (editing that line re-serializes the break in the backslash
+form — the spaces are invisible, so the editor can't promise more):
+
+An HTML break ends this line here →<br>and continues on the next.
+
+A backslash break ends this line here →\
+and continues on the next.
+
+A two-trailing-spaces break ends this line here →  
+and continues on the next.
+
+---
+
+## Inline calculations
 
 ### Inline calculator `=`
 
@@ -132,21 +175,6 @@ Both inline forms live under `birta.calc.enabled`. Fragments are never
 computed: `1,000 + 2 =>` offers nothing rather than answering the digits after
 the comma, and results display at most 6 decimals — an answer, not noise.
 
-### Highlight
-
-`==text==` renders as a ==highlight== (Obsidian syntax). Typing `==text==` applies it live; a Highlight command lives in the palette, and an opt-in toolbar button ships hidden by default. The grammar is deliberately strict — each of these stays plain text, byte-preserved:
-
-- spaces at the edges: == spaced ==
-- an `=` inside: ==a=b==
-- no closer: 2==2
-
-(One rejected form per line: adjacent forms on a single line can
-legitimately cross-match, the tail `==` of one pairing with the head of the
-next — the same behavior as any paired-delimiter syntax.) Nested formatting
-inside a highlight renders literally.
-
-A hard line break ends this line here →<br>and continues on the next.
-
 ---
 
 ## Links
@@ -155,6 +183,7 @@ A hard line break ends this line here →<br>and continues on the next.
 - Link with a title: [hover me](https://example.com "A title")
 - Formatted link text stays one link: [**bold** and `code` tail](https://example.com)
 - Autolink: <https://example.com>
+- GFM autolink literals — a bare https://example.com/path or hello@example.com links itself mid-sentence, no brackets needed
 - Reference link (full): [see the spec][spec]
 - Reference link (collapsed): [spec][]
 - Reference link (shortcut): [spec]
@@ -191,8 +220,6 @@ With `birta.smartLinks` (default on) local links resolve the way a
 site generator publishes them — every link below opens a real file in this
 repo when clicked:
 
-
-
 - Workspace-root path, extension inferred: [the README](/README)
 - Nested root path: [the perf harness](/e2e/perf/README)
 - Document-relative, `..` and suffix inference: [changelog](../CHANGELOG)
@@ -200,8 +227,6 @@ repo when clicked:
 - Heading fragment (scrolls after opening): [README → Features](../README.md#features)
 - Line-number fragment: [README line 24](../README.md#24)
 - A miss shows a quiet warning: [no such page](/write/nonexistent)
-
----
 
 ### Section links
 
@@ -228,8 +253,6 @@ exactly as authored instead. Duplicate heading titles are disambiguated the way
 GitHub does it (`foo`, `foo-1`), including when a *new* heading collides with an
 existing one.
 
----
-
 ### Wikilinks
 
 Obsidian-style wikilinks parse, navigate, and round-trip **byte-identically**.
@@ -252,7 +275,7 @@ cell:
 
 ---
 
-### URL embeds
+## URL embeds
 
 A bare provider link on its own line renders as an inline card. Every card is **render-only**: the stored source stays the plain link, so the file round-trips byte-for-byte. Cards are first-class blocks: **arrow keys stop at each card** (a selection ring appears — sequential cards are each their own stop), and selecting opens a small **palette** with the editable URL plus open / copy / show-as-link / delete. Press **Enter** on a selected card to edit its URL in place; **Backspace selects before it deletes**, so a second press removes the card's paragraph cleanly. Every player card carries a resident **identity strip** just below the frame — the **page title** (fetched from the provider when the network is on) over the **URL** — visible at all times, playing included; the edit palette takes its place while open. Branded facades name their service in the frame's upper-left corner. Click semantics split by surface: **the media area — anywhere on the facade — loads the player**, and **the identity strip selects the card** and raises the palette.
 
@@ -350,8 +373,6 @@ Two switches govern all of this. `birta.embeds.enabled` is the feature itself �
 
 - Third item with `code` and a [link](https://example.com)
 
-
-
 ### Ordered list
 
 1. First step
@@ -368,6 +389,53 @@ Two switches govern all of this. `birta.embeds.enabled` is the feature itself �
 - [ ] Incomplete task
 - [x] Completed task
 - [ ] Task with **formatting** and a [link](https://example.com)
+
+Checking a box only toggles the `[x]`; with `birta.checklist.sinkChecked`
+(off by default) a checked task also sinks below its unchecked siblings.
+
+### List markers
+
+The list marker you type is the one you keep — none of these are rewritten to
+a house style on save. Star bullets:
+
+* star bullet
+* another star
+
+Plus bullets:
+
++ plus bullet
++ another plus
+
+An ordered list starting at 3 keeps its start number:
+
+3. starts at three
+4. counts up from there
+
+A paren delimiter stays a paren:
+
+1) paren one
+2) paren two
+
+Lazy numbering — every line `1.` — is preserved, never rewritten to count up
+(the rendered list still counts correctly):
+
+1. lazy one
+1. lazy two
+1. lazy three
+
+### Block content inside items
+
+A list item can carry any block without dissolving the list:
+
+- A bullet holding a quote:
+  > quoted inside a bullet
+- A bullet holding a code fence:
+  ```js
+  const inside = "a list";
+  ```
+- A bullet with two paragraphs.
+
+  The second paragraph of the same item, indented to stay inside it.
 
 ### Tight, loose, and partly-loose
 
@@ -405,7 +473,10 @@ Loose:
 >
 > A second paragraph inside the same quote.
 
----
+Quotes nest without any callout involved:
+
+> An outer quote.
+> > And a nested quote inside it.
 
 ### Callouts
 
@@ -413,8 +484,6 @@ GitHub alerts and Obsidian callouts render with a per-kind icon and accent
 color. The icon is a button — click it (or Enter/Space when focused) to
 switch the kind; the title text is editable in place (Enter or click away
 saves, Escape reverts). The marker line's exact source bytes round-trip.
-
-
 
 > [!NOTE]
 > The five GitHub types: NOTE, TIP, IMPORTANT, WARNING, CAUTION.
@@ -479,7 +548,7 @@ sanitized HTML preview, byte-preserved.
 
 ---
 
-#### Container directives
+## Container directives
 
 `:::name` fenced blocks (the Docusaurus admonition syntax) render as labeled
 containers with an editable body and title. Known names pick up callout-style
@@ -535,6 +604,13 @@ delete, and the editable title on its own row. Edits apply on Enter or
 click-away, Escape cancels.
 
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
+
+A reference-style image resolves through its definition, exactly like a
+reference link:
+
+![The same two cats, by reference][catimg]
+
+[catimg]: images/cats.jpeg "Reference-style image definition"
 
 ---
 
@@ -618,7 +694,7 @@ inline forms' `birta.calc.enabled`.
 
 ---
 
-### Math
+## Math
 
 Inline math renders in place and is **edited in place**: arrow into
 $E = mc^2$ and the rendered formula reveals its raw LaTeX for per-character
@@ -631,6 +707,8 @@ $$
 \int_0^1 x^2 \, dx = \frac{1}{3}
 $$
 
+---
+
 ## Frontmatter
 
 See the top of this file — YAML frontmatter is lossless. Flat key/value pairs
@@ -642,14 +720,39 @@ get a table UI; complex/nested YAML preserved verbatim.
 
 A sentence with a footnote reference.[^note] Footnotes are auto-numbered and their definitions round-trip.
 
+Named labels work too,[^named] and a definition can hold more than one
+paragraph.
+
 [^note]: The footnote definition, with a second sentence for good measure.
+
+[^named]: A named-label definition.
+
+    Its second paragraph, indented to stay inside the definition.
 
 ---
 
 ## Horizontal rules
 
-Three marker styles, all preserved in their original form on save (open the
-raw file: these really are three different markers):
+Three marker styles plus the spaced form, all preserved in their original
+bytes on save. Each demo rule is labeled by the line above it, so an unlabeled
+rule elsewhere in this file is a *section separator*, not part of this demo
+(that ambiguity once got two of these deleted as clutter):
+
+This one is `---`:
+
+---
+
+This one is `***`:
+
+***
+
+This one is `___`:
+
+___
+
+And the spaced `- - -` form keeps its spaces:
+
+- - -
 
 ---
 
@@ -745,20 +848,20 @@ Add your own tokens with `birta.notes.customMarkers` — a plain word like
 
 ---
 
-## Not supported
+## Not yet supported
 
 > [!WARNING]
 > If and when support lands for these common content types, move up into the body of this document with a real example.
 
 ### Raw `<video>` / `<iframe>` tags
 
-Raw `<video>` / `<iframe>` HTML tags aren't rendered as players — they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Loom, Figma, GitHub) on its own line does render as a card, though — see **URL embeds** above.
+Raw `<video>` / `<iframe>` HTML tags aren't rendered as players — they fall through to the read-only sanitized HTML preview (iframes are stripped). A bare **provider link** (YouTube, Vimeo, Loom, Figma, GitHub) on its own line does render as a card, though — see **URL embeds** above.
 
 ### Wikilink embeds
 
-Obsidian's transclusion form `![[page]]` is not treated as an embed — it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched: 
+Obsidian's transclusion form `![[page]]` is not treated as an embed — it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched (MAR-45):
 
-!\[\[image-target]]
+![[image-target]]
 
 ### Emoji shortcodes
 

@@ -30,10 +30,10 @@ import { getMarkdown } from "@milkdown/utils";
 import { applyMinimalChanges, computeRoundTripProtection } from "../utils/minimalDiff";
 // Fixture loading, the real-editor factory, and sig() are shared with the
 // Layer-3 generative suites (corpusMoveSampling, moveProperty) — one corpus,
-// one editor recipe. The showcase (samples/content-inventory.md) rides along
-// as a corpus member: every content type it demonstrates must round-trip
-// byte-identically, so an inventory edit that breaks a fidelity claim fails
-// here.
+// one editor recipe. The sample documents (samples/content-inventory.md, the
+// exhaustive corpus, and samples/showcase.md, the human tour) ride along as
+// corpus members: every content type they demonstrate must round-trip
+// byte-identically, so a sample edit that breaks a fidelity claim fails here.
 import { loadCorpusFixtures, makeCorpusEditor as makeEditor, sig } from "./helpers/moveFuzz";
 
 const fixtures = loadCorpusFixtures();
