@@ -50,6 +50,8 @@ export {
     listSpreadNormalizePlugin,
 } from "./list";
 export { listMergeSuggestPlugin } from "./listMergeSuggest";
+export { imageBlocksPlugin } from "./imageBlocks";
+export { activeBlockPlugin } from "./activeBlock";
 export { pendingRangePlugin, setPendingRange } from "./pendingRange";
 export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";

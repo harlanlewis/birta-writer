@@ -29,7 +29,7 @@ import { attachInputUndo } from "@/utils/inputUndo";
 import { registerEscapeLayer } from "@/ui/escapeLayers";
 import { trackEditorReflow } from "@/ui/editorReflow";
 import { computeAnchoredPosition, viewportSize } from "@/ui/anchoredPlacement";
-import { IconCopy, IconExternalLink, IconLink, IconTrash2 } from "@/ui/icons";
+import { IconCopy, IconExternalLink, IconTextInline, IconTrash2 } from "@/ui/icons";
 import { deleteBlockRange } from "@/editing/blockOps";
 import { readableUrl } from "@/utils/embedCard";
 import type { EmbedKind } from "@/utils/embedProviders";
@@ -162,7 +162,7 @@ function build(): void {
 
     // Card ⇄ link conversion: a labeled [text](url) is deliberately never
     // carded, so giving the link a readable label IS "show as a link".
-    const btnAsLink = makeButton(IconLink, t("Show as text link"), () => {
+    const btnAsLink = makeButton(IconTextInline, t("Show as text link"), () => {
         const view = liveView();
         if (!view || !current) { return; }
         rewriteLink(view, readableUrl(current.href, 60), current.href, { reselect: false });

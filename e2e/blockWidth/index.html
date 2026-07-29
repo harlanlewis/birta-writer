@@ -1,0 +1,91 @@
+<!doctype html>
+<!-- e2e harness page for per-block width (blockWidth.ts): boots in FIXED
+     page-width mode (no editor-width-auto body class + a :root max-width, the
+     provider-injected shape) so the bw-full breakout geometry is measurable.
+     Mirrors the provider template with acquireVsCodeApi stubbed; setState is
+     REAL enough to observe (window.__state) so persistence is assertable. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c;
+    --vscode-button-foreground: #ffffff;
+    --vscode-inputOption-activeBackground: #264f78;
+    --vscode-inputOption-activeForeground: #ffffff;
+    --vscode-panel-border: #454545;
+    --vscode-errorForeground: #f48771;
+    /* FIXED page mode: the provider injects this cap; 60ch keeps the column
+       visibly narrower than the 1280px harness viewport so breakout deltas
+       are unmistakable. */
+    --editor-max-width: 60ch;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = {
+    translations: {},
+    isMac: true,
+    toolbar: { placements: {}, order: [] },
+    contentWidth: "fixed",
+    maxContentWidth: 60,
+    network: true,
+  };
+  window.__posted = [];
+  window.__state = undefined;
+  const ORIGIN = location.origin;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: [
+            "# Sample",
+            "",
+            // Wraps differently at every width — the scroll-anchor check
+            // needs real reflow ABOVE the embed to be non-vacuous.
+            "intro prose that wraps and wraps — the quick brown fox jumps over the lazy dog, then does it again at another column width so this line genuinely reflows on a page width flip.",
+            "",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "",
+            "![swatch](img/swatch.png)",
+            "",
+            "```js",
+            "const answer = 42;",
+            "```",
+            "",
+            "| Name | Age |",
+            "| ---- | --- |",
+            "| Ada  | 36  |",
+            "",
+            "tail text",
+            "",
+          ].join("\n"),
+          imageUriMap: { [ORIGIN + "/img/swatch.png"]: "img/swatch.png" },
+          syncVersion: 1,
+        }, "*");
+      }
+    },
+    getState: () => window.__state,
+    setState: (state) => { window.__state = state; },
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

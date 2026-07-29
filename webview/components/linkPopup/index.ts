@@ -11,7 +11,7 @@ import {
     IconFileText,
     IconFolderOpen,
     IconHash,
-    IconImage,
+    IconEmbedCard,
     IconLink,
     IconLinkOff,
     IconPencil,
@@ -357,7 +357,7 @@ export function setupLinkPopup(
     const btnEmbed = document.createElement("button");
     btnEmbed.className = "ui-btn ui-btn--icon lp-btn lp-btn-embed";
     btnEmbed.setAttribute("aria-label", t("Show as embed"));
-    btnEmbed.innerHTML = IconImage;
+    btnEmbed.innerHTML = IconEmbedCard;
     applyTooltip(btnEmbed, t("Show as embed"), { placement: "above" });
 
     const btnEdit = document.createElement("button");

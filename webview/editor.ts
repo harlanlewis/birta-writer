@@ -55,6 +55,8 @@ import {
     mathInlineEditPlugin,
     wikiLinkCompletePlugin,
     headingLinkCompletePlugin,
+    activeBlockPlugin,
+    imageBlocksPlugin,
     listAutoJoinPlugin,
     listEnterPlugin,
     listLiftPlugin,
@@ -575,7 +577,16 @@ export async function createEditor(
         // (a `-`→`*` marker change) is only offered — the caret advisory
         // here, plus the block menu's Merge rows. See editing/listMerge.
         .use(listAutoJoinPlugin)
-        .use(listMergeSuggestPlugin);
+        .use(listMergeSuggestPlugin)
+        // Marks top-level image-only paragraphs (`img-block`) so CSS can
+        // center standalone images and scope the per-block width breakout —
+        // bare text siblings are invisible to :has(), so the class must come
+        // from the model. Armed on idle; O(top-level) walk on doc changes.
+        .use(imageBlocksPlugin)
+        // Keeps the control column of the block holding the selection
+        // visible (caret in a table cell / code block) — `bc-active` on
+        // whitelisted NodeView hosts, O(1) per selection change.
+        .use(activeBlockPlugin);
 
     // Inline calc-on-`=` (MAR-177): advisory suggestion by default, or an input
     // rule when birta.calc.autoInsert is on. Composed ONLY when the feature is

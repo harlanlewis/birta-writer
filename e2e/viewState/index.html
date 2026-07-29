@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- e2e harness for the view-state restore path: the extension hands the
+     per-document bag back in `init` (viewState), and the webview must adopt
+     it per-key — live bag winning — so a stale revived bag can't discard
+     what the extension remembered. Scenarios via ?scenario=:
+       fresh — getState() undefined (new panel after a raw-editor round trip)
+       stale — getState() returns a bag with ONLY scrollY (older session)
+       live  — getState() returns a bag that already HAS blockWidths -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #ccc; --vscode-descriptionForeground: #999;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #ccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-input-background: #3c3c3c; --vscode-input-foreground: #ccc;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #fff;
+    --vscode-panel-border: #454545; --vscode-toolbar-hoverBackground: rgba(90,93,94,.31);
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-inputOption-activeBackground: #264f78; --vscode-inputOption-activeForeground: #fff;
+    --editor-max-width: 60ch;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  const scenario = new URLSearchParams(location.search).get("scenario") ?? "fresh";
+  window.__i18n = {
+    translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
+    contentWidth: "fixed", maxContentWidth: 60,
+  };
+  window.__posted = [];
+  window.__state =
+    scenario === "stale" ? { scrollY: 0 }
+    : scenario === "live" ? { scrollY: 0, blockWidths: {} }
+    : undefined;
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: [
+            "# T",
+            "",
+            "| Name | Age |",
+            "| ---- | --- |",
+            "| Ada  | 36  |",
+            "",
+            "```js",
+            "const answer = 42;",
+            "```",
+            "",
+          ].join("\n"),
+          syncVersion: 1,
+          // What the extension's durable mirror remembered last session.
+          viewState: {
+            blockWidths: { "table:NameAge": "full" },
+            codeWrap: { "code:const answer = 42;": true },
+          },
+        }, "*");
+      }
+    },
+    getState: () => window.__state,
+    setState: (s) => { window.__state = s; },
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

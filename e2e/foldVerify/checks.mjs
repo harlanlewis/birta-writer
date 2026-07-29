@@ -507,8 +507,8 @@ export async function run({ page, check, baseUrl }) {
         tableExpanded.chipHidden,
         JSON.stringify(tableExpanded));
 
-    // Code block: chevron folds to the chrome row (lang picker stays); chip
-    // sits in the header; content area hides.
+    // Code block: chevron folds to the floating chrome row (lang pill stays);
+    // chip sits beside the pill; content area hides.
     const codeFold = await page.evaluate(() => {
         const wrap = [...document.querySelectorAll(".ProseMirror .code-block-wrapper")]
             .find((el) => el.textContent.includes("const one"));
@@ -524,19 +524,24 @@ export async function run({ page, check, baseUrl }) {
             .find((el) => el.classList.contains("collapsed"));
         if (!wrap) return null;
         const pre = wrap.querySelector(":scope > pre");
-        const header = wrap.querySelector(".code-block-header");
-        const chip = header?.querySelector(".code-fold-ellipsis");
+        const row = wrap.querySelector(".code-float-row");
+        const chip = row?.querySelector(".code-fold-ellipsis");
         const preStyle = getComputedStyle(pre);
         return {
-            headerVisible: header.getBoundingClientRect().height > 0,
-            langPickerVisible: header.querySelector(".lang-picker-btn").getBoundingClientRect().height > 0,
+            rowVisible: row ? row.getBoundingClientRect().height > 0 : false,
+            langPickerVisible: row
+                ? row.querySelector(".lang-picker-btn").getBoundingClientRect().height > 0
+                : false,
+            // The wrapper itself must keep a visible band for the row (the
+            // row is absolutely positioned — no intrinsic wrapper height).
+            wrapperHasBand: wrap.getBoundingClientRect().height >= 30,
             preHidden: preStyle.visibility === "hidden" && pre.clientHeight === 0,
             chipVisible: chip ? getComputedStyle(chip).display !== "none" : false,
         };
     });
-    check("folding a code block keeps the chrome row and hides the content area",
-        codeState !== null && codeState.headerVisible && codeState.langPickerVisible &&
-        codeState.preHidden && codeState.chipVisible,
+    check("folding a code block keeps the floating chrome row and hides the content area",
+        codeState !== null && codeState.rowVisible && codeState.langPickerVisible &&
+        codeState.wrapperHasBand && codeState.preHidden && codeState.chipVisible,
         JSON.stringify(codeState));
     await shot(page, "06d-code-folded");
     await page.evaluate(() =>

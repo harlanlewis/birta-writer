@@ -630,23 +630,26 @@ body.editor-width-auto {
 /* ─── Fixed-width content beside a docked TOC ───
    In fixed-width mode the content box is capped at --editor-max-width and
    centered with `margin: 0 auto` (below), which centers it in the WHOLE
-   viewport and ignores the drawer — a wide docked panel then overlaps the
-   content. When the panel is docked OPEN, keep the box VIEWPORT-centered and
-   nudge it off the drawer only when it would otherwise collide: the docked-side
-   margin is `max(reserve, viewport-centered margin)`. The reserve is
-   --toc-editor-offset — the smallest docked-side margin that still lets the
-   content column clear the panel by --toc-content-gap. While the plain centered
-   margin is larger than the reserve (a wide window), it wins and the content
-   stays optically centered in the window, drawer or not; only once centering
-   would tuck the content under the drawer does the reserve take over, pinning
-   the box's start edge exactly at the clearance and no further. When the room
-   left of the content's max-width is tighter still, the box shrinks to fit
-   rather than overflow — its start edge stays visible either way, never pushed
-   under the drawer or off the viewport's start edge. Overlay mode floats over
-   the content (a dismissable popover shown when the viewport is too narrow to
-   dock), so it keeps the plain full-viewport centering and is intentionally not
-   handled here. The reserve is a physical margin on the physical dock side, so
-   it is correct whichever side (left or right) the drawer is docked on. */
+   viewport and ignores the drawer. When the panel is docked OPEN, the drawer
+   owns its strip of the pane, so the content centers in the space LEFT OVER
+   beside it (maintainer decision 2026-07-28; this replaces the earlier
+   "viewport-centered until collision" nudge): the docked-side margin is
+   `max(reserve, drawer + (leftover − max-width) / 2)`, where leftover is the
+   pane minus the drawer's width. The reserve is --toc-editor-offset — the
+   smallest docked-side margin that still lets the content column clear the
+   panel by --toc-content-gap — and stays as the floor for tight windows:
+   when centering in the leftover would put the content closer to the drawer
+   than the clearance, the reserve wins and pins the box's start edge exactly
+   at the clearance. Tighter still, the box shrinks to fit rather than
+   overflow — its start edge stays visible either way, never pushed under the
+   drawer or off the viewport's start edge. Overlay mode floats over the
+   content (a dismissable popover shown when the viewport is too narrow to
+   dock), so it keeps the plain full-viewport centering and is intentionally
+   not handled here; a docked-CLOSED tab (~20px) is thinner than the content
+   padding and keeps plain centering too. The formula is a physical margin on
+   the physical dock side, so it is correct whichever side the drawer docks
+   on. The bw-* breakout math (--bw-col-ml below) mirrors these margins
+   exactly — change one and you must change the other. */
 body:not(.editor-width-auto) {
     &.toc-open:not(.toc-right) {
         #editor,
@@ -657,7 +660,7 @@ body:not(.editor-width-auto) {
             );
             margin-left: max(
                 var(--toc-editor-offset),
-                calc((100% - var(--editor-max-width)) / 2)
+                calc(var(--toc-width, 260px) + (100% - var(--toc-width, 260px) - var(--editor-max-width)) / 2)
             );
             margin-right: auto;
         }
@@ -672,11 +675,157 @@ body:not(.editor-width-auto) {
             );
             margin-right: max(
                 var(--toc-editor-offset),
-                calc((100% - var(--editor-max-width)) / 2)
+                calc(var(--toc-width, 260px) + (100% - var(--toc-width, 260px) - var(--editor-max-width)) / 2)
             );
             margin-left: auto;
         }
     }
+}
+
+/* ─── Per-block width (blockWidth.ts): bw-full / bw-fixed ───
+   A block marked `bw-full` spans the pane — the page-level Full Width look,
+   applied to one block. In full-width page mode that's just `width: 100%`
+   (per-component rules below/in component CSS); in FIXED page mode the block
+   breaks out of the centered column, and the geometry lives here.
+
+   The breakout target span mirrors what full-width page mode would give the
+   content: [reserve_left + pad_left, pane − reserve_right − pad_right], where
+   the reserves mirror the TOC offsets of body.editor-width-auto above. To
+   place a child there from inside the centered column, the CSS needs three
+   things it can't measure directly:
+     - --bw-pane: the pane's scrollbar-free width, published by
+       initPaneWidthVar() (100vw includes the webview's layout scrollbar);
+     - --bw-emax-px: --editor-max-width resolved to a LENGTH at #editor. The
+       raw var is in `ch`, which re-resolves against each element's own font
+       (a code block's monospace `ch` ≠ the column's) — the @property
+       registration pins the resolution to #editor, where the real max-width
+       rule resolves it. Full-width mode's `none` is invalid for <length> and
+       falls back to the huge initial value, which min() then ignores;
+     - --bw-col-ml: #editor's realized margin-left, reproduced from the same
+       formulas the container rules above use (incl. the fixed+docked-TOC
+       max()). Unregistered custom properties substitute at the USING element,
+       so --toc-editor-offset (set on #editor per TOC state) resolves
+       correctly from these body-level declarations.
+
+   width clamps up to 100% and margin-left down to 0 so that when the pane is
+   too tight for a breakout the block degrades to exactly the column. Only
+   TOP-LEVEL blocks break out (the `.ProseMirror >` / `p.img-block >` gates):
+   a nested block's containing box isn't the column, so the math — and the
+   affordance — stops at column width there. */
+@property --bw-emax-px {
+    syntax: "<length>";
+    inherits: true;
+    initial-value: 100000px;
+}
+
+#editor {
+    --bw-emax-px: var(--editor-max-width, 100000px);
+}
+
+body:not(.editor-width-auto) {
+    /* The derivation vars are declared ON #editor, not body: an unregistered
+       custom property substitutes its var() references at the DECLARING
+       element, and every input here (--bw-emax-px, --toc-editor-offset,
+       --editor-content-left-padding) lives on #editor. Declared on body they
+       would bake in body's fallbacks — 100000px for the cap, 0px for the TOC
+       offset — and the breakout margin would silently compute to 0. */
+    #editor {
+        --bw-etotal: min(var(--bw-pane, 100vw), var(--bw-emax-px));
+        --bw-col-ml: max(var(--toc-editor-offset, 0px), calc((var(--bw-pane, 100vw) - var(--bw-etotal)) / 2));
+        --bw-target-left: var(--editor-content-left-padding, 76px);
+        --bw-target-right: var(--editor-content-right-padding, 48px);
+    }
+
+    &.toc-docked:not(.toc-open):not(.toc-right) #editor,
+    &.toc-overlay:not(.toc-overlay-open):not(.toc-right) #editor {
+        --bw-target-left: max(
+            var(--editor-content-left-padding, 76px),
+            calc(var(--toc-tab-width, 20px) + var(--toc-content-gap, 100px))
+        );
+    }
+
+    &.toc-open:not(.toc-right) #editor {
+        --bw-target-left: max(48px, calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px)));
+        /* Mirrors the container's docked-open margin-left exactly (the
+           center-in-leftover formula, --bw-emax-px standing in for
+           --editor-max-width so a code block's monospace ch can't skew it). */
+        --bw-col-ml: max(
+            var(--toc-editor-offset, 0px),
+            calc(var(--toc-width, 260px) + (var(--bw-pane, 100vw) - var(--toc-width, 260px) - var(--bw-emax-px)) / 2)
+        );
+    }
+
+    &.toc-right {
+        &.toc-docked:not(.toc-open) #editor,
+        &.toc-overlay:not(.toc-overlay-open) #editor {
+            --bw-target-right: max(
+                var(--editor-content-right-padding, 48px),
+                calc(var(--toc-tab-width, 20px) + var(--toc-content-gap, 100px))
+            );
+        }
+
+        &.toc-open #editor {
+            --bw-target-right: max(48px, calc(var(--toc-width, 260px) + var(--toc-content-gap, 100px)));
+            /* Right-docked open: margin-left is the auto remainder after the
+               maxed right margin (the container's center-in-leftover rule). */
+            --bw-col-ml: calc(
+                var(--bw-pane, 100vw) - var(--bw-etotal) -
+                max(
+                    var(--toc-editor-offset, 0px),
+                    calc(var(--toc-width, 260px) + (var(--bw-pane, 100vw) - var(--toc-width, 260px) - var(--bw-emax-px)) / 2)
+                )
+            );
+        }
+    }
+
+    :is(
+        .ProseMirror > .code-block-wrapper.bw-full,
+        .ProseMirror > .mw-table.bw-full,
+        .ProseMirror > p.embed-host > .embed-card-host.bw-full,
+        .ProseMirror > p.img-block > .image-wrapper.bw-full
+    ) {
+        width: max(100%, calc(var(--bw-pane, 100vw) - var(--bw-target-left) - var(--bw-target-right)));
+        /* The image wrapper's base max-width: 100% would clamp the breakout
+           width right back to the column — lift caps for any bw-full block. */
+        max-width: none;
+        margin-left: min(0px, calc(var(--bw-target-left) - var(--bw-col-ml) - var(--editor-content-left-padding, 76px)));
+    }
+}
+
+/* Standalone images (top-level image-only paragraphs, marked by the
+   imageBlocks plugin — CSS alone can't see bare text siblings) center in the
+   column; embeds center via the card's own margin (embed section below). */
+.ProseMirror p.img-block {
+    text-align: center;
+}
+
+/* ─── Block rhythm (maintainer, 2026-07-28): every rendered set-piece —
+   tables, standalone images, callouts, code blocks, rendered raw-HTML
+   blocks — breathes like an embed card or an hr band: 1.5em above and
+   below, on top of the normal flow gap. TOP-LEVEL only: inside a list or
+   callout the compact rhythm stays. Adjacent set-pieces collapse their
+   facing margins to the larger one, so runs of blocks don't balloon. */
+.milkdown .ProseMirror > .code-block-wrapper,
+.milkdown .ProseMirror > .mw-table,
+.milkdown .ProseMirror > .callout {
+    margin-top: 1.5em;
+    margin-bottom: calc(1.5em + var(--content-flow-gap));
+}
+
+/* Paragraph-shaped set-pieces already carry the flow gap as padding. */
+.milkdown .ProseMirror > p.img-block,
+.milkdown .ProseMirror > p.html-block {
+    margin-top: 1.5em;
+    margin-bottom: 1.5em;
+}
+
+/* In FULL-width page mode a table/code "Full Width" toggle is a no-op —
+   those blocks already fill the column, which already fills the pane — so
+   the control disappears rather than sitting there as a dead switch (the
+   embed toggle stays: its Fixed state is a real 560px cap in either mode,
+   and the image cycle drops only its redundant third step in JS). */
+body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
+    display: none;
 }
 
 @media (max-width: 720px) {
@@ -1226,21 +1375,26 @@ body:not(.editor-width-auto) {
             }
         }
 
-        /* Horizontal rule */
+        /* Horizontal rule: a section break deserves the same breathing room
+           as an embed card (1.5em each side — maintainer 2026-07-28). The
+           space lives INSIDE the box (a 3em-tall band with the line painted
+           through its middle), not in margins: a symmetric top margin would
+           collapse against a preceding margin-block but not a padding-block
+           (paragraphs), making the space above an hr depend on its
+           neighbor's type — the exact inconsistency the rhythm scale
+           removes. The bottom flow gap stays, like every other block. */
         hr {
+            --hr-line: var(--vscode-panel-border);
             border: none;
-            border-top: 1px solid var(--vscode-panel-border);
-            /* Own the bottom gap like every other block (top stays 0). A symmetric
-               top+bottom margin would collapse against a preceding margin-block but
-               not a padding-block (paragraphs), making the space above an hr depend
-               on its neighbor's type — the exact inconsistency this scale removes. */
+            height: 3em;
+            background: linear-gradient(var(--hr-line), var(--hr-line)) 50% 50% / 100% 1px no-repeat;
             margin: 0 0 var(--content-flow-gap);
             cursor: pointer;
             outline: 1px solid transparent;
             outline-offset: 2px;
 
             &.ProseMirror-selectednode {
-                border-top-color: var(--vscode-focusBorder);
+                --hr-line: var(--vscode-focusBorder);
                 outline-color: var(--vscode-focusBorder);
                 box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 40%, transparent);
             }
@@ -1518,11 +1672,18 @@ body.toolbar-hidden::before {
 /* ─── Custom tooltip ─── */
 /* ── Floating palette chip (shared) ─────────────────────────────────────────
    The selection formatter, the link popup, and the image toolbar read as one
-   chip family via these tokens: the editor's normal themed hover-widget chip in
-   every theme (light and dark alike) — no reversal. `ink` is glyphs/text on the
-   ground; hover/active/line are the editor's standard chrome tokens. */
+   chip family via these tokens. The ground is the hover-widget surface nudged
+   6% toward the ink — an ALTERNATE tone, never a reversal: many themes paint
+   editorHoverWidget-background identical to the page, and a floating chip the
+   color of the page is invisible (maintainer, 2026-07-28). `ink` is
+   glyphs/text on the ground; hover/active/line are the editor's standard
+   chrome tokens. */
 :root {
-    --palette-ground: var(--vscode-editorHoverWidget-background);
+    --palette-ground: color-mix(
+        in srgb,
+        var(--vscode-editor-foreground) 6%,
+        var(--vscode-editorHoverWidget-background)
+    );
     --palette-ink: var(--vscode-editorHoverWidget-foreground);
     --palette-border: var(--vscode-editorHoverWidget-border);
     --palette-hover: var(--vscode-toolbar-hoverBackground);
@@ -2148,7 +2309,9 @@ body.block-marqueeing .milkdown .editor {
     top: calc(0.11 * var(--content-em));
 }
 .milkdown .editor .code-block-wrapper .heading-fold-gutter--block {
-    top: calc(0.18 * var(--content-em));
+    /* The +5.5px re-seats the icon on the floating chrome row (px-fixed at
+       top 6px + 22px pill), which replaced the header bar (2026-07-28). */
+    top: calc(0.18 * var(--content-em) + 5.5px);
     left: -11px;
 }
 .milkdown .editor .footnote-def .heading-fold-gutter--block {
@@ -2315,14 +2478,27 @@ body.block-marqueeing .milkdown .editor {
 
 .embed-card-host {
     display: block;
-    margin: 0.75em 0;
+    /* Generous breathing room: an embed is a visual set-piece, not a line of
+       prose (doubled from 0.75em, maintainer 2026-07-28; the hr band below
+       mirrors it). */
+    margin: 1.5em 0;
 }
 
 .embed-card {
     /* An inline card, not a hero: cap the width well below the content
        column (a full-width 16:9 frame dominates the page). 560px matches
-       YouTube's own default embed size; narrow columns still shrink it. */
+       YouTube's own default embed size; narrow columns still shrink it.
+       Centered in the column (margin, not text-align: the host is a block
+       and the card must center as a box, control column included). */
     max-width: min(560px, 100%);
+    margin-inline: auto;
+}
+
+/* Per-block Full Width (blockWidth.ts): the host carries bw-full; the card
+   drops its cap and fills the host — the whole column, or the pane when the
+   host breaks out of a fixed-width page (see the bw-* section). */
+.embed-card-host.bw-full .embed-card {
+    max-width: 100%;
 }
 
 /* Player cards are a GRID: the frame, a control column OUTSIDE it to the
@@ -2435,6 +2611,58 @@ body.block-marqueeing .milkdown .editor {
     text-decoration: underline;
 }
 
+/* Fullscreen player lightbox (the embed control column's fullscreen verb):
+   backdrop + a viewport-sized aspect-correct frame. Same containment as the
+   inline player — the iframe builder is shared. */
+.embed-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--vscode-editor-background) 25%, transparent);
+    backdrop-filter: blur(2px);
+}
+
+.embed-lightbox__frame {
+    position: relative;
+    width: min(92vw, calc(86vh * 16 / 9));
+    aspect-ratio: var(--embed-aspect, 16 / 9);
+    max-height: 86vh;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: var(--ui-radius-l);
+    overflow: hidden;
+    box-shadow: var(--ui-card-shadow-overlay);
+}
+
+.embed-lightbox__frame .embed-card__iframe {
+    width: 100%;
+    height: 100%;
+}
+
+.embed-lightbox__close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: var(--ui-radius-m);
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    cursor: pointer;
+
+    & svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
 /* The chunk-load failure fallback: never an empty host — the URL, clickable. */
 .embed-card-fallback {
     display: inline-block;
@@ -2478,42 +2706,14 @@ body.block-marqueeing .milkdown .editor {
    external-open escape hatch — the guaranteed path when in-webview playback is
    refused (YouTube error 153: no acceptable referrer from a webview origin).
    OUTSIDE the frame (see .embed-card--player) so it never covers a player's
-   own controls. */
+   own controls. The buttons themselves compose the shared `.bc-btn` recipe
+   (ui/blockControls.css) — the card is a `bc-host`, so resting/hover
+   visibility comes from the primitive; only the column's grid placement is
+   embed-local (the card reserves a lane rather than overhanging its box). */
 .embed-card__controls {
     display: flex;
     flex-direction: column;
     gap: 6px;
-}
-
-.embed-card__external,
-.embed-card__stop,
-.embed-card__edit,
-.embed-card__aslink {
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: var(--ui-radius-m);
-    background: var(--vscode-editorWidget-background);
-    color: var(--vscode-foreground);
-    opacity: 0.55;
-    cursor: pointer;
-}
-.embed-card:hover :is(.embed-card__external, .embed-card__stop, .embed-card__edit, .embed-card__aslink),
-:is(.embed-card__external, .embed-card__stop, .embed-card__edit, .embed-card__aslink):focus-visible {
-    opacity: 1;
-}
-:is(.embed-card__external, .embed-card__stop, .embed-card__edit, .embed-card__aslink) svg {
-    width: 14px;
-    height: 14px;
-}
-
-/* The `hidden` attribute must actually hide: our explicit display beat the UA
-   default, so the stop button showed at rest — a visible X that did nothing. */
-:is(.embed-card__external, .embed-card__stop, .embed-card__edit, .embed-card__aslink)[hidden] {
-    display: none;
 }
 
 /* Play overlay: a real button, so it takes the shared focus ring. Neutral,
@@ -2578,10 +2778,6 @@ body.block-marqueeing .milkdown .editor {
         top: 50%;
         right: 8px;
         transform: translateY(-50%);
-    }
-
-    &:hover .embed-card__external {
-        opacity: 1;
     }
 }
 

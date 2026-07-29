@@ -29,7 +29,7 @@ interface TooltipOptions {
     truncatedOnly?: boolean;
 }
 
-interface TooltipHandle {
+export interface TooltipHandle {
     /** Dynamically update the tooltip text (without affecting visibility) */
     setText(t: string): void;
     /** Show the tooltip programmatically (e.g. for post-click feedback) */

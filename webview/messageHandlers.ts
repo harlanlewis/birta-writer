@@ -24,6 +24,7 @@ import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor"
 import { regateCalcCues, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
+import { withScrollAnchor } from "./utils/scrollAnchor";
 import { notifySwitchToTextEditor, getWebviewState, setWebviewState, setBaseSyncVersion, notifyFlushResult, notifyPerfMarks, notifyEditorContextResult } from "./messaging";
 import type { EditorSelectionContext } from "../shared/agentContext";
 import { renderFrontmatterPanel, refreshFrontmatterEmptyState } from "./components/frontmatter";
@@ -161,11 +162,15 @@ export function createMessageHandlers(
             mark("init-received");
             // Seed the webview state bag from the extension's per-URI echo
             // BEFORE anything reads it (frontmatter collapse below, fold
-            // anchors at editor creation, scroll restore). Only into an EMPTY
-            // bag: when VS Code itself restored the webview (tab hide, window
-            // reload) the live bag is fresher than the echo.
-            if (msg.viewState && !getWebviewState()) {
-                setWebviewState(msg.viewState);
+            // anchors at editor creation, scroll restore). PER-KEY merge,
+            // live bag winning: when VS Code itself restored the webview
+            // (tab hide, window reload) the live bag is fresher — but a
+            // revived bag that merely LACKS a key (a stale `{scrollY}` from
+            // an older session) must not discard everything the extension
+            // remembered. The old all-or-nothing skip did exactly that: one
+            // stale key silently reverted every table width and fold.
+            if (msg.viewState) {
+                setWebviewState({ ...msg.viewState, ...(getWebviewState() ?? {}) });
             }
             setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
@@ -426,8 +431,15 @@ export function createMessageHandlers(
             topbarTb?.setFontSize(size);
         },
         setContentWidth(msg) {
-            document.documentElement.style.setProperty("--editor-max-width", msg.cssValue);
-            document.body.classList.toggle("editor-width-auto", msg.isAuto);
+            // Anchored: a width flip rewraps the document; keep the top
+            // visible line stable. This path is also the only one that runs
+            // for a flip made in Settings or another editor — and for the
+            // toolbar's own echo it re-applies identical values, so the
+            // anchor measures a zero delta.
+            withScrollAnchor(getEditorView(), () => {
+                document.documentElement.style.setProperty("--editor-max-width", msg.cssValue);
+                document.body.classList.toggle("editor-width-auto", msg.isAuto);
+            });
             // Pass the resolved css so the toolbar's cached fixed width tracks
             // external `maxContentWidth` changes (no stale-flash on re-toggle).
             topbarTb?.setContentWidth(msg.mode, msg.isAuto ? undefined : msg.cssValue);

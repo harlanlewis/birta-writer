@@ -315,12 +315,23 @@ export function getWebviewState(): Record<string, unknown> | null {
 const VIEW_STATE_ECHO_DELAY_MS = 250;
 let _viewStateEchoTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Post the current bag to the extension NOW, cancelling any pending echo. */
+function flushViewStateEcho(): void {
+    if (_viewStateEchoTimer) {
+        clearTimeout(_viewStateEchoTimer);
+        _viewStateEchoTimer = null;
+    }
+    const latest = getWebviewState();
+    if (latest) { vscode.postMessage({ type: "viewState", state: latest }); }
+}
+
 export function setWebviewState(state: Record<string, unknown>): void {
     vscode.setState(state);
-    // Mirror the bag to the extension (per-URI, in-memory): VS Code's own
-    // webview state does not survive the raw-editor round trip — that switch
-    // CLOSES the custom tab — so folds, scroll, and the frontmatter collapse
-    // were silently reset. The extension hands the bag back in `init`.
+    // Mirror the bag to the extension (per-URI, workspaceState-backed): VS
+    // Code's own webview state does not survive the raw-editor round trip —
+    // that switch CLOSES the custom tab — so folds, scroll, per-block
+    // widths, and the frontmatter collapse were silently reset. The
+    // extension hands the bag back in `init`.
     if (_viewStateEchoTimer) { clearTimeout(_viewStateEchoTimer); }
     _viewStateEchoTimer = setTimeout(() => {
         _viewStateEchoTimer = null;
@@ -328,3 +339,16 @@ export function setWebviewState(state: Record<string, unknown>): void {
         if (latest) { vscode.postMessage({ type: "viewState", state: latest }); }
     }, VIEW_STATE_ECHO_DELAY_MS);
 }
+
+// Teardown flush: a write made just before the panel goes away (toggle a
+// width, immediately switch to the raw editor) must not die in the 250ms
+// debounce window. Best-effort — a hard-killed webview can't post, which is
+// why the previous echo is already durable extension-side.
+window.addEventListener("pagehide", () => {
+    if (_viewStateEchoTimer) { flushViewStateEcho(); }
+});
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden" && _viewStateEchoTimer) {
+        flushViewStateEcho();
+    }
+});

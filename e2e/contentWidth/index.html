@@ -48,9 +48,15 @@
     postMessage: (msg) => {
       window.__posted.push(msg);
       if (msg.type === "ready") {
+        // A long tail of wrapping paragraphs so the scroll-anchoring checks
+        // have real scroll depth and real rewrap on a width flip.
+        const paras = Array.from({ length: 40 }, (_, i) =>
+          `para ${String(i).padStart(2, "0")} — the quick brown fox jumps over the lazy dog again and again, ` +
+          "wrapping differently at every content width so a Full/Fixed flip genuinely reflows this line."
+        ).join("\n\n");
         window.postMessage({
           type: "init",
-          content: "# Sample\n\nThe quick brown fox jumps over.\n",
+          content: "# Sample\n\nThe quick brown fox jumps over.\n\n" + paras + "\n",
           frontmatter: "---\ntitle: Test document\ntags: [alpha, beta]\n---\n",
           syncVersion: 1,
         }, "*");

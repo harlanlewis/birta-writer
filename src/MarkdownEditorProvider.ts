@@ -167,13 +167,75 @@ export class MarkdownEditorProvider
     private readonly _frontmatterMap = new Map<string, string>(); // uriKey → raw frontmatter string
     /**
      * uriKey → the webview's last view-state bag (fold anchors, scroll,
-     * frontmatter collapse). VS Code's own webview state dies with the tab,
-     * and switching to the raw editor CLOSES the tab — this in-memory echo is
-     * what lets the recreated webview restore the user's view. Session-scoped
-     * on purpose: view state is not a setting, and a window reload restores
-     * webviews (bags included) through VS Code itself.
+     * frontmatter collapse, per-block widths/wrap). VS Code's own webview
+     * state dies with the tab, and switching to the raw editor CLOSES the
+     * tab — this echo is what lets the recreated webview restore the user's
+     * view. The map is a read-through cache over `workspaceState` (the
+     * VIEW_STATE_MEMENTO_KEY entry below), so a deliberate per-block choice
+     * survives window reloads and full restarts too — the same scope VS Code
+     * gives its own per-file view state (cursor/folds/scroll persist per
+     * workspace, never in the file, never across workspaces). Maintainer
+     * decision 2026-07-28, superseding the earlier session-scope-on-purpose
+     * design: a width the user set on a table should not evaporate because
+     * they peeked at the raw source.
      */
     private readonly _viewStateMap = new Map<string, Record<string, unknown>>();
+
+    /**
+     * The workspaceState entry backing _viewStateMap — the first Memento in
+     * this codebase, so the conventions live here: one versioned namespace
+     * key (`birta.viewState.v1` — bump on shape changes, never migrate in
+     * place), value `{ [uriKey]: { t: lastWriteMs, s: bag } }`, LRU-bounded
+     * to VIEW_STATE_MAX_DOCS by `t` on every write. Keys are absolute
+     * `file://` URIs: a renamed or deleted file simply orphans its entry
+     * until eviction (view state degrades to defaults — never guessed).
+     * Access is optional-chained throughout: unit tests stub the extension
+     * context without a workspaceState, and a provider without a Memento
+     * must degrade to the in-memory session scope, not throw.
+     */
+    private static readonly VIEW_STATE_MEMENTO_KEY = "birta.viewState.v1";
+    private static readonly VIEW_STATE_MAX_DOCS = 100;
+
+    private _readViewStateMemento(): Record<string, { t: number; s: Record<string, unknown> }> {
+        const raw = this.context.workspaceState?.get?.(MarkdownEditorProvider.VIEW_STATE_MEMENTO_KEY);
+        return raw && typeof raw === "object" && !Array.isArray(raw)
+            ? (raw as Record<string, { t: number; s: Record<string, unknown> }>)
+            : {};
+    }
+
+    /** The durable bag for a document: live map first, then workspaceState. */
+    private _viewStateFor(uriKey: string): Record<string, unknown> | undefined {
+        const live = this._viewStateMap.get(uriKey);
+        if (live) {
+            return live;
+        }
+        const persisted = this._readViewStateMemento()[uriKey]?.s;
+        if (persisted && typeof persisted === "object") {
+            this._viewStateMap.set(uriKey, persisted);
+            return persisted;
+        }
+        return undefined;
+    }
+
+    /** Write-through: cache in the map, persist to workspaceState (LRU-capped). */
+    private _storeViewState(uriKey: string, state: Record<string, unknown>): void {
+        this._viewStateMap.set(uriKey, state);
+        if (!this.context.workspaceState?.update || Object.keys(state).length === 0) {
+            return;
+        }
+        const all = { ...this._readViewStateMemento() };
+        all[uriKey] = { t: Date.now(), s: state };
+        const keys = Object.keys(all);
+        if (keys.length > MarkdownEditorProvider.VIEW_STATE_MAX_DOCS) {
+            keys.sort((a, b) => (all[a]?.t ?? 0) - (all[b]?.t ?? 0));
+            for (const evict of keys.slice(0, keys.length - MarkdownEditorProvider.VIEW_STATE_MAX_DOCS)) {
+                delete all[evict];
+            }
+        }
+        // Fire-and-forget: Memento writes are async and this runs on a
+        // message handler; a failed write degrades to session scope.
+        void this.context.workspaceState.update(MarkdownEditorProvider.VIEW_STATE_MEMENTO_KEY, all);
+    }
 
     // Workspace-wide frontmatter list-value scan, cached for a short TTL so
     // repeated "+" menu opens stay snappy (fsPath → key → list values).
@@ -720,7 +782,7 @@ export class MarkdownEditorProvider
                             imageUriMap: Object.fromEntries(this._imageUriMaps.get(uriKey) ?? []),
                             tableWrap,
                             syncVersion: 0,
-                            viewState: this._viewStateMap.get(uriKey),
+                            viewState: this._viewStateFor(uriKey),
                             ...(nav !== undefined
                                 ? {
                                       scrollToLine: nav.line,
@@ -1006,9 +1068,11 @@ export class MarkdownEditorProvider
                     case "viewState":
                         // The webview mirrors its state bag here (debounced);
                         // handed back in `init` so folds/scroll/frontmatter
-                        // collapse survive the raw-editor round trip.
+                        // collapse/per-block widths survive the raw-editor
+                        // round trip — and, via workspaceState, window
+                        // reloads and restarts too.
                         if (message.state && typeof message.state === "object") {
-                            this._viewStateMap.set(uriKey, message.state);
+                            this._storeViewState(uriKey, message.state);
                         }
                         break;
                     case "resolveEmbedMeta":

@@ -63,6 +63,14 @@ export const IconPanelLeft = svg(`<rect x="3" y="3" width="18" height="18" rx="2
 export const IconPanelRight = svg(`<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/>`);
 // Two-way horizontal arrows: "swap sides". Used by the TOC dock-side switch.
 export const IconArrowLeftRight = svg(`<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>`);
+export const IconExpandHorizontal = svg(`<path d="M16 12h6"/><path d="M8 12H2"/><path d="M12 2v2"/><path d="M12 8v2"/><path d="M12 14v2"/><path d="M12 20v2"/><path d="m19 15 3-3-3-3"/><path d="m5 9-3 3 3 3"/>`);
+export const IconShrinkHorizontal = svg(`<path d="M2 12h6"/><path d="M22 12h-6"/><path d="M12 2v2"/><path d="M12 8v2"/><path d="M12 14v2"/><path d="M12 20v2"/><path d="m19 9-3 3 3 3"/><path d="m5 15 3-3-3-3"/>`);
+/* The display-as pair (the Confluence Smart Links / Notion paste-as
+   vocabulary: inline text vs card). IconTextInline = plain text lines
+   ("show this as inline text"); IconEmbedCard mirrors our own embed card's
+   anatomy — a frame with the caption line under it ("show this as a card"). */
+export const IconTextInline = svg(`<path d="M17 6.1H3"/><path d="M21 12.1H3"/><path d="M15.1 18H3"/>`);
+export const IconEmbedCard = svg(`<rect x="3" y="3" width="18" height="12" rx="2"/><path d="M3 19h12"/>`);
 export const IconReplace    = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/>`);
 export const IconReplaceAll = svg(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/><path d="M14 14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2"/>`);
 // Scope-to-selection: corner brackets framing a line of text (VS Code's

@@ -272,7 +272,7 @@ export async function run({ page, check, baseUrl }) {
             // Item markers live in their own per-flavor columns — this check
             // is about TOP-LEVEL block markers only.
             if (!m || m.closest(".block-gutter-host--item")) continue;
-            const headed = el.querySelector(".callout-title, .directive-header, .code-block-header");
+            const headed = el.querySelector(".callout-title, .directive-header, .code-float-row");
             const probe = headed ?? el.querySelector("p, td, code, .footnote-def-content p") ?? el;
             const pr = probe.getBoundingClientRect();
             const mr = m.getBoundingClientRect();
@@ -340,7 +340,7 @@ export async function run({ page, check, baseUrl }) {
                 lineCenter = textRect.y + textRect.height / 2;
             } else {
                 const em = parseFloat(getComputedStyle(document.getElementById("editor")).fontSize);
-                const headed = el.querySelector(".callout-title, .directive-header, .code-block-header");
+                const headed = el.querySelector(".callout-title, .directive-header, .code-float-row");
                 const probe = headed ?? el.querySelector("p, td") ?? el;
                 const pr = probe.getBoundingClientRect();
                 lineCenter = pr.y + Math.min(0.86 * em, pr.height / 2);

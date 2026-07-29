@@ -30,12 +30,29 @@ import {
 import { notifyOpenUrl } from "../messaging";
 import { subscribeEmbedMeta } from "../embedMeta";
 import { t } from "../i18n";
+// blockWidth is eager (NodeViews use it); referencing it here adds nothing.
+import { embedWidthAnchor, getBlockWidth, setBlockWidth } from "../blockWidth";
 // icons.ts is already in the eager bundle; importing shared glyphs here only
 // references that module — it de-duplicates without growing either chunk.
-import { IconExternalLink, IconLink, IconPencil, IconX } from "../ui/icons";
-// The shared tooltip (eager ui module): control-column tips open LEFT, over
-// the embed, so they never clip at the content edge or cover the next button.
-import { applyTooltip } from "../ui/tooltip";
+import {
+    IconExpandHorizontal,
+    IconExternalLink,
+    IconMaximize2,
+    IconPencil,
+    IconShrinkHorizontal,
+    IconTextInline,
+    IconX,
+} from "../ui/icons";
+import { registerEscapeLayer } from "../ui/escapeLayers";
+import { lockBodyScroll, unlockBodyScroll } from "../utils";
+// Button safety (mousedown/keyboard guarding), the 28px column-button recipe,
+// and the left-opening tooltips live in the shared block-controls primitive —
+// one anatomy for the embed, image, table, and code-block control columns.
+import {
+    guardActivation,
+    makeBlockControlButton,
+    makeBlockControlsGap,
+} from "../ui/blockControls";
 
 /** A play-triangle glyph, painted with currentColor (video providers). A
  * non-video surface (Figma) gets a labeled text pill instead of any glyph. */
@@ -52,30 +69,6 @@ const PROVIDER_MARKS: Partial<Record<EmbedMatch["kind"], string>> = {
     github: `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55 0-.27-.01-1.18-.02-2.14-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.16 1.18a11 11 0 0 1 5.76 0c2.19-1.49 3.15-1.18 3.15-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.83 1.18 3.09 0 4.42-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14 0 1.54-.01 2.79-.01 3.17 0 .31.21.67.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>`,
 };
 
-/**
- * Make a card button safe inside the contenteditable root: mousedown must not
- * move the editor caret, and Enter / Space on a focused button must activate it
- * rather than type into the document. Same contract as ui/foldEllipsis.ts,
- * which solves this for the fold widget.
- *
- * The mousedown half is defensive — the caret does not in practice land inside
- * a contenteditable="false" widget, so the card survives a click without it
- * (verified in e2e). The keyboard half is load-bearing: a focused button inside
- * contenteditable would otherwise let Space through as typed input.
- */
-function guardActivation(button: HTMLElement): void {
-    button.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-    });
-    button.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            event.stopPropagation();
-            button.click();
-        }
-    });
-}
 
 /**
  * The readable identity of a card's URL: host + path, scheme and `www.`
@@ -103,6 +96,13 @@ export function readableUrl(raw: string, max = 48): string {
  * provider's own play button is the reliable gesture.
  */
 function loadPlayer(stage: HTMLElement, provider: EmbedProvider, id: string): void {
+    stage.replaceChildren(buildPlayerIframe(provider, id));
+}
+
+/** The one place a player <iframe> is ever constructed (inline stage and
+ * fullscreen lightbox alike) — the sandbox/allow containment must never
+ * fork between the two surfaces. */
+function buildPlayerIframe(provider: EmbedProvider, id: string): HTMLIFrameElement {
     const iframe = document.createElement("iframe");
     iframe.className = "embed-card__iframe";
     iframe.src = provider.playerUrl!(id);
@@ -125,7 +125,61 @@ function loadPlayer(stage: HTMLElement, provider: EmbedProvider, id: string): vo
     // are sandboxed and go nowhere).
     iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
     iframe.setAttribute("title", t(provider.playerTitle ?? "Embedded content"));
-    stage.replaceChildren(iframe);
+    return iframe;
+}
+
+/**
+ * Fullscreen: the player in a lightbox overlay (the code/diagram lightbox
+ * pattern) — same iframe construction, same containment, same user-gesture
+ * consent as the inline play click. Escape, the close button, and a
+ * backdrop click all dismiss it.
+ */
+function openEmbedLightbox(provider: EmbedProvider, id: string): void {
+    const overlay = document.createElement("div");
+    overlay.className = "embed-lightbox";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "embed-lightbox__close";
+    closeBtn.setAttribute("aria-label", t("Close"));
+    closeBtn.innerHTML = IconX;
+
+    const frame = document.createElement("div");
+    frame.className = "embed-lightbox__frame";
+    if (provider.aspect) {
+        frame.style.setProperty("--embed-aspect", provider.aspect);
+    }
+    frame.appendChild(buildPlayerIframe(provider, id));
+
+    overlay.append(frame, closeBtn);
+    document.body.appendChild(overlay);
+    lockBodyScroll();
+
+    const escapeOff = registerEscapeLayer(close);
+    function onKeyDown(e: KeyboardEvent): void {
+        if (e.key === "Escape" && !e.defaultPrevented) {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+        }
+    }
+    function close(): void {
+        escapeOff();
+        document.removeEventListener("keydown", onKeyDown);
+        overlay.remove();
+        unlockBodyScroll();
+    }
+    overlay.addEventListener("mousedown", (e) => {
+        if (e.target === overlay) {
+            close();
+        }
+    });
+    closeBtn.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+    });
+    document.addEventListener("keydown", onKeyDown);
 }
 
 /**
@@ -135,25 +189,54 @@ function loadPlayer(stage: HTMLElement, provider: EmbedProvider, id: string): vo
  * external-open flow (VS Code's own trusted-domains prompt included).
  */
 function externalButton(provider: EmbedProvider, id: string, sourceUrl?: string): HTMLElement {
-    const external = document.createElement("button");
-    external.type = "button";
-    external.className = "embed-card__external";
-    external.setAttribute("aria-label", t(provider.openLabel));
-    external.innerHTML = IconExternalLink;
-    applyTooltip(external, t(provider.openLabel), { placement: "left" });
-    external.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        notifyOpenUrl(sourceUrl ?? provider.externalUrl(id));
-    });
-    guardActivation(external);
-    return external;
+    return makeBlockControlButton({
+        className: "embed-card__external",
+        icon: IconExternalLink,
+        label: t(provider.openLabel),
+        onClick: () => notifyOpenUrl(sourceUrl ?? provider.externalUrl(id)),
+    }).button;
 }
 
-/** The empty card shell every variant fills: kind-stamped, non-editable. */
+/**
+ * The width toggle: Full Width (the page-level toolbar setting's look, for
+ * this one embed — in a Fixed-width page the card breaks out wider than the
+ * column) ⇄ Fixed Width (the default capped card). Presentation-only state in
+ * blockWidth.ts — the markdown never changes. The class rides the widget HOST
+ * (the breakout geometry needs the block-level element); widget keys are
+ * stable, so the toggled class survives decoration redraws, and a fresh host
+ * re-reads the store (plugins/embed.ts).
+ */
+function widthButton(card: HTMLElement, url: string): HTMLElement {
+    const control = makeBlockControlButton({
+        className: "embed-card__width",
+        icon: IconExpandHorizontal,
+        label: t("Full width"),
+        onClick: () => {
+            const full = getBlockWidth(embedWidthAnchor(url)) !== "full";
+            setBlockWidth(embedWidthAnchor(url), full ? "full" : null);
+            card.closest(".embed-card-host")?.classList.toggle("bw-full", full);
+            sync();
+        },
+    });
+    // The icon and label name the NEXT state (the word-wrap toggle's
+    // tooltip contract).
+    const sync = (): void => {
+        const full = getBlockWidth(embedWidthAnchor(url)) === "full";
+        control.setVerb(
+            full ? IconShrinkHorizontal : IconExpandHorizontal,
+            full ? t("Fixed width") : t("Full width"),
+        );
+        control.setOn(full);
+    };
+    sync();
+    return control.button;
+}
+
+/** The empty card shell every variant fills: kind-stamped, non-editable.
+ * `bc-host` drives the shared control-column resting/hover visibility. */
 function cardShell(provider: EmbedProvider): HTMLElement {
     const card = document.createElement("div");
-    card.className = "embed-card";
+    card.className = "embed-card bc-host";
     card.dataset["embedKind"] = provider.kind;
     card.setAttribute("contenteditable", "false");
     return card;
@@ -222,19 +305,13 @@ function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: strin
         guardActivation(hint);
     }
 
-    const stop = document.createElement("button");
-    stop.type = "button";
-    stop.className = "embed-card__stop";
-    stop.setAttribute("aria-label", t("Close player"));
-    stop.innerHTML = IconX;
-    applyTooltip(stop, t("Close player"), { placement: "left" });
+    const stop = makeBlockControlButton({
+        className: "embed-card__stop",
+        icon: IconX,
+        label: t("Close player"),
+        onClick: () => showFacade(),
+    }).button;
     stop.hidden = true;
-    stop.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        showFacade();
-    });
-    guardActivation(stop);
 
     // The identity strip: resident title + URL, no hover required, BELOW the
     // frame and visible at all times — playing included (the metadata stays
@@ -337,29 +414,35 @@ function renderPlayerCard(provider: EmbedProvider, id: string, sourceUrl?: strin
     // The corner controls live OUTSIDE the frame, in a column to its right —
     // an embedded player owns its own top-right corner (Vimeo's fullscreen/PiP
     // cluster sat exactly under ours), and that collision recurs for arbitrary
-    // embeds. Our chrome and theirs never overlap.
+    // embeds. Our chrome and theirs never overlap. Order: the view verbs
+    // (open externally, width) first, then a small gap, then the edit verbs
+    // (edit, show-as-text); stop rides above everything, but only while
+    // playing.
     const controls = document.createElement("div");
     controls.className = "embed-card__controls";
     controls.appendChild(stop);
     controls.appendChild(externalButton(provider, id, sourceUrl));
+    controls.appendChild(widthButton(card, sourceUrl ?? provider.externalUrl(id)));
+    controls.appendChild(makeBlockControlButton({
+        className: "embed-card__fullscreen",
+        icon: IconMaximize2,
+        label: t("View Fullscreen"),
+        onClick: () => openEmbedLightbox(provider, id),
+    }).button);
     if (actions) {
-        const makeVerb = (className: string, icon: string, label: string, run: () => void): HTMLButtonElement => {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = className;
-            btn.setAttribute("aria-label", label);
-            btn.innerHTML = icon;
-            applyTooltip(btn, label, { placement: "left" });
-            btn.addEventListener("click", (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                run();
-            });
-            guardActivation(btn);
-            return btn;
-        };
-        controls.appendChild(makeVerb("embed-card__edit", IconPencil, t("Edit embed"), actions.edit));
-        controls.appendChild(makeVerb("embed-card__aslink", IconLink, t("Show as text link"), actions.removePreview));
+        controls.appendChild(makeBlockControlsGap());
+        controls.appendChild(makeBlockControlButton({
+            className: "embed-card__edit",
+            icon: IconPencil,
+            label: t("Edit embed"),
+            onClick: actions.edit,
+        }).button);
+        controls.appendChild(makeBlockControlButton({
+            className: "embed-card__aslink",
+            icon: IconTextInline,
+            label: t("Show as text link"),
+            onClick: actions.removePreview,
+        }).button);
     }
 
     frame.appendChild(stage);

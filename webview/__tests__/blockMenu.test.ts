@@ -1434,3 +1434,68 @@ describe("Tighten / Loosen List", () => {
         expect(markdown(editor)).toBe("- foo\n- bar");
     });
 });
+
+describe("Full Width row (per-block width, blockWidth.ts)", () => {
+    const TABLE = "| Name | Age |\n| ---- | --- |\n| Ada  | 36  |";
+
+    afterEach(async () => {
+        // The width store is module-scoped; clear the anchor this suite sets.
+        const { setBlockWidth, tableWidthAnchor } = await import("../blockWidth");
+        setBlockWidth(tableWidthAnchor("NameAge"), null);
+    });
+
+    it("a table's menu should offer a Full Width check row, off by default", async () => {
+        const editor = await makeEditor(TABLE);
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const row = Array.from(menu.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Full Width");
+        expect(row).toBeDefined();
+        expect(row!.getAttribute("aria-checked")).toBe("false");
+    });
+
+    it("picking Full Width should store the width WITHOUT touching the document", async () => {
+        const { getBlockWidth, tableWidthAnchor } = await import("../blockWidth");
+        const editor = await makeEditor(TABLE);
+        view(editor);
+        const before = markdown(editor);
+
+        pickRow(openMenuOn(markers()[0]!), "Full Width");
+
+        expect(getBlockWidth(tableWidthAnchor("NameAge"))).toBe("full");
+        // Presentation-only: the markdown must be byte-identical.
+        expect(markdown(editor)).toBe(before);
+        // A reopened menu shows the row checked; picking again clears it.
+        const reopened = openMenuOn(markers()[0]!);
+        const row = Array.from(reopened.querySelectorAll<HTMLElement>(".block-menu-item"))
+            .find((el) => el.querySelector(".block-menu-item-label")?.textContent === "Full Width")!;
+        expect(row.getAttribute("aria-checked")).toBe("true");
+        row.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        expect(getBlockWidth(tableWidthAnchor("NameAge"))).toBeNull();
+    });
+
+    it("a non-table block's menu should NOT offer Full Width", async () => {
+        const editor = await makeEditor("plain paragraph");
+        view(editor);
+        const menu = openMenuOn(markers()[0]!);
+        const labels = Array.from(menu.querySelectorAll(".block-menu-item-label")).map(
+            (el) => el.textContent,
+        );
+        expect(labels).not.toContain("Full Width");
+    });
+
+    it("in FULL-width page mode the row disappears (it would be a no-op)", async () => {
+        document.body.classList.add("editor-width-auto");
+        try {
+            const editor = await makeEditor(TABLE);
+            view(editor);
+            const menu = openMenuOn(markers()[0]!);
+            const labels = Array.from(menu.querySelectorAll(".block-menu-item-label")).map(
+                (el) => el.textContent,
+            );
+            expect(labels).not.toContain("Full Width");
+        } finally {
+            document.body.classList.remove("editor-width-auto");
+        }
+    });
+});

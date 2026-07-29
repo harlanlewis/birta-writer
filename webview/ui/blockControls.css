@@ -1,0 +1,123 @@
+/* ── Block control column (shared) ──────────────────────────────────────────
+ * The one home for a rich block's key actions: a quiet vertical column of
+ * icon buttons at the block's top-right — OUTSIDE its frame, never over it
+ * (an embedded player owns its own corners; a code canvas owns its text).
+ * Extracted from the embed card's control column so embeds, images, tables,
+ * and code blocks read as one system.
+ *
+ * Anatomy: the host (position: relative, class `bc-host`) gets a `.bc-col`
+ * placed past its right edge. The column is a full-height, 48px-wide HIT
+ * STRIP, not just the buttons: reaching the controls must not demand
+ * precision mousing (the strip is the hover target all the way down the
+ * block's right side), and 48px is the one width that can never overflow
+ * the pane — content's right edge sits ≥48px from the pane edge in every
+ * layout. The 6px visual gap to the host is padding inside the strip, so
+ * the hover chain never breaks crossing it.
+ *
+ * Visibility: hidden at rest; revealed while the pointer is over the host
+ * or the strip, while focus is inside the column, while the SELECTION is in
+ * the block (`bc-active`, stamped by plugins/activeBlock on NodeView hosts;
+ * embeds use their `.embed-host--selected` decoration class), or pinned by
+ * `.bc-col--shown` (an image while selected). At rest the strip still hit-
+ * tests (that's what makes it a hover target) but its BUTTONS don't — an
+ * invisible button must never swallow a click.
+ *
+ * Order convention (every column): primary verb first (open / zoom / copy),
+ * then view controls (preview, wrap, width, fullscreen), then a `.bc-gap`,
+ * then document-editing verbs. No delete buttons — deletion belongs to the
+ * block menu and the keyboard.
+ */
+.bc-col {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 100%;
+    width: 48px;
+    padding-left: 6px;
+    box-sizing: border-box;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.bc-col,
+.embed-card__controls {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+/* Buttons are inert while the column is invisible; the strip itself stays
+   hit-testable so it can host the reveal. flex: none — the strip is host-
+   height, and a SHORT block must overflow the column below itself, never
+   squash the buttons. */
+.bc-col > *,
+.embed-card__controls > * {
+    pointer-events: none;
+    flex: none;
+}
+
+.bc-host:hover :is(.bc-col, .embed-card__controls),
+:is(.bc-col, .embed-card__controls):focus-within,
+.bc-active :is(.bc-col, .embed-card__controls),
+.embed-host--selected .embed-card__controls,
+.bc-col--shown {
+    opacity: 1;
+
+    > * {
+        pointer-events: auto;
+    }
+}
+
+.bc-btn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: var(--ui-radius-m);
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+.bc-btn:hover,
+.bc-btn:focus-visible {
+    opacity: 1;
+}
+
+.bc-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* The `hidden` attribute must actually hide (our explicit display would
+   otherwise beat the UA default — the embed stop button's lesson). */
+.bc-btn[hidden] {
+    display: none;
+}
+
+.bc-btn--danger {
+    color: var(--vscode-errorForeground);
+}
+
+/* Persistent-ON tint — ONLY for toggles whose state isn't already visible
+   in the content (full width on, word wrap on). Mode toggles whose icon and
+   the block itself change (code ⇄ preview) don't tint: the canonical quiet
+   "on" pair (see .find-bar__btn--active). */
+.bc-btn--on {
+    opacity: 1;
+    background: var(--vscode-inputOption-activeBackground);
+    color: var(--vscode-inputOption-activeForeground);
+}
+
+/* Small resting gap separating verb groups (view verbs above, edit verbs
+   below) within a column. */
+.bc-gap {
+    flex: none;
+    height: 8px;
+}
