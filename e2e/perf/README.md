@@ -149,21 +149,52 @@ Two things about how the burst is placed, both learned the hard way:
 
 ## Edit shapes the harness does NOT cover
 
-Measured 2026-07-29 on `xlarge`, after both MAR-137 fixes, so the gap is
-recorded rather than implied:
+Re-measured on `xlarge` after MAR-137's three fixes. **The first version of this
+table went stale within a day** — it was written after the second fix and the
+third halved two of its rows while it still read as current, which is the exact
+failure this file warns about elsewhere. Re-run the shapes before quoting them.
 
 | shape | median | covered by a gate? |
 | --- | --- | --- |
-| typing in prose | 6.2 ms | ✅ `median` |
-| moving the caret | 3.5 ms | ✅ `caret` |
-| **Enter (structural edit)** | **34.3 ms** | ❌ |
-| **typing inside a code block** | **38.1 ms** | ❌ |
+| typing in prose | 5.9 ms | ✅ `median` |
+| moving the caret | 3.4 ms | ✅ `caret` |
+| **typing inside a code block** | **8.7 ms** | ❌ |
+| **Enter (structural edit)** | **19.0 ms** | ❌ |
 
-The last two are ~6× prose typing and neither fix touched them: a structural
-edit takes the walk paths that typing now skips, and a caret inside a code block
-makes the highlighter recompute decorations for the *whole document* on every
-keystroke (upstream behavior, deliberately preserved). They are real costs with
-no gate; see MAR-137 lane 1 before assuming typing perf is "done".
+Enter is the largest remaining per-edit cost, and it is **not** our plugin
+state. Attributed 2026-07-29 by instrumenting `config.fields`,
+`appendTransaction` and plugin views separately:
+
+| | `state.apply` | plugin views | ProseMirror DOM/view |
+| --- | --- | --- | --- |
+| `medium` (12 KB) | 0.43 ms | 0.30 ms | **1.69 ms** |
+| `large` (96 KB) | 1.54 ms | 1.37 ms | **5.45 ms** |
+| `xlarge` (303 KB) | 4.63 ms | 3.68 ms | **20.37 ms** |
+
+Typing is ~80% `state.apply`; a structural edit is ~83% `updateState`, and it
+scales with document size on a document that renders **3,524 top-level DOM
+elements** with no windowing. Ruled out along the way: `scrollIntoView` (8.60 vs
+8.50 ms with and without), the fold plugin's window dispatch (2 across 25
+Enters), and forced layout (~1 ms). There is no cheap fix — the only lever is
+rendering fewer elements, i.e. MAR-137's parked lane 2.
+
+### ⚠️ A programmatic dispatch loop is NOT a proxy for real editing
+
+Worth its own heading because it produced a confident, wrong conclusion and
+cost a round trip. Dispatching N transactions in one JS task skips the
+per-frame layout that real input always pays:
+
+| driving the same split | median |
+| --- | --- |
+| 25 dispatches batched in one task | 9.5 ms |
+| same, with a layout flush + rAF between each | 15.1 ms |
+| real keyboard Enter | 21.2 ms |
+
+Measured against the batched loop, keyboard Enter looked 2.2× more expensive
+and the difference was attributed to our own keymap plugins. It was not: the
+transactions are byte-identical (one `ReplaceStep`, same `structure`, same
+slice), and most of the gap was the missing frames. **Drive real keys, or force
+a frame between dispatches.**
 
 **What the span does NOT cover**: ProseMirror's pre-dispatch input path
 (DOM-observer read, input-rule scan) and rAF-coalesced followers (TOC refresh,
