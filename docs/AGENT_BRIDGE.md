@@ -59,14 +59,14 @@ context, and Zed's [Agent Client Protocol](https://github.com/agentclientprotoco
 **Family-B is deliberately not built.** A Claude Code IDE endpoint (loopback
 WebSocket + MCP, lockfile discovery, the pull tool set) was implemented, merged
 (#150, 2026-07-28), live-tested against the real CLI, and **removed the same
-day by owner decision** (the revert commit this sentence shipped in): the
+day by owner decision** (#151, `897db3a`): the
 maintainer judged the surface a liability — a second discovery entry
 masquerading as an "IDE", an authenticated local socket to maintain, and an
 experience that stays inert without a further `selection_changed` push half —
 and chose to prune it rather than carry it. Do not reintroduce a wire adapter
 without an explicit owner request. Two facts from the live verification worth
-keeping: the Claude CLI exposes only `getDiagnostics` (and notebook
-`executeCode`) from an IDE MCP server to the model — selection context flows
+keeping: of an IDE MCP server's tools, the Claude CLI exposed only
+`getDiagnostics` to the model (observed live, CLI v2.1.220) — selection context flows
 exclusively through `selection_changed` push notifications, so a pull-only
 endpoint cannot deliver the implicit-context experience at all; and the
 official Anthropic extension owns `~/.claude/ide/` discovery (its lockfiles
