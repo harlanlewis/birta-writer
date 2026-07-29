@@ -172,6 +172,16 @@
 }
 
 /* CSS Custom Highlight API */
+
+/* The find-in-selection scope (MAR-106). VS Code's own token for "the range
+   limiting the search", so the theme decides how faint it reads under the
+   match colors; the highlight is registered at a lower priority so matches
+   inside the scope always paint on top. */
+::highlight(find-scope) {
+    background-color: var(--vscode-editor-findRangeHighlightBackground);
+    color: inherit;
+}
+
 ::highlight(find-highlight) {
     background-color: var(--vscode-editor-findMatchHighlightBackground);
     color: inherit;
