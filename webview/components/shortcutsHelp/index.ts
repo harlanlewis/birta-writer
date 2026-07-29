@@ -193,7 +193,7 @@ function buildPanel(): HTMLDivElement {
             // The note is a quieter second line INSIDE the description cell,
             // so it never sprawls into the key column.
             const noteEl = document.createElement("div");
-            noteEl.className = "shortcuts-help__note";
+            noteEl.className = "ui-caption shortcuts-help__note";
             noteEl.textContent = note;
             descEl.appendChild(noteEl);
         }

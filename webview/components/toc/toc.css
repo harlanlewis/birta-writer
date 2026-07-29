@@ -485,7 +485,9 @@ body.toc-resizing {
     }
 }
 
-/* The clickable body: tag chip + one-line label, ToC-plain (no card). */
+/* The clickable body: tag chip + one-line label, ToC-plain (no card).
+   Type grade from .ui-label (ui/typography.css) — a <button> inherits no
+   font, so the class is what sizes it. */
 .review-item__main {
     flex: 1;
     min-width: 0;
@@ -495,8 +497,6 @@ body.toc-resizing {
     padding: 4px 8px;
     border: none;
     background: transparent;
-    color: var(--vscode-foreground);
-    font-size: var(--ui-fs-m);
     line-height: 1.5;
     text-align: left;
     cursor: pointer;
@@ -534,7 +534,8 @@ body.toc-resizing {
 }
 
 /* Secondary detail (a link's URL) inline right of the label, revealed on row
-   hover/focus — NOT a tooltip, so a list can be audited by sweeping down it. */
+   hover/focus — NOT a tooltip, so a list can be audited by sweeping down it.
+   Type grade from .ui-caption (ui/typography.css). */
 .review-item__meta {
     flex: 0 1 auto;
     min-width: 0;
@@ -543,8 +544,6 @@ body.toc-resizing {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--vscode-descriptionForeground);
-    font-size: var(--ui-fs-s);
     display: none;
 }
 
@@ -608,14 +607,15 @@ body.toc-resizing {
     padding: 6px 0;
 }
 
+/* Type grade from .ui-label (ui/typography.css) — size, weight and ink in
+   one place. The per-level rules below still win on source order, since
+   typography.css is imported ahead of every component sheet. */
 .toc-item {
     display: flex;
     align-items: center;
     padding: 4px 8px;
-    font-size: var(--ui-fs-m);
     line-height: 1.5;
     cursor: pointer;
-    color: var(--vscode-foreground);
     border-radius: var(--ui-radius-s);
     margin: 1px 4px;
     user-select: none;
