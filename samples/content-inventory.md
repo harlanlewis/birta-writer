@@ -9,10 +9,6 @@ This document is a **living reference** of every content type Birta Writer suppo
 
 ---
 
----
-
----
-
 ## Headings
 
 # Heading 1
@@ -55,9 +51,6 @@ Setext H2
 
 ---
 
----
-
----
 
 ## Inline text
 
@@ -153,12 +146,6 @@ next — the same behavior as any paired-delimiter syntax.) Nested formatting
 inside a highlight renders literally.
 
 A hard line break ends this line here →<br>and continues on the next.
-
-
-
----
-
----
 
 ---
 
@@ -350,10 +337,6 @@ Two switches govern all of this. `birta.embeds.enabled` is the feature itself �
 
 ---
 
----
-
----
-
 ## Lists
 
 ### Bullet list
@@ -407,10 +390,6 @@ Loose:
 - beta
 
 - gamma
-
----
-
----
 
 ---
 
@@ -536,10 +515,6 @@ this line and the fence above render as plain paragraphs.
 
 ---
 
----
-
----
-
 ## Tables
 
 | Feature | Supported | Notes |
@@ -547,10 +522,6 @@ this line and the fence above render as plain paragraphs.
 | Formatting | yes | **bold**, *italics*, `code`, [links][spec] |
 | Line breaks | yes | first line<br>second line |
 | Alignment | yes | right-click a cell → **Align Column Left / Center / Right** (this Supported column is `:---:` centered); re-pick the current alignment to clear back to `---` |
-
----
-
----
 
 ---
 
@@ -564,10 +535,6 @@ delete, and the editable title on its own row. Edits apply on Enter or
 click-away, Escape cancels.
 
 ![Two cats on a cat tree](images/cats.jpeg "This is an optional title")
-
----
-
----
 
 ---
 
@@ -651,10 +618,6 @@ inline forms' `birta.calc.enabled`.
 
 ---
 
----
-
----
-
 ### Math
 
 Inline math renders in place and is **edited in place**: arrow into
@@ -668,16 +631,10 @@ $$
 \int_0^1 x^2 \, dx = \frac{1}{3}
 $$
 
-
-
 ## Frontmatter
 
 See the top of this file — YAML frontmatter is lossless. Flat key/value pairs
 get a table UI; complex/nested YAML preserved verbatim.
-
----
-
----
 
 ---
 
@@ -689,22 +646,10 @@ A sentence with a footnote reference.[^note] Footnotes are auto-numbered and the
 
 ---
 
----
-
----
-
----
-
 ## Horizontal rules
 
 Three marker styles, all preserved in their original form on save (open the
 raw file: these really are three different markers):
-
----
-
-***
-
-___
 
 ---
 
@@ -717,10 +662,6 @@ Inline and block HTML render as a sanitized, read-only preview (editing raw HTML
 An HTML comment preserved and shown dimmed:
 
 <!-- This is an HTML comment. It survives round-trips. -->
-
----
-
----
 
 ---
 
@@ -782,10 +723,6 @@ The master switch above governs every category below; each also has its own
 
 ---
 
----
-
----
-
 ## Editor notes
 
 The **Notes** tab in the review sidebar collects the editor-note markers you
@@ -808,10 +745,6 @@ Add your own tokens with `birta.notes.customMarkers` — a plain word like
 
 ---
 
----
-
----
-
 ## Not supported
 
 > [!WARNING]
@@ -823,7 +756,9 @@ Raw `<video>` / `<iframe>` HTML tags aren't rendered as players — they fall th
 
 ### Wikilink embeds
 
-Obsidian's transclusion form `![[page]]` is not treated as an embed — it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched (MAR-45): ![[image-target]]
+Obsidian's transclusion form `![[page]]` is not treated as an embed — it renders as a literal `!` followed by an ordinary wikilink chip, and round-trips untouched: 
+
+!\[\[image-target]]
 
 ### Emoji shortcodes
 
