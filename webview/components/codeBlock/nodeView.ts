@@ -6,14 +6,14 @@
  * `<pre>`/`<code>` and its line gutter, and the code⇄preview state machine
  * that decides which pane is visible.
  *
- * The panes themselves are modules: `mermaidPane` (diagram + pan/zoom),
- * `calcLedger` (the ```calc worksheet), and the LaTeX preview, which is small
- * enough to stay here. Each pane owns its own render memo and exposes only
- * `el` / `render` / a way to forget the memo; this file owns *when* they run —
+ * Three languages are "previewable" — mermaid, latex, calc — and share one
+ * toggle. Each has its own pane module (`mermaidPane`, `latexPane`,
+ * `calcLedger`), all the same shape: an `el` plus a `render` gated by an
+ * `isActive` predicate this file supplies. A pane owns its own render memo and
+ * exposes only a way to read or forget it; this file owns *when* they run —
  * the per-kind debounce in `update()` — and never reaches inside them.
  *
- * Three languages are "previewable" (mermaid, latex, calc) and share one
- * toggle. The tricky transitions all live in `update()`: gaining or losing
+ * The tricky transitions all live in `update()`: gaining or losing
  * previewability, and a previewable→previewable language flip whose visible
  * pane belongs to the OLD type (MAR-204).
  */
