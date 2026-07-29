@@ -1477,6 +1477,44 @@ body.editor-width-auto :is(.code-width-toggle-btn, .mw-bc-width) {
         .ProseMirror-focused {
             outline: none;
         }
+
+        /* Gap cursor (MAR-252): the caret at a position between block leaves,
+           where no text selection can sit — above a leading table, between two
+           tables, below a trailing code block. Themed here rather than by
+           importing prosemirror-gapcursor's own stylesheet, which hardcodes a
+           black 1px caret (invisible on a dark theme).
+
+           The widget is laid out IN FLOW at height 0 (stock uses
+           `position: absolute`, which needs a positioned ancestor we don't
+           have — `prosemirror.css` isn't bundled). Zero height with no border
+           or padding keeps the neighbouring blocks' margins collapsing exactly
+           as they do without it, so showing the caret never nudges the page. */
+        .ProseMirror-gapcursor {
+            display: none;
+            position: relative;
+            height: 0;
+            pointer-events: none;
+
+            &::after {
+                content: "";
+                display: block;
+                position: absolute;
+                top: -1px;
+                width: 1.5em;
+                border-top: 2px solid var(--vscode-editorCursor-foreground);
+                animation: birta-gapcursor-blink 1.1s steps(2, start) infinite;
+            }
+        }
+
+        &.ProseMirror-focused .ProseMirror-gapcursor {
+            display: block;
+        }
+    }
+}
+
+@keyframes birta-gapcursor-blink {
+    to {
+        visibility: hidden;
     }
 }
 

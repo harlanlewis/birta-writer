@@ -40,6 +40,8 @@ import {
     footnoteReferenceInputRule,
     foldRevealKeymapPlugin,
     formatKeymapPlugin,
+    blockEdgeGapCursorKeymapPlugin,
+    gapCursorPlugin,
     headingAbsoluteInputRule,
     headingEmptyDeletePlugin,
     headingFoldPlugin,
@@ -522,7 +524,14 @@ export async function createEditor(
         // dispatch its unfold (it never consumes the key) before the default
         // Enter / Mod-Enter handlers act, so the new block lands visibly.
         .use(foldRevealKeymapPlugin)
-        .use(insertParagraphKeymapPlugin);
+        .use(insertParagraphKeymapPlugin)
+        // A vertical arrow at the first/last position of a block (or of a
+        // table) whose other side is a gap cursor. Must be registered here, in
+        // front of the presets: prosemirror-tables (GFM preset, below) resolves
+        // a table-edge arrow with a gap-cursor-unaware `Selection.near` and so
+        // lands the caret inside the NEXT table. Every other arrow declines.
+        // See plugins/gapCursor.ts.
+        .use(blockEdgeGapCursorKeymapPlugin);
     // ── The format ──────────────────────────────────────────────────────────
     // The presets that define the format's schema, parser, and serializer
     // (markdown: pureCommonmark then gfmFidelity — order per their charters
@@ -657,6 +666,16 @@ export async function createEditor(
         .use(slashMenuPlugin)
         .use(tabKeymapPlugin)
         .use(blockKeysPlugin)
+        // The gap cursor itself: the caret widget, click-to-gap, and arrow
+        // handling for every case blockEdgeGapCursorKeymapPlugin (above)
+        // declines. Registered LAST among key handlers on purpose — each
+        // narrowly-guarded arrow handler before it (math boundaries, table nav,
+        // fold reveals, block keys, embed cards) answers a specific question
+        // and declines otherwise, while this is the general "there is nowhere
+        // else to go" fallback. It still beats prosemirror-view's built-in
+        // arrow handling, which is what used to drop the caret inside the
+        // neighbouring leaf. See plugins/gapCursor.ts.
+        .use(gapCursorPlugin)
         // Content-conservation guard (MAR-108): filterTransaction is
         // consulted for every plugin regardless of registration order, so
         // the guard sees the final transaction wherever it sits in the list.

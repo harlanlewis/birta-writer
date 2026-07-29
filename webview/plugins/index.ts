@@ -16,6 +16,7 @@ export {
     insertFootnoteCommand,
 } from "./footnotes";
 export { formatKeymapPlugin } from "./formatKeymap";
+export { blockEdgeGapCursorKeymapPlugin, gapCursorPlugin } from "./gapCursor";
 export { headingEmptyDeletePlugin } from "./headingEmptyDelete";
 export {
     foldAllCommand,
