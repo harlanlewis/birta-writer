@@ -5,7 +5,7 @@ import {
     rootCtx,
     serializerCtx,
 } from "@milkdown/core";
-import { prism, prismConfig } from "@milkdown/plugin-prism";
+import { prism, prismConfig, prismPlugin } from "@milkdown/plugin-prism";
 import { getState, getView, type EditorView } from "./pm";
 import type { Node as ProseNode } from "./pm";
 import { getMarkdown } from "@milkdown/utils";
@@ -35,6 +35,7 @@ import {
     copyMarkdownPlugin,
     docChangePlugin,
     setDocChangeListener,
+    prismHighlightPlugin,
     footnoteNumberingPlugin,
     footnoteReferenceInputRule,
     foldRevealKeymapPlugin,
@@ -537,7 +538,13 @@ export async function createEditor(
         // 200ms debounce is what MAR-145 removed from the save path, and it has
         // no other consumer.
         .use(docChangePlugin)
-        .use(prism)
+        // prismConfig (the ctx slice) is kept; prismPlugin is REPLACED — it ran
+        // two whole-document walks on every transaction, selection-only ones
+        // included. See plugins/prismHighlight.ts (MAR-137). Filtered by
+        // identity so an upstream shape change fails prismHighlight.test.ts
+        // rather than silently running both.
+        .use(prism.filter((plugin) => plugin !== prismPlugin))
+        .use(prismHighlightPlugin)
         .use(historyPlugin)
         .use(historyKeymapPlugin)
         .use(listLiftPlugin)
