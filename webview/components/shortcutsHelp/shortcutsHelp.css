@@ -145,11 +145,10 @@
     min-width: 0;
 }
 
+/* Type grade from .ui-caption (ui/typography.css). */
 .shortcuts-help__note {
     margin-top: 1px;
-    font-size: var(--ui-fs-s);
     line-height: 1.45;
-    color: var(--vscode-descriptionForeground);
 }
 
 /* Key chips use VS Code's own keybinding-label tokens so they read exactly

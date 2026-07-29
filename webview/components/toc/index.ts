@@ -870,7 +870,7 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
             // DOM with, but never to capture: see the signature note above.
             const { level, text } = entry;
             const item = document.createElement("div");
-            item.className = `toc-item toc-item--h${level}`;
+            item.className = `ui-label toc-item toc-item--h${level}`;
             item.setAttribute("role", "treeitem");
             item.dataset["headingPos"] = String(entry.pos);
             item.dataset["level"] = String(level);

@@ -47,7 +47,7 @@ export function buildReviewItem(spec: ReviewRowSpec): HTMLElement {
     item.dataset["to"] = String(spec.to);
 
     const main = document.createElement("button");
-    main.className = "review-item__main";
+    main.className = "ui-label review-item__main";
     main.tabIndex = -1;
 
     const tag = document.createElement("span");
@@ -76,7 +76,7 @@ export function buildReviewItem(spec: ReviewRowSpec): HTMLElement {
     main.append(tag, label);
     if (spec.meta) {
         const meta = document.createElement("span");
-        meta.className = "review-item__meta";
+        meta.className = "ui-caption review-item__meta";
         meta.textContent = spec.meta;
         if (spec.onMeta) {
             const onMeta = spec.onMeta;

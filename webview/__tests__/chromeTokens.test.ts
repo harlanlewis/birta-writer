@@ -30,6 +30,17 @@ function cssFiles(dir: string): string[] {
     return out;
 }
 
+function tsFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const name of readdirSync(dir)) {
+        if (name === "node_modules" || name === "__tests__" || name.startsWith(".")) continue;
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) out.push(...tsFiles(p));
+        else if (name.endsWith(".ts")) out.push(p);
+    }
+    return out;
+}
+
 /** file → declarations, with line numbers, comments stripped per-line-ish. */
 function declarations(file: string, prop: string): Array<{ line: number; value: string }> {
     const src = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, (m) =>
@@ -107,6 +118,41 @@ describe("chrome design tokens (ui/chrome.css)", () => {
             }
         }
         expect(violations, violations.join("\n")).toEqual([]);
+    });
+
+    // The size band above is the ratchet on the --ui-fs-* TOKENS. This is the
+    // ratchet on the type-scale CLASSES, which is a different failure: a
+    // surface can be perfectly token-clean on size and still drift on weight
+    // or ink, because it restates the whole triple instead of composing the
+    // grade. .ui-label and .ui-caption sat with ZERO adopters for months
+    // (MAR-193) — dead CSS reads exactly like a scale nobody needed, and the
+    // next surface then has no reason to compose it either. A grade with no
+    // adopter is either dead or a design decision; both deserve a failing
+    // test rather than silence.
+    it("every grade in the ui-* type scale should have at least one adopter", () => {
+        const scale = readFileSync(join(WEBVIEW_DIR, "ui", "typography.css"), "utf8");
+        const grades = [...scale.matchAll(/^\.(ui-[\w-]+)\s*\{/gm)].map((m) => m[1]);
+        expect(grades.length, "ui/typography.css declares no grades").toBeGreaterThan(0);
+
+        // Comments are stripped first: several files NAME a grade while
+        // explaining why they compose it, and a prose mention is not an
+        // adopter — counting one would let the last real use be deleted with
+        // the guard still green.
+        const sources = tsFiles(WEBVIEW_DIR).map((f) =>
+            readFileSync(f, "utf8")
+                .replace(/\/\*[\s\S]*?\*\//g, "")
+                .replace(/(^|\s)\/\/.*$/gm, "$1"),
+        );
+        const orphans = grades.filter(
+            (grade) => !sources.some((src) => new RegExp(`\\b${grade}(?![\\w-])`).test(src)),
+        );
+        expect(
+            orphans,
+            `Type grades with no adopter: ${orphans.join(", ")}. Either compose ` +
+                "the grade at a real creation site, or delete it from " +
+                "ui/typography.css — an unused grade is dead CSS that quietly " +
+                "argues the scale isn't worth composing.",
+        ).toEqual([]);
     });
 
     it("no shadow should mix its own ink instead of taking it from --ui-card-shadow*", () => {
