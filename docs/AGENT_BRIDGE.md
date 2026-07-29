@@ -56,13 +56,32 @@ So the shipped adapters are all **explicit or pull-based**:
 editor hosts the agent over a socket/stdio protocol and pushes selection changes:
 the Claude Code IDE protocol (localhost WebSocket + MCP), the Codex `/ide`
 context, and Zed's [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol).
-Those plug into the same `ActiveContextResolver`, but they are a **separate,
-verification-gated increment**: they run authenticated local sockets (the Claude
-one had a real [origin-spoofing CVE](https://github.com/anthropics/claude-code/security/advisories/GHSA-9f65-56v6-gxw7))
-and must coexist with the official extensions that own the same lockfiles —
-neither is safe to ship without end-to-end testing against the live CLIs. When
-they land, `getActiveEditorContext` grows a push counterpart
-(`onDidChangeContext`) and the adapters subscribe to it.
+
+The **pull half of the Claude adapter is shipped** (MAR-243):
+`src/agentBridge/claudeIde/` runs a loopback-only WebSocket MCP endpoint,
+opt-in behind `birta.agentBridge.claudeIde` (default off, application-scoped).
+While enabled, Birta publishes a `~/.claude/ide/<port>.lock` discovery file, so
+`/ide` in a terminal `claude` lists "Birta Writer" alongside any official
+extension's endpoint — coexistence is by user choice, disambiguated in the
+picker, never by overwriting the official lockfile. The tool set is the pull
+subset of the official server's observed contract (`getCurrentSelection`,
+`getLatestSelection`, `getOpenEditors`, `getWorkspaceFolders`, `openFile`,
+`checkDocumentDirty`, `saveDocument`, `getDiagnostics`), byte-compatible with
+the CLI's handshake — captured live from the official server, and replayed
+against ours by `src/__tests__/claudeIdeServer.test.ts` over a real socket.
+Security posture (all pinned by tests): 127.0.0.1 bind only, fresh
+per-activation token checked via the `x-claude-code-ide-authorization` header,
+any `Origin` header rejected outright (browsers can't send the token header
+and always send Origin — this closes the class behind the Claude IDE
+[origin-spoofing CVE](https://github.com/anthropics/claude-code/security/advisories/GHSA-9f65-56v6-gxw7)),
+lockfile written 0600 in a 0700 dir and removed on dispose, with a
+dead-pid sweep for lockfiles a killed extension host left behind.
+
+Still open under MAR-243: the `selection_changed` **push** (needs the gated
+webview egress — `onDidChangeContext` plus a coalesced, subscriber-gated
+`editorContext` emit), the streamable-HTTP MCP registration for the Claude
+sidebar/desktop surfaces (`claude mcp add` speaks stdio/SSE/HTTP, not WS), the
+diff-review tools (`openDiff` and friends), and the Codex/ACP adapters.
 
 ## Performance: pull-only, zero cost when idle
 

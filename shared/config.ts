@@ -102,6 +102,18 @@ export interface BirtaConfig extends ProofreadConfig {
      */
     networkEnabled: boolean;
     /**
+     * Claude Code IDE endpoint (birta.agentBridge.claudeIde) — the Family-B
+     * wire adapter (MAR-243). When on, Birta runs a loopback-only WebSocket
+     * server and publishes a `~/.claude/ide/<port>.lock` discovery file so a
+     * terminal `claude` can connect to it via `/ide` and pull the WYSIWYG
+     * editor's live file + selection. Off by default and deliberately NOT
+     * gated by `networkEnabled`: that switch governs outbound requests, and
+     * this endpoint makes none — it only answers a local process that holds
+     * the per-activation token from the 0600 lockfile. Application-scoped so
+     * a workspace config can't flip it (the NETWORK_POSTURE.md consent rule).
+     */
+    claudeIdeEnabled: boolean;
+    /**
      * Paste-unfurl feature gate (birta.pasteUnfurl.enabled): pasting a bare URL
      * onto an empty selection fetches the page's Open Graph title and inserts
      * `[title](url)`. Gated by `networkEnabled && pasteUnfurlEnabled` — the
@@ -241,6 +253,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     floatingToolbarItems: "floatingToolbar.items",
     smartLinks: "smartLinks",
     networkEnabled: "network.enabled",
+    claudeIdeEnabled: "agentBridge.claudeIde",
     pasteUnfurlEnabled: "pasteUnfurl.enabled",
     pasteUnfurlAutoApply: "pasteUnfurl.autoApply",
     calcEnabled: "calc.enabled",
@@ -323,6 +336,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // offered just-in-time, the moment the user does something that would use
     // the network (see webview/components/networkOptIn).
     networkEnabled: false,
+    // The Claude Code IDE endpoint is opt-in: a loopback listener should not
+    // exist unless the user asked for it, even though it makes no outbound
+    // request.
+    claudeIdeEnabled: false,
     // Paste-unfurl the FEATURE ships ON, but it's gated behind the master
     // switch: with the master off, a bare-URL paste inserts a plain link and
     // offers the opt-in; only `networkEnabled && pasteUnfurlEnabled` fetches the
