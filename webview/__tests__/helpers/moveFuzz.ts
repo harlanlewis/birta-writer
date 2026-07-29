@@ -51,10 +51,12 @@ function collectFixtures(dir: string, extension: string, rel = ""): CorpusFixtur
 
 /**
  * Every fixture under __tests__/fixtures/ (recursively) with the given
- * extension — `.md` (the default) plus the living showcase
- * (samples/content-inventory.md). The extension strips YAML frontmatter
- * before the webview ever sees content (src/utils/contentTransform.ts), so
- * the showcase contributes its body exactly as production delivers it.
+ * extension — `.md` (the default) plus the living sample documents
+ * (samples/content-inventory.md, the exhaustive corpus, and
+ * samples/showcase.md, the human tour). The extension strips YAML
+ * frontmatter before the webview ever sees content
+ * (src/utils/contentTransform.ts), so each sample contributes its body
+ * exactly as production delivers it.
  *
  * `fixtureExtension` exists for the multiformat track (MAR-40/41): a second
  * format's corpus gates run the same suites over its own fixture family
@@ -63,14 +65,16 @@ function collectFixtures(dir: string, extension: string, rel = ""): CorpusFixtur
 export function loadCorpusFixtures(fixtureExtension = ".md"): CorpusFixture[] {
     const fixtures = collectFixtures(FIXTURES_DIR, fixtureExtension);
     if (fixtureExtension === ".md") {
-        // The showcase is a markdown document; other formats bring only
+        // The sample documents are markdown; other formats bring only
         // their own fixture family.
-        const raw = readFileSync(
-            join(__dirname, "..", "..", "..", "samples", "content-inventory.md"),
-            "utf8",
-        );
-        const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
-        fixtures.push({ name: "samples/content-inventory.md (body)", content: body });
+        for (const sample of ["content-inventory.md", "showcase.md"]) {
+            const raw = readFileSync(
+                join(__dirname, "..", "..", "..", "samples", sample),
+                "utf8",
+            );
+            const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
+            fixtures.push({ name: `samples/${sample} (body)`, content: body });
+        }
     }
     return fixtures;
 }
