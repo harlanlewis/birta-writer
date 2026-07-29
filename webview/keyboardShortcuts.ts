@@ -10,16 +10,81 @@
  * keybinding. Those chords must stay visible to the workbench — never claim
  * them below, or the user's binding stops resolving.
  *
- * What remains hardcoded (and therefore claimed) are the typing-level keys
- * ProseMirror must handle synchronously inside the webview: formatting
- * (Mod+B/I/E, Mod+Shift+X), history (Mod+Z/Shift+Z/Y), Tab, and the
- * block/selection chords (Shift+Alt+Arrows duplicate, the smart-select
- * arrows, Mod+Enter insert-paragraph). These cannot be routed through the
- * extension host because the keystroke's default action (native
- * contenteditable formatting/selection, focus traversal, workbench side
- * effects like Cmd+B toggling the sidebar) has to be suppressed at the event
- * itself. Users can still bind ADDITIONAL chords to the corresponding
- * `birta.editor.*` commands; only these defaults are fixed.
+ * What remains hardcoded are the typing-level keys ProseMirror must handle
+ * synchronously inside the webview: formatting (Mod+B/I/E, Mod+Shift+X),
+ * history (Mod+Z/Shift+Z/Y), Tab, and the block/selection chords. These
+ * cannot be routed through the extension host because the keystroke's
+ * default action (native contenteditable formatting/selection, focus
+ * traversal, workbench side effects like Cmd+B toggling the sidebar) has to
+ * be suppressed at the event itself. Users can still bind ADDITIONAL chords
+ * to the corresponding `birta.editor.*` commands; only these defaults are
+ * fixed.
+ *
+ * ── THE CLAIM RULE (stated here once; every other site derives from it) ──
+ *
+ * Hardcoded is not the same as claimed. A chord is CLAIMED — hidden from the
+ * workbench forwarder — if and only if the webview OWNS IT OUTRIGHT: there
+ * is no editor state in which we deliberately hand the key back to the
+ * platform or the workbench.
+ *
+ * The rule is NOT "mutates the document" and NOT "mutates the document or
+ * selection"; the code falsifies both. Mod+Backspace mutates the document
+ * (join/delete at a list item's start) and is deliberately UNCLAIMED, while
+ * Mod+A and the smart-select chords mutate only the selection and ARE
+ * claimed. What decides it is fall-through, because this guard is a static
+ * table that runs BLIND to editor state: claiming a chord whose keymap
+ * deliberately returns false in some state would silently break exactly that
+ * state's native behavior, while leaving an outright-owned chord unclaimed
+ * lets a user-bound workbench action fire alongside our handler (the
+ * double-fire bug MAR-150 was filed for).
+ *
+ * Three classes follow:
+ *   1. Owned outright — listed in CLAIMED_SHORTCUTS, or special-cased in
+ *      isEditorClaimedKey for Tab and Mod+A, which are owned only inside
+ *      ProseMirror content.
+ *   2. Conditionally owned, with a designed fall-through — NOT claimed:
+ *      Shift+Arrow, Mod+Shift+Arrow, Mod+Backspace, Shift+Tab each return
+ *      false in the states where the platform's own behavior is what the
+ *      user wants. VS Code's own defaults on these are editorTextFocus-
+ *      scoped and inert while a webview has focus, so leaving them visible
+ *      costs nothing.
+ *   3. Conditionally owned but must not double-fire — stops propagation
+ *      ITSELF at the point of consumption, where the condition is known:
+ *      Escape (blockKeys' handleBlockKeydown) and the overlays' own Escape
+ *      handlers.
+ *
+ * The per-chord decisions are recorded once, as data, in
+ * `shared/__tests__/keymapChords.ts`. Both policy tests derive from that
+ * table: keyboardShortcuts.test.ts drives this guard with a real event per
+ * chord per platform, and noHardcodedKeybindings.test.ts uses it as the
+ * source-scan allowlist — so a new keymap chord fails the scan until it is
+ * classified, and a misclassification fails the guard test.
+ *
+ * ── Contributed-keybinding parity (MAR-144's deferred audit, 2026-07-29) ──
+ *
+ * Every hardcoded chord was re-checked against its raw-editor equivalent for
+ * convertibility to a contributed (rebindable) keybinding. NONE can convert,
+ * each for one of three structural reasons:
+ *   (a) a native contenteditable default must be suppressed synchronously —
+ *       the Alt/Option+Arrow class (move/duplicate block, smart select). A
+ *       contributed command runs after the native caret move has landed;
+ *       MAR-144's first attempt shipped a corrupted caret this way and was
+ *       reverted (c535203);
+ *   (b) the binding is conditional (class 2 above) and a contributed command
+ *       cannot express "handle this only in state X" — it owns the chord
+ *       always or never;
+ *   (c) it must beat another synchronous in-webview keymap on the same
+ *       keystroke (Mod+Enter vs the preset's exit-code-block binding).
+ * The parity that IS available is an ADDITIONAL binding via a palette
+ * command, and every hardcoded chord naming a discrete action already has
+ * one: moveBlockUp/Down, duplicateBlockUp/Down, expandSelection /
+ * shrinkSelection, insertParagraphAfter/Before, toggleBold / toggleItalic /
+ * toggleInlineCode / toggleStrikethrough. The rest are continuous
+ * typing/selection verbs a palette entry cannot sensibly express (Tab,
+ * Shift+Tab, Mod+A, Shift+Arrow, Mod+Shift+Arrow, Mod+Backspace) or history
+ * (Mod+Z/Y, already called out in the CHANGELOG). Closing the gap for real
+ * needs the webview to read the user's keybinding configuration — a separate
+ * feature, not a fix here.
  */
 
 import { fallbackKeyFromKeyCode, type EventManager } from "./eventManager";
@@ -103,16 +168,12 @@ export const CLAIMED_SHORTCUTS: readonly ClaimedShortcut[] = [
     { key: "z", mod: true },                // undo
     { key: "z", mod: true, shift: true },   // redo
     { key: "y", mod: true },                // redo
-    // Block/selection chords (all content-scoped: overlay inputs keep their
-    // native caret/selection behavior). These MUTATE the document or
-    // selection and are hardcoded ProseMirror chords, so they are claimed
-    // even though VS Code's own defaults on them are editorTextFocus-scoped —
-    // a user-bound workbench action on the same chord must never fire
-    // alongside the edit.
-    // blockKeys plugin: move block up/down (Alt+Arrow). Hardcoded rather than
-    // contributed because on macOS Option+Arrow's native caret-nav default
-    // must be suppressed synchronously (a contributed command runs too late);
-    // claimed so the workbench key forwarder can't also act on it.
+    // Block/selection chords. All content-scoped: overlay inputs keep their
+    // native caret/selection behavior. Each is owned outright inside content
+    // (the claim rule in this file's header, class 1) — the sibling chords
+    // that fall through in some state (Shift+Arrow, Mod+Shift+Arrow) are
+    // deliberately absent from this list.
+    // blockKeys plugin: move block up/down (Alt+Arrow).
     { key: "arrowup", alt: true, content: true },
     { key: "arrowdown", alt: true, content: true },
     // blockKeys plugin: duplicate block up/down

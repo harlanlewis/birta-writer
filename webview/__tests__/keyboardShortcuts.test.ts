@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createEventManager, type EventManager } from "../eventManager";
 import { initKeyboardShortcuts, CLAIMED_SHORTCUTS } from "../keyboardShortcuts";
+import { KEYMAP_CHORDS } from "../../shared/__tests__/keymapChords";
 
 // Dispatch on the ProseMirror element by default: real key events target the
 // focused element and bubble through document up to window, which is where
@@ -415,4 +416,81 @@ describe("initKeyboardShortcuts workbench key-leak guard", () => {
             ["a", "b", "e", "i", "y", "z"],
         );
     });
+
+    // ── Recorded claim decisions vs. the real guard ──────────────────────
+    //
+    // The claim rule is stated once (keyboardShortcuts.ts header: claimed iff
+    // the webview owns the chord outright, with no state in which we hand the
+    // key back to the platform). Its per-chord application is recorded once,
+    // as data, in shared/__tests__/keymapChords.ts — which is also the
+    // source-scan allowlist, so a keymap chord cannot exist without a
+    // decision. This sweep is what keeps that decision honest: it drives the
+    // real guard with a synthesized event per chord per platform, so prose
+    // and behavior cannot drift apart. (Tab and Mod+A are claimed by the
+    // guard's own content-scope special cases rather than CLAIMED_SHORTCUTS;
+    // driving the guard covers them uniformly.)
+
+    /** A chord literal ("Mod-Shift-ArrowUp") as a real keydown init. */
+    function chordEvent(
+        chord: string,
+        isMac: boolean,
+    ): { code: string; init: Partial<KeyboardEvent> } {
+        const parts = chord.split("-");
+        const keyName = parts.pop()!;
+        const init: Record<string, boolean | string> = {};
+        for (const modifier of parts) {
+            switch (modifier) {
+                // prosemirror-keymap's "Mod-" is Cmd on macOS, Ctrl elsewhere.
+                case "Mod": init[isMac ? "metaKey" : "ctrlKey"] = true; break;
+                case "Cmd": case "Meta": init.metaKey = true; break;
+                case "Ctrl": init.ctrlKey = true; break;
+                case "Shift": init.shiftKey = true; break;
+                case "Alt": init.altKey = true; break;
+                default: throw new Error(`unhandled modifier "${modifier}" in ${chord}`);
+            }
+        }
+        // Real events report the SHIFTED character for a letter chord.
+        init.key = keyName.length === 1 && init.shiftKey ? keyName.toUpperCase() : keyName;
+        return {
+            code: keyName.length === 1 ? `Key${keyName.toUpperCase()}` : keyName,
+            init: init as Partial<KeyboardEvent>,
+        };
+    }
+
+    const chordCases = Object.entries(KEYMAP_CHORDS).flatMap(([file, chords]) =>
+        Object.entries(chords).map(([chord, claim]) => ({
+            label: `${chord} (${file.replace("webview/plugins/", "")})`,
+            chord,
+            claim,
+        })),
+    );
+
+    for (const isMac of [true, false]) {
+        const platform = isMac ? "macOS" : "Windows/Linux";
+        it.each(chordCases)(
+            `$label on ${platform} should match its recorded claim decision`,
+            ({ chord, claim }) => {
+                init(isMac);
+                const expected =
+                    claim.claimed !== false &&
+                    (claim.claimed === "always" || claim.claimed === (isMac ? "mac" : "win"));
+                const { code, init: modifiers } = chordEvent(chord, isMac);
+
+                pressKey(code, modifiers, proseMirrorEl);
+
+                const wasClaimed = workbenchForwarder.mock.calls.length === 0;
+                expect(
+                    wasClaimed,
+                    expected
+                        ? `${chord} is recorded as claimed on ${platform} but leaked to the ` +
+                          "workbench forwarder — a user-bound workbench action can fire " +
+                          "alongside the editor's own handler."
+                        : `${chord} is recorded as unclaimed on ${platform} (${
+                              claim.claimed === false ? claim.fallsThrough : ""
+                          }) but the guard swallowed it — the fall-through state now silently ` +
+                          "loses its native behavior.",
+                ).toBe(expected);
+            },
+        );
+    }
 });

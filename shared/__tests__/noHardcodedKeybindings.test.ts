@@ -14,18 +14,23 @@
  *      reason) or — almost always the right fix — rewritten as a
  *      contributed keybinding.
  *   2. ProseMirror keymap chord literals ("Mod-b" etc.) and kbd() tooltip
- *      labels: pinned per file, so adding a chord to a keymap (or printing
- *      a shortcut in a tooltip, which must never name a rebindable command's
- *      key) is a deliberate, reviewed change.
+ *      labels: pinned per file against `keymapChords.ts`, so adding a chord
+ *      to a keymap (or printing a shortcut in a tooltip, which must never
+ *      name a rebindable command's key) is a deliberate, reviewed change —
+ *      and, for a keymap chord, one that also records whether the key-leak
+ *      guard claims it.
  *
- * The behavioral complement lives in keyboardShortcuts.test.ts: the
- * claimed-set exhaustiveness tests fail when the key-leak guard starts
- * claiming a chord that should stay visible to the workbench.
+ * The behavioral complement lives in keyboardShortcuts.test.ts: it drives the
+ * real guard with one event per chord in that same table, so a recorded claim
+ * decision can never drift from what the guard does, and the claimed-set
+ * exhaustiveness tests fail when the guard starts claiming a chord that
+ * should stay visible to the workbench.
  */
 import { describe, it, expect } from "vitest";
 import * as path from "path";
 import * as fs from "fs";
 import { walkFiles } from "./cjkScanner";
+import { chordAllowlist } from "./keymapChords";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
@@ -109,96 +114,16 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
      * labels for exactly those fixed keys. Tooltips must never print a
      * rebindable command's default (the webview cannot query the user's
      * effective binding, so it could be wrong).
+     *
+     * Derived from `keymapChords.ts`, which is also where each keymap chord's
+     * key-leak-guard claim decision is recorded — so allowlisting a new chord
+     * is the same edit as deciding whether the guard claims it, and
+     * keyboardShortcuts.test.ts then checks that decision against the real
+     * guard. Why each chord is hardcoded rather than contributed lives in the
+     * owning plugin's header; the claim rule itself lives in exactly one
+     * place, `webview/keyboardShortcuts.ts`.
      */
-    const CHORD_ALLOWLIST: Record<string, string[]> = {
-        // typing-level ProseMirror keymaps (see keyboardShortcuts.ts)
-        // blockKeys: selection-state-conditional bindings — Shift+arrows
-        // extend block-wise ONLY when the selection already spans whole
-        // blocks and must fall through (return false) to native text
-        // selection otherwise, which a contributed keybinding cannot do; the
-        // Alt+Arrow move MUST be hardcoded (MAR-144): on macOS Option+Arrow's
-        // native caret-nav default is only suppressible by a synchronous
-        // webview handler, so a contributed command can't own it — it's
-        // claimed by the key-leak guard instead. Mod-a is the escalation
-        // ladder (block text → block → all blocks) and must fall through to
-        // baseKeymap's selectAll in tables. The Alt-Arrow move and Shift-Alt
-        // duplicate chords are claimed by the key-leak guard (content-scoped —
-        // they mutate the document); the rest stay unclaimed. Mod-Shift-Arrow
-        // is bound ONLY for non-text selections (deterministic
-        // select-to-document-edge; native handling of custom selection
-        // classes is undefined) and falls through for a caret/text selection
-        // to the platform's native selection extension (VS Code's own
-        // Cmd+Shift+arrow defaults are editorTextFocus-scoped and inert while
-        // a webview has focus).
-        "webview/plugins/blockKeys.ts": [
-            "Alt-ArrowDown",
-            "Alt-ArrowUp",
-            "Mod-Shift-ArrowDown",
-            "Mod-Shift-ArrowUp",
-            "Mod-a",
-            "Shift-Alt-ArrowDown",
-            "Shift-Alt-ArrowUp",
-            "Shift-ArrowDown",
-            "Shift-ArrowUp",
-        ],
-        "webview/plugins/formatKeymap.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
-        // headingFold: the fold-boundary reveal guard also covers Mod-Enter
-        // (insert paragraph below targets the same collapsed-heading
-        // boundary as plain Enter); it never consumes the key — it only
-        // unfolds first — so it must sit in the same synchronous PM keymap
-        // chain as insertParagraph's binding, not in a contributed chord.
-        "webview/plugins/headingFold/foldCommands.ts": ["Mod-Enter"],
-        "webview/plugins/history.ts": ["Mod-Shift-z", "Mod-y", "Mod-z"],
-        // list: typing-level Backspace family — Mod-Backspace (delete to line
-        // start) on an already-empty item must fall through to the same
-        // join/delete as plain Backspace instead of doing nothing.
-        "webview/plugins/list.ts": ["Mod-Backspace"],
-        // insertParagraph: Mod-Enter must beat the preset's exit-code-block
-        // binding synchronously (registered before the presets, returning
-        // false in those contexts); claimed by the key-leak guard.
-        "webview/plugins/insertParagraph.ts": ["Mod-Enter", "Mod-Shift-Enter"],
-        // smartSelect: chords collide with native contenteditable selection
-        // extension and need synchronous default-suppression; platform-split
-        // to mirror the built-in editor; claimed by the key-leak guard.
-        "webview/plugins/smartSelect.ts": [
-            "Ctrl-Shift-Cmd-ArrowLeft",
-            "Ctrl-Shift-Cmd-ArrowRight",
-            "Shift-Alt-ArrowLeft",
-            "Shift-Alt-ArrowRight",
-        ],
-        "webview/plugins/tableKeymap.ts": ["Shift-Tab"],
-        // kbd() tooltip labels naming fixed local keys only
-        "webview/components/findBar/index.ts": ["Mod-Enter", "Shift-Enter"],
-        // shortcutsHelp: the cheatsheet overlay prints ONLY the fixed
-        // typing-level grammar above (kbd() display of the same un-rebindable
-        // chords already allowlisted for their keymap plugins); rebindable
-        // commands are listed by name with no keys.
-        "webview/components/shortcutsHelp/index.ts": [
-            "Alt-ArrowDown",
-            "Alt-ArrowUp",
-            "Ctrl-Shift-Cmd-ArrowLeft",
-            "Ctrl-Shift-Cmd-ArrowRight",
-            "Mod-Enter",
-            "Mod-Shift-Enter",
-            "Mod-Shift-x",
-            "Mod-Shift-z",
-            "Mod-a",
-            "Mod-b",
-            "Mod-e",
-            "Mod-i",
-            "Mod-y",
-            "Mod-z",
-            "Shift-Alt-ArrowDown",
-            "Shift-Alt-ArrowLeft",
-            "Shift-Alt-ArrowRight",
-            "Shift-Alt-ArrowUp",
-            "Shift-ArrowDown",
-            "Shift-ArrowUp",
-            "Shift-Tab",
-        ],
-        "webview/components/selectionToolbar/index.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
-        "webview/components/toolbar/index.ts": ["Mod-Shift-x", "Mod-b", "Mod-e", "Mod-i"],
-    };
+    const CHORD_ALLOWLIST = chordAllowlist();
 
     const CHORD_RE = /["'](?:Mod|Ctrl|Cmd|Meta|Alt|Shift)-[\w-]+["']/g;
 
@@ -215,7 +140,9 @@ describe("no hardcoded keybindings (chord-literal scan)", () => {
             "A chord literal (keymap binding or tooltip shortcut label) was " +
                 "added or removed. New shortcuts should be contributed " +
                 "keybindings; tooltip labels may only name fixed local keys. " +
-                "Update the allowlist only for typing-level ProseMirror keymaps.",
+                "Only for a typing-level ProseMirror keymap, add it to " +
+                "keymapChords.ts — which also forces the key-leak guard's " +
+                "claim decision (see the rule in webview/keyboardShortcuts.ts).",
         ).toEqual(CHORD_ALLOWLIST);
     });
 });
