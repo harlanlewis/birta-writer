@@ -19,6 +19,12 @@ __mocks__/**
 releases/**
 .vscode-test/**
 .e2e-shots/**
+# Built by `pnpm perf:ab` / `perf:typing:ab`, which create them and never
+# remove them. Gitignored, but .vscodeignore does not honor .gitignore — so
+# without these two lines any local A/B run poisons the next `pnpm run package`
+# with two full copies of the bundle (318 files / 30 MB vs 114 / 10 MB).
+dist-base/**
+dist-head/**
 .gitignore
 .editorconfig
 .prettierignore
