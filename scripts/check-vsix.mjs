@@ -39,11 +39,16 @@ const entries = listing
 // covers some (.vscode-test, node_modules); listing them anyway means an
 // upstream default change can't silently regress us.
 const banned =
-    /^extension\/(\.vscode-test|\.vscode-test-web|\.e2e-shots|releases|node_modules|coverage|out|packages)\//;
+    /^extension\/(\.vscode-test|\.vscode-test-web|\.e2e-shots|dist-base|dist-head|releases|node_modules|coverage|out|packages)\//;
 const offenders = entries.filter((name) => banned.test(name));
 
 // A clean package is 96 files (2026-07). Headroom for legitimate growth;
 // a leaked directory of any size trips this long before it doubles.
+//
+// Naming the directory beats tripping only on the count: `dist-base`/`dist-head`
+// (left behind by `pnpm perf:ab`) failed this as a bare "entry count 318 exceeds
+// 200", which says nothing about WHICH directory leaked. They are in `banned`
+// above so the next occurrence reports itself.
 const MAX_FILES = 200;
 
 const problems = [];
