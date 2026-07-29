@@ -76,8 +76,12 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "scopes Mod+A inside the title's contenteditable island — native select-all escapes into the document",
         "webview/plugins/tableCellClickFix.ts":
             "mouse-modifier check (Ctrl/Cmd+click), not a keybinding",
-        "webview/components/codeBlock/index.ts":
-            "plain-key bail in a keydown scope check, Ctrl+wheel pinch-zoom, mouse modifiers",
+        "webview/components/codeBlock/langPicker.ts":
+            "plain-key bail in the language-search keydown scope check, not a chord",
+        "webview/components/codeBlock/mermaidPane.ts":
+            "Ctrl+wheel pinch-zoom on the inline diagram (mouse modifier), not a keybinding",
+        "webview/components/codeBlock/lightbox.ts":
+            "Ctrl+wheel pinch-zoom on the fullscreen diagram (mouse modifier), not a keybinding",
         "webview/components/linkPopup/index.ts":
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
         "webview/components/pathLink/index.ts":
