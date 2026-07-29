@@ -121,11 +121,8 @@ export function activate(context: vscode.ExtensionContext) {
     // Coding-agent bridge: expose the WYSIWYG editor's live file + selection to
     // agents that read vscode.window.activeTextEditor (undefined for a custom
     // editor). Returns the extension's public API. See src/agentBridge/.
-    const agentApi: BirtaApi = registerAgentBridge(
-        context,
-        () => MarkdownEditorProvider.current?.getActiveEditorContext() ?? Promise.resolve(null),
-        (fsPath, line, column, anchor) =>
-            MarkdownEditorProvider.current?.setPendingNavigation(fsPath, line, column, anchor),
+    const agentApi: BirtaApi = registerAgentBridge(context, () =>
+        MarkdownEditorProvider.current?.getActiveEditorContext() ?? Promise.resolve(null),
     );
 
     // Sync editorAssociations once on activation
