@@ -47,6 +47,11 @@ import {
 // so every keystroke measures the same "insert one character" transaction.
 const TYPING_TEXT = "The quick brown fox jumps over the lazy dog and keeps going ";
 
+// Caret moves per sample. Small on purpose: a selection transaction is far
+// cheaper than a keystroke, so the median settles quickly, and every one of
+// these is added CI wall-clock on the most expensive job in the repo.
+const CARET_MOVES = 30;
+
 // A/B mode measures ONLY the gated fixtures — currently just `xlarge`.
 //
 // This is a cost decision made from measurement. Per sample on a dev laptop,
@@ -128,6 +133,24 @@ async function compareMode(beforePath, afterPath) {
                 // not removed.
                 if (real && dMs < 0) blockNote += "  ⚠ median improved but block regressed — work was moved, not removed";
             } else if (realBlock && dBlock < 0) {
+                improvedAny = true;
+            }
+        }
+        // Caret (selection-only dispatch) — gated on the same floors as the
+        // typing median. Missing in pre-metric JSONs: skip rather than invent a
+        // zero baseline, exactly as `block` does.
+        let caretNote = "";
+        if (typeof b.caretMedian === "number" && typeof a.caretMedian === "number") {
+            const dCaret = a.caretMedian - b.caretMedian;
+            const dCaretPct = b.caretMedian > 0 ? (dCaret / b.caretMedian) * 100 : (a.caretMedian > 0 ? 100 : 0);
+            const realCaret = Math.abs(dCaretPct) >= 10 && Math.abs(dCaret) >= 0.5;
+            const cSign = dCaret >= 0 ? "+" : "";
+            caretNote = `  caret ${round(b.caretMedian)}ms → ${round(a.caretMedian)}ms (${cSign}${round(dCaretPct)}%)`;
+            if (realCaret && dCaret > 0) {
+                verdict = "✗ REGRESSED (caret)";
+                regressed = true;
+                caretNote += "  ⚠ moving the caret got more expensive";
+            } else if (realCaret && dCaret < 0) {
                 improvedAny = true;
             }
         }
@@ -230,7 +253,29 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     // Let the last keystroke's transaction land before reading.
     await page.waitForTimeout(200);
 
-    const { durations, longtasks } = await page.evaluate(() => ({
+    // ── Caret burst (MAR-137) ───────────────────────────────────────────
+    // Selection-only transactions were the one class nothing measured, which
+    // is exactly how a 2.4 ms-per-arrow-key cost hid in an upstream plugin
+    // that walked the whole document above its own docChanged test. Two things
+    // about the placement are deliberate:
+    //   - It runs on the ALREADY-MOUNTED page. Mount is ~38% of an xlarge
+    //     sample, so folding this in costs burst time only, not a second mount.
+    //   - It runs AFTER the typed burst, never before. Arrow keys walk the
+    //     caret into whatever the fixture holds, and `xlarge` is 440 sections
+    //     of prose + table + code block: starting the typed burst from a caret
+    //     parked in a code block measured 38.5 ms/key against prose's 5.4,
+    //     because a caret inside a code block re-highlights the whole document
+    //     on every keystroke. Ordering these the other way silently changed
+    //     what the headline typing median means.
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(120);
+    await page.evaluate(() => performance.clearMeasures("mdw:tx-select"));
+    for (let i = 0; i < CARET_MOVES; i++) {
+        await page.keyboard.press(i % 2 === 0 ? "ArrowDown" : "ArrowRight");
+    }
+    await page.waitForTimeout(150);
+
+    const { durations, longtasks, caret } = await page.evaluate(() => ({
         durations: performance.getEntriesByName("mdw:tx-apply").map((e) => e.duration),
         // Delivered entries plus a takeRecords() flush — observer dispatch
         // is queued, not guaranteed ordered before this task, so drain the
@@ -238,6 +283,7 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
         longtasks: window.__longtasks
             ? [...window.__longtasks, ...window.__longtaskObs.takeRecords().map((e) => e.duration)]
             : null,
+        caret: performance.getEntriesByName("mdw:tx-select").map((e) => e.duration),
     }));
     await page.close();
     const where = side ? `${side} bundle, fixture "${fixture}"` : `fixture "${fixture}"`;
@@ -253,6 +299,7 @@ async function sampleTyping(browser, url, content, keys, fixture = "?", side = "
     }
     return {
         durations,
+        caret,
         blockMs: longtasks ? round(longtasks.reduce((s, d) => s + d, 0)) : null,
         blockTasks: longtasks ? longtasks.length : null,
     };
@@ -269,7 +316,16 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
     } finally {
         await browser.close();
     }
-    return { ...stats(s.durations), blockMs: s.blockMs, blockTasks: s.blockTasks };
+    const caret = s.caret && s.caret.length ? stats(s.caret) : null;
+    return {
+        ...stats(s.durations),
+        blockMs: s.blockMs,
+        blockTasks: s.blockTasks,
+        // Selection-only dispatch: reported next to typing, and gated the same
+        // way, because nothing else in the repo can see this cost (MAR-137).
+        caretMedian: caret ? caret.median : null,
+        caretMoves: caret ? caret.keystrokes : null,
+    };
 }
 
 async function measureMode(only, keys, jsonOut) {
@@ -295,11 +351,11 @@ async function measureMode(only, keys, jsonOut) {
         const agg = await measureFixture(chromium, baseUrl, TYPING_FIXTURES[name], keys, name);
         const kb = round(TYPING_FIXTURES[name].length / 1024);
         report.fixtures[name] = { ...agg, kb };
-        rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.blockMs ?? "n/a"), String(agg.blockTasks ?? "n/a"), String(agg.keystrokes)]);
+        rows.push([name, `${kb} KB`, String(agg.median), String(agg.p95), String(agg.max), String(agg.caretMedian ?? "n/a"), String(agg.blockMs ?? "n/a"), String(agg.blockTasks ?? "n/a"), String(agg.keystrokes)]);
     }
     server.close();
 
-    const header = ["fixture", "size", "median", "p95", "max", "block", "tasks", "keystrokes"];
+    const header = ["fixture", "size", "median", "p95", "max", "caret", "block", "tasks", "keystrokes"];
     const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)));
     const fmt = (cells) => cells.map((c, i) => String(c).padEnd(widths[i])).join("  ");
     console.log(`\ntyping perf — per-keystroke dispatch, ms (mdw:tx-apply) + total longtask block over the burst (block)\n`);
@@ -323,6 +379,7 @@ async function measureMode(only, keys, jsonOut) {
 async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs, fixture) {
     const base = [], head = [];
     const baseBlock = [], headBlock = [];
+    const baseCaret = [], headCaret = [];
     const browser = await chromium.launch();
     try {
         for (let i = 0; i < runs; i++) {
@@ -337,6 +394,10 @@ async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs,
             if (i === 0) continue; // warmup pair
             head.push(...h.durations); base.push(...b.durations);
             headBlock.push(h.blockMs); baseBlock.push(b.blockMs);
+            // Caret samples pool like the keystroke durations do: each burst is
+            // CARET_MOVES samples of the same operation, so the pool is the
+            // honest population (block cannot be pooled — it is a burst SUM).
+            headCaret.push(...(h.caret ?? [])); baseCaret.push(...(b.caret ?? []));
         }
     } finally {
         await browser.close();
@@ -345,9 +406,13 @@ async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs,
     // per-keystroke durations — take the median across bursts. Any null (no
     // longtask support) makes the whole metric null rather than a fake zero.
     const blockOf = (xs) => (xs.some((x) => x == null) ? null : round(quantile([...xs].sort((a, b) => a - b), 0.5)));
+    // An empty pool means the bundle predates the caret metric (an older
+    // merge-base). Null, never 0 — a zero baseline would read as a 100%
+    // regression on every A/B against an older commit.
+    const caretOf = (xs) => (xs.length ? stats(xs).median : null);
     return {
-        base: { ...stats(base), blockMs: blockOf(baseBlock) },
-        head: { ...stats(head), blockMs: blockOf(headBlock) },
+        base: { ...stats(base), blockMs: blockOf(baseBlock), caretMedian: caretOf(baseCaret) },
+        head: { ...stats(head), blockMs: blockOf(headBlock), caretMedian: caretOf(headCaret) },
     };
 }
 
@@ -366,9 +431,20 @@ function printTypingAbTable(label, pass) {
             const bSign = r.block.dBlock >= 0 ? "+" : "";
             block = `  block ${round(r.block.bb)}ms → ${round(r.block.ab)}ms (${bSign}${round(r.block.dBlockPct)}%)`;
         }
+        // Caret is GATED, so it prints its own verdict word rather than riding
+        // the typing median's — a run can be neutral on typing and regressed on
+        // caret, which is the case this metric was added for.
+        let caret = "";
+        if (r.caret) {
+            const cSign = r.caret.dCaret >= 0 ? "+" : "";
+            const cMark = r.caret.realCaret
+                ? (r.caret.dCaret > 0 ? (r.gated ? " \u2717 REGRESSED" : " slower") : " \u2713 faster")
+                : "";
+            caret = `  caret ${round(r.caret.bc)}ms \u2192 ${round(r.caret.ac)}ms (${cSign}${round(r.caret.dCaretPct)}%)${cMark}`;
+        }
         console.log(
             `  ${tag}${r.name.padEnd(8)} ${round(r.bm)}ms → ${round(r.am)}ms  ` +
-            `(${sign}${round(r.dMs)}ms, ${sign}${round(r.dPct)}%)  ${r.mark}${block}`,
+            `(${sign}${round(r.dMs)}ms, ${sign}${round(r.dPct)}%)  ${r.mark}${caret}${block}`,
         );
         if (r.blockNote) console.log(`      ${r.blockNote}`);
     }

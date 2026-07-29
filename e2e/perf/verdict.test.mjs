@@ -170,3 +170,58 @@ describe("spans / aggregate — the measurement math", () => {
         expect(agg.runs).toBe(3);
     });
 });
+
+// ── Caret (selection-only dispatch) gate ────────────────────────────────────
+// This gate exists because selection transactions were the one class of work
+// nothing in this repo measured, which is how an upstream plugin billed 2.4 ms
+// to every arrow key on a 300 KB document unnoticed (MAR-137).
+
+/** One-fixture typing pass carrying caret medians (and typing medians held flat). */
+const caretPass = (name, baseCaret, headCaret, median = 10) => ({
+    [name]: {
+        base: { median, caretMedian: baseCaret },
+        head: { median, caretMedian: headCaret },
+    },
+});
+
+describe("typingAbVerdict — the caret gate", () => {
+    it("a gated fixture whose caret cost rises ≥10% AND ≥0.5ms regresses", () => {
+        // The real regression this gate was built from: 3.5 → 5.7 ms, +63%.
+        expect([...typingAbVerdict(caretPass("xlarge", 3.5, 5.7)).regressed]).toEqual(["xlarge"]);
+    });
+
+    it("a caret move over 10% but under 0.5ms does NOT regress (the ms floor)", () => {
+        // 1.0 → 1.2 = +20% but only +0.2 ms.
+        expect(typingAbVerdict(caretPass("xlarge", 1.0, 1.2)).regressed.size).toBe(0);
+    });
+
+    it("a caret move over 0.5ms but under 10% does NOT regress (the % floor)", () => {
+        // 20 → 20.8 = +0.8 ms but only +4%.
+        expect(typingAbVerdict(caretPass("xlarge", 20, 20.8)).regressed.size).toBe(0);
+    });
+
+    it("an UNGATED fixture's caret regression never gates", () => {
+        const v = typingAbVerdict(caretPass("medium", 1, 10));
+        expect(v.regressed.size).toBe(0);
+        expect(TYPING_GATED_FIXTURES.has("medium")).toBe(false);
+    });
+
+    it("a caret IMPROVEMENT never counts as a regression", () => {
+        expect(typingAbVerdict(caretPass("xlarge", 5.7, 3.5)).regressed.size).toBe(0);
+    });
+
+    it("a missing caret median is skipped, not read as a zero baseline", () => {
+        // Pre-metric JSONs have no caretMedian; treating absent as 0 would make
+        // every comparison against an old capture a 100% regression.
+        const v = typingAbVerdict({ xlarge: { base: { median: 10 }, head: { median: 10 } } });
+        expect(v.regressed.size).toBe(0);
+        expect(v.rows[0].caret).toBeNull();
+    });
+
+    it("a caret regression gates even when the typing median is flat", () => {
+        // The whole point: the typing median could not see this cost at all.
+        const v = typingAbVerdict(caretPass("xlarge", 2.0, 4.0, 10));
+        expect(v.rows[0].dMs).toBe(0);
+        expect([...v.regressed]).toEqual(["xlarge"]);
+    });
+});

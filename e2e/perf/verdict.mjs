@@ -137,6 +137,18 @@ export const TYPING_MIN_MS = 0.5;
 export const TYPING_BLOCK_MIN_PCT = 25;
 export const TYPING_BLOCK_MIN_MS = 250;
 
+// `caret` (median selection-only dispatch) IS gated, on the same floors as the
+// typing median. It exists because selection transactions were the one class
+// of work nothing in this repo measured, and an upstream plugin quietly billed
+// 2.4 ms to every arrow key and click on a 300 KB document for as long as that
+// was true (MAR-137). Unlike `block` it is a clean per-transaction median, not
+// a threshold-sensitive sum, so it does not inflate on a loaded runner the way
+// `block` does — which is exactly why that one is reported and this one gates.
+// Validated the way MAR-224 validated the typing gate: with the regression
+// reintroduced it read 5.7 ms against 3.5 ms fixed, a 39% move.
+export const TYPING_CARET_MIN_PCT = 10;
+export const TYPING_CARET_MIN_MS = 0.5;
+
 /**
  * Per-fixture typing verdict for one A/B pass. `pass` maps fixture →
  * { base:{median,blockMs}, head:{median,blockMs} }. Returns display rows plus
@@ -174,7 +186,18 @@ export function typingAbVerdict(pass) {
                 blockNote = "⚠ main-thread block grew (reported, not gated)";
             }
         }
-        rows.push({ name, bm, am, dMs, dPct, gated, mark, block, blockNote });
+        // Caret (selection-only dispatch): same floors, same gating as typing.
+        const bc = r.base?.caretMedian, ac = r.head?.caretMedian;
+        let caret = null;
+        if (typeof bc === "number" && typeof ac === "number") {
+            const dCaret = ac - bc;
+            const dCaretPct = bc > 0 ? (dCaret / bc) * 100 : (ac > 0 ? 100 : 0);
+            const realCaret = Math.abs(dCaretPct) >= TYPING_CARET_MIN_PCT
+                && Math.abs(dCaret) >= TYPING_CARET_MIN_MS;
+            caret = { bc, ac, dCaret, dCaretPct, realCaret };
+            if (realCaret && dCaret > 0 && gated) { regressed.add(name); }
+        }
+        rows.push({ name, bm, am, dMs, dPct, gated, mark, block, blockNote, caret });
     }
     return { rows, regressed };
 }

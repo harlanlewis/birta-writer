@@ -104,6 +104,67 @@ reconciliation + every plugin view's `update`. The runner types real keystrokes
 (Playwright `keyboard.type`) into each fixture and reports the distribution
 (median / p95 / max) after a discarded warmup burst.
 
+## The `caret` column (selection-only dispatch)
+
+Added in MAR-137, and the reason is a cautionary tale about metric coverage:
+`instrumentTransactions` used to dispatch selection-only transactions
+*unwrapped*, on the stated grounds that they were "not the cost being tracked".
+So caret moves were the one class of transaction **nothing in this repo
+measured** — not `pnpm perf:typing`, not `typing-perf` in CI, not `block`.
+
+`@milkdown/plugin-prism` ran two whole-document walks *above* its own
+`docChanged` test. Every arrow key and every click on the 300 KB fixture paid
+2.4 ms of blocked main thread, and it was invisible by construction for as long
+as that instrumentation gap stood. **A cost no instrument reports is a cost that
+regresses freely.**
+
+So selection transactions now stamp their own span, `mdw:tx-select`, and the
+harness reports the median as `caret`:
+
+- It is a **separate span** from `mdw:tx-apply`, so the headline typing median
+  means exactly what it always did and is never diluted by caret moves.
+- It **is gated**, on the same floors as the typing median (≥10% AND ≥0.5 ms).
+  Unlike `block` it is a clean per-transaction median rather than a
+  threshold-sensitive whole-burst sum, so it does not inflate on a loaded runner
+  — which is precisely why `block` is reported and this one decides.
+- Missing on either side (a merge-base predating the metric) → **skipped, never
+  read as a zero baseline**, which would make every A/B against an older commit
+  a 100% regression.
+- Validated the way MAR-224 validated the typing gate — by reintroducing the
+  regression and watching it fire: `caret 3.45ms → 5.25ms (+52%) ✗ REGRESSED`,
+  confirmed across two passes, while the null A/B against a metric-less
+  merge-base correctly reported no caret row at all.
+
+Two things about how the burst is placed, both learned the hard way:
+
+- It runs on the **already-mounted page**. Mount is ~38% of an `xlarge` sample,
+  so folding the caret burst into the existing sample costs burst time only —
+  **measured at +0.25 s per sample (12.26 s → 12.51 s)**, roughly 2 s across the
+  whole CI job.
+- It runs **after** the typed burst, never before. Arrow keys walk the caret
+  into whatever the fixture holds, and `xlarge` is 440 sections of prose +
+  table + code block. Running it first parked the caret in a code block and the
+  headline typing median read **38.5 ms instead of 5.4** — the ordering silently
+  changed what the benchmark measured.
+
+## Edit shapes the harness does NOT cover
+
+Measured 2026-07-29 on `xlarge`, after both MAR-137 fixes, so the gap is
+recorded rather than implied:
+
+| shape | median | covered by a gate? |
+| --- | --- | --- |
+| typing in prose | 6.2 ms | ✅ `median` |
+| moving the caret | 3.5 ms | ✅ `caret` |
+| **Enter (structural edit)** | **34.3 ms** | ❌ |
+| **typing inside a code block** | **38.1 ms** | ❌ |
+
+The last two are ~6× prose typing and neither fix touched them: a structural
+edit takes the walk paths that typing now skips, and a caret inside a code block
+makes the highlighter recompute decorations for the *whole document* on every
+keystroke (upstream behavior, deliberately preserved). They are real costs with
+no gate; see MAR-137 lane 1 before assuming typing perf is "done".
+
 **What the span does NOT cover**: ProseMirror's pre-dispatch input path
 (DOM-observer read, input-rule scan) and rAF-coalesced followers (TOC refresh,
 the scheduled serialize) — on `xlarge` this was over half the burst's real

@@ -44,6 +44,23 @@
  * code block, even on an edit elsewhere. That is redundant (recomputing from
  * an unchanged doc yields the same decorations) but harmless, and preserving
  * it keeps this a performance change rather than a behavioral one.
+ *
+ * ## Keeping a vendored fork honest
+ *
+ * The decoration computation below is transcribed from `@milkdown/plugin-prism`
+ * **7.21.2**, because `getDecorations` is not exported and a plugin's `apply`
+ * cannot be intercepted from outside. A transcription that drifts from upstream
+ * would surface as wrong syntax highlighting — silently, since no perf gate can
+ * see it.
+ *
+ * The version above is a note for humans; the actual contract is
+ * `__tests__/prismHighlight.test.ts`, which registers upstream's plugin
+ * ALONGSIDE this one over every corpus fixture and asserts the two decoration
+ * sets are identical. That compares against whatever version is installed, so
+ * it doubles as an upgrade guard: a future bump that changes upstream's
+ * decorations fails on the upgrade PR rather than shipping divergence. Keep
+ * upstream installed and registered in that test even though production
+ * filters it out — the comparison is the whole point.
  */
 import type { EditorState, Node as ProseNode, Transaction } from "../pm";
 import { Decoration, DecorationSet, Plugin, PluginKey } from "../pm";

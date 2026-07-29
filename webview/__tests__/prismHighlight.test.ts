@@ -24,6 +24,7 @@ import { configureSerialization, gfmFidelity, pureCommonmark } from "../serializ
 import { prismHighlightPlugin } from "../plugins/prismHighlight";
 import { refractor } from "../highlighter";
 import { registerGrammars } from "../highlighterLanguages";
+import { loadCorpusFixtures } from "./helpers/moveFuzz";
 
 registerGrammars(refractor);
 
@@ -101,6 +102,43 @@ afterEach(async () => {
     for (const editor of editors) { await editor.destroy(); }
     editors = [];
     document.body.innerHTML = "";
+});
+
+describe("prismHighlight — differential over the whole corpus", () => {
+    // The single strongest guard in this file, and the one that keeps earning
+    // its keep after today: it compares our fork against WHATEVER version of
+    // upstream is installed, over every corpus fixture. So it is not only a
+    // transcription check — it is a dependency-upgrade drift detector. If a
+    // future `@milkdown/plugin-prism` bump changes how decorations are built,
+    // this goes red on the upgrade PR instead of shipping silently divergent
+    // highlighting. (Transcribed from 7.21.2; the version is documented in
+    // prismHighlight.ts, but this test, not the version, is the real contract.)
+    const corpus = loadCorpusFixtures().filter((f) => f.content.includes("```"));
+
+    it("the corpus should contain code blocks to compare (guards the filter)", () => {
+        // Without this, a filter that matched nothing would make every
+        // comparison below vacuous while still reading as full coverage.
+        expect(corpus.length).toBeGreaterThan(3);
+    });
+
+    for (const { name, content } of corpus) {
+        it(`${name} should decorate exactly as upstream does`, async () => {
+            const editor = await makeEditor(content);
+            const v = view(editor);
+            expect(ours(v)).toEqual(upstream(v));
+        });
+    }
+
+    it("at least one corpus fixture should produce a non-empty decoration set", async () => {
+        // Two empty sets compare equal. Prove the comparison has teeth on real
+        // documents, not just on the hand-written CODE_DOC below.
+        let total = 0;
+        for (const { content } of corpus) {
+            const editor = await makeEditor(content);
+            total += ours(view(editor)).length;
+        }
+        expect(total).toBeGreaterThan(50);
+    });
 });
 
 describe("prismHighlight — differential against upstream", () => {
