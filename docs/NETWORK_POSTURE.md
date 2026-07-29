@@ -32,14 +32,6 @@ things" becomes an argument for something categorically heavier.
 | **2 — a URL + your credential** | The URL and a per-provider token, to that provider's pinned hosts | **Directed, not built** (MAR-198) | Jira/Asana/Figma/private-GitHub cards |
 | **3 — your document content** | The document itself | **Not decided, not designed** — gated on an open scope question | The publish loop (MAR-232), any cloud/sync surface |
 
-**A rung the ladder deliberately does not have: loopback listeners.** The Claude Code IDE endpoint
-(`birta.agentBridge.claudeIde`, MAR-243) *accepts* connections on 127.0.0.1 and sends nothing off the
-machine, so it sits outside this ladder — the ladder orders what *leaves*. It still follows the
-consent invariants below: off by default, application-scoped, disabled-costs-nothing (the server
-module isn't even executed until the first enable), and it answers only a local process presenting the
-per-activation token from the 0600 discovery lockfile. The rung-0 claim stays literally true with it
-on: the extension makes no outbound request.
-
 Two things this ladder makes visible that the per-document treatments did not:
 
 - **Rungs 1 and 2 never upload document content.** That is what makes rung 3 a *category* change

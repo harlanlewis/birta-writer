@@ -24,24 +24,19 @@ import type * as vscode from "vscode";
 import type { ActiveContextResolver, BirtaApi } from "./api";
 import { registerReferenceCommands } from "./referenceCommand";
 import { registerEditorContextTool } from "./languageModelTool";
-import { registerClaudeIdeEndpoint } from "./claudeIdeEndpoint";
-import type { RevealInBirta } from "./claudeIde/vscodeHost";
 import { createBirtaApi } from "./publicApi";
 
 export type { BirtaApi, BirtaEditorContext, BirtaPosition } from "./api";
 
 /**
  * Wire every agent-bridge adapter to the neutral resolver and return the
- * extension's public API. Called once from activate(). `revealInBirta` is the
- * provider's pending-navigation seam, used by the IDE endpoint's openFile.
+ * extension's public API. Called once from activate().
  */
 export function registerAgentBridge(
     context: vscode.ExtensionContext,
     getActive: ActiveContextResolver,
-    revealInBirta: RevealInBirta,
 ): BirtaApi {
     registerReferenceCommands(context, getActive);
     registerEditorContextTool(context, getActive);
-    registerClaudeIdeEndpoint(context, getActive, revealInBirta);
     return createBirtaApi(getActive);
 }

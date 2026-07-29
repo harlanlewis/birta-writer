@@ -56,32 +56,22 @@ So the shipped adapters are all **explicit or pull-based**:
 editor hosts the agent over a socket/stdio protocol and pushes selection changes:
 the Claude Code IDE protocol (localhost WebSocket + MCP), the Codex `/ide`
 context, and Zed's [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol).
-
-The **pull half of the Claude adapter is shipped** (MAR-243):
-`src/agentBridge/claudeIde/` runs a loopback-only WebSocket MCP endpoint,
-opt-in behind `birta.agentBridge.claudeIde` (default off, application-scoped).
-While enabled, Birta publishes a `~/.claude/ide/<port>.lock` discovery file, so
-`/ide` in a terminal `claude` lists "Birta Writer" alongside any official
-extension's endpoint — coexistence is by user choice, disambiguated in the
-picker, never by overwriting the official lockfile. The tool set is the pull
-subset of the official server's observed contract (`getCurrentSelection`,
-`getLatestSelection`, `getOpenEditors`, `getWorkspaceFolders`, `openFile`,
-`checkDocumentDirty`, `saveDocument`, `getDiagnostics`), byte-compatible with
-the CLI's handshake — captured live from the official server, and replayed
-against ours by `src/__tests__/claudeIdeServer.test.ts` over a real socket.
-Security posture (all pinned by tests): 127.0.0.1 bind only, fresh
-per-activation token checked via the `x-claude-code-ide-authorization` header,
-any `Origin` header rejected outright (browsers can't send the token header
-and always send Origin — this closes the class behind the Claude IDE
-[origin-spoofing CVE](https://github.com/anthropics/claude-code/security/advisories/GHSA-9f65-56v6-gxw7)),
-lockfile written 0600 in a 0700 dir and removed on dispose, with a
-dead-pid sweep for lockfiles a killed extension host left behind.
-
-Still open under MAR-243: the `selection_changed` **push** (needs the gated
-webview egress — `onDidChangeContext` plus a coalesced, subscriber-gated
-`editorContext` emit), the streamable-HTTP MCP registration for the Claude
-sidebar/desktop surfaces (`claude mcp add` speaks stdio/SSE/HTTP, not WS), the
-diff-review tools (`openDiff` and friends), and the Codex/ACP adapters.
+**Family-B is deliberately not built.** A Claude Code IDE endpoint (loopback
+WebSocket + MCP, lockfile discovery, the pull tool set) was implemented, merged
+(#150, 2026-07-28), live-tested against the real CLI, and **removed the same
+day by owner decision** (the revert commit this sentence shipped in): the
+maintainer judged the surface a liability — a second discovery entry
+masquerading as an "IDE", an authenticated local socket to maintain, and an
+experience that stays inert without a further `selection_changed` push half —
+and chose to prune it rather than carry it. Do not reintroduce a wire adapter
+without an explicit owner request. Two facts from the live verification worth
+keeping: the Claude CLI exposes only `getDiagnostics` (and notebook
+`executeCode`) from an IDE MCP server to the model — selection context flows
+exclusively through `selection_changed` push notifications, so a pull-only
+endpoint cannot deliver the implicit-context experience at all; and the
+official Anthropic extension owns `~/.claude/ide/` discovery (its lockfiles
+had a real [origin-spoofing CVE](https://github.com/anthropics/claude-code/security/advisories/GHSA-9f65-56v6-gxw7)
+history), which any future attempt must coexist with.
 
 ## Performance: pull-only, zero cost when idle
 
