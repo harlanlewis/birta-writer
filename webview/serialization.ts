@@ -4,7 +4,7 @@
  */
 import { remarkStringifyOptionsCtx, type Editor } from "@milkdown/core";
 import { commonmark, remarkPreserveEmptyLinePlugin } from "@milkdown/preset-commonmark";
-import { gfm } from "@milkdown/preset-gfm";
+import { gfm, keepTableAlignPlugin as upstreamKeepTableAlignPlugin } from "@milkdown/preset-gfm";
 import { calloutsPlugin } from "./plugins/callouts";
 import { directivesPlugin } from "./plugins/directives";
 import { createFidelitySerializerPlugin } from "./plugins/fidelitySerializer";
@@ -15,6 +15,7 @@ import { linkBoundaryPlugins } from "./plugins/linkBoundary";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
 import { reparseHazardPlugin } from "./plugins/reparseHazard";
+import { keepTableAlignPlugin } from "./plugins/keepTableAlign";
 import { tableAlignDefaultPlugin } from "./plugins/tableAlignDefault";
 import { wikiLinksPlugin } from "./plugins/wikiLinks";
 import { mathPlugin } from "./plugins/math";
@@ -195,7 +196,7 @@ export const pureCommonmark = [
 ];
 
 /**
- * `gfm` plus the two overrides that MUST register after it, bundled so no
+ * `gfm` plus the overrides that MUST register after it, bundled so no
  * editor-construction site (production or test) can wire gfm without them and
  * silently diverge (MAR-143):
  *
@@ -207,8 +208,23 @@ export const pureCommonmark = [
  * wherever `.use(gfm)` was: register it after `pureCommonmark`, exactly as gfm
  * was — production `editor.ts` and every test editor factory go through this
  * one bundle so the test harness matches production by construction.
+ *
+ * One gfm plugin is REPLACED rather than overridden: `keepTableAlignPlugin`
+ * has no override seam — a plugin's `appendTransaction` can only be dropped by
+ * dropping the plugin — and ours carries its own `PluginKey`, so leaving
+ * upstream's in place would not error, it would just run BOTH and keep paying
+ * the per-keystroke whole-document walk this replaces (MAR-137 — the charter,
+ * the measurement and the two corrections are in `plugins/keepTableAlign.ts`).
+ * The filter matches by identity rather than by key name, so an upstream
+ * rename surfaces as `keepTableAlign.test.ts` going red rather than as both
+ * plugins silently running again.
  */
-export const gfmFidelity = [gfm, tableAlignDefaultPlugin, listItemSpreadBoolPlugins].flat();
+export const gfmFidelity = [
+    gfm.filter((plugin) => plugin !== upstreamKeepTableAlignPlugin),
+    keepTableAlignPlugin,
+    tableAlignDefaultPlugin,
+    listItemSpreadBoolPlugins,
+].flat();
 
 // Replace `break` nodes with `html` nodes carrying the recorded `<br>` bytes
 // (MAR-17). mdast-util-to-markdown's `hardBreak` handler cannot emit an
