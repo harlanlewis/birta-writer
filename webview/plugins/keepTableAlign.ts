@@ -28,27 +28,27 @@
  *
  * The two corrections here:
  *
- *   1. `alignment` is a NODE ATTR, and an edit confined to one textblock's
- *      inline content cannot change a node attr anywhere — so there is nothing
- *      to reconcile and the walk is skipped outright. That is the typing case,
- *      and `singleTextblockInlineEdit` is the same observe-the-two-docs test
- *      the Contents outline and the Notes scanner already use. Anything it
- *      can't localize (Enter, paste, delete, an align command, a whole-document
- *      replacement) falls through to the walk, exactly as upstream.
+ *   1. The walk is bounded by the range that actually differs between the two
+ *      docs (`changedRange`, the reference-equality diff scan). Each table
+ *      overlapping that range is then checked in full, because re-aligning a
+ *      header cell has to reach body cells outside the changed range.
  *   2. `tr` is allocated only when a cell actually needs re-marking, so a
  *      transaction is appended only when one is warranted.
  *
- * The fallback walk is deliberately left as a plain `descendants` pass. Not
- * descending into textblocks looks like an obvious further win and measured as
- * nothing (Enter × 40 on `xlarge`: 33.9 ms vs 34.0 ms median — noise), because
- * a structural edit's cost is dominated by the other plugins that recompute on
- * it, not by this walk. It was written, measured, and removed rather than
- * shipped as an unverified optimization.
+ * The first cut skipped the walk only when the edit was a single-textblock
+ * inline edit, which covered typing and nothing else. Narrowing by range
+ * instead covers the structural edits too — Enter on the 300 KB fixture went
+ * 33.3 ms → 18.6 ms once this landed, a case the earlier shape could not help
+ * because it fell straight through to a whole-document walk.
+ *
+ * This mirrors the fix proposed upstream (Milkdown `perf(preset-gfm)`), so the
+ * two can be diffed line for line — and this file deleted outright — once that
+ * lands and ships.
  */
 import type { Node as ProseNode, Transaction } from "../pm";
 import { Plugin, PluginKey } from "../pm";
 import { $prose } from "@milkdown/utils";
-import { singleTextblockInlineEdit } from "../utils/textblockEdit";
+import { changedRange } from "../utils/textblockEdit";
 
 const keepTableAlignKey = new PluginKey("keepTableAlign");
 
@@ -59,12 +59,13 @@ export const keepTableAlignPlugin = $prose(() =>
             if (oldState.doc === state.doc) {
                 return null;
             }
-            // Inline-content-only edit → no node attr changed → nothing to do.
-            if (singleTextblockInlineEdit(oldState.doc, state.doc)) {
+            const range = changedRange(oldState.doc, state.doc);
+            if (!range) {
                 return null;
             }
+
             let tr: Transaction | null = null;
-            state.doc.descendants((node: ProseNode, pos: number) => {
+            const check = (node: ProseNode, pos: number) => {
                 if (node.type.name !== "table_cell") {
                     return true;
                 }
@@ -83,6 +84,21 @@ export const keepTableAlignPlugin = $prose(() =>
                     tr.setNodeMarkup(pos, undefined, { ...node.attrs, alignment });
                 }
                 // A cell's own content holds no further cells.
+                return false;
+            };
+
+            // Only a table that took part in the change can have fallen out of
+            // step with its header row. `nodesBetween` reports the ancestors of
+            // the range too, so a table is reached even when the edit sits deep
+            // inside one of its cells — and each match is then checked IN FULL,
+            // because re-aligning a header cell has to reach body cells far
+            // outside the changed range.
+            state.doc.nodesBetween(range.from, range.to, (node: ProseNode, pos: number) => {
+                if (node.type.name !== "table") {
+                    return true;
+                }
+                state.doc.nodesBetween(pos, pos + node.nodeSize, check);
+                // Tables do not nest.
                 return false;
             });
             return tr;

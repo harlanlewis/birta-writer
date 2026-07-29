@@ -39,6 +39,31 @@ export type TextblockEdit =
       };
 
 /**
+ * The span of `next` that differs from `prev`, or null when the two are
+ * value-identical. The coarser sibling of `singleTextblockInlineEdit`: it makes
+ * no claim about structure, only that everything OUTSIDE the returned range is
+ * value-identical in both docs.
+ *
+ * That is the right tool when a caller can narrow its work to a region but
+ * still has to handle structural change — `plugins/keepTableAlign.ts` uses it
+ * to visit the tables a change touched instead of every node in the document,
+ * including on the Enter/paste/delete edits that `singleTextblockInlineEdit`
+ * deliberately refuses. Same reference-equality short-circuit, so an edit
+ * inside one block costs a handful of pointer comparisons.
+ */
+export function changedRange(prev: PmNode, next: PmNode): { from: number; to: number } | null {
+    const from = prev.content.findDiffStart(next.content);
+    if (from == null) {
+        return null;
+    }
+    const diff = prev.content.findDiffEnd(next.content);
+    // Repeated content ("aa" → "aaa") lets the end scan overrun the start;
+    // clamp so the range stays well-formed.
+    const to = diff ? Math.max(diff.b, from) : next.content.size;
+    return { from, to };
+}
+
+/**
  * Localize the change between two docs to a single textblock, or return null
  * when it could have touched document structure (then the caller must do the
  * full walk). Pure.
