@@ -162,6 +162,38 @@ describe("Birta integration: a search-result click lands on the match", () => {
         );
     });
 
+    it("never closes a raw tab holding UNSAVED changes, even to render it", async () => {
+        // MAR-269. The swap closes the raw tab, and closing the last text
+        // editor of a dirty document is what makes VS Code ask "save?" — an
+        // answer given in a hurry loses the edit, and an automated host answers
+        // it destructively with no prompt at all. Reachable from an ordinary
+        // search click: edit in Birta, click a hit for that same file, and
+        // VS Code opens a second (raw) editor on the dirty document.
+        const uri = await writeFixture("searchJumpDirty.md");
+        await vscode.commands.executeCommand("vscode.openWith", uri, "birta.editor");
+        for (let i = 0; i < 40 && !inBirtaTab(uri); i++) { await wait(250); }
+        await wait(3000);
+
+        const doc = await vscode.workspace.openTextDocument(uri);
+        const edit = new vscode.WorkspaceEdit();
+        edit.insert(uri, new vscode.Position(0, 9), " UNSAVED");
+        assert.ok(await vscode.workspace.applyEdit(edit), "the document was dirtied");
+        await wait(1500);
+        assert.ok(doc.isDirty, "precondition: unsaved changes are pending");
+
+        await vscode.commands.executeCommand("vscode.open", uri, {
+            selection: new vscode.Range(NEEDLE_LINE, 0, NEEDLE_LINE, 5),
+        });
+        await wait(4000);
+
+        assert.ok(
+            doc.getText().includes("UNSAVED"),
+            "the unsaved edit survives a search-style open",
+        );
+        assert.ok(doc.isDirty, "and the document is still dirty (not reverted)");
+        await doc.save(); // leave nothing pending for the host's shutdown
+    });
+
     it("leaves the caret alone on an ordinary open (no navigation to honour)", async () => {
         // The capture must not turn "opened a file" into "jump to line 1" — that
         // is what discarded the panel's remembered scroll position before.

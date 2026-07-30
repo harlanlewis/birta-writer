@@ -146,6 +146,21 @@ export function activate(context: vscode.ExtensionContext) {
                 const uriStr = uri.toString();
                 if (MarkdownEditorProvider.suppressAutoSwitch.has(uriStr)) { continue; }
 
+                // UNSAVED CHANGES: leave the raw tab alone (MAR-269). Swapping
+                // means CLOSING this tab, and closing the last text editor of a
+                // dirty document is what makes VS Code ask "save?" — an answer
+                // given in a hurry throws the edit away, and an automated host
+                // answers it destructively without asking at all.
+                //
+                // A freshly opened file is never dirty, so this only fires in
+                // the case that matters: the document is already open in Birta
+                // with unsaved edits and something (a search hit, a link) opens
+                // it in a raw editor too. Verified live — with the swap
+                // disabled, the same open leaves BOTH editors and the edit
+                // intact, so the close is the actor, not the open. We take the
+                // stray raw tab over eating the user's work.
+                if (tab.isDirty) { continue; }
+
                 // A `#L10` fragment (some external openers use one) already
                 // states the target, so take it without waiting for anything.
                 const fragMatch = uri.fragment?.match(/^L?(\d+)/);
