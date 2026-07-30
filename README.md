@@ -113,6 +113,7 @@ The settings you're most likely to touch — the full list (including per-item t
 | `birta.defaultMode` | `"preview"` | Open `.md` in WYSIWYG (`preview`) or the text editor (`markdown`) |
 | `birta.proofreading.enabled` | `true` | Master switch for spelling/grammar/style checking |
 | `birta.blockHandles` | `"headings"` | Gutter handles at rest: `headings`, `always`, or `hover` |
+| `birta.lineNumbers` | `false` | Source line numbers along the window's start edge, spaced to the rendered document |
 | `birta.fontPreset` | `"editor"` | Content font: follow the VS Code editor font, or `sans` / `serif` / `mono` |
 | `birta.fontSize` | `100` | Content font size as % of the editor font (50–200) |
 | `birta.contentWidth` | `"full"` | Fill the pane, or cap at Max Content Width (`fixed`) |

@@ -328,7 +328,7 @@ async function measureFixture(chromium, baseUrl, content, keys, fixture) {
     };
 }
 
-async function measureMode(only, keys, jsonOut) {
+async function measureMode(only, keys, jsonOut, flags = null) {
     try {
         await stat(join(repoRoot, "dist", "webview.js"));
     } catch {
@@ -343,7 +343,7 @@ async function measureMode(only, keys, jsonOut) {
     const { chromium } = await loadPlaywright();
     const server = serve();
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
-    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const baseUrl = `http://127.0.0.1:${server.address().port}${flags ? `/?${flags}` : ""}`;
 
     const report = { fixtures: {} };
     const rows = [];
@@ -600,6 +600,12 @@ if (compareIdx !== -1) {
 } else {
     const jsonIdx = argv.indexOf("--json");
     const jsonOut = jsonIdx !== -1 ? argv[jsonIdx + 1] : null;
-    const only = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--keys" && argv[i - 1] !== "--json");
-    await measureMode(only, keysOf(), jsonOut);
+    const only = argv.find((a, i) => !a.startsWith("--") && argv[i - 1] !== "--keys" && argv[i - 1] !== "--json" && argv[i - 1] !== "--flags");
+    // `--flags` is appended to the page URL, which is how a DEFAULT-OFF feature
+    // gets measured at all: no fixture in `main` ever enables one, so the A/B
+    // gate is structurally blind to it (see e2e/perf/index.html). Measure-only —
+    // the gate compares two bundles under identical flags or not at all.
+    const flagsIdx = argv.indexOf("--flags");
+    const flags = flagsIdx !== -1 ? argv[flagsIdx + 1] : null;
+    await measureMode(only, keysOf(), jsonOut, flags);
 }

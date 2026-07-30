@@ -12,6 +12,13 @@ import type { Editor } from "@milkdown/core";
 import type { EditorView } from "./pm";
 import type { ToWebviewMessage, TableWrapMode } from "../shared/messages";
 import { clampFontSizePercent } from "../shared/fontPresets";
+// The extension always sends `lineMap`, so this only ever runs when it somehow
+// did not — and then computing it locally, from the very content the message
+// carried, is strictly better than the empty map that used to be substituted.
+// An empty map degrades EVERY consumer silently (scroll-to-line, the find bar's
+// raw-source fallback, the line-number gutter). The `??` short-circuits in the
+// normal case, so this costs the mount path nothing.
+import { computeLineMap } from "../shared/lineMap";
 import { applyBlockHandles } from "./utils/blockHandles";
 import { setMermaidThemeMode } from "./components/codeBlock";
 import { applyFoldingControls } from "./utils/foldingControls";
@@ -128,6 +135,12 @@ export interface EditorActions {
     setNotesMarkers: (markers: string[]) => void;
     /** Applies a birta.review.groupByType change to both review tabs. */
     setReviewGroupByType: (grouped: boolean) => void;
+    /**
+     * Applies a birta.lineNumbers change. Turning it ON is what first loads the
+     * gutter's module (utils/lineNumbersLoader.ts); turning it off removes the
+     * layer from the DOM.
+     */
+    setLineNumbers: (enabled: boolean) => void;
 }
 
 /** Message-handler dependencies. */
@@ -174,7 +187,7 @@ export function createMessageHandlers(
             }
             setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
-            setLineMap(msg.lineMap ?? []);
+            setLineMap(msg.lineMap ?? computeLineMap(msg.content));
             setLineOffset(msg.lineOffset ?? 0);
             renderFrontmatterPanel(msg.frontmatter);
             if (msg.imageUriMap) {
@@ -211,7 +224,7 @@ export function createMessageHandlers(
             // extension side).
             setBaseSyncVersion(msg.syncVersion);
             setMarkdownSource(msg.content);
-            setLineMap(msg.lineMap ?? []);
+            setLineMap(msg.lineMap ?? computeLineMap(msg.content));
             setLineOffset(msg.lineOffset ?? 0);
             renderFrontmatterPanel(msg.frontmatter);
             if (msg.imageUriMap) {
@@ -378,6 +391,9 @@ export function createMessageHandlers(
         setBlockHandles(msg) {
             applyBlockHandles(msg.mode);
             topbarTb?.setBlockHandles(msg.mode);
+        },
+        setLineNumbers(msg) {
+            actions.setLineNumbers(msg.enabled);
         },
         setMermaidTheme(msg) {
             setMermaidThemeMode(msg.mode);

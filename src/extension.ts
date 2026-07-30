@@ -344,6 +344,13 @@ export function activate(context: vscode.ExtensionContext) {
         "Birta: URL embeds off — provider links stay plain links",
     );
     registerGateToggle(
+        "birta.toggleLineNumbers",
+        "lineNumbers",
+        "lineNumbers",
+        "Birta: line numbers on — source line numbers along the start edge",
+        "Birta: line numbers off",
+    );
+    registerGateToggle(
         "birta.toggleChecklistSink",
         "checklist.sinkChecked",
         "checklistSinkChecked",
@@ -584,6 +591,12 @@ export function activate(context: vscode.ExtensionContext) {
             if (e.affectsConfiguration("birta.blockHandles")) {
                 const mode = normalizeBlockHandlesMode(readBirtaSetting("blockHandles"));
                 MarkdownEditorProvider.current?.postToAll({ type: "setBlockHandles", mode });
+            }
+            if (e.affectsConfiguration("birta.lineNumbers")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "setLineNumbers",
+                    enabled: readBirtaSetting("lineNumbers") === true,
+                });
             }
             if (e.affectsConfiguration("birta.mermaid.theme")) {
                 const mode = normalizeMermaidThemeMode(readBirtaSetting("mermaidTheme"));

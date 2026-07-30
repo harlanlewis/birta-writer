@@ -41,6 +41,21 @@ export interface BirtaConfig extends ProofreadConfig {
     codeBlockWordWrap: "inherit" | "on" | "off";
     /** Raw `blockHandles` value; normalize with normalizeBlockHandlesMode. */
     blockHandles: string;
+    /**
+     * Show source line numbers along the viewport's start edge
+     * (birta.lineNumbers). Default OFF: the rendered document is the point of
+     * this editor, and a permanent number column is a text-editor affordance
+     * most readers do not want. It exists for the times a rendered document has
+     * to be reconciled against something that speaks in line numbers — a diff,
+     * a compiler error, a review comment, an agent.
+     *
+     * Numbers are display only (no click target) and their spacing is
+     * deliberately irregular: each one sits at the y of the content it labels,
+     * so a source line that renders tall gets room and one that renders nothing
+     * is placed by interpolation. A code block's interior is left to the code
+     * block's own gutter. See webview/components/lineNumbers/.
+     */
+    lineNumbers: boolean;
     /** Raw `mermaid.theme` value; normalize with normalizeMermaidThemeMode. */
     mermaidTheme: string;
     /** Raw `contentWidth` value; normalize with normalizeContentWidthMode. */
@@ -216,6 +231,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     codeBlockAutoConvert: "codeBlockAutoConvert",
     codeBlockWordWrap: "codeBlockWordWrap",
     blockHandles: "blockHandles",
+    lineNumbers: "lineNumbers",
     mermaidTheme: "mermaid.theme",
     contentWidth: "contentWidth",
     maxContentWidth: "maxContentWidth",
@@ -286,6 +302,7 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     codeBlockAutoConvert: true,
     codeBlockWordWrap: "inherit",
     blockHandles: DEFAULT_BLOCK_HANDLES_MODE,
+    lineNumbers: false,
     mermaidTheme: DEFAULT_MERMAID_THEME_MODE,
     contentWidth: DEFAULT_CONTENT_WIDTH_MODE,
     maxContentWidth: DEFAULT_MAX_WIDTH_CH,

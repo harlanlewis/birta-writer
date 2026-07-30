@@ -23,6 +23,20 @@ export function mark(name: string): void {
 }
 
 /**
+ * Has `name` been stamped yet?
+ *
+ * Lets a feature gate itself on a launch milestone instead of guessing with a
+ * timer — `hasMark("editor-painted")` is the literal statement of "not on the
+ * mount path", which is the rule decoration work has to keep (AGENTS.md →
+ * Launch performance). Absence of the API itself reads as "no reason to wait":
+ * a runtime without User Timing must not be one where a feature never starts.
+ */
+export function hasMark(name: string): boolean {
+    const query = performance.getEntriesByName?.bind(performance);
+    return query ? query(PREFIX + name, "mark").length > 0 : true;
+}
+
+/**
  * Record a duration between two marks (or from navigation start when `startMark`
  * is omitted). Never throws if a mark is missing — profiling must not break the
  * editor, so a failed measure is swallowed.
