@@ -189,6 +189,13 @@ describe("editor command keybinding contributions", () => {
         // VS Code parity: Join Lines ships bound on macOS only (palette
         // elsewhere).
         joinLines: [{ mac: "ctrl+j" }],
+        // The cross-platform paste-without-formatting chord. Contributed rather
+        // than left to the browser because VS Code delivers no native paste
+        // event to the webview for it, so ProseMirror's own plain-paste
+        // modifier never fired in the editor (MAR-276). Free to claim: VS
+        // Code's own Shift+Cmd+V (markdown.togglePreview) needs `editorFocus`
+        // or its own preview-editor id, neither of which holds here.
+        pasteAsPlainText: [{ key: "ctrl+shift+v", mac: "cmd+shift+v" }],
         // Keyboard sequence 3: list toggles (the Google-Docs/Notion 7/8/9
         // row), block-type chords (Cmd/Ctrl+Alt+0..6), and the caret block
         // menu (Cmd/Ctrl+. — free across package.json, CLAIMED_SHORTCUTS,
@@ -234,6 +241,7 @@ describe("editor command keybinding contributions", () => {
             "insertLink",
             "deleteBlock",
             "joinLines",
+            "pasteAsPlainText",
             "toggleOrderedList",
             "toggleBulletList",
             "toggleTaskList",

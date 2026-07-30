@@ -407,8 +407,15 @@ export const workspace = {
 export const env = {
     language: "en",
     openExternal: vi.fn(),
-    /** Clipboard writes (the feedback command's always-available channel). */
-    clipboard: { writeText: vi.fn(async () => undefined) },
+    /**
+     * Clipboard writes (the feedback command's always-available channel), and
+     * reads — the Paste as Plain Text command's payload, since a webview is not
+     * granted the permission `navigator.clipboard.readText()` needs.
+     */
+    clipboard: {
+        writeText: vi.fn(async () => undefined),
+        readText: vi.fn(async () => ""),
+    },
 };
 
 /** Host version string, as `vscode.version` reports it. */

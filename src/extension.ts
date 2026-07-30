@@ -660,6 +660,19 @@ export function activate(context: vscode.ExtensionContext) {
                         ...(typeof blockTarget === "object" ? blockTarget : {}),
                     }
                     : undefined;
+                // Paste as Plain Text is the one command whose payload the
+                // webview cannot fetch for itself: a webview is not granted the
+                // permission `navigator.clipboard.readText()` needs, so the
+                // clipboard is read HERE and the text travels with the command.
+                // (The read is async; every other command dispatches inline.)
+                if (meta.id === "pasteAsPlainText") {
+                    void vscode.env.clipboard.readText().then((text) => {
+                        MarkdownEditorProvider.current?.postEditorCommand(
+                            meta.id, documentUri, { ...(args ?? {}), text },
+                        );
+                    });
+                    return;
+                }
                 MarkdownEditorProvider.current?.postEditorCommand(meta.id, documentUri, args);
             }),
         );

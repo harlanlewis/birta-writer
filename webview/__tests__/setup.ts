@@ -44,5 +44,16 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     } as unknown as typeof ResizeObserver;
 }
 
+// jsdom has no ClipboardEvent (Chromium, and therefore the real webview, does).
+// ProseMirror's `view.pasteText` constructs one to carry into handlePaste, so
+// the Paste as Plain Text command cannot run at all without this. Subclassing
+// Event gives it the only property that path reads — a null clipboardData,
+// which is exactly what the real synthetic event carries.
+if (typeof globalThis.ClipboardEvent === "undefined") {
+    globalThis.ClipboardEvent = class extends Event {
+        readonly clipboardData: DataTransfer | null = null;
+    } as unknown as typeof ClipboardEvent;
+}
+
 /** Exposed for test assertions. */
 export { mockVscodeApi };

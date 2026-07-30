@@ -13,7 +13,7 @@
  * acquireVsCodeApi is injected globally by setup.ts.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { commandsCtx, editorViewCtx, Editor, rootCtx, defaultValueCtx } from "@milkdown/core";
+import { commandsCtx, editorViewCtx, Editor, rootCtx, defaultValueCtx, serializerCtx } from "@milkdown/core";
 import {
     toggleStrongCommand,
     toggleEmphasisCommand,
@@ -27,12 +27,12 @@ import {
     insertHrCommand,
 } from "@milkdown/preset-commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/preset-gfm";
-import { TextSelection } from "../pm";
+import { parseFromClipboard, TextSelection } from "../pm";
 import type { EditorView } from "../pm";
 import { CellSelection, TableMap } from "../pm";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { editorCommands, runEditorCommand, setEditorCommandHost } from "../editorCommands";
-import { insertCalloutCommand } from "../plugins";
+import { insertCalloutCommand, pasteMarkdownPlugin } from "../plugins";
 import { mockVscodeApi } from "./setup";
 
 /** A lightweight fake editor whose action() hands back a mock ctx. */
@@ -513,5 +513,83 @@ describe("toggleCallout (toolbar Quote-dropdown checkbox semantics)", () => {
         runEditorCommand("toggleCallout", () => editor, "note");
         expect(calloutAttrs(v).map((c) => c.kind)).toEqual(["note"]);
         await editor.destroy();
+    });
+});
+
+/**
+ * Paste as Plain Text (Shift+Cmd+V). Contributed as a real VS Code command
+ * because the webview never receives a native paste event for that chord —
+ * ProseMirror's own plain-paste modifier could not fire (MAR-276). The command
+ * routes through view.pasteText, whose preferPlain flag is the same one
+ * pasteMarkdown declines on, so both hatches share one code path.
+ */
+describe("pasteAsPlainText", () => {
+    async function makeEditor(markdown: string): Promise<Editor> {
+        const root = document.createElement("div");
+        document.body.appendChild(root);
+        return Editor.make()
+            .config((ctx) => {
+                ctx.set(rootCtx, root);
+                ctx.set(defaultValueCtx, markdown);
+                configureSerialization(ctx);
+            })
+            .use(pureCommonmark)
+            .use(gfmFidelity)
+            .use(pasteMarkdownPlugin)
+            .create();
+    }
+
+    const source = (editor: Editor) =>
+        editor.action((ctx) => ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc));
+
+    /** Caret at the very end of the document. */
+    function caretToEnd(editor: Editor): void {
+        const v = editor.action((ctx) => ctx.get(editorViewCtx));
+        v.dispatch(v.state.tr.setSelection(
+            TextSelection.create(v.state.doc, v.state.doc.content.size - 1),
+        ));
+    }
+
+    beforeEach(() => { window.__i18n = undefined; document.body.innerHTML = ""; });
+    afterEach(() => { window.__i18n = undefined; });
+
+    it("pasted Markdown syntax should stay literal, not become nodes", async () => {
+        const editor = await makeEditor("start\n");
+        caretToEnd(editor);
+        runEditorCommand("pasteAsPlainText", () => editor, { text: "**bold**" });
+        expect(source(editor).trim()).toBe("start\\*\\*bold\\*\\*");
+        await editor.destroy();
+    });
+
+    // The contrast that proves the command is what makes it literal: the same
+    // text through the ordinary paste path parses into a strong mark.
+    it("the same text through an ordinary paste should parse as Markdown", async () => {
+        const editor = await makeEditor("start\n");
+        caretToEnd(editor);
+        const v = editor.action((ctx) => ctx.get(editorViewCtx));
+        const slice = parseFromClipboard(v, "**bold**", null, false, v.state.selection.$from);
+        v.dispatch(v.state.tr.replaceSelection(slice!));
+        expect(source(editor).trim()).toBe("start**bold**");
+        await editor.destroy();
+    });
+
+    it("a multi-line paste should stay literal across every line", async () => {
+        const editor = await makeEditor("start\n");
+        caretToEnd(editor);
+        runEditorCommand("pasteAsPlainText", () => editor, { text: "\n# One\n\n- two" });
+        const md = source(editor);
+        expect(md).toContain("\\# One");
+        expect(md).toContain("\\- two");
+        await editor.destroy();
+    });
+
+    it("missing, empty, or non-string text should be a no-op", async () => {
+        for (const args of [undefined, {}, { text: "" }, { text: 42 }]) {
+            const editor = await makeEditor("start\n");
+            caretToEnd(editor);
+            runEditorCommand("pasteAsPlainText", () => editor, args);
+            expect(source(editor).trim()).toBe("start");
+            await editor.destroy();
+        }
     });
 });
