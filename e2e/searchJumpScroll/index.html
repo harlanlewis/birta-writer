@@ -1,0 +1,78 @@
+<!doctype html>
+<!-- e2e harness page for the search-hit reveal (MAR-268). The init payload is
+     exactly what MarkdownEditorProvider sends when a navigation rides the open:
+     content, lineMap, and the target as scrollToLine + scrollToColumn +
+     scrollToAnchor*. `?scenario=remembered` adds a remembered scroll position
+     to the view-state bag, which is what a reopened panel carries. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-panel-border: rgba(128, 128, 128, 0.2);
+    --vscode-textBlockQuote-background: rgba(128, 128, 128, 0.08);
+    --vscode-textCodeBlock-background: rgba(128, 128, 128, 0.1);
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { min-height: 48px; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  const scenario = new URL(location.href).searchParams.get("scenario") ?? "plain";
+
+  // 60 paragraphs, the needle in #40 — a document taller than any viewport, so
+  // "did it reveal the match" is a question with a real answer.
+  const PARAS = 60;
+  const NEEDLE = "ZQXNEEDLEZQX";
+  const paragraphs = Array.from({ length: PARAS }, (_, i) =>
+    i === 39 ? `Paragraph 40 contains ${NEEDLE} here.` : `Paragraph ${i + 1} filler text.`,
+  );
+  const BODY = paragraphs.join("\n\n") + "\n";
+  // Each paragraph occupies two source lines (text + blank): 1, 3, 5, …
+  const LINE_MAP = Array.from({ length: PARAS }, (_, i) => 1 + 2 * i);
+  // Document line of the needle, and the columns of the match within it.
+  const NEEDLE_LINE = 79;
+  const MATCH_START = 22;
+  const MATCH_END = MATCH_START + NEEDLE.length;
+
+  // A reopened panel carries the bag the extension echoed back — including a
+  // scroll position remembered from the last time the file was open.
+  const REMEMBERED_SCROLL = 0;
+  let state = scenario === "remembered" ? { scrollY: REMEMBERED_SCROLL } : undefined;
+
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          content: BODY,
+          lineMap: LINE_MAP,
+          lineOffset: 0,
+          syncVersion: 1,
+          ...(scenario === "remembered" ? { viewState: { scrollY: REMEMBERED_SCROLL } } : {}),
+          scrollToLine: NEEDLE_LINE,
+          scrollToColumn: MATCH_END,
+          scrollToAnchorLine: NEEDLE_LINE,
+          scrollToAnchorColumn: MATCH_START,
+        }, "*");
+      }
+    },
+    getState: () => state,
+    setState: (next) => { state = next; window.__state = next; },
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

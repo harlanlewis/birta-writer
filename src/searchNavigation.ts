@@ -49,11 +49,14 @@ export const EDITOR_APPEAR_BUDGET_MS = 120;
 
 /**
  * How long to wait for the navigation's selection once the editor exists.
- * Measured at ~2 ms behind the editor, so this is almost entirely margin — and
- * it is the delay every ORDINARY open pays before the swap, which is why it is
- * this small rather than another 120 ms.
+ *
+ * Measured at ~2 ms behind the editor, so this is almost entirely margin. It is
+ * also the delay every ORDINARY open pays before the swap, and the swap is what
+ * the user sees: the raw text is on screen for the whole wait, so this number
+ * is the difference between a flicker and a readable flash of Markdown. Keep it
+ * an order of magnitude above the measurement and no more.
  */
-export const SELECTION_GRACE_MS = 30;
+export const SELECTION_GRACE_MS = 20;
 
 /** The vscode surface this module reads, injected so it can be unit-tested. */
 export interface NavCaptureDeps {

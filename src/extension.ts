@@ -167,7 +167,11 @@ export function activate(context: vscode.ExtensionContext) {
                     );
                 }
 
-                // Close the text tab first, then open WYSIWYG (consistent with the switchToPreview command)
+                // Close the text tab first, then open WYSIWYG (consistent with
+                // the switchToPreview command). The order matters and is not
+                // interchangeable: `openWith` over a still-open tab does NOT
+                // replace it when the document is dirty — it leaves two tabs on
+                // the same file (verified in a live Extension Host).
                 const isPreview = tab.isPreview;
                 const viewCol = tab.group.viewColumn;
                 // The capture above yields to the event loop, so re-check: the
