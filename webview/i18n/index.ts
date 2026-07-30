@@ -54,6 +54,8 @@ declare global {
             frontmatterAddButton?: boolean;
             /** Native-copy plain-text flavor: Markdown source (default) or the plain rendition (birta.copyFormat). */
             copyFormat?: "markdown" | "richText";
+            /** Native-paste text flavor: parsed as Markdown (default) or inserted literally (birta.pasteFormat). */
+            pasteFormat?: "markdown" | "plainText";
             proofread?: ProofreadConfig;
             /** Per-item toolbar placement config (see the toolbar registry). */
             toolbar?: ToolbarConfig;

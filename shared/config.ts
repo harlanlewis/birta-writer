@@ -84,6 +84,17 @@ export interface BirtaConfig extends ProofreadConfig {
      * before they cross into the webview.
      */
     copyFormat: "markdown" | "richText";
+    /**
+     * How a native paste (Cmd+V / the Paste menu) reads the clipboard's
+     * plain-text flavor (birta.pasteFormat): "markdown" (default) parses it as
+     * Markdown source, so pasted syntax becomes real headings/lists/emphasis;
+     * "plainText" inserts it literally, letting the serializer escape the
+     * syntax back out. Rich (HTML) clipboards and code blocks take the same
+     * path in both modes, and Shift+Cmd+V is a per-paste literal override.
+     * Settings-file values are free text — normalize with normalizePasteFormat
+     * before they cross into the webview.
+     */
+    pasteFormat: "markdown" | "plainText";
     customCss: string[];
     customJs: string[];
     fontPreset: FontPreset;
@@ -203,6 +214,11 @@ export function normalizeCopyFormat(value: unknown): "markdown" | "richText" {
     return value === "richText" ? "richText" : "markdown";
 }
 
+/** A settings.json typo (the enum constrains only the Settings UI) → the default. */
+export function normalizePasteFormat(value: unknown): "markdown" | "plainText" {
+    return value === "plainText" ? "plainText" : "markdown";
+}
+
 export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } = {
     // Proofreading (ProofreadConfig fields)
     proofreadingEnabled: "proofreading.enabled",
@@ -243,6 +259,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     frontmatterExpanded: "frontmatterExpanded",
     frontmatterAddButton: "frontmatterAddButton",
     copyFormat: "copyFormat",
+    pasteFormat: "pasteFormat",
     customCss: "customCss",
     customJs: "customJs",
     fontPreset: "fontPreset",
@@ -317,6 +334,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // plain-text target keeps the syntax; "richText" restores the plain
     // rendition (the rich HTML flavor rides along in both modes).
     copyFormat: "markdown",
+    // The symmetric default: a plain-text paste is parsed as Markdown, so
+    // syntax the editor itself copies out can be pasted back in. "plainText"
+    // restores the literal insert (Shift+Cmd+V does it for one paste).
+    pasteFormat: "markdown",
     customCss: [],
     customJs: [],
     fontPreset: DEFAULT_FONT_PRESET,

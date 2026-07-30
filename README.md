@@ -123,6 +123,7 @@ The settings you're most likely to touch — the full list (including per-item t
 | `birta.frontmatterAddButton` | `true` | Show the Add metadata button on documents without frontmatter |
 | `birta.smartLinks` | `true` | Site-generator-style local link resolution |
 | `birta.copyFormat` | `"markdown"` | What Cmd+C puts on the clipboard as plain text: the selection's Markdown source, or the rendered text (`richText`); the rich HTML flavor is always included |
+| `birta.pasteFormat` | `"markdown"` | How Cmd+V reads plain text: parsed as Markdown source, or inserted literally (`plainText`); rich pastes and code blocks are unaffected, and ⇧⌘V is always literal |
 | `birta.network.enabled` | `false` | Master network switch — offline by default; gates paste-unfurl and URL embeds. Off means no outbound request at all |
 | `birta.pasteUnfurl.enabled` | `true` | Paste a bare URL (nothing selected) to fetch the page title and offer it as the link text; needs `birta.network.enabled` (offered inline when off), falls back to the plain link offline |
 | `birta.pasteUnfurl.autoApply` | `false` | Apply a fetched title as soon as it arrives instead of offering it — off by default, so a network reply never edits your document unprompted |
