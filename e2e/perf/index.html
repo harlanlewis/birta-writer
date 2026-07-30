@@ -45,7 +45,15 @@
   .editor-topbar { height: 40px; box-sizing: border-box; }
 </style>
 <script nonce="perfharness">
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  // Settings both perf harnesses can flip from the URL. Default-OFF features
+  // are structurally invisible to the CI gates — nothing in `main`'s fixture
+  // set ever turns them on — so a feature like the line-number gutter can only
+  // be measured if the harness can be asked to enable it. `?lineNumbers=1`.
+  const __perfFlags = new URLSearchParams(location.search);
+  window.__i18n = {
+    translations: {}, isMac: true, toolbar: { placements: {}, order: [] },
+    lineNumbers: __perfFlags.get("lineNumbers") === "1",
+  };
   window.__posted = [];
   window.acquireVsCodeApi = () => ({
     postMessage: (msg) => {

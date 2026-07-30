@@ -34,6 +34,12 @@ declare global {
             autoUpdateAnchors?: boolean;
             /** Self-sinking checklists: checked items drop below unchecked (birta.checklist.sinkChecked). */
             checklistSinkChecked?: boolean;
+            /**
+             * Source line-number gutter (birta.lineNumbers), default OFF. Read
+             * once at panel load to decide whether the gutter's module is
+             * loaded at all; live changes arrive as `setLineNumbers`.
+             */
+            lineNumbers?: boolean;
             /** Extra literal markers surfaced in the Notes review tab (birta.notes.customMarkers). */
             notesCustomMarkers?: string[];
             /** Review sidebar By-type/In-order mode (birta.review.groupByType); default grouped. */

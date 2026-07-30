@@ -449,6 +449,10 @@ export type ToWebviewMessage =
     | { type: "setTocVisibility"; visibility: TocVisibility }
     | { type: "setTocWidth"; width: number }
     // Live resting block-handle visibility update, after `blockHandles` changes.
+    // Live source line-number gutter toggle, after `birta.lineNumbers` changes.
+    // Enabling loads the gutter's module on demand; disabling removes it from
+    // the DOM entirely, so a webview that never enables it never pays for it.
+    | { type: "setLineNumbers"; enabled: boolean }
     // Live Mermaid theme-mode update, after `birta.mermaid.theme` changes.
     | { type: "setMermaidTheme"; mode: MermaidThemeMode }
     // Live fold-affordance update after `editor.showFoldingControls` /

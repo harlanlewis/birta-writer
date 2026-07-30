@@ -30,6 +30,7 @@ function stubDeps(): MessageHandlerDeps {
             retryScroll: () => {},
             getEditorView: () => null,
             refreshToc: () => {},
+            setLineNumbers: () => {},
         },
         topbarTb: null,
     };
@@ -240,6 +241,82 @@ describe("line-offset plumbing", () => {
         handlers.lineMapUpdate?.({ type: "lineMapUpdate", lineMap: [1] }, container);
 
         expect(setLineOffset).toHaveBeenCalledWith(0);
+    });
+});
+
+describe("line map on arrival", () => {
+    // The extension always sends `lineMap`, but the webview used to substitute
+    // an EMPTY map when it somehow didn't — and an empty map degrades every
+    // consumer silently (scroll-to-line, the find bar's raw-source fallback, the
+    // line-number gutter, which rendered nothing at all). The content is right
+    // there in the same message, and computeLineMap is the very function the
+    // extension used to produce the map, so the local computation is not a
+    // guess — it is the same answer.
+    beforeEach(() => vi.clearAllMocks());
+
+    const container = document.createElement("div");
+    const content = "# Title\n\nBody paragraph.\n\n- item\n";
+
+    it("an init carrying a lineMap should use it verbatim", () => {
+        const deps = stubDeps();
+        const setLineMap = vi.fn();
+        deps.state.setLineMap = setLineMap;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.init?.({ type: "init", content, lineMap: [1, 3, 5], syncVersion: 1 }, container);
+
+        expect(setLineMap).toHaveBeenCalledWith([1, 3, 5]);
+    });
+
+    it("an init with NO lineMap should compute one from the content", () => {
+        const deps = stubDeps();
+        const setLineMap = vi.fn();
+        deps.state.setLineMap = setLineMap;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.init?.({ type: "init", content, syncVersion: 1 }, container);
+
+        // Block start lines: the heading, the paragraph, the list.
+        expect(setLineMap).toHaveBeenCalledWith([1, 3, 5]);
+    });
+
+    it("an externalUpdate with no lineMap should compute one too", () => {
+        const deps = stubDeps();
+        const setLineMap = vi.fn();
+        deps.state.setLineMap = setLineMap;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.externalUpdate?.({ type: "externalUpdate", content, syncVersion: 2 }, container);
+
+        expect(setLineMap).toHaveBeenCalledWith([1, 3, 5]);
+    });
+});
+
+describe("setLineNumbers", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    const container = document.createElement("div");
+
+    it("an enabled message should turn the gutter on", () => {
+        const deps = stubDeps();
+        const setLineNumbers = vi.fn();
+        deps.actions.setLineNumbers = setLineNumbers;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.setLineNumbers?.({ type: "setLineNumbers", enabled: true }, container);
+
+        expect(setLineNumbers).toHaveBeenCalledWith(true);
+    });
+
+    it("a disabled message should turn it off", () => {
+        const deps = stubDeps();
+        const setLineNumbers = vi.fn();
+        deps.actions.setLineNumbers = setLineNumbers;
+        const handlers = createMessageHandlers(deps);
+
+        handlers.setLineNumbers?.({ type: "setLineNumbers", enabled: false }, container);
+
+        expect(setLineNumbers).toHaveBeenCalledWith(false);
     });
 });
 

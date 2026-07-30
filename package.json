@@ -146,6 +146,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.toggleLineNumbers",
+                "title": "%command.toggleLineNumbers.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.restorePreviousContent",
                 "title": "%command.restorePreviousContent.title%",
                 "category": "Birta Writer"
@@ -1479,6 +1484,12 @@
                     ],
                     "default": "headings",
                     "description": "%config.blockHandles.description%"
+                },
+                "birta.lineNumbers": {
+                    "order": 11.5,
+                    "type": "boolean",
+                    "default": false,
+                    "description": "%config.lineNumbers.description%"
                 },
                 "birta.mermaid.theme": {
                     "order": 12,

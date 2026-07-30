@@ -62,6 +62,7 @@ import { setupLinkPopup, closeLinkEditor } from "./components/linkPopup";
 import { setupPathLink } from "./components/pathLink";
 import { initPathComplete } from "./components/pathLink/pathComplete";
 import { initFindBar } from "./components/findBar";
+import { createLineNumbersGate } from "./utils/lineNumbersLoader";
 import { initHeadingIds } from "./headingIds";
 import { initToolbar } from "./components/toolbar";
 import { setupSelectionToolbar } from "./components/selectionToolbar";
@@ -509,6 +510,10 @@ async function initEditor(
             // echoes an authoritative lineMapUpdate after saving (MAR-8).
             markdownSource = updated;
             currentLineMap = computeLineMap(updated);
+            // The gutter's numbers come from this cached source, so this is the
+            // moment they become correct again after an edit that added or
+            // removed lines (see the staleness note in components/lineNumbers).
+            lineNumbers.refresh();
             notifyUpdate(updated);
         },
         // Views of the document refresh on document changes — NOT on the
@@ -518,6 +523,9 @@ async function initEditor(
         () => {
             scheduleTocRefresh();
             findBar.noteDocChanged();
+            // O(1) while the gutter is off, and idle-coalesced while it is on —
+            // never work on the keystroke itself.
+            lineNumbers.refresh();
         },
     );
     toc.refresh();
@@ -533,6 +541,17 @@ async function initEditor(
         requestAnimationFrame(() => {
             mark("editor-painted");
             measure("launch", undefined, "editor-painted");
+            // A fresh view means a fresh binding for the line-number gutter: it
+            // resolves the view lazily (the setting can be on before any editor
+            // exists, and a re-init replaces the view wholesale), so this is
+            // what tells it to look again — without it, a gutter enabled at
+            // panel load never finds a view and stays empty for the life of the
+            // document. It sits INSIDE the paint callback rather than beside
+            // toc.refresh() above so it cannot run before the paint mark:
+            // called from the mount path, its idle callback landed in front of
+            // `editor-painted` and put the whole layer's measure/insert/paint
+            // there too (caught by e2e/lineNumbers).
+            lineNumbers.refresh();
         }),
     );
 }
@@ -548,6 +567,17 @@ mark("toc-end");
 measure("initToc", "toc-start", "toc-end");
 
 const findBar = initFindBar(() => getEditorView(), getMarkdownSource, eventManager);
+
+// Source line-number gutter (birta.lineNumbers, default OFF). Creating the gate
+// loads nothing — the gutter's whole module sits behind a dynamic import that is
+// only fetched if the setting is on (utils/lineNumbersLoader.ts).
+const lineNumbers = createLineNumbersGate({
+    getView: () => getEditorView(),
+    getLineMap,
+    getMarkdownSource,
+    getLineOffset: () => currentLineOffset,
+});
+lineNumbers.setEnabled(window.__i18n?.lineNumbers === true);
 
 const topbar = document.querySelector<HTMLElement>(".editor-topbar");
 // "Edit Raw Markdown" (toolbar button AND right-click menu): same switch path
@@ -922,6 +952,7 @@ const handlers = createMessageHandlers({
         setTocWidth: (width) => toc.setWidth(width),
         setNotesMarkers: (markers) => toc.setNotesMarkers(markers),
         setReviewGroupByType: (grouped) => toc.setReviewGroupByType(grouped),
+        setLineNumbers: (enabled) => lineNumbers.setEnabled(enabled),
     },
     topbarTb,
 });

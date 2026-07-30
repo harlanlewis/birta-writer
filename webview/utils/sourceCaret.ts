@@ -430,6 +430,14 @@ export function sourceLineForBlock(
 }
 
 /**
+ * A source line that closes a fenced block — a code fence or a math block's
+ * `$$`, blockquote markers included (`> ``` `). Such a line is a real source
+ * line with no anchor of its own (nothing in the document renders it), so both
+ * the block-extent walk and the line index have to recognize it by shape.
+ */
+const CLOSING_FENCE = /^\s*(?:>\s*)*(?:`{3,}|~{3,}|\$\$)\s*$/;
+
+/**
  * The source caret at the END of a block's last source line — what a selection
  * end sitting on the block's outer boundary means in the source. A boundary
  * position resolves INTO the next block under sourceCaretAt, so a block-range
@@ -454,13 +462,208 @@ export function sourceEndOfBlock(
     // the closer's line (`> ```` ``` ``).
     if (anchors[anchors.length - 1]?.node.type.spec.code) {
         const closer = sourceLines[line];
-        if (closer !== undefined && /^\s*(?:>\s*)*(`{3,}|~{3,}|\$\$)\s*$/.test(closer)) { line += 1; }
+        if (closer !== undefined && CLOSING_FENCE.test(closer)) { line += 1; }
     }
     // Anchors resolved against unmatchable text (a table's cells) can drift
     // past the block; never claim a trailing blank separator line.
     line = clamp(line, start, sourceLines.length);
     while (line > start && (sourceLines[line - 1] ?? "").trim() === "") { line -= 1; }
     return { line, column: sourceLines[line - 1]?.length ?? 0 };
+}
+
+/**
+ * One source line, paired with the document position that renders it.
+ *
+ * The unit the line-number gutter draws: `line` is what the number says, and
+ * `pos`/`nodePos`/`bottom` say where to measure it. Body coordinates — a
+ * consumer displaying document lines adds the frontmatter offset.
+ */
+export interface SourceLineEntry {
+    /** 1-indexed source line in the BODY the webview renders. */
+    line: number;
+    /**
+     * Doc position whose rendered box holds this line, or null when NOTHING in
+     * the document renders it — a blank separator, a closing fence, a table's
+     * delimiter row. A null entry can only ever be placed by interpolating
+     * between its measured neighbours; it must never be measured.
+     */
+    pos: number | null;
+    /**
+     * Start position of the node `pos` lives in. Measuring that node's element
+     * box is both cheaper and more accurate than a text-position rect for a
+     * line that begins a node, which is the common case.
+     */
+    nodePos: number;
+    /**
+     * Measure the BOTTOM edge of the node box rather than its top — a closing
+     * marker line (`:::`, a code fence, `</aside>`) renders at the bottom of
+     * the box it closes, not at the top of anything.
+     */
+    bottom?: boolean;
+    /** Index of the top-level block this line belongs to. */
+    blockIndex: number;
+}
+
+/**
+ * Every source line covered by blocks `fromBlock..toBlock`, in order, each
+ * paired with where the document renders it.
+ *
+ * This is the line-number gutter's index, and it is a FORWARD WALK rather than
+ * a per-block `lineMap` lookup. `sourceLineForBlock` reconciles one block at a
+ * time by scanning the map for a candidate that fits, which is right for the
+ * on-demand callers (a mode switch, one scroll-to-line) but wrong here: a
+ * drifted document — a loose list is one node and one map entry per item — puts
+ * every block's nominal pairing off by the accumulated drift, so a per-block
+ * lookup pays a map-wide scan PER BLOCK, on a path that reruns on scroll.
+ * Walking instead means each block's start line is the previous block's end
+ * plus its blank separators, which is drift-free by construction; the reconciler
+ * is called once to anchor the range, and again only where verification fails.
+ *
+ * Three rules encode the honesty this module already keeps for carets:
+ *
+ * - **An unverifiable block gets NO lines.** When neither the walked start nor
+ *   the reconciled one fits the block's own text, its entries are omitted
+ *   rather than guessed. A missing number costs the reader nothing; a number
+ *   pointing at the wrong line costs them their trust in every other number.
+ *   (The walk still advances past the block, so one bad block can't blank the
+ *   rest of the range.)
+ * - **A code block's interior is not numbered** — only its opening and closing
+ *   fence lines. The code block draws its own relative 1..N gutter
+ *   (components/codeBlock/nodeView.ts), and two numbering systems over the same
+ *   lines read as a contradiction. This also makes a code block in PREVIEW mode
+ *   (Mermaid, LaTeX, calc) correct for free: its text is not on screen at all,
+ *   and only the fences — the box's own top and bottom edges — are claimed.
+ * - **Lines are strictly increasing.** A synthesized closing fence is dropped
+ *   if a real anchor already claims its line, and an entry that would not
+ *   advance the sequence is dropped rather than allowed to fight its neighbour
+ *   for a position.
+ */
+export function sourceLineIndex(
+    doc: Node,
+    lineMap: number[],
+    sourceLines: string[],
+    fromBlock: number,
+    toBlock: number,
+): SourceLineEntry[] {
+    if (!doc.childCount || !lineMap.length || !sourceLines.length) { return []; }
+    const first = clamp(fromBlock, 0, doc.childCount - 1);
+    const last = clamp(toBlock, first, doc.childCount - 1);
+
+    const measured: SourceLineEntry[] = [];
+    /** Push, keeping the sequence strictly increasing. */
+    const add = (entry: SourceLineEntry): void => {
+        const prev = measured[measured.length - 1];
+        if (prev && entry.line <= prev.line) { return; }
+        measured.push(entry);
+    };
+    /**
+     * Code-block interior lines. These are not "unrendered" — they are on
+     * screen, numbered by the code block's own gutter — so unlike a blank
+     * separator they must be left OUT of the gap fill below rather than
+     * interpolated back in.
+     */
+    const suppressed = new Set<number>();
+
+    // Running block position, so the walk never pays blockStartPos's O(index).
+    let pos = blockStartPos(doc, first);
+    // The anchor for the whole range; every later block continues from the
+    // previous one's end and re-anchors only if that stops fitting.
+    let walked = sourceLineForBlock(doc, lineMap, sourceLines, first) ?? 1;
+
+    for (let blockIndex = first; blockIndex <= last; blockIndex++) {
+        const block = doc.child(blockIndex);
+        const anchors = lineAnchors(block, pos);
+        let start = walked;
+        let verified = anchorsFit(anchors, start, sourceLines);
+        if (!verified) {
+            const reconciled = sourceLineForBlock(doc, lineMap, sourceLines, blockIndex);
+            if (reconciled !== undefined) {
+                start = reconciled;
+                verified = anchorsFit(anchors, start, sourceLines);
+            }
+        }
+        const lines = anchorLines(anchors, start, sourceLines);
+
+        if (verified && !anchors.length) {
+            // A leaf block with no text at all (a horizontal rule): it has no
+            // anchors, but it is a real box occupying exactly one source line,
+            // so measure the box itself. Without this the rule's line fell
+            // through to interpolation even though it is right there on screen.
+            add({ line: start, pos, nodePos: pos, blockIndex });
+        } else if (verified) {
+            for (let i = 0; i < anchors.length; i++) {
+                const a = anchors[i];
+                const line = lines[i];
+                // contentStart is nodeStart + 1 for every anchor kind, so this
+                // is the position whose DOM element is the node's own box.
+                const nodePos = a.contentStart - 1;
+                if (a.node.type.spec.code) {
+                    if (a.text === null) {
+                        // The opening fence: the code box's top edge.
+                        add({ line, pos: nodePos, nodePos, blockIndex });
+                        continue;
+                    }
+                    // An interior code line — suppressed. On the way out of the
+                    // code node, claim the closing fence if the source really
+                    // closes there and no real anchor already owns that line.
+                    suppressed.add(line);
+                    const next = i + 1 < anchors.length ? anchors[i + 1] : null;
+                    if (!next || next.node !== a.node) {
+                        const closer = line + 1;
+                        const nextLine = next ? lines[i + 1] : Number.POSITIVE_INFINITY;
+                        if (nextLine > closer && CLOSING_FENCE.test(sourceLines[closer - 1] ?? "")) {
+                            add({ line: closer, pos: nodePos, nodePos, bottom: true, blockIndex });
+                        }
+                    }
+                    continue;
+                }
+                if (a.text === null) {
+                    // A container's marker line: the opener renders at the top
+                    // of the container's box, a closer at its bottom.
+                    add({ line, pos: nodePos, nodePos, ...(a.offset > 0 ? { bottom: true } : {}), blockIndex });
+                    continue;
+                }
+                add({ line, pos: a.contentStart + a.offset, nodePos, blockIndex });
+            }
+        }
+
+        // Advance past this block whether or not it was numbered: the next
+        // block starts at the first non-blank line after this one's extent,
+        // and a trailing fence closer is part of the extent.
+        let next = (lines.length ? lines[lines.length - 1] : start) + 1;
+        if (anchors[anchors.length - 1]?.node.type.spec.code
+            && CLOSING_FENCE.test(sourceLines[next - 1] ?? "")) {
+            next++;
+        }
+        while (next <= sourceLines.length && (sourceLines[next - 1] ?? "").trim() === "") { next++; }
+        walked = next;
+        pos += block.nodeSize;
+    }
+
+    if (!measured.length) { return []; }
+
+    // Interleave the lines nothing renders. They are numbered (the sequence a
+    // reader checks against a diff has to be continuous) but carry no position,
+    // so the gutter places them by interpolation. The range extends to the
+    // document's own first/last line only when it really reaches that end.
+    const filled: SourceLineEntry[] = [];
+    const blank = (line: number, near: SourceLineEntry): SourceLineEntry =>
+        ({ line, pos: null, nodePos: near.nodePos, blockIndex: near.blockIndex });
+    let expect = first === 0 ? 1 : measured[0].line;
+    for (const entry of measured) {
+        for (let line = expect; line < entry.line; line++) {
+            if (!suppressed.has(line)) { filled.push(blank(line, entry)); }
+        }
+        filled.push(entry);
+        expect = entry.line + 1;
+    }
+    if (last === doc.childCount - 1) {
+        const tail = measured[measured.length - 1];
+        for (let line = expect; line <= sourceLines.length; line++) {
+            if (!suppressed.has(line)) { filled.push(blank(line, tail)); }
+        }
+    }
+    return filled;
 }
 
 /**
