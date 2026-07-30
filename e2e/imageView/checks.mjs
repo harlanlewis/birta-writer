@@ -290,4 +290,52 @@ export async function run({ page, check, baseUrl }) {
         "normal typing in the document still serializes",
         posted.some((u) => u.includes("tail text appended")),
     );
+
+    // ── 12. A selected image hides the native highlight (MAR-258) ────────────
+    // Selecting an image is a NodeSelection: invisible to ProseMirror, but the
+    // browser still holds a DOM selection over it and would paint the theme
+    // highlight under the selection ring. The suppression is scoped to the
+    // image's own block now (a `pm-hidden-selection` node decoration) instead
+    // of a class on the editor root, which used to re-style the whole document
+    // on every selection change — 169 ms on a 300 KB document.
+    await first.locator("img").click();
+    await page.waitForTimeout(150);
+    const nodeSel = await page.evaluate(() => {
+        const root = document.querySelector(".ProseMirror");
+        const selectedBlock = root.querySelector(":scope > .pm-hidden-selection");
+        const tail = [...root.children].find((el) => el.tagName === "P" && !el.className.includes("pm-hidden-selection"));
+        return {
+            hide: root.classList.contains("ProseMirror-hideselection"),
+            marked: !!selectedBlock && !!selectedBlock.querySelector("img.image-node"),
+            bg: selectedBlock ? getComputedStyle(selectedBlock, "::selection").backgroundColor : null,
+            tailBg: tail ? getComputedStyle(tail, "::selection").backgroundColor : null,
+            // The caption input lives inside the selected block: the caret
+            // suppression must not follow the alt text the user types there.
+            captionCaret: getComputedStyle(
+                document.querySelector(".image-wrapper .image-caption"),
+            ).caretColor,
+        };
+    });
+    check("a selected image suppresses the native highlight on its own block",
+        nodeSel.hide && nodeSel.marked && nodeSel.bg === "rgba(0, 0, 0, 0)",
+        JSON.stringify(nodeSel));
+    check("the rest of the document keeps its highlight while an image is selected",
+        nodeSel.tailBg !== null && nodeSel.tailBg !== "rgba(0, 0, 0, 0)", JSON.stringify(nodeSel));
+    check("the alt-caption field keeps a visible caret while its image is selected",
+        nodeSel.captionCaret !== "rgba(0, 0, 0, 0)", JSON.stringify(nodeSel));
+    await first.locator(".image-caption").click();
+    await page.waitForTimeout(120);
+    const focusedCaption = await page.evaluate(() => {
+        const input = document.querySelector(".image-wrapper .image-caption");
+        return {
+            focused: document.activeElement === input,
+            caret: getComputedStyle(input).caretColor,
+            stillHidden: document.querySelector(".ProseMirror")
+                .classList.contains("ProseMirror-hideselection"),
+        };
+    });
+    check("typing the alt text is not caretless when the image stays selected",
+        focusedCaption.focused && focusedCaption.caret !== "rgba(0, 0, 0, 0)",
+        JSON.stringify(focusedCaption));
+    await page.keyboard.press("Escape");
 }

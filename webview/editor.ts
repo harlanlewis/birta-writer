@@ -59,6 +59,7 @@ import {
     wikiLinkCompletePlugin,
     headingLinkCompletePlugin,
     activeBlockPlugin,
+    hiddenSelectionPlugin,
     imageBlocksPlugin,
     listAutoJoinPlugin,
     listEnterPlugin,
@@ -602,7 +603,14 @@ export async function createEditor(
         // Keeps the control column of the block holding the selection
         // visible (caret in a table cell / code block) — `bc-active` on
         // whitelisted NodeView hosts, O(1) per selection change.
-        .use(activeBlockPlugin);
+        .use(activeBlockPlugin)
+        // Scopes the native highlight/caret suppression of an INVISIBLE
+        // selection (block range, node selection, cell selection) to the
+        // blocks it touches — the rules it replaces were keyed to a class on
+        // the editor root and re-styled the whole document on every toggle
+        // (MAR-258). O(blocks in the selection), and nothing at all for the
+        // visible selections typing and caret moves produce.
+        .use(hiddenSelectionPlugin);
 
     // Inline calc-on-`=` (MAR-177): advisory suggestion by default, or an input
     // rule when birta.calc.autoInsert is on. Composed ONLY when the feature is
