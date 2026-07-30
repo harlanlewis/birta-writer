@@ -1,6 +1,6 @@
 ---
 name: grind
-description: Autonomous backlog loop — groom Linear so the queue holds the right work, prioritize, pick, and ship it end-to-end with iterative self-critique, tracking, and cleanup. Triggers: /grind, "review the backlog and get after it", "pick something and ship it", "work the backlog autonomously".
+description: 'Autonomous backlog loop — groom Linear so the queue holds the right work, prioritize, pick, and ship it end-to-end with iterative self-critique, tracking, and cleanup. Triggers: /grind, "review the backlog and get after it", "pick something and ship it", "work the backlog autonomously".'
 version: 1.7.0
 ---
 
