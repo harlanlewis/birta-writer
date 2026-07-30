@@ -77,8 +77,13 @@ jobs:
         run: |
           ACCEPT=""
           if echo "$LABELS" | grep -q '"perf-accept"'; then ACCEPT="label:perf-accept"; fi
-          TRAILER=$(git log "${{ github.event.pull_request.base.sha }}..HEAD" \
-            --format='%(trailers:key=Perf-Regression-Accepted,valueonly)' | grep -v '^$' | head -1 || true)
+          # Read the raw body, NOT `%(trailers:...)`. Git's trailer parser
+          # rejects a whole block when >25% of its lines are not `key: value`,
+          # and this repo's mandated `Closes MAR-NN` line (no colon) trips that
+          # heuristic — so on any commit that also closes an issue, which is
+          # most of them, the trailer hatch silently resolved to empty.
+          TRAILER=$(git log "${{ github.event.pull_request.base.sha }}..HEAD" --format='%B' \
+            | sed -n 's/^[[:space:]]*Perf-Regression-Accepted:[[:space:]]*//p' | grep -v '^$' | head -1 || true)
           if [ -n "$TRAILER" ]; then ACCEPT="trailer:$TRAILER"; fi
           echo "value=$ACCEPT" >> "$GITHUB_OUTPUT"
 
