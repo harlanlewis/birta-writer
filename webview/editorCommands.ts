@@ -583,6 +583,30 @@ function copySelection(getEditor: GetEditor, format: "html" | "markdown" | "rich
     });
 }
 
+/**
+ * Paste as Plain Text (Shift+Cmd+V): insert the clipboard's text with no
+ * Markdown parsing, so `# Title` stays six literal characters.
+ *
+ * The text arrives from the extension because a webview cannot read the system
+ * clipboard itself — `navigator.clipboard.readText()` needs a permission it is
+ * not granted — so `vscode.env.clipboard` reads it and it travels as the
+ * command's args.
+ *
+ * `view.pasteText` is ProseMirror's own paste with `preferPlain` set, which is
+ * exactly the flag pasteMarkdown declines on: this command and a browser-native
+ * shift-paste therefore land on one code path, not two that can drift. It also
+ * keeps pasteLink out of the way — the synthetic event carries no
+ * clipboardData, so the URL detector sees an empty string and passes.
+ */
+function pasteAsPlainText(getEditor: GetEditor, args?: unknown): void {
+    const text = (args as { text?: unknown } | undefined)?.text;
+    if (typeof text !== "string" || text === "") { return; }
+    runProse(getEditor, (view) => {
+        view.focus();
+        view.pasteText(text);
+    });
+}
+
 export type EditorCommandFn = (getEditor: GetEditor, args?: unknown) => void;
 
 /**
@@ -671,6 +695,7 @@ export const editorCommands: Record<EditorCommandId, EditorCommandFn> = {
     tableDeleteColumn: (getEditor, args) => tableCmd(getEditor, deleteColumn, args),
     tableDeleteTable: (getEditor, args) => tableCmd(getEditor, deleteTable, args),
     copyAsHtml: (getEditor, args) => copySelection(getEditor, "html", args),
+    pasteAsPlainText: (getEditor, args) => pasteAsPlainText(getEditor, args),
     copyAsMarkdown: (getEditor, args) => copySelection(getEditor, "markdown", args),
     copyAsRichText: (getEditor, args) => copySelection(getEditor, "richText", args),
     editRawMarkdown: () => host.editRawMarkdown?.(),

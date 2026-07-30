@@ -396,6 +396,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.editor.pasteAsPlainText",
+                "title": "%command.editor.pasteAsPlainText.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.editor.copyAsMarkdown",
                 "title": "%command.editor.copyAsMarkdown.title%",
                 "category": "Birta Writer"
@@ -766,6 +771,12 @@
                 "key": "ctrl+.",
                 "mac": "cmd+.",
                 "when": "activeCustomEditorId == 'birta.editor'"
+            },
+            {
+                "command": "birta.editor.pasteAsPlainText",
+                "key": "ctrl+shift+v",
+                "mac": "cmd+shift+v",
+                "when": "activeCustomEditorId == 'birta.editor' && birta.webviewFocused"
             }
         ],
         "menus": {
@@ -991,6 +1002,10 @@
                 {
                     "command": "birta.editor.copyAsHtml",
                     "when": "false"
+                },
+                {
+                    "command": "birta.editor.pasteAsPlainText",
+                    "when": "activeCustomEditorId == 'birta.editor'"
                 },
                 {
                     "command": "birta.editor.copyAsMarkdown",

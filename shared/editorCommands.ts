@@ -189,6 +189,11 @@ export const EDITOR_COMMANDS = [
     { id: "deleteBlock", title: "Delete Block", palette: true, sections: [] },
     // Contributed Ctrl+J on macOS only — VS Code parity (unbound elsewhere).
     { id: "joinLines", title: "Join Lines", palette: true, sections: [] },
+    // Shift+Cmd+V. Contributed as a real command rather than left to the
+    // browser: VS Code does not deliver a native paste event to the webview for
+    // that chord, so ProseMirror's own plain-paste modifier never fired inside
+    // the editor even though it works in a plain browser (MAR-276).
+    { id: "pasteAsPlainText", title: "Paste as Plain Text", palette: true, sections: [] },
     // Palette-only, like the built-in editor's transform commands.
     { id: "transformToUppercase", title: "Transform to Uppercase", palette: true, sections: [] },
     { id: "transformToLowercase", title: "Transform to Lowercase", palette: true, sections: [] },
