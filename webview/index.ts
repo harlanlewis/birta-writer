@@ -79,7 +79,7 @@ import { initContextMenu } from "./components/contextMenu";
 import {
     handleGetProjectImages,
     handleImageFile,
-    insertImageNode,
+    saveAndInsertImage,
 } from "./imageUpload";
 import { initScrollPersistence, rememberScrollNow } from "./scrollPersistence";
 import { initPaneWidthVar } from "./blockWidth";
@@ -767,11 +767,7 @@ if (editorContainer) {
         }
         e.preventDefault();
         e.stopPropagation();
-        handleImageFile(imageFile, "")
-            .then((url) => insertImageNode(currentEditor, url, ""))
-            .catch((err: Error) =>
-                console.error("[ImageUpload] drop failed:", err),
-            );
+        saveAndInsertImage(currentEditor, imageFile, "");
     });
 }
 
@@ -792,11 +788,7 @@ eventManager.onDocument("paste", (e) => {
         return;
     }
     e.preventDefault();
-    handleImageFile(file, "")
-        .then((url) => insertImageNode(currentEditor, url, ""))
-        .catch((err: Error) =>
-            console.error("[ImageUpload] paste failed:", err),
-        );
+    saveAndInsertImage(currentEditor, file, "");
 });
 
 // Selection drives two surfaces: the top toolbar tracks it to update its
