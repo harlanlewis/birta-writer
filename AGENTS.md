@@ -1,8 +1,6 @@
 # Agent & contributor instructions — Birta Writer
 
-This is the **canonical, tool-agnostic** instruction file for the repository —
-the one every agent and contributor should actually read. `CLAUDE.md` at the
-repo root is only a pointer (`@AGENTS.md`) so Claude Code finds its way here.
+This is the **canonical, tool-agnostic** instruction file for the repository — the one every agent and contributor should actually read. `CLAUDE.md` at the repo root is only a pointer (`@AGENTS.md`) so Claude Code finds its way here.
 
 ## Language policy
 
@@ -138,7 +136,7 @@ Webview cold-start (open `.md` → editor painted) is a first-class concern — 
 - `pnpm perf` — median-of-9 launch spans per fixture (build `node esbuild.mjs --production --metafile` first).
 - `pnpm perf:bundle` — zero-variance eager-bytes metric. It gates on a **budget ceiling** (`--check`, `e2e/perf/bundle-baseline.json` → `eagerBudget`), not a ratchet: a cheap browser-free backstop that catches *bytes added without asking* (an accidental heavy static import). Raise the ceiling deliberately with `--set-budget`.
 - The launch A/B is **same-session** (`pnpm perf --compare before.json after.json`) with a warmup run discarded — absolute ms drift on a laptop, so a `before.json` captured earlier is untrustworthy; stash the change, rebuild, capture `before`, restore, capture `after`. Treat a delta under ~3% (the noise floor) as neutral.
-- **`bundle-baseline.json` records a measurement; it is not one.** Its `eagerTotal` drifts behind `main` the moment anything lands, while still reading like a current figure. **Rebuild and run `pnpm perf:bundle` before quoting headroom** — never cite the file. When you move the ceiling, refresh the record too (`--write-baseline` preserves the ceiling; `--set-budget` recomputes it at +8%), or every later `--compare` reads against a fiction. (2026-07-25: the record had drifted 62,824 B, so the "95.9 KB of headroom" it implied was actually 34.5 KB — a 3× error on a gate's margin.)
+- **`bundle-baseline.json` now holds the ceiling and nothing else — so there is no recorded figure left to quote.** **Rebuild and run `pnpm perf:bundle` for current bytes or headroom.** It used to also persist the last measured snapshot (`eagerTotal` and friends), which no code read: `--check` reads `eagerBudget`, `--set-budget` reads the previous `eagerBudget`, and `--compare` reads its two *argument* files. Those fields existed only to be read by humans, and they drifted behind `main` the moment anything landed while still reading like a current figure — 62,824 B on 2026-07-25 (turning "95.9 KB of headroom" into an actual 34.5 KB, a 3× error on a gate's margin, quoted into a ticket in good faith), then **41,526 B again on 2026-07-30, four days after this very bullet warned about it.** The warning did not stop the recurrence, so the field is gone instead; `e2e/perf/bundleBaseline.test.mjs` fails if one creeps back. The general lesson survives the specific fix: **a stored number is a record, not a reading** — the same trap still applies to `e2e/perf/baseline.json` and to any figure pasted into a ticket or doc.
 - **Removing eager bytes produces no CI signal on its own**, because the budget is a ceiling rather than a ratchet: `--check` simply passes with more room, and the space is immediately re-spendable. Finish a bytes win with `--set-budget` so the ratchet sticks.
 - **The `paint` span (`create-end` → `editor-painted`) is the initial view render** — ProseMirror's first DOM build plus style/layout/paint, and any work a plugin schedules from its `view()` onto the frames before that paint. It was the harness's largest blind spot (roughly half of `large`'s launch was unattributed) until 2026-07-25, when a change that added a whole decoration-render pass to the mount path read as "every measured span flat or better" while launch regressed 3.4%. **If a plugin schedules its own rAF at mount, suspect this span** — work moved in front of first paint is invisible to every other one.
 
@@ -284,53 +282,16 @@ Test fails
 
 ## Autosave
 
-The editor is `CustomTextEditorProvider`-backed, so the backing `TextDocument`
-carries native dirty state. **Saving is governed entirely by VS Code's built-in
-`files.autoSave` / `files.autoSaveDelay`** — there is no extension-specific
-autosave. (The former `markdownWysiwyg.autoSave` / `autoSaveDelay` settings
-were removed before the rename; the custom timer only ever fired in configurations where it was
-redundant or actively fought the user's `files.autoSave` choice.) With the VS
-Code default (`files.autoSave: "off"`), edits stay dirty until Cmd+S / hot exit,
-exactly like any text editor.
+The editor is `CustomTextEditorProvider`-backed, so the backing `TextDocument` carries native dirty state. **Saving is governed entirely by VS Code's built-in `files.autoSave` / `files.autoSaveDelay`** — there is no extension-specific autosave. (The former `markdownWysiwyg.autoSave` / `autoSaveDelay` settings were removed before the rename; the custom timer only ever fired in configurations where it was redundant or actively fought the user's `files.autoSave` choice.) With the VS Code default (`files.autoSave: "off"`), edits stay dirty until Cmd+S / hot exit, exactly like any text editor.
 
 ### View→document sync invariant (never lose an edit on save)
 
-The edit lives in the webview (Milkdown); the `TextDocument` is what VS Code
-saves. The pipeline that carries edits webview→document must satisfy, in order of
-priority:
+The edit lives in the webview (Milkdown); the `TextDocument` is what VS Code saves. The pipeline that carries edits webview→document must satisfy, in order of priority:
 
-1. **A save never persists content older than the editor state.** The extension
-   registers `onWillSaveTextDocument` and, via `waitUntil`, asks the webview to
-   serialize the live document *now* and returns those bytes as the save's edits
-   (`_flushWebviewEdits` / `flushPendingEdit`). A save is bounded by a ~1s timeout
-   so a wedged webview degrades to "save current document" rather than hanging.
-2. **An edit is save-capturable the moment the user perceives it.** The first
-   edit after a save dirties the `TextDocument` within an IPC hop (leading-edge
-   sync in `webview/editor.ts`) — `onWillSaveTextDocument` only fires for a dirty
-   document, so this is what makes a fast Cmd+S actually save.
-3. **Ordering is total.** Every outbound content message carries a monotonic
-   `seq`; the extension drops any `update` a flush has superseded, so a slow
-   in-flight sync can never revert a newer save (`_appliedSeq`).
+1. **A save never persists content older than the editor state.** The extension registers `onWillSaveTextDocument` and, via `waitUntil`, asks the webview to serialize the live document *now* and returns those bytes as the save's edits (`_flushWebviewEdits` / `flushPendingEdit`). A save is bounded by a ~1s timeout so a wedged webview degrades to "save current document" rather than hanging.
+2. **An edit is save-capturable the moment the user perceives it.** The first edit after a save dirties the `TextDocument` within an IPC hop (leading-edge sync in `webview/editor.ts`) — `onWillSaveTextDocument` only fires for a dirty document, so this is what makes a fast Cmd+S actually save.
+3. **Ordering is total.** Every outbound content message carries a monotonic `seq`; the extension drops any `update` a flush has superseded, so a slow in-flight sync can never revert a newer save (`_appliedSeq`).
 
-The webview→document **debounce is load-bearing for crash-safety, not
-performance**: it bounds how far the `TextDocument` (which hot exit backs up)
-trails the editor. Serialization is O(document size); it runs off the keystroke
-path (on typing pause / max-wait / save), never per keystroke. Do not lengthen
-the debounce toward "save less often" or move serialization back onto the
-keystroke — the first breaks the crash-safety window, the second reintroduces
-per-keystroke O(n) cost. (Note: on very large documents typing itself is still
-bounded by ProseMirror's per-keystroke view reconciliation — a separate,
-document-size-scaling cost unrelated to this sync pipeline.)
+The webview→document **debounce is load-bearing for crash-safety, not performance**: it bounds how far the `TextDocument` (which hot exit backs up) trails the editor. Serialization is O(document size); it runs off the keystroke path (on typing pause / max-wait / save), never per keystroke. Do not lengthen the debounce toward "save less often" or move serialization back onto the keystroke — the first breaks the crash-safety window, the second reintroduces per-keystroke O(n) cost. (Note: on very large documents typing itself is still bounded by ProseMirror's per-keystroke view reconciliation — a separate, document-size-scaling cost unrelated to this sync pipeline.)
 
-**`webview/syncScheduler.ts` must be the ONLY delay in this pipeline.** Its
-trigger is `webview/plugins/docChange.ts`, which reports every doc-changing
-transaction synchronously. Never put a debounce/throttle upstream of it, and
-never route the trigger through one — Milkdown's `@milkdown/plugin-listener`
-(unconditional trailing `debounce(fn, 200)`) used to sit there and broke two of
-the three invariants above at once: the first keystroke took ~208 ms to dirty
-the document (#2), and because a *trailing* debounce resets on every keystroke,
-continuous typing never fired it at all, so the scheduler was never asked, its
-max-wait never engaged, and the document stayed clean for the whole burst — a
-Cmd+S mid-burst was a no-op and hot exit backed up stale bytes (MAR-145). The
-scheduler already implements leading edge + trailing + max-wait together; a
-second timer upstream can only starve it. Pinned by `e2e/syncLatency`.
+**`webview/syncScheduler.ts` must be the ONLY delay in this pipeline.** Its trigger is `webview/plugins/docChange.ts`, which reports every doc-changing transaction synchronously. Never put a debounce/throttle upstream of it, and never route the trigger through one — Milkdown's `@milkdown/plugin-listener` (unconditional trailing `debounce(fn, 200)`) used to sit there and broke two of the three invariants above at once: the first keystroke took ~208 ms to dirty the document (#2), and because a *trailing* debounce resets on every keystroke, continuous typing never fired it at all, so the scheduler was never asked, its max-wait never engaged, and the document stayed clean for the whole burst — a Cmd+S mid-burst was a no-op and hot exit backed up stale bytes (MAR-145). The scheduler already implements leading edge + trailing + max-wait together; a second timer upstream can only starve it. Pinned by `e2e/syncLatency`.
