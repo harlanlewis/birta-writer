@@ -107,6 +107,22 @@ export async function run({ page, check, baseUrl }) {
     check("the path field has a caret while its image is still selected",
         pathCaret.stillSelected && pathCaret.caret !== "rgba(0, 0, 0, 0)",
         JSON.stringify(pathCaret));
+    // A caret is only half of it: the field must also PAINT what it selects.
+    // Checking caretColor alone let a state ship where Cmd+A selected the whole
+    // path and rendered it on plain background — indistinguishable from having
+    // selected nothing. Assert the observable the user actually loses.
+    const pathSelPaint = await page.evaluate(() => {
+        const input = document.querySelector(".img-path-input");
+        input.focus();
+        input.setSelectionRange(0, input.value.length);
+        return {
+            selLen: input.selectionEnd - input.selectionStart,
+            selBg: getComputedStyle(input, "::selection").backgroundColor,
+        };
+    });
+    check("the path field paints the text it has selected",
+        pathSelPaint.selLen > 0 && pathSelPaint.selBg !== "rgba(0, 0, 0, 0)",
+        JSON.stringify(pathSelPaint));
 
     await pathInput.fill("img/other.jpeg");
     await page.locator(".ProseMirror p").last().click(); // blur → apply

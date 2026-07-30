@@ -2291,6 +2291,22 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-hos
     caret-color: auto;
 }
 
+/* ...and the same field must PAINT the text it has selected. The caret rule
+   above is only half the carve-out: Cmd+A in a focused caption or path editor
+   selected 21 characters that rendered on plain background, indistinguishable
+   from no selection at all.
+
+   `:focus` is load-bearing, not decoration. Ungated, this reintroduces the
+   phantom highlight the suppression exists for — an image node-selected with
+   its caption NOT focused must stay unpainted (pinned in e2e/imageView). The
+   old root-scoped rule got this for free because ProseMirror drops
+   `.ProseMirror-hideselection` when the editor loses DOM focus; our decoration
+   keys off `selection.visible`, which is still false while the field is being
+   typed into, so focus has to be asked about explicitly. */
+.milkdown .editor .pm-hidden-selection :is(input, textarea):focus::selection {
+    background: var(--vscode-editor-selectionBackground);
+}
+
 /* A collapsed DOM selection directly in the editor root is never a text caret
    — every text position lives inside a block — it is a gap cursor, which draws
    its own blinking widget. Suppress the native caret there permanently and
