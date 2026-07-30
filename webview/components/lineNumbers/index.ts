@@ -205,6 +205,20 @@ export function createLineNumbers(host: LineNumbersHost): LineNumbersController 
         return (entry.bottom ? box.bottom - contentLineHeight : box.top) + scrollY;
     };
 
+    /**
+     * Where the space after this line begins: the bottom of the element box
+     * that renders it.
+     *
+     * Deliberately the node's box rather than the text rect `measureTop` used —
+     * a source line is one line of source and any number of rendered rows, and
+     * what follows it follows ALL of them. The box also covers the cases with
+     * no text to measure at all (an embed card, an image, a code fence).
+     */
+    const measureBottom = (view: EditorView, entry: SourceLineEntry, scrollY: number): number | null => {
+        const box = nodeRect(view, entry.nodePos);
+        return box ? box.bottom + scrollY : null;
+    };
+
     /** A node's own element box. */
     const nodeRect = (view: EditorView, nodePos: number): DOMRect | null => {
         try {
@@ -262,7 +276,8 @@ export function createLineNumbers(host: LineNumbersHost): LineNumbersController 
         const contentLineHeight = readLineHeight(view.dom as HTMLElement, FALLBACK_CONTENT_LINE_HEIGHT);
         const scrollY = window.scrollY;
         const measured: MeasuredLine[] = [];
-        for (const entry of entries) {
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
             // Two different reasons a line has no top, and they need opposite
             // treatment. A line the index says renders NOTHING (a blank
             // separator, a closing fence) is an interpolation candidate — it
@@ -277,13 +292,21 @@ export function createLineNumbers(host: LineNumbersHost): LineNumbersController 
             }
             const top = measureTop(view, entry, contentLineHeight, scrollY);
             if (top === null) { continue; }
-            measured.push({ line: entry.line, top });
+            // A bottom is only ever read as the start of the space an
+            // interpolated RUN fills, so it is measured only for the line a run
+            // follows — about one line per block, rather than a second rect read
+            // for every line in the window.
+            const bottom = entries[i + 1]?.pos === null
+                ? measureBottom(view, entry, scrollY)
+                : null;
+            measured.push({ line: entry.line, top, bottom });
         }
 
         // ── WRITE phase ────────────────────────────────────────────────────
         paint(layoutLineNumbers(measured, {
             minGap: gutterLineHeight,
             lineHeight: contentLineHeight,
+            numberHeight: gutterLineHeight,
         }));
     };
 
