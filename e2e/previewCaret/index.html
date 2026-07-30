@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- e2e harness: the stale caret behind a code block's PREVIEW chrome
+     (MAR-200). Real-browser truths jsdom can't reach: the mermaid pane
+     swallows its own mousedown (pan drag) and the LaTeX pane is inert
+     contentEditable=false DOM, so in both cases ProseMirror keeps whatever
+     caret it had — invisibly. The pinned regression is the silent document
+     mutation that follows: Enter after such a click used to split a paragraph
+     elsewhere in the document with no visual feedback at all. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e; --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc; --vscode-descriptionForeground: #999999;
+    --vscode-editor-font-family: monospace; --vscode-font-family: -apple-system, sans-serif; --vscode-font-size: 13px;
+    --vscode-editorHoverWidget-background: #252526; --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545; --vscode-focusBorder: #007fd4;
+    --vscode-toolbar-hoverBackground: rgba(90,93,94,0.31); --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-inputOption-activeBackground: rgba(14,99,156,0.4); --vscode-inputOption-activeBorder: #007fd4;
+    --vscode-editor-hoverHighlightBackground: rgba(90,93,94,0.25);
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editorWidget-background: #252526; --vscode-editorWidget-border: #454545;
+    --vscode-textCodeBlock-background: #2a2a2a;
+    --vscode-editorLineNumber-foreground: #858585;
+    --vscode-panel-border: #444444;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = {
+    translations: {}, isMac: true,
+    toolbar: { placements: {}, order: [] },
+  };
+  window.__posted = [];
+  const DOC = [
+    "# Preview caret",
+    "",
+    "alpha prose paragraph",
+    "",
+    "```mermaid",
+    "flowchart LR",
+    "  A[Alpha node label] --> B[Beta node label]",
+    "  B --> C[Gamma node label]",
+    "```",
+    "",
+    "beta prose paragraph",
+    "",
+    "```latex",
+    "E = mc^2",
+    "```",
+    "",
+    "gamma prose paragraph",
+    "",
+  ].join("\n");
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready")
+        window.postMessage({ type: "init", content: DOC + "\n", syncVersion: 1 }, "*");
+    },
+    getState: () => undefined, setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>
