@@ -93,10 +93,18 @@ describe("no hardcoded keybindings (modifier-chord scan)", () => {
             "Cmd/Ctrl+click to open a link (mouse), not a keybinding",
     };
 
+    // `getModifierState("Meta"|"Control")` is the same read by another name and
+    // was invisible here: a chord matched that way is just as unrebindable.
+    const MODIFIER_READ_RE = /\b(metaKey|ctrlKey|getModifierState)\b/;
+
+    it("the modifier matcher should flag every way a chord modifier is read", () => {
+        expect(MODIFIER_READ_RE.test("if (e.metaKey || e.ctrlKey) {")).toBe(true);
+        expect(MODIFIER_READ_RE.test('e.getModifierState("Meta")')).toBe(true);
+        expect(MODIFIER_READ_RE.test('if (e.key === "Escape") {')).toBe(false);
+    });
+
     it("only allowlisted files may read metaKey/ctrlKey", () => {
-        const found = webviewSources().filter((rel) =>
-            /\b(metaKey|ctrlKey)\b/.test(read(rel)),
-        );
+        const found = webviewSources().filter((rel) => MODIFIER_READ_RE.test(read(rel)));
         expect(
             found,
             "A webview module started reading keyboard modifiers. Hardcoded " +

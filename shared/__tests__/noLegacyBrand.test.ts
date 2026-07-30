@@ -8,7 +8,10 @@
  * block-handles work landed on top of the rename).
  *
  * Scope mirrors the CJK guard: source under src/, webview/, shared/ plus the
- * user-facing JSON. CHANGELOG.md is intentionally NOT scanned — it is
+ * user-facing JSON — and `docs/`, which is published prose a user acts on: a
+ * stale `markdownWysiwyg.*` key there is a setting they will type and find
+ * missing, which is exactly the failure this guard exists to prevent, yet it
+ * sat outside the scan. CHANGELOG.md is intentionally NOT scanned — it is
  * point-in-time history and names settings/commands as they shipped. The
  * upstream fork reference `git-xing/md-wysiwyg-editor` is legitimate
  * attribution (in README/NOTICE, which are also unscanned) and, by design, is
@@ -73,6 +76,18 @@ describe("rebrand guard", () => {
         expect(
             offenders,
             `Legacy brand/namespace found in source:\n${offenders.join("\n")}`,
+        ).toEqual([]);
+    });
+
+    it("published docs should name only the birta.* namespace and Birta Writer", () => {
+        // README.md and NOTICE stay unscanned (legitimate upstream attribution
+        // lives there); docs/ carries no such exception.
+        const files = walkFiles(path.join(REPO_ROOT, "docs"), [".md"], []);
+        expect(files.length).toBeGreaterThan(0);
+        const offenders = scan(files);
+        expect(
+            offenders,
+            `Legacy brand/namespace found in docs/:\n${offenders.join("\n")}`,
         ).toEqual([]);
     });
 
