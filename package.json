@@ -608,7 +608,7 @@
                 "command": "birta.switchToPreview",
                 "key": "ctrl+shift+m",
                 "mac": "cmd+shift+m",
-                "when": "resourceLangId == markdown && activeCustomEditorId != 'birta.editor'"
+                "when": "activeCustomEditorId != 'birta.editor' && (resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown)"
             },
             {
                 "command": "birta.gotoSymbol",
@@ -778,7 +778,7 @@
                 {
                     "command": "birta.switchToPreview",
                     "group": "navigation",
-                    "when": "resourceLangId == markdown && activeCustomEditorId != 'birta.editor'"
+                    "when": "activeCustomEditorId != 'birta.editor' && (resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown)"
                 },
                 {
                     "command": "birta.debugModeEnable",
