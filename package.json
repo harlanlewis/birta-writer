@@ -1590,6 +1590,20 @@
                         "%config.copyFormat.richText%"
                     ]
                 },
+                "birta.pasteFormat": {
+                    "order": 3,
+                    "type": "string",
+                    "enum": [
+                        "markdown",
+                        "plainText"
+                    ],
+                    "default": "markdown",
+                    "description": "%config.pasteFormat.description%",
+                    "enumDescriptions": [
+                        "%config.pasteFormat.markdown%",
+                        "%config.pasteFormat.plainText%"
+                    ]
+                },
                 "birta.customCss": {
                     "order": 12,
                     "type": "array",

@@ -367,6 +367,12 @@ export function createMessageHandlers(
                 window.__i18n.copyFormat = msg.format;
             }
         },
+        pasteFormatChanged(msg) {
+            // Read at paste time from __i18n — flipping the field is the update.
+            if (window.__i18n) {
+                window.__i18n.pasteFormat = msg.format;
+            }
+        },
         featureGateChanged(msg) {
             // Read-at-use-time gates: flipping the __i18n field is the whole
             // update (calc's advisory/auto split, the checklist sink, the

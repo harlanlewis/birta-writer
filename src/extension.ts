@@ -6,7 +6,7 @@ import { normalizeMermaidThemeMode } from "../shared/mermaid";
 import { normalizeTocVisibility } from "../shared/tocVisibility";
 import { scanHeadings } from "./utils/headingScan";
 import { EDITOR_COMMANDS, editorCommandName } from "../shared/editorCommands";
-import { normalizeCopyFormat } from "../shared/config";
+import { normalizeCopyFormat, normalizePasteFormat } from "../shared/config";
 import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
@@ -485,6 +485,12 @@ export function activate(context: vscode.ExtensionContext) {
                 MarkdownEditorProvider.current?.postToAll({
                     type: "copyFormatChanged",
                     format: normalizeCopyFormat(readBirtaSetting("copyFormat")),
+                });
+            }
+            if (e.affectsConfiguration("birta.pasteFormat")) {
+                MarkdownEditorProvider.current?.postToAll({
+                    type: "pasteFormatChanged",
+                    format: normalizePasteFormat(readBirtaSetting("pasteFormat")),
                 });
             }
             if (e.affectsConfiguration("birta.network.enabled")) {

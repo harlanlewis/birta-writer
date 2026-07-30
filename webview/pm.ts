@@ -48,6 +48,8 @@ export type { Command, Transaction } from "@milkdown/prose/state";
 
 // ─── prose/view: the DOM view, decorations, node views ───
 export { Decoration, DecorationSet } from "@milkdown/prose/view";
+// (`parseFromClipboard` is exported at the bottom of this file — it needs a
+// cast, so it lives with the other cast-bearing helpers.)
 export type {
     DecorationSource,
     EditorView,
@@ -115,9 +117,10 @@ export {
 
 import { editorViewCtx, type Editor } from "@milkdown/core";
 import { GapCursor } from "@milkdown/prose/gapcursor";
-import type { ResolvedPos } from "@milkdown/prose/model";
+import type { ResolvedPos, Slice } from "@milkdown/prose/model";
 import type { EditorState } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
+import * as pmView from "@milkdown/prose/view";
 
 /**
  * "Is a gap cursor the correct selection at this position?" — false wherever an
@@ -130,6 +133,33 @@ import type { EditorView } from "@milkdown/prose/view";
  */
 export function isGapCursorPosition($pos: ResolvedPos): boolean {
     return (GapCursor as unknown as { valid($pos: ResolvedPos): boolean }).valid($pos);
+}
+
+/**
+ * Turns clipboard flavors into the slice a paste would insert — the function
+ * behind `clipboardTextParser` / `clipboardParser`, including the decisions
+ * made AROUND those props: text-vs-HTML, the raw-text shortcut inside a code
+ * block, and the closing `maxOpen`/`normalizeSiblings` fit to the context.
+ *
+ * Same shape as `isGapCursorPosition` above: prosemirror-view ships this at
+ * runtime (upstream's own testing hook — hence the underscores) but leaves it
+ * out of the published typings, so the one cast lives here rather than at the
+ * call site. Used by the pasteMarkdown tests to drive a real paste without a
+ * synthetic DOM ClipboardEvent, which jsdom cannot carry flavors on.
+ */
+export function parseFromClipboard(
+    view: EditorView,
+    text: string,
+    html: string | null,
+    plain: boolean,
+    $context: ResolvedPos,
+): Slice | null {
+    return (pmView as unknown as {
+        __parseFromClipboard(
+            view: EditorView, text: string, html: string | null,
+            plain: boolean, $context: ResolvedPos,
+        ): Slice | null;
+    }).__parseFromClipboard(view, text, html, plain, $context);
 }
 
 /** The `Ctx` handed to `Editor.config` / `Editor.action` callbacks. */

@@ -55,6 +55,7 @@ import {
     linkInputRule,
     linkUrlCompletePlugin,
     pasteLinkPlugin,
+    pasteMarkdownPlugin,
     mathInlineEditPlugin,
     wikiLinkCompletePlugin,
     headingLinkCompletePlugin,
@@ -585,6 +586,11 @@ export async function createEditor(
         // clipboard's plain-text flavor (clipboardTextSerializer; gated on
         // birta.copyFormat).
         .use(copyMarkdownPlugin)
+        // ...and the other direction: a plain-text paste is parsed as Markdown
+        // rather than inserted as literal, later-escaped text
+        // (clipboardTextParser; gated on birta.pasteFormat, and on the
+        // Shift+Cmd+V plain-paste flag).
+        .use(pasteMarkdownPlugin)
         .use(wikiLinkCompletePlugin)
         // Typing `#` mid-prose (or the Section Link command) offers the
         // document's headings; picking inserts a plain [title](#slug) link.
