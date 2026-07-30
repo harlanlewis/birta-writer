@@ -1,9 +1,9 @@
 ---
-title: Birta Writer showcase
+title: Birta Writer Showcase
 description: A quick scroll-through of everything the editor renders — one clean example per content type. For the exhaustive corpus with edge cases, open content-inventory.md.
 tags: [reference, showcase]
 ---
-# Birta Writer showcase
+# Birta Writer Showcase
 
 Scroll through this file in the editor to see every content type it renders —
 one example each, none of the fine print. The full corpus, with every variant,
