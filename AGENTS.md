@@ -79,6 +79,7 @@ src/saveFlushController.ts                    — Save flush/seq protocol (stale
 src/config.ts + shared/config.ts              — The birta.* config seam: typed snapshot reads + settings write-back
 src/externalChanges.ts                        — External-change detection ADR + both mechanisms' constants
 src/errorSink.ts                              — Extension-side failure sink (console vs deduped notification)
+src/searchNavigation.ts                       — Catching a search-hit/goto target off the raw tab the WYSIWYG swap is about to close
 src/webviewMessaging.ts                       — Typed extension→webview send funnel
 src/webviewHtml.ts                            — Webview HTML/CSP construction
 src/utils/getNonce.ts                         — CSP nonce generation

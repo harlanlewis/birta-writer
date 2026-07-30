@@ -81,7 +81,7 @@ import {
     handleImageFile,
     insertImageNode,
 } from "./imageUpload";
-import { initScrollPersistence } from "./scrollPersistence";
+import { initScrollPersistence, rememberScrollNow } from "./scrollPersistence";
 import { initPaneWidthVar } from "./blockWidth";
 import { initKeyboardShortcuts } from "./keyboardShortcuts";
 import { createMessageHandlers, type Handler } from "./messageHandlers";
@@ -109,14 +109,18 @@ export function getMarkdownSource(): string {
 
 // ── Scroll helper functions ────────────────────────────────
 
-/** Scroll the block for a lineMap source line (1-indexed) to the viewport center. */
+/**
+ * Scroll the block for a lineMap source line (1-indexed) to the viewport
+ * center. Returns whether it actually moved the view — a caller that persists
+ * the new position must not record one for a reveal that never happened.
+ */
 function scrollToSourceLine(
     view: EditorView,
     lineMap: number[],
     targetLine: number,
-): void {
+): boolean {
     if (!lineMap.length) {
-        return;
+        return false;
     }
     // Same reconciliation the caret uses, so the two can never disagree about
     // which block a line is in (see utils/sourceCaret.ts).
@@ -127,12 +131,12 @@ function scrollToSourceLine(
         targetLine,
     );
     if (!block) {
-        return;
+        return false;
     }
     const blockIdx = block.index;
     const children = view.dom.children;
     if (blockIdx >= children.length) {
-        return;
+        return false;
     }
     // Goto-symbol / scroll-to-line is an explicit entry intent: a target
     // hidden inside a folded range unfolds it first (VS Code semantics) —
@@ -146,7 +150,7 @@ function scrollToSourceLine(
     }
     const el = children[blockIdx] as HTMLElement;
     if (!el) {
-        return;
+        return false;
     }
 
     // The intra-block offset is read off the SOURCE side (which line of the
@@ -167,6 +171,7 @@ function scrollToSourceLine(
     const targetScrollTop = targetLineTop - viewportHeight / 2;
 
     window.scrollTo({ top: Math.max(0, targetScrollTop) });
+    return true;
 }
 
 /** Detect the source line (1-indexed) at the viewport center. */
@@ -935,7 +940,13 @@ const handlers = createMessageHandlers({
         placeCaretAtLine,
         scrollToDocumentLine: (line) => {
             const view = getEditorView();
-            if (view) { scrollToSourceLine(view, currentLineMap, toBodyLine(line)); }
+            if (!view) { return; }
+            // A reveal that lands claims the remembered scroll position at
+            // once, so the panel's own restore can't undo it (MAR-268 — see
+            // rememberScrollNow).
+            if (scrollToSourceLine(view, currentLineMap, toBodyLine(line))) {
+                rememberScrollNow();
+            }
         },
         getSwitchTarget,
         getSelectionContext,

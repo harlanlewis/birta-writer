@@ -90,8 +90,9 @@ const UNFURL_MAX_REDIRECTS = 5;
 
 /**
  * A place in the document a panel should navigate to: a 1-indexed document
- * line, plus the caret column when the navigation's origin knew one (a mode
- * switch does; a global-search hit does not).
+ * line, plus the caret column when the navigation's origin knew one — a mode
+ * switch and a search hit both do (the latter via src/searchNavigation.ts),
+ * a bare `#L10` fragment doesn't.
  */
 interface NavTarget {
     line: number;
@@ -251,12 +252,9 @@ export class MarkdownEditorProvider
 
     // Pending navigation position (temporarily stored on global-search click /
     // editor switch) key: fsPath. `column` is present only when the source of
-    // the navigation knew one — a mode switch carries the caret, a search hit
-    // knows only its line.
+    // the navigation knew one — a mode switch carries the caret and a search
+    // hit its match range; a bare `#L10` fragment knows only its line.
     private readonly _pendingNavigations = new Map<string, NavTarget & { ts: number }>();
-
-    // Global fallback navigation line number (stored when revealLine fires but the active tab hasn't switched)
-    private _pendingRevealLine: { line: number; ts: number } | undefined;
 
     // Panels that have finished WebView initialization (sent a ready message) key: uriKey
     private readonly _initializedPanels = new Set<string>();
@@ -266,10 +264,6 @@ export class MarkdownEditorProvider
     // keybindings fire only while an editor is truly focused, not merely because
     // its tab is the active custom editor with focus parked elsewhere.
     private readonly _focusedPanels = new Set<string>();
-
-    // While switching to the text editor, suppress the line-number callback from onDidChangeActiveTextEditor
-    // Prevents the line number from being wrongly fed back to the WebView after the text editor opens, triggering a redundant scrollToLine
-    private _suppressNavFromTextEditor = false;
 
     // Status bar word/character/reading-time readout (MAR-29). Injected from
     // extension.ts so the item is created once; the provider drives it from the
@@ -401,47 +395,6 @@ export class MarkdownEditorProvider
         return { lineMap: computeLineMap(body), lineOffset: sourceLineCount(frontmatter) };
     }
 
-    /** Called from extension.ts: when revealLine fires but the active tab hasn't switched, store the global fallback */
-    public setGlobalRevealLine(line: number): void {
-        this._pendingRevealLine = { line, ts: Date.now() };
-    }
-
-    /** Consume the global fallback navigation line number (valid within 10 seconds; large files init Milkdown more slowly) */
-    private _consumeGlobalRevealLine(): NavTarget | undefined {
-        const p = this._pendingRevealLine;
-        if (!p) { return undefined; }
-        this._pendingRevealLine = undefined;
-        if (Date.now() - p.ts > 10000) { return undefined; }
-        return { line: p.line };
-    }
-
-    /** Returns the list of fsPaths for all currently registered (open) .md panels */
-    public getAllMdFsPaths(): string[] {
-        const paths: string[] = [];
-        for (const uriKey of this._webviewPanels.keys()) {
-            try {
-                const uri = vscode.Uri.parse(uriKey);
-                if (uri.fsPath.endsWith('.md') || uri.fsPath.endsWith('.markdown')) {
-                    paths.push(uri.fsPath);
-                }
-            } catch {
-                // Ignore invalid URIs
-            }
-        }
-        return paths;
-    }
-
-    /** Called when switching to the text editor: block line-number callbacks from the text editor for 1.5 seconds */
-    public suppressNavFromTextEditor(): void {
-        this._suppressNavFromTextEditor = true;
-        setTimeout(() => { this._suppressNavFromTextEditor = false; }, 1500);
-    }
-
-    /** extension.ts checks whether it should skip the onDidChangeActiveTextEditor line-number callback */
-    public get isNavFromTextEditorSuppressed(): boolean {
-        return this._suppressNavFromTextEditor;
-    }
-
     /** Called from extension.ts: stash a pending navigation position; if the panel is visible and ready, send it immediately */
     public setPendingNavigation(
         fsPath: string,
@@ -457,9 +410,7 @@ export class MarkdownEditorProvider
         this._pendingNavigations.set(fsPath, { ...nav, ts: Date.now() });
         // Panel already exists and is initialized → send directly, no need to wait for onDidChangeViewState
         const uriKey = vscode.Uri.file(fsPath).toString();
-        const initialized = this._initializedPanels.has(uriKey);
-        console.log('[setPendingNav] fsPath:', fsPath, 'line:', line, '| initialized:', initialized);
-        if (initialized) {
+        if (this._initializedPanels.has(uriKey)) {
             const panel = this._webviewPanels.get(uriKey);
             // Only send immediately when the panel is currently visible (a hidden panel means the user just switched away, so don't send the line number back)
             if (panel && panel.visible) {
@@ -473,15 +424,6 @@ export class MarkdownEditorProvider
     public postToPanel(uri: vscode.Uri, msg: ToWebviewMessage): void {
         const panel = this._webviewPanels.get(uri.toString());
         if (panel) { postToWebview(panel.webview, msg); }
-    }
-
-    /** Called from extension.ts (revealLine command): send a scroll message directly to the panel */
-    public scrollPanelToLine(uri: vscode.Uri, line: number): void {
-        const uriKey = uri.toString();
-        const panel = this._webviewPanels.get(uriKey);
-        if (panel) {
-            postToWebview(panel.webview, { type: 'scrollToLine', line });
-        }
     }
 
     private _consumePendingNavigation(fsPath: string): NavTarget | undefined {
@@ -725,28 +667,14 @@ export class MarkdownEditorProvider
             // Restore this document's cached counts into the status bar (MAR-29).
             this._renderWordCount(uriKey);
             if (!this._initializedPanels.has(uriKey)) { return; }
-            const nav = this._consumePendingNavigation(document.uri.fsPath)
-                ?? this._consumeGlobalRevealLine();
+            // A navigation stashed while this panel was hidden (the mode switch
+            // sets one before the panel is activated) lands as it comes back.
+            // Nothing can stash one LATER than this: every origin now captures
+            // its target before the panel is opened or revealed.
+            const nav = this._consumePendingNavigation(document.uri.fsPath);
             if (nav !== undefined) {
-                console.log('[viewState] immediate scrollToLine:', nav.line);
                 postToWebview(p.webview, { type: "scrollToLine", ...nav });
-                return;
             }
-            // revealLine may fire after the viewState change (global search timing is unpredictable)
-            // Delay 1000ms and check the global fallback line or pending navigation again
-            setTimeout(() => {
-                try {
-                    if (!p.active) { return; }
-                } catch {
-                    return; // Panel already destroyed (e.g. the preview tab was replaced); ignore
-                }
-                const delayed = this._consumePendingNavigation(document.uri.fsPath)
-                    ?? this._consumeGlobalRevealLine();
-                if (delayed !== undefined) {
-                    console.log('[viewState] delayed scrollToLine:', delayed.line);
-                    postToWebview(p.webview, { type: "scrollToLine", ...delayed });
-                }
-            }, 1000);
         });
 
         webviewPanel.webview.onDidReceiveMessage(
@@ -765,9 +693,7 @@ export class MarkdownEditorProvider
                         const initContent = document.getText();
                         const displayContent = this._prepareContentForDisplay(initContent, document, webviewPanel, uriKey);
                         // Consume the pending navigation (set when switching preview / first opening from global search)
-                        const nav = this._consumePendingNavigation(document.uri.fsPath)
-                            ?? this._consumeGlobalRevealLine();
-                        console.log('[ready] scrollToLine:', nav?.line);
+                        const nav = this._consumePendingNavigation(document.uri.fsPath);
                         const tableWrap = readBirtaSetting("tableWrap");
                         // Reset the echo baseline: init hands this exact text to the webview
                         this._lastSyncedText.set(uriKey, initContent);
@@ -920,8 +846,6 @@ export class MarkdownEditorProvider
                         break;
                     }
                     case "switchToTextEditor": {
-                        // Suppress the upcoming onDidChangeActiveTextEditor line-number callback (within 1.5s)
-                        this.suppressNavFromTextEditor();
                         // Suppress the automatic WYSIWYG switch from onDidChangeTabs (to prevent switching back)
                         MarkdownEditorProvider.suppressAutoSwitch.add(document.uri.toString());
                         setTimeout(() => MarkdownEditorProvider.suppressAutoSwitch.delete(document.uri.toString()), 2000);
