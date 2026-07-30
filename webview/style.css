@@ -2281,11 +2281,12 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-hos
     caret-color: transparent;
 }
 
-/* NodeView chrome hosted inside a selected block is still typed into — the
-   image's alt caption and path field are the live cases — so the suppression
-   must not reach a focused form field. (The rule this replaced put the
-   suppression on the editor root, where it reached them too: selecting an
-   image and clicking its caption gave you an invisible caret.) */
+/* NodeView chrome hosted inside a selected block is still typed into, so the
+   suppression must stop at a form field. The live case: the image toolbar
+   opens its path editor with mousedown preventDefault, deliberately keeping
+   the image node-selected while that input takes focus — so without this rule
+   the path is typed with no caret, as it was under the old root rule, which
+   reached the field the same way (pinned in e2e/imageView). */
 .milkdown .editor .pm-hidden-selection :is(input, textarea) {
     caret-color: auto;
 }

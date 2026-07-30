@@ -95,6 +95,18 @@ export async function run({ page, check, baseUrl }) {
         .locator(".image-toolbar button")
         .evaluateAll((els) => els.filter((el) => el.style.display !== "none").length);
     check("path edit mode shows no confirm/cancel buttons", editButtons === 0, `${editButtons} visible buttons`);
+    // The toolbar opens this field with mousedown preventDefault, so the image
+    // stays node-selected while the user types in it — and a node selection is
+    // one of the states whose native caret is suppressed. The suppression must
+    // stop at the form field, or the path is typed with no caret (MAR-258).
+    const pathCaret = await page.evaluate(() => ({
+        stillSelected: document.querySelector(".ProseMirror")
+            .classList.contains("ProseMirror-hideselection"),
+        caret: getComputedStyle(document.querySelector(".img-path-input")).caretColor,
+    }));
+    check("the path field has a caret while its image is still selected",
+        pathCaret.stillSelected && pathCaret.caret !== "rgba(0, 0, 0, 0)",
+        JSON.stringify(pathCaret));
 
     await pathInput.fill("img/other.jpeg");
     await page.locator(".ProseMirror p").last().click(); // blur → apply
