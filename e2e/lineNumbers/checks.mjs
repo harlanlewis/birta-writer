@@ -79,9 +79,11 @@ const contentRow = (page, text) =>
             range.setStart(node, 0);
             range.setEnd(node, Math.min(3, node.textContent.length));
             const rect = range.getBoundingClientRect();
+            const box = el.getBoundingClientRect();
             return {
                 centre: rect.top + rect.height / 2 + window.scrollY,
-                boxTop: el.getBoundingClientRect().top + window.scrollY,
+                boxTop: box.top + window.scrollY,
+                boxBottom: box.bottom + window.scrollY,
             };
         }
         return null;
@@ -194,6 +196,55 @@ export async function run({ page, check, baseUrl }) {
         "a source line that wraps to many rows is followed by a proportionate gap",
         longGap > gutterLineHeight * 4,
         `gap after line ${at.longPara} = ${longGap.toFixed(1)}px (minGap ${gutterLineHeight.toFixed(1)})`,
+    );
+
+    // ...and the blank line that FOLLOWS a tall block belongs in the whitespace
+    // AFTER it. This is the case that reads as the gutter having lost track of
+    // the document: interpolating a run from the previous line's TOP put the
+    // separator's number a third of the way down the paragraph it follows (and,
+    // on a video embed, floating in the middle of the video). Every one of these
+    // is a source line whose rendered height is many times a line's.
+    for (const [name, text, blankLine] of [
+        ["longPara", "A very long paragraph on one single", at.longPara + 1],
+        ["title", "Line number zoo", at.title + 1],
+        // A block with no text position of its own to measure from — the path
+        // an image or a video embed takes. Its closing fence is line
+        // codeOpen + 4, so the blank separator is the line after that.
+        ["code block", "const alpha = 1;", at.codeOpen + 5],
+    ]) {
+        const box = await contentRow(page, text);
+        const blank = rows.find((r) => r.line === blankLine);
+        check(
+            `the blank line after ${name} is numbered below that block, not inside it`,
+            !!blank && !!box && blank.top >= box.boxBottom - 1,
+            box
+                ? `line ${blankLine} top=${blank ? blank.top.toFixed(1) : "missing"} block bottom=${box.boxBottom.toFixed(1)}`
+                : "block not found",
+        );
+    }
+
+    // The general form of the same rule, over every separator in the window —
+    // and the only coverage of the PACKED branch, which is the common case: two
+    // paragraphs are separated by a margin narrower than the gutter's own line,
+    // so there is no whitespace to sit in and the number packs against the line
+    // it precedes. That is above the previous block's box bottom, so the strict
+    // assertion above cannot express it. What must hold either way is that the
+    // number reads as belonging to what FOLLOWS it, rather than as a stray
+    // number adrift inside what precedes it.
+    const source = await page.evaluate(() => window.__lines);
+    const isBlank = (line) => (source[line - 1] ?? "").trim() === "";
+    const strays = [];
+    for (let i = 1; i < rows.length - 1; i++) {
+        const [prev, row, next] = [rows[i - 1], rows[i], rows[i + 1]];
+        // Lone separators only: inside a RUN of blanks the neighbour above is
+        // another guess, and "nearer the one below" stops meaning anything.
+        if (!isBlank(row.line) || isBlank(prev.line) || isBlank(next.line)) { continue; }
+        if (row.top - prev.top < next.top - row.top) { strays.push(row.line); }
+    }
+    check(
+        "a lone blank separator is numbered nearer the block below it than the one above",
+        strays.length === 0,
+        `separators nearer the block above: ${strays.slice(0, 8).join(", ")}`,
     );
 
     // A tight list is the opposite extreme: three consecutive source lines, each

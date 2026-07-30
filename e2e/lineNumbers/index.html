@@ -80,6 +80,7 @@
   push("last", "Final paragraph.", "");
 
   window.__at = at;
+  window.__lines = LINES;
   window.__sourceLines = LINES.length;
   const DOC = LINES.join("\n");
   window.acquireVsCodeApi = () => ({
