@@ -37,8 +37,15 @@ const ENTRY = join(WEBVIEW_DIR, "index.ts");
  * `import "./sideEffect";` to the next statement's ` from `, so every
  * side-effect import — which is exactly what a CSS import is — was skipped.
  */
+// Both spellings the bundler resolves into `webview/`: relative (`./x`) AND the
+// `@/` alias (`esbuild.mjs` maps `@` → `./webview`). Relative-only was NOT
+// cosmetic — the repo has ~281 `@/` specifiers across 42 webview files, so a
+// stylesheet pulled in via an aliased module was invisible to this walk and
+// could land ahead of chrome.css with the guard still green. The bundle-order
+// assertion below cannot backstop that in CI: the `unit-test` job never builds,
+// so `dist/webview.css` does not exist there and that check self-skips.
 const RELATIVE_IMPORT_RE =
-    /^\s*(?:import|export)\s+(?:[^;]*?\sfrom\s+)?["'](\.[^"']*)["']/gm;
+    /^\s*(?:import|export)\s+(?:[^;]*?\sfrom\s+)?["']((?:\.|@\/)[^"']*)["']/gm;
 
 /** Blank out comments while preserving offsets, so a `;` in prose can't split a clause. */
 function stripComments(source: string): string {
@@ -47,9 +54,14 @@ function stripComments(source: string): string {
         .replace(/(^|[^:])\/\/.*$/gm, (m, p1) => p1 + " ".repeat(m.length - p1.length));
 }
 
-/** Resolve a relative specifier the way the bundler does (extensionless → .ts / index.ts). */
+/**
+ * Resolve a specifier the way the bundler does (extensionless → .ts / index.ts),
+ * honouring the `@/` → `webview/` alias declared in `esbuild.mjs`.
+ */
 function resolveModule(fromFile: string, spec: string): string | null {
-    const base = resolve(dirname(fromFile), spec);
+    const base = spec.startsWith("@/")
+        ? resolve(WEBVIEW_DIR, spec.slice(2))
+        : resolve(dirname(fromFile), spec);
     for (const candidate of [base, `${base}.ts`, join(base, "index.ts")]) {
         if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
     }

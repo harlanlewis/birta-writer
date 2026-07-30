@@ -30,8 +30,14 @@ const ALLOWED = new Set([
 // and the bare side-effect form `import "@milkdown/prose/..."` — which the
 // first two patterns miss entirely, and which grows the raw-PM surface just as
 // much as a named import does.
+// The subpath group must accept DEEP paths (`[a-z0-9./-]+`, not `[a-z-]+`):
+// `@milkdown/prose` publishes exactly three deep subpaths and all three are
+// stylesheets — `./view/style/prosemirror.css`, `./tables/style/tables.css`,
+// `./gapcursor/style/gapcursor.css`. A one-segment group therefore missed the
+// realistic shape of the bare side-effect import this pattern was widened to
+// catch in the first place.
 const RAW_PM_IMPORT =
-    /(?:from\s*|import\s*\(|import\s+)\s*["']@milkdown\/prose(?:\/[a-z-]+)?["']/;
+    /(?:from\s*|import\s*\(|import\s+)\s*["']@milkdown\/prose(?:\/[a-z0-9./-]+)?["']/;
 
 describe("PM funnel (webview/pm.ts)", () => {
     it("the matcher should flag direct prose imports and allow funnel imports", () => {
