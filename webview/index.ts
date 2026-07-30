@@ -38,7 +38,7 @@ import {
     setLogTableSel,
 } from "./editor";
 import type { EditorView } from "./pm";
-import { TextSelection } from "./pm";
+import { GapCursor, isGapCursorPosition, TextSelection } from "./pm";
 import { t } from "./i18n";
 import { notifyReady, notifyUpdate, notifySwitchToTextEditor, notifySetTocPosition, notifyFocusState, onMessage } from "./messaging";
 import { mark, measure } from "./perf";
@@ -658,7 +658,13 @@ if (editorContainer) {
     // Table row/column affordances (grips, insert bars, drag-reorder) now live
     // inside the table NodeView overlay — see components/table/tableView.ts.
 
-    // Click the empty area below the content -> move the caret to the document end
+    // Click the empty area above/below the content -> put the caret at the
+    // document start/end. The band above the first block is the padding
+    // `#editor` carries between the toolbar and `view.dom`; a leading block's
+    // own top margin collapses out of the editor, so that padding is the only
+    // pixel row above the content that belongs to the editor at all — and with
+    // a leading table it is the ONLY pointer route to the position above it
+    // (MAR-252).
     eventManager.onElement(editorContainer, "mousedown", (e) => {
         const view = getEditorView();
         if (!view) {
@@ -667,17 +673,34 @@ if (editorContainer) {
         if (view.dom.contains(e.target as Node)) {
             return;
         }
-        const lastChild = view.dom.lastElementChild;
-        if (!lastChild) {
+        const first = view.dom.firstElementChild;
+        const last = view.dom.lastElementChild;
+        if (!first || !last) {
             return;
         }
-        const lastRect = lastChild.getBoundingClientRect();
-        if (e.clientY <= lastRect.bottom) {
+        let side: -1 | 1;
+        if (e.clientY > last.getBoundingClientRect().bottom) {
+            side = 1;
+        } else if (e.clientY < first.getBoundingClientRect().top) {
+            side = -1;
+        } else {
             return;
         }
         e.preventDefault();
         const { state } = view;
-        const sel = TextSelection.atEnd(state.doc);
+        // Prefer a gap cursor at that document edge when one is valid: a
+        // document that starts or ends with a block leaf has no text position
+        // outside it, so TextSelection.atStart/atEnd lands INSIDE the leaf —
+        // clicking below a trailing table put the caret in its last cell and
+        // the next keystroke edited that cell. isGapCursorPosition is false
+        // whenever a text position really is there (the common case: a leading
+        // or trailing paragraph), so this only changes what was wrong.
+        const $edge = state.doc.resolve(side > 0 ? state.doc.content.size : 0);
+        const sel = isGapCursorPosition($edge)
+            ? new GapCursor($edge)
+            : side > 0
+                ? TextSelection.atEnd(state.doc)
+                : TextSelection.atStart(state.doc);
         view.dispatch(state.tr.setSelection(sel));
         view.focus();
     });

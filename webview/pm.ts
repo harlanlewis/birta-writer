@@ -67,6 +67,15 @@ export type { Mappable } from "@milkdown/prose/transform";
 // ─── prose/commands: generic editing commands ───
 export { deleteSelection, joinTextblockBackward, lift, splitBlock, toggleMark, wrapIn } from "@milkdown/prose/commands";
 
+// ─── prose/gapcursor: a selection where no text position exists ───
+// The only valid caret at the positions between/around block leaves — before a
+// leading table, between two adjacent tables, after a trailing code block.
+// Without it those positions are unreachable and an arrow key lands the caret
+// inside the adjacent leaf (MAR-252). Importing this module has a side effect:
+// it registers the "gapcursor" selection JSON id on `Selection`. `GapCursor` is
+// a value export because plugins/gapCursor.ts and index.ts construct one.
+export { gapCursor, GapCursor } from "@milkdown/prose/gapcursor";
+
 // ─── prose/history: undo history ───
 export { history, redo, undo } from "@milkdown/prose/history";
 
@@ -105,8 +114,23 @@ export {
 // are the single spelling of it.
 
 import { editorViewCtx, type Editor } from "@milkdown/core";
+import { GapCursor } from "@milkdown/prose/gapcursor";
+import type { ResolvedPos } from "@milkdown/prose/model";
 import type { EditorState } from "@milkdown/prose/state";
 import type { EditorView } from "@milkdown/prose/view";
+
+/**
+ * "Is a gap cursor the correct selection at this position?" — false wherever an
+ * ordinary text position is adjacent, so it doubles as the test for "was this
+ * position unreachable before?".
+ *
+ * The static exists at runtime, but prosemirror-gapcursor marks it `@internal`
+ * and strips it from the published typings, so the one cast the webview needs
+ * for it lives here in the funnel rather than at each call site.
+ */
+export function isGapCursorPosition($pos: ResolvedPos): boolean {
+    return (GapCursor as unknown as { valid($pos: ResolvedPos): boolean }).valid($pos);
+}
 
 /** The `Ctx` handed to `Editor.config` / `Editor.action` callbacks. */
 export type EditorCtx = Parameters<Parameters<Editor["config"]>[0]>[0];

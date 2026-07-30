@@ -113,11 +113,25 @@ export const remarkInlineMathGuardPlugin = $remark(
 /**
  * Serialize a LaTeX-language `code_block` back to a `math` mdast node so it
  * round-trips as `$$...$$` instead of a fenced ```` ```LaTeX ```` block.
+ *
+ * ALSO carries `createGapCursor` (MAR-252), which has nothing to do with math:
+ * only one schema per node id wins, and this is the single `code_block`
+ * extension in the codebase, so a second one elsewhere would silently replace
+ * this serializer. See plugins/gapCursor.ts for what the flag buys.
  */
 export const blockLatexSchema = codeBlockSchema.extendSchema((prev) => (ctx) => {
     const baseSchema = prev(ctx);
     return {
         ...baseSchema,
+        // A code block is a textblock, so prosemirror-gapcursor offers no gap
+        // beside it by default — correct between a paragraph and a code block
+        // (the paragraph's own text position is adjacent), wrong when the code
+        // block leads or ends the document, or abuts another leaf: those
+        // positions then do not exist at all and ArrowUp/ArrowDown leaves the
+        // caret inside the code. This opts the node into `needsGap`, which
+        // still requires BOTH sides closed, so no gap appears next to a
+        // neighbouring paragraph.
+        createGapCursor: true,
         toMarkdown: {
             match: baseSchema.toMarkdown.match,
             runner: (state, node) => {
