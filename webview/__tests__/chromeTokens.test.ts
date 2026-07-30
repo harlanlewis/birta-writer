@@ -3,7 +3,7 @@
  *
  * Every border-radius in webview CSS must compose the radius scale
  * (--ui-radius-s/m/l/xl/pill) instead of minting a new pixel value, chrome
- * text sizes in the 9–13px band must come from the --ui-fs-* scale, and a
+ * text sizes below 14px must come from the --ui-fs-* scale, and a
  * shadow must take its ink from --ui-card-shadow / -overlay rather than mixing
  * its own — neither a hand-tuned rgba() nor a per-theme --vscode-*-shadow.
  * This is a ratchet, not a style preference: the pre-token codebase had six
@@ -98,7 +98,7 @@ describe("chrome design tokens (ui/chrome.css)", () => {
         expect(violations, violations.join("\n")).toEqual([]);
     });
 
-    it("chrome font sizes in the 9-13px band should compose the --ui-fs-* scale", () => {
+    it("chrome font sizes below 14px should compose the --ui-fs-* scale", () => {
         const violations: string[] = [];
         for (const file of files) {
             const rel = relative(WEBVIEW_DIR, file).split(sep).join("/");
@@ -107,8 +107,13 @@ describe("chrome design tokens (ui/chrome.css)", () => {
                 if (!m) continue; // em/calc/var sizing is the content domain
                 const px = parseFloat(m[1]);
                 // ≥14px literals are glyph/display tuning (a 14px ×, a 22px ⤢),
-                // not text-scale drift; below 9px nothing exists.
-                if (px >= 14 || px < 9) continue;
+                // not text-scale drift. There is NO lower bound: the band used
+                // to start at 9px on the reasoning that "below 9px nothing
+                // exists" — which described the codebase rather than the rule,
+                // so an 8px literal was the one chrome size that could be
+                // added freely. Nothing sits below 9px today, so the floor
+                // cost nothing to remove.
+                if (px >= 14) continue;
                 const excepted = FONT_EXCEPTIONS.some(
                     (e) => rel.endsWith(e.file) && e.value === value,
                 );

@@ -185,6 +185,16 @@ function findBareColorLiterals(): string[] {
 }
 
 describe("no literal --vscode-* color fallbacks in webview", () => {
+    // Both rules below report violations by returning an EMPTY array when they
+    // find nothing — which is also what they return if collectFiles stops
+    // finding files at all (a moved directory, a changed extension filter).
+    // Pin the sweep's reach so a vacuous pass can't masquerade as a clean one.
+    it("the sweep should actually reach the webview source it claims to guard", () => {
+        const files = collectFiles(webviewRoot);
+        expect(files.filter((f) => f.endsWith(".css")).length).toBeGreaterThan(10);
+        expect(files.filter((f) => f.endsWith(".ts")).length).toBeGreaterThan(50);
+    });
+
     it("the matcher should flag a literal color fallback but not a chain, keyword, or font var", () => {
         // Sanity-check the regex + exclusion so the guard below isn't vacuous.
         const flag = (s: string) =>

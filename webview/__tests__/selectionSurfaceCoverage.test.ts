@@ -36,12 +36,36 @@ const ISLAND_REGISTRY: Record<string, string> = {
         "calc ledger rows (user-select: text) → domChromeTarget's .calc-row path maps row → interior line",
     "components/linkPopup/linkPopup.css":
         "link popup URL text — mounted on document.body, OUTSIDE view.dom; not a switch surface",
+    "components/frontmatter/index.ts":
+        "metadata table cells and list chips (role=\"textbox\" + contenteditable) — the panel is " +
+        "inserted BEFORE #editor (renderFmContent's insertBefore(panel, editorEl)), so it lives " +
+        "OUTSIDE view.dom and domChromeTarget bails at its view.dom.contains check; not a switch surface",
 };
 
-/** Source patterns that create a selection island. */
+/**
+ * Source patterns that create a selection island.
+ *
+ * These match SOURCE TEXT, so they must not be pinned to one quote style or
+ * one spelling of the same DOM write — that is not a stricter rule, it is a
+ * hole. Both `role="textbox"` sites in components/frontmatter/index.ts were
+ * invisible to this guard for exactly that reason: the file uses single
+ * quotes, and the old patterns hardcoded double ones. The guard read green
+ * while two live islands went unregistered.
+ */
 const ISLAND_PATTERNS: Array<{ kind: string; re: RegExp; ext: string }> = [
-    { kind: "editable textbox", re: /setAttribute\("role", "textbox"\)/, ext: ".ts" },
-    { kind: "contentEditable island", re: /contentEditable = "(true|plaintext-only)"/, ext: ".ts" },
+    {
+        kind: "editable textbox",
+        re: /setAttribute\(\s*(['"])role\1\s*,\s*(['"])textbox\2\s*\)/,
+        ext: ".ts",
+    },
+    {
+        kind: "contentEditable island",
+        // Both the property write and the attribute write — jsdom does not
+        // reflect the property, so files that need focusability under test set
+        // the attribute too (see bindFmCell).
+        re: /contentEditable\s*=\s*(['"])(?:true|plaintext-only)\1|setAttribute\(\s*(['"])contenteditable\2\s*,\s*(['"])(?:true|plaintext-only)\3\s*\)/,
+        ext: ".ts",
+    },
     { kind: "selectable chrome", re: /user-select:\s*text/, ext: ".css" },
 ];
 
@@ -56,6 +80,26 @@ const walk = (dir: string, files: string[] = []): string[] => {
 };
 
 describe("every selection island has a mode-switch story", () => {
+    // The sweep is only as wide as its patterns, and a pattern pinned to one
+    // quote style is a silent hole (see the ISLAND_PATTERNS header). Prove each
+    // spelling of the same DOM write is seen, and that read-only chrome is not.
+    it("the island patterns should match both quote styles and both contenteditable spellings", () => {
+        const textbox = ISLAND_PATTERNS[0]!.re;
+        expect(textbox.test('el.setAttribute("role", "textbox");')).toBe(true);
+        expect(textbox.test("el.setAttribute('role', 'textbox');")).toBe(true);
+        expect(textbox.test('el.setAttribute("role", "button");')).toBe(false);
+
+        const editable = ISLAND_PATTERNS[1]!.re;
+        expect(editable.test('td.contentEditable = "true";')).toBe(true);
+        expect(editable.test("td.contentEditable = 'true';")).toBe(true);
+        expect(editable.test('td.contentEditable = "plaintext-only";')).toBe(true);
+        expect(editable.test('td.setAttribute("contenteditable", "true");')).toBe(true);
+        expect(editable.test("td.setAttribute('contenteditable', 'true');")).toBe(true);
+        // Read-only chrome (contenteditable="false") is not a selection island.
+        expect(editable.test('el.contentEditable = "false";')).toBe(false);
+        expect(editable.test("el.setAttribute('contenteditable', 'false');")).toBe(false);
+    });
+
     it("island-creating sites are registered with a mapping story", () => {
         const unregistered: string[] = [];
         const found = new Set<string>();
@@ -82,6 +126,8 @@ describe("every selection island has a mode-switch story", () => {
         // registry (and this guard's patterns) must move with them.
         expect(found).toContain("components/callout/index.ts");
         expect(found).toContain(path.join("components", "codeBlock", "codeBlock.css"));
+        // Single-quoted island writes are seen too — the case the patterns missed.
+        expect(found).toContain(path.join("components", "frontmatter", "index.ts"));
         // No registry entry goes stale: every registered file still trips a pattern.
         expect([...Object.keys(ISLAND_REGISTRY)].filter((rel) => !found.has(rel))).toEqual([]);
     });
