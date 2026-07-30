@@ -602,7 +602,8 @@ setEditorCommandHost({
     // Cmd+D: cycle the document selection through occurrences of the word/
     // selection (the bar handles seed-vs-advance internally).
     findSelection: () => findBar.cycleOccurrence(),
-    // Shift+Cmd+L: highlight every occurrence, focused on the replace input.
+    // Cmd+F2 (and Shift+Cmd+L): highlight every occurrence, focused on the
+    // replace input.
     selectAllOccurrences: () => findBar.selectAllOccurrences(),
     toggleToc: () => toc.toggle(),
     // Side-switch: flip to the opposite edge, mirroring the panel's own flip

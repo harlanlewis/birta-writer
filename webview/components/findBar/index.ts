@@ -64,7 +64,7 @@ export interface FindBarController {
      */
     cycleOccurrence(): void;
     /**
-     * Shift+Cmd+L: seed the query from the selection/word, open with the
+     * Cmd+F2 (and Shift+Cmd+L): seed the query from the selection/word, open with the
      * replace row focused and every occurrence highlighted — one keystroke
      * from Replace All.
      */
@@ -812,7 +812,7 @@ export function initFindBar(
         }
     }
 
-    // ── Occurrence cycling (Cmd+D / Shift+Cmd+L) ─────────
+    // ── Occurrence cycling (Cmd+D / Cmd+F2) ─────────
 
     /**
      * Index of the match at the caret — the one containing `sel.from`, else
@@ -922,7 +922,7 @@ export function initFindBar(
     }
 
     /**
-     * Shift+Cmd+L. Seed from the selection/word and open with the replace row
+     * Cmd+F2 (and Shift+Cmd+L). Seed from the selection/word and open with the replace row
      * focused, every occurrence highlighted — the pragmatic "change every X"
      * entry point (type a replacement, Cmd+Enter to replace all).
      */

@@ -81,9 +81,23 @@ export const EDITOR_COMMANDS = [
     // to each next occurrence (the single-selection analog of VS Code's "Add
     // Selection To Next Find Match").
     { id: "findSelection", title: "Select Next Occurrence", palette: true, sections: [] },
-    // Shift+Cmd+L: seed from the selection/word and open focused on the replace
-    // input with every occurrence highlighted — one keystroke from Replace All.
-    { id: "selectAllOccurrences", title: "Select All Occurrences", palette: true, sections: [] },
+    // Cmd+F2 (and Shift+Cmd+L): seed from the selection/word and open focused
+    // on the replace input with every occurrence highlighted — one keystroke
+    // from Replace All.
+    //
+    // Titled after VS Code's `editor.action.changeAll` ("Change All
+    // Occurrences", Cmd+F2), which is the intent this actually serves: change
+    // every instance of what's selected. It is deliberately NOT VS Code's
+    // Shift+Cmd+L (`editor.action.selectHighlights`, "Select all occurrences of
+    // current selection") — that puts a cursor at every match, which a
+    // single-selection editor cannot do, so borrowing its verb promised
+    // something we can never deliver. Shift+Cmd+L stays bound as an additional
+    // chord so existing muscle memory keeps working.
+    //
+    // The command ID still reads `selectAllOccurrences`: renaming it would
+    // silently break any user's keybindings.json entry with no migration path,
+    // and the ID is not user-facing. The title is what users see.
+    { id: "selectAllOccurrences", title: "Change All Occurrences", palette: true, sections: [] },
     { id: "toggleToc", title: "Toggle Table of Contents", palette: true, sections: [] },
     { id: "editFrontmatter", title: "Edit Frontmatter", palette: true, sections: [] },
     { id: "tableInsertRowAbove", title: "Insert Row Above", palette: false, sections: ["table"] },
