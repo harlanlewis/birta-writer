@@ -2247,23 +2247,77 @@ body.handles-quiet:not(.handles-rest-always) .milkdown .editor .block-gutter-hos
     opacity: 0.7;
 }
 
-/* ProseMirror stamps this class on its root while the active selection is
-   not `visible` (our BlockRangeSelection, like PM's own NodeSelection). The
-   DOM selection still spans the blocks — native copy keeps working — so
-   suppress its paint: the block-range tint above is the ONE visual language
-   for "these blocks are selected". PM ships these rules in its own
-   stylesheet, which this bundle does not include. */
-/* The editor-scoped theme rule (`.milkdown .editor ::selection`, 0,2,0)
-   outranks a bare `.ProseMirror-hideselection *::selection` (0,1,1) — the
-   native highlight would double-paint under the block tint. Match its
-   scope and add the state class so suppression always wins. */
-.milkdown .editor.ProseMirror-hideselection ::selection,
-.ProseMirror-hideselection *::selection {
+/* Invisible selections (our BlockRangeSelection, PM's NodeSelection and
+   GapCursor, prosemirror-tables' CellSelection) still put a real DOM selection
+   in the document — native copy keeps working — so its paint has to be
+   suppressed: the block-range tint above is the ONE visual language for "these
+   blocks are selected", and the caret must not blink inside a selection the
+   browser is not painting. PM ships those rules in its own stylesheet, which
+   this bundle does not include.
+
+   NEVER key them off `.ProseMirror-hideselection`, the class PM toggles on the
+   editor ROOT for exactly this state (which is what this bundle used to do):
+   `caret-color` is inherited and `*::selection` is universal, so the toggle
+   re-resolves style for the whole document. On the 300 KB perf fixture that
+   cost 169 ms per invisible-selection change, against 3 ms with no rule
+   matching the class — and each of the two rules alone was enough to cost it
+   (MAR-258). Suppression is scoped instead:
+
+     - `.pm-hidden-selection` is a node decoration on the top-level blocks the
+       invisible selection touches (plugins/hiddenSelection.ts), so
+       invalidation stays inside those blocks;
+     - the caret rule below is STATIC — no class toggles — which is what covers
+       a gap cursor between two top-level blocks: its collapsed DOM selection
+       sits directly in the root, out of any decoration's reach.
+
+   Specificity: `.milkdown .editor ::selection` (0,2,0) is the theme rule these
+   must outrank, hence the editor-scoped form (0,3,0). */
+.milkdown .editor .pm-hidden-selection::selection,
+.milkdown .editor .pm-hidden-selection ::selection {
     background: transparent;
 }
-.milkdown .editor.ProseMirror-hideselection,
-.ProseMirror-hideselection {
+
+.milkdown .editor .pm-hidden-selection {
     caret-color: transparent;
+}
+
+/* NodeView chrome hosted inside a selected block is still typed into, so the
+   suppression must stop at a form field. The live case: the image toolbar
+   opens its path editor with mousedown preventDefault, deliberately keeping
+   the image node-selected while that input takes focus — so without this rule
+   the path is typed with no caret, as it was under the old root rule, which
+   reached the field the same way (pinned in e2e/imageView). */
+.milkdown .editor .pm-hidden-selection :is(input, textarea) {
+    caret-color: auto;
+}
+
+/* ...and the same field must PAINT the text it has selected. The caret rule
+   above is only half the carve-out: Cmd+A in a focused caption or path editor
+   selected 21 characters that rendered on plain background, indistinguishable
+   from no selection at all.
+
+   `:focus` is load-bearing, not decoration. Ungated, this reintroduces the
+   phantom highlight the suppression exists for — an image node-selected with
+   its caption NOT focused must stay unpainted (pinned in e2e/imageView). The
+   old root-scoped rule got this for free because ProseMirror drops
+   `.ProseMirror-hideselection` when the editor loses DOM focus; our decoration
+   keys off `selection.visible`, which is still false while the field is being
+   typed into, so focus has to be asked about explicitly. */
+.milkdown .editor .pm-hidden-selection :is(input, textarea):focus::selection {
+    background: var(--vscode-editor-selectionBackground);
+}
+
+/* A collapsed DOM selection directly in the editor root is never a text caret
+   — every text position lives inside a block — it is a gap cursor, which draws
+   its own blinking widget. Suppress the native caret there permanently and
+   restore it on every child subtree, so no class toggle ever has to change an
+   inherited property on the root. */
+.milkdown .editor {
+    caret-color: transparent;
+}
+
+.milkdown .editor > * {
+    caret-color: auto;
 }
 
 /* While a block drag is in flight the editor takes no pointer events — no

@@ -329,4 +329,53 @@ export async function run({ page, check, baseUrl }) {
         `caret=${JSON.stringify(caret)}`);
     check("the gap caret is visible while the editor has focus",
         caret?.visible === true, `caret=${JSON.stringify(caret)}`);
+
+    // ── 9. The NATIVE caret stays hidden beside the gap caret (MAR-258) ─────
+    // A gap cursor's DOM selection is collapsed directly in the editor root, so
+    // the browser would blink a second caret there. That used to be suppressed
+    // by `caret-color: transparent` on `.ProseMirror-hideselection` — a class
+    // on the root carrying an INHERITED property, which re-styled the whole
+    // document on every toggle (169 ms on the 300 KB perf fixture). The rule is
+    // static now: transparent on the root, restored on every child, so nothing
+    // toggles. Both halves are load-bearing — with only the first, the caret
+    // would be invisible everywhere the user types.
+    const caretColors = await page.evaluate(() => {
+        const root = document.querySelector(".ProseMirror");
+        return {
+            root: getComputedStyle(root).caretColor,
+            paragraph: getComputedStyle(root.querySelector(":scope > p")).caretColor,
+            cell: getComputedStyle(root.querySelector("th")).caretColor,
+        };
+    });
+    check("the native caret is suppressed in the editor root, where the gap cursor sits",
+        caretColors.root === "rgba(0, 0, 0, 0)", JSON.stringify(caretColors));
+    check("the native caret still paints inside the blocks the user types in",
+        caretColors.paragraph !== "rgba(0, 0, 0, 0)" && caretColors.cell !== "rgba(0, 0, 0, 0)",
+        JSON.stringify(caretColors));
+
+    // ── 10. A selected hr: ring, no native highlight (MAR-258) ──────────────
+    // ArrowDown from the paragraph above an hr is a NodeSelection, not a gap
+    // cursor (see the header) — the other invisible selection an arrow key
+    // reaches. Same contract: the ring is the selection's one visual, and the
+    // native highlight must not paint under it.
+    await boot("lead paragraph\n\n---\n\ntail paragraph\n");
+    await placeCaret("p", "end", 0);
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(150);
+    const hrSel = await page.evaluate(() => {
+        const root = document.querySelector(".ProseMirror");
+        const hr = root.querySelector("hr");
+        const tail = [...root.children].filter((el) => el.tagName === "P").pop();
+        return {
+            hide: root.classList.contains("ProseMirror-hideselection"),
+            ring: hr?.classList.contains("ProseMirror-selectednode"),
+            marked: hr?.classList.contains("pm-hidden-selection"),
+            bg: hr ? getComputedStyle(hr, "::selection").backgroundColor : null,
+            tailBg: tail ? getComputedStyle(tail, "::selection").backgroundColor : null,
+        };
+    });
+    check("a selected hr suppresses the native highlight on itself only",
+        hrSel.hide && hrSel.ring && hrSel.marked && hrSel.bg === "rgba(0, 0, 0, 0)" &&
+            hrSel.tailBg !== "rgba(0, 0, 0, 0)",
+        JSON.stringify(hrSel));
 }

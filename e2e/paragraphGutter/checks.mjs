@@ -389,25 +389,44 @@ export async function run({ page, check, baseUrl }) {
         () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
 
-    // Block-range selection must not double-paint: the native ::selection
-    // is suppressed (hideselection wins the cascade) while the tint shows.
+    // Block-range selection must not double-paint: the native ::selection is
+    // suppressed on the SELECTED block while the tint shows. Scroll to the top
+    // and click the paragraph's middle first — the sticky heading bar overlays
+    // the top few pixels of what is under it, so a click at +8px lands in the
+    // heading instead. That went unnoticed while the suppression was
+    // document-wide, because then every block read as suppressed (MAR-258).
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForTimeout(80);
     const firstP = await page.$eval(".ProseMirror > p", (el) => {
         const r = el.getBoundingClientRect();
-        return { x: r.x + 30, y: r.y + 8 };
+        return { x: r.x + 30, y: r.y + r.height / 2 };
     });
     await page.mouse.click(firstP.x, firstP.y);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(120);
     const selectionPaint = await page.evaluate(() => {
         const root = document.querySelector(".ProseMirror");
+        const p = root.querySelector(":scope > p");
+        const other = [...root.children].find((el) => el.tagName === "H2");
         return {
             hide: root.classList.contains("ProseMirror-hideselection"),
-            bg: getComputedStyle(root.querySelector("p"), "::selection").backgroundColor,
+            selected: root.querySelector(":scope > .pm-hidden-selection") === p,
+            bg: getComputedStyle(p, "::selection").backgroundColor,
+            // Scoped, not document-wide: an unselected block keeps the theme
+            // highlight and a paintable caret. The rule this replaced put both
+            // on the editor root, restyling every element on every toggle.
+            otherBg: getComputedStyle(other, "::selection").backgroundColor,
+            otherCaret: getComputedStyle(other).caretColor,
             tint: getComputedStyle(document.querySelector(".block-range-tint")).display !== "none",
         };
     });
-    check("block selection: native paint suppressed, tint shown",
-        selectionPaint.hide && selectionPaint.bg === "rgba(0, 0, 0, 0)" && selectionPaint.tint,
+    check("block selection: native paint suppressed on the selected block, tint shown",
+        selectionPaint.hide && selectionPaint.selected &&
+            selectionPaint.bg === "rgba(0, 0, 0, 0)" && selectionPaint.tint,
+        JSON.stringify(selectionPaint));
+    check("block selection: an unselected block keeps its highlight and caret",
+        selectionPaint.otherBg !== "rgba(0, 0, 0, 0)" &&
+            selectionPaint.otherCaret !== "rgba(0, 0, 0, 0)",
         JSON.stringify(selectionPaint));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(80);
