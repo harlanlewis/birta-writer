@@ -137,17 +137,28 @@ export const TYPING_MIN_MS = 0.5;
 export const TYPING_BLOCK_MIN_PCT = 25;
 export const TYPING_BLOCK_MIN_MS = 250;
 
-// `caret` (median selection-only dispatch) IS gated, on the same floors as the
-// typing median. It exists because selection transactions were the one class
-// of work nothing in this repo measured, and an upstream plugin quietly billed
-// 2.4 ms to every arrow key and click on a 300 KB document for as long as that
-// was true (MAR-137). Unlike `block` it is a clean per-transaction median, not
-// a threshold-sensitive sum, so it does not inflate on a loaded runner the way
-// `block` does — which is exactly why that one is reported and this one gates.
-// Validated the way MAR-224 validated the typing gate: with the regression
-// reintroduced it read 5.7 ms against 3.5 ms fixed, a 39% move.
+// `caret` (selection-only dispatch) IS gated. It exists because selection
+// transactions were the one class of work nothing in this repo measured, and
+// an upstream plugin quietly billed 2.4 ms to every arrow key and click on a
+// 300 KB document for as long as that was true (MAR-137).
+//
+// It gates on the burst TOTAL, not the median — corrected 2026-07-30 after the
+// median produced two false REGRESSED verdicts (+72%, +82%) and one neutral
+// against effectively the same change. The old code assumed a burst yielded
+// CARET_MOVES independent samples; it does not. Back-to-back arrow presses
+// coalesce `selectionchange`, so 30 presses collapse into 2–7 transactions and
+// the "median" was an order statistic over n=2. A total is not an order
+// statistic: coalescing changes how the burst's work is split across
+// transactions, but not how much of it there is, so the sum is invariant to
+// exactly the thing that made the median unstable.
+//
+// The sample floor is a second, independent guard: below it the caret verdict
+// ABSTAINS rather than guessing. Abstention is always printed — a gate that
+// quietly stops gating is worse than one that fails, because nothing tells you
+// it stopped.
 export const TYPING_CARET_MIN_PCT = 10;
 export const TYPING_CARET_MIN_MS = 0.5;
+export const TYPING_CARET_MIN_SAMPLES = 8;
 
 /**
  * Per-fixture typing verdict for one A/B pass. `pass` maps fixture →
@@ -186,15 +197,28 @@ export function typingAbVerdict(pass) {
                 blockNote = "⚠ main-thread block grew (reported, not gated)";
             }
         }
-        // Caret (selection-only dispatch): same floors, same gating as typing.
-        const bc = r.base?.caretMedian, ac = r.head?.caretMedian;
+        // Caret (selection-only dispatch). Gated on the per-burst TOTAL; the
+        // median rides along as reported context only. See the note on
+        // TYPING_CARET_MIN_SAMPLES for why the median cannot carry the gate.
+        const bc = r.base?.caretTotal, ac = r.head?.caretTotal;
+        const bn = r.base?.caretSamples, an = r.head?.caretSamples;
         let caret = null;
         if (typeof bc === "number" && typeof ac === "number") {
             const dCaret = ac - bc;
             const dCaretPct = bc > 0 ? (dCaret / bc) * 100 : (ac > 0 ? 100 : 0);
-            const realCaret = Math.abs(dCaretPct) >= TYPING_CARET_MIN_PCT
+            // A missing count is treated as insufficient, not as "plenty": an
+            // older merge-base predates the field, and reading absent as OK
+            // would gate on a bundle we cannot characterize.
+            const samples = Math.min(bn ?? 0, an ?? 0);
+            const insufficient = samples < TYPING_CARET_MIN_SAMPLES;
+            const realCaret = !insufficient
+                && Math.abs(dCaretPct) >= TYPING_CARET_MIN_PCT
                 && Math.abs(dCaret) >= TYPING_CARET_MIN_MS;
-            caret = { bc, ac, dCaret, dCaretPct, realCaret };
+            caret = {
+                bc, ac, dCaret, dCaretPct, realCaret, insufficient, samples,
+                bMedian: r.base?.caretMedian ?? null,
+                aMedian: r.head?.caretMedian ?? null,
+            };
             if (realCaret && dCaret > 0 && gated) { regressed.add(name); }
         }
         rows.push({ name, bm, am, dMs, dPct, gated, mark, block, blockNote, caret });
