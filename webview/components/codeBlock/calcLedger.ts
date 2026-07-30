@@ -6,15 +6,19 @@
  *
  * It is read-only, non-content DOM sitting inside an editable NodeView, which
  * is what makes its selection handling delicate — the pane owns the `contains`
- * predicate the NodeView's `stopEvent`/`ignoreMutation` consult, and the
- * click-to-blur behavior that keeps a stale ProseMirror caret from editing the
- * document invisibly. Those three pieces belong together; splitting them is
- * how a ledger becomes unselectable.
+ * predicate the NodeView's `stopEvent`/`ignoreMutation` consult, without which
+ * ProseMirror re-asserts its own selection on every mousemove and the ledger
+ * becomes unselectable. The ledger is the only preview pane that opts text
+ * selection back in (`.calc-render` is `user-select: text`), so that half of
+ * the policy stays scoped here.
+ *
+ * The other half — blurring the editor on a click, so a stale ProseMirror
+ * caret can't edit the document invisibly — moved to the NodeView, because it
+ * is true of every preview pane and not just this one (MAR-200).
  *
  * The gate itself (`birta.calc.blocks.enabled` plus the current language) lives
  * in the NodeView and reaches this module as `isActive`.
  */
-import type { EditorView } from "@/pm";
 import { t } from "@/i18n";
 import { ensureCalcUnits, evaluateCalcBlock } from "@/utils/calc";
 
@@ -32,11 +36,10 @@ export type CalcLedger = {
 };
 
 export function createCalcLedger(opts: {
-    view: EditorView;
     /** True while this block is a calc block AND is showing its preview. */
     isActive: () => boolean;
 }): CalcLedger {
-    const { view, isActive } = opts;
+    const { isActive } = opts;
 
     const calcPreview = document.createElement("div");
     calcPreview.className = "calc-preview";
@@ -44,30 +47,6 @@ export function createCalcLedger(opts: {
     const calcRender = document.createElement("div");
     calcRender.className = "calc-render";
     calcPreview.appendChild(calcRender);
-    calcPreview.addEventListener("click", () => {
-        // stopEvent keeps ProseMirror's mouse handling out of the ledger —
-        // which also means PM's caret stays wherever it was, invisibly. A
-        // later Enter/keymap stroke would edit the document at that stale
-        // caret with no visual feedback. Clicking read-only chrome should
-        // leave the editor inert until the user clicks back into content, so
-        // drop editor focus; clicking any content refocuses through PM's own
-        // mousedown. On `click` (not mousedown) so it runs AFTER the
-        // browser's own focus settling, which would otherwise hand focus
-        // straight back — and because blurring the host collapses the DOM
-        // selection, a ledger selection (a drag that just ended here) is
-        // captured first and re-asserted after: inert editor, intact copy.
-        if (!view.hasFocus()) { return; }
-        const sel = window.getSelection();
-        const ledgerRanges =
-            sel && !sel.isCollapsed && calcPreview.contains(sel.anchorNode)
-                ? Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i).cloneRange())
-                : [];
-        view.dom.blur();
-        if (sel && ledgerRanges.length > 0) {
-            sel.removeAllRanges();
-            for (const range of ledgerRanges) { sel.addRange(range); }
-        }
-    });
 
     // What the ledger currently shows; NodeView update() also fires for
     // decoration-only churn (block selection, folds), and re-evaluating an

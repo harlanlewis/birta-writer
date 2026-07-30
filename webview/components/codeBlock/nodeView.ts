@@ -335,7 +335,6 @@ export function createCodeBlockView(
     let latexRenderTimer: ReturnType<typeof setTimeout> | null = null;
 
     const calcLedger = createCalcLedger({
-        view,
         isActive: () => isCalc && isPreviewMode,
     });
     const calcPreview = calcLedger.el;
@@ -344,6 +343,43 @@ export function createCodeBlockView(
     // The single element that is visible while in preview mode.
     const previewEl = (): HTMLElement =>
         isCalc ? calcPreview : isLatex ? latexPreview : mermaidPreview;
+
+    /** Is this node part of the preview the user can currently see? */
+    const inVisiblePreview = (node: EventTarget | Node | null): boolean =>
+        node instanceof Node && isPreviewMode && previewEl().contains(node);
+
+    // A click on a preview pane must leave the editor INERT (MAR-200).
+    //
+    // None of the three panes moves ProseMirror's selection: the mermaid pane
+    // swallows its own mousedown for the pan drag, the ledger is kept out of
+    // PM's mouse handling by `stopEvent`, and even the plain LaTeX pane — no
+    // handler at all — leaves the caret untouched, because a click on
+    // contentEditable=false chrome inside a NodeView never lands anywhere PM
+    // can map. So PM keeps whatever caret it had, and the user's next Enter
+    // runs the keymap *somewhere else in the document*: probe-confirmed to
+    // split a paragraph they weren't looking at. Clicking read-only chrome
+    // should therefore leave the editor inert until the user clicks back into
+    // content, which refocuses it through PM's own mousedown.
+    //
+    // On `click` (not mousedown) so it runs AFTER the browser's own focus
+    // settling, which would otherwise hand focus straight back — and because
+    // blurring the host collapses the DOM selection, a selection inside the
+    // pane (a drag that just ended there) is captured first and re-asserted
+    // after: inert editor, intact copy.
+    wrapper.addEventListener("click", (e) => {
+        if (!inVisiblePreview(e.target)) { return; }
+        if (!view.hasFocus()) { return; }
+        const sel = window.getSelection();
+        const paneRanges =
+            sel && !sel.isCollapsed && inVisiblePreview(sel.anchorNode)
+                ? Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i).cloneRange())
+                : [];
+        view.dom.blur();
+        if (sel && paneRanges.length > 0) {
+            sel.removeAllRanges();
+            for (const range of paneRanges) { sel.addRange(range); }
+        }
+    });
 
     // ── Drag handle ────────────────────────────────────────
     const resizeHandle = document.createElement("div");
@@ -580,6 +616,13 @@ export function createCodeBlockView(
             // ledger selection. The ledger holds no buttons (the header and
             // resize handle live outside calcPreview), and it is
             // contentEditable=false, so no editing event can originate here.
+            //
+            // Scoped to the ledger, not to every preview pane: the ledger is
+            // the only one that opts text selection back in (`.calc-render`
+            // is `user-select: text`; a mermaid canvas and a KaTeX formula are
+            // `user-select: none` by design), so it is the only one with a
+            // selection to protect. Blur-on-click above is the part that IS
+            // uniform.
             return event.target instanceof Node && calcLedger.contains(event.target);
         },
 
