@@ -38,6 +38,7 @@ export { linkInputRule } from "./linkInputRule";
 export { linkUrlCompletePlugin } from "./linkUrlComplete";
 export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
 export { pasteMarkdownPlugin } from "./pasteMarkdown";
+export { pasteTableCellPlugin } from "./pasteTableCell";
 export { prismHighlightPlugin } from "./prismHighlight";
 // NOTE: plugins/embed is deliberately NOT re-exported here. The barrel is in
 // the eager graph, and the embed plugin must stay lazy (dynamic import in

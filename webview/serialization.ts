@@ -11,6 +11,7 @@ import { createFidelitySerializerPlugin } from "./plugins/fidelitySerializer";
 import { highlightPlugin } from "./plugins/highlight";
 import { listItemSpreadBoolPlugins, listSpreadBooleanPlugins, listSpreadReplacedPlugins } from "./plugins/list";
 import { imageStringAttrPlugins, imageStringAttrReplacedPlugins } from "./plugins/image";
+import { strikethroughHtmlPlugins, strikethroughHtmlReplacedPlugins } from "./plugins/pasteHtml";
 import { linkBoundaryPlugins } from "./plugins/linkBoundary";
 import { notionCalloutNodes, notionCalloutRemark } from "./plugins/notionCallouts";
 import { referenceLinksPlugin } from "./plugins/referenceLinks";
@@ -220,10 +221,14 @@ export const pureCommonmark = [
  * plugins silently running again.
  */
 export const gfmFidelity = [
-    gfm.filter((plugin) => plugin !== upstreamKeepTableAlignPlugin),
+    gfm.filter((plugin) =>
+        plugin !== upstreamKeepTableAlignPlugin
+        && !strikethroughHtmlReplacedPlugins.has(plugin)),
     keepTableAlignPlugin,
     tableAlignDefaultPlugin,
     listItemSpreadBoolPlugins,
+    // Recognise <s>/<strike> on paste; parse-only, serialization unchanged.
+    strikethroughHtmlPlugins,
 ].flat();
 
 // Replace `break` nodes with `html` nodes carrying the recorded `<br>` bytes
