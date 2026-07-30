@@ -5,25 +5,15 @@ description: Drive the real built webview bundle (dist/webview.js) in headless C
 
 # Verifying webview changes at runtime
 
-The user-facing surface is a VS Code custom-editor webview. Launching an
-Extension Development Host takes over the user's screen, so verify against
-the **real built bundle** in headless Chromium instead: everything except
-VS Code's chrome and message host is production code.
+The user-facing surface is a VS Code custom-editor webview. Launching an Extension Development Host takes over the user's screen, so verify against the **real built bundle** in headless Chromium instead: everything except VS Code's chrome and message host is production code.
 
 ## Check the in-repo e2e suites FIRST
 
-`e2e/` holds committed, rerunnable suites driven by `pnpm build && pnpm
-test:e2e` (one suite: `node e2e/run.mjs <name>`). Each suite is a directory
-with an `index.html` harness page, a `checks.mjs` exporting
-`run({ page, check, baseUrl })`, and any fixtures; `e2e/run.mjs` serves
-`dist/` plus the suite dir and runs Playwright against it.
+`e2e/` holds committed, rerunnable suites driven by `pnpm build && pnpm test:e2e` (one suite: `node e2e/run.mjs <name>`). Each suite is a directory with an `index.html` harness page, a `checks.mjs` exporting `run({ page, check, baseUrl })`, and any fixtures; `e2e/run.mjs` serves `dist/` plus the suite dir and runs Playwright against it.
 
-- If a suite already covers the surface you changed (e.g. `e2e/imageView/`),
-  extend it with new checks instead of building a scratchpad harness — the
-  checks then guard the change forever.
+- If a suite already covers the surface you changed (e.g. `e2e/imageView/`), extend it with new checks instead of building a scratchpad harness — the checks then guard the change forever.
 - For a brand-new surface, create `e2e/<name>/` following the same shape.
-- Fall back to the scratchpad recipe below only for one-off exploration you
-  genuinely don't want to keep (screenshot probes, throwaway comparisons).
+- Fall back to the scratchpad recipe below only for one-off exploration you genuinely don't want to keep (screenshot probes, throwaway comparisons).
 
 ## Recipe (scratchpad one-offs)
 
@@ -48,29 +38,16 @@ with an `index.html` harness page, a `checks.mjs` exporting
      <script type="module" src="dist/webview.js"></script>
      ```
    - All `__i18n` reads are optional-chained; the minimal stub boots cleanly.
-   - Define a block of `--vscode-*` CSS variables in the harness (dark-theme
-     hexes) — outside VS Code they don't exist and menus render transparent.
-4. Serve over HTTP (ESM chunks won't load from `file://`):
-   `python3 -m http.server 8321` from the harness dir.
-5. Playwright: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i playwright` in the
-   harness dir — browsers are already cached in `~/Library/Caches/ms-playwright`.
-6. Drive with a node script: `page.goto`, `waitForSelector(".milkdown .ProseMirror")`,
-   click/`keyboard.type`, screenshot, assert. Outbound messages (autosave
-   markdown!) are in `window.__posted` — asserting the serialized `update`
-   content is the strongest end-to-end check.
+   - Define a block of `--vscode-*` CSS variables in the harness (dark-theme hexes) — outside VS Code they don't exist and menus render transparent.
+4. Serve over HTTP (ESM chunks won't load from `file://`): `python3 -m http.server 8321` from the harness dir.
+5. Playwright: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm i playwright` in the harness dir — browsers are already cached in `~/Library/Caches/ms-playwright`.
+6. Drive with a node script: `page.goto`, `waitForSelector(".milkdown .ProseMirror")`, click/`keyboard.type`, screenshot, assert. Outbound messages (autosave markdown!) are in `window.__posted` — asserting the serialized `update` content is the strongest end-to-end check.
 
 ## Gotchas
 
-- Heading NodeViews add chrome text ("#H2" fold labels) — never assert block
-  `textContent` equality; assert via `window.__posted` markdown or `includes()`.
-- `Meta+ArrowDown` caret navigation is unreliable in headless Chromium; don't
-  assume absolute block order after it. Prefer doc-level `includes()` asserts.
-- Toolbar/TOC buttons stopPropagation on mousedown — clicks there only reach
-  document-level listeners registered in the **capture** phase.
-- `page.on("pageerror")` + console-error collection catches boot regressions
-  the assertions miss; always include it.
+- Heading NodeViews add chrome text ("#H2" fold labels) — never assert block `textContent` equality; assert via `window.__posted` markdown or `includes()`.
+- `Meta+ArrowDown` caret navigation is unreliable in headless Chromium; don't assume absolute block order after it. Prefer doc-level `includes()` asserts.
+- Toolbar/TOC buttons stopPropagation on mousedown — clicks there only reach document-level listeners registered in the **capture** phase.
+- `page.on("pageerror")` + console-error collection catches boot regressions the assertions miss; always include it.
 
-A worked example (slash menu, 25 checks) lived at
-`<scratchpad>/harness/drive.js` in the MAR-18 session — grouped-menu render,
-aria combobox state, filter/apply/Escape/suppression, outside-click,
-viewport-bottom flip.
+A worked example (slash menu, 25 checks) lived at `<scratchpad>/harness/drive.js` in the MAR-18 session — grouped-menu render, aria combobox state, filter/apply/Escape/suppression, outside-click, viewport-bottom flip.

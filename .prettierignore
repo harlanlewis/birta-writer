@@ -4,6 +4,13 @@
 # so leave these files exactly as written/saved.
 samples/
 
+# The round-trip fidelity corpus. `roundTripCorpus.test.ts` asserts that opening
+# and saving each of these is byte-identical, so their line structure IS the test
+# data — hard-wrapped paragraphs included, since that is how much Markdown in the
+# wild is actually written. Any reformatter run over this directory either fails
+# the suite or, worse, silently deletes the case it was covering.
+webview/__tests__/fixtures/
+
 # Build artifacts
 dist/
 releases/
