@@ -95,6 +95,13 @@ export class Selection extends Range {
     }
 }
 
+/** Mirrors vscode.TextEditorSelectionChangeKind (values match the real enum) */
+export enum TextEditorSelectionChangeKind {
+    Keyboard = 1,
+    Mouse = 2,
+    Command = 3,
+}
+
 /** Mirrors vscode.TextEditorRevealType (values match the real enum) */
 export enum TextEditorRevealType {
     Default = 0,

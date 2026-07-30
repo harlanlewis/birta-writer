@@ -11,6 +11,7 @@ import { WordCountStatusBar } from "./wordCountStatus";
 import { registerAgentBridge, type BirtaApi } from "./agentBridge";
 import { reportErrorWithNotification } from "./errorSink";
 import { registerSendFeedback } from "./feedback/sendFeedback";
+import { captureNavTarget } from "./searchNavigation";
 import {
     getBirtaConfiguration,
     readBirtaSetting,
@@ -145,19 +146,34 @@ export function activate(context: vscode.ExtensionContext) {
                 const uriStr = uri.toString();
                 if (MarkdownEditorProvider.suppressAutoSwitch.has(uriStr)) { continue; }
 
-                // If the URI fragment contains a line number (global search passes #L10 format), store it in advance so WYSIWYG can jump after initialization
+                // A `#L10` fragment (some external openers use one) already
+                // states the target, so take it without waiting for anything.
                 const fragMatch = uri.fragment?.match(/^L?(\d+)/);
-                if (fragMatch) {
-                    const fragLine = parseInt(fragMatch[1], 10);
-                    if (fragLine >= 1) {
-                        console.log('[onDidChangeTabs] fragment line:', fragLine, 'fsPath:', uri.fsPath);
-                        MarkdownEditorProvider.current?.setPendingNavigation(uri.fsPath, fragLine);
-                    }
+                const fragLine = fragMatch ? parseInt(fragMatch[1], 10) : 0;
+                // Otherwise the open may BE a navigation — a search-result
+                // click, a problems-panel entry, `code -g file:line`. VS Code
+                // aims those at the raw text editor it just opened, and this
+                // swap is about to close it, so read the target off it first
+                // (src/searchNavigation.ts explains the timing).
+                const nav = fragLine >= 1
+                    ? { line: fragLine, column: 0 }
+                    : await captureNavTarget(uri);
+                if (nav) {
+                    MarkdownEditorProvider.current?.setPendingNavigation(
+                        uri.fsPath,
+                        nav.line,
+                        nav.column,
+                        nav.anchor,
+                    );
                 }
 
                 // Close the text tab first, then open WYSIWYG (consistent with the switchToPreview command)
                 const isPreview = tab.isPreview;
                 const viewCol = tab.group.viewColumn;
+                // The capture above yields to the event loop, so re-check: the
+                // user may have closed or moved this tab in the meantime, and
+                // closing a stale handle would take the wrong editor with it.
+                if (!vscode.window.tabGroups.all.some((group) => group.tabs.includes(tab))) { continue; }
                 await vscode.window.tabGroups.close(tab);
                 await vscode.commands.executeCommand(
                     "vscode.openWith",
@@ -167,70 +183,6 @@ export function activate(context: vscode.ExtensionContext) {
                 );
             }
         }),
-    );
-
-    // Listen for text editor activation events: capture the cursor position of the .md text editor that briefly appears during global search navigation
-    context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor((editor) => {
-            if (!editor) { return; }
-            const { uri } = editor.document;
-            if (!uri.fsPath.endsWith('.md')) { return; }
-            // While switching to the text editor (suppressNavFromTextEditor is set), skip reporting the line number
-            // to avoid the line number being fed back to the WebView and triggering an unnecessary scrollToLine when actively switching away
-            if (MarkdownEditorProvider.current?.isNavFromTextEditorSuppressed) { return; }
-            const line = editor.selection.active.line + 1; // convert to 1-indexed
-            if (line >= 1) {
-                MarkdownEditorProvider.current?.setPendingNavigation(uri.fsPath, line);
-            }
-        }),
-    );
-
-    // Intercept the revealLine command: VS Code calls this command to navigate to a specific line when a global search result is clicked.
-    // If there is currently a .md custom editor tab (iterate over all groups), forward it to the WebView; otherwise fall back to the text editor behavior.
-    context.subscriptions.push(
-        vscode.commands.registerCommand(
-            'revealLine',
-            (args: { lineNumber: number; at?: string }) => {
-                console.log('[revealLine] triggered, lineNumber:', args.lineNumber, 'at:', args.at);
-                const targetLine = args.lineNumber + 1; // convert to 1-indexed
-                // Always write to the global fallback: ensure onDidChangeViewState (including the delayed check) can consume it
-                MarkdownEditorProvider.current?.setGlobalRevealLine(targetLine);
-                // Set pending navigation for all registered .md panels
-                // to avoid relying solely on tab.isActive (the order of tab switching and revealLine triggering is uncertain)
-                const mdPaths = MarkdownEditorProvider.current?.getAllMdFsPaths() ?? [];
-                if (mdPaths.length > 0) {
-                    console.log('[revealLine] number of registered .md panels:', mdPaths.length, 'line:', targetLine);
-                    for (const fsPath of mdPaths) {
-                        MarkdownEditorProvider.current?.setPendingNavigation(fsPath, targetLine);
-                    }
-                    return;
-                }
-                // Fallback: iterate over tab groups to find the active .md custom tab
-                for (const group of vscode.window.tabGroups.all) {
-                    for (const tab of group.tabs) {
-                        if (tab.input instanceof vscode.TabInputCustom) {
-                            const uri = (tab.input as vscode.TabInputCustom).uri;
-                            if (uri.fsPath.endsWith('.md') && tab.isActive) {
-                                console.log('[revealLine] found active .md custom tab, fsPath:', uri.fsPath);
-                                MarkdownEditorProvider.current?.setPendingNavigation(uri.fsPath, targetLine);
-                                return;
-                            }
-                        }
-                    }
-                }
-                console.log('[revealLine] no .md panel found, waiting for delayed viewState consumption');
-                // Fallback: text editor uses revealRange
-                const editor = vscode.window.activeTextEditor;
-                if (editor) {
-                    const pos = new vscode.Position(args.lineNumber, 0);
-                    const revealType =
-                        args.at === 'top' ? vscode.TextEditorRevealType.AtTop
-                        : args.at === 'center' ? vscode.TextEditorRevealType.InCenter
-                        : vscode.TextEditorRevealType.Default;
-                    editor.revealRange(new vscode.Range(pos, pos), revealType);
-                }
-            },
-        ),
     );
 
     // Debug mode: initialize the context variable
