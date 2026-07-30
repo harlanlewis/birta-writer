@@ -371,6 +371,28 @@ export const listItemSpreadBoolSchema = extendListItemSchemaForTask.extendSchema
                 // this item never had one recorded for.
                 blankBefore: { default: null },
             },
+            // PASTE fidelity (MAR-21 item 2): GFM's own rule reads `checked`
+            // only from `data-checked`, which is what OUR toDOM writes — but
+            // rendered task lists in the wild (GitHub, Notion, any Markdown
+            // renderer) mark an item with a real `<input type="checkbox">`
+            // instead, so pasting one dropped every tick and the list arrived
+            // as plain bullets. Tried FIRST and returns false for any `li`
+            // without a checkbox, so ordinary list items fall through to the
+            // stock rules untouched.
+            parseDOM: [
+                {
+                    tag: "li",
+                    getAttrs: (dom: HTMLElement | string) => {
+                        if (typeof dom === "string") { return false; }
+                        const box = dom.querySelector("input[type=checkbox]");
+                        // Only THIS item's own checkbox — a nested sublist's
+                        // must not re-mark the parent.
+                        if (!box || box.closest("li") !== dom) { return false; }
+                        return { checked: (box as HTMLInputElement).checked };
+                    },
+                },
+                ...(base.parseDOM ?? []),
+            ],
             parseMarkdown: {
                 match: base.parseMarkdown.match,
                 runner: (state, node, type) => {

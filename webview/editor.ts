@@ -56,6 +56,7 @@ import {
     linkUrlCompletePlugin,
     pasteLinkPlugin,
     pasteMarkdownPlugin,
+    pasteTableCellPlugin,
     mathInlineEditPlugin,
     wikiLinkCompletePlugin,
     headingLinkCompletePlugin,
@@ -591,6 +592,10 @@ export async function createEditor(
         // (clipboardTextParser; gated on birta.pasteFormat, and on the
         // Shift+Cmd+V plain-paste flag).
         .use(pasteMarkdownPlugin)
+        // A GFM cell is inline-only: whatever either paste path produced,
+        // flatten it to inline content when it lands in one, so the table
+        // keeps its shape instead of gaining columns or splitting apart.
+        .use(pasteTableCellPlugin)
         .use(wikiLinkCompletePlugin)
         // Typing `#` mid-prose (or the Section Link command) offers the
         // document's headings; picking inserts a plain [title](#slug) link.

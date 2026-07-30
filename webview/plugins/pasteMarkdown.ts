@@ -35,39 +35,20 @@
 import { parserCtx } from "@milkdown/core";
 import { $prose } from "@milkdown/utils";
 import { Plugin, Slice } from "@/pm";
-import type { Node as ProseNode, ResolvedPos } from "@/pm";
-
-/**
- * A GFM table cell holds INLINE content only — there is no syntax for a list,
- * a heading, or a nested table inside one. So block structure parsed into a
- * cell could never round-trip, and ProseMirror, unable to fit it, splits the
- * table apart to place it: pasting "- one\n- two" into a cell left three table
- * fragments with a stray list item between them.
- *
- * Inside a cell the Markdown path is therefore taken only for a lone
- * paragraph, whose inline content merges into the cell safely (so pasting
- * "**bold**" still lands as bold). Everything else defers to the literal
- * insert — which mangles a cell in its own, milder way, but that is the
- * pre-existing behavior and not this plugin's to change.
- */
-function fitsPasteContext($context: ResolvedPos, doc: ProseNode): boolean {
-    for (let d = $context.depth; d > 0; d--) {
-        const name = $context.node(d).type.name;
-        if (name === "table_cell" || name === "table_header") {
-            return doc.childCount === 1 && doc.firstChild?.type.name === "paragraph";
-        }
-    }
-    return true;
-}
+import type { Node as ProseNode } from "@/pm";
 
 /**
  * Parses clipboard text as a Markdown document and returns it as a slice, or
  * null to defer to ProseMirror's literal-text default.
+ *
+ * A paste landing inside a table cell needs no special case HERE: whatever
+ * blocks this produces, plugins/pasteTableCell.ts flattens to inline content
+ * afterwards in `transformPasted` (MAR-274), which is also what keeps the
+ * literal path from widening the table.
  */
 export function markdownSliceFromText(
     parse: (markdown: string) => ProseNode | null,
     text: string,
-    $context?: ResolvedPos,
 ): Slice | null {
     // Whitespace-only clipboards carry no syntax to recover and parse to an
     // empty document; let the default insert the characters as they are.
@@ -75,7 +56,6 @@ export function markdownSliceFromText(
     try {
         const doc = parse(text);
         if (!doc || doc.content.size === 0) { return null; }
-        if ($context && !fitsPasteContext($context, doc)) { return null; }
         // The open depths here are advisory: parseFromClipboard discards them
         // and re-derives its own with Slice.maxOpen + normalizeSiblings against
         // the paste context. That is what lets a single pasted paragraph merge
@@ -91,11 +71,11 @@ export function markdownSliceFromText(
 export const pasteMarkdownPlugin = $prose((ctx) =>
     new Plugin({
         props: {
-            clipboardTextParser(text, $context, plain) {
+            clipboardTextParser(text, _$context, plain) {
                 // Falsy return = "not handled"; the prop type has no null.
                 const declined = null as unknown as Slice;
                 if (plain || window.__i18n?.pasteFormat === "plainText") { return declined; }
-                return markdownSliceFromText(ctx.get(parserCtx), text, $context) ?? declined;
+                return markdownSliceFromText(ctx.get(parserCtx), text) ?? declined;
             },
         },
     }));

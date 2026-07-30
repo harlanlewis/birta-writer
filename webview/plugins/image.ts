@@ -30,6 +30,25 @@ export const imageStringAttrSchema = imageSchema.extendSchema((prev) => (ctx) =>
     const base = prev(ctx);
     return {
         ...base,
+        // Milkdown's stock rule reads `title` as
+        // `getAttribute('title') || getAttribute('alt') || ''`, so PASTING an
+        // ordinary `<img src alt>` from a browser invented a title the source
+        // never had: `![alt](src "alt")`. alt and title are different things
+        // (the accessible text vs. the hover tooltip), and the invented one is
+        // then written to the file. Read each from its own attribute.
+        parseDOM: [
+            {
+                tag: "img[src]",
+                getAttrs: (dom: HTMLElement | string) => {
+                    if (typeof dom === "string") { return false; }
+                    return {
+                        src: dom.getAttribute("src") || "",
+                        alt: dom.getAttribute("alt") || "",
+                        title: dom.getAttribute("title") || "",
+                    };
+                },
+            },
+        ],
         parseMarkdown: {
             match: base.parseMarkdown.match,
             runner: (state, node, type) => {

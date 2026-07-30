@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Editor, editorViewCtx, rootCtx, defaultValueCtx, parserCtx, serializerCtx } from "@milkdown/core";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import { markdownSliceFromText, pasteMarkdownPlugin } from "../plugins/pasteMarkdown";
+import { pasteTableCellPlugin } from "../plugins/pasteTableCell";
 import { parseFromClipboard, Slice, TextSelection } from "../pm";
 import type { EditorView, Node as ProseNode } from "../pm";
 
@@ -27,6 +28,7 @@ async function makeEditor(markdown: string): Promise<Editor> {
         .use(pureCommonmark)
         .use(gfmFidelity)
         .use(pasteMarkdownPlugin)
+        .use(pasteTableCellPlugin)
         .create();
 }
 
@@ -225,16 +227,34 @@ describe("pasteMarkdownPlugin — clipboardTextParser", () => {
             expect(outline(v.state.doc)).toBe("table");
         });
 
-        it("a pasted list should decline rather than split the table apart", () => {
-            expect(markdownSliceFromText(
-                editor.action((ctx) => ctx.get(parserCtx)), "- one\n- two", v.state.selection.$from,
-            )).toBeNull();
-            pasteAndSerialize(editor, v, "- one\n- two");
+        // MAR-274: a list cannot live in a GFM cell, so it lands as the cell's
+        // lines joined by hard breaks (`<br>`) — the table keeps its shape.
+        it("a pasted list should flatten into the one cell, not split the table", () => {
+            const md = pasteAndSerialize(editor, v, "- one\n- two");
+            expect(md).toBe("| one<br>twoa | b |\n|---|---|\n| 1 | 2 |\n");
             expect(outline(v.state.doc)).toBe("table");
         });
 
-        it("a pasted table should decline rather than nest a table in a cell", () => {
-            pasteAndSerialize(editor, v, "| x | y |\n| - | - |\n| 9 | 8 |");
+        it("a pasted table should flatten into the one cell, not nest or widen", () => {
+            const md = pasteAndSerialize(editor, v, "| x | y |\n| - | - |\n| 9 | 8 |");
+            expect(md).toBe("| x<br>y<br>9<br>8a | b |\n|---|---|\n| 1 | 2 |\n");
+            expect(outline(v.state.doc)).toBe("table");
+        });
+
+        // The literal path had its own, milder version of the same bug: PM
+        // splits clipboard text into one paragraph per line, and each became a
+        // CELL — two pasted lines widened a 2-column table to 5.
+        it("a literal (shift) paste should flatten too, not widen the table", () => {
+            // The markers survive as literal text (a leading "-" inside a cell
+            // is not a list marker, so it needs no escape).
+            const md = pasteAndSerialize(editor, v, "- one\n- two", { plain: true });
+            expect(md).toBe("| - one<br>- twoa | b |\n|---|---|\n| 1 | 2 |\n");
+            expect(outline(v.state.doc)).toBe("table");
+        });
+
+        it("a rich-HTML paste should flatten too", () => {
+            const md = pasteAndSerialize(editor, v, "", { html: "<ul><li>one</li><li>two</li></ul>" });
+            expect(md).toBe("| one<br>twoa | b |\n|---|---|\n| 1 | 2 |\n");
             expect(outline(v.state.doc)).toBe("table");
         });
     });
