@@ -19,6 +19,7 @@ import { getTopbarBottom, scrollElementBelowTopbar } from "@/utils/headingUtils"
 import { revealPosition } from "@/editing/blockOps";
 import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
+import { ensureFindHighlightStyles } from "./highlightStyles";
 import {
     buildQuery,
     escapeRegExp,
@@ -37,6 +38,8 @@ import {
 // TypeScript declarations: CSS Custom Highlight API (Chromium 105+ / Electron 22+)
 declare class Highlight {
     constructor(...ranges: Range[]);
+    /** Paint order among registered highlights; higher wins, default 0. */
+    priority: number;
 }
 declare namespace CSS {
     const highlights: Map<string, Highlight>;
@@ -356,11 +359,26 @@ export function initFindBar(
     // ── Highlight updates ────────────────────────────────
     const supportsHighlights = () => typeof CSS !== "undefined" && "highlights" in CSS;
 
-    /** Convert a text match's PM range to a DOM Range (null if unmappable). */
-    function textMatchRange(view: EditorView, m: TextMatch): Range | null {
+    /**
+     * Register a highlight, installing the paint rules on the way in.
+     *
+     * The `::highlight()` rules are NOT in the eager stylesheet: an unused
+     * highlight name is a per-element style-recalc cost on every launch, worth
+     * ~10% of the `large` fixture for the three of them (see
+     * highlightStyles.ts). Injecting from here rather than from the top of
+     * `updateHighlights` means opening the bar and typing nothing still costs
+     * nothing — the recalc lands only when there is something to paint.
+     */
+    function setHighlight(name: string, highlight: Highlight): void {
+        ensureFindHighlightStyles();
+        CSS.highlights.set(name, highlight);
+    }
+
+    /** Convert a PM position range to a DOM Range (null if unmappable). */
+    function domRange(view: EditorView, from: number, to: number): Range | null {
         try {
-            const start = view.domAtPos(m.from);
-            const end = view.domAtPos(m.to);
+            const start = view.domAtPos(from);
+            const end = view.domAtPos(to);
             const r = new Range();
             r.setStart(start.node, start.offset);
             r.setEnd(end.node, end.offset);
@@ -368,6 +386,50 @@ export function initFindBar(
         } catch {
             return null;
         }
+    }
+
+    /** Convert a text match's PM range to a DOM Range (null if unmappable). */
+    function textMatchRange(view: EditorView, m: TextMatch): Range | null {
+        return domRange(view, m.from, m.to);
+    }
+
+    /**
+     * Shade the find-in-selection range, so the scope that is silently
+     * filtering matches is visible (MAR-106). Without it the only signal is
+     * the toggle's pressed state: the native selection highlight is the
+     * editor's, and once focus moves into the find input it may stop
+     * rendering — at which point matches elsewhere read as having vanished
+     * for no reason.
+     *
+     * Uses the same CSS Custom Highlight mechanism as the match highlights,
+     * at a lower priority so a match inside the scope still paints on top,
+     * and `--vscode-editor-findRangeHighlightBackground` — the token VS Code
+     * defines for exactly this affordance, so no new color channel is
+     * introduced and the theme decides how the tint reads against the match
+     * colors.
+     *
+     * The range is as accurate as the scope itself: `selectionScope` holds
+     * unmapped positions, so after an edit that shifts the document the shade
+     * and the match filter are stale together, never apart.
+     */
+    function updateScopeHighlight() {
+        if (!supportsHighlights()) {
+            return;
+        }
+        const view = getEditorView();
+        const range = inSelection && selectionScope && view
+            ? domRange(view, selectionScope.from, selectionScope.to)
+            : null;
+        if (!range) {
+            CSS.highlights.delete("find-scope");
+            return;
+        }
+        const highlight = new Highlight(range);
+        // Below the match highlights regardless of registration order: equal
+        // priorities paint in registry insertion order, which depends on
+        // whichever highlight the session happened to set first.
+        highlight.priority = -1;
+        setHighlight("find-scope", highlight);
     }
 
     /** DOM element to reveal/outline for an attr or block match. */
@@ -427,6 +489,10 @@ export function initFindBar(
         if (!supportsHighlights()) {
             return;
         }
+        // Before the early return below: the scope stays shaded even with a
+        // query that matches nothing (that is exactly when the user most
+        // needs to see why).
+        updateScopeHighlight();
         const ranges: Range[] = [];
         let currentRange: Range | null = null;
         if (view) {
@@ -450,9 +516,9 @@ export function initFindBar(
             CSS.highlights.delete("find-highlight-current");
             return;
         }
-        CSS.highlights.set("find-highlight", new Highlight(...ranges));
+        setHighlight("find-highlight", new Highlight(...ranges));
         if (currentRange) {
-            CSS.highlights.set("find-highlight-current", new Highlight(currentRange));
+            setHighlight("find-highlight-current", new Highlight(currentRange));
         } else {
             CSS.highlights.delete("find-highlight-current");
         }
@@ -465,6 +531,7 @@ export function initFindBar(
         }
         CSS.highlights.delete("find-highlight");
         CSS.highlights.delete("find-highlight-current");
+        CSS.highlights.delete("find-scope");
     }
 
     function updateHint() {
@@ -1155,6 +1222,10 @@ export function initFindBar(
         }
         btnInSelection.classList.toggle("find-bar__btn--active", inSelection);
         btnInSelection.setAttribute("aria-pressed", String(inSelection));
+        // No repaint here: every caller that changes the scope re-runs the
+        // search (updateHighlights repaints), and the one that doesn't —
+        // close() — has already called clearHighlights. Painting here too
+        // would make both of those lines individually unfalsifiable.
     }
     btnInSelection.addEventListener("click", () => {
         setInSelection(!inSelection);

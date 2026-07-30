@@ -171,16 +171,12 @@
     flex-shrink: 0;
 }
 
-/* CSS Custom Highlight API */
-::highlight(find-highlight) {
-    background-color: var(--vscode-editor-findMatchHighlightBackground);
-    color: inherit;
-}
-
-::highlight(find-highlight-current) {
-    background-color: var(--vscode-editor-findMatchBackground);
-    color: inherit;
-}
+/* The CSS Custom Highlight API rules deliberately do NOT live here — they are
+   in highlightStyles.ts, injected the first time the bar paints a highlight.
+   Blink resolves a style for every registered highlight name while resolving
+   every element's style, so an unused `::highlight()` rule in this eagerly
+   loaded sheet is a per-element launch cost: one such rule measured +31 ms on
+   the `large` launch fixture. See that file's header for the measurements. */
 
 /* Element-level highlight for matches without a text range
    (link URLs, image src/alt/title, code fence language, raw-syntax blocks) */
