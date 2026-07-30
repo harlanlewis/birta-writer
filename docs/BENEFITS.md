@@ -70,7 +70,7 @@ Almost everything I do on a computer in 2026 reduces to code and context.
 
 I pipe meeting transcripts → research repositories → spreadsheets → confluence documents → tickets → coding agents → pull request descriptions → communication channels → slide decks. Then back again.
 
-The emergent interface between humans and AI is text, and the dominant flavor is Markdown. 
+The emergent interface between humans and AI is text, and the dominant flavor is Markdown.
 
 Markdown is simple, semantic, portable, universal, and I ***really*** want to love my tools for reading and writing it.
 
@@ -126,213 +126,65 @@ It's so *fun* to think about this same problem from a new vantage of experience 
 
 ## Fidelity and safety come first
 
-A WYSIWYG Markdown editor lives or dies on one question: when you open a file
-and save it, is the file still *yours*? Most editors of this kind reformat on
-save — re-wrapping tables, swapping `*` for `_`, normalizing list markers,
-dropping syntax they don't understand. One such surprise sends a writer back to
-the raw text editor for good. Birta is built so that never happens.
+A WYSIWYG Markdown editor lives or dies on one question: when you open a file and save it, is the file still *yours*? Most editors of this kind reformat on save — re-wrapping tables, swapping `*` for `_`, normalizing list markers, dropping syntax they don't understand. One such surprise sends a writer back to the raw text editor for good. Birta is built so that never happens.
 
-- **It only rewrites the lines you changed.** On save, Birta diffs its output
-  against the file on disk and splices back just the real content changes; every
-  untouched line stays byte-for-byte identical. **Why it matters:** your
-  formatting choices survive, your git diffs stay small and readable, and
-  editing one paragraph never reflows the rest of the document.
+- **It only rewrites the lines you changed.** On save, Birta diffs its output against the file on disk and splices back just the real content changes; every untouched line stays byte-for-byte identical. **Why it matters:** your formatting choices survive, your git diffs stay small and readable, and editing one paragraph never reflows the rest of the document.
 
-- **Cosmetic style is reproduced, not just protected.** Markdown offers the same
-  construct several spellings, and a serializer normally picks one: `*` or `_`
-  for emphasis, `***`/`___`/`---` for a divider, ATX or underlined headings,
-  `-`/`*`/`+` bullets, `.` or `)` after an ordered item's number, and whether a
-  numbered list counts up or repeats `1.`. Birta reads which one your file used
-  and writes that one back. The same holds for the file's line endings: a
-  document written with Windows CRLF endings stays CRLF, down to the lines an
-  edit passes through. **Why it matters:** this is the difference between a
-  choice *surviving* and a choice being *restored*. Protection (below) works per
-  region, so editing one item in a list would otherwise re-canonicalize every
-  other item in it; reproducing the style means an edit changes only what you
-  edited, however much of the document the construct spans.
+- **Cosmetic style is reproduced, not just protected.** Markdown offers the same construct several spellings, and a serializer normally picks one: `*` or `_` for emphasis, `***`/`___`/`---` for a divider, ATX or underlined headings, `-`/`*`/`+` bullets, `.` or `)` after an ordered item's number, and whether a numbered list counts up or repeats `1.`. Birta reads which one your file used and writes that one back. The same holds for the file's line endings: a document written with Windows CRLF endings stays CRLF, down to the lines an edit passes through. **Why it matters:** this is the difference between a choice *surviving* and a choice being *restored*. Protection (below) works per region, so editing one item in a list would otherwise re-canonicalize every other item in it; reproducing the style means an edit changes only what you edited, however much of the document the construct spans.
 
-- **Syntax it can't perfectly reproduce is protected, not rewritten.** When
-  Birta opens a file, it records every region it couldn't round-trip on its own
-  (an unusual reference-link layout, a closed `## heading ##`, hand-escaped
-  text) and restores those regions to their original bytes on save — and lines
-  the round trip would *add* (like a closing fence for a deliberately unclosed
-  one) are withheld the same way. **Why it matters:** the editor can't silently
-  "correct" Markdown you wrote deliberately — an edit elsewhere in the document
-  can never leak into syntax it doesn't fully model.
+- **Syntax it can't perfectly reproduce is protected, not rewritten.** When Birta opens a file, it records every region it couldn't round-trip on its own (an unusual reference-link layout, a closed `## heading ##`, hand-escaped text) and restores those regions to their original bytes on save — and lines the round trip would *add* (like a closing fence for a deliberately unclosed one) are withheld the same way. **Why it matters:** the editor can't silently "correct" Markdown you wrote deliberately — an edit elsewhere in the document can never leak into syntax it doesn't fully model.
 
-- **Non-standard syntax is preserved verbatim.** Wikilinks, `==highlights==`,
-  callouts, and `:::` directives are stored as their exact source bytes and
-  written back unchanged. **Why it matters:** the conventions from tools like
-  Obsidian round-trip exactly, even the parts Birta renders as plain interactive
-  elements.
+- **Non-standard syntax is preserved verbatim.** Wikilinks, `==highlights==`, callouts, and `:::` directives are stored as their exact source bytes and written back unchanged. **Why it matters:** the conventions from tools like Obsidian round-trip exactly, even the parts Birta renders as plain interactive elements.
 
-- **YAML frontmatter is handled out of band.** The frontmatter block is lifted
-  off the top of the file before the editor ever sees it, then reattached on
-  save. **Why it matters:** your metadata is immune to any editor reformatting —
-  key order, comments, and spacing are exactly as you left them.
+- **YAML frontmatter is handled out of band.** The frontmatter block is lifted off the top of the file before the editor ever sees it, then reattached on save. **Why it matters:** your metadata is immune to any editor reformatting — key order, comments, and spacing are exactly as you left them.
 
-- **Anything unrecognized stays visible, never deleted.** Syntax Birta doesn't
-  model (inline tags, block references, raw HTML, an unknown construct) remains
-  as legible text or an inert, preserved block — never a silent drop. **Why it
-  matters:** you can always see what the editor didn't interpret, so you're
-  never trusting it with content it quietly discarded.
+- **Anything unrecognized stays visible, never deleted.** Syntax Birta doesn't model (inline tags, block references, raw HTML, an unknown construct) remains as legible text or an inert, preserved block — never a silent drop. **Why it matters:** you can always see what the editor didn't interpret, so you're never trusting it with content it quietly discarded.
 
-- **Block gestures that would lose content are blocked.** A move, duplicate,
-  table reorder, or drag that would alter or drop document content is refused
-  outright, with a brief notice, instead of applied. **Why it matters:** the
-  convenience of block editing never comes at the cost of the document's
-  integrity.
+- **Block gestures that would lose content are blocked.** A move, duplicate, table reorder, or drag that would alter or drop document content is refused outright, with a brief notice, instead of applied. **Why it matters:** the convenience of block editing never comes at the cost of the document's integrity.
 
-- **A save always captures your latest edit.** The moment you type, the editor
-  marks the document unsaved — within a few milliseconds, faster than you can
-  reach Save — and a save then waits for the editor to hand back its freshest
-  content before writing to disk. **Why it matters:** the old trap where a quick
-  Cmd+S seemed to "not take" and the change quietly vanished on close is gone;
-  your edits are never left stranded in the editor, unwritten.
+- **A save always captures your latest edit.** The moment you type, the editor marks the document unsaved — within a few milliseconds, faster than you can reach Save — and a save then waits for the editor to hand back its freshest content before writing to disk. **Why it matters:** the old trap where a quick Cmd+S seemed to "not take" and the change quietly vanished on close is gone; your edits are never left stranded in the editor, unwritten.
 
-- **You're told when a file changes underneath you — it's never resolved
-  silently.** If another tool (a terminal, git, an AI assistant) rewrites a file
-  you have open *with unsaved edits*, a warning badge appears; one click reloads
-  from disk or shows a side-by-side compare. A file with no unsaved edits just
-  reloads on its own. **Why it matters:** editing alongside tools that also write
-  your files is normal now — Birta surfaces the collision and lets *you* pick the
-  winner instead of guessing a merge or quietly discarding a side. The editor
-  never writes or reverts your document on its own.
+- **You're told when a file changes underneath you — it's never resolved silently.** If another tool (a terminal, git, an AI assistant) rewrites a file you have open *with unsaved edits*, a warning badge appears; one click reloads from disk or shows a side-by-side compare. A file with no unsaved edits just reloads on its own. **Why it matters:** editing alongside tools that also write your files is normal now — Birta surfaces the collision and lets *you* pick the winner instead of guessing a merge or quietly discarding a side. The editor never writes or reverts your document on its own.
 
-Together these mean you can point Birta at a file from almost any Markdown tool,
-edit it like a document, and trust the save. Interop (see
-[Compatibility](#compatibility-with-other-markdown-tools) below) mostly falls
-out of building for fidelity — it isn't a separate feature to chase.
+Together these mean you can point Birta at a file from almost any Markdown tool, edit it like a document, and trust the save. Interop (see [Compatibility](#compatibility-with-other-markdown-tools) below) mostly falls out of building for fidelity — it isn't a separate feature to chase.
 
 ## It understands the Markdown people actually write
 
-CommonMark is the floor. On top of it Birta renders — live, as you type — the
-extensions that show up in real documents:
+CommonMark is the floor. On top of it Birta renders — live, as you type — the extensions that show up in real documents:
 
-- **GitHub Flavored Markdown**: tables, task lists, strikethrough, autolinks,
-  and footnotes.
+- **GitHub Flavored Markdown**: tables, task lists, strikethrough, autolinks, and footnotes.
 - **Math** (`$…$` / `$$…$$`, rendered with KaTeX) and **Mermaid diagrams**.
-- **Wikilinks** (`[[target]]`, `[[target|alias]]`, `[[target#heading]]`) that
-  render, navigate, and autocomplete.
-- **Highlights** (`==text==`) and **callouts / admonitions** — both the GitHub
-  (`> [!NOTE]`) and Obsidian (`> [!tip]- Title`) spellings, plus `:::` container
-  directives.
-- **Reference-style links**, **raw HTML** (rendered read-only, preserved), and
-  **image handling** with local, deduplicated storage.
+- **Wikilinks** (`[[target]]`, `[[target|alias]]`, `[[target#heading]]`) that render, navigate, and autocomplete.
+- **Highlights** (`==text==`) and **callouts / admonitions** — both the GitHub (`> [!NOTE]`) and Obsidian (`> [!tip]- Title`) spellings, plus `:::` container directives.
+- **Reference-style links**, **raw HTML** (rendered read-only, preserved), and **image handling** with local, deduplicated storage.
 
-**Why it matters:** you rarely hit a wall where the editor can't show what you
-wrote — and where it can't, the previous section guarantees it's preserved
-rather than mangled.
+**Why it matters:** you rarely hit a wall where the editor can't show what you wrote — and where it can't, the previous section guarantees it's preserved rather than mangled.
 
 ## It's a real editor, not a preview pane
 
-The point of staying in WYSIWYG is that you never *need* the raw text editor.
-That only holds if the editor does the things you expect from VS Code:
+The point of staying in WYSIWYG is that you never *need* the raw text editor. That only holds if the editor does the things you expect from VS Code:
 
-- **Block handles that never touch content.** Every block has a gutter handle:
-  click it for the block menu (turn into, duplicate, move, delete), drag it to
-  move the block. A handle click selects or opens a menu — it never edits the
-  block, including task-list checkboxes. **Why it matters:** the handle is a
-  safe, predictable grip; you can reach for it without worrying it'll change
-  what you're pointing at.
-- **Keyboard-first block editing** — select, move, duplicate, and fold blocks
-  entirely from the keyboard; a slash menu for inserts; find/replace with
-  match-case, whole-word, and regex. **Why it matters:** the fast paths you
-  already have muscle memory for in VS Code work here too.
-- **Folding and go-to-heading** for navigating long documents — neither touches
-  the file. **Why it matters:** structure you can move through without
-  scrolling, and without it leaking into what's saved.
-- **The switch to raw Markdown carries your cursor — and your selection.**
-  Cmd+Shift+M opens the other editor at the line — and, where the mapping is
-  unambiguous, the exact column — you were working at, in both directions, so
-  you can switch mid-sentence and keep typing. A selection survives the trip
-  whole (drag direction included, block selections arriving as whole source
-  lines), and the arriving cursor is centered on screen. Scrolled away from a
-  bare cursor, it takes you to what's on screen instead. **Why it matters:** the raw editor is the escape
-  hatch, and an escape hatch that dumps you at the top of a long file is one you
-  hesitate to use. Nothing about the document changes on the way through — the
-  switch moves you, not your text.
-- **A table of contents you can also edit through.** It reads as an outline of
-  the document, and dragging within it restructures: drop a section onto a
-  heading to nest it beneath, or between headings to place it as a sibling. The
-  section's rank follows where you dropped it, its subtree moves and shifts with
-  it, and the whole reorder is one undo step. **Why it matters:** reorganizing a
-  long document is the one edit that's genuinely painful in raw Markdown —
-  cutting a section, finding its end, pasting it, then renumbering every `#`
-  underneath by hand. The outline is where that shape is actually visible, so
-  it's where the edit belongs. Dragging a heading's handle in the *document*
-  stays a literal move: the text is text, the outline is the structure.
+- **Block handles that never touch content.** Every block has a gutter handle: click it for the block menu (turn into, duplicate, move, delete), drag it to move the block. A handle click selects or opens a menu — it never edits the block, including task-list checkboxes. **Why it matters:** the handle is a safe, predictable grip; you can reach for it without worrying it'll change what you're pointing at.
+- **Keyboard-first block editing** — select, move, duplicate, and fold blocks entirely from the keyboard; a slash menu for inserts; find/replace with match-case, whole-word, and regex. **Why it matters:** the fast paths you already have muscle memory for in VS Code work here too.
+- **Folding and go-to-heading** for navigating long documents — neither touches the file. **Why it matters:** structure you can move through without scrolling, and without it leaking into what's saved.
+- **The switch to raw Markdown carries your cursor — and your selection.** Cmd+Shift+M opens the other editor at the line — and, where the mapping is unambiguous, the exact column — you were working at, in both directions, so you can switch mid-sentence and keep typing. A selection survives the trip whole (drag direction included, block selections arriving as whole source lines), and the arriving cursor is centered on screen. Scrolled away from a bare cursor, it takes you to what's on screen instead. **Why it matters:** the raw editor is the escape hatch, and an escape hatch that dumps you at the top of a long file is one you hesitate to use. Nothing about the document changes on the way through — the switch moves you, not your text.
+- **A table of contents you can also edit through.** It reads as an outline of the document, and dragging within it restructures: drop a section onto a heading to nest it beneath, or between headings to place it as a sibling. The section's rank follows where you dropped it, its subtree moves and shifts with it, and the whole reorder is one undo step. **Why it matters:** reorganizing a long document is the one edit that's genuinely painful in raw Markdown — cutting a section, finding its end, pasting it, then renumbering every `#` underneath by hand. The outline is where that shape is actually visible, so it's where the edit belongs. Dragging a heading's handle in the *document* stays a literal move: the text is text, the outline is the structure.
 
 ## It stays out of the way
 
-- **It matches your VS Code theme** with no per-editor color settings, recoloring
-  live when you switch themes or the OS flips light/dark. **Why it matters:** the
-  document looks like the rest of your editor, always, with nothing to configure.
-- **It starts fast.** Heavy dependencies (math, diagrams, syntax grammars) load
-  only when a document needs them, so opening a file paints quickly. **Why it
-  matters:** switching in and out of the editor never feels like a penalty.
-- **Saving is just VS Code saving.** The editor is backed by a native text
-  document, so `files.autoSave`, the dirty-dot in the tab, and hot-exit all work
-  exactly as they do everywhere else. **Why it matters:** no bespoke save model
-  to learn or distrust.
-- **Your images never leave your machine.** Pasted and dropped images are stored
-  locally in your workspace, deduplicated by content hash. **Why it matters:** no
-  surprise uploads; the document is self-contained.
-- **Offline by default — nothing leaves your machine unless you turn it on.**
-  Every feature that could touch the network sits behind a single master switch,
-  `birta.network.enabled`, which ships **off**. With it off the editor makes no
-  outbound request at all — the one embed that still renders offline, the GitHub
-  info card, is built purely from the URL text in your document and requests
-  nothing. Turn the switch on and exactly two features become live, each narrow
-  and legible: **paste-unfurl** contacts *only* the host of a bare URL you
-  paste (with nothing selected) to read that page's title — no third-party
-  service, no analytics, it refuses local and private-network addresses (and
-  re-checks every redirect), and it falls back to the plain link when the page is
-  offline or untitled; and **URL embed cards** contact *only* the named
-  provider of a bare link on its own line — a YouTube thumbnail at render, a
-  title lookup at that provider's own oEmbed endpoint (so the card can name
-  what it embeds), and the player (privacy-mode `youtube-nocookie.com`; Vimeo's
-  always loads with its `dnt=1` do-not-track flag), a Loom or Vimeo video, or a
-  live Figma frame created only when you click — with each
-  provider's exact hosts pinned in one shared table that also generates the
-  webview's content-security-policy, never a wildcard, never an
-  aggregation service. You don't have to hunt
-  for the setting first: whichever of the two you just triggered offers a quiet,
-  dismissable prompt right where you're working, and you decide in place.
-  Flipping the switch takes effect immediately in every open editor — there is
-  nothing to reload. And the decision is *yours alone*: the network settings are
-  user-level only (VS Code `application` scope), so a repository's checked-in
-  `.vscode/settings.json` can never switch them on for you — a guarantee pinned
-  by a test that fails the build if a consent setting ever loses that scope.
-  **Why it matters:** the private default is the *default*,
-  not a setting you have to remember to find; the two exceptions are opt-in,
-  self-limited, and each still has its own switch (`birta.pasteUnfurl.enabled`,
-  `birta.embeds.enabled`).
+- **It matches your VS Code theme** with no per-editor color settings, recoloring live when you switch themes or the OS flips light/dark. **Why it matters:** the document looks like the rest of your editor, always, with nothing to configure.
+- **It starts fast.** Heavy dependencies (math, diagrams, syntax grammars) load only when a document needs them, so opening a file paints quickly. **Why it matters:** switching in and out of the editor never feels like a penalty.
+- **Saving is just VS Code saving.** The editor is backed by a native text document, so `files.autoSave`, the dirty-dot in the tab, and hot-exit all work exactly as they do everywhere else. **Why it matters:** no bespoke save model to learn or distrust.
+- **Your images never leave your machine.** Pasted and dropped images are stored locally in your workspace, deduplicated by content hash. **Why it matters:** no surprise uploads; the document is self-contained.
+- **Offline by default — nothing leaves your machine unless you turn it on.** Every feature that could touch the network sits behind a single master switch, `birta.network.enabled`, which ships **off**. With it off the editor makes no outbound request at all — the one embed that still renders offline, the GitHub info card, is built purely from the URL text in your document and requests nothing. Turn the switch on and exactly two features become live, each narrow and legible: **paste-unfurl** contacts *only* the host of a bare URL you paste (with nothing selected) to read that page's title — no third-party service, no analytics, it refuses local and private-network addresses (and re-checks every redirect), and it falls back to the plain link when the page is offline or untitled; and **URL embed cards** contact *only* the named provider of a bare link on its own line — a YouTube thumbnail at render, a title lookup at that provider's own oEmbed endpoint (so the card can name what it embeds), and the player (privacy-mode `youtube-nocookie.com`; Vimeo's always loads with its `dnt=1` do-not-track flag), a Loom or Vimeo video, or a live Figma frame created only when you click — with each provider's exact hosts pinned in one shared table that also generates the webview's content-security-policy, never a wildcard, never an aggregation service. You don't have to hunt for the setting first: whichever of the two you just triggered offers a quiet, dismissable prompt right where you're working, and you decide in place. Flipping the switch takes effect immediately in every open editor — there is nothing to reload. And the decision is *yours alone*: the network settings are user-level only (VS Code `application` scope), so a repository's checked-in `.vscode/settings.json` can never switch them on for you — a guarantee pinned by a test that fails the build if a consent setting ever loses that scope. **Why it matters:** the private default is the *default*, not a setting you have to remember to find; the two exceptions are opt-in, self-limited, and each still has its own switch (`birta.pasteUnfurl.enabled`, `birta.embeds.enabled`).
 
-- **The two network features differ in the way that actually matters: whether
-  they touch your file.** Paste-unfurl *writes* — it puts a fetched title into
-  your document — so it asks first: the title arrives as an offer at the link and
-  nothing changes until you accept it (`birta.pasteUnfurl.autoApply` turns that
-  into an automatic apply once you trust it). URL embeds *never* write: a card
-  — its fetched title included — is a rendering of the plain link that is
-  already in the file, so turning embeds off simply shows the link again and no
-  byte ever moved (editing the URL through the card's palette is your explicit
-  edit, applied on Enter like any other). Because a card and a
-  fetched title are mutually exclusive ways to present the same link, each URL
-  has exactly one owner — a link that can render as a card is never retitled.
-  **Why it matters:** "will this change my file?" is the only question that
-  matters when you are deciding whether to trust a feature, and here it has a
-  stable answer per feature rather than depending on timing.
+- **The two network features differ in the way that actually matters: whether they touch your file.** Paste-unfurl *writes* — it puts a fetched title into your document — so it asks first: the title arrives as an offer at the link and nothing changes until you accept it (`birta.pasteUnfurl.autoApply` turns that into an automatic apply once you trust it). URL embeds *never* write: a card — its fetched title included — is a rendering of the plain link that is already in the file, so turning embeds off simply shows the link again and no byte ever moved (editing the URL through the card's palette is your explicit edit, applied on Enter like any other). Because a card and a fetched title are mutually exclusive ways to present the same link, each URL has exactly one owner — a link that can render as a card is never retitled. **Why it matters:** "will this change my file?" is the only question that matters when you are deciding whether to trust a feature, and here it has a stable answer per feature rather than depending on timing.
 
 ---
 
 ## Compatibility with other Markdown tools
 
-We're not building a personal-knowledge-management tool. But because Birta reads
-and writes plain Markdown files and preserves what it doesn't interpret, it works
-well *on the files* of many tools people already use. Interop is a nice
-consequence of fidelity, not a design goal — so this table is about what's safe
-to open and edit, not about matching every tool's feature set.
+We're not building a personal-knowledge-management tool. But because Birta reads and writes plain Markdown files and preserves what it doesn't interpret, it works well *on the files* of many tools people already use. Interop is a nice consequence of fidelity, not a design goal — so this table is about what's safe to open and edit, not about matching every tool's feature set.
 
 | Tool | Stores plain files? | Birta can open it | Syntax fidelity | Verdict |
 |---|---|---|---|---|
@@ -348,44 +200,9 @@ to open and edit, not about matching every tool's feature set.
 
 **How to read this:**
 
-- **Plain-Markdown tools (Obsidian, Foam, PARA setups)** open directly. Birta
-  renders the common extensions and preserves the tool-specific bits it doesn't
-  render — so a round-trip is safe even where it isn't fully interactive.
-  **Logseq** also opens, but it's an outliner: its whole-file structure (not just
-  its text) rides on exact bullet indentation. Text edits are round-trip tested —
-  untouched lines keep their tab bytes and org tokens exactly, and the edited
-  line keeps both its tokens unescaped and its own tab indentation, so its
-  nested children stay children. Moving blocks — by drag or keyboard — keeps the
-  outline's own indentation as well, so a moved block re-opens at the depth you
-  left it at, carrying its continuation lines and any nested code fence intact.
-  That now includes a block whose content is not a plain paragraph — a heading
-  (the Logseq shape `- # Project Atlas`), a quote, a fence — which used to be
-  re-written as an empty bullet with the content indented beneath it, a form
-  that reopens as something else entirely. Typing inside such a block hit the
-  same shape, so it is fixed for edits as well as moves. A bullet whose content
-  is a *table* or a *horizontal rule* is not covered yet.
-- **Markdown supersets (Quarto, MDX)** are plain files but extend or alter the
-  language. Birta registers only `.md` and `.markdown`, so a `.qmd`/`.mdx` file
-  won't open in Birta on its own — the reliable way is to rename it to `.md`, or
-  point the extension at Birta with a `workbench.editorAssociations` entry (e.g.
-  `"*.qmd": "birta.editor"`). Quarto is then safe to round-trip (its extensions
-  survive as inert text); **MDX is not recommended**, because it redefines base
-  Markdown behavior that a CommonMark editor can't re-serialize faithfully.
-- **Proprietary-format tools (Roam, Bear)** don't keep plain Markdown files at
-  all — there's nothing on disk for a file-based editor to open until you export.
-- **Org mode** is a different markup language, not a Markdown dialect. Opening an
-  `.org` file as Markdown would misparse it; it's out of scope by design.
+- **Plain-Markdown tools (Obsidian, Foam, PARA setups)** open directly. Birta renders the common extensions and preserves the tool-specific bits it doesn't render — so a round-trip is safe even where it isn't fully interactive. **Logseq** also opens, but it's an outliner: its whole-file structure (not just its text) rides on exact bullet indentation. Text edits are round-trip tested — untouched lines keep their tab bytes and org tokens exactly, and the edited line keeps both its tokens unescaped and its own tab indentation, so its nested children stay children. Moving blocks — by drag or keyboard — keeps the outline's own indentation as well, so a moved block re-opens at the depth you left it at, carrying its continuation lines and any nested code fence intact. That now includes a block whose content is not a plain paragraph — a heading (the Logseq shape `- # Project Atlas`), a quote, a fence — which used to be re-written as an empty bullet with the content indented beneath it, a form that reopens as something else entirely. Typing inside such a block hit the same shape, so it is fixed for edits as well as moves. A bullet whose content is a *table* or a *horizontal rule* is not covered yet.
+- **Markdown supersets (Quarto, MDX)** are plain files but extend or alter the language. Birta registers only `.md` and `.markdown`, so a `.qmd`/`.mdx` file won't open in Birta on its own — the reliable way is to rename it to `.md`, or point the extension at Birta with a `workbench.editorAssociations` entry (e.g. `"*.qmd": "birta.editor"`). Quarto is then safe to round-trip (its extensions survive as inert text); **MDX is not recommended**, because it redefines base Markdown behavior that a CommonMark editor can't re-serialize faithfully.
+- **Proprietary-format tools (Roam, Bear)** don't keep plain Markdown files at all — there's nothing on disk for a file-based editor to open until you export.
+- **Org mode** is a different markup language, not a Markdown dialect. Opening an `.org` file as Markdown would misparse it; it's out of scope by design.
 
-> **A note on confidence:** the claims above are machine-verified. One command —
-> `pnpm fidelity` — drives a per-tool fixture corpus (authored from each tool's
-> own documentation) through the production save pipeline and asserts the
-> table's claims: the 🟢/🟡 rows round-trip byte-identically and keep every
-> tool-specific construct named above through an edit (frontmatter, handled
-> before the editor ever sees content, is verified by the extension-side
-> suites), and the 🔴 rows for MDX
-> and Org are encoded as expected-corruption cases — an untouched save is still
-> byte-identical even for those, but an edit corrupts the edited construct (for
-> Org, the edited headline itself, which Birta reads as a bullet; its property
-> drawer and the rest of the file, keyword lines included, are left alone). The fixtures and how to read the suites live in
-> `webview/__tests__/fixtures/tools/README.md`; CI runs the same assertions on
-> every PR and push to main, so a claim that stops being true fails the build.
+> **A note on confidence:** the claims above are machine-verified. One command — `pnpm fidelity` — drives a per-tool fixture corpus (authored from each tool's own documentation) through the production save pipeline and asserts the table's claims: the 🟢/🟡 rows round-trip byte-identically and keep every tool-specific construct named above through an edit (frontmatter, handled before the editor ever sees content, is verified by the extension-side suites), and the 🔴 rows for MDX and Org are encoded as expected-corruption cases — an untouched save is still byte-identical even for those, but an edit corrupts the edited construct (for Org, the edited headline itself, which Birta reads as a bullet; its property drawer and the rest of the file, keyword lines included, are left alone). The fixtures and how to read the suites live in `webview/__tests__/fixtures/tools/README.md`; CI runs the same assertions on every PR and push to main, so a claim that stops being true fails the build.
