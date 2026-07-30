@@ -19,6 +19,7 @@ import { getTopbarBottom, scrollElementBelowTopbar } from "@/utils/headingUtils"
 import { revealPosition } from "@/editing/blockOps";
 import type { EventManager } from "@/eventManager";
 import { computeLineMap } from "../../../shared/lineMap";
+import { ensureFindHighlightStyles } from "./highlightStyles";
 import {
     buildQuery,
     escapeRegExp,
@@ -358,6 +359,21 @@ export function initFindBar(
     // ── Highlight updates ────────────────────────────────
     const supportsHighlights = () => typeof CSS !== "undefined" && "highlights" in CSS;
 
+    /**
+     * Register a highlight, installing the paint rules on the way in.
+     *
+     * The `::highlight()` rules are NOT in the eager stylesheet: an unused
+     * highlight name is a per-element style-recalc cost on every launch, worth
+     * ~10% of the `large` fixture for the three of them (see
+     * highlightStyles.ts). Injecting from here rather than from the top of
+     * `updateHighlights` means opening the bar and typing nothing still costs
+     * nothing — the recalc lands only when there is something to paint.
+     */
+    function setHighlight(name: string, highlight: Highlight): void {
+        ensureFindHighlightStyles();
+        CSS.highlights.set(name, highlight);
+    }
+
     /** Convert a PM position range to a DOM Range (null if unmappable). */
     function domRange(view: EditorView, from: number, to: number): Range | null {
         try {
@@ -413,7 +429,7 @@ export function initFindBar(
         // priorities paint in registry insertion order, which depends on
         // whichever highlight the session happened to set first.
         highlight.priority = -1;
-        CSS.highlights.set("find-scope", highlight);
+        setHighlight("find-scope", highlight);
     }
 
     /** DOM element to reveal/outline for an attr or block match. */
@@ -500,9 +516,9 @@ export function initFindBar(
             CSS.highlights.delete("find-highlight-current");
             return;
         }
-        CSS.highlights.set("find-highlight", new Highlight(...ranges));
+        setHighlight("find-highlight", new Highlight(...ranges));
         if (currentRange) {
-            CSS.highlights.set("find-highlight-current", new Highlight(currentRange));
+            setHighlight("find-highlight-current", new Highlight(currentRange));
         } else {
             CSS.highlights.delete("find-highlight-current");
         }

@@ -32,6 +32,9 @@ export async function run({ page, check, baseUrl }) {
             const highlight = CSS.highlights.get("find-scope");
             return highlight ? [...highlight].map((r) => r.toString()).join("|") : null;
         });
+    /** Whether the lazily-injected `::highlight()` rules are in the document. */
+    const highlightRulesPresent = () =>
+        page.evaluate(() => Boolean(document.getElementById("find-highlight-styles")));
     const matchCount = () => page.$eval(".find-bar__count", (el) => el.textContent);
     const barVisible = () =>
         page.$eval(".find-bar", (el) => el.classList.contains("find-bar--visible"));
@@ -57,6 +60,11 @@ export async function run({ page, check, baseUrl }) {
     // ── Toggling the scope on shades the captured range ──
     await selectParagraph("Alpha needle here.");
     check("nothing is shaded before the scope exists", (await scopeText()) === null);
+    // The paint rules are injected on first use, never shipped in the eager
+    // stylesheet: an unused `::highlight()` rule costs per-element style recalc
+    // on every launch (webview/components/findBar/highlightStyles.ts). A launch
+    // that never searches must not carry them.
+    check("a launch that never searched carries no highlight rules", !(await highlightRulesPresent()));
 
     await page.evaluate(() =>
         window.postMessage({ type: "editorCommand", command: "openFind" }, "*"));
@@ -70,6 +78,10 @@ export async function run({ page, check, baseUrl }) {
         "toggling Find in Selection shades exactly the captured paragraph",
         (await scopeText()) === "Alpha needle here.",
         String(await scopeText()),
+    );
+    check(
+        "the first shade brings the highlight rules with it",
+        await highlightRulesPresent(),
     );
 
     // ── The shade explains a filtered result ──
