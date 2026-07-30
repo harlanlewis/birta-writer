@@ -177,7 +177,14 @@ describe("editor command keybinding contributions", () => {
         findNext: [{ key: "f3" }, { mac: "cmd+g" }],
         findPrevious: [{ key: "shift+f3" }, { mac: "cmd+shift+g" }],
         findSelection: [{ key: "ctrl+d", mac: "cmd+d" }],
-        selectAllOccurrences: [{ key: "ctrl+shift+l", mac: "cmd+shift+l" }],
+        // VS Code parity: Cmd+F2 is `editor.action.changeAll`'s chord, which is
+        // the behavior this command actually provides. Shift+Cmd+L is retained
+        // as an additional chord (VS Code binds it to a multi-cursor command a
+        // single-selection editor cannot implement).
+        selectAllOccurrences: [
+            { key: "ctrl+f2", mac: "cmd+f2" },
+            { key: "ctrl+shift+l", mac: "cmd+shift+l" },
+        ],
         deleteBlock: [{ key: "ctrl+shift+k", mac: "cmd+shift+k" }],
         // VS Code parity: Join Lines ships bound on macOS only (palette
         // elsewhere).

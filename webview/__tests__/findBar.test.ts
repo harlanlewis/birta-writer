@@ -705,7 +705,7 @@ describe("initFindBar occurrence cycling (cycleOccurrence / Cmd+D)", () => {
     });
 });
 
-describe("initFindBar selectAllOccurrences (Shift+Cmd+L)", () => {
+describe("initFindBar selectAllOccurrences (Cmd+F2 / Shift+Cmd+L)", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         window.scrollTo = vi.fn();

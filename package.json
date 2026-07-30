@@ -663,6 +663,12 @@
             },
             {
                 "command": "birta.editor.selectAllOccurrences",
+                "key": "ctrl+f2",
+                "mac": "cmd+f2",
+                "when": "activeCustomEditorId == 'birta.editor'"
+            },
+            {
+                "command": "birta.editor.selectAllOccurrences",
                 "key": "ctrl+shift+l",
                 "mac": "cmd+shift+l",
                 "when": "activeCustomEditorId == 'birta.editor'"

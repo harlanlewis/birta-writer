@@ -131,7 +131,7 @@
   "command.editor.findNext.title": "Find Next",
   "command.editor.findPrevious.title": "Find Previous",
   "command.editor.findSelection.title": "Select Next Occurrence",
-  "command.editor.selectAllOccurrences.title": "Select All Occurrences",
+  "command.editor.selectAllOccurrences.title": "Change All Occurrences",
   "command.editor.toggleToc.title": "Toggle Table of Contents",
   "command.editor.editFrontmatter.title": "Edit Frontmatter",
   "command.editor.tableInsertRowAbove.title": "Insert Row Above",
