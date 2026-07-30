@@ -176,11 +176,18 @@ describe("spans / aggregate — the measurement math", () => {
 // nothing in this repo measured, which is how an upstream plugin billed 2.4 ms
 // to every arrow key on a 300 KB document unnoticed (MAR-137).
 
-/** One-fixture typing pass carrying caret medians (and typing medians held flat). */
-const caretPass = (name, baseCaret, headCaret, median = 10) => ({
+/**
+ * One-fixture typing pass carrying caret TOTALS (and typing medians held flat).
+ *
+ * The gate reads `caretTotal`, not `caretMedian` — see the note on
+ * TYPING_CARET_MIN_SAMPLES. `samples` defaults comfortably above the floor so
+ * the floor tests below isolate the effect-size thresholds; the abstention
+ * tests pass it explicitly.
+ */
+const caretPass = (name, baseCaret, headCaret, median = 10, samples = 40) => ({
     [name]: {
-        base: { median, caretMedian: baseCaret },
-        head: { median, caretMedian: headCaret },
+        base: { median, caretTotal: baseCaret, caretSamples: samples },
+        head: { median, caretTotal: headCaret, caretSamples: samples },
     },
 });
 
@@ -210,12 +217,76 @@ describe("typingAbVerdict — the caret gate", () => {
         expect(typingAbVerdict(caretPass("xlarge", 5.7, 3.5)).regressed.size).toBe(0);
     });
 
-    it("a missing caret median is skipped, not read as a zero baseline", () => {
-        // Pre-metric JSONs have no caretMedian; treating absent as 0 would make
+    it("a missing caret total is skipped, not read as a zero baseline", () => {
+        // Pre-metric JSONs have no caret fields; treating absent as 0 would make
         // every comparison against an old capture a 100% regression.
         const v = typingAbVerdict({ xlarge: { base: { median: 10 }, head: { median: 10 } } });
         expect(v.regressed.size).toBe(0);
         expect(v.rows[0].caret).toBeNull();
+    });
+
+    // ── The sampling floor (2026-07-30) ────────────────────────────────────
+    // Arrow presses coalesce `selectionchange`, so a 30-press burst yields 2–7
+    // transactions. The median over that produced +72% / +82% / neutral against
+    // effectively the same change. Two fixes: gate the total, and abstain when
+    // even the total rests on too few samples.
+
+    it("a caret move below the sample floor should ABSTAIN, not gate", () => {
+        // The exact shape that fired falsely: a large apparent move on n=2.
+        const v = typingAbVerdict(caretPass("xlarge", 3.5, 6.5, 10, 2));
+        expect(v.regressed.size).toBe(0);
+        expect(v.rows[0].caret.insufficient).toBe(true);
+        expect(v.rows[0].caret.realCaret).toBe(false);
+    });
+
+    it("an abstaining verdict should still report its sample count, never hide", () => {
+        // A gate that stops gating silently is worse than one that fails.
+        const v = typingAbVerdict(caretPass("xlarge", 3.5, 6.5, 10, 2));
+        expect(v.rows[0].caret.samples).toBe(2);
+        expect(v.rows[0].caret.dCaret).toBeCloseTo(3.0, 5);
+    });
+
+    it("the floor should use the SMALLER side's count, not the larger", () => {
+        // Coalescing is per-bundle: head can yield 7 while base yields 2. Gating
+        // on the larger would reinstate exactly the n=2 comparison.
+        const pass = {
+            xlarge: {
+                base: { median: 10, caretTotal: 3.5, caretSamples: 2 },
+                head: { median: 10, caretTotal: 6.5, caretSamples: 40 },
+            },
+        };
+        const v = typingAbVerdict(pass);
+        expect(v.rows[0].caret.samples).toBe(2);
+        expect(v.regressed.size).toBe(0);
+    });
+
+    it("an absent sample count should be treated as insufficient, not as plenty", () => {
+        // An older merge-base predates the field; reading absent as OK would
+        // gate on a bundle we cannot characterize.
+        const pass = {
+            xlarge: {
+                base: { median: 10, caretTotal: 3.5 },
+                head: { median: 10, caretTotal: 6.5 },
+            },
+        };
+        const v = typingAbVerdict(pass);
+        expect(v.rows[0].caret.insufficient).toBe(true);
+        expect(v.regressed.size).toBe(0);
+    });
+
+    it("the median should ride along as reported context without gating", () => {
+        // Kept for humans: a total that moved while the median did not is the
+        // signature of coalescing, and worth being able to see.
+        const pass = {
+            xlarge: {
+                base: { median: 10, caretTotal: 3.5, caretSamples: 40, caretMedian: 1.1 },
+                head: { median: 10, caretTotal: 6.5, caretSamples: 40, caretMedian: 1.1 },
+            },
+        };
+        const v = typingAbVerdict(pass);
+        expect(v.rows[0].caret.bMedian).toBe(1.1);
+        expect(v.rows[0].caret.aMedian).toBe(1.1);
+        expect([...v.regressed]).toEqual(["xlarge"]);
     });
 
     it("a caret regression gates even when the typing median is flat", () => {

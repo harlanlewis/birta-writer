@@ -81,7 +81,7 @@ Repeat for each unit of work. Mark the task `in_progress` when you start it.
    There is no "noted". A finding you neither fix nor file will ship, and the write-up will still list it as if it were handled. When you decline, say so in the reply — an unmentioned finding reads as one that didn't exist.
    **Never file a leftovers-bundle ticket** ("follow-ups", "residuals", "cleanups from the critique", "polish batch" — MAR-93/117/119/127/174 are the cautionary examples). If the items matter, they're *fixed* before the session closes; if they don't, they're *declined*. A grab-bag ticket is deferral wearing a label.
    **Don't polish-loop either:** if a critique pass over unchanged scope returns only cosmetic or subjective findings twice in a row, stop critiquing and ship — taste iteration without new evidence is tail-chasing, not rigor.
-7. **Commit** at a working milestone. Convention prefix (`fix:`/`feat:`/`refactor:`/`test:`/…), *why* in the body, `Closes MAR-NN`, the Co-Authored-By trailer. **Push.**
+7. **Commit** at a working milestone. Convention prefix (`fix:`/`feat:`/`refactor:`/`test:`/…), *why* in the body, `Closes MAR-NN`. **Push.**
 8. **Update tracking** — Linear status + task list, as you go.
 
 **Critique cadence, in one line:** at the design (step 2), at the first working cut (step 3), and at the finished diff (step 5) — cheapest first, because each later one can only change smaller things, and each one's findings are dispositioned (§3.6) before the next line of code is written.

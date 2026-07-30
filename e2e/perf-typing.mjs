@@ -40,7 +40,7 @@ import { serve, serveAB, repoRoot } from "./perf/server.mjs";
 // The pure gate logic lives in verdict.mjs so the check that blocks every PR is
 // unit-testable (this file runs Playwright/process.exit on import and can't be).
 import {
-    TYPING_GATED_FIXTURES, typingAbVerdict, confirmRegressions,
+    TYPING_GATED_FIXTURES, TYPING_CARET_MIN_SAMPLES, typingAbVerdict, confirmRegressions,
 } from "./perf/verdict.mjs";
 
 // Plain prose, no characters that trigger input rules ([, ^, #, *, `, $...),
@@ -380,6 +380,7 @@ async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs,
     const base = [], head = [];
     const baseBlock = [], headBlock = [];
     const baseCaret = [], headCaret = [];
+    let baseCaretBursts = 0, headCaretBursts = 0;
     const browser = await chromium.launch();
     try {
         for (let i = 0; i < runs; i++) {
@@ -394,10 +395,19 @@ async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs,
             if (i === 0) continue; // warmup pair
             head.push(...h.durations); base.push(...b.durations);
             headBlock.push(h.blockMs); baseBlock.push(b.blockMs);
-            // Caret samples pool like the keystroke durations do: each burst is
-            // CARET_MOVES samples of the same operation, so the pool is the
-            // honest population (block cannot be pooled — it is a burst SUM).
+            // Caret samples pool across bursts, but a burst does NOT yield
+            // CARET_MOVES of them: back-to-back arrow presses coalesce
+            // `selectionchange`, so 30 presses collapse into 2–7 transactions.
+            // That is why the gate reads the TOTAL below and not the median —
+            // the pool is too small for an order statistic, but the sum still
+            // measures the whole burst's work (MAR-137 note, corrected
+            // 2026-07-30).
             headCaret.push(...(h.caret ?? [])); baseCaret.push(...(b.caret ?? []));
+            // `.length`, not truthiness: an empty array is truthy, and counting
+            // a burst that contributed no samples would dilute the per-burst
+            // average by inflating its divisor.
+            if (h.caret?.length) headCaretBursts++;
+            if (b.caret?.length) baseCaretBursts++;
         }
     } finally {
         await browser.close();
@@ -410,9 +420,28 @@ async function measureFixtureTypingAB(chromium, serverBase, content, keys, runs,
     // merge-base). Null, never 0 — a zero baseline would read as a 100%
     // regression on every A/B against an older commit.
     const caretOf = (xs) => (xs.length ? stats(xs).median : null);
+    // Per-burst TOTAL selection-dispatch cost — the gated statistic. Divided by
+    // the burst count so it reads as "ms of caret work per burst" and stays
+    // comparable if the two sides ever contribute a different number of bursts
+    // (they should not; the pairs are interleaved). Sum, unlike the median, is
+    // invariant to how many transactions the presses coalesced into.
+    const caretTotalOf = (xs, bursts) =>
+        (xs.length && bursts ? round(xs.reduce((a, b) => a + b, 0) / bursts) : null);
     return {
-        base: { ...stats(base), blockMs: blockOf(baseBlock), caretMedian: caretOf(baseCaret) },
-        head: { ...stats(head), blockMs: blockOf(headBlock), caretMedian: caretOf(headCaret) },
+        base: {
+            ...stats(base),
+            blockMs: blockOf(baseBlock),
+            caretMedian: caretOf(baseCaret),
+            caretTotal: caretTotalOf(baseCaret, baseCaretBursts),
+            caretSamples: baseCaret.length,
+        },
+        head: {
+            ...stats(head),
+            blockMs: blockOf(headBlock),
+            caretMedian: caretOf(headCaret),
+            caretTotal: caretTotalOf(headCaret, headCaretBursts),
+            caretSamples: headCaret.length,
+        },
     };
 }
 
@@ -437,10 +466,15 @@ function printTypingAbTable(label, pass) {
         let caret = "";
         if (r.caret) {
             const cSign = r.caret.dCaret >= 0 ? "+" : "";
-            const cMark = r.caret.realCaret
-                ? (r.caret.dCaret > 0 ? (r.gated ? " \u2717 REGRESSED" : " slower") : " \u2713 faster")
-                : "";
-            caret = `  caret ${round(r.caret.bc)}ms \u2192 ${round(r.caret.ac)}ms (${cSign}${round(r.caret.dCaretPct)}%)${cMark}`;
+            const cMark = r.caret.insufficient
+                // Printed, never silent: an abstaining gate that says nothing
+                // is indistinguishable from a passing one.
+                ? ` \u26a0 abstained (n=${r.caret.samples} < ${TYPING_CARET_MIN_SAMPLES})`
+                : r.caret.realCaret
+                    ? (r.caret.dCaret > 0 ? (r.gated ? " \u2717 REGRESSED" : " slower") : " \u2713 faster")
+                    : "";
+            caret = `  caret/burst ${round(r.caret.bc)}ms \u2192 ${round(r.caret.ac)}ms `
+                + `(${cSign}${round(r.caret.dCaretPct)}%, n=${r.caret.samples})${cMark}`;
         }
         console.log(
             `  ${tag}${r.name.padEnd(8)} ${round(r.bm)}ms → ${round(r.am)}ms  ` +

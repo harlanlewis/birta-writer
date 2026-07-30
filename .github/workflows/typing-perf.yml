@@ -117,7 +117,23 @@ jobs:
               const bb = p[name]?.base?.blockMs, ab = p[name]?.head?.blockMs;
               const block = (typeof bb === 'number' && typeof ab === 'number')
                 ? `${round(bb)} → ${round(ab)} ms` : '–';
-              return `| ${gated ? '**' + name + '**' : name} | ${round(b)} | ${round(a)} | ${s}${round(d)} ms (${s}${round(pct)}%) | ${block} |`;
+              // Caret is GATED, so it MUST be rendered: omitting it produced a
+              // summary reading "TYPING REGRESSED" above a table showing -0.33%,
+              // which reads as a broken gate and sent a reader hunting the wrong
+              // metric for an hour.
+              const bc = p[name]?.base?.caretTotal, ac = p[name]?.head?.caretTotal;
+              const bn = p[name]?.base?.caretSamples, an = p[name]?.head?.caretSamples;
+              let caret = '–';
+              if (typeof bc === 'number' && typeof ac === 'number') {
+                const n = Math.min(bn ?? 0, an ?? 0);
+                const cd = ac - bc;
+                const cpct = bc > 0 ? (cd / bc) * 100 : (ac > 0 ? 100 : 0);
+                const cs = cd >= 0 ? '+' : '';
+                caret = n < 8
+                  ? `${round(bc)} → ${round(ac)} ms ⚠ abstained (n=${n})`
+                  : `${round(bc)} → ${round(ac)} ms (${cs}${round(cpct)}%, n=${n})`;
+              }
+              return `| ${gated ? '**' + name + '**' : name} | ${round(b)} | ${round(a)} | ${s}${round(d)} ms (${s}${round(pct)}%) | ${caret} | ${block} |`;
             };
             const rows = Object.keys(r.pass1).map((n) => line(n, r.pass1)).join('\n');
             const confirmed = r.confirmedRegressions ?? [];
@@ -135,12 +151,17 @@ jobs:
               `Per-keystroke dispatch median, ${r.pairsPerFixture} interleaved pairs/fixture × ${r.keys} keystrokes `,
               `(**bold** = gated; ≥10% AND ≥0.5 ms counts as a real move).`,
               '',
+              '`caret` is per-burst TOTAL selection-only dispatch — **gated**, on the same floors. It gates on the',
+              'total rather than a median because back-to-back arrow presses coalesce `selectionchange`, so a',
+              '30-press burst yields only 2–7 transactions; a median over n=2 is noise, while the sum still',
+              'measures the whole burst. Below n=8 the caret verdict **abstains** and says so rather than guessing.',
+              '',
               '`block` is total main-thread longtask ms over the burst — **reported, never gated**: its 50 ms',
               'threshold makes it inflate on a slower machine (679 ms locally vs ~15,000 ms here). A median that',
               'improves while block grows means work MOVED out of dispatch rather than being removed.',
               '',
-              '| fixture | base ms | head ms | Δ | block |',
-              '| --- | --- | --- | --- | --- |',
+              '| fixture | base ms | head ms | Δ | caret/burst | block |',
+              '| --- | --- | --- | --- | --- | --- |',
               rows,
               '',
               '<sub>Runs only on PRs touching `webview/`, `packages/` or the perf harness. Advisory, not a required check.</sub>',
