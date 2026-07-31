@@ -110,7 +110,7 @@ The settings you're most likely to touch. The full list — including per-item t
 | `birta.maxContentWidth` | `100` | Width cap in `ch` when Content Width is `fixed` |
 | `birta.tocPosition` | `"right"` | Which side the table of contents docks on |
 | `birta.frontmatterExpanded` | `true` | Frontmatter table starts expanded or collapsed |
-| `birta.frontmatterAddButton` | `true` | Show the Add metadata button on documents without frontmatter |
+| `birta.frontmatterAddButton` | `false` | Show the Add metadata button on documents without frontmatter (Edit Frontmatter starts the same flow either way) |
 | `birta.smartLinks` | `true` | Site-generator-style local link resolution |
 | `birta.copyFormat` | `"markdown"` | What Cmd+C puts on the clipboard as plain text: the selection's Markdown source, or the rendered text (`richText`); the rich HTML flavor is always included |
 | `birta.pasteFormat` | `"markdown"` | How Cmd+V reads plain text: parsed as Markdown source, or inserted literally (`plainText`); rich pastes and code blocks are unaffected, and Paste as Plain Text (⇧⌘V) is always literal |

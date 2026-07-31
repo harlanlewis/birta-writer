@@ -236,7 +236,11 @@ export function buildWebviewHtml(
     const codeBlockWordWrap = resolveCodeBlockWordWrap(document.uri, config.codeBlockWordWrap);
     const tocAutoHideThreshold = clampNumberSetting(config.tocAutoHideThreshold, BIRTA_CONFIG_DEFAULTS.tocAutoHideThreshold, 0, 20);
     const frontmatterExpanded = config.frontmatterExpanded;
-    const frontmatterAddButton = config.frontmatterAddButton !== false;
+    // Default OFF. readBirtaConfig always fills this from BIRTA_CONFIG_DEFAULTS,
+    // so `=== true` and the previous `!== false` behave identically today; the
+    // point is that the surviving shape states the CURRENT default's polarity,
+    // the way `lineNumbers` below does, rather than the one it replaced.
+    const frontmatterAddButton = config.frontmatterAddButton === true;
     const copyFormat = normalizeCopyFormat(config.copyFormat);
     const pasteFormat = normalizePasteFormat(config.pasteFormat);
     const blockHandles = normalizeBlockHandlesMode(config.blockHandles);

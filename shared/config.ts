@@ -71,8 +71,8 @@ export interface BirtaConfig extends ProofreadConfig {
     tocVisibility: TocVisibility;
     frontmatterExpanded: boolean;
     /** Show the Add-metadata button on documents without frontmatter
-     *  (birta.frontmatterAddButton). Off hides the empty state entirely;
-     *  the Edit Frontmatter command still reaches the same flow. */
+     *  (birta.frontmatterAddButton). Off — the default — hides the empty state
+     *  entirely; the Edit Frontmatter command still reaches the same flow. */
     frontmatterAddButton: boolean;
     /**
      * What a native copy (Cmd+C / the Copy menu) puts on the clipboard's
@@ -338,7 +338,11 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     tocWidth: 260,
     tocVisibility: DEFAULT_TOC_VISIBILITY,
     frontmatterExpanded: true,
-    frontmatterAddButton: true,
+    // Off by default: on a document that will never carry metadata the button
+    // is permanent chrome for a rare action, and it insets the content by a
+    // button row. Opt in with the setting or Toggle Add Metadata Button; Edit
+    // Frontmatter starts the same flow either way.
+    frontmatterAddButton: false,
     // Native copy yields Markdown source by default — pasting into any
     // plain-text target keeps the syntax; "richText" restores the plain
     // rendition (the rich HTML flavor rides along in both modes).

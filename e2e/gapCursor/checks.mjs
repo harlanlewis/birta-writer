@@ -197,12 +197,18 @@ export async function run({ page, check, baseUrl }) {
     const clickOutsideContent = async (side) => {
         const g = await page.evaluate(() => {
             const pm = document.querySelector(".ProseMirror").getBoundingClientRect();
-            const host = document.getElementById("editor").getBoundingClientRect();
-            return { pmTop: pm.y, pmBottom: pm.bottom, x: pm.x + pm.width / 2, hostTop: host.y };
+            return { pmTop: pm.y, pmBottom: pm.bottom, x: pm.x + pm.width / 2 };
         });
-        // Above: land inside #editor's padding band, however deep it is — it
-        // is only ~16px over a leading paragraph.
-        await page.mouse.click(g.x, side > 0 ? g.pmBottom + 40 : (g.hostTop + g.pmTop) / 2);
+        // Above: aim a few px over the content's top edge. The band there is
+        // ~16px either way, but WHERE it comes from is not fixed: #editor's own
+        // padding is `topbar + 16px` bare, and a frontmatter panel above it
+        // (populated, or the opt-in Add-metadata state) overrides that inline
+        // to 16px and supplies the toolbar clearance itself. Measuring down
+        // from the content is the one formula both layouts satisfy — bisecting
+        // #editor's box instead lands UNDER the fixed toolbar whenever no panel
+        // is rendered, which since birta.frontmatterAddButton went off by
+        // default is the ordinary case for a document with no metadata.
+        await page.mouse.click(g.x, side > 0 ? g.pmBottom + 40 : g.pmTop - 8);
     };
     const clickBelowContent = () => clickOutsideContent(1);
     const clickAboveContent = () => clickOutsideContent(-1);

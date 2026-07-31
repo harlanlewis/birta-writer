@@ -154,6 +154,11 @@
                 "category": "Birta Writer"
             },
             {
+                "command": "birta.toggleFrontmatterAddButton",
+                "title": "%command.toggleFrontmatterAddButton.title%",
+                "category": "Birta Writer"
+            },
+            {
                 "command": "birta.restorePreviousContent",
                 "title": "%command.restorePreviousContent.title%",
                 "category": "Birta Writer"
@@ -1591,7 +1596,7 @@
                 "birta.frontmatterAddButton": {
                     "order": 7,
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "%config.frontmatterAddButton.description%"
                 },
                 "birta.copyFormat": {

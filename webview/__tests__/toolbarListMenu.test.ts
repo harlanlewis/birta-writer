@@ -50,6 +50,18 @@ function listRows(topbar: HTMLElement): HTMLElement[] {
     return Array.from(topbar.querySelectorAll<HTMLElement>(".tb-list-menu .tb-list-item"));
 }
 
+/** The task-sink preference row — a switch, not one of the fill-idiom rows. */
+function sinkSwitch(topbar: HTMLElement): HTMLElement {
+    return topbar.querySelector<HTMLElement>(".tb-list-menu .tb-switch-item")!;
+}
+
+/** Open the Lists dropdown the keyboard way (instant — no hover-intent timer). */
+function openListMenu(topbar: HTMLElement): void {
+    topbar
+        .querySelector<HTMLElement>('[data-item-id="listMenu"] .tb-fmt-btn')!
+        .dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+}
+
 afterEach(async () => {
     for (const editor of editors) {
         await editor.destroy();
@@ -71,12 +83,21 @@ describe("toolbar Lists dropdown", () => {
             "Bullet List",
             "Ordered List",
             "Task List",
-            "Move checked tasks to bottom",
         ]);
         rows.forEach((r) => expect(r.querySelector(".tb-list-item-icon svg")).not.toBeNull());
         expect(topbar.querySelector(".tb-list-menu .tb-menu-sep")).not.toBeNull();
-        // The switch reflects the (default off) setting.
-        expect(rows[3]?.getAttribute("aria-checked")).toBe("false");
+        // The preference is a switch row (not the rows' accent-fill idiom): a
+        // leading icon that keeps the column aligned, a label, and a track.
+        const sink = sinkSwitch(topbar);
+        expect(sink.querySelector(".tb-switch-item-label")?.textContent).toBe(
+            "Move checked tasks to bottom",
+        );
+        expect(sink.querySelector(".tb-list-item-icon svg")).not.toBeNull();
+        expect(sink.querySelector(".tb-switch .tb-switch-knob")).not.toBeNull();
+        expect(sink.getAttribute("role")).toBe("switch");
+        // It reflects the (default off) setting.
+        expect(sink.getAttribute("aria-checked")).toBe("false");
+        expect(sink.classList.contains("tb-switch-item--on")).toBe(false);
         // The three old standalone list buttons are gone.
         expect(topbar.querySelectorAll('[data-item-id="bulletList"]').length).toBe(0);
         expect(topbar.querySelectorAll('[data-item-id="listMenu"]').length).toBe(1);
@@ -86,14 +107,32 @@ describe("toolbar Lists dropdown", () => {
         // Arrange
         window.__i18n = { translations: {}, isMac: false, checklistSinkChecked: false };
         const { topbar } = buildToolbar(() => null);
-        const sinkRow = listRows(topbar)[3]!;
+        const sink = sinkSwitch(topbar);
 
         // Act
-        sinkRow.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        sink.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
 
         // Assert
-        expect(sinkRow.getAttribute("aria-checked")).toBe("true");
+        expect(sink.getAttribute("aria-checked")).toBe("true");
+        expect(sink.classList.contains("tb-switch-item--on")).toBe(true);
         expect(window.__i18n?.checklistSinkChecked).toBe(true);
+        delete window.__i18n;
+    });
+
+    it("opening the menu should repaint the sink switch from the current gate", () => {
+        // Arrange: the same setting is flippable from the task-list block menu
+        // and by a settings echo, neither of which touches this row.
+        window.__i18n = { translations: {}, isMac: false, checklistSinkChecked: false };
+        const { topbar } = buildToolbar(() => null);
+        const sink = sinkSwitch(topbar);
+        expect(sink.getAttribute("aria-checked")).toBe("false");
+        window.__i18n!.checklistSinkChecked = true;
+
+        // Act
+        openListMenu(topbar);
+
+        // Assert
+        expect(sink.getAttribute("aria-checked")).toBe("true");
         delete window.__i18n;
     });
 
