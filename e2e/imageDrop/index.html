@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- e2e harness page: mirrors the provider template (src/MarkdownEditorProvider.ts)
+     with acquireVsCodeApi stubbed. The --vscode-* variables below stand in for the
+     set VS Code injects natively; add any variable a new check depends on. -->
+<meta charset="utf-8">
+<style>
+  :root {
+    --vscode-editor-background: #1e1e1e;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-descriptionForeground: #999999;
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-background: #252526;
+    --vscode-editorWidget-border: #454545;
+    --vscode-input-background: #3c3c3c;
+    --vscode-input-foreground: #cccccc;
+    --vscode-focusBorder: #007fd4;
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
+    --vscode-list-activeSelectionBackground: #094771;
+    --vscode-list-activeSelectionForeground: #ffffff;
+    --vscode-list-hoverBackground: #2a2d2e;
+    --vscode-errorForeground: #f48771;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); }
+  /* Real toolbar height (~40px in VS Code at default font) so the measured
+     --editor-topbar-height, and everything laid out from it, matches production. */
+  .editor-topbar { height: 40px; box-sizing: border-box; }
+</style>
+<script>
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  window.__posted = [];
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg) => {
+      window.__posted.push(msg);
+      if (msg.type === "ready") {
+        window.postMessage({
+          type: "init",
+          // alpha/bravo/charlie carry the aiming checks; the filler exists so
+          // the page actually scrolls (the mid-drag re-aim check needs it).
+          content: "alpha\n\nbravo\n\ncharlie\n\n"
+            + Array.from({ length: 400 }, (_, i) => "filler " + i).join("\n\n") + "\n",
+          imageUriMap: {},
+          syncVersion: 1,
+        }, "*");
+      }
+      // Stand in for the extension's image save: echo back a stable relative
+      // path so the drop's insertion is observable in the posted markdown.
+      if (msg.type === "uploadImage") {
+        window.postMessage({
+          type: "imageUploaded",
+          id: msg.id,
+          url: "img/dropped.jpeg",
+        }, "*");
+      }
+    },
+    getState: () => undefined,
+    setState: () => {},
+  });
+</script>
+<link rel="stylesheet" href="dist/webview.css">
+<div class="editor-topbar"></div>
+<div id="editor"></div>
+<script type="module" src="dist/webview.js"></script>

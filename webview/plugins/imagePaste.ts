@@ -16,11 +16,19 @@
  * one insert. The alt text is lifted off the discarded HTML flavor, so an image
  * copied from a page keeps the description it had there — the one genuinely
  * useful thing that path was carrying.
+ *
+ * A DROP also has an aim, which PM has no hook for: editing/fileDrop.ts tracks
+ * the drag and draws the accent drop line at the block boundary nearest the
+ * pointer, and `handleDrop` lands the image on that line. Without it the only
+ * available answer is `posAtCoords`, an INLINE position — so an image dropped
+ * onto a paragraph landed inside the sentence under the pointer rather than as
+ * a block of its own.
  */
 import { $prose } from "@milkdown/utils";
 import { Plugin } from "@/pm";
 import type { EditorView } from "@/pm";
 import { saveAndInsertImageAt } from "../imageUpload";
+import { aimedDropPos, clearDropAim } from "../editing/fileDrop";
 
 /** The first image file on a clipboard/drag payload, or null. */
 export function imageFileFrom(data: DataTransfer | null | undefined): File | null {
@@ -65,9 +73,15 @@ export const imagePastePlugin = $prose(() =>
                 const file = imageFileFrom(event.dataTransfer);
                 if (!file) { return false; }
                 const alt = altFromHtmlFlavor(event.dataTransfer?.getData("text/html"));
-                // Drop where the pointer is, not where the caret happens to be.
-                const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-                saveAndInsertImageAt(view, file, alt, at?.pos ?? view.state.selection.from);
+                // Land on the line the drag was showing. It falls back to the
+                // inline position under the pointer when there is no aim — a
+                // drop with no preceding dragover, or one released over chrome.
+                const aimed = aimedDropPos();
+                const at = aimed
+                    ?? view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+                    ?? view.state.selection.from;
+                clearDropAim();
+                saveAndInsertImageAt(view, file, alt, at);
                 return true;
             },
         },

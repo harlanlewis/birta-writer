@@ -76,6 +76,7 @@ import { openShortcutsHelp } from "./components/shortcutsHelp";
 import { setSlashMenuHost } from "./plugins";
 import { revealPosition } from "./plugins/headingFold";
 import { initContextMenu } from "./components/contextMenu";
+import { initImageFileDrop } from "./editing/fileDrop";
 import {
     handleGetProjectImages,
     handleImageFile,
@@ -739,24 +740,18 @@ if (editorContainer) {
         view.focus();
     });
 
-    // Drag-and-drop images
-    eventManager.onElement(editorContainer, "dragover", (e) => {
-        const items = e.dataTransfer?.items;
-        if (
-            items &&
-            Array.from(items).some(
-                (i) => i.kind === "file" && i.type.startsWith("image/"),
-            )
-        ) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
+    // Drag-and-drop images: the drag-time aim — the accent drop line at the
+    // block boundary under the pointer, plus edge auto-scroll — and the
+    // preventDefault that lets a drop fire in this document at all.
+    initImageFileDrop(eventManager, {
+        container: editorContainer,
+        getView: () => getEditorView(),
     });
 
-    // Image DROP is handled by the handleDrop prop in plugins/imagePaste.ts.
-    // A listener out here sits OUTSIDE ProseMirror's own drop handling, which
-    // runs first on the editor element and would insert the payload's HTML
-    // flavor before this ever saw the event (MAR-277).
+    // The DROP itself is the handleDrop prop in plugins/imagePaste.ts, which
+    // reads the aim above. A listener out here sits OUTSIDE ProseMirror's own
+    // drop handling, which runs first on the editor element and would insert
+    // the payload's HTML flavor before this ever saw the event (MAR-277).
 }
 
 // Image PASTE is handled by the handlePaste prop in plugins/imagePaste.ts —
