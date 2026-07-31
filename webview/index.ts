@@ -79,7 +79,6 @@ import { initContextMenu } from "./components/contextMenu";
 import {
     handleGetProjectImages,
     handleImageFile,
-    saveAndInsertImage,
 } from "./imageUpload";
 import { initScrollPersistence, rememberScrollNow } from "./scrollPersistence";
 import { initPaneWidthVar } from "./blockWidth";
@@ -754,42 +753,16 @@ if (editorContainer) {
         }
     });
 
-    eventManager.onElement(editorContainer, "drop", (e) => {
-        const files = e.dataTransfer?.files;
-        if (!files?.length) {
-            return;
-        }
-        const imageFile = Array.from(files).find((f) =>
-            f.type.startsWith("image/"),
-        );
-        if (!imageFile) {
-            return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        saveAndInsertImage(currentEditor, imageFile, "");
-    });
+    // Image DROP is handled by the handleDrop prop in plugins/imagePaste.ts.
+    // A listener out here sits OUTSIDE ProseMirror's own drop handling, which
+    // runs first on the editor element and would insert the payload's HTML
+    // flavor before this ever saw the event (MAR-277).
 }
 
-// Paste images
-eventManager.onDocument("paste", (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) {
-        return;
-    }
-    const imageItem = Array.from(items).find((i) =>
-        i.type.startsWith("image/"),
-    );
-    if (!imageItem) {
-        return;
-    }
-    const file = imageItem.getAsFile();
-    if (!file) {
-        return;
-    }
-    e.preventDefault();
-    saveAndInsertImage(currentEditor, file, "");
-});
+// Image PASTE is handled by the handlePaste prop in plugins/imagePaste.ts —
+// see the drop note above: a document-level listener bubbles AFTER
+// ProseMirror's, so the clipboard's HTML <img> was pasted first and the saved
+// file inserted second, leaving two half-broken images (MAR-277).
 
 // Selection drives two surfaces: the top toolbar tracks it to update its
 // active-state, and (when birta.floatingToolbar.enabled) the floating palette

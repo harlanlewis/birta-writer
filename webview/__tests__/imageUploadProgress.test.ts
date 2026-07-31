@@ -6,11 +6,12 @@
  * drive a real editor and assert both halves — the decoration that appears,
  * and the document that must not change.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Editor, editorViewCtx, rootCtx, defaultValueCtx } from "@milkdown/core";
 import { getMarkdown } from "@milkdown/utils";
 import { configureSerialization, gfmFidelity, pureCommonmark } from "../serialization";
 import {
+    UPLOAD_PILL_DELAY_MS,
     beginImageUpload,
     failImageUpload,
     imageUploadProgressKey,
@@ -49,17 +50,22 @@ describe("imageUploadProgressPlugin", () => {
     let v: EditorView;
 
     beforeEach(async () => {
+        vi.useFakeTimers();
         document.body.innerHTML = "";
         editor = await makeEditor("hello world\n");
         v = editor.action((ctx) => ctx.get(editorViewCtx));
         v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, 6)));
     });
 
-    afterEach(async () => { await editor.destroy(); });
+    afterEach(async () => { vi.useRealTimers(); await editor.destroy(); });
+
+    /** Let a save outlive the flicker threshold so its pill is rendered. */
+    const waitForPill = () => vi.advanceTimersByTime(UPLOAD_PILL_DELAY_MS + 1);
 
     it("starting a save should show one progress pill without changing the document", () => {
         const before = editor.action(getMarkdown());
         beginImageUpload(v);
+        waitForPill();
         expect(pillCount(v)).toBe(1);
         expect(editor.action(getMarkdown())).toBe(before);
     });
@@ -73,6 +79,7 @@ describe("imageUploadProgressPlugin", () => {
     it("two concurrent saves should each get their own pill", () => {
         const a = beginImageUpload(v);
         beginImageUpload(v);
+        waitForPill();
         expect(pillCount(v)).toBe(2);
         settleImageUpload(v, a);
         expect(pillCount(v)).toBe(1);
@@ -83,6 +90,26 @@ describe("imageUploadProgressPlugin", () => {
         const id = beginImageUpload(v);
         failImageUpload(v, id, "disk full");
         expect(editor.action(getMarkdown())).toBe(before);
+        // A failure reports immediately — it does not wait out the threshold,
+        // because unlike progress it stays worth reading however fast it came.
+        expect(pillCount(v)).toBe(1);
+    });
+
+    // A local save is usually single-digit ms; a pill that appears and vanishes
+    // inside one frame is flicker, not information.
+    it("a save that finishes quickly should never show a pill", () => {
+        const id = beginImageUpload(v);
+        expect(pillCount(v)).toBe(0);
+        settleImageUpload(v, id);
+        waitForPill();
+        expect(pillCount(v)).toBe(0);
+    });
+
+    it("a save still running past the threshold should show its pill", () => {
+        beginImageUpload(v);
+        vi.advanceTimersByTime(UPLOAD_PILL_DELAY_MS - 10);
+        expect(pillCount(v)).toBe(0);
+        vi.advanceTimersByTime(20);
         expect(pillCount(v)).toBe(1);
     });
 

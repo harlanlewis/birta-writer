@@ -58,6 +58,7 @@ import {
     pasteMarkdownPlugin,
     pasteTableCellPlugin,
     imageUploadProgressPlugin,
+    imagePastePlugin,
     mathInlineEditPlugin,
     wikiLinkCompletePlugin,
     headingLinkCompletePlugin,
@@ -601,6 +602,9 @@ export async function createEditor(
         // it is running (and any failure) as decoration at the paste
         // position, so the document is never touched by a save that fails.
         .use(imageUploadProgressPlugin)
+        // Must be a PM prop, not a DOM listener: a pasted image carries an
+        // HTML <img> flavor too, and PM would insert that first.
+        .use(imagePastePlugin)
         .use(wikiLinkCompletePlugin)
         // Typing `#` mid-prose (or the Section Link command) offers the
         // document's headings; picking inserts a plain [title](#slug) link.

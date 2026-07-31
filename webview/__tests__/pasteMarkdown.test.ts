@@ -227,6 +227,23 @@ describe("pasteMarkdownPlugin — clipboardTextParser", () => {
             expect(outline(v.state.doc)).toBe("table");
         });
 
+        // The case the first fix MISSED. A single newline between lines is a
+        // SOFT break, which parses to a hardbreak with isInline: true and
+        // serializes as a literal newline — inside a table row that terminates
+        // the row, so `| a⏎b |` is not a table at all. Every break landing in a
+        // cell must be the `<br>` form, whatever it was in the source.
+        it("plain multi-line text should land as <br> lines, not raw newlines", () => {
+            const md = pasteAndSerialize(editor, v, "alpha\nbravo\ncharlie");
+            expect(md).toBe("| alpha<br>bravo<br>charliea | b |\n|---|---|\n| 1 | 2 |\n");
+            expect(md).not.toContain("alpha\nbravo");
+            expect(outline(v.state.doc)).toBe("table");
+        });
+
+        it("the same lines pasted literally should also stay one row", () => {
+            const md = pasteAndSerialize(editor, v, "alpha\nbravo", { plain: true });
+            expect(md).toBe("| alpha<br>bravoa | b |\n|---|---|\n| 1 | 2 |\n");
+        });
+
         // MAR-274: a list cannot live in a GFM cell, so it lands as the cell's
         // lines joined by hard breaks (`<br>`) — the table keeps its shape.
         it("a pasted list should flatten into the one cell, not split the table", () => {
