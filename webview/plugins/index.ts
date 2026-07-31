@@ -39,7 +39,7 @@ export { linkUrlCompletePlugin } from "./linkUrlComplete";
 export { detectPastedLinkTarget, pasteLinkPlugin } from "./pasteLink";
 export { pasteMarkdownPlugin } from "./pasteMarkdown";
 export { pasteContainerFitPlugin } from "./pasteContainerFit";
-export { altFromHtmlFlavor, imageFileFrom, imagePastePlugin } from "./imagePaste";
+export { altFromHtmlFlavor, imageFilesFrom, imagePastePlugin } from "./imagePaste";
 export {
     beginImageUpload,
     failImageUpload,

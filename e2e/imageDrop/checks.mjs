@@ -7,7 +7,10 @@
  *   - the line re-aims after the page scrolls mid-drag,
  *   - resting near the bottom edge auto-scrolls, with no further drag events,
  *   - crossing between elements doesn't clear the line; leaving does,
- *   - a non-image file drag is left alone entirely.
+ *   - a non-image file drag is left alone entirely,
+ *   - a drag carrying SEVERAL images lands all of them, in drag order, as one
+ *     undo step (MAR-281) — a real multi-file DataTransfer through a real drop
+ *     event, which is the layer the singular-detection bug lived in.
  *
  * Out of reach here, and deliberately not asserted: VS Code's own
  * whole-editor drop overlay lives in the workbench, not the webview. This
@@ -30,12 +33,18 @@ async function latestDoc(page, matcher, tries = 30) {
  * Fire a native drag event at a viewport point with a real DataTransfer.
  * Chromium builds both for us, so this is the genuine event shape the
  * production listeners see — only the OS is simulated.
+ *
+ * `tags` are the payloads' leading bytes: the harness page turns each into a
+ * distinct saved path, so a multi-file drop's result is order-legible. One tag
+ * is one file, so `tags: [2, 3, 4]` is a three-file drag.
  */
-async function fireDrag(page, type, x, y, { mime = "image/png", intoSibling = false } = {}) {
-    return page.evaluate(({ type, x, y, mime, intoSibling }) => {
+async function fireDrag(page, type, x, y, { mime = "image/png", intoSibling = false, tags = [1] } = {}) {
+    return page.evaluate(({ type, x, y, mime, intoSibling, tags }) => {
         const dt = new DataTransfer();
-        const name = mime.startsWith("image/") ? "photo.png" : "notes.md";
-        dt.items.add(new File([new Uint8Array([1, 2, 3])], name, { type: mime }));
+        const ext = mime.startsWith("image/") ? "png" : "md";
+        for (const tag of tags) {
+            dt.items.add(new File([new Uint8Array([tag, 2, 3])], `photo${tag}.${ext}`, { type: mime }));
+        }
         const target = document.elementFromPoint(x, y) ?? document.body;
         const event = new DragEvent(type, {
             bubbles: true,
@@ -49,7 +58,7 @@ async function fireDrag(page, type, x, y, { mime = "image/png", intoSibling = fa
         });
         target.dispatchEvent(event);
         return event.defaultPrevented;
-    }, { type, x, y, mime, intoSibling });
+    }, { type, x, y, mime, intoSibling, tags });
 }
 
 /** The drop line's own geometry, or null when it isn't showing. */
@@ -187,7 +196,41 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(doc));
     check("drop line is gone after the drop", (await indicator(page)) === null);
 
-    // ── 6. A non-image file drag is not ours ──
+    // ── 6. Several files dropped at once all land, in drag order (MAR-281) ──
+    // The bug: detection was singular, so this inserted ONE image and threw the
+    // other two away silently. The harness page answers the three saves in
+    // REVERSE drag order (see index.html), so an implementation that inserts
+    // each file as it resolves gets the order wrong and fails here — which a
+    // stub answering in order could not distinguish.
+    const charlie = await paragraphRect(page, "charlie");
+    await fireDrag(page, "dragenter", charlie.x, charlie.top + 4, { tags: [2, 3, 4] });
+    await fireDrag(page, "dragover", charlie.x, charlie.top + 4, { tags: [2, 3, 4] });
+    await fireDrag(page, "drop", charlie.x, charlie.top + 4, { tags: [2, 3, 4] });
+
+    const multiDoc = await latestDoc(page, (c) => c.includes("img/dropped-4.jpeg"));
+    check("all three dropped images are inserted",
+        multiDoc !== null
+            && ["dropped-2", "dropped-3", "dropped-4"].every((n) => multiDoc.includes(n)),
+        JSON.stringify(multiDoc));
+    check("the three land in drag order, not in the order their saves resolved",
+        multiDoc !== null
+            && /!\[\]\(img\/dropped-2\.jpeg\)[\s\S]*!\[\]\(img\/dropped-3\.jpeg\)[\s\S]*!\[\]\(img\/dropped-4\.jpeg\)/
+                .test(multiDoc),
+        JSON.stringify(multiDoc));
+    check("they land as three separate blocks at the drop point, above charlie",
+        multiDoc !== null
+            && /!\[\]\(img\/dropped-2\.jpeg\)\s+!\[\]\(img\/dropped-3\.jpeg\)\s+!\[\]\(img\/dropped-4\.jpeg\)\s+charlie/
+                .test(multiDoc),
+        JSON.stringify(multiDoc));
+
+    // Four images in the document now: the single drop above, plus these three.
+    // `:not(.ProseMirror-separator)` matters — ProseMirror renders its own
+    // <img> artifacts into contenteditable and a bare selector counts them.
+    const rendered = await page.evaluate(() =>
+        document.querySelectorAll(".ProseMirror img:not(.ProseMirror-separator)").length);
+    check("every dropped image is rendered, none duplicated", rendered === 4, `imgs=${rendered}`);
+
+    // ── 7. A non-image file drag is not ours ──
     // (defaultPrevented is not the tell here: Chromium's own editing code
     // claims drag events over a contenteditable region regardless of us.
     // The observable difference is that nothing aims and nothing lands.)
@@ -198,6 +241,23 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(400);
     const afterMd = await page.evaluate(() =>
         window.__posted.filter((m) => m.type === "update").map((m) => m.content).pop());
+    // Four from the drops above (one single + one batch of three) and no more.
     check("a dropped non-image file inserts nothing",
-        (afterMd.match(/!\[/g) ?? []).length === 1, JSON.stringify(afterMd));
+        (afterMd.match(/!\[/g) ?? []).length === 4, JSON.stringify(afterMd));
+
+    // ── 8. One gesture, one undo step ──
+    // Last, because it rolls the document back. This pins the user-visible
+    // behavior through the REAL keymap, which the unit tests can't reach — but
+    // it is a pin, not a discriminator: these saves resolve well inside
+    // ProseMirror's history grouping window, so per-file inserts would collapse
+    // into one step here too (measured against a per-file mutant, which fails
+    // the ordering checks above and passes this one). The straddling case lives
+    // in webview/__tests__/imageMultiUpload.test.ts, where the clock is ours.
+    await page.locator(".ProseMirror > p").first().click();
+    await page.keyboard.press("Meta+z");
+    await page.waitForTimeout(300);
+    const undone = await page.evaluate(() =>
+        document.querySelectorAll(".ProseMirror img:not(.ProseMirror-separator)").length);
+    check("one undo removes the whole three-image batch, leaving the earlier drop",
+        undone === 1, `imgs after undo=${undone}`);
 }
