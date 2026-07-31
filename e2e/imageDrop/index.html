@@ -40,7 +40,17 @@
           type: "init",
           // alpha/bravo/charlie carry the aiming checks; the filler exists so
           // the page actually scrolls (the mid-drag re-aim check needs it).
-          content: "alpha\n\nbravo\n\ncharlie\n\n"
+          // Filler on BOTH sides so the trio can be scrolled to the middle of
+          // the viewport: the aiming pointer must sit in the auto-scroll dead
+          // band, and at the top of the page it does not — the top zone runs
+          // from the toolbar's bottom to +80px (SCROLL_ZONE), which is exactly
+          // where the first few blocks are. This suite used to clear that zone
+          // only by accident, on the ~46px the Add-metadata panel added above
+          // the content; when birta.frontmatterAddButton went off by default
+          // the pointer landed in the ramp and auto-scroll moved the page ~5px
+          // between the checks' two measurements.
+          content: Array.from({ length: 200 }, (_, i) => "before " + i).join("\n\n")
+            + "\n\nalpha\n\nbravo\n\ncharlie\n\n"
             + Array.from({ length: 400 }, (_, i) => "filler " + i).join("\n\n") + "\n",
           imageUriMap: {},
           syncVersion: 1,

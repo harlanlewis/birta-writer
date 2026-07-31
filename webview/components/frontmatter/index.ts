@@ -864,10 +864,12 @@ export function renderFrontmatterPanel(frontmatter: string | undefined): void {
 function renderEmptyMetadataState(): void {
     const existing = document.getElementById('frontmatter-panel');
     const editorEl = document.getElementById('editor');
-    // Gate (birta.frontmatterAddButton): off removes the affordance entirely —
-    // no panel, no editor inset — restoring the plain frontmatter-less layout.
-    // The Edit Frontmatter command still reaches startAddMetadata directly.
-    if (window.__i18n?.frontmatterAddButton === false) {
+    // Gate (birta.frontmatterAddButton): off — the default — removes the
+    // affordance entirely: no panel, no editor inset, just the plain
+    // frontmatter-less layout. The Edit Frontmatter command still reaches
+    // startAddMetadata directly. Anything but an explicit `true` is off, so a
+    // bootstrap that omitted the flag can't resurrect chrome nobody asked for.
+    if (window.__i18n?.frontmatterAddButton !== true) {
         existing?.remove();
         if (editorEl) { editorEl.style.paddingTop = ''; }
         return;

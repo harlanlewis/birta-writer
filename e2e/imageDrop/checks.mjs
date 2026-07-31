@@ -76,7 +76,24 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForSelector(".milkdown .ProseMirror", { timeout: 10000 });
     await page.waitForTimeout(400);
 
-    const bravo = await paragraphRect(page, "bravo");
+    /**
+     * Park "bravo" in the middle of the viewport and return its fresh rect.
+     * Every aiming check points at `bravo.top + 4`, which must sit in the
+     * auto-scroll DEAD BAND — inside the top zone (toolbar bottom → +80px) the
+     * rAF loop scrolls the page between measurements and the line legitimately
+     * moves under them. Re-run this after any scroll, since the rect is
+     * viewport-relative.
+     */
+    const centerBravo = async () => {
+        await page.$$eval(".ProseMirror > p", (els) => {
+            const el = els.find((e) => e.textContent.includes("bravo"));
+            el.scrollIntoView({ block: "center" });
+        });
+        await page.waitForTimeout(100);
+        return paragraphRect(page, "bravo");
+    };
+
+    let bravo = await centerBravo();
 
     // ── 1. The drag is claimed on dragenter, and shows the line ──
     // Claimed over the TOOLBAR, deliberately: inside the editable region
@@ -107,19 +124,25 @@ export async function run({ page, check, baseUrl }) {
     await page.waitForTimeout(50);
     const bravoAfterScroll = await paragraphRect(page, "bravo");
     await fireDrag(page, "dragover", bravo.x, bravo.top + 4);
-    const scrolledLine = await indicator(page);
     // The pointer hasn't moved, so it now sits over whatever scrolled under
-    // it — the line must track the boundary nearest that point NOW.
-    const nearestNow = await page.evaluate((y) => {
+    // it — the line must track the boundary nearest that point NOW. Both
+    // samples in ONE round-trip, for the same reason the edge-scroll check
+    // below does it: separate evaluates compare two different moments.
+    const scrolled = await page.evaluate((y) => {
+        const el = document.querySelector(".block-drag-indicator");
+        const line = el && getComputedStyle(el).display !== "none"
+            ? el.getBoundingClientRect().top
+            : null;
         const tops = [...document.querySelectorAll(".ProseMirror > *")]
-            .map((el) => el.getBoundingClientRect().top);
-        return tops.reduce((best, t) => (Math.abs(t - y) < Math.abs(best - y) ? t : best), tops[0]);
+            .map((n) => n.getBoundingClientRect().top);
+        const nearest = tops.reduce(
+            (best, t) => (Math.abs(t - y) < Math.abs(best - y) ? t : best), tops[0]);
+        return { line, nearest };
     }, bravo.top + 4);
     check("drop line re-aims after a mid-drag scroll",
-        scrolledLine !== null && Math.abs(scrolledLine.top - (nearestNow - 1)) <= 2,
-        JSON.stringify({ scrolledLine, nearestNow, bravoAfterScroll }));
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(50);
+        scrolled.line !== null && Math.abs(scrolled.line - (scrolled.nearest - 1)) <= 2,
+        JSON.stringify({ ...scrolled, bravoAfterScroll }));
+    bravo = await centerBravo();
 
     // ── 3. Resting in the edge zone auto-scrolls ──
     // One dragover near the bottom edge and then NO further events: drag
@@ -160,8 +183,7 @@ export async function run({ page, check, baseUrl }) {
     check("leaving the edge zone stops the auto-scroll",
         restedAt === stillRestedAt, `${restedAt} -> ${stillRestedAt}`);
     await fireDrag(page, "dragleave", bravo.x, Math.round(viewport / 2));
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(50);
+    bravo = await centerBravo();
 
     // ── 4. Crossing between elements keeps the line; leaving clears it ──
     await fireDrag(page, "dragover", bravo.x, bravo.top + 4);
@@ -174,8 +196,11 @@ export async function run({ page, check, baseUrl }) {
 
     // ── 5. The drop lands at the aimed-at boundary, not at the caret ──
     // Put the caret somewhere else first: the old behavior inserted there.
+    // Clicking the document's first paragraph scrolls the page up to it, so
+    // re-park bravo afterwards — the caret stays where the click put it.
     await page.locator(".ProseMirror > p").first().click();
     await page.waitForTimeout(100);
+    bravo = await centerBravo();
     await fireDrag(page, "dragenter", bravo.x, bravo.top + 4);
     await fireDrag(page, "dragover", bravo.x, bravo.top + 4);
     const dropPrevented = await fireDrag(page, "drop", bravo.x, bravo.top + 4);

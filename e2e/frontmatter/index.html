@@ -30,7 +30,11 @@
   .editor-topbar { min-height: 48px; }
 </style>
 <script>
-  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] } };
+  // birta.frontmatterAddButton ships OFF. The empty-state geometry checks are
+  // about where the button lands once opted in, so the harness turns it on;
+  // ?addBtn=0 leaves it off to check the shipped default renders no panel.
+  const ADD_BTN = new URLSearchParams(location.search).get("addBtn") !== "0";
+  window.__i18n = { translations: {}, isMac: true, toolbar: { placements: {}, order: [] }, frontmatterAddButton: ADD_BTN };
   window.__posted = [];
   const CONTENT = "---\ntitle: Content inventory\ntags:\n  - reference\n  - showcase\n---\n\n# Sample\n\ntext\n";
   const FRONTMATTER = "---\ntitle: Content inventory\ntags:\n  - reference\n  - showcase\n---\n";

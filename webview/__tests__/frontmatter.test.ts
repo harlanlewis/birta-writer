@@ -505,6 +505,8 @@ describe("renderFrontmatterPanel collapse toggle", () => {
     });
 
     it("undefined frontmatter should replace the table with the empty state", () => {
+        // The empty state exists only with the gate opted in (default off).
+        window.__i18n = { frontmatterAddButton: true } as unknown as typeof window.__i18n;
         renderFrontmatterPanel(FM);
         renderFrontmatterPanel(undefined);
         const panel = document.getElementById("frontmatter-panel")!;
@@ -518,7 +520,9 @@ describe("frontmatter empty state (Add metadata)", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockVscodeApi.getState.mockReturnValue(null);
-        window.__i18n = undefined;
+        // birta.frontmatterAddButton ships OFF, so the on-state is a premise
+        // these tests must state — the gate cases below override it.
+        window.__i18n = { frontmatterAddButton: true } as unknown as typeof window.__i18n;
         setupDom();
         vi.useFakeTimers();
     });
@@ -594,6 +598,16 @@ describe("frontmatter empty state (Add metadata)", () => {
 
     it("birta.frontmatterAddButton off should render no panel and no editor inset", () => {
         window.__i18n = { frontmatterAddButton: false } as unknown as typeof window.__i18n;
+        renderFrontmatterPanel(undefined);
+        expect(document.getElementById("frontmatter-panel")).toBeNull();
+        expect(document.getElementById("editor")!.style.paddingTop).toBe("");
+    });
+
+    // The gate is off by DEFAULT, so an absent flag must read as off. A
+    // `!== false` shape here would pass every explicit-value test above while
+    // shipping the button to everyone whose bootstrap omitted the key.
+    it("an absent gate flag should behave as off, not on", () => {
+        window.__i18n = undefined;
         renderFrontmatterPanel(undefined);
         expect(document.getElementById("frontmatter-panel")).toBeNull();
         expect(document.getElementById("editor")!.style.paddingTop).toBe("");
