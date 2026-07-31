@@ -23,7 +23,7 @@ export type ActiveContextResolver = () => Promise<ActiveEditorContext | null>;
 
 // ── Public API (returned from activate()) ──────────────────────────────────
 // Consumed by any extension:
-//   const ext = vscode.extensions.getExtension('birtalabs.birta-writer');
+//   const ext = vscode.extensions.getExtension('BirtaLabs.birta-writer');
 //   const api = await ext?.activate() as BirtaApi | undefined;
 //   const ctx = await api?.getActiveEditorContext();
 

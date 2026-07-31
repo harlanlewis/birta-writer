@@ -56,7 +56,7 @@ async function writeFixture(name: string, withNeedle = true): Promise<vscode.Uri
 }
 
 async function birtaApi(): Promise<BirtaApi> {
-    const ext = vscode.extensions.getExtension("birtalabs.birta-writer");
+    const ext = vscode.extensions.getExtension("BirtaLabs.birta-writer");
     assert.ok(ext, "the extension is installed in the host");
     return (await ext!.activate()) as BirtaApi;
 }
