@@ -120,14 +120,13 @@ describe("formatDiagnostics", () => {
 });
 
 describe("composeFeedback", () => {
-    it("a bug with details should title on the kind and carry the details first", () => {
+    it("a report with details should title on the summary and carry the details first", () => {
         const { title, body } = composeFeedback({
-            kind: "bug",
             summary: "Moving a list item loses its table",
             details: "Drag the second bullet upward.",
             diagnostics,
         });
-        expect(title).toBe("Bug: Moving a list item loses its table");
+        expect(title).toBe("Moving a list item loses its table");
         expect(body.indexOf("Drag the second bullet upward.")).toBeLessThan(
             body.indexOf("<details>"),
         );
@@ -135,7 +134,6 @@ describe("composeFeedback", () => {
 
     it("a skipped disappointment question should leave no trace in the body", () => {
         const { body } = composeFeedback({
-            kind: "idea",
             summary: "Add a thing",
             details: "",
             diagnostics,
@@ -145,7 +143,6 @@ describe("composeFeedback", () => {
 
     it("an answered disappointment question should record the answer verbatim", () => {
         const { body } = composeFeedback({
-            kind: "other",
             summary: "Hello",
             details: "",
             disappointment: "very",
@@ -157,7 +154,6 @@ describe("composeFeedback", () => {
 
     it("empty details should produce a placeholder rather than a blank section", () => {
         const { body } = composeFeedback({
-            kind: "other",
             summary: "Hello",
             details: "   ",
             diagnostics,
@@ -167,11 +163,10 @@ describe("composeFeedback", () => {
 
     it("a summary with surrounding whitespace should be trimmed in the title", () => {
         const { title } = composeFeedback({
-            kind: "idea",
             summary: "  spaced  ",
             details: "",
             diagnostics,
         });
-        expect(title).toBe("Idea: spaced");
+        expect(title).toBe("spaced");
     });
 });

@@ -1,63 +1,94 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as vscode from "vscode";
-import { runSendFeedback, collectDiagnostics, openableUri } from "../feedback/sendFeedback";
+import { runSendFeedback, collectDiagnostics } from "../feedback/sendFeedback";
+import { composeFeedback } from "../feedback/compose";
 
 const showQuickPick = vscode.window.showQuickPick as unknown as ReturnType<typeof vi.fn>;
 const showInputBox = vscode.window.showInputBox as unknown as ReturnType<typeof vi.fn>;
 const openExternal = vscode.env.openExternal as unknown as ReturnType<typeof vi.fn>;
 const writeText = vscode.env.clipboard.writeText as unknown as ReturnType<typeof vi.fn>;
+const showErrorMessage = vscode.window.showErrorMessage as unknown as ReturnType<typeof vi.fn>;
 
-/** Answer the four prompts in order, then pick a destination. */
-function answer(options: {
-    kind?: string;
-    mood?: string;
-    summary?: string | undefined;
-    details?: string | undefined;
-    channel?: string;
-}): void {
-    const picks = [
-        { feedbackKind: options.kind ?? "bug" },
-        { mood: options.mood ?? "skip" },
-    ];
-    showQuickPick
-        .mockResolvedValueOnce(picks[0])
-        .mockResolvedValueOnce(picks[1])
-        .mockResolvedValueOnce({ channel: options.channel ?? "github" });
+/** Answer the three prompts in order: summary, disappointment, detail. */
+function answer(options: { summary?: string; mood?: string; details?: string | undefined }): void {
+    showQuickPick.mockResolvedValueOnce({ mood: options.mood ?? "skip" });
     showInputBox
         .mockResolvedValueOnce("summary" in options ? options.summary : "a summary")
         .mockResolvedValueOnce("details" in options ? options.details : "some details");
 }
 
-describe("openableUri", () => {
-    // Regression: the first cut used `Uri.parse(url)` directly, which decodes
-    // the query and then re-escapes `=` and `&` — collapsing three parameters
-    // into one named "title=Bug: x&labels". The prefill silently arrived
-    // empty. These pin the encoded query surviving intact.
-    it("a prefilled https query should survive as it was encoded", () => {
-        const raw =
-            "https://github.com/o/r/issues/new?title=Bug%3A%20a%20summary&labels=bug&body=x%20y%0Az";
-        expect(openableUri(raw).toString(true)).toBe(raw);
+/**
+ * What VS Code's opener actually does with what `openExternal` is handed —
+ * `_doOpenExternal`, verified against the shipped 1.130 bundle:
+ *
+ *     if (typeof i === "string" && t.toString() === o.toString()) n = i;
+ *     else n = encodeURI(o.toString(!0));
+ *
+ * A string is opened verbatim; a `Uri` is re-rendered through `encodeURI`,
+ * which escapes `%`. Modelling it here is the whole point of these tests. An
+ * assertion about `uri.toString(true)` describes what we *stored*, not what
+ * the browser receives, and passed happily while every prefill was arriving
+ * double-encoded — GitHub showing the literal text `Bug%3A%20hi` in its title
+ * field. This function is the difference between the two.
+ */
+function asOpenerSends(target: unknown): string {
+    return typeof target === "string"
+        ? target
+        : encodeURI((target as { toString(skip: boolean): string }).toString(true));
+}
+
+/** The URL as the browser receives it, parsed. */
+function sentUrl(): URL {
+    return new URL(asOpenerSends(openExternal.mock.calls[0][0]));
+}
+
+describe("the prefilled URL, as the opener sends it", () => {
+    // The invariant: whatever the composer produced comes back out of the URL
+    // byte-identical, after the opener has had its way with it. It holds
+    // regardless of what anyone expects the encoding to look like, which is
+    // why it catches both the double-encode (`%3A` → `%253A`) and the plain
+    // `Uri.parse` alternative, where an `&` in the summary would split the
+    // query into a new parameter and a `#` would truncate the body.
+    beforeEach(() => {
+        vi.clearAllMocks();
     });
 
-    it("a prefilled mailto query should survive as it was encoded", () => {
-        const raw = "mailto:hello@birtalabs.com?subject=Bug%3A%20x&body=a%0Ab";
-        expect(openableUri(raw).toString(true)).toBe(raw);
+    it("what the composer produced should be what the browser receives, exactly", async () => {
+        const summary = "Table & list #2 lose 100% of a+b=c?d";
+        const details = "first line & more\nsecond #line 50%";
+        answer({ summary, details });
+        await runSendFeedback("9.9.9");
+
+        const expected = composeFeedback({
+            summary,
+            details,
+            diagnostics: collectDiagnostics("9.9.9"),
+        });
+        const parsed = sentUrl();
+        expect(parsed.searchParams.get("title")).toBe(expected.title);
+        expect(parsed.searchParams.get("body")).toBe(expected.body);
     });
 
-    it("the reserved characters that give a query its structure should stay unescaped", () => {
-        const out = openableUri(
-            "https://github.com/o/r/issues/new?title=A%3AB&labels=bug",
-        ).toString(true);
-        expect(out).toContain("?title=");
-        expect(out).toContain("&labels=");
-        expect(out).not.toContain("%3D");
-        expect(out).not.toContain("%26");
+    it("no percent-escape should reach the browser doubly escaped", async () => {
+        answer({ summary: "hi" });
+        await runSendFeedback("0.0.0");
+        expect(asOpenerSends(openExternal.mock.calls[0][0])).not.toContain("%25");
     });
 
-    it("a URL with no query should pass through unchanged", () => {
-        expect(openableUri("https://example.com/a/b").toString(true)).toBe(
-            "https://example.com/a/b",
+    it("a summary of only reserved characters should still land in the title", async () => {
+        answer({ summary: "&#?=+%", details: "" });
+        await runSendFeedback("0.0.0");
+        expect(sentUrl().searchParams.get("title")).toBe("&#?=+%");
+    });
+
+    it("the issue should be filed against the fork, unlabelled", async () => {
+        answer({});
+        await runSendFeedback("0.0.0");
+        const parsed = sentUrl();
+        expect(parsed.origin + parsed.pathname).toBe(
+            "https://github.com/harlanlewis/birta-writer/issues/new",
         );
+        expect(parsed.searchParams.has("labels")).toBe(false);
     });
 });
 
@@ -66,99 +97,112 @@ describe("runSendFeedback", () => {
         vi.clearAllMocks();
     });
 
-    it("the GitHub channel should open a prefilled issue and never post it", async () => {
-        answer({ channel: "github" });
+    it("a complete answer should open a prefilled issue and never post it", async () => {
+        answer({});
         await runSendFeedback("0.0.0");
-
         expect(openExternal).toHaveBeenCalledTimes(1);
-        // toString(true) is how openExternal renders a Uri for the browser.
-        const url = (openExternal.mock.calls[0][0] as { toString(skip: boolean): string }).toString(
-            true,
-        );
-        expect(url.startsWith("https://github.com/harlanlewis/birta-writer/issues/new?")).toBe(true);
-        expect(url).toContain("title=Bug%3A%20a%20summary");
-        expect(url).toContain("labels=bug");
         // Nothing here fetches, posts, or resolves anything: opening a URL is
         // the whole delivery mechanism. Rung 0.
+        expect(sentUrl().searchParams.get("title")).toBe("a summary");
     });
 
-    it("the GitHub channel should also copy the full text, so truncation loses nothing", async () => {
-        answer({ channel: "github" });
+    it("three prompts should be the whole flow", async () => {
+        answer({});
+        await runSendFeedback("0.0.0");
+        expect(showInputBox).toHaveBeenCalledTimes(2);
+        expect(showQuickPick).toHaveBeenCalledTimes(1);
+    });
+
+    it("a report that fits should leave the clipboard alone", async () => {
+        answer({});
+        await runSendFeedback("0.0.0");
+        expect(writeText).not.toHaveBeenCalled();
+    });
+
+    it("a report too long for the link should be copied whole, so nothing is lost", async () => {
+        answer({ details: "x".repeat(20000) });
         await runSendFeedback("0.0.0");
         expect(writeText).toHaveBeenCalledTimes(1);
-        expect(String(writeText.mock.calls[0][0])).toContain("some details");
+        expect(String(writeText.mock.calls[0][0])).toContain("x".repeat(20000));
+        expect(sentUrl().searchParams.get("body")).toContain("Truncated to fit the link");
     });
 
-    it("the clipboard channel should make no outbound call at all", async () => {
-        answer({ channel: "clipboard" });
+    it("a browser that will not open should leave the report on the clipboard, and say so", async () => {
+        openExternal.mockResolvedValueOnce(false);
+        answer({ details: "the detail" });
         await runSendFeedback("0.0.0");
-        expect(openExternal).not.toHaveBeenCalled();
         expect(writeText).toHaveBeenCalledTimes(1);
+        expect(String(writeText.mock.calls[0][0])).toContain("the detail");
+        expect(showErrorMessage).toHaveBeenCalledTimes(1);
     });
 
-    it("the mail channel should fall back to the clipboard while no address is configured", async () => {
-        answer({ channel: "mail" });
+    it("an opener that throws should be caught, not surfaced as a crash", async () => {
+        openExternal.mockRejectedValueOnce(new Error("nope"));
+        answer({});
         await runSendFeedback("0.0.0");
-        expect(openExternal).not.toHaveBeenCalled();
+        expect(writeText).toHaveBeenCalledTimes(1);
+        expect(showErrorMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("a truncated report should be copied exactly once, not once per reason", async () => {
+        openExternal.mockResolvedValueOnce(false);
+        answer({ details: "y".repeat(20000) });
+        await runSendFeedback("0.0.0");
         expect(writeText).toHaveBeenCalledTimes(1);
     });
 
     it("a skipped disappointment question should leave it out of the payload", async () => {
-        answer({ mood: "skip", channel: "clipboard" });
+        answer({ mood: "skip" });
         await runSendFeedback("0.0.0");
-        expect(String(writeText.mock.calls[0][0])).not.toContain("no longer use");
+        expect(sentUrl().searchParams.get("body")).not.toContain("no longer use");
     });
 
     it("an answered disappointment question should be carried into the payload", async () => {
-        answer({ mood: "very", channel: "clipboard" });
+        answer({ mood: "very" });
         await runSendFeedback("0.0.0");
-        expect(String(writeText.mock.calls[0][0])).toContain("Very disappointed");
+        expect(sentUrl().searchParams.get("body")).toContain("Very disappointed");
     });
 
-    it("cancelling at the kind step should do nothing at all", async () => {
-        showQuickPick.mockResolvedValueOnce(undefined);
+    it("cancelling at the summary step should do nothing at all", async () => {
+        showInputBox.mockResolvedValueOnce(undefined);
         await runSendFeedback("0.0.0");
-        expect(showInputBox).not.toHaveBeenCalled();
+        expect(showQuickPick).not.toHaveBeenCalled();
         expect(openExternal).not.toHaveBeenCalled();
         expect(writeText).not.toHaveBeenCalled();
     });
 
     it("an empty summary should abort rather than file a titleless report", async () => {
-        showQuickPick.mockResolvedValueOnce({ feedbackKind: "bug" }).mockResolvedValueOnce({ mood: "skip" });
         showInputBox.mockResolvedValueOnce("   ");
         await runSendFeedback("0.0.0");
         expect(openExternal).not.toHaveBeenCalled();
-        expect(writeText).not.toHaveBeenCalled();
     });
 
-    it("escaping the optional details step should abort, but an empty answer should continue", async () => {
-        showQuickPick.mockResolvedValueOnce({ feedbackKind: "bug" }).mockResolvedValueOnce({ mood: "skip" });
-        showInputBox.mockResolvedValueOnce("a summary").mockResolvedValueOnce(undefined);
-        await runSendFeedback("0.0.0");
-        expect(writeText).not.toHaveBeenCalled();
-
-        vi.clearAllMocks();
-        answer({ details: "", channel: "clipboard" });
-        await runSendFeedback("0.0.0");
-        expect(writeText).toHaveBeenCalledTimes(1);
-    });
-
-    it("cancelling the destination step should send nowhere", async () => {
-        showQuickPick
-            .mockResolvedValueOnce({ feedbackKind: "bug" })
-            .mockResolvedValueOnce({ mood: "skip" })
-            .mockResolvedValueOnce(undefined);
-        showInputBox.mockResolvedValueOnce("a summary").mockResolvedValueOnce("d");
+    it("cancelling the disappointment question should abort, since skipping is its own row", async () => {
+        showInputBox.mockResolvedValueOnce("a summary");
+        showQuickPick.mockResolvedValueOnce(undefined);
         await runSendFeedback("0.0.0");
         expect(openExternal).not.toHaveBeenCalled();
-        expect(writeText).not.toHaveBeenCalled();
     });
 
-    it("the mail channel should not be offered while no address is configured", async () => {
-        answer({ channel: "clipboard" });
+    it("escaping the optional detail step should abort, but an empty answer should continue", async () => {
+        showInputBox.mockResolvedValueOnce("a summary").mockResolvedValueOnce(undefined);
+        showQuickPick.mockResolvedValueOnce({ mood: "skip" });
         await runSendFeedback("0.0.0");
-        const rows = showQuickPick.mock.calls[2][0] as Array<{ channel: string }>;
-        expect(rows.map((r) => r.channel)).toEqual(["github", "clipboard"]);
+        expect(openExternal).not.toHaveBeenCalled();
+
+        vi.clearAllMocks();
+        answer({ details: "" });
+        await runSendFeedback("0.0.0");
+        expect(openExternal).toHaveBeenCalledTimes(1);
+    });
+
+    it("a summary longer than a GitHub title should be rejected at the prompt", async () => {
+        answer({});
+        await runSendFeedback("0.0.0");
+        const validate = showInputBox.mock.calls[0][0].validateInput as (v: string) => string | undefined;
+        expect(validate("a".repeat(256))).toBeUndefined();
+        expect(validate("a".repeat(257))).toContain("256");
+        expect(validate("   ")).toContain("required");
     });
 });
 
@@ -176,9 +220,9 @@ describe("collectDiagnostics", () => {
     });
 
     it("diagnostics should never contain a document, a path, or a workspace name", async () => {
-        answer({ channel: "clipboard" });
+        answer({});
         await runSendFeedback("0.0.0");
-        const payload = String(writeText.mock.calls[0][0]);
+        const payload = String(sentUrl().searchParams.get("body"));
         expect(payload).not.toContain("workspaceFolders");
         expect(payload).not.toMatch(/\/(Users|home)\//);
     });

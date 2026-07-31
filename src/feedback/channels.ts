@@ -17,27 +17,12 @@
 export const FEEDBACK_REPO = "harlanlewis/birta-writer";
 
 /**
- * Destination for the mail channel — **`null` on purpose, which disables the
- * channel.** The mail path is built, tested, and dark: Birta Labs does not yet
- * have a dedicated address, and pointing feedback at a personal inbox in the
- * interim is a commitment that is awkward to withdraw. Set this to the
- * `@birtalabs.com` address when it exists and the channel lights up with no
- * other change; `feedbackChannels.test.ts` pins both states so it cannot ship
- * half-wired in either direction. Tracked as MAR-250.
- */
-export const FEEDBACK_EMAIL: string | null = null;
-
-export type FeedbackChannel = "github" | "mail" | "clipboard";
-
-/**
  * Practical ceiling for a prefilled URL. Browsers and servers both impose
  * limits well above this, but GitHub starts rejecting long prefills before the
  * theoretical maximum, and a truncated report the user can repair beats a
- * page that will not load. Mail clients are far stricter, hence the separate
- * (much smaller) budget.
+ * page that will not load.
  */
 export const GITHUB_URL_BUDGET = 6000;
-export const MAILTO_URL_BUDGET = 1800;
 
 /** Appended when a body had to be cut to fit a URL budget. */
 export const TRUNCATION_NOTE =
@@ -73,48 +58,19 @@ export function fitToBudget(body: string, overheadChars: number, budget: number)
  *
  * Every parameter is escaped with `encodeURIComponent`, deliberately **not**
  * `URLSearchParams` — the latter is form-encoding, which writes a space as
- * `+`. GitHub tolerates that, but `mailto:` does not (a `+` there is a literal
- * plus), and one escaping rule across both channels is worth more than the
- * convenience.
+ * `+`, and a `+` a user actually typed would then arrive as a space.
+ *
+ * `truncated` is returned rather than left for the caller to sniff out of the
+ * body, because it is the only thing the caller needs the clipboard for: a
+ * report that fit needs no copy, and copying anyway silently destroys whatever
+ * the user had on their clipboard.
  */
-export function githubIssueUrl(options: {
-    repo?: string;
-    title: string;
-    body: string;
-    labels?: string[];
-}): string {
+export function githubIssueUrl(options: { repo?: string; title: string; body: string }): {
+    url: string;
+    truncated: boolean;
+} {
     const repo = options.repo ?? FEEDBACK_REPO;
-    const base = `https://github.com/${repo}/issues/new`;
-    const fixed = [`title=${encodeURIComponent(options.title)}`];
-    if (options.labels?.length) {
-        fixed.push(`labels=${encodeURIComponent(options.labels.join(","))}`);
-    }
-    const prefix = `${base}?${fixed.join("&")}&body=`;
+    const prefix = `https://github.com/${repo}/issues/new?title=${encodeURIComponent(options.title)}&body=`;
     const body = fitToBudget(options.body, prefix.length, GITHUB_URL_BUDGET);
-    return `${prefix}${encodeURIComponent(body)}`;
-}
-
-/**
- * A prefilled mail draft. Returns `null` when no destination is configured —
- * callers use that to hide the channel rather than to show a broken one.
- */
-export function mailtoUrl(options: {
-    to?: string | null;
-    subject: string;
-    body: string;
-}): string | null {
-    const to = options.to === undefined ? FEEDBACK_EMAIL : options.to;
-    if (!to) return null;
-    const overhead = `mailto:${to}?subject=${encodeURIComponent(options.subject)}&body=`.length;
-    const body = fitToBudget(options.body, overhead, MAILTO_URL_BUDGET);
-    return `mailto:${to}?subject=${encodeURIComponent(options.subject)}&body=${encodeURIComponent(body)}`;
-}
-
-/**
- * The channels offered, in the order they should appear. Clipboard is always
- * available and always last — it is the fallback that needs no account, no
- * mail client, and no network of any kind.
- */
-export function availableChannels(email: string | null = FEEDBACK_EMAIL): FeedbackChannel[] {
-    return email ? ["github", "mail", "clipboard"] : ["github", "clipboard"];
+    return { url: `${prefix}${encodeURIComponent(body)}`, truncated: body !== options.body };
 }

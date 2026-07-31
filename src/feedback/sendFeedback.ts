@@ -10,13 +10,13 @@
  *    what turns opt-in back into telemetry, so the command is reachable only
  *    from the palette.
  *  - **Birta never sends anything.** It composes text and hands a URL to the
- *    host (`env.openExternal`) or a string to the clipboard. The outbound
- *    request, if any, is made by the user's browser under the user's own
- *    identity — which is why this is rung 0 in `docs/NETWORK_POSTURE.md` and
- *    works with `birta.network.enabled` off.
+ *    host (`env.openExternal`). The outbound request is made by the user's
+ *    browser under the user's own identity — which is why this is rung 0 in
+ *    `docs/NETWORK_POSTURE.md` and works with `birta.network.enabled` off.
  *  - **The payload is visible and editable at the moment of sending.** The
- *    prefilled GitHub form is an editable textarea; the clipboard is text they
- *    paste. There is no step where something the user has not read leaves.
+ *    prefilled GitHub form is an editable textarea, and the last prompt says
+ *    the browser is about to open. There is no step where something the user
+ *    has not read leaves, and no step that surprises them.
  *  - **Document content never enters the payload.** The composer is never
  *    given the document, the file path, or the workspace name; settings values
  *    are filtered by shape (`compose.ts`).
@@ -31,18 +31,10 @@ import { reportError } from "../errorSink";
 import {
     composeFeedback,
     describeChangedSettings,
-    KIND_ISSUE_LABELS,
     type Diagnostics,
     type Disappointment,
-    type FeedbackKind,
 } from "./compose";
-import {
-    availableChannels,
-    githubIssueUrl,
-    mailtoUrl,
-    FEEDBACK_EMAIL,
-    type FeedbackChannel,
-} from "./channels";
+import { githubIssueUrl } from "./channels";
 
 export const SEND_FEEDBACK_COMMAND = "birta.sendFeedback";
 
@@ -79,54 +71,41 @@ export function collectDiagnostics(extensionVersion: string): Diagnostics {
     };
 }
 
-interface KindItem extends vscode.QuickPickItem {
-    // Not `kind`: QuickPickItem already has one (QuickPickItemKind, the
-    // separator enum), and shadowing it with a string breaks the interface.
-    feedbackKind: FeedbackKind;
-}
 interface MoodItem extends vscode.QuickPickItem {
     mood: Disappointment | "skip";
 }
-interface ChannelItem extends vscode.QuickPickItem {
-    channel: FeedbackChannel;
-}
 
-const CHANNEL_ROWS: Record<FeedbackChannel, { label: string; detail: string }> = {
-    github: {
-        label: "$(github) Open a prefilled GitHub issue",
-        detail: "Opens your browser. Nothing is sent until you press Submit — you can edit everything first.",
-    },
-    mail: {
-        label: "$(mail) Open a prefilled email",
-        detail: "Opens a draft in your mail client. Nothing is sent until you send it.",
-    },
-    clipboard: {
-        label: "$(clippy) Copy to the clipboard",
-        detail: "No network of any kind. Paste it wherever you like.",
-    },
-};
+/** GitHub's own ceiling on an issue title. */
+const TITLE_MAX = 256;
 
 /**
  * Run the command. `extensionVersion` is injected rather than read from the
  * extension registry so the flow is testable without a real ExtensionContext.
+ *
+ * Three prompts, and no more. The destination for all of this is a full
+ * Markdown textarea in the browser, which is a better place to write than any
+ * modal VS Code can show — `showInputBox` cannot even accept a newline — so
+ * the flow collects the one thing the URL needs (a title) and gets out of the
+ * way. Every step after the first is optional and says so.
  */
 export async function runSendFeedback(extensionVersion: string): Promise<void> {
-    const kindItem = await vscode.window.showQuickPick<KindItem>(
-        [
-            { feedbackKind: "bug", label: "$(bug) Something is broken", detail: "A bug, a wrong result, a crash" },
-            { feedbackKind: "idea", label: "$(lightbulb) An idea", detail: "Something missing, or something that could be better" },
-            { feedbackKind: "other", label: "$(comment) Something else", detail: "Anything at all" },
-        ],
-        {
-            title: "Send Feedback (1 of 4)",
-            placeHolder: "What kind of feedback is this?",
-            ignoreFocusOut: true,
+    const summary = await vscode.window.showInputBox({
+        title: "Send Feedback (1 of 3)",
+        prompt: "One line — this becomes the issue title",
+        placeHolder: "e.g. Moving a list item with a table inside it loses the table",
+        ignoreFocusOut: true,
+        validateInput: (value) => {
+            if (!value.trim()) return "A one-line summary is required";
+            return value.trim().length > TITLE_MAX
+                ? `A title is at most ${TITLE_MAX} characters — the rest belongs in the detail step`
+                : undefined;
         },
-    );
-    if (!kindItem) return;
+    });
+    if (!summary?.trim()) return;
 
     // Optional, and visibly so: this question exists to learn who Birta is
-    // actually for, and it must never stand between a user and a bug report.
+    // actually for, and it must never stand between a user and a bug report —
+    // which is why it comes after the summary rather than before it.
     const moodItem = await vscode.window.showQuickPick<MoodItem>(
         [
             { mood: "very", label: "Very disappointed" },
@@ -135,25 +114,21 @@ export async function runSendFeedback(extensionVersion: string): Promise<void> {
             { mood: "skip", label: "$(chevron-right) Skip this question", detail: "Entirely optional" },
         ],
         {
-            title: "Send Feedback (2 of 4) — optional",
+            title: "Send Feedback (2 of 3) — optional",
             placeHolder: "How would you feel if you could no longer use Birta Writer?",
             ignoreFocusOut: true,
         },
     );
     if (!moodItem) return;
 
-    const summary = await vscode.window.showInputBox({
-        title: "Send Feedback (3 of 4)",
-        prompt: "One line — this becomes the subject",
-        placeHolder: "e.g. Moving a list item with a table inside it loses the table",
-        ignoreFocusOut: true,
-        validateInput: (value) => (value.trim() ? undefined : "A one-line summary is required"),
-    });
-    if (!summary?.trim()) return;
-
+    // The prompt names what happens next on purpose. The destination picker
+    // this flow replaced was the one place that said "opens your browser;
+    // nothing is sent until you press Submit" — for a rung-0b feature whose
+    // whole claim is that the user reads the payload before it goes, a browser
+    // window opening unannounced is the wrong last impression.
     const details = await vscode.window.showInputBox({
-        title: "Send Feedback (4 of 4) — optional",
-        prompt: "Any detail you want to add now — there is room to write more in the next step",
+        title: "Send Feedback (3 of 3) — optional",
+        prompt: "Any detail to add now. Next: a prefilled GitHub issue opens in your browser — nothing is sent until you press Submit, and you can edit all of it first.",
         placeHolder: "What you did, what you expected, what happened",
         ignoreFocusOut: true,
     });
@@ -162,84 +137,75 @@ export async function runSendFeedback(extensionVersion: string): Promise<void> {
     if (details === undefined) return;
 
     const { title, body } = composeFeedback({
-        kind: kindItem.feedbackKind,
         summary,
         details,
         ...(moodItem.mood !== "skip" && { disappointment: moodItem.mood }),
         diagnostics: collectDiagnostics(extensionVersion),
     });
 
-    const channelItem = await vscode.window.showQuickPick<ChannelItem>(
-        availableChannels().map((channel) => ({ channel, ...CHANNEL_ROWS[channel] })),
-        {
-            title: "Send Feedback — where should it go?",
-            placeHolder: "Birta does not send anything itself; you do",
-            ignoreFocusOut: true,
-        },
-    );
-    if (!channelItem) return;
-
-    await deliver(channelItem.channel, kindItem.feedbackKind, title, body);
+    await deliver(title, body);
 }
 
 /**
- * Turn a fully-encoded URL into a `Uri` that survives the trip to the browser.
+ * Open a prefilled URL with its encoding intact.
  *
- * **`vscode.Uri.parse(url)` on a prefilled URL is a trap.** It decodes the
- * query into a raw string, so the reserved characters that gave the query its
- * structure get re-escaped on the way out: `?title=Bug%3A%20x&labels=bug`
- * comes back as `?title%3DBug%3A%20x%26labels%3Dbug` — one parameter named
- * "title=Bug: x&labels" instead of three. `openExternal` renders with
- * `toString(true)`, which avoids that double-escape but instead emits the
- * *decoded* text, putting literal spaces and newlines in the URL.
+ * `env.openExternal` is typed for `Uri`, but a `Uri` is the one thing that
+ * cannot carry a prefilled query. The opener renders it as
+ * `encodeURI(uri.toString(true))`, and `encodeURI` escapes `%` — so every
+ * `%3A` we wrote arrives as `%253A`, and GitHub shows the literal text
+ * `Bug%3A%20hi` in its title field. That is not a hypothetical: it is what
+ * shipped, and what `sendFeedback.test.ts` now models directly.
  *
- * Splitting at the first `?` and passing the already-encoded query through
- * `.with({ query })` is exact under `toString(true)` — verified for both
- * `https:` and `mailto:` by `sendFeedback.test.ts`.
+ * A **string** is passed through verbatim, verified across all three hops of
+ * VS Code 1.130: `ExtHostWindow.openUri` keeps it as `uriAsString`,
+ * `MainThreadWindow.$openUri` prefers it when it round-trips, and
+ * `_doOpenExternal` opens it as-is (`typeof i === "string" && … → n = i`).
+ * The cast is the price of a public signature narrower than the runtime it
+ * fronts; `Uri` is simply lossy here and there is no encoding of the query
+ * that survives it, because `%` itself is what gets escaped.
  */
-export function openableUri(url: string): vscode.Uri {
-    const q = url.indexOf("?");
-    if (q === -1) return vscode.Uri.parse(url);
-    return vscode.Uri.parse(url.slice(0, q)).with({ query: url.slice(q + 1) });
+export function openPrefilledUrl(url: string): Thenable<boolean> {
+    return vscode.env.openExternal(url as unknown as vscode.Uri);
 }
 
-async function deliver(
-    channel: FeedbackChannel,
-    kind: FeedbackKind,
-    title: string,
-    body: string,
-): Promise<void> {
+async function deliver(title: string, body: string): Promise<void> {
+    const { url, truncated } = githubIssueUrl({ title, body });
+    const fullText = `# ${title}\n\n${body}`;
+
+    // The clipboard is the safety net, not the default. It is written when the
+    // report would otherwise be incomplete or unreachable — copying on every
+    // report would silently destroy whatever the user had copied, as a toll
+    // paid on every send to insure against a rare one.
+    let copied = false;
+    const copy = async (): Promise<void> => {
+        if (copied) return;
+        await vscode.env.clipboard.writeText(fullText);
+        copied = true;
+    };
+
+    if (truncated) await copy();
+
+    let opened = false;
     try {
-        if (channel === "clipboard") {
-            await vscode.env.clipboard.writeText(`# ${title}\n\n${body}`);
-            vscode.window.setStatusBarMessage("Birta: feedback copied to the clipboard", 5000);
-            return;
-        }
-        if (channel === "mail") {
-            const url = mailtoUrl({ subject: title, body });
-            // Unreachable while FEEDBACK_EMAIL is null, because the row is not
-            // offered — belt and braces so a future wiring mistake degrades to
-            // the clipboard rather than to a broken `mailto:null`.
-            if (!url) {
-                await deliver("clipboard", kind, title, body);
-                return;
-            }
-            await vscode.env.openExternal(openableUri(url));
-            return;
-        }
-        const url = githubIssueUrl({
-            title,
-            body,
-            labels: [KIND_ISSUE_LABELS[kind]],
-        });
-        // The body may have been truncated to fit the URL; the clipboard
-        // always carries the whole thing, so nothing the user wrote is lost.
-        await vscode.env.clipboard.writeText(`# ${title}\n\n${body}`);
-        await vscode.env.openExternal(openableUri(url));
+        opened = await openPrefilledUrl(url);
     } catch (error) {
-        reportError(`feedback delivery (${channel})`, error);
+        reportError("feedback delivery", error);
+    }
+
+    if (!opened) {
+        await copy();
         vscode.window.showErrorMessage(
-            "Birta: could not open that. Your feedback is on the clipboard.",
+            "Birta: could not open your browser. Your feedback is on the clipboard.",
+        );
+        return;
+    }
+    // Quiet on purpose: a notification here would be raised behind the browser
+    // window that is taking focus. The reliable channel is `TRUNCATION_NOTE`,
+    // which is already sitting in the form the user is now looking at.
+    if (truncated) {
+        vscode.window.setStatusBarMessage(
+            "Birta: your report was too long for the link — the full text is on your clipboard, paste it in",
+            8000,
         );
     }
 }
@@ -252,5 +218,3 @@ export function registerSendFeedback(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand(SEND_FEEDBACK_COMMAND, () => runSendFeedback(version)),
     );
 }
-
-export { FEEDBACK_EMAIL };
