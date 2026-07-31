@@ -1,0 +1,45 @@
+name: Entra identity probe (temporary)
+
+# One-time helper for the Marketplace publishing setup — DELETE ME once used.
+#
+# The Marketplace publisher's "add member" search will not find a managed
+# identity by its Azure object id. The only id it accepts is the Azure DevOps
+# profile id, which is not shown anywhere in either portal — it exists only as
+# the answer to an API call made *as that identity*. This workflow makes that
+# call and prints it.
+#
+# Usage: Actions -> "Entra identity probe (temporary)" -> Run workflow. Copy the
+# "id" field out of the JSON, add it as a Contributor on the publisher, then
+# delete this file. Nothing else depends on it.
+#
+# The magic GUID is the resource id of the Azure DevOps API — a well-known
+# constant, the same for every tenant, not a value specific to this project.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  probe:
+    name: Print the Azure DevOps profile id
+    runs-on: ubuntu-latest
+    # Must match the federated credential's environment binding, or the OIDC
+    # subject won't match and the login below fails.
+    environment: marketplace-publish
+
+    steps:
+      - name: Authenticate to Microsoft Entra ID
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Query the Azure DevOps profile
+        run: |
+          az rest \
+            --url https://app.vssps.visualstudio.com/_apis/profile/profiles/me \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798

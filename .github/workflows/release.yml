@@ -4,9 +4,16 @@ name: Release
 # packages the VSIX, tags the commit, and publishes a GitHub Release.
 #
 # Runs nightly and no-ops when nothing new has landed since the last tag.
-# Marketplace publishing stays dormant until a VSCE_PAT secret exists, so today
-# this only builds the downloadable VSIX + notes — exactly the "build, don't
-# publish yet" phase.
+# Marketplace publishing stays dormant until an AZURE_CLIENT_ID secret exists, so
+# until then this only builds the downloadable VSIX + notes — exactly the "build,
+# don't publish yet" phase.
+#
+# Publishing authenticates with Microsoft Entra ID workload identity federation
+# (OIDC), not a stored token. Azure DevOps is retiring the "all accessible
+# organizations" PAT that vsce's documented flow depends on, on 2026-12-01, and
+# whether an org-scoped PAT can replace it is still an open question upstream
+# (microsoft/vscode#322741) — so there is no long-lived credential here to expire
+# or rotate. See docs/RELEASING.md for the one-time identity setup.
 #
 # Versions are CalVer, derived from the release clock (America/Los_Angeles):
 #   YYYY . (month*100 + day) . (hour*10000 + min*100 + sec)
@@ -42,8 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      HAS_VSCE: ${{ secrets.VSCE_PAT != '' }}
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      version: ${{ steps.plan.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -142,11 +150,83 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: releases/*.vsix
 
-      # Dormant until a VSCE_PAT secret is added — see docs/RELEASING.md.
+      - name: Hand the VSIX to the publish job
+        if: steps.plan.outputs.release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: releases/*.vsix
+          retention-days: 7
+
+  # Publishing is a SEPARATE job on purpose. It is the only part that needs the
+  # `marketplace-publish` environment, and an environment is a policy surface —
+  # if one ever gains a required reviewer or a deployment branch rule, it stalls
+  # every job that declares it. Keeping it off the release job means tagging, the
+  # GitHub Release, and the downloadable VSIX can never be held up by a policy
+  # that only publishing cares about. The blast radius of a broken credential is
+  # likewise one skipped job, not a failed release.
+  publish:
+    name: Publish to VS Code Marketplace
+    needs: release
+    if: needs.release.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    # The federated credential's subject is repo:<owner>/<repo>:environment:<name>,
+    # and GitHub only mints that claim for a job declaring the environment — so
+    # this line is what makes the OIDC login match.
+    environment: marketplace-publish
+    permissions:
+      contents: read
+      id-token: write # request the OIDC token azure/login exchanges for Entra creds
+    env:
+      # Dormant until the secret exists — see docs/RELEASING.md for the one-time
+      # managed-identity setup. Until then this job runs and skips, exactly as the
+      # publish step did while VSCE_PAT was unset.
+      HAS_AZURE: ${{ secrets.AZURE_CLIENT_ID != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_AZURE == 'true'
+
+      - uses: pnpm/action-setup@v4
+        if: env.HAS_AZURE == 'true'
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_AZURE == 'true'
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        if: env.HAS_AZURE == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the VSIX
+        if: env.HAS_AZURE == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix
+          path: releases
+
+      # allow-no-subscriptions is required: the identity is federated purely to
+      # authenticate against the Marketplace and holds no role on any Azure
+      # subscription, so a normal `az login` would fail for want of one.
+      - name: Authenticate to Microsoft Entra ID
+        if: env.HAS_AZURE == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      # --skip-duplicate makes this job idempotent: re-running it after the
+      # Marketplace already accepted the version is a no-op instead of a hard
+      # failure. Note it is NOT a general retry path for a failed publish — the
+      # release job derives its version from the clock, so re-running the whole
+      # workflow cuts a NEW version rather than retrying this one. Re-run this
+      # job alone.
+      #
       # A pre-release channel, if ever wanted, is a flag not a version: append
       # `--pre-release` here for those builds; the CalVer scheme is unchanged.
-      - name: Publish to VS Code Marketplace
-        if: steps.plan.outputs.release == 'true' && env.HAS_VSCE == 'true'
-        run: pnpm vsce publish --no-dependencies --packagePath releases/*.vsix
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish
+        if: env.HAS_AZURE == 'true'
+        run: pnpm vsce publish --no-dependencies --packagePath releases/*.vsix --azure-credential --skip-duplicate
