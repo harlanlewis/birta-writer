@@ -19,13 +19,80 @@ async function cueWithText(page, text) {
     }, text);
 }
 
-async function clickPopupButton(page, label) {
-    await page.evaluate((l) => {
-        const btn = [...document.querySelectorAll(".pf-popup-item")]
-            .find((b) => b.textContent === l);
-        if (!btn) { throw new Error(`popup button "${l}" not found`); }
-        btn.click();
-    }, label);
+/** Everything a check needs to read off the popup, captured in one page-side
+ * pass so a dismissal can't land between two reads. */
+const SNAPSHOT = `(() => {
+    const popup = document.querySelector(".pf-popup");
+    if (!popup) { return null; }
+    const groups = [...popup.querySelectorAll(".pf-popup-group")];
+    if (groups.length === 0) { return null; }
+    return {
+        tags: groups.map((g) => g.querySelector(".pf-popup-tag")?.textContent ?? ""),
+        messages: groups.map((g) => g.querySelector(".pf-popup-message")?.textContent ?? ""),
+        items: [...popup.querySelectorAll(".pf-popup-item")].map((b) => b.textContent),
+    };
+})()`;
+
+/**
+ * Click the cue carrying `text` and return a snapshot of the popup it opens,
+ * or null. Retries the whole gesture, because the popup does not reliably
+ * survive being opened: `proofread/popup.ts` closes it on ANY scroll (a
+ * capture-phase `scroll` listener on `window`) and on any outside click, and
+ * the document keeps scrolling for its own reasons — a decoration pass, the
+ * scroll restore after the externalUpdate step. So the element can appear and
+ * then vanish before a check reads it, at which point `$eval` throws and
+ * `$$eval` quietly returns `[]`. Both of this suite's intermittent failures
+ * were that, one round-trip apart.
+ *
+ * The snapshot is taken inside the same page evaluation that confirms the
+ * popup is open, so there is no window between "it is there" and "read it".
+ * Reopening is safe: the popup is a singleton that each open replaces.
+ */
+async function openCuePopup(page, text, tries = 4) {
+    for (let attempt = 0; attempt < tries; attempt++) {
+        const cue = (await cueWithText(page, text)).asElement();
+        if (!cue) {
+            await page.waitForTimeout(150);
+            continue;
+        }
+        await cue.click();
+        const snapshot = await page
+            .waitForFunction(SNAPSHOT, undefined, { timeout: 1500 })
+            .then((handle) => handle.jsonValue())
+            .catch(() => null);
+        if (snapshot) { return snapshot; }
+    }
+    return null;
+}
+
+/**
+ * Open the cue's popup and press one of its buttons, retrying the whole
+ * gesture. The button is found and clicked in ONE evaluation so nothing can
+ * dismiss the popup between the two, and a dismissal before that simply costs
+ * another attempt — waiting on the button alone could only wait for a popup
+ * that was never coming back.
+ */
+async function actOnCue(page, text, label, tries = 4) {
+    for (let attempt = 0; attempt < tries; attempt++) {
+        const cue = (await cueWithText(page, text)).asElement();
+        if (!cue) {
+            await page.waitForTimeout(150);
+            continue;
+        }
+        await cue.click();
+        const clicked = await page
+            .waitForFunction((l) => {
+                const btn = [...document.querySelectorAll(".pf-popup-item")]
+                    .find((b) => b.textContent === l);
+                if (!btn) { return false; }
+                btn.click();
+                return true;
+            }, label, { timeout: 1500 })
+            .then(() => true)
+            .catch(() => false);
+        if (clicked) { return true; }
+    }
+    return false;
 }
 
 /** The last serialized markdown the webview posted (the autosave payload). */
@@ -71,14 +138,11 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(cues));
 
     // ── [Update] on the stale z*2 => 15 ──
-    const staleCue = await cueWithText(page, "15");
-    await staleCue.asElement().click();
-    await page.waitForSelector(".pf-popup", { timeout: 5000 });
-    const staleTag = await page.$eval(".pf-popup .pf-popup-tag", (el) => el.textContent);
-    const staleMsg = await page.$eval(".pf-popup .pf-popup-message", (el) => el.textContent);
+    const stalePopup = await openCuePopup(page, "15");
     check("stale popup: tag + fresh value in the message",
-        staleTag === "Stale" && staleMsg.includes("20"), `${staleTag}: ${staleMsg}`);
-    await clickPopupButton(page, "Update");
+        stalePopup?.tags[0] === "Stale" && stalePopup.messages[0].includes("20"),
+        JSON.stringify(stalePopup));
+    check("[Update] is pressed", await actOnCue(page, "15", "Update"), "never reached the button");
     await page.waitForTimeout(400);
     const afterUpdate = await lastPostedContent(page);
     check("[Update] writes the fresh value into the serialized markdown",
@@ -93,10 +157,7 @@ export async function run({ page, check, baseUrl }) {
         JSON.stringify(cuesAfterUpdate));
 
     // ── [Ignore] on the stale w+1 => 9 ──
-    const ignoreCue = await cueWithText(page, "9");
-    await ignoreCue.asElement().click();
-    await page.waitForSelector(".pf-popup", { timeout: 5000 });
-    await clickPopupButton(page, "Ignore");
+    check("[Ignore] is pressed", await actOnCue(page, "9", "Ignore"), "never reached the button");
     await page.waitForTimeout(300);
     const afterIgnore = await page.$$eval(".calc-cue--stale", (els) => els.map((el) => el.textContent));
     check("[Ignore] silences the equation without touching the text",
@@ -108,11 +169,11 @@ export async function run({ page, check, baseUrl }) {
     check("the broken cue remains after the stale ones are handled",
         (await brokenCue.asElement()?.evaluate((el) => el.classList.contains("calc-cue--broken"))) === true,
         "broken cue missing");
-    await brokenCue.asElement().click();
-    await page.waitForSelector(".pf-popup", { timeout: 5000 });
-    const brokenMsg = await page.$eval(".pf-popup .pf-popup-message", (el) => el.textContent);
-    check("broken popup names the missing definition", brokenMsg.includes("'y'"), brokenMsg);
-    await clickPopupButton(page, "Remove answer");
+    const brokenPopup = await openCuePopup(page, "9");
+    check("broken popup names the missing definition",
+        brokenPopup?.messages.some((m) => m.includes("'y'")) === true, JSON.stringify(brokenPopup));
+    check("[Remove answer] is pressed",
+        await actOnCue(page, "9", "Remove answer"), "never reached the button");
     await page.waitForTimeout(400);
     const afterRemove = await lastPostedContent(page);
     check("[Remove answer] leaves the withdrawal shape `expr =>`",
@@ -140,12 +201,10 @@ export async function run({ page, check, baseUrl }) {
     // then the proofread findings — not whichever handler ran last.
     const overlapCue = await cueWithText(page, "7");
     check("the cue inside the flagged sentence exists", overlapCue.asElement() !== null, "no cue on 7");
-    await overlapCue.asElement().click();
-    await page.waitForSelector(".pf-popup", { timeout: 5000 });
-    const groups = await page.$$eval(".pf-popup .pf-popup-group .pf-popup-tag",
-        (els) => els.map((el) => el.textContent));
+    const overlapPopup = await openCuePopup(page, "7");
     check("one popup stacks the cue AND the overlapping proofread finding, cue first",
-        groups.length >= 2 && groups[0] === "Stale", JSON.stringify(groups));
+        (overlapPopup?.tags.length ?? 0) >= 2 && overlapPopup.tags[0] === "Stale",
+        JSON.stringify(overlapPopup));
     await page.keyboard.press("Escape");
 
     check("no page errors", errors.length === 0, errors.join("; "));

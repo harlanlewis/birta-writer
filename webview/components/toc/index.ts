@@ -517,13 +517,29 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
     let scrollRafId: number | null = null;
     // The initial auto-open on load should snap into place, not slide/fade in —
     // the switch into the rendered editor shouldn't draw attention to itself.
-    // While this is true, syncTocState() commits state with transitions off; it
-    // is cleared once the first content-driven refresh (with the editor mounted)
-    // has run, so every later user toggle / resize animates normally. Note the
-    // panel is first opened by refresh() *after* the editor mounts, not by the
-    // init rAF below (which runs before getEditorView() exists), so the guard
-    // has to live in syncTocState rather than around any single caller.
+    // While this is true, syncTocState() commits state with transitions off.
+    //
+    // TWO independent commits make up the load reveal, and which of them opens
+    // the panel is a race: the init rAF at the bottom of this function, and the
+    // first `refresh()` after the editor mounts (index.ts calls it synchronously
+    // once createEditor resolves). Either can win. Clearing the flag on
+    // whichever ran first — what this used to do, from `refresh()` alone — left
+    // the OTHER one to animate the reveal it was supposed to suppress: with the
+    // editor mounting inside a single frame, refresh() cleared the flag before
+    // the init rAF had committed anything, and the panel slid in. That is the
+    // `toc` suite's intermittent "initial reveal is instant" failure, and it
+    // reproduces on demand by delaying rAF so the mount always wins.
+    //
+    // So the flag survives until BOTH have committed, in whichever order they
+    // arrive; only then does a later user toggle or resize animate.
     let initialLoad = true;
+    let initRafCommitted = false;
+    let mountedRefreshCommitted = false;
+    const endInitialLoadIfSettled = (): void => {
+        if (initRafCommitted && mountedRefreshCommitted) {
+            initialLoad = false;
+        }
+    };
 
     // Drag-and-drop wiring: top-level items drag their whole sections, and
     // the open panel is a drop zone for document drags (see ./dnd). The flyout
@@ -1013,10 +1029,11 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         const headings = getHeadings();
         syncAutoOpenState(headings);
         syncTocState(headings);
-        // The first refresh with a mounted editor is the load-time reveal — once
-        // it has committed (instantly, above), later syncs animate as usual.
+        // One of the two load-reveal commits (see initialLoad). Transitions
+        // stay off until the init rAF has committed too — in either order.
         if (initialLoad && getEditorView()) {
-            initialLoad = false;
+            mountedRefreshCommitted = true;
+            endInitialLoadIfSettled();
         }
     }
 
@@ -1421,6 +1438,10 @@ export function initToc(eventManager: EventManager, getEditorView: () => EditorV
         updatePanelPosition();
         syncTocState();
         syncTabOverflow();
+        // The other half of the load reveal (see initialLoad) — transitions
+        // stay off until the first mounted refresh has committed too.
+        initRafCommitted = true;
+        endInitialLoadIfSettled();
         // Detect the currently visible heading once on init
         updateActiveHeadingOnScroll();
         // First tab-visibility pass: on idle if the panel is showing, deferred
