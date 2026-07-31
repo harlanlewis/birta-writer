@@ -15,15 +15,21 @@ name: Release
 # (microsoft/vscode#322741) — so there is no long-lived credential here to expire
 # or rotate. See docs/RELEASING.md for the one-time identity setup.
 #
-# Versions are CalVer, derived from the release clock (America/Los_Angeles):
-#   YYYY . (month*100 + day) . (hour*10000 + min*100 + sec)
-#   e.g. 2026-07-14 04:00:00 PT -> 2026.714.40000
+# Versions are CalVer, derived from the release date (America/Los_Angeles):
+#   YYYY . (month*100 + day) . (releases already cut that day)
+#   e.g. the 2026-07-14 nightly -> 2026.714.0, a manual re-cut -> 2026.714.1
 # Every field is a plain integer, so the result is valid semver (VS Code requires
 # major.minor.patch and forbids leading zeros) and increases monotonically across
-# sub-day, day, month, and year boundaries — which the Marketplace/update ordering
+# same-day, day, month, and year boundaries — which the Marketplace/update ordering
 # depends on. This is the single source of truth: the same string tags the commit,
 # names the release, and stamps the VSIX. package.json is not a release authority;
 # it is overwritten at build time and not committed back.
+#
+# The patch field was a time-of-day stamp (hour*10000 + min*100 + sec) until
+# 2026-07-31. It bought sub-day uniqueness that the release cadence never needed
+# — the nightly cron runs once and `concurrency: release` serializes it against a
+# manual dispatch — at the cost of a version nobody could read: 2026.730.54523 is
+# a build id, not a version. The counter below gives the same guarantee.
 
 on:
   schedule:
@@ -83,21 +89,31 @@ jobs:
           echo "range=$RANGE" >> "$GITHUB_OUTPUT"
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
 
-          # CalVer from the release clock (see the header comment). Fields are
+          # CalVer from the release date (see the header comment). Fields are
           # zero-padded by date(1), so 10# forces base-10 arithmetic — otherwise
           # bash reads "08"/"09" as invalid octal and the August/September builds
           # would crash.
-          read -r Y MO DA HH MI SS < <(TZ='America/Los_Angeles' date +'%Y %m %d %H %M %S')
-          VERSION="$Y.$((10#$MO * 100 + 10#$DA)).$((10#$HH * 10000 + 10#$MI * 100 + 10#$SS))"
-          # A second release within the same clock-second is near-impossible (the
-          # `release` concurrency group serializes runs), but guard the tag anyway.
-          BUMP=0
-          while git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; do
-            BUMP=$((BUMP + 1))
-            VERSION="$Y.$((10#$MO * 100 + 10#$DA)).$((10#$HH * 10000 + 10#$MI * 100 + 10#$SS + BUMP))"
+          read -r Y MO DA < <(TZ='America/Los_Angeles' date +'%Y %m %d')
+          MMDD=$((10#$MO * 100 + 10#$DA))
+
+          # The patch field counts releases already cut today, so it may only
+          # reset to 0 when the day — and therefore the minor field — changes;
+          # semver compares minor before patch, so a reset can never order a new
+          # release below an old one. When the newest tag is from today, resume
+          # from its patch rather than starting at 0: that covers a same-day
+          # re-cut AND the one-way migration off the old time-stamped patch
+          # (2026.730.54523 -> 2026.730.54524 today, then 2026.731.0 tomorrow).
+          N=0
+          case "${PREV#v}" in
+            "$Y.$MMDD."*) N=$(( ${PREV##*.} + 1 )) ;;
+          esac
+          # Belt and braces: a tag the case above didn't predict (a hand-cut one,
+          # or a `sort -V` ordering surprise) still can't collide.
+          while git rev-parse -q --verify "refs/tags/v$Y.$MMDD.$N" >/dev/null; do
+            N=$((N + 1))
           done
+          VERSION="$Y.$MMDD.$N"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "display=$(TZ='America/Los_Angeles' date +'%Y-%m-%d %H:%M %Z')" >> "$GITHUB_OUTPUT"
 
           if [ "$COUNT" -eq 0 ] && [ "${{ inputs.force }}" != "true" ]; then
             echo "release=false" >> "$GITHUB_OUTPUT"
@@ -183,7 +199,12 @@ jobs:
         with:
           tag_name: v${{ steps.plan.outputs.version }}
           target_commitish: ${{ github.sha }}
-          name: Birta Writer v${{ steps.plan.outputs.version }} (${{ steps.plan.outputs.display }})
+          # Just the tag. The repo name is redundant on the repo's own releases
+          # page, and it pushed the only distinguishing part — the version — past
+          # the sidebar's truncation, so every entry in the list read "Birta
+          # Writer v2026.7…". The date is redundant too: with CalVer the version
+          # IS the date, and GitHub shows the exact timestamp beside it anyway.
+          name: v${{ steps.plan.outputs.version }}
           body_path: RELEASE_NOTES.md
           files: |
             releases/*.vsix

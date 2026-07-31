@@ -1,28 +1,31 @@
 # Releasing
 
-One rule: **the version is the release time.** Nothing else stores or maintains a version number, so nothing can drift out of alignment.
+One rule: **the version is the release date.** Nothing else stores or maintains a version number, so nothing can drift out of alignment.
 
 ## The version scheme (CalVer)
 
-Every release is stamped from the clock, in `America/Los_Angeles`:
+Every release is stamped from the date, in `America/Los_Angeles`:
 
 ```
-YYYY . (month*100 + day) . (hour*10000 + minute*100 + second)
+YYYY . (month*100 + day) . (releases already cut that day)
 ```
 
-| Released at (PT)      | Version          |
-| --------------------- | ---------------- |
-| 2026-07-14 04:00:00   | `2026.714.40000` |
-| 2026-08-09 08:07:06   | `2026.809.80706` |
-| 2026-12-31 23:59:59   | `2026.1231.235959` |
+| Released on (PT)          | Version           |
+| ------------------------- | ----------------- |
+| 2026-07-14, nightly       | `2026.714.0`      |
+| 2026-07-14, re-cut by hand| `2026.714.1`      |
+| 2026-08-09, nightly       | `2026.809.0`      |
+| 2026-12-31, nightly       | `2026.1231.0`     |
 
 Each field is a plain integer, which buys three properties at once:
 
 - **Valid semver.** VS Code requires `major.minor.patch` and forbids leading zeros, so `2026.07.14` and the 2-part `20260714.105030` are both rejected — the integer form is not.
-- **Strictly increasing.** A later build always sorts higher — across seconds, days, months, and years — so the Marketplace/update ordering is always right.
-- **No bookkeeping.** There is no "next version" to decide. The clock decides.
+- **Strictly increasing.** A later build always sorts higher — across same-day re-cuts, days, months, and years — so the Marketplace/update ordering is always right. The counter resets to `0` only when the day changes, which also changes the minor field; semver compares minor before patch, so a reset can never order a new release below an old one.
+- **No bookkeeping.** There is no "next version" to decide. The date decides, and the job counts.
 
-The same string is the git tag (`v2026.714.40000`), the GitHub Release title, and the version stamped into the `.vsix`. `package.json` stays pinned at `0.0.0` on purpose — it is not a source of truth; the release job overwrites it at build time and never commits the change back.
+The same string is the git tag (`v2026.714.0`), the GitHub Release title, and the version stamped into the `.vsix`. `package.json` stays pinned at `0.0.0` on purpose — it is not a source of truth; the release job overwrites it at build time and never commits the change back.
+
+**The patch field used to be a time-of-day stamp** (`hour*10000 + minute*100 + second`, e.g. `2026.730.54523`) — changed 2026-07-31. Sub-day uniqueness was never needed: the cron fires once a night and `concurrency: release` serializes it against a manual dispatch. It cost readability for nothing. The changeover was one-way, and the job handles it without special-casing: when the newest tag is from today it resumes from that tag's patch rather than starting at `0`, so the final timestamped version was followed by `2026.730.54524` and then `2026.731.0`.
 
 ## How a release happens
 
@@ -105,4 +108,4 @@ That locates the problem precisely. The *build* is already deterministic; the *c
 
 ## Channels, later
 
-There is one channel today. If a pre-release ("insiders") stream is ever wanted, it is a **flag, not a number**: add `--pre-release` to the marketplace publish step for those builds. The CalVer scheme is unchanged — the timestamp keeps stable and pre-release builds correctly ordered on their own, and VS Code routes users by the flag. Do not encode the channel into the version.
+There is one channel today. If a pre-release ("insiders") stream is ever wanted, it is a **flag, not a number**: add `--pre-release` to the marketplace publish step for those builds. The CalVer scheme is unchanged — the date and counter keep stable and pre-release builds correctly ordered on their own, and VS Code routes users by the flag. Do not encode the channel into the version.

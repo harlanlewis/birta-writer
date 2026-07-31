@@ -1,7 +1,7 @@
 {
     "name": "birta-writer",
     "displayName": "Birta Writer",
-    "description": "Birta Writer: a WYSIWYG Markdown editor for VS Code with live table editing",
+    "description": "Your favorite place to write Markdown. A rich, visual, modern editor.",
     "version": "0.0.0",
     "publisher": "BirtaLabs",
     "author": {
@@ -18,15 +18,18 @@
         "ui"
     ],
     "categories": [
-        "Formatters",
-        "Other"
+        "Programming Languages", "Visualization"
     ],
     "keywords": [
         "markdown",
-        "wysiwyg",
+        "WYSIWYG",
         "editor",
-        "table",
-        "milkdown"
+        "typora",
+        "obsidian",
+        "wikilinks",
+        "notes",
+        "pkm",
+        "table"
     ],
     "repository": {
         "type": "git",
