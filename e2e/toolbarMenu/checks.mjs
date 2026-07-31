@@ -7,6 +7,10 @@
  *     .tb-fmt-wrap.tb-menu-open::after bridge holds the wrap "hovered"),
  *   - leaving a menu closes it on the next tick (no lingering delay),
  *   - --tb-menu-gap is published to CSS from the JS MENU_GAP constant.
+ *
+ * Plus the menu-content geometry jsdom has no layout engine for: the Lists
+ * menu's task-sink switch keeps its icon/label columns aligned with the rows
+ * above it and its track pinned right (section 7).
  */
 export async function run({ page, check, baseUrl }) {
     await page.goto(`${baseUrl}/index.html`);
@@ -156,4 +160,74 @@ export async function run({ page, check, baseUrl }) {
     check("gear menu separators carry role=separator",
         JSON.stringify(gearShape.sepRoles) === JSON.stringify(["separator", "separator"]),
         JSON.stringify(gearShape.sepRoles));
+    await page.mouse.move(500, 800, { steps: 5 });
+    await page.waitForTimeout(30);
+
+    // ── 7. Lists menu: the task-sink preference is a SWITCH, aligned ──
+    // "Move checked tasks to bottom" is a persistent preference, not a
+    // container the caret is inside, so it wears the Checks menu's switch
+    // idiom rather than the list rows' accent fill. The geometry below is the
+    // part jsdom cannot see: the switch keeps a leading icon so its column
+    // lines up with the three rows above, and the track pins to the right
+    // edge (an earlier version of this row inherited a wider row gap and sat
+    // its label 4px right of the others).
+    await page.hover(listBtn);
+    await page.waitForTimeout(OPEN_WAIT);
+    check("Lists menu open for the switch checks", (await disp(listMenu)) === "flex");
+    const sinkSel = `${listMenu} .tb-switch-item`;
+    const sinkShape = await page.$eval(sinkSel, (el) => {
+        const row = el.getBoundingClientRect();
+        const rect = (sel, root = el) => root.querySelector(sel)?.getBoundingClientRect() ?? null;
+        const icon = rect(".tb-list-item-icon");
+        const label = rect(".tb-switch-item-label");
+        const track = rect(".tb-switch");
+        const rowIcon = rect(".tb-list-item .tb-list-item-icon", el.closest(".tb-list-menu"));
+        const rowLabel = rect(".tb-list-item .tb-list-item-label", el.closest(".tb-list-menu"));
+        return {
+            role: el.getAttribute("role"),
+            label: el.querySelector(".tb-switch-item-label")?.textContent,
+            hasKnob: !!el.querySelector(".tb-switch .tb-switch-knob"),
+            iconDx: icon && rowIcon ? +(icon.left - rowIcon.left).toFixed(1) : null,
+            labelDx: label && rowLabel ? +(label.left - rowLabel.left).toFixed(1) : null,
+            trackInset: track ? +(row.right - track.right).toFixed(1) : null,
+            labelToTrack: label && track ? +(track.left - label.right).toFixed(1) : null,
+        };
+    });
+    check("the sink row is a switch (role + track), not a fill row",
+        sinkShape.role === "switch" && sinkShape.hasKnob
+            && sinkShape.label === "Move checked tasks to bottom",
+        JSON.stringify(sinkShape));
+    check("its icon column lines up with the list rows above",
+        sinkShape.iconDx === 0 && sinkShape.labelDx === 0, JSON.stringify(sinkShape));
+    check("its track pins to the row's right edge, clear of the label",
+        sinkShape.trackInset > 0 && sinkShape.trackInset < 20 && sinkShape.labelToTrack >= 8,
+        JSON.stringify(sinkShape));
+
+    // Clicking flips it, persists it, and leaves the menu open (so a second
+    // preference could be flipped without re-opening).
+    await page.click(sinkSel);
+    await page.waitForTimeout(30);
+    const flipped = await page.$eval(sinkSel, (el) => ({
+        aria: el.getAttribute("aria-checked"),
+        on: el.classList.contains("tb-switch-item--on"),
+        knobMoved: getComputedStyle(el.querySelector(".tb-switch-knob")).transform !== "none",
+    }));
+    const persisted = await page.evaluate(() =>
+        (window.__posted ?? []).filter((m) => m.type === "setChecklistSink").map((m) => m.enabled));
+    check("clicking the switch turns it on", flipped.aria === "true" && flipped.on && flipped.knobMoved,
+        JSON.stringify(flipped));
+    check("…and posts the setting write-back", JSON.stringify(persisted) === "[true]",
+        JSON.stringify(persisted));
+    check("…and leaves the menu open", (await disp(listMenu)) === "flex");
+
+    // Re-open repaints from the live gate: the same setting is flippable from
+    // the task-list block menu and by a settings echo (featureGateChanged),
+    // neither of which touches this row.
+    await page.mouse.move(500, 800, { steps: 5 });
+    await page.waitForTimeout(30);
+    await page.evaluate(() => { window.__i18n.checklistSinkChecked = false; });
+    await page.hover(listBtn);
+    await page.waitForTimeout(OPEN_WAIT);
+    check("re-opening repaints the switch from the live gate",
+        (await page.$eval(sinkSel, (el) => el.getAttribute("aria-checked"))) === "false");
 }

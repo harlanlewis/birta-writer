@@ -302,11 +302,21 @@
 /* Switch row: label left, on/off switch right. Every proofreading row uses this
    (domain masters + sub-checks); the gate row adds .tb-checks-master for
    emphasis. A switch reads truer than a checkmark here — each row is an
-   independent on/off, not a selection from a set. */
-/* Composes .ui-menu-row; local: label/switch spread. */
+   independent on/off, not a selection from a set. The Lists menu's task-sink
+   preference uses it too, there with a leading .tb-list-item-icon. */
+/* Composes .ui-menu-row; local: label/switch spread. Deliberately keeps the
+   primitive's row gap, so a switch row with a leading icon aligns its label
+   with the icon rows above it (the Lists menu); the extra breathing room the
+   label/switch pair wants is the track's own margin below. */
 .tb-switch-item {
     justify-content: space-between;
-    gap: 12px;
+}
+
+/* The label takes the slack so the switch pins to the right edge — needed once
+   a third child (the optional leading icon) makes space-between spread three
+   ways. A no-op for the icon-less proofreading rows. */
+.tb-switch-item-label {
+    flex: 1;
 }
 
 /* The master gate is the same idiom, emphasized as the top-level control. */
@@ -354,6 +364,9 @@ body.has-sync-conflict .toolbar-toggle-tab {
 .tb-switch {
     position: relative;
     flex: none;
+    /* Row gap + this = the label/switch separation, kept wider than the row's
+       own gap so the track never crowds a full-width label. */
+    margin-left: var(--ui-space-2);
     width: 26px;
     height: 15px;
     border-radius: var(--ui-radius-pill);

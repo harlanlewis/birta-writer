@@ -188,13 +188,19 @@ function createFillItem(label: string): FillItem {
 
 /**
  * A switch menu row: a label on the left and an on/off switch on the right. Used
- * by the Checks menu (proofreading), where every row is an independent on/off,
- * not a selection from a set — so a switch reads truer than a checkmark. The row
- * itself is role=switch (the track/knob are decorative) so the menu's Enter/Space
+ * by the Checks menu (proofreading) and the Lists menu's task-sink preference,
+ * where the row is an independent on/off, not a selection from a set — so a
+ * switch reads truer than a checkmark (and truer than the accent fill, which
+ * means "the caret is in this container" on the rows above it). The row itself
+ * is role=switch (the track/knob are decorative) so the menu's Enter/Space
  * handling activates it without a duplicate focus stop. Same CheckItem shape as
  * createCheckItem, so callers treat the two interchangeably.
+ *
+ * `iconHtml` adds the same 14px leading icon slot the Lists rows use, so a
+ * switch dropped into an icon menu keeps that column aligned; menus without
+ * icons (Checks) omit it.
  */
-function createSwitchItem(label: string): CheckItem {
+function createSwitchItem(label: string, iconHtml?: string): CheckItem {
     const el = document.createElement("div");
     el.className = "ui-menu-row tb-fmt-item tb-switch-item";
     el.setAttribute("role", "switch");
@@ -206,6 +212,12 @@ function createSwitchItem(label: string): CheckItem {
     track.className = "tb-switch";
     track.setAttribute("aria-hidden", "true");
     track.appendChild(document.createElement("span")).className = "tb-switch-knob";
+    if (iconHtml) {
+        const iconEl = document.createElement("span");
+        iconEl.className = "tb-list-item-icon";
+        iconEl.innerHTML = iconHtml;
+        el.appendChild(iconEl);
+    }
     el.append(labelEl, track);
     return {
         el,
@@ -1284,37 +1296,30 @@ export function initToolbar(
         }
 
         // ── Task-list behavior switch, below a divider (MAR-175) ──
-        // "Move checked tasks to bottom" flips birta.checklist.sinkChecked in place:
-        // a settings toggle, not an insert, so it re-renders its own checked
-        // state and leaves the menu open (the user sees the flip land).
+        // "Move checked tasks to bottom" flips birta.checklist.sinkChecked in
+        // place: a persistent preference, not an insert and not a container the
+        // caret is inside, so it wears the switch idiom (like the Checks menu)
+        // rather than the rows' accent fill. It re-renders its own state and
+        // leaves the menu open, so the user sees the flip land.
         listMenu.appendChild(makeSep());
-        const sinkRow = document.createElement("button");
-        sinkRow.type = "button";
-        sinkRow.className = "ui-menu-row tb-fmt-item tb-list-item";
-        sinkRow.setAttribute("role", "menuitemcheckbox");
-        sinkRow.title = t("Checking a task moves it below the unchecked items (birta.checklist.sinkChecked)");
-        const sinkIcon = document.createElement("span");
-        sinkIcon.className = "tb-list-item-icon";
-        sinkIcon.innerHTML = IconArrowDownToLine;
-        const sinkLabel = document.createElement("span");
-        sinkLabel.className = "tb-list-item-label";
-        sinkLabel.textContent = t("Move checked tasks to bottom");
-        sinkRow.append(sinkIcon, sinkLabel);
-        const renderSinkState = (): void => {
-            const on = isChecklistSinkEnabled();
-            sinkRow.classList.toggle("tb-list-item--on", on);
-            sinkRow.setAttribute("aria-checked", on ? "true" : "false");
-        };
+        const sinkItem = createSwitchItem(t("Move checked tasks to bottom"), IconArrowDownToLine);
+        sinkItem.el.title = t("Checking a task moves it below the unchecked items (birta.checklist.sinkChecked)");
+        const renderSinkState = (): void => sinkItem.setChecked(isChecklistSinkEnabled());
         renderSinkState();
-        sinkRow.addEventListener("mousedown", (e) => {
+        sinkItem.el.addEventListener("mousedown", (e) => {
             e.preventDefault();
             e.stopPropagation();
             setChecklistSinkEnabled(!isChecklistSinkEnabled());
             renderSinkState();
         });
-        listMenu.appendChild(sinkRow);
+        listMenu.appendChild(sinkItem.el);
 
-        const { close: closeListMenu } = wireHoverMenu(listWrap, listBtn, listMenu);
+        // Repaint on open: the same setting is flippable from the task-list
+        // block menu and by a settings echo (featureGateChanged), either of
+        // which would otherwise leave this switch showing a stale state.
+        const { close: closeListMenu } = wireHoverMenu(listWrap, listBtn, listMenu, {
+            onOpen: renderSinkState,
+        });
 
         listWrap.appendChild(listBtn);
         listWrap.appendChild(listMenu);
