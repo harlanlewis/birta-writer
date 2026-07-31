@@ -33,10 +33,13 @@ export {
 
 export {
     blockBoundaryPositions,
+    createBoundaryMeasurer,
     dropTargetFor,
     edgeScrollVelocity,
     hideDropIndicator,
     registerDropZoneProvider,
+    scrollVelocityFor,
+    showBoundaryIndicator,
     showDropIndicatorAt,
     startPointerDragSession,
     visibleBoundaryPositions,
