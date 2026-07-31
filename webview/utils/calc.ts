@@ -550,15 +550,58 @@ export function detectCalcExpression(
     // runs that would compute a DIFFERENT question than the visible one
     // (split tokens, out-of-grammar operands), never for unwanted-but-honest
     // answers.
-    const value = evaluateExpression(expr);
+    //
+    // Shed an unmatched OPEN paren at the head AFTER those guards, never
+    // before: `(` is in the arithmetic class, so `the formula (3+7 =` runs back
+    // through the paren and fails to parse — but the parenthesis is prose
+    // punctuation the user will close after the answer (`(3+7= 10)`). Order
+    // matters both ways: `f(3+7 =` is already rejected above as glued (a call,
+    // not arithmetic), and OP_HEAD must judge the UNSTRIPPED head, where a
+    // leading `(` legitimately proves a following `-` is unary (`(-3+7 =`).
+    const shed = stripUnmatchedLeadingParens(expr);
+    if (!shed.expr) { return null; }
+    const value = evaluateExpression(shed.expr);
     if (value === null) { return null; }
     const result = formatCalcResult(value);
     if (result === null) { return null; }
     // Span from the expression's first character (after any leading run
-    // whitespace) through the caret (the end of textBefore).
+    // whitespace and any shed paren) through the caret (the end of textBefore).
     const leadingWs = run.length - run.replace(/^[ \t]+/, "").length;
-    const start = runStart + leadingWs;
-    return { length: textBefore.length - start, expr, result };
+    const start = runStart + leadingWs + shed.dropped;
+    return { length: textBefore.length - start, expr: shed.expr, result };
+}
+
+/**
+ * Drops OPEN parentheses from the head of `expr` that nothing closes — the one
+ * shape where a paren belongs to the prose rather than the expression:
+ * `here's the formula (3+7 =` is on its way to `(3+7= 10)`, so the run's
+ * leading `(` must not make the whole thing unparseable. A paren that IS closed
+ * is real grouping and survives untouched (`(3+7)*2`), and a leading `(` in the
+ * middle of a still-open expression is not at the head, so `2*(3+7 =` keeps
+ * refusing — answering `3+7` there would compute a different question than the
+ * one on screen. Returns the surviving expression and how many characters were
+ * shed, so callers can shift their span start past them.
+ *
+ * Linear: one stack pass marks every unclosed open, then the head is walked
+ * while it sits on a marked one.
+ */
+function stripUnmatchedLeadingParens(expr: string): { expr: string; dropped: number } {
+    const open: number[] = [];
+    for (let i = 0; i < expr.length; i++) {
+        if (expr[i] === "(") { open.push(i); } else if (expr[i] === ")" && open.length) { open.pop(); }
+    }
+    if (open.length === 0) { return { expr, dropped: 0 }; }
+    const unmatched = new Set(open);
+    let i = 0;
+    for (;;) {
+        let j = i;
+        while (expr[j] === " " || expr[j] === "\t") { j++; }
+        if (expr[j] !== "(" || !unmatched.has(j)) { break; }
+        j++;
+        while (expr[j] === " " || expr[j] === "\t") { j++; }
+        i = j;
+    }
+    return { expr: expr.slice(i), dropped: i };
 }
 
 /**
@@ -817,13 +860,21 @@ export function detectArrowExpression(
     let drops = 0;
     for (;;) {
         const mustDrop = glued && drops === 0;
+        // An unmatched OPEN paren at the head is prose punctuation, not
+        // expression material (`the formula (3+7 =>` → `3+7`); the `=>` says
+        // the expression is finished, so a paren with no partner cannot be part
+        // of it. Judged on the STRIPPED candidate, while OP_HEAD is still asked
+        // of the unstripped head — there a leading `(` proves a following `-`
+        // is unary (`(-3+7 =>`), exactly as on the `=` path.
+        const stripped = stripUnmatchedLeadingParens(expr).expr;
         if (!mustDrop
-            && isCalcStructurallyValid(expr)
-            && !isBareNumber(expr)
+            && stripped
+            && isCalcStructurallyValid(stripped)
+            && !isBareNumber(stripped)
             // An operator head is only unary when the candidate is the whole
             // run at a true, untruncated line start.
             && !(OP_HEAD.test(expr) && (drops > 0 || runStart > 0 || opts?.boundaryUnknown))
-        ) { break; }
+        ) { expr = stripped; break; }
         const sp = expr.search(/\s/);
         const head = sp === -1 ? expr : expr.slice(0, sp);
         if (!DROPPABLE_TOKEN.test(head)) { return null; }

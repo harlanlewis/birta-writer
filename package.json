@@ -2119,8 +2119,14 @@
                     "default": [],
                     "description": "%config.notes.customMarkers.description%"
                 },
-                "birta.review.groupByType": {
+                "birta.notes.highlightMarkers": {
                     "order": 111,
+                    "type": "boolean",
+                    "default": true,
+                    "description": "%config.notes.highlightMarkers.description%"
+                },
+                "birta.review.groupByType": {
+                    "order": 112,
                     "type": "boolean",
                     "default": true,
                     "description": "%config.review.groupByType.description%"

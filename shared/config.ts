@@ -199,6 +199,14 @@ export interface BirtaConfig extends ProofreadConfig {
      */
     notesCustomMarkers: string[];
     /**
+     * Highlight editor-note markers in the text (birta.notes.highlightMarkers):
+     * `[TK]`, `TODO:`, `FIXME:` and any custom markers get a quiet chip where
+     * they sit, so a draft's unresolved bits are visible without opening the
+     * review sidebar. On by default; off leaves the Notes tab's navigation
+     * exactly as it was and costs nothing (no scan, no decoration pass).
+     */
+    notesHighlightMarkers: boolean;
+    /**
      * Review sidebar (Proofreading + Notes tabs) organizes rows by type under
      * collapsible group headers when true (birta.review.groupByType), or as a
      * flat document-ordered list when false. Default true. Persisted so the
@@ -283,6 +291,7 @@ export const BIRTA_SETTING_KEYS: { readonly [K in keyof BirtaConfig]: string } =
     embedsEnabled: "embeds.enabled",
     checklistSinkChecked: "checklist.sinkChecked",
     notesCustomMarkers: "notes.customMarkers",
+    notesHighlightMarkers: "notes.highlightMarkers",
     reviewGroupByType: "review.groupByType",
     imageLocalPath: "imageLocalPath",
 };
@@ -393,6 +402,10 @@ export const BIRTA_CONFIG_DEFAULTS: BirtaConfig = {
     // ([TK], TODO:, FIXME:, HTML comments, unchecked checkboxes); this is the
     // personalization hook.
     notesCustomMarkers: [],
+    // Marker highlighting ships ON: a note the writer can't see is a note they
+    // publish. The gate is the escape hatch for anyone who wants an undecorated
+    // canvas and is happy driving notes from the sidebar.
+    notesHighlightMarkers: true,
     // Grouped-by-type is the default: it fixes long category names truncating in
     // a flat per-row chip, and reads more scannably ("14 em-dash, 3 spelling").
     reviewGroupByType: true,

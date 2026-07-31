@@ -353,6 +353,65 @@ describe("detectCalcExpression", () => {
     });
 });
 
+describe("detectCalcExpression — an unmatched leading paren", () => {
+    // `(` is in the arithmetic class, so the maximal trailing run swallows an
+    // opening parenthesis the user has not closed yet — and then fails to
+    // parse. But `here's the formula (3+7=` is on its way to `(3+7= 10)`: the
+    // paren belongs to the prose, not the sum.
+    it("prose then (expr= should compute the sum without the paren", () => {
+        const m = detectCalcExpression("here's the formula (3+7=");
+        expect(m).not.toBeNull();
+        expect(m!.expr).toBe("3+7");
+        expect(m!.result).toBe("10");
+        // The span starts at the `3`, so accepting rewrites `3+7=` and leaves
+        // the `(` exactly where the user typed it.
+        expect(m!.length).toBe("3+7=".length);
+    });
+
+    it("nested unmatched parens and inner spacing should all be shed", () => {
+        expect(detectCalcExpression("see ((3+7=")?.expr).toBe("3+7");
+        expect(detectCalcExpression("see ( 3+7=")?.expr).toBe("3+7");
+        expect(detectCalcExpression("see ( 3+7=")?.length).toBe("3+7=".length);
+    });
+
+    it("a paren that IS closed stays part of the expression", () => {
+        expect(detectCalcExpression("see (3+7)*2=")?.expr).toBe("(3+7)*2");
+        expect(detectCalcExpression("(3+7)*2=")?.result).toBe("20");
+    });
+
+    it("a leading paren makes a following minus unary, not a stolen operand", () => {
+        // `- 4 =` mid-line is refused (its left operand is out of grammar), but
+        // after `(` there provably is none.
+        expect(detectCalcExpression("see (-3+7=")?.result).toBe("4");
+        expect(detectCalcExpression("see -3+7=")).toBeNull();
+    });
+
+    it("an unmatched paren INSIDE the run should still refuse", () => {
+        // The user is mid-expression; answering `3+7` would compute a different
+        // question than the one on screen.
+        expect(detectCalcExpression("see 2*(3+7=")).toBeNull();
+    });
+
+    it("a call-shaped run should still refuse (glued to a letter)", () => {
+        expect(detectCalcExpression("f(3+7=")).toBeNull();
+        expect(detectCalcExpression("see f(3+7=")).toBeNull();
+    });
+
+    it("a fragment behind a paren should still refuse", () => {
+        // The comma splits the token: the run is `000+7`, glued to `,`.
+        expect(detectCalcExpression("see (1,000+7=")).toBeNull();
+    });
+
+    it("a trailing unmatched CLOSE paren should still refuse", () => {
+        // It reads as the tail of something bigger; only opens are prose-ish.
+        expect(detectCalcExpression("see 3+7)=")).toBeNull();
+    });
+
+    it("a parenthesised bare number should still refuse (no operator)", () => {
+        expect(detectCalcExpression("see (42=")).toBeNull();
+    });
+});
+
 describe("detectCalcExpression — leading form (=expr)", () => {
     it("=5+7 at line start should offer 12 spanning from the =", () => {
         const det = detectCalcExpression("=5+7");
@@ -544,6 +603,20 @@ describe("detectArrowExpression", () => {
     it("text without => should not be detected", () => {
         expect(detectArrowExpression("x * 2")).toBeNull();
         expect(detectArrowExpression("x * 2 = >")).toBeNull(); // a space breaks =>
+    });
+
+    it("an unmatched leading paren should be shed, like the = path", () => {
+        const m = detectArrowExpression("here's the formula (3+7 =>");
+        expect(m).not.toBeNull();
+        expect(m!.expr).toBe("3+7");
+        expect(m!.length).toBe("3+7 =>".length);
+        expect(detectArrowExpression("see (x*2 =>")?.expr).toBe("x*2");
+    });
+
+    it("a closed paren, a mid-run paren, and a bare number stay as they were", () => {
+        expect(detectArrowExpression("see (x+2)*3 =>")?.expr).toBe("(x+2)*3");
+        expect(detectArrowExpression("see 2*(3+7 =>")).toBeNull();
+        expect(detectArrowExpression("see (42 =>")).toBeNull();
     });
 
     it("a suffix flush against a truncated window start should be refused", () => {

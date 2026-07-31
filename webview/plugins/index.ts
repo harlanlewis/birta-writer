@@ -1,4 +1,5 @@
 export { anchorSyncPlugin, headingRangeTouched } from "./anchorSync";
+export { backtickWrapPlugin } from "./backtickWrap";
 export { calcArrowSuggestPlugin, calcAutoInsertPlugin, calcSuggestPlugin } from "./calc";
 export { calcRefreshPlugin } from "./calcRefresh";
 export { calcStalePlugin, regateCalcCues } from "./calcStale";
@@ -66,6 +67,7 @@ export { listMergeSuggestPlugin } from "./listMergeSuggest";
 export { imageBlocksPlugin } from "./imageBlocks";
 export { activeBlockPlugin } from "./activeBlock";
 export { hiddenSelectionPlugin } from "./hiddenSelection";
+export { noteMarkersEnabled, noteMarkersPlugin, regateNoteMarkers } from "./noteMarkers";
 export { pendingRangePlugin, setPendingRange } from "./pendingRange";
 export { getProofreadConfig, proofreadPlugin, setProofreadConfig } from "./proofread";
 export { registerSelectionChangeHandler, selectionPlugin } from "./selection";

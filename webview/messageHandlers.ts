@@ -28,7 +28,7 @@ import { dispatchPathSuggestions } from "./components/pathLink/pathComplete";
 import { dispatchLinkTargetSuggestions, dispatchLinkTargetPicked, dispatchLinkTargetResolved } from "./components/pathLink/linkTargetComplete";
 import { dispatchImgPathSuggestions, dispatchImagePathResolved } from "./components/imageView/imgPathComplete";
 import { setLogTableSel, syncExternalContent, flushPendingEdit } from "./editor";
-import { regateCalcCues, setProofreadConfig } from "./plugins";
+import { regateCalcCues, regateNoteMarkers, setProofreadConfig } from "./plugins";
 import { mark } from "./perf";
 import { applyLintResults } from "./plugins/proofread";
 import { withScrollAnchor } from "./utils/scrollAnchor";
@@ -429,6 +429,17 @@ export function createMessageHandlers(
         },
         notesConfig(msg) {
             setNotesMarkers(msg.customMarkers);
+            // The in-text highlight reads both values at scan time, so write
+            // them back to the baked snapshot before re-gating — the re-gate
+            // also drops the plugin's scan cache, which is keyed on doc
+            // identity and would otherwise return the old marker set's
+            // decorations for an unchanged document.
+            if (window.__i18n) {
+                window.__i18n.notesCustomMarkers = msg.customMarkers;
+                window.__i18n.notesHighlightMarkers = msg.highlightMarkers;
+            }
+            const view = getEditorView();
+            if (view) { regateNoteMarkers(view); }
         },
         reviewConfig(msg) {
             setReviewGroupByType(msg.groupByType);

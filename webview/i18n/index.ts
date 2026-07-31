@@ -42,6 +42,8 @@ declare global {
             lineNumbers?: boolean;
             /** Extra literal markers surfaced in the Notes review tab (birta.notes.customMarkers). */
             notesCustomMarkers?: string[];
+            /** Highlight note markers in the text (birta.notes.highlightMarkers); default on. */
+            notesHighlightMarkers?: boolean;
             /** Review sidebar By-type/In-order mode (birta.review.groupByType); default grouped. */
             reviewGroupByType?: boolean;
             codeBlockWordWrap?: boolean;

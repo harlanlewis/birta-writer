@@ -1,0 +1,23 @@
+/*
+ * Editor-note markers, highlighted in place.
+ *
+ * `[TK]`, `TODO:`, `FIXME:` and custom markers are the scaffolding a writer
+ * leaves for themselves to resolve before publish. They are already navigable
+ * from the review sidebar's Notes tab; the chip is so they are also VISIBLE
+ * while writing, without opening a panel.
+ *
+ * One tint for every kind, from the find-match token: "here is a thing you were
+ * looking for" is exactly the meaning, the token is designed to keep the text
+ * on top legible in both themes, and it stays clear of the two backgrounds
+ * already spoken for — the warning tint means "this computed number no longer
+ * matches the document" (calcStale.css) and must not be diluted. Colour here
+ * encodes the SOURCE (the Notes scanner), not severity, so a FIXME does not
+ * shout louder than a TK — the sidebar is where they are triaged.
+ *
+ * Deliberately no underline (style/spelling/grammar own those) and no
+ * strikethrough (that means "delete this" — a note is a to-do, not a cut).
+ */
+.note-marker {
+    background: var(--vscode-editor-findMatchHighlightBackground);
+    border-radius: 2px;
+}
