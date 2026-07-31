@@ -23,7 +23,7 @@ Birta Writer in VS Code is a drop-in replacement for any PKM vault (Personal Kno
 
 Data fidelity is the foundation for supporting Markdown-like content written by any tool.
 
-Birta Writer is source-available under the [Functional Source License (FSL-1.1-ALv2)](LICENSE). Every release is signed, so you can check the extension matches the source repository. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Birta Writer is source-available under the Functional Source License (FSL-1.1-ALv2). Every release is signed, so you can check the extension matches the source repository. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 [As Teller put it](https://www.esquire.com/entertainment/interviews/a15810/teller-magician-interview-1012/): _"Sometimes magic is just someone spending more time on something than anyone else might reasonably expect."_
 
