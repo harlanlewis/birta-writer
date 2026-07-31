@@ -18,19 +18,18 @@
         "ui"
     ],
     "categories": [
-        "Programming Languages", "Visualization", "Notebooks", "Education"
+        "Programming Languages", "Visualization"
     ],
     "keywords": [
         "markdown",
+        "WYSIWYG",
         "editor",
-        "obsidian",
         "typora",
+        "obsidian",
         "wikilinks",
         "notes",
         "pkm",
-        "second brain",
-        "mermaid",
-        "context"
+        "table"
     ],
     "repository": {
         "type": "git",
